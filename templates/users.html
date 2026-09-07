@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<h1>Team Members <a class="btn-link" href="{{ url_for('users_export') }}">Export CSV</a></h1>
+
+<div class="panel" style="margin-bottom:1.5rem;">
+  <h2>Existing Users</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Last login</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.name }}</td>
+        <td>{{ u.username }}</td>
+        <td>
+          <details>
+            <summary class="icon-btn" style="display:inline-block; cursor:pointer;">{{ u.email or 'Set email' }}</summary>
+            <form method="post" action="{{ url_for('user_set_email', user_id=u.id) }}" style="margin-top:0.4rem; display:flex; gap:0.4rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <input type="email" name="email" value="{{ u.email or '' }}" aria-label="Email for {{ u.name }}" placeholder="name@company.com" style="width:auto;">
+              <button type="submit" class="icon-btn">Save</button>
+            </form>
+          </details>
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('user_set_role', user_id=u.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <select name="role" aria-label="Role for {{ u.name }}" onchange="this.form.submit()" style="min-width:110px; width:auto;" {{ 'disabled' if u.id == session_user_id }}>
+              {% for r in ROLES %}
+              <option value="{{ r }}" {{ 'selected' if r == u.role }}>{{ r }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td>{{ 'Active' if u.active else 'Deactivated' }}</td>
+        <td>{{ u.last_login_at | localdt if u.last_login_at else '—' }}</td>
+        <td>{{ u.created_at | localdt('date') if u.created_at else '—' }}</td>
+        <td style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+          {% if u.id != session_user_id %}
+          <form method="post" action="{{ url_for('user_set_active', user_id=u.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="active" value="{{ 0 if u.active else 1 }}">
+            <button type="submit" class="icon-btn">{{ 'Deactivate' if u.active else 'Reactivate' }}</button>
+          </form>
+          {% endif %}
+          <details>
+            <summary class="icon-btn" style="display:inline-block; cursor:pointer;">Reset Password</summary>
+            <form method="post" action="{{ url_for('user_reset_password', user_id=u.id) }}" style="margin-top:0.4rem; display:flex; gap:0.4rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <input type="password" name="new_password" placeholder="New password" aria-label="New password for {{ u.name }}" minlength="8" required style="width:auto;">
+              <button type="submit" class="icon-btn">Set</button>
+            </form>
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel" style="max-width:400px;">
+  <h2>Add Team Member</h2>
+  <form method="post">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Full Name
+      <input type="text" name="name" required></label>
+    <label>Username
+      <input type="text" name="username" required></label>
+    <label>Email (for notifications)
+      <input type="email" name="email" placeholder="name@company.com"></label>
+    <label>Temporary Password
+      <input type="password" name="password" required minlength="8"></label>
+    <label>Role</label>
+    <select aria-label="Role" name="role">
+      {% for r in ROLES %}
+      <option value="{{ r }}" {{ 'selected' if r == 'Member' }}>{{ r }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Create User</button>
+  </form>
+</div>
+{% endblock %}

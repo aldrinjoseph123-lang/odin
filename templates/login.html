@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div class="login-box">
+  <h1>Odin</h1>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}<div class="flash">{% for m in messages %}<div>{{ m }}</div>{% endfor %}</div>{% endif %}
+  {% endwith %}
+  <form method="post">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Username
+      <input type="text" name="username" required autofocus></label>
+    <label>Password
+      <input type="password" name="password" required></label>
+    <button type="submit">Log in</button>
+  </form>
+</div>
+{% endblock %}

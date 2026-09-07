@@ -1,0 +1,57 @@
+# Odin — production compose.
+#
+#   1. cp .env.example .env   and fill in SECRET_KEY (the app refuses to boot
+#      without it) plus your Azure app credentials if you use Microsoft 365.
+#   2. docker compose up -d --build
+#
+# odin-data holds odin.db and every uploaded document. Back it up; losing it
+# loses the product. Nothing else in the stack is stateful.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ODIN_DATA_DIR: /data
+      PMS_HTTPS: "1"        # marks the session cookie Secure
+      PMS_TRUST_PROXY: "1"  # honour X-Forwarded-* from nginx (see security.init_security)
+    volumes:
+      - odin-data:/data
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static:/srv/odin-static:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+
+  # Daily alert digest. Runs the same script the docs describe for cron.
+  digest:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ODIN_DATA_DIR: /data
+    volumes:
+      - odin-data:/data
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          # 08:00 daily, container clock
+          target=$$(date -d 'tomorrow 08:00' +%s 2>/dev/null || date -v+1d -v8H -v0M -v0S +%s)
+          sleep $$(( target - $$(date +%s) ))
+          python send_daily_alerts.py || true
+          python backup.py || true
+        done
+
+volumes:
+  odin-data:

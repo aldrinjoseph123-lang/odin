@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>All Projects Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <button class="no-print" onclick="window.print()" style="float:right; padding:0.6rem 1.2rem; margin-bottom:1rem; background:var(--dark); color:white; border:none; border-radius:var(--radius); text-transform:uppercase; letter-spacing:0.05em; font-size:0.75rem; font-weight:600; font-family:inherit; cursor:pointer;">Print / Save as PDF</button>
+  <h1>All Projects Report</h1>
+  <p class="muted">Active projects (excludes Closed) · Generated {{ generated_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Project</th><th>Client</th><th>Stage</th><th>Owner</th>
+        <th>Delivery Mode</th><th>Vendor</th><th>Product</th><th>Target End</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in projects %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td>{{ p.client }}</td>
+        <td>{{ p.stage }}</td>
+        <td>{{ p.owner_name }}</td>
+        <td>{{ p.delivery_mode }}</td>
+        <td>{{ p.vendor_name or '—' }}</td>
+        <td>{{ p.product_name or '—' }}</td>
+        <td>{{ p.target_end_date or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8">No active projects.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

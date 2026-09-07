@@ -1,0 +1,147 @@
+"""Static configuration for the Odin app.
+
+Pure data only — no imports from app, db, or services. Everything else in the
+codebase may import from here; this module imports from nothing internal, so it
+can never be part of an import cycle.
+"""
+
+UNDO_WINDOW_SECS = 300  # 5 minutes
+
+# Tables the soft-delete/restore helpers may touch. SQLite cannot parameterise
+# an identifier, so those helpers interpolate the table name — this allowlist
+# is what keeps that safe. See db.assert_safe_table.
+SOFT_DELETE_TABLES = {
+    "projects", "documents", "account_managers", "partners",
+    "partner_account_managers", "vendors", "products", "outsourcers",
+}
+
+# Seed values only — the live lists are admin-editable via /settings and
+# stored in the stages / doc_categories tables. See get_stage_names() etc.
+# Delivery lifecycle, not a billing one — the commercial stages went with the
+# rest of the financials, and a vendor holding a guest link sees these names.
+# Seeded only into an empty stages table; existing installs rename in Settings.
+DEFAULT_STAGES = [
+    "PO Received",
+    "Scoping",
+    "Kickoff",
+    "Deployment",
+    "Tuning/UAT",
+    "Hypercare",
+    "Closed",
+]
+DEFAULT_DOC_CATEGORIES = ["Client PO", "Deliverable"]
+
+DEFAULT_SETTINGS = {
+    "notify_email_enabled": "0",
+    "notify_teams_enabled": "0",
+    "onedrive_mirror_uploads_enabled": "0",
+    "onedrive_backup_enabled": "0",
+}
+
+# The one document category the project can't be created without — its upload
+# is the create-project trigger. See has_required_document() / project_new.
+CLIENT_PO_DOC_CATEGORY = "Client PO"
+
+DELIVERY_MODES = ["Distribution/MSSP", "Outsourced"]
+VIA_OPTIONS = ["Direct", "Partner"]
+
+# Flat managed lookup lists administered from /settings/contacts, keyed by the
+# URL segment used in their add/delete routes. Partners are handled separately
+# since they cascade to partner_account_managers — see the dedicated routes.
+CONTACT_LISTS = {
+    "account-managers": {"table": "account_managers", "has_email": True, "label": "Internal Account Managers"},
+    "vendors": {"table": "vendors", "has_email": False, "label": "Vendors"},
+    "products": {"table": "products", "has_email": False, "label": "Products"},
+    "outsourcers": {"table": "outsourcers", "has_email": True, "label": "Outsourcers"},
+}
+
+# Contributor: creates and comments (sales / account managers) but never moves
+# a delivery stage or deletes. Member is the delivery team.
+ROLES = ["Admin", "Member", "Contributor", "Viewer"]
+
+# Canonical permission list + seed values for role_permissions (DB is the
+# source of truth at runtime — this dict only seeds first migration and
+# defines the fixed display order for the RBAC settings matrix).
+PERMISSIONS = {
+    "view_board": ["Admin", "Member", "Contributor", "Viewer"],
+    "view_projects": ["Admin", "Member", "Contributor", "Viewer"],
+    "view_project_detail": ["Admin", "Member", "Contributor", "Viewer"],
+    "create_project": ["Admin", "Member", "Contributor"],
+    "edit_project": ["Admin", "Member", "Contributor"],
+    "delete_project": ["Admin"],
+    "view_reports": ["Admin", "Member", "Contributor", "Viewer"],
+    "edit_project_stage": ["Admin", "Member"],
+    "add_project_note": ["Admin", "Member", "Contributor"],
+    "upload_document": ["Admin", "Member", "Contributor"],
+    "download_document": ["Admin", "Member", "Contributor", "Viewer"],
+    "delete_document": ["Admin"],
+    "manage_contacts": ["Admin"],
+    "manage_settings": ["Admin"],
+    "manage_users": ["Admin"],
+    "manage_integrations": ["Admin"],
+}
+
+# Lifecycle alerts: schedule health (vs a project's target end date) + inactivity.
+# The commercial payment alerts were removed with the rest of the financials.
+ALERT_TYPES = {"project_overdue", "project_due_soon", "stage_sla_breach", "stale"}
+
+ALERT_TYPE_TITLES = {
+    "project_overdue": "Project overdue",
+    "project_due_soon": "Project due soon",
+    "stage_sla_breach": "Stage SLA breached",
+    "stale": "Project inactive",
+}
+
+# project_overdue has no threshold — it fires the moment the target end date passes.
+DEFAULT_ALERT_TYPE_SETTINGS = {
+    "project_overdue": {"severity": "critical", "threshold_days": None, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+    "project_due_soon": {"severity": "warning", "threshold_days": 7, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+    # no threshold_days: the target is per stage, set on the stage itself
+    "stage_sla_breach": {"severity": "warning", "threshold_days": None, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+    "stale": {"severity": "warning", "threshold_days": 7, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+}
+
+# Columns added to projects / users after their original CREATE TABLE — applied
+# idempotently by db.migrate_db() via ALTER TABLE on existing installs.
+NEW_PROJECT_COLUMNS = {
+    # Second guest link. access_token is the vendor/outsourcer link (may
+    # advance the stage); customer_token is view-and-comment only.
+    "customer_token": "TEXT",
+    "via": "TEXT",
+    "account_manager_name": "TEXT",
+    "account_manager_email": "TEXT",
+    "partner_name": "TEXT",
+    "partner_account_manager_name": "TEXT",
+    "partner_account_manager_email": "TEXT",
+    "vendor_name": "TEXT",
+    "product_name": "TEXT",
+    "access_token": "TEXT",
+    "deleted_at": "TEXT",
+}
+
+# Commercial columns dropped in the project-tracker phase-out (invoice/payment/
+# PO-money tracking moved to the analysis platform). migrate_db drops any that
+# still exist; kept here as the authoritative list so a re-added column can't
+# silently creep back. Irreversible — the column data goes with the column.
+DROPPED_PROJECT_COLUMNS = [
+    "po_amount", "po_payment_terms", "po_due_date",
+    "invoice_number", "invoice_date", "invoice_due_date", "invoice_amount",
+    "payment_terms", "client_payment_status",
+    "vendor_invoice_number", "vendor_invoice_date", "vendor_invoice_due_date",
+    "vendor_invoice_amount", "vendor_payment_terms", "vendor_payment_status",
+]
+
+NEW_USER_COLUMNS = {
+    "role": "TEXT NOT NULL DEFAULT 'Member'",
+    "active": "INTEGER NOT NULL DEFAULT 1",
+    "email": "TEXT",
+    # Set on the seed admin and whenever an admin resets someone's password:
+    # the next login is funnelled to the account page until it is changed.
+    "must_change_password": "INTEGER NOT NULL DEFAULT 0",
+    # Bumped on deactivate / admin reset: any session minted under an older
+    # epoch is dead on its next request. Cheap "log out everywhere".
+    "session_epoch": "INTEGER NOT NULL DEFAULT 0",
+    # Access-review evidence: who exists since when, and who has gone quiet.
+    "created_at": "TEXT",
+    "last_login_at": "TEXT",
+}

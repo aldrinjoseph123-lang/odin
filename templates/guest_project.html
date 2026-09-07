@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }}{% endblock %}
+{% block content %}
+<h1>{{ project.name }}</h1>
+{#- The PO number is the client's; the vendor link does not get it. -#}
+<p class="muted">Client: {{ project.client }}{% if party == 'customer' and project.po_number %} · PO {{ project.po_number }}{% endif %}</p>
+
+<div class="stage-bar">
+  {% for stage in STAGES %}
+  <span class="stage-step {{ 'done' if STAGES.index(stage) < STAGES.index(project.stage) else '' }} {{ 'current' if stage == project.stage else '' }}">{{ stage }}</span>
+  {% endfor %}
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    {% set token = project.access_token if party == 'vendor' else project.customer_token %}
+    {% if next_stage %}
+    <h2>Update Progress</h2>
+    {#- One step forward only. Closing is an internal decision, so the
+        terminal stage is never offered here. -#}
+    <form method="post" action="{{ url_for('guest_stage', token=token) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="stage" value="{{ next_stage }}">
+      <label>Your name
+        <input type="text" name="author" required maxlength="80" autocomplete="name"></label>
+      <label>Note</label>
+      <textarea aria-label="Note" name="note" maxlength="5000" placeholder="What's the update? Any blockers?" rows="3"></textarea>
+      <button type="submit">Advance to {{ next_stage }}</button>
+    </form>
+    {% endif %}
+
+    <h2>Add a Note</h2>
+    <form method="post" action="{{ url_for('guest_note', token=token) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label>Your name
+        <input type="text" name="author" required maxlength="80" autocomplete="name"></label>
+      <textarea name="note" aria-label="Add a note" maxlength="5000" placeholder="Add a note" rows="2" required></textarea>
+      <button type="submit">Add Note</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>History</h2>
+    <div class="notes">
+      {% for n in notes %}
+      <div class="note">
+        <div class="note-meta"><strong>{{ n.author }}</strong> · {{ n.stage }} · {{ n.created_at | localdt }}</div>
+        <div class="note-text">{{ n.note }}</div>
+      </div>
+      {% else %}
+      <p class="muted">No notes yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

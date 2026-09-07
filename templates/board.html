@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Board{% endblock %}
+{% block content %}
+<h1>Board</h1>
+
+{% set alert_defs = [
+  ('project_overdue', 'alert-danger', 'project(s) overdue'),
+  ('project_due_soon', 'alert-warning', 'project(s) due soon'),
+  ('stage_sla_breach', 'alert-warning', 'project(s) over their stage SLA'),
+  ('stale', 'alert-info', 'project(s) untouched for a while'),
+] %}
+{% if alerts.project_overdue or alerts.project_due_soon or alerts.stage_sla_breach or alerts.stale %}
+<div class="alerts" id="alerts">
+  {% for key, css, label in alert_defs %}
+  {% if alerts[key] %}
+  <div class="alert {{ css }}">
+    <strong>{{ alerts[key]|length }} {{ label }}:</strong>
+    {#- Only the first few names inline. Listing every one turned this banner
+        into several screens of text above the first number on the page. -#}
+    {% for p in alerts[key][:banner_names] %}
+    <span class="alert-item">
+      <a class="alert-link" href="{{ url_for('alert_dismiss', project_id=p.id, alert_type=key) }}" title="Open project (clears this notification)">{{ p.name }}</a>
+      <a href="{{ url_for('alert_dismiss', project_id=p.id, alert_type=key, next='board') }}" class="alert-dismiss" title="Dismiss">&times;</a>
+    </span>{% if not loop.last %}<span class="alert-sep">,</span>{% endif %}
+    {% endfor %}
+    {% if alerts[key]|length > banner_names %}
+    <a class="alert-link alert-more" href="{{ url_for('alerts_log_view', type=key) }}">+{{ alerts[key]|length - banner_names }} more &rarr;</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="dash-tiles">
+  <a class="stat-tile" href="{{ url_for('projects_list') }}">
+    <div class="stat-label">Active Projects</div>
+    <div class="stat-value">{{ dashboard.total_active }}</div>
+  </a>
+  <a class="stat-tile" href="{{ url_for('projects_list', view='overdue') }}">
+    <div class="stat-label">Overdue</div>
+    <div class="stat-value stat-critical">{{ real_alerts.project_overdue|length }}</div>
+  </a>
+  <a class="stat-tile" href="{{ url_for('projects_list', view='at_risk') }}">
+    <div class="stat-label">Due Soon</div>
+    <div class="stat-value stat-warning">{{ real_alerts.project_due_soon|length }}</div>
+  </a>
+  <a class="stat-tile" href="{{ url_for('projects_list', view='stale') }}">
+    <div class="stat-label">Stale Projects</div>
+    <div class="stat-value stat-warning">{{ real_alerts.stale|length }}</div>
+  </a>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h2>Projects by Stage <span class="muted" style="text-transform:none; font-weight:400;">(active pipeline)</span></h2>
+    <div class="hbar-chart">
+      {% for stage in STAGES[:-1] %}
+      <a class="hbar-row" href="{{ url_for('projects_list', stage=stage) }}" title="View {{ stage }} projects">
+        <div class="hbar-label">{{ stage }}</div>
+        <div class="hbar-track"><div class="hbar-fill" style="width: {{ (dashboard.stage_counts[stage] / dashboard.max_stage_count * 100) if dashboard.max_stage_count else 0 }}%;"></div></div>
+        <div class="hbar-value">{{ dashboard.stage_counts[stage] }}</div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Delivery Mode</h2>
+    {% set dm_total = dashboard.delivery_counts['Distribution/MSSP'] + dashboard.delivery_counts['Outsourced'] %}
+    <div class="stacked-bar">
+      <a class="stacked-seg series-blue" href="{{ url_for('projects_list', delivery_mode='Distribution/MSSP') }}" style="width: {{ (dashboard.delivery_counts['Distribution/MSSP'] / dm_total * 100) if dm_total else 0 }}%;" title="View Distribution/MSSP projects">{{ dashboard.delivery_counts['Distribution/MSSP'] or '' }}</a>
+      <a class="stacked-seg series-red" href="{{ url_for('projects_list', delivery_mode='Outsourced') }}" style="width: {{ (dashboard.delivery_counts['Outsourced'] / dm_total * 100) if dm_total else 0 }}%;" title="View Outsourced projects">{{ dashboard.delivery_counts['Outsourced'] or '' }}</a>
+    </div>
+    <div class="chart-legend">
+      <a class="legend-item" href="{{ url_for('projects_list', delivery_mode='Distribution/MSSP') }}"><span class="legend-swatch series-blue"></span>Distribution/MSSP ({{ dashboard.delivery_counts['Distribution/MSSP'] }})</a>
+      <a class="legend-item" href="{{ url_for('projects_list', delivery_mode='Outsourced') }}"><span class="legend-swatch series-red"></span>Outsourced ({{ dashboard.delivery_counts['Outsourced'] }})</a>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:1.5rem;">
+  <h2>Recent Activity</h2>
+  <div class="notes">
+    {% for n in recent_notes %}
+    <div class="note">
+      <div class="note-meta"><strong>{{ n.author }}</strong> · <a href="{{ url_for('project_detail', project_id=n.project_id) }}" style="color:inherit;">{{ n.project_name }}</a> · {{ n.stage }} · {{ n.created_at | localdt }}</div>
+      <div class="note-text">{{ n.note }}</div>
+    </div>
+    {% else %}
+    <p class="muted">No activity yet.</p>
+    {% endfor %}
+  </div>
+</div>
+
+<h1 style="margin-top:0.5rem;">Pipeline</h1>
+{% if not dashboard.total_active %}
+<div class="panel" style="text-align:center; padding:var(--space-8);">
+  <p class="muted" style="margin:0 0 var(--space-4);">No active projects yet. The pipeline fills up as projects move through the stages.</p>
+  {% if not is_viewer %}<a class="btn" href="{{ url_for('project_new') }}">Create your first project</a>{% endif %}
+</div>
+{% else %}
+<div class="board">
+  {% for stage in STAGES %}
+  <div class="column" data-stage="{{ stage }}" {% if not is_viewer %}ondragover="event.preventDefault()" ondrop="dropCard(event, '{{ stage }}')"{% endif %}>
+    <h2>{{ stage }} <span class="count">{{ columns[stage]|length }}</span></h2>
+    <div class="cards">
+      {#- Only the most recently touched cards. A column with every project in
+          it is a wall nobody reads, and the count in the header already tells
+          the true total. -#}
+      {% for p in columns[stage][:column_cards] %}
+      {# The card stays a div so it remains draggable; the title is a real
+         anchor that stretches over the whole card, so mouse users still click
+         anywhere while keyboard and screen-reader users get one proper link. #}
+      <div class="card" {% if not is_viewer %}draggable="true" ondragstart="event.dataTransfer.setData('text/plain', '{{ p.id }}')"{% endif %}>
+        <div class="card-title"><a class="card-link" href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a></div>
+        <div class="card-meta">{{ p.client }}</div>
+        <div class="card-meta">{{ p.owner_name }}{% if p.delivery_mode == 'Outsourced' %} · Outsourced{% endif %}</div>
+        {% if p.task_total %}<div class="card-meta">{{ '☑' if p.task_done == p.task_total else '☐' }} {{ p.task_done }}/{{ p.task_total }} tasks</div>{% endif %}
+      </div>
+      {% endfor %}
+      {% if columns[stage]|length > column_cards %}
+      <a class="card-more" href="{{ url_for('projects_list', stage=stage) }}">
+        +{{ columns[stage]|length - column_cards }} more in {{ stage }} &rarr;
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<form id="stageForm" method="post" style="display:none">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <input type="hidden" name="stage" id="stageInput">
+  <input type="hidden" name="redirect" value="board">
+</form>
+
+<script>
+function dropCard(ev, stage) {
+  ev.preventDefault();
+  const projectId = ev.dataTransfer.getData('text/plain');
+  const form = document.getElementById('stageForm');
+  form.action = '/projects/' + projectId + '/stage';
+  document.getElementById('stageInput').value = stage;
+  form.submit();
+}
+</script>
+{% endblock %}

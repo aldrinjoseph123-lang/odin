@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }}{% endblock %}
+{% block content %}
+<h1>{{ project.name }}
+  {% if not is_viewer %}<a class="btn-link" href="{{ url_for('project_edit', project_id=project.id) }}">Edit</a>
+  <a class="btn-link" href="{{ url_for('project_new', **{'from': project.id}) }}">Duplicate</a>{% endif %}
+  <a class="btn-link" href="{{ url_for('report_single', project_id=project.id) }}" target="_blank">Report</a>
+</h1>
+{% if not is_viewer %}
+<form method="post" action="{{ url_for('project_delete', project_id=project.id) }}" onsubmit="return confirm('Delete this project? This cannot be undone.')" style="margin-bottom:1rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <button type="submit" class="link-btn">Delete Project</button>
+</form>
+{% endif %}
+{#- Two links, two parties. The customer's is view-and-comment; the vendor's
+    may also advance the stage one step. Rotating replaces both. -#}
+{% set customer_url = url_for('guest_view', token=project.customer_token, _external=True) %}
+<p class="muted">Customer link (view &amp; comment, no login):
+  <a href="{{ customer_url }}">{{ customer_url }}</a>
+  <button type="button" class="link-btn" data-copy="{{ customer_url }}" onclick="copyText(this)">Copy</button>
+</p>
+{% if project.delivery_mode == 'Outsourced' %}
+{% set guest_url = url_for('guest_view', token=project.access_token, _external=True) %}
+<p class="muted">Vendor link (may advance the stage):
+  <a href="{{ guest_url }}">{{ guest_url }}</a>
+  <button type="button" class="link-btn" data-copy="{{ guest_url }}" onclick="copyText(this)">Copy</button>
+</p>
+{% endif %}
+{% if not is_viewer %}
+<form method="post" action="{{ url_for('project_rotate_token', project_id=project.id) }}" onsubmit="return confirm('Rotate both guest links? The current links will stop working immediately.')" style="display:inline">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <button type="submit" class="link-btn">Rotate guest links</button>
+</form>
+{% endif %}
+{% if schedule %}
+<p style="margin:0 0 1rem;">Schedule:
+  {% if schedule == 'overdue' %}<span class="countdown countdown-overdue">Overdue — target {{ project.target_end_date }}</span>
+  {% elif schedule == 'at_risk' %}<span class="countdown countdown-warning">Due soon — target {{ project.target_end_date }}</span>
+  {% else %}<span class="countdown countdown-normal">On track — target {{ project.target_end_date }}</span>{% endif %}
+</p>
+{% endif %}
+{% if sla %}
+<p style="margin:0 0 1rem;">Stage SLA:
+  {% if sla.breached %}
+  <span class="countdown countdown-overdue">{{ '%.0f'|format(sla.days) }} days in {{ project.stage }} — {{ '%.0f'|format(sla.over_by) }} over the {{ sla.sla_days }}-day target</span>
+  {% else %}
+  <span class="countdown countdown-normal">{{ '%.0f'|format(sla.days) }} of {{ sla.sla_days }} days in {{ project.stage }}</span>
+  {% endif %}
+</p>
+{% endif %}
+<div class="stage-bar">
+  {% for stage in STAGES %}
+  <span class="stage-step {{ 'done' if STAGES.index(stage) < STAGES.index(project.stage) else '' }} {{ 'current' if stage == project.stage else '' }}">{{ stage }}</span>
+  {% endfor %}
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h2>Project Details</h2>
+    <div class="kv">
+      <div>Client</div><div>{{ project.client }}</div>
+      <div>Via</div><div>{{ project.via or '—' }}</div>
+      {% if project.via == 'Partner' %}
+      <div>Partner</div><div>{{ project.partner_name or '—' }}</div>
+      <div>Account Manager (Partner)</div><div>{{ project.partner_account_manager_name or '—' }}{{ ' (' + project.partner_account_manager_email + ')' if project.partner_account_manager_email }}</div>
+      {% else %}
+      <div>Account Manager</div><div>{{ project.account_manager_name or '—' }}{{ ' (' + project.account_manager_email + ')' if project.account_manager_email }}</div>
+      {% endif %}
+      <div>PO Number</div><div>{{ project.po_number or '—' }}</div>
+      <div>PO Date</div><div>{{ project.po_date or '—' }}</div>
+      <div>Start Date</div><div>{{ project.start_date or '—' }}</div>
+      <div>Target End Date</div><div>{{ project.target_end_date or '—' }}</div>
+      <div>Delivery Mode</div><div>{{ project.delivery_mode }}</div>
+      {% if project.delivery_mode == 'Outsourced' %}
+      <div>Outsourcer</div><div>{{ project.outsourcer_name or '—' }}</div>
+      {% else %}
+      <div>Vendor</div><div>{{ project.vendor_name or '—' }}</div>
+      <div>Product</div><div>{{ project.product_name or '—' }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="panel">
+    {% if not is_viewer %}
+    <h2>Change Stage</h2>
+    <form method="post" action="{{ url_for('project_stage', project_id=project.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <select name="stage" aria-label="Move project to stage">
+        {% for stage in STAGES %}
+        <option value="{{ stage }}" {{ 'selected' if stage == project.stage }}>{{ stage }}</option>
+        {% endfor %}
+      </select>
+      <textarea name="note" maxlength="5000" aria-label="Status note for this stage change" placeholder="Status note (what happened, what's next)" rows="3"></textarea>
+      <button type="submit">Update Stage</button>
+    </form>
+
+    <h2>Status Notes</h2>
+    <form method="post" action="{{ url_for('project_note', project_id=project.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <textarea name="note" maxlength="5000" aria-label="Add a note" placeholder="Add a note" rows="2" required></textarea>
+      <button type="submit">Add Note</button>
+    </form>
+    {% else %}
+    <h2>Status Notes</h2>
+    {% endif %}
+    <div class="notes">
+      {% for n in notes %}
+      <div class="note">
+        <div class="note-meta"><strong>{{ n.author }}</strong> · {{ n.stage }} · {{ n.created_at | localdt }}</div>
+        <div class="note-text">{{ n.note }}</div>
+      </div>
+      {% else %}
+      <p class="muted">No notes yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="tasks">
+  {% set done_count = tasks | selectattr('done') | list | length %}
+  <h2>Tasks <span class="muted" style="text-transform:none; font-weight:400;">{{ done_count }}/{{ tasks|length }} done</span>
+    {% if not is_viewer and done_count %}
+    <form method="post" action="{{ url_for('task_clear_completed', project_id=project.id) }}" onsubmit="return confirm('Remove all completed tasks?')" style="display:inline; margin-left:var(--space-3);">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="link-btn">Clear completed</button>
+    </form>
+    {% endif %}
+  </h2>
+  {% if not is_viewer %}
+  <form method="post" action="{{ url_for('task_add', project_id=project.id) }}" class="task-form">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="text" name="title" placeholder="New task…" required maxlength="200" class="task-title" aria-label="New task title">
+    <select name="assignee_id" aria-label="Assign new task to">
+      <option value="">Unassigned</option>
+      {% for u in task_users %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}
+    </select>
+    <input type="date" name="due_date" id="new_task_due" title="Due date" aria-label="New task due date">
+    <span class="date-presets">
+      <button type="button" class="icon-btn" onclick="setDueDate('new_task_due', 0)">Today</button>
+      <button type="button" class="icon-btn" onclick="setDueDate('new_task_due', 7)">+1w</button>
+      <button type="button" class="icon-btn" onclick="setDueDate('new_task_due', 30)">+1m</button>
+    </span>
+    <button type="submit">Add Task</button>
+  </form>
+  {% endif %}
+  {% if not is_viewer and tasks %}
+  {# Standalone, NOT wrapping the table. The per-row toggle/delete/edit forms
+     live inside the table, and nesting forms is invalid HTML — the browser
+     silently drops the inner ones and reassigns their buttons to the outer
+     form. Each checkbox joins this form via its `form` attribute instead. #}
+  <form method="post" action="{{ url_for('task_bulk', project_id=project.id) }}" id="task-bulk-form" class="bulk-bar">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button type="submit" name="action" value="complete" class="icon-btn">Complete selected</button>
+    <button type="submit" name="action" value="reopen" class="icon-btn">Reopen selected</button>
+    <button type="submit" name="action" value="delete" class="icon-btn"
+            onclick="return confirm('Delete the selected tasks?')">Delete selected</button>
+  </form>
+  {% endif %}
+  <table>
+    <thead><tr>
+      {% if not is_viewer and tasks %}<th style="width:1.5rem;"><input type="checkbox" onclick="toggleAllTasks(this)" aria-label="Select all tasks" style="width:auto;"></th>{% endif %}
+      <th></th><th>Task</th><th>Assignee</th><th>Due</th>{% if not is_viewer %}<th></th>{% endif %}
+    </tr></thead>
+    <tbody>
+      {% for t in tasks %}
+      <tr>
+        {% if not is_viewer %}<td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="task-bulk-form" class="task-check" aria-label="Select task" style="width:auto;"></td>{% endif %}
+        <td>
+          {% if not is_viewer %}
+          <form method="post" action="{{ url_for('task_toggle', project_id=project.id, task_id=t.id) }}" style="display:inline">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <button type="submit" class="link-btn" title="{{ 'Mark not done' if t.done else 'Mark done' }}">{{ '☑' if t.done else '☐' }}</button>
+          </form>
+          {% else %}{{ '☑' if t.done else '☐' }}{% endif %}
+        </td>
+        <td>{% if t.done %}<s>{{ t.title }}</s>{% else %}{{ t.title }}{% endif %}</td>
+        <td>{{ t.assignee_name or '—' }}</td>
+        <td>
+          {% if t.due_date %}{% if not t.done and t.due_date < today %}<span class="countdown countdown-overdue">{{ t.due_date }}</span>{% else %}{{ t.due_date }}{% endif %}{% else %}—{% endif %}
+        </td>
+        {% if not is_viewer %}
+        <td style="white-space:nowrap;">
+          <button type="button" class="link-btn" onclick="toggleTaskEdit({{ t.id }})">Edit</button>
+          <form method="post" action="{{ url_for('task_delete', project_id=project.id, task_id=t.id) }}" onsubmit="return confirm('Delete this task?')" style="display:inline; margin-left:var(--space-2);">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <button type="submit" class="link-btn">Delete</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% if not is_viewer %}
+      {# Edit form lives in a sibling row, hidden until Edit is pressed. Keeps
+         the list scannable while making a typo a two-click fix rather than a
+         delete-and-retype that also loses the task's done state. #}
+      <tr id="task-edit-{{ t.id }}" hidden>
+        <td></td>
+        <td colspan="{{ 5 }}">
+          <form method="post" action="{{ url_for('task_edit', project_id=project.id, task_id=t.id) }}" class="task-form" style="margin:0;">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <input type="text" name="title" value="{{ t.title }}" required class="task-title" aria-label="Task title">
+            <select name="assignee_id" aria-label="Reassign task">
+              <option value="">Unassigned</option>
+              {% for u in task_users %}<option value="{{ u.id }}" {{ 'selected' if u.id == t.assignee_id }}>{{ u.name }}</option>{% endfor %}
+            </select>
+            <input type="date" name="due_date" value="{{ t.due_date or '' }}" title="Due date" aria-label="Task due date">
+            <button type="submit">Save</button>
+            <button type="button" class="btn btn-outline" onclick="toggleTaskEdit({{ t.id }})">Cancel</button>
+          </form>
+        </td>
+      </tr>
+      {% endif %}
+      {% else %}
+      <tr><td colspan="{{ 6 if not is_viewer else 4 }}" class="muted">No tasks yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Documents</h2>
+  {% if not is_viewer %}
+  <form method="post" action="{{ url_for('document_upload', project_id=project.id) }}" enctype="multipart/form-data" class="upload-form">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <select name="category" required aria-label="Document category">
+      <option value="" disabled selected>Category...</option>
+      {% for cat in DOC_CATEGORIES %}
+      <option value="{{ cat }}">{{ cat }}</option>
+      {% endfor %}
+    </select>
+    <input type="file" name="file" required aria-label="Document to upload">
+    <button type="submit">Upload</button>
+  </form>
+  {% endif %}
+  <table>
+    <thead>
+      <tr><th>Category</th><th>File</th><th>Uploaded By</th><th>Date</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for d in documents %}
+      <tr>
+        <td><span class="stage-badge">{{ d.category }}</span></td>
+        <td><a href="{{ url_for('document_download', project_id=project.id, doc_id=d.id) }}">{{ d.filename }}</a></td>
+        <td>{{ d.uploaded_by }}</td>
+        <td>{{ d.uploaded_at | localdt('date') }}</td>
+        <td>
+          {% if not is_viewer %}
+          <form method="post" action="{{ url_for('document_delete', project_id=project.id, doc_id=d.id) }}" onsubmit="return confirm('Delete this file?')">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <button type="submit" class="link-btn">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No documents uploaded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

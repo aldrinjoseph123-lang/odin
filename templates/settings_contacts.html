@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Contacts &amp; Partners{% endblock %}
+{% block content %}
+<h1>Contacts &amp; Partners</h1>
+<p class="muted"><a href="{{ url_for('settings') }}">&larr; Back to Settings</a></p>
+
+<div class="grid-2">
+  {% for key, meta in contact_lists.items() %}
+  <div class="panel settings-section">
+    <h2>{{ meta.label }}</h2>
+    {% for item in lists[key] %}
+    <div class="cat-row">
+      <span class="name" style="flex:1;">{{ item.name }}{{ ' — ' + item.email if meta.has_email and item.email }}</span>
+      <form method="post" action="{{ url_for('settings_contacts_delete', list_key=key, item_id=item.id) }}" onsubmit="return confirm('Delete {{ item.name }}?')">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button type="submit" class="icon-btn" style="color:#dc2626;">Delete</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="muted" style="font-size:0.85rem;">None yet.</p>
+    {% endfor %}
+    <form method="post" action="{{ url_for('settings_contacts_add', list_key=key) }}" class="inline-form" style="margin-top:1rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="text" name="name" placeholder="Name" required aria-label="Name">
+      {% if meta.has_email %}
+      <input type="email" name="email" placeholder="Email" aria-label="Email">
+      {% endif %}
+      <button type="submit">Add</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="panel settings-section">
+  <h2>Partners</h2>
+  {% for p in partners %}
+  <div class="cat-row" style="align-items:flex-start;">
+    <div style="flex:1;">
+      <div style="display:flex; align-items:center; gap:0.6rem;">
+        <span class="name">{{ p.name }}</span>
+        <form method="post" action="{{ url_for('settings_partner_delete', partner_id=p.id) }}" onsubmit="return confirm('Delete partner {{ p.name }}? Its account managers will be removed too.')">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button type="submit" class="icon-btn" style="color:#dc2626;">Delete Partner</button>
+        </form>
+      </div>
+      <div style="margin:0.5rem 0 0 1rem;">
+        {% for m in managers_by_partner.get(p.id) or [] %}
+        <div class="cat-row">
+          <span class="name" style="flex:1;">{{ m.name }}{{ ' — ' + m.email if m.email }}</span>
+          <form method="post" action="{{ url_for('settings_partner_manager_delete', manager_id=m.id) }}" onsubmit="return confirm('Delete {{ m.name }}?')">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <button type="submit" class="icon-btn" style="color:#dc2626;">Delete</button>
+          </form>
+        </div>
+        {% else %}
+        <p class="muted" style="font-size:0.85rem;">No account managers yet.</p>
+        {% endfor %}
+        <form method="post" action="{{ url_for('settings_partner_manager_add', partner_id=p.id) }}" class="inline-form" style="margin-top:0.5rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="text" name="name" placeholder="Account manager name" required aria-label="Account manager name">
+          <input type="email" name="email" placeholder="Email" aria-label="Email">
+          <button type="submit">Add Account Manager</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <p class="muted" style="font-size:0.85rem;">No partners yet.</p>
+  {% endfor %}
+  <form method="post" action="{{ url_for('settings_partner_add') }}" class="inline-form" style="margin-top:1rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="text" name="name" placeholder="Partner name" required aria-label="Partner name">
+    <button type="submit">Add Partner</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+# Cloudflare Tunnel overlay. Use together with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml up -d --build
+#
+# Replaces the TLS-terminating nginx with a plain-HTTP one that only the tunnel
+# can reach, publishes no host ports at all, and adds cloudflared. Needs
+# CLOUDFLARE_TUNNEL_TOKEN in .env (Zero Trust → Networks → Tunnels → your
+# tunnel → token). Route the tunnel's public hostname to http://nginx:80.
+services:
+  nginx:
+    ports: !reset []
+    # !override, not a plain list: Compose *appends* list values from overlays,
+    # which would mount two files onto default.conf and fail to start.
+    volumes: !override
+      - ./deploy/nginx.cloudflare.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static:/srv/odin-static:ro
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - nginx

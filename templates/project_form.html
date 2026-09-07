@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{%- set src = project if (project is defined and project) else None -%}
+{%- set duplicating = duplicating is defined and duplicating -%}
+{# `src` supplies field values for both editing and duplicating; `editing`
+   alone decides whether this posts an update or creates something new. #}
+{% set editing = src and not duplicating %}
+{% block title %}{{ 'Edit Project' if editing else ('Duplicate Project' if duplicating else 'New Project') }}{% endblock %}
+{% block content %}
+<h1>{{ 'Edit Project' if editing else ('Duplicate Project' if duplicating else 'New Project') }}</h1>
+<script>window.newPartnerManagers = {{ partner_managers_by_partner | tojson }};</script>
+<form method="post" class="project-form" enctype="multipart/form-data"
+      action="{{ url_for('project_edit', project_id=project.id) if editing else url_for('project_new') }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Project Name *
+    <input type="text" name="name" required maxlength="200" value="{{ src.name ~ ' (copy)' if duplicating else (src.name if src else '') }}"></label>
+
+  <label>Client *
+    <input type="text" name="client" required maxlength="200" value="{{ src.client if src else '' }}"></label>
+
+  {% if editing %}
+  <label>Owner</label>
+  <select aria-label="Owner" name="owner_id">
+    {% for u in users %}
+    <option value="{{ u.id }}" {{ 'selected' if u.id == project.owner_id }}>{{ u.name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+
+  <label>Via *</label>
+  <select aria-label="Via" name="via" id="new_via" onchange="toggleGroup(this, {Direct: 'new-via-direct', Partner: 'new-via-partner'})">
+    {% for option in VIA_OPTIONS %}
+    <option value="{{ option }}" {{ 'selected' if src and src.via == option }}>{{ option }}</option>
+    {% endfor %}
+  </select>
+
+  <div id="new-via-direct" {% if src and src.via == 'Partner' %}style="display:none;"{% endif %}>
+    <label>Account Manager (Internal)</label>
+    <select aria-label="Account Manager (Internal)" name="account_manager_name" id="new_account_manager_name" onchange="fillEmailFromOption('new_account_manager_name','new_account_manager_email')">
+      <option value="" {{ 'selected' if not (src and src.account_manager_name) }} disabled>Select...</option>
+      {% for am in account_managers %}
+      <option value="{{ am.name }}" data-email="{{ am.email or '' }}" {{ 'selected' if src and src.account_manager_name == am.name }}>{{ am.name }}</option>
+      {% endfor %}
+    </select>
+    <label>Account Manager Email
+      <input type="email" name="account_manager_email" id="new_account_manager_email" readonly value="{{ src.account_manager_email if src else '' }}"></label>
+  </div>
+
+  <div id="new-via-partner" {% if not (src and src.via == 'Partner') %}style="display:none;"{% endif %}>
+    <label>Partner Name</label>
+    <select aria-label="Partner Name" name="partner_name" id="new_partner_name" onchange="filterPartnerManagers('new_partner_name','new_partner_account_manager_name','newPartnerManagers')">
+      <option value="" data-id="" {{ 'selected' if not (src and src.partner_name) }} disabled>Select...</option>
+      {% for p in partners %}
+      <option value="{{ p.name }}" data-id="{{ p.id }}" {{ 'selected' if src and src.partner_name == p.name }}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+    <label>Account Manager (Partner)</label>
+    <select aria-label="Account Manager (Partner)" name="partner_account_manager_name" id="new_partner_account_manager_name" onchange="fillEmailFromOption('new_partner_account_manager_name','new_partner_account_manager_email')">
+      {% if src and src.partner_account_manager_name %}
+      <option value="{{ src.partner_account_manager_name }}" data-email="{{ src.partner_account_manager_email or '' }}" selected>{{ src.partner_account_manager_name }}</option>
+      {% else %}
+      <option value="">Select a partner first...</option>
+      {% endif %}
+    </select>
+    <label>Account Manager Email
+      <input type="email" name="partner_account_manager_email" id="new_partner_account_manager_email" readonly value="{{ src.partner_account_manager_email if src else '' }}"></label>
+  </div>
+
+  <label>PO Number
+    <input type="text" name="po_number" maxlength="100" value="{{ src.po_number if src else '' }}"></label>
+
+  <label>PO Date
+    <input type="date" name="po_date" id="new_po_date" value="{{ src.po_date if src else '' }}"
+         onchange="mirrorField('new_po_date','new_start_date')"></label>
+
+  <label>Start Date <span class="muted" style="text-transform:none;">(auto from PO Date)</span></label>
+  <input type="date" name="start_date" id="new_start_date" aria-label="Start date" value="{{ src.start_date if src else '' }}">
+
+  <label>Target End Date
+    <input type="date" name="target_end_date" id="new_target_end_date" value="{{ src.target_end_date if src else '' }}"></label>
+
+  <label>Delivery Mode *</label>
+  <select aria-label="Delivery Mode" name="delivery_mode" id="new_delivery_mode" onchange="toggleGroup(this, {'{{ DELIVERY_MODES[0] }}': 'new-mode-distribution', 'Outsourced': 'new-mode-outsourced'})">
+    {% for mode in DELIVERY_MODES %}
+    <option value="{{ mode }}" {{ 'selected' if src and src.delivery_mode == mode }}>{{ mode }}</option>
+    {% endfor %}
+  </select>
+
+  <div id="new-mode-distribution" {% if src and src.delivery_mode == 'Outsourced' %}style="display:none;"{% endif %}>
+    <label>Vendor</label>
+    <select aria-label="Vendor" name="vendor_name">
+      <option value="" {{ 'selected' if not (src and src.vendor_name) }} disabled>Select...</option>
+      {% for v in vendors %}
+      <option value="{{ v.name }}" {{ 'selected' if src and src.vendor_name == v.name }}>{{ v.name }}</option>
+      {% endfor %}
+    </select>
+    <label>Product</label>
+    <select aria-label="Product" name="product_name">
+      <option value="" {{ 'selected' if not (src and src.product_name) }} disabled>Select...</option>
+      {% for p in products %}
+      <option value="{{ p.name }}" {{ 'selected' if src and src.product_name == p.name }}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div id="new-mode-outsourced" {% if not (src and src.delivery_mode == 'Outsourced') %}style="display:none;"{% endif %}>
+    <label>Outsourcer</label>
+    <select aria-label="Outsourcer" name="outsourcer_name" id="new_outsourcer_name" onchange="fillEmailFromOption('new_outsourcer_name','new_outsourcer_email')">
+      <option value="" {{ 'selected' if not (src and src.outsourcer_name) }} disabled>Select...</option>
+      {% for o in outsourcers %}
+      <option value="{{ o.name }}" data-email="{{ o.email or '' }}" {{ 'selected' if src and src.outsourcer_name == o.name }}>{{ o.name }}</option>
+      {% endfor %}
+    </select>
+    <label>Outsourcer Email
+      <input type="email" name="outsourcer_email" id="new_outsourcer_email" readonly value="{{ src.outsourcer_email if src else '' }}"></label>
+  </div>
+
+  {% if not editing %}
+  <label>Client PO Document *
+    <input type="file" name="po_document" required></label>
+  <p class="muted" style="font-size:0.78rem;">Required — the project can't be created without the client's PO on file.</p>
+  {% endif %}
+
+  <button type="submit">{{ 'Save Changes' if editing else 'Create Project' }}</button>
+  {% if editing %}
+  <a class="btn-link" href="{{ url_for('project_detail', project_id=project.id) }}">Cancel</a>
+  {% endif %}
+</form>
+{% endblock %}

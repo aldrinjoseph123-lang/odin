@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<div class="grid-2">
+  <div class="panel settings-section">
+    <h2>Lifecycle Stages</h2>
+    {% for s in stages %}
+    <div class="stage-row">
+      <form method="post" action="{{ url_for('settings_stage_move', stage_id=s.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="hidden" name="direction" value="up">
+        <button type="submit" class="icon-btn" {{ 'disabled' if loop.first }}>&uarr;</button>
+      </form>
+      <form method="post" action="{{ url_for('settings_stage_move', stage_id=s.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="hidden" name="direction" value="down">
+        <button type="submit" class="icon-btn" {{ 'disabled' if loop.last }}>&darr;</button>
+      </form>
+      <form method="post" action="{{ url_for('settings_stage_rename', stage_id=s.id) }}" class="name" style="display:flex; gap:0.4rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="text" name="name" value="{{ s.name }}" aria-label="Rename stage {{ s.name }}" style="flex:1;">
+        <button type="submit" class="icon-btn">Rename</button>
+      </form>
+      <form method="post" action="{{ url_for('settings_stage_delete', stage_id=s.id) }}" onsubmit="return confirm('Delete stage {{ s.name }}?')">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button type="submit" class="icon-btn" style="color:#dc2626;">Delete</button>
+      </form>
+    </div>
+    {% endfor %}
+    <form method="post" action="{{ url_for('settings_stage_add') }}" class="inline-form" style="margin-top:1rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="text" name="name" placeholder="New stage name" required aria-label="New stage name">
+      <button type="submit">Add Stage</button>
+    </form>
+    <p class="muted" style="font-size:0.8rem;">The last stage in the list is treated as the terminal/closed stage everywhere (board, filters, reports).</p>
+  </div>
+
+  <div class="panel settings-section">
+    
+<div class="settings-section">
+  <h2>Stage SLAs <span class="muted" style="text-transform:none; font-weight:400;">(expected days in each stage — blank means not measured)</span></h2>
+  <form method="post" action="{{ url_for('settings_stage_sla') }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <table>
+      <thead><tr><th>Stage</th><th>SLA (days)</th></tr></thead>
+      <tbody>
+        {% for s in stages %}
+        <tr>
+          <td><span class="stage-badge">{{ s.name }}</span></td>
+          <td><input type="number" min="1" name="sla::{{ s.id }}" aria-label="SLA days for {{ s.name }}" value="{{ s.sla_days or '' }}" placeholder="—" style="width:7rem;"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button type="submit">Save SLAs</button>
+  </form>
+  <form method="post" action="{{ url_for('settings_stage_sla_from_measured') }}"
+        onsubmit="return confirm('Overwrite SLAs with each stage\'s measured average?')" style="margin-top:var(--space-2);">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-outline">Set from measured averages</button>
+    <span class="muted" style="margin-left:var(--space-2); font-size:var(--text-xs);">Uses Cycle Time data. Stages with no completed visits are left alone.</span>
+  </form>
+</div>
+
+<h2>Document Categories</h2>
+    {% for c in doc_categories %}
+    <div class="cat-row">
+      <span class="name" style="flex:1;">{{ c.name }}</span>
+      <form method="post" action="{{ url_for('settings_category_delete', cat_id=c.id) }}" onsubmit="return confirm('Delete category {{ c.name }}?')">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button type="submit" class="icon-btn" style="color:#dc2626;">Delete</button>
+      </form>
+    </div>
+    {% endfor %}
+    <form method="post" action="{{ url_for('settings_category_add') }}" class="inline-form" style="margin-top:1rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="text" name="name" placeholder="New category name" required aria-label="New document category name">
+      <button type="submit">Add Category</button>
+    </form>
+  </div>
+</div>
+
+<div class="panel settings-section" style="max-width:900px;">
+  <h2>Alert Types</h2>
+  <form method="post" action="{{ url_for('settings_alerts') }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>Alert</th>
+          <th>Threshold (days)</th>
+          <th>Severity</th>
+          <th style="text-align:center;">Email</th>
+          <th style="text-align:center;">Teams</th>
+          <th style="text-align:center;">In-App</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for alert_type, title in alert_type_titles.items() %}
+        {% set cfg = alert_type_settings.get(alert_type, {'severity': 'warning', 'threshold_days': none, 'notify_email': false, 'notify_teams': false, 'notify_inapp': true}) %}
+        <tr>
+          <td>{{ title }}</td>
+          <td>
+            {% if cfg.threshold_days is not none %}
+            <input type="number" name="threshold::{{ alert_type }}" aria-label="Threshold days for {{ alert_type_titles[alert_type] }}" value="{{ cfg.threshold_days }}" min="0" style="width:5rem;">
+            {% else %}
+            <span class="muted" style="font-size:0.8rem;">N/A</span>
+            {% endif %}
+          </td>
+          <td>
+            <select name="severity::{{ alert_type }}" aria-label="Severity for {{ alert_type_titles[alert_type] }}" style="width:auto;">
+              <option value="critical" {{ 'selected' if cfg.severity == 'critical' }}>Critical</option>
+              <option value="warning" {{ 'selected' if cfg.severity == 'warning' }}>Warning</option>
+              <option value="info" {{ 'selected' if cfg.severity == 'info' }}>Info</option>
+            </select>
+          </td>
+          <td style="text-align:center;"><input type="checkbox" name="notify_email::{{ alert_type }}" aria-label="Email notification for {{ alert_type_titles[alert_type] }}" style="width:auto;" {{ 'checked' if cfg.notify_email }}></td>
+          <td style="text-align:center;"><input type="checkbox" name="notify_teams::{{ alert_type }}" aria-label="Teams notification for {{ alert_type_titles[alert_type] }}" style="width:auto;" {{ 'checked' if cfg.notify_teams }}></td>
+          <td style="text-align:center;"><input type="checkbox" name="notify_inapp::{{ alert_type }}" aria-label="In-app notification for {{ alert_type_titles[alert_type] }}" style="width:auto;" {{ 'checked' if cfg.notify_inapp }}></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted" style="font-size:0.8rem; margin-top:0.6rem;">In-App is the master switch — turning it off stops the alert entirely (no email/Teams either). Email/Teams also require the matching toggle under Integrations below to be on.</p>
+    <button type="submit" style="margin-top:0.6rem;">Save Alert Settings</button>
+  </form>
+</div>
+
+<div class="panel settings-section">
+  <h2>Microsoft 365 Connection</h2>
+
+  {% if not oauth_client_configured %}
+  <p class="muted" style="margin-bottom:1rem;">Enter your Azure AD app registration's details below (see <code>AZURE_SETUP.md</code> for how to create the app itself — that one-time step still has to happen in Azure Portal, but you never have to touch env vars or copy IDs anywhere else).</p>
+  <form method="post" action="{{ url_for('settings_azure_app') }}" class="project-form" style="max-width:480px;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Application (client) ID
+      <input type="text" name="client_id" aria-label="Application (client) ID" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required></label>
+    <label>Directory (tenant) ID
+      <input type="text" name="tenant_id" aria-label="Directory (tenant) ID" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required></label>
+    <label>Client Secret
+      <input type="password" name="client_secret" aria-label="Client secret" placeholder="paste the secret VALUE, not the Secret ID" required></label>
+    <button type="submit">Save &amp; Continue</button>
+  </form>
+
+  {% else %}
+  <div class="kv" style="margin-bottom:0.6rem;">
+    <div>Azure app</div><div>{{ azure_app.client_id }} <span class="muted">({{ azure_app.source }})</span></div>
+  </div>
+  <details style="margin-bottom:1.2rem;">
+    <summary class="icon-btn" style="display:inline-block; cursor:pointer;">Edit Azure app credentials</summary>
+    <form method="post" action="{{ url_for('settings_azure_app') }}" class="project-form" style="max-width:480px; margin-top:0.6rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label>Application (client) ID
+        <input type="text" name="client_id" value="{{ azure_app.client_id }}" required aria-label="Application (client) ID"></label>
+      <label>Directory (tenant) ID
+        <input type="text" name="tenant_id" value="{{ azure_app.tenant_id }}" required aria-label="Directory (tenant) ID"></label>
+      <label>Client Secret
+        <input type="password" name="client_secret" aria-label="Client secret" placeholder="{{ 'leave blank to keep the saved secret' if azure_app.has_secret else 'paste the secret VALUE' }}" {{ 'required' if not azure_app.has_secret }}></label>
+      <button type="submit">Save</button>
+    </form>
+    <form method="post" action="{{ url_for('settings_azure_app_clear') }}" onsubmit="return confirm('Clear Azure credentials and disconnect Microsoft 365?')" style="margin-top:0.6rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="icon-btn" style="color:var(--accent);">Clear &amp; Disconnect</button>
+    </form>
+  </details>
+
+  {% if not connection or not connection.refresh_token %}
+  <p class="muted" style="margin-bottom:1rem;">Not connected. Click below, sign in with an admin account, and grant Outlook, Teams, and OneDrive access — no manual IDs to copy.</p>
+  <a href="{{ url_for('integrations_connect') }}" class="btn-link" style="background:var(--accent); color:white; padding:0.6rem 1.2rem; border-radius:var(--radius); font-size:0.78rem; margin-left:0;">Connect Microsoft 365</a>
+
+  {% else %}
+  <div class="kv" style="margin-bottom:1rem;">
+    <div>Connected as</div><div>{{ connection.connected_email or '—' }}</div>
+    <div>Teams channel</div><div>{{ (connection.team_name + ' / ' + connection.channel_name) if connection.channel_id else 'Not selected yet' }}</div>
+  </div>
+  <form method="post" action="{{ url_for('integrations_disconnect') }}" onsubmit="return confirm('Disconnect Microsoft 365? Notifications, mirroring, and backup will stop until you reconnect.')" style="margin-bottom:1.2rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button type="submit" class="icon-btn" style="color:var(--accent);">Disconnect</button>
+  </form>
+
+  <h2>Teams Channel for Notifications</h2>
+  {% if teams_error %}
+  <p class="muted">Couldn't load teams/channels: {{ teams_error }}</p>
+  {% endif %}
+  <form method="get" action="{{ url_for('settings') }}" class="inline-form">
+    <select name="team_id" aria-label="Microsoft Teams team" onchange="this.form.submit()">
+      <option value="" disabled {{ 'selected' if not selected_team_id }}>Choose a team...</option>
+      {% for t in teams_list %}
+      <option value="{{ t.id }}" {{ 'selected' if t.id == selected_team_id }}>{{ t.name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  {% if selected_team_id and channels_list %}
+  <form method="post" action="{{ url_for('integrations_set_channel') }}" class="inline-form" style="margin-top:0.6rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="team_id" value="{{ selected_team_id }}">
+    <select name="channel_id" required aria-label="Teams channel">
+      <option value="" disabled selected>Choose a channel...</option>
+      {% for c in channels_list %}
+      <option value="{{ c.id }}" {{ 'selected' if connection.channel_id == c.id }}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Save Channel</button>
+  </form>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="panel settings-section">
+  <h2>Integrations</h2>
+  <form method="post" action="{{ url_for('settings_integrations') }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label style="display:flex; align-items:center; gap:0.5rem; text-transform:none; margin-top:0.8rem;">
+      <input type="checkbox" name="notify_email_enabled" aria-label="Enable email notifications" style="width:auto;" {{ 'checked' if notify_email_enabled }}>
+      Email notifications on project events (new project, stage change, vendor invoice received)
+    </label>
+    <label style="display:flex; align-items:center; gap:0.5rem; text-transform:none; margin-top:0.6rem;">
+      <input type="checkbox" name="notify_teams_enabled" aria-label="Enable Teams notifications" style="width:auto;" {{ 'checked' if notify_teams_enabled }}>
+      Teams channel notifications for the same events + daily alert digest
+    </label>
+    <label style="display:flex; align-items:center; gap:0.5rem; text-transform:none; margin-top:0.6rem;">
+      <input type="checkbox" name="onedrive_mirror_uploads_enabled" aria-label="Mirror uploads to OneDrive" style="width:auto;" {{ 'checked' if onedrive_mirror_uploads_enabled }}>
+      Mirror every uploaded document to OneDrive
+    </label>
+    <label style="display:flex; align-items:center; gap:0.5rem; text-transform:none; margin-top:0.6rem;">
+      <input type="checkbox" name="onedrive_backup_enabled" aria-label="Enable scheduled OneDrive backups" style="width:auto;" {{ 'checked' if onedrive_backup_enabled }}>
+      Allow scheduled full backups to OneDrive (still needs a cron entry — see AZURE_SETUP.md)
+    </label>
+    <button type="submit">Save Integration Settings</button>
+  </form>
+
+  <div style="display:flex; gap:0.6rem; margin-top:1rem; flex-wrap:wrap;">
+    <form method="post" action="{{ url_for('settings_test_email') }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="icon-btn">Send Test Email</button>
+    </form>
+    <form method="post" action="{{ url_for('settings_test_teams') }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="icon-btn">Send Test Teams Message</button>
+    </form>
+    <form method="post" action="{{ url_for('settings_backup_now') }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="icon-btn">Backup Now to OneDrive</button>
+    </form>
+  </div>
+</div>
+
+{# These four are navigation, not settings — one line of content each. As
+   stacked full-width panels they took four screens' worth of height to say
+   almost nothing, so they're a compact card grid instead. #}
+<h2>More Settings</h2>
+<div class="link-cards">
+  <a class="link-card" href="{{ url_for('users') }}">
+    <span class="link-card-title">Users &amp; Roles</span>
+    <span class="link-card-desc">Team members, roles, and passwords</span>
+  </a>
+  <a class="link-card" href="{{ url_for('settings_rbac') }}">
+    <span class="link-card-title">Role Permissions</span>
+    <span class="link-card-desc">Edit which roles can do what</span>
+  </a>
+  <a class="link-card" href="{{ url_for('settings_contacts') }}">
+    <span class="link-card-title">Contacts &amp; Partners</span>
+    <span class="link-card-desc">Account managers, partners, vendors, products, outsourcers</span>
+  </a>
+  <a class="link-card" href="{{ url_for('audit_logs_view') }}">
+    <span class="link-card-title">Audit Log</span>
+    <span class="link-card-desc">Action history and compliance records</span>
+  </a>
+</div>
+{% endblock %}

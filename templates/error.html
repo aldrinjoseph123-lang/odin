@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:32rem; margin:var(--space-8) auto; text-align:center; padding:var(--space-8);">
+  <div class="muted" style="font-size:var(--text-xs); text-transform:uppercase; letter-spacing:var(--tracking-label);">Error {{ code }}</div>
+  <h1 style="margin:var(--space-2) 0 var(--space-3);">{{ title }}</h1>
+  <p class="muted" style="margin:0 0 var(--space-5);">{{ hint }}</p>
+  <a class="btn" href="{{ url_for('board') if current_user else url_for('login') }}">{{ 'Back to the board' if current_user else 'Sign in' }}</a>
+</div>
+{% endblock %}

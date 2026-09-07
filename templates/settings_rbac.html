@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Role Permissions{% endblock %}
+{% block content %}
+<h1>Role Permissions</h1>
+<p class="muted"><a href="{{ url_for('settings') }}">&larr; Back to Settings</a></p>
+
+<form method="post" action="{{ url_for('settings_rbac_update') }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<div class="panel" style="margin-top:1rem; overflow-x:auto;">
+<table>
+  <thead>
+    <tr>
+      <th>Permission</th>
+      {% for role in roles %}
+      <th style="text-align:center;">{{ role }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for permission in permissions %}
+    <tr>
+      <td>{{ permission }}</td>
+      {% for role in roles %}
+      {% set locked = role == 'Admin' and permission in ('manage_settings', 'manage_users') %}
+      <td style="text-align:center;">
+        <input type="checkbox" name="{{ permission }}::{{ role }}" aria-label="{{ permission }} allowed for {{ role }}" style="width:auto;"
+          {{ 'checked' if matrix[permission][role] }} {{ 'disabled' if locked }}>
+        {% if locked %}<input type="hidden" name="{{ permission }}::{{ role }}" value="on">{% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="muted" style="font-size:0.8rem; margin-top:0.6rem;">Admin always keeps Manage Settings and Manage Users, so this page can't lock every account out.</p>
+<button type="submit" style="margin-top:0.8rem;">Save Permissions</button>
+</form>
+{% endblock %}

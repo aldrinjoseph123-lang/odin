@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Odin{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% if current_user %}
+  <a class="skip-link" href="#main">Skip to content</a>
+  <nav>
+    {#- CSS-only collapse under 800px: the checkbox is the state, the label is
+        the button, siblings hide until it is checked. No script needed. -#}
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <label for="nav-toggle" class="nav-burger" aria-label="Menu">&#9776;</label>
+    {# `nav_at` marks the current section so the active link is obvious. Settings
+       covers its own sub-pages (RBAC, contacts, audit log) rather than losing
+       the highlight the moment you navigate within it. #}
+    {% set ep = request.endpoint or '' %}
+    <a href="{{ url_for('board') }}" class="brand">Odin</a>
+    <a href="{{ url_for('board') }}" class="{{ 'active' if ep == 'board' }}">Board</a>
+    <a href="{{ url_for('my_work') }}" class="{{ 'active' if ep == 'my_work' }}">My Work{% if my_open_task_count %} ({{ my_open_task_count }}){% endif %}</a>
+    <a href="{{ projects_nav_url }}" class="{{ 'active' if ep in ('projects_list', 'project_detail', 'project_edit') }}">All Projects</a>
+    <a href="{{ url_for('analytics') }}" class="{{ 'active' if ep == 'analytics' }}">Cycle Time</a>
+    <a href="{{ url_for('alerts_log_view') }}" class="{{ 'active' if ep == 'alerts_log_view' }}">Alerts{% if active_alert_count %} ({{ active_alert_count }}){% endif %}</a>
+    {% if not is_viewer %}<a href="{{ url_for('project_new') }}" class="{{ 'active' if ep == 'project_new' }}">+ New Project</a>{% endif %}
+    {% if is_admin %}<a href="{{ url_for('settings') }}" class="{{ 'active' if ep.startswith('settings') or ep == 'audit_logs_view' }}">Settings</a>{% endif %}
+    <span class="spacer"></span>
+    {# Global search. Posts into the existing project list rather than adding a
+       second search implementation — one query path, one set of semantics. #}
+    <form method="get" action="{{ url_for('projects_list') }}" class="nav-search">
+      <input type="search" name="q" placeholder="Search projects…" aria-label="Search projects">
+    </form>
+    {% if is_viewer %}<span class="role-badge">Read-only</span>{% endif %}
+    <a href="{{ url_for('account') }}" class="user">{{ current_user }}</a>
+    <a href="{{ url_for('logout') }}">Logout</a>
+  </nav>
+  {% endif %}
+  <main id="main" tabindex="-1">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash">{% for m in messages %}<div>{{ m }}</div>{% endfor %}</div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+  // Rewrites every <time class="localdt"> from stored UTC into the reader's own
+  // timezone. Server-side isn't an option — it has no idea where the reader is.
+  document.querySelectorAll('time.localdt').forEach(function (el) {
+    var d = new Date(el.getAttribute('datetime'));
+    if (isNaN(d.getTime())) return;  // leave the UTC fallback in place
+    if (el.dataset.mode === 'date') {
+      // Local calendar date, still YYYY-MM-DD. The conversion is the point —
+      // a UTC timestamp truncated to a date can name the wrong day locally —
+      // but locale short dates (8/4/2026) are ambiguous and don't sort by eye,
+      // which is exactly what a dense table column needs them to do.
+      var pad = function (n) { return String(n).padStart(2, '0'); };
+      el.textContent = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    } else {
+      el.textContent = d.toLocaleString([], { year: 'numeric', month: 'short', day: '2-digit',
+                                              hour: '2-digit', minute: '2-digit' });
+    }
+  });
+
+  // Copy-to-clipboard for the guest link.
+  //
+  // navigator.clipboard is the good path but it is fussy: it needs a secure
+  // context AND a focused document, and it rejects rather than throwing. A
+  // bare .then() would leave the button looking dead whenever that happens, so
+  // every failure falls through to the old execCommand trick, and if that also
+  // fails the link text is selected for the reader to copy by hand. The button
+  // always says what happened.
+  function copyText(btn) {
+    var text = btn.getAttribute('data-copy');
+
+    function flash(message) {
+      var original = btn.dataset.label || btn.textContent;
+      btn.dataset.label = original;
+      btn.textContent = message;
+      setTimeout(function () { btn.textContent = btn.dataset.label; }, 1500);
+    }
+
+    function legacyCopy() {
+      var field = document.createElement('textarea');
+      field.value = text;
+      field.setAttribute('readonly', '');
+      field.style.position = 'fixed';
+      field.style.opacity = '0';
+      document.body.appendChild(field);
+      field.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(field);
+      if (ok) {
+        flash('Copied');
+      } else {
+        // Last resort: put the link under the cursor so ⌘C/Ctrl+C still works.
+        var link = btn.parentNode.querySelector('a[href]');
+        if (link && window.getSelection) {
+          var range = document.createRange();
+          range.selectNodeContents(link);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        flash('Press Ctrl+C');
+      }
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(function () { flash('Copied'); })
+        .catch(legacyCopy);
+    } else {
+      legacyCopy();
+    }
+  }
+
+  // Due-date shortcuts. Typing a date to mean "next week" is the kind of small
+  // friction that stops people setting due dates at all.
+  function setDueDate(fieldId, daysFromToday) {
+    var field = document.getElementById(fieldId);
+    if (!field) return;
+    var d = new Date();
+    d.setDate(d.getDate() + daysFromToday);
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    field.value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  // Header checkbox drives every task row checkbox.
+  function toggleAllTasks(master) {
+    document.querySelectorAll('.task-check').forEach(function (box) { box.checked = master.checked; });
+  }
+
+  // Reveals the hidden edit row for one task and puts the cursor in its title.
+  function toggleTaskEdit(taskId) {
+    var row = document.getElementById('task-edit-' + taskId);
+    if (!row) return;
+    row.hidden = !row.hidden;
+    if (!row.hidden) {
+      var field = row.querySelector('input[name="title"]');
+      if (field) { field.focus(); field.select(); }
+    }
+  }
+
+  function mirrorField(sourceId, targetId) {
+    var source = document.getElementById(sourceId);
+    var target = document.getElementById(targetId);
+    if (source && target) target.value = source.value;
+  }
+
+  // Shows the element for the select's current value, hides its siblings in
+  // groupMap — e.g. toggleGroup(this, {Direct: 'via-direct', Partner: 'via-partner'})
+  function toggleGroup(select, groupMap) {
+    var value = select.value;
+    Object.keys(groupMap).forEach(function(key) {
+      var el = document.getElementById(groupMap[key]);
+      if (el) el.style.display = (key === value) ? '' : 'none';
+    });
+  }
+
+  // Copies the data-email attribute off the selected <option> into a
+  // read-only companion email field.
+  function fillEmailFromOption(selectId, emailFieldId) {
+    var select = document.getElementById(selectId);
+    var option = select.options[select.selectedIndex];
+    var email = option ? option.getAttribute('data-email') : '';
+    var field = document.getElementById(emailFieldId);
+    if (field) field.value = email || '';
+  }
+
+  // Repopulates the Account Manager select from the partner->managers map
+  // embedded on the page (window[dataVarName]), keyed by the chosen partner id.
+  function filterPartnerManagers(partnerSelectId, managerSelectId, dataVarName) {
+    var partnerSelect = document.getElementById(partnerSelectId);
+    var partnerId = partnerSelect.options[partnerSelect.selectedIndex].getAttribute('data-id');
+    var managerSelect = document.getElementById(managerSelectId);
+    var managers = (window[dataVarName] || {})[partnerId] || [];
+    managerSelect.innerHTML = '<option value="">Select...</option>';
+    managers.forEach(function(m) {
+      var opt = document.createElement('option');
+      opt.value = m.name;
+      opt.textContent = m.name;
+      opt.setAttribute('data-email', m.email || '');
+      managerSelect.appendChild(opt);
+    });
+    managerSelect.dispatchEvent(new Event('change'));
+  }
+  </script>
+</body>
+</html>

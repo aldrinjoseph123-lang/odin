@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}All Projects{% endblock %}
+{% block content %}
+<h1>All Projects
+  <a class="btn-link" href="{{ url_for('projects_export_csv', view=view or None, stage=stage_filter or None, delivery_mode=delivery_mode_filter or None, closed=1 if show_closed else None, q=search or None, sort=sort, dir=direction) }}">Export CSV</a>
+  <a class="btn-link" href="{{ url_for('report_all') }}" target="_blank">All Projects Report</a>
+</h1>
+<div class="filters">
+  <a href="{{ url_for('projects_list') }}" class="{{ 'active' if not stage_filter and not show_closed }}">Active</a>
+  {% for stage in STAGES %}
+  <a href="{{ url_for('projects_list', stage=stage) }}" class="{{ 'active' if stage_filter == stage }}">{{ stage }}</a>
+  {% endfor %}
+  <a href="{{ url_for('projects_list', closed=1) }}" class="{{ 'active' if show_closed }}">All (incl. Closed)</a>
+  <a href="{{ url_for('projects_list', view='overdue') }}" class="{{ 'active' if view == 'overdue' }}">Overdue</a>
+  <a href="{{ url_for('projects_list', view='at_risk') }}" class="{{ 'active' if view == 'at_risk' }}">Due Soon</a>
+  <a href="{{ url_for('projects_list', view='stale') }}" class="{{ 'active' if view == 'stale' }}">Stale</a>
+</div>
+<form method="get" action="{{ url_for('projects_list') }}" class="search-form" style="margin:0.75rem 0; display:flex; gap:0.5rem;">
+  {% if view %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
+  {% if stage_filter %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
+  {% if delivery_mode_filter %}<input type="hidden" name="delivery_mode" value="{{ delivery_mode_filter }}">{% endif %}
+  {% if show_closed %}<input type="hidden" name="closed" value="1">{% endif %}
+  <input type="text" name="q" value="{{ search }}" aria-label="Search projects" placeholder="Search name, client, PO #…" autofocus>
+  <button type="submit">Search</button>
+  {% if search %}<a class="btn-link" href="{{ url_for('projects_list', view=view or None, stage=stage_filter or None, delivery_mode=delivery_mode_filter or None, closed=1 if show_closed else None) }}">Clear search</a>{% endif %}
+</form>
+{% if delivery_mode_filter or view in ('stale', 'overdue', 'at_risk') or search %}
+<p class="muted" style="margin-bottom:1rem;">
+  Filtered by
+  {% if delivery_mode_filter %}delivery mode: <strong>{{ delivery_mode_filter }}</strong>{% endif %}
+  {% if view == 'stale' %}<strong>stale projects</strong> (untouched a while){% endif %}
+  {% if view == 'overdue' %}<strong>overdue projects</strong> (past target end date){% endif %}
+  {% if view == 'at_risk' %}<strong>due-soon projects</strong> (target end date approaching){% endif %}
+  {% if search %}search: <strong>{{ search }}</strong>{% endif %}
+  · <a href="{{ url_for('projects_list') }}" class="btn-link" style="margin-left:0;">Clear</a>
+</p>
+{% endif %}
+{#- Sortable headers. Clicking the active column flips direction; any other
+    column starts descending. Every current filter rides along in the link so
+    sorting never silently widens the result set. -#}
+{% macro sort_link(key, label) -%}
+  {%- set next_dir = 'asc' if (sort == key and direction == 'desc') else 'desc' -%}
+  <th><a class="sort-link{{ ' sorted' if sort == key }}" href="{{ url_for('projects_list',
+      view=view or None, stage=stage_filter or None, delivery_mode=delivery_mode_filter or None,
+      closed=1 if show_closed else None, q=search or None, sort=key, dir=next_dir) }}"
+      >{{ label }}<span class="sort-caret">{{ ('▲' if direction == 'asc' else '▼') if sort == key else '' }}</span></a></th>
+{%- endmacro %}
+<table>
+  <thead>
+    <tr>
+      {{ sort_link('name', 'Project') }}
+      {{ sort_link('client', 'Client') }}
+      {{ sort_link('po_number', 'PO #') }}
+      {{ sort_link('stage', 'Stage') }}
+      {{ sort_link('owner', 'Owner') }}
+      {{ sort_link('mode', 'Mode') }}
+      {{ sort_link('vendor', 'Vendor') }}
+      {{ sort_link('product', 'Product') }}
+      {{ sort_link('updated', 'Updated') }}
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in projects %}
+    <tr class="row-link">
+      <td><a class="row-target" href="{{ url_for('project_detail', project_id=p.id) }}">{{ p.name }}</a></td>
+      <td>{{ p.client }}</td>
+      <td>{{ p.po_number or '—' }}</td>
+      <td><span class="stage-badge">{{ p.stage }}</span></td>
+      <td>{{ p.owner_name }}</td>
+      <td>{{ p.delivery_mode }}</td>
+      <td>{{ p.vendor_name or '—' }}</td>
+      <td>{{ p.product_name or '—' }}</td>
+      <td>{{ p.updated_at | localdt('date') }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="muted">
+      {% if search or view or stage_filter or delivery_mode_filter %}
+        No projects match this filter.
+        <a class="btn-link" href="{{ url_for('projects_list') }}">Clear filters</a>
+      {% else %}
+        No projects yet.
+        {% if not is_viewer %}<a class="btn-link" href="{{ url_for('project_new') }}">Create the first one</a>{% endif %}
+      {% endif %}
+    </td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if total_pages > 1 %}
+<div class="pagination" style="margin-top:1rem; display:flex; gap:1rem; align-items:center;">
+  {% if page > 1 %}<a class="btn-link" href="{{ url_for('projects_list', view=view or None, stage=stage_filter or None, delivery_mode=delivery_mode_filter or None, closed=1 if show_closed else None, q=search or None, sort=sort, dir=direction, page=page-1) }}">← Prev</a>{% endif %}
+  <span class="muted">Page {{ page }} of {{ total_pages }} · {{ total }} project{{ 's' if total != 1 }}</span>
+  {% if page < total_pages %}<a class="btn-link" href="{{ url_for('projects_list', view=view or None, stage=stage_filter or None, delivery_mode=delivery_mode_filter or None, closed=1 if show_closed else None, q=search or None, sort=sort, dir=direction, page=page+1) }}">Next →</a>{% endif %}
+</div>
+{% else %}
+<p class="muted" style="margin-top:0.75rem;">{{ total }} project{{ 's' if total != 1 }}</p>
+{% endif %}
+{% endblock %}
