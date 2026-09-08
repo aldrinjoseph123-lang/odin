@@ -16,54 +16,65 @@ from security import (
     valid_email,
 )
 from services.audit import audit_log
+from spa import spa_index, spa_serves
+
+
+def attempt_login(username, password):
+    """The one login path, shared by the HTML form and /api/login.
+
+    Lockout, deactivation, session setup, last-login stamp and audit rows all
+    happen here so the two front ends cannot drift. Returns (ok, message);
+    message is the user-facing reason on failure and never reveals whether
+    the account exists.
+    """
+    if login_is_blocked(username):
+        return False, f"Too many failed attempts. Try again in {LOGIN_WINDOW_MINUTES} minutes."
+    user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    if user and not user["active"]:
+        record_login_attempt(username, success=False)
+        audit_log("login_failure", "user", user["id"], username, "account deactivated", actor=username)
+        return False, "This account has been deactivated"
+    if not (user and check_password_hash(user["password_hash"], password)):
+        record_login_attempt(username, success=False)
+        # Failed attempts are evidence too — login_attempts is purged after
+        # a week, the audit trail is not.
+        audit_log("login_failure", "user", user["id"] if user else None, username, actor=username)
+        return False, "Bad username or password"
+    record_login_attempt(username, success=True)
+    # New session id on privilege change defeats session fixation:
+    # anything an attacker planted pre-login is discarded here.
+    session.clear()
+    session["user_id"] = user["id"]
+    session["user_name"] = user["name"]
+    session["role"] = user["role"]
+    session["dismissed_alerts"] = {}  # fresh login = every real alert shows again
+    session["must_change_password"] = bool(user["must_change_password"])
+    session["login_at"] = datetime.utcnow().isoformat()
+    session["epoch"] = user["session_epoch"]
+    session.permanent = True  # opt into the idle cap; the absolute cap is checked per request
+    get_db().execute("UPDATE users SET last_login_at = ? WHERE id = ?", (session["login_at"], user["id"]))
+    get_db().commit()
+    audit_log("login_success", "user", user["id"], username, actor=username)
+    return True, None
+
+
+def safe_next_url():
+    """Only relative redirects — an absolute ?next= would be an open redirect
+    straight off the login page."""
+    next_url = request.args.get("next", "")
+    return next_url if next_url.startswith("/") and not next_url.startswith("//") else None
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form["username"].strip()
-        password = request.form["password"]
-
-        if login_is_blocked(username):
-            # Deliberately does not say whether the account exists — an
-            # attacker learns only that they are rate limited.
-            flash(f"Too many failed attempts. Try again in {LOGIN_WINDOW_MINUTES} minutes.")
-            return render_template("login.html")
-
-        user = get_db().execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
-        ).fetchone()
-        if user and not user["active"]:
-            record_login_attempt(username, success=False)
-            audit_log("login_failure", "user", user["id"], username, "account deactivated", actor=username)
-            flash("This account has been deactivated")
-        elif user and check_password_hash(user["password_hash"], password):
-            record_login_attempt(username, success=True)
-            # New session id on privilege change defeats session fixation:
-            # anything an attacker planted pre-login is discarded here.
-            session.clear()
-            session["user_id"] = user["id"]
-            session["user_name"] = user["name"]
-            session["role"] = user["role"]
-            session["dismissed_alerts"] = {}  # fresh login = every real alert shows again
-            session["must_change_password"] = bool(user["must_change_password"])
-            session["login_at"] = datetime.utcnow().isoformat()
-            session["epoch"] = user["session_epoch"]
-            session.permanent = True  # opt into the idle cap; the absolute cap is checked per request
-            get_db().execute("UPDATE users SET last_login_at = ? WHERE id = ?", (session["login_at"], user["id"]))
-            get_db().commit()
-            audit_log("login_success", "user", user["id"], username, actor=username)
-            # Only allow relative redirects — an absolute URL here would be an
-            # open redirect straight off the login page.
-            next_url = request.args.get("next", "")
-            safe_next = next_url if next_url.startswith("/") and not next_url.startswith("//") else None
-            return redirect(safe_next or url_for("board"))
-        else:
-            record_login_attempt(username, success=False)
-            # Failed attempts are evidence too — login_attempts is purged after
-            # a week, the audit trail is not.
-            audit_log("login_failure", "user", user["id"] if user else None, username, actor=username)
-            flash("Bad username or password")
+        ok, message = attempt_login(request.form["username"].strip(), request.form["password"])
+        if ok:
+            return redirect(safe_next_url() or url_for("board"))
+        flash(message)
+        return render_template("login.html")
+    if spa_serves("login"):
+        return spa_index()
     return render_template("login.html")
 
 

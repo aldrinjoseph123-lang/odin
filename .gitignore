@@ -11,6 +11,10 @@ backups/
 deploy/certs/*
 !deploy/certs/.gitkeep
 
+# --- frontend ---
+frontend/node_modules/
+frontend/dist/
+
 # --- python ---
 venv/
 __pycache__/

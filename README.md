@@ -35,13 +35,16 @@ First sign-in is `admin` / `changeme`; you are forced to set a new password befo
 
 ```bash
 python3 -m venv venv && . venv/bin/activate && pip install -r requirements.txt
-python app.py                   # http://localhost:5050
-python -m unittest test_app     # 151 tests
+npm --prefix frontend ci && npm --prefix frontend run build   # React pages → frontend/dist
+python app.py                   # http://localhost:5050 (serves the build for ported pages)
+python -m unittest test_app     # 155 tests
 ```
+
+Front-end iteration: `npm --prefix frontend run dev` on http://localhost:5173 — Vite serves the React pages and proxies everything else to Flask.
 
 ## Stack
 
-Flask 3 · SQLite (WAL) · Jinja · gunicorn · nginx. Three runtime dependencies, no build step, no JavaScript framework. State is one directory (`ODIN_DATA_DIR`): the database plus `uploads/` and `backups/`.
+Flask 3 · SQLite (WAL) · gunicorn · nginx · **React + TypeScript + shadcn/ui** (Vite, Tailwind 4) for the front end, migrating page by page from Jinja — see CLAUDE.md for the rules. Three Python runtime dependencies; Node is a build-time dependency only (multi-stage Dockerfile). State is one directory (`ODIN_DATA_DIR`): the database plus `uploads/` and `backups/`.
 
 ## Security posture
 

@@ -3,6 +3,15 @@
 # Runtime image only: there is no build step (no npm, no bundler), so this is
 # just Python + the three runtime dependencies. gunicorn serves the app; nginx
 # in front of it terminates TLS and serves /static (see docker-compose.yml).
+# Stage 1: the React front end. Only its build output crosses into the runtime
+# image — Node never ships.
+FROM node:22-alpine AS frontend
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -16,6 +25,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+COPY --from=frontend /frontend/dist ./frontend/dist
 
 # Never run as root. The data directory is a mounted volume, so it is chowned
 # at container start by the entrypoint rather than baked in here.

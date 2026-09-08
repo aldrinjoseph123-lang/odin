@@ -30,6 +30,10 @@ class CSRFTestClient(FlaskClient):
     """
 
     def post(self, *args, **kwargs):
+        # JSON callers (the React API) send the token as X-CSRF-Token instead;
+        # injecting a form field there would be an error in Werkzeug's client.
+        if "json" in kwargs:
+            return super().post(*args, **kwargs)
         data = kwargs.get("data")
         # Many routes are POSTed with no body at all (delete/disconnect
         # buttons), so default to an empty dict rather than skipping those.
@@ -58,6 +62,8 @@ def settle_seed_admin():
     con = sqlite3.connect(db_module.DB_PATH)
     con.execute("UPDATE users SET must_change_password = 0")
     con.commit(); con.close()
+    # A local frontend build must not change what the Jinja tests see.
+    app_module.app.config["SERVE_SPA"] = False
 
 
 def isolate_uploads(test):
@@ -1061,6 +1067,55 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- JSON API + SPA serving (strangler migration to React) ------------
+
+    def test_api_session_anonymous_gives_csrf_and_no_user(self):
+        c = app_module.app.test_client()
+        data = c.get("/api/session").get_json()
+        self.assertIsNone(data["user"]); self.assertTrue(len(data["csrf"]) > 20)
+
+    def test_api_login_shares_lockout_audit_and_session_with_the_form(self):
+        c = app_module.app.test_client()
+        csrf = c.get("/api/session").get_json()["csrf"]
+        bad = c.post("/api/login", json={"username": "admin", "password": "nope"}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(bad.status_code, 401); self.assertEqual(bad.get_json()["error"], "Bad username or password")
+        good = c.post("/api/login", json={"username": "admin", "password": "changeme"}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(good.status_code, 200)
+        user = good.get_json()["user"]
+        self.assertEqual(user["role"], "Admin"); self.assertIn("manage_users", user["permissions"])
+        self.assertEqual(c.get("/board").status_code, 200)            # same session works on Jinja pages
+        with self.raw_db() as db:
+            actions = [r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action LIKE 'login_%' ORDER BY id")]
+        self.assertEqual(actions[-2:], ["login_failure", "login_success"])   # setUp's own login precedes these
+        for i in range(5):
+            c.post("/api/login", json={"username": "admin", "password": f"x{i}"}, headers={"X-CSRF-Token": good.get_json()["csrf"]})
+        locked = c.post("/api/login", json={"username": "admin", "password": "changeme"}, headers={"X-CSRF-Token": good.get_json()["csrf"]})
+        self.assertEqual(locked.status_code, 429)
+
+    def test_api_logout_ends_the_session_and_is_audited(self):
+        c = app_module.app.test_client()
+        csrf = c.get("/api/session").get_json()["csrf"]
+        c.post("/api/login", json={"username": "admin", "password": "changeme"}, headers={"X-CSRF-Token": csrf})
+        new_csrf = c.get("/api/session").get_json()["csrf"]
+        self.assertEqual(c.post("/api/logout", headers={"X-CSRF-Token": new_csrf}).status_code, 200)
+        self.assertIsNone(c.get("/api/session").get_json()["user"])
+        self.assertEqual(c.get("/board").status_code, 302)
+
+    def test_login_page_is_served_by_the_react_build_when_present(self):
+        dist = tempfile.mkdtemp(); os.makedirs(os.path.join(dist, "assets"))
+        open(os.path.join(dist, "index.html"), "w").write("<title>Odin</title><div id=root></div><script src=/assets/x.js></script>")
+        open(os.path.join(dist, "assets", "x.js"), "w").write("// bundle")
+        c = app_module.app.test_client()
+        with patch.dict(app_module.app.config, {"SERVE_SPA": True, "SPA_DIST": dist}):
+            page = c.get("/login")
+            self.assertIn(b'id=root', page.data); self.assertEqual(page.headers["Cache-Control"], "no-store")
+            asset = c.get("/assets/x.js")
+            self.assertEqual(asset.status_code, 200); self.assertIn("immutable", asset.headers["Cache-Control"])
+            self.assertEqual(c.get("/board").status_code, 302)            # un-ported pages untouched
+            # the HTML form still works as the fallback door
+            self.assertEqual(c.post("/login", data={"username": "admin", "password": "changeme"}).status_code, 302)
+        self.assertIn(b'name="username"', c.get("/login").data)           # Jinja again once SERVE_SPA is off
+
     # ---- audit fixes: roles, sessions, evidence, operations ----------------
 
     def _make_user(self, username, role, password=STRONG_PASSWORD):
@@ -1311,7 +1366,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             if "POST" not in rule.methods or rule.endpoint == "static":
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
-            if "audit_log(" not in src:
+            # attempt_login audits every outcome itself; both login doors use it.
+            if "audit_log(" not in src and "attempt_login(" not in src:
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"POST routes without an audit entry: {missing}")
 

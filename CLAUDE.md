@@ -72,3 +72,28 @@ nav). If it's ever wanted, override layer 2 only inside a `.dark` block.
 1. Extend `base.html` where possible (gets nav, font, flash styling for free).
 2. If it must be standalone (like the print reports), copy the two `<link rel="preconnect">` + Google Fonts `<link>` + `style.css` link from `report_single.html`.
 3. Use the CSS custom properties above — don't hardcode hex colors inline.
+
+
+# Front end migration — React + shadcn/ui (in progress)
+
+Decision (8 Sep 2026): the UI moves to **Vite + React + TypeScript + shadcn/ui**
+in `frontend/`, Flask becomes the JSON API. **Strangler rollout**: a Jinja page
+stays live until its React replacement has passed tests and UAT; then its
+endpoint name is added to `SPA_PAGES` in `spa.py` and Flask serves the built
+bundle for it. Order: login ✅ → board → projects → project detail → settings
+/ users / audit → guest.
+
+Rules while both UIs exist:
+- The Odin theme is mapped onto shadcn's variables in `frontend/src/index.css`
+  (`:root` block): same brand hexes, `--radius: 2px`, Chakra Petch. No `.dark`.
+  Red as *text* uses `--primary-text`. Do not restyle components ad hoc — use
+  the tokens; add a `label-caps` class for uppercase tracked chrome labels.
+- New pages get a JSON route in `routes/api.py` that reuses the existing
+  decorators, permissions and `audit_log` — never a second auth path. The
+  audit meta-test enforces this; `attempt_login()` is the shared login door.
+- Mutations send `X-CSRF-Token` from `/api/session`. Same session cookie.
+- `frontend/dist` is built by the Docker stage and CI; never committed.
+- Dev: `npm --prefix frontend run dev` (5173, proxies un-ported paths to Flask
+  on 5050) or build once and let Flask serve it (`npm --prefix frontend run build`).
+- shadcn CLI: `npx shadcn@latest add <component>` from `frontend/`.
+  Components land in `src/components/ui` via the `@` alias in `tsconfig.json`.
