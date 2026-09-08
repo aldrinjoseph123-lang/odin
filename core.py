@@ -191,9 +191,29 @@ def permission_required(permission):
     return decorator
 
 
+def nav_counts():
+    """Badges on the nav bar — the same three numbers whether Jinja or React
+    draws the bar."""
+    if not session.get("user_id"):
+        return {"active_alert_count": 0, "my_open_task_count": 0, "projects_nav_url": url_for("projects_list")}
+    db = get_db()
+    return {
+        "active_alert_count": db.execute("SELECT COUNT(*) AS count FROM alerts WHERE resolved = 0").fetchone()["count"],
+        "my_open_task_count": db.execute(
+            "SELECT COUNT(*) AS count FROM tasks t JOIN projects p ON p.id = t.project_id "
+            "WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL",
+            (session.get("user_id"),),
+        ).fetchone()["count"],
+        # Nav link back into the project list restores the last filter/sort the
+        # user had applied, rather than dumping them on an unfiltered list.
+        "projects_nav_url": url_for("projects_list", **session.get("projects_query", {})),
+    }
+
+
 @app.context_processor
 def inject_globals():
     return {
+        **nav_counts(),
         "STAGES": get_stage_names(),
         "DOC_CATEGORIES": get_doc_category_names(),
         "DELIVERY_MODES": DELIVERY_MODES,
@@ -202,19 +222,4 @@ def inject_globals():
         "is_admin": session.get("role") == "Admin",
         "is_viewer": session.get("role") == "Viewer",
         "session_user_id": session.get("user_id"),
-        "active_alert_count": (
-            get_db().execute("SELECT COUNT(*) AS count FROM alerts WHERE resolved = 0").fetchone()["count"]
-            if session.get("user_id") else 0
-        ),
-        # Nav link back into the project list restores the last filter/sort the
-        # user had applied, rather than dumping them on an unfiltered list.
-        "projects_nav_url": url_for("projects_list", **session.get("projects_query", {})),
-        "my_open_task_count": (
-            get_db().execute(
-                "SELECT COUNT(*) AS count FROM tasks t JOIN projects p ON p.id = t.project_id "
-                "WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL",
-                (session.get("user_id"),),
-            ).fetchone()["count"]
-            if session.get("user_id") else 0
-        ),
     }

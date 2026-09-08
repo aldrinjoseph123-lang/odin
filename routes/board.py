@@ -7,6 +7,7 @@ from constants import ALERT_TYPES, ALERT_TYPE_TITLES
 from core import app, login_required, permission_required
 from db import get_db, get_stage_names, get_terminal_stage
 from services.analytics import build_cycle_times
+from spa import spa_index, spa_serves
 from services.alerts import (
     alert_context_for,
     build_alerts,
@@ -61,9 +62,8 @@ def my_work():
     )
 
 
-@app.route("/board")
-@permission_required("view_board")
-def board():
+def board_data():
+    """Everything the board shows, for Jinja and React alike."""
     db = get_db()
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name, "
@@ -88,11 +88,33 @@ def board():
         "SELECT sn.*, p.name AS project_name, p.id AS project_id FROM status_notes sn "
         "JOIN projects p ON p.id = sn.project_id ORDER BY sn.created_at DESC LIMIT 8"
     ).fetchall()
-    return render_template(
-        "board.html", columns=columns, alerts=alerts, real_alerts=real_alerts,
-        dashboard=dashboard, recent_notes=recent_notes, banner_names=BANNER_NAMES,
-        column_cards=COLUMN_CARDS,
-    )
+    return {
+        "columns": columns, "alerts": alerts, "real_alerts": real_alerts,
+        "dashboard": dashboard, "recent_notes": recent_notes,
+    }
+
+
+@app.route("/board")
+@permission_required("view_board")
+def board():
+    if spa_serves("board"):
+        return spa_index()
+    return render_template("board.html", **board_data(), banner_names=BANNER_NAMES, column_cards=COLUMN_CARDS)
+
+
+def dismiss_alert(project_id, alert_type):
+    """Session-only: real project data is never touched, and this clears
+    itself out the next time the user logs in. Shared by the GET link on the
+    Jinja board and the JSON route."""
+    if alert_type not in ALERT_TYPES:
+        abort(404)
+    db = get_db()
+    project = db.execute("SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone()
+    if project is None:
+        abort(404)
+    dismissed = dict(session.get("dismissed_alerts", {}))
+    dismissed[f"{project_id}:{alert_type}"] = alert_context_for(project, alert_type)
+    session["dismissed_alerts"] = dismissed
 
 
 @app.route("/analytics")
@@ -162,17 +184,7 @@ def alerts_log_view():
 @app.route("/alerts/<int:project_id>/dismiss/<alert_type>")
 @login_required
 def alert_dismiss(project_id, alert_type):
-    if alert_type not in ALERT_TYPES:
-        abort(404)
-    db = get_db()
-    project = db.execute("SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone()
-    if project is None:
-        abort(404)
-    # session-only: real project data is never touched, and this clears
-    # itself out the next time the user logs in
-    dismissed = dict(session.get("dismissed_alerts", {}))
-    dismissed[f"{project_id}:{alert_type}"] = alert_context_for(project, alert_type)
-    session["dismissed_alerts"] = dismissed
+    dismiss_alert(project_id, alert_type)
     if request.args.get("next") == "board":
         return redirect(url_for("board") + "#alerts")
     return redirect(url_for("project_detail", project_id=project_id))

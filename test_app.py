@@ -1116,6 +1116,56 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual(c.post("/login", data={"username": "admin", "password": "changeme"}).status_code, 302)
         self.assertIn(b'name="username"', c.get("/login").data)           # Jinja again once SERVE_SPA is off
 
+    def _api_client(self, username="admin", password="changeme"):
+        c = app_module.app.test_client()
+        csrf = c.get("/api/session").get_json()["csrf"]
+        c.post("/api/login", json={"username": username, "password": password}, headers={"X-CSRF-Token": csrf})
+        return c, c.get("/api/session").get_json()["csrf"]
+
+    def test_api_board_returns_columns_alerts_and_nav_counts(self):
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        c, _ = self._api_client()
+        data = c.get("/api/board").get_json()
+        self.assertEqual(data["stages"][-1], data["terminal"])
+        self.assertEqual([card["name"] for card in data["columns"][data["stages"][0]]], ["Late"])
+        self.assertEqual(data["alerts"]["project_overdue"][0]["name"], "Late")
+        self.assertEqual(data["real_alerts"]["project_overdue"], 1)
+        self.assertEqual(data["dashboard"]["total_active"], 1)
+        self.assertTrue(data["can_move"])
+        nav = c.get("/api/session").get_json()["user"]["nav"]
+        self.assertGreaterEqual(nav["active_alert_count"], 1)
+        self.assertEqual(app_module.app.test_client().get("/api/board").status_code, 302)   # anonymous
+
+    def test_api_stage_change_shares_validation_audit_and_permissions(self):
+        self.new_project(name="P", client="C")
+        c, csrf = self._api_client()
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM stages ORDER BY position")]
+        bad = c.post("/api/projects/1/stage", json={"stage": "Nope"}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(bad.status_code, 400); self.assertEqual(bad.get_json()["error"], "Invalid stage")
+        ok = c.post("/api/projects/1/stage", json={"stage": stages[1], "note": "via api"}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(ok.status_code, 200)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=1").fetchone()[0], stages[1])
+            self.assertEqual(db.execute("SELECT note FROM status_notes ORDER BY id DESC LIMIT 1").fetchone()[0], "via api")
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='update_project_stage'").fetchone()[0], 1)
+        self.assertEqual(c.post("/api/projects/999/stage", json={"stage": stages[1]}, headers={"X-CSRF-Token": csrf}).status_code, 404)
+        self.client.post("/users", data={"username": "v", "name": "V", "password": STRONG_PASSWORD, "role": "Viewer"})
+        v, vcsrf = self._api_client("v", STRONG_PASSWORD)
+        self.assertEqual(v.get("/api/board").status_code, 200)
+        self.assertFalse(v.get("/api/board").get_json()["can_move"])
+        self.assertEqual(v.post("/api/projects/1/stage", json={"stage": stages[2]}, headers={"X-CSRF-Token": vcsrf}).status_code, 403)
+
+    def test_api_alert_dismiss_is_session_only(self):
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        c, csrf = self._api_client()
+        self.assertEqual(len(c.get("/api/board").get_json()["alerts"]["project_overdue"]), 1)
+        self.assertEqual(c.post("/api/alerts/1/dismiss/project_overdue", headers={"X-CSRF-Token": csrf}).status_code, 200)
+        data = c.get("/api/board").get_json()
+        self.assertEqual(data["alerts"]["project_overdue"], [])       # hidden for this session
+        self.assertEqual(data["real_alerts"]["project_overdue"], 1)   # the truth is untouched
+        self.assertEqual(c.post("/api/alerts/1/dismiss/bogus", headers={"X-CSRF-Token": csrf}).status_code, 404)
+
     # ---- audit fixes: roles, sessions, evidence, operations ----------------
 
     def _make_user(self, username, role, password=STRONG_PASSWORD):
@@ -1367,7 +1417,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
             # attempt_login audits every outcome itself; both login doors use it.
-            if "audit_log(" not in src and "attempt_login(" not in src:
+            if "audit_log(" not in src and "attempt_login(" not in src and "change_stage(" not in src:
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"POST routes without an audit entry: {missing}")
 

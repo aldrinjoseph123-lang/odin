@@ -442,11 +442,20 @@ def project_edit(project_id):
 @app.route("/projects/<int:project_id>/stage", methods=["POST"])
 @permission_required("edit_project_stage")
 def project_stage(project_id):
-    new_stage = request.form["stage"]
-    note_text = request.form.get("note", "").strip()[:5000]
-    if new_stage not in get_stage_names():
-        flash("Invalid stage")
+    error = change_stage(project_id, request.form["stage"], request.form.get("note", "").strip()[:5000])
+    if error:
+        flash(error)
         return redirect(url_for("project_detail", project_id=project_id))
+    if request.form.get("redirect") == "board":
+        return redirect(url_for("board"))
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+def change_stage(project_id, new_stage, note_text):
+    """The one stage-change path (form + JSON). Returns an error message or
+    None; 404s when the project is gone. Caller must hold edit_project_stage."""
+    if new_stage not in get_stage_names():
+        return "Invalid stage"
     db = get_db()
     # Check before writing. Without this a stale tab could move the stage of a
     # project someone else just deleted: the UPDATE has no deleted_at filter, so
@@ -480,9 +489,7 @@ def project_stage(project_id):
         f"Stage moved to <b>{escape(new_stage)}</b> by {escape(session['user_name'])}."
         + (f"<br>{escape(note_text)}" if note_text else ""),
     )
-    if request.form.get("redirect") == "board":
-        return redirect(url_for("board"))
-    return redirect(url_for("project_detail", project_id=project_id))
+    return None
 
 
 def has_required_document(project_id, category):

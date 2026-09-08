@@ -5,6 +5,15 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+    --color-danger: var(--danger);
+    --color-danger-bg: var(--danger-bg);
+    --color-danger-border: var(--danger-border);
+    --color-warn: var(--warn);
+    --color-warn-bg: var(--warn-bg);
+    --color-warn-border: var(--warn-border);
+    --color-success: var(--success);
+    --color-primary-text: var(--primary-text);
+    --color-nav-fg: var(--nav-fg);
     --font-heading: var(--font-sans);
     --font-sans: 'Chakra Petch', system-ui, -apple-system, sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
@@ -76,6 +85,14 @@
     --chart-4: #6B6B6B;
     --chart-5: #D8D8D5;
     --radius: 2px;   /* sharp corners everywhere — never rounded */
+    --danger: #6E1A22;
+    --danger-bg: #FBE9EB;
+    --danger-border: #F2B6BC;
+    --warn: #5C3A0B;
+    --warn-bg: #FBF3E5;
+    --warn-border: #E7CFA2;
+    --success: #0B6B33;
+    --nav-fg: #999999;
     --sidebar: #0A0A0A;
     --sidebar-foreground: #999999;
     --sidebar-primary: #E11D2E;
