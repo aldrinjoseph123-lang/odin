@@ -3,7 +3,13 @@
     "ignoreRules": [
       "single-font"
     ],
-    "ignoreFiles": [],
+    "ignoreFiles": [
+      "templates/**",
+      "static/style.css"
+    ],
     "ignoreValues": []
+  },
+  "notes": {
+    "legacyJinjaLayer": "templates/** and static/style.css are the frozen legacy Jinja look (Chakra Petch, dark/red) kept live until each page is ported to React \u2014 the strangler rollout the user chose on 8 Sep 2026. DESIGN.md scopes them out; they are not reviewed against it. Remove these ignores when the last Jinja page goes."
   }
 }
