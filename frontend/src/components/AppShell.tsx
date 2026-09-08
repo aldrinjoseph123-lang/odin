@@ -1,24 +1,30 @@
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router-dom"
+import { Menu } from "lucide-react"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { buttonVariants } from "@/components/ui/button"
 import { logout, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-// The Odin nav bar: dark, uppercase tracked links, red underline on the current
-// section. Un-ported pages are plain anchors (full navigation to Flask);
-// React pages use <Link>. Collapses behind a menu button under md.
+// White top bar, ink links, accent underline on the current section. Un-ported
+// pages are plain anchors (full navigation to Flask); React pages use <Link>.
 const REACT_PAGES = new Set(["/board"])
-
 type Item = { href: string; label: string; count?: number; match: (path: string) => boolean }
+
+function initials(name: string) {
+  return name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()
+}
 
 function NavLink({ item, current, onClick }: { item: Item; current: boolean; onClick?: () => void }) {
   const className = cn(
-    "label-caps inline-flex min-h-6 items-center whitespace-nowrap text-nav-fg transition-colors hover:text-secondary-foreground",
-    current && "border-b-2 border-primary pb-0.5 text-secondary-foreground",
+    "relative inline-flex min-h-8 items-center gap-1.5 whitespace-nowrap text-[13px] font-medium text-nav-fg transition-colors hover:text-foreground",
+    current && "text-foreground after:absolute after:inset-x-0 after:-bottom-[15px] after:h-0.5 after:bg-primary",
   )
   const text = (
     <>
       {item.label}
-      {item.count ? ` (${item.count})` : ""}
+      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-bad-soft px-1.5 text-[11px] text-bad" variant="secondary">{item.count}</Badge> : null}
     </>
   )
   return REACT_PAGES.has(item.href) ? (
@@ -32,58 +38,38 @@ export default function AppShell({ user, children }: { user: User; children: Rea
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const items: Item[] = [
-    { href: "/board", label: "Board", match: (p) => p === "/board" },
-    { href: "/my-work", label: "My Work", count: user.nav.my_open_task_count, match: (p) => p === "/my-work" },
-    { href: user.nav.projects_nav_url, label: "All Projects", match: (p) => p.startsWith("/projects") },
-    { href: "/analytics", label: "Cycle Time", match: (p) => p === "/analytics" },
+    { href: "/board", label: "Flow", match: (p) => p === "/board" },
+    { href: "/my-work", label: "My work", count: user.nav.my_open_task_count, match: (p) => p === "/my-work" },
+    { href: user.nav.projects_nav_url, label: "Projects", match: (p) => p.startsWith("/projects") },
+    { href: "/analytics", label: "Cycle time", match: (p) => p === "/analytics" },
     { href: "/alerts", label: "Alerts", count: user.nav.active_alert_count, match: (p) => p === "/alerts" },
-    ...(user.role !== "Viewer" ? [{ href: "/projects/new", label: "+ New Project", match: (p: string) => p === "/projects/new" }] : []),
     ...(user.role === "Admin" ? [{ href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") || p === "/audit-logs" }] : []),
   ]
-
   async function signOut() {
     await logout()
     window.location.assign("/login")
   }
-
   return (
-    <>
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">
-        Skip to content
-      </a>
-      <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 bg-secondary px-6 py-3 text-secondary-foreground">
-        <Link to="/board" className="font-heading text-base font-bold tracking-wide">Odin</Link>
-        <button
-          type="button"
-          aria-label="Menu"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="ml-auto inline-flex h-10 w-10 items-center justify-center text-xl md:hidden"
-        >
-          ☰
-        </button>
-        <div className={cn("w-full flex-col gap-3 md:flex md:w-auto md:flex-1 md:flex-row md:items-center md:gap-5", open ? "flex" : "hidden")}>
-          {items.map((item) => (
-            <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />
-          ))}
-          <span className="hidden md:block md:flex-1" />
-          <form method="get" action="/projects" className="md:w-52">
-            <input
-              type="search"
-              name="q"
-              placeholder="Search projects…"
-              aria-label="Search projects"
-              className="w-full border border-nav-fg/40 bg-transparent px-2 py-1 text-sm text-secondary-foreground placeholder:text-nav-fg focus-visible:border-primary focus-visible:outline-none"
-            />
+    <div className="flex min-h-svh flex-col">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">Skip to content</a>
+      <header className="flex h-13 shrink-0 items-center gap-6 border-b border-border bg-background px-5">
+        <Link to="/board" className="text-[15px] font-bold tracking-tight">Odin</Link>
+        <button type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted md:hidden"><Menu className="h-5 w-5" /></button>
+        <nav className={cn("absolute inset-x-0 top-13 z-40 flex-col gap-3 border-b border-border bg-background px-5 py-4 md:static md:flex md:flex-1 md:flex-row md:items-center md:gap-6 md:border-0 md:p-0", open ? "flex" : "hidden")}>
+          {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
+          <span className="md:flex-1" />
+          <form method="get" action="/projects" className="md:w-56">
+            <input type="search" name="q" placeholder="Search projects…" aria-label="Search projects" className="h-8 w-full rounded-md border border-border bg-secondary px-2.5 text-[13px] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30" />
           </form>
-          {user.role === "Viewer" && <span className="label-caps text-nav-fg">Read-only</span>}
-          <a href="/account" className="text-sm text-nav-fg hover:text-secondary-foreground">{user.name}</a>
-          <button type="button" onClick={signOut} className="label-caps text-nav-fg hover:text-secondary-foreground">Logout</button>
-        </div>
-      </nav>
-      <main id="main" tabIndex={-1} className="mx-auto max-w-[1200px] p-6 outline-none">
-        {children}
-      </main>
-    </>
+          {user.role !== "Viewer" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
+          {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
+          <a href="/account" className="flex items-center gap-2 text-[13px] text-nav-fg hover:text-foreground" title={user.name}>
+            <Avatar className="h-7 w-7"><AvatarFallback className="bg-accent text-[11px] font-semibold text-accent-foreground">{initials(user.name)}</AvatarFallback></Avatar>
+          </a>
+          <button type="button" onClick={signOut} className="text-[13px] font-medium text-nav-fg hover:text-foreground">Log out</button>
+        </nav>
+      </header>
+      <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">{children}</main>
+    </div>
   )
 }

@@ -22,5 +22,8 @@ __pycache__/
 
 # --- local tooling / OS ---
 .claude/settings.local.json
-.impeccable/
+# Impeccable: design record and evidence are tracked; caches, roll payloads and profiles are not
+.impeccable/hook.cache.json
+.impeccable/*payload*.json
+.impeccable/live/
 .DS_Store

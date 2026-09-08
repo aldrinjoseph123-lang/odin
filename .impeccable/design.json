@@ -1,0 +1,614 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-08T10:53:54Z",
+  "title": "Design System: Odin",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Ground",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(25% 0.000 90)",
+          "oklch(38% 0.000 90)",
+          "oklch(50% 0.000 90)",
+          "oklch(62% 0.000 90)",
+          "oklch(75% 0.000 90)",
+          "oklch(87% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#101114",
+        "tonalRamp": [
+          "oklch(15% 0.006 271)",
+          "oklch(25% 0.006 271)",
+          "oklch(38% 0.006 271)",
+          "oklch(50% 0.006 271)",
+          "oklch(62% 0.006 271)",
+          "oklch(75% 0.006 271)",
+          "oklch(87% 0.006 271)",
+          "oklch(95% 0.006 271)"
+        ]
+      },
+      "accent-blue": {
+        "role": "primary",
+        "displayName": "Accent Blue",
+        "canonical": "#3D5AFE",
+        "tonalRamp": [
+          "oklch(15% 0.243 269)",
+          "oklch(25% 0.243 269)",
+          "oklch(38% 0.243 269)",
+          "oklch(50% 0.243 269)",
+          "oklch(62% 0.243 269)",
+          "oklch(75% 0.243 269)",
+          "oklch(87% 0.243 269)",
+          "oklch(95% 0.243 269)"
+        ]
+      },
+      "accent-blue-text": {
+        "role": "primary",
+        "displayName": "Accent Blue Text",
+        "canonical": "#2F47D6",
+        "tonalRamp": [
+          "oklch(15% 0.218 269)",
+          "oklch(25% 0.218 269)",
+          "oklch(38% 0.218 269)",
+          "oklch(50% 0.218 269)",
+          "oklch(62% 0.218 269)",
+          "oklch(75% 0.218 269)",
+          "oklch(87% 0.218 269)",
+          "oklch(95% 0.218 269)"
+        ]
+      },
+      "accent-wash": {
+        "role": "primary",
+        "displayName": "Accent Wash",
+        "canonical": "#EEF1FF",
+        "tonalRamp": [
+          "oklch(15% 0.019 276)",
+          "oklch(25% 0.019 276)",
+          "oklch(38% 0.019 276)",
+          "oklch(50% 0.019 276)",
+          "oklch(62% 0.019 276)",
+          "oklch(75% 0.019 276)",
+          "oklch(87% 0.019 276)",
+          "oklch(95% 0.019 276)"
+        ]
+      },
+      "on-accent": {
+        "role": "primary",
+        "displayName": "On Accent",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(25% 0.000 90)",
+          "oklch(38% 0.000 90)",
+          "oklch(50% 0.000 90)",
+          "oklch(62% 0.000 90)",
+          "oklch(75% 0.000 90)",
+          "oklch(87% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#F7F7F8",
+        "tonalRamp": [
+          "oklch(15% 0.001 286)",
+          "oklch(25% 0.001 286)",
+          "oklch(38% 0.001 286)",
+          "oklch(50% 0.001 286)",
+          "oklch(62% 0.001 286)",
+          "oklch(75% 0.001 286)",
+          "oklch(87% 0.001 286)",
+          "oklch(95% 0.001 286)"
+        ]
+      },
+      "muted-fill": {
+        "role": "neutral",
+        "displayName": "Muted Fill",
+        "canonical": "#F3F4F6",
+        "tonalRamp": [
+          "oklch(15% 0.003 265)",
+          "oklch(25% 0.003 265)",
+          "oklch(38% 0.003 265)",
+          "oklch(50% 0.003 265)",
+          "oklch(62% 0.003 265)",
+          "oklch(75% 0.003 265)",
+          "oklch(87% 0.003 265)",
+          "oklch(95% 0.003 265)"
+        ]
+      },
+      "muted-text": {
+        "role": "neutral",
+        "displayName": "Muted Text",
+        "canonical": "#6B7280",
+        "tonalRamp": [
+          "oklch(15% 0.023 264)",
+          "oklch(25% 0.023 264)",
+          "oklch(38% 0.023 264)",
+          "oklch(50% 0.023 264)",
+          "oklch(62% 0.023 264)",
+          "oklch(75% 0.023 264)",
+          "oklch(87% 0.023 264)",
+          "oklch(95% 0.023 264)"
+        ]
+      },
+      "chrome-text": {
+        "role": "neutral",
+        "displayName": "Chrome Text",
+        "canonical": "#4B4F58",
+        "tonalRamp": [
+          "oklch(15% 0.016 267)",
+          "oklch(25% 0.016 267)",
+          "oklch(38% 0.016 267)",
+          "oklch(50% 0.016 267)",
+          "oklch(62% 0.016 267)",
+          "oklch(75% 0.016 267)",
+          "oklch(87% 0.016 267)",
+          "oklch(95% 0.016 267)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#E4E6EB",
+        "tonalRamp": [
+          "oklch(15% 0.007 269)",
+          "oklch(25% 0.007 269)",
+          "oklch(38% 0.007 269)",
+          "oklch(50% 0.007 269)",
+          "oklch(62% 0.007 269)",
+          "oklch(75% 0.007 269)",
+          "oklch(87% 0.007 269)",
+          "oklch(95% 0.007 269)"
+        ]
+      },
+      "stroke": {
+        "role": "neutral",
+        "displayName": "Stroke",
+        "canonical": "#D0D3DA",
+        "tonalRamp": [
+          "oklch(15% 0.010 267)",
+          "oklch(25% 0.010 267)",
+          "oklch(38% 0.010 267)",
+          "oklch(50% 0.010 267)",
+          "oklch(62% 0.010 267)",
+          "oklch(75% 0.010 267)",
+          "oklch(87% 0.010 267)",
+          "oklch(95% 0.010 267)"
+        ]
+      },
+      "destructive": {
+        "role": "state",
+        "displayName": "Destructive",
+        "canonical": "#D6372F",
+        "tonalRamp": [
+          "oklch(15% 0.197 28)",
+          "oklch(25% 0.197 28)",
+          "oklch(38% 0.197 28)",
+          "oklch(50% 0.197 28)",
+          "oklch(62% 0.197 28)",
+          "oklch(75% 0.197 28)",
+          "oklch(87% 0.197 28)",
+          "oklch(95% 0.197 28)"
+        ]
+      },
+      "ok": {
+        "role": "state",
+        "displayName": "OK (text)",
+        "canonical": "#177A42",
+        "tonalRamp": [
+          "oklch(15% 0.124 153)",
+          "oklch(25% 0.124 153)",
+          "oklch(38% 0.124 153)",
+          "oklch(50% 0.124 153)",
+          "oklch(62% 0.124 153)",
+          "oklch(75% 0.124 153)",
+          "oklch(87% 0.124 153)",
+          "oklch(95% 0.124 153)"
+        ]
+      },
+      "ok-soft": {
+        "role": "state",
+        "displayName": "OK Soft",
+        "canonical": "#E6F6EC",
+        "tonalRamp": [
+          "oklch(15% 0.021 159)",
+          "oklch(25% 0.021 159)",
+          "oklch(38% 0.021 159)",
+          "oklch(50% 0.021 159)",
+          "oklch(62% 0.021 159)",
+          "oklch(75% 0.021 159)",
+          "oklch(87% 0.021 159)",
+          "oklch(95% 0.021 159)"
+        ]
+      },
+      "ok-line": {
+        "role": "state",
+        "displayName": "OK Line",
+        "canonical": "#1F9D55",
+        "tonalRamp": [
+          "oklch(15% 0.150 152)",
+          "oklch(25% 0.150 152)",
+          "oklch(38% 0.150 152)",
+          "oklch(50% 0.150 152)",
+          "oklch(62% 0.150 152)",
+          "oklch(75% 0.150 152)",
+          "oklch(87% 0.150 152)",
+          "oklch(95% 0.150 152)"
+        ]
+      },
+      "warn": {
+        "role": "state",
+        "displayName": "Warn (text)",
+        "canonical": "#8A5300",
+        "tonalRamp": [
+          "oklch(15% 0.109 67)",
+          "oklch(25% 0.109 67)",
+          "oklch(38% 0.109 67)",
+          "oklch(50% 0.109 67)",
+          "oklch(62% 0.109 67)",
+          "oklch(75% 0.109 67)",
+          "oklch(87% 0.109 67)",
+          "oklch(95% 0.109 67)"
+        ]
+      },
+      "warn-soft": {
+        "role": "state",
+        "displayName": "Warn Soft",
+        "canonical": "#FFF4E0",
+        "tonalRamp": [
+          "oklch(15% 0.029 83)",
+          "oklch(25% 0.029 83)",
+          "oklch(38% 0.029 83)",
+          "oklch(50% 0.029 83)",
+          "oklch(62% 0.029 83)",
+          "oklch(75% 0.029 83)",
+          "oklch(87% 0.029 83)",
+          "oklch(95% 0.029 83)"
+        ]
+      },
+      "warn-line": {
+        "role": "state",
+        "displayName": "Warn Line",
+        "canonical": "#E39B1D",
+        "tonalRamp": [
+          "oklch(15% 0.151 74)",
+          "oklch(25% 0.151 74)",
+          "oklch(38% 0.151 74)",
+          "oklch(50% 0.151 74)",
+          "oklch(62% 0.151 74)",
+          "oklch(75% 0.151 74)",
+          "oklch(87% 0.151 74)",
+          "oklch(95% 0.151 74)"
+        ]
+      },
+      "bad": {
+        "role": "state",
+        "displayName": "Bad (text)",
+        "canonical": "#B4231C",
+        "tonalRamp": [
+          "oklch(15% 0.182 29)",
+          "oklch(25% 0.182 29)",
+          "oklch(38% 0.182 29)",
+          "oklch(50% 0.182 29)",
+          "oklch(62% 0.182 29)",
+          "oklch(75% 0.182 29)",
+          "oklch(87% 0.182 29)",
+          "oklch(95% 0.182 29)"
+        ]
+      },
+      "bad-soft": {
+        "role": "state",
+        "displayName": "Bad Soft",
+        "canonical": "#FDECEB",
+        "tonalRamp": [
+          "oklch(15% 0.019 22)",
+          "oklch(25% 0.019 22)",
+          "oklch(38% 0.019 22)",
+          "oklch(50% 0.019 22)",
+          "oklch(62% 0.019 22)",
+          "oklch(75% 0.019 22)",
+          "oklch(87% 0.019 22)",
+          "oklch(95% 0.019 22)"
+        ]
+      },
+      "bad-line": {
+        "role": "state",
+        "displayName": "Bad Line",
+        "canonical": "#E0463D",
+        "tonalRamp": [
+          "oklch(15% 0.192 28)",
+          "oklch(25% 0.192 28)",
+          "oklch(38% 0.192 28)",
+          "oklch(50% 0.192 28)",
+          "oklch(62% 0.192 28)",
+          "oklch(75% 0.192 28)",
+          "oklch(87% 0.192 28)",
+          "oklch(95% 0.192 28)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Login card title only."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Pane titles: 'Active rollouts', the selected rollout's name."
+      },
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "'Odin' in the top bar."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Nav links, rail copy, empty states, inputs."
+      },
+      "body-strong": {
+        "displayName": "Body Strong",
+        "purpose": "Rollout name in a list row."
+      },
+      "secondary": {
+        "displayName": "Secondary",
+        "purpose": "Subtitles, stage node names (600), tasks, filter chips, notes."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "State chips (500) and rail section headers (600, chrome text). Sentence case, never tracked caps."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Column heads, durations and SLA under node names."
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "Time-strip ticks, nav count badges, avatar initials. The floor."
+      }
+    },
+    "shadows": [],
+    "focusRings": [
+      {
+        "name": "ring-focus",
+        "value": "0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent)",
+        "purpose": "focus-visible on buttons, inputs, scroll viewports; border switches to --ring."
+      },
+      {
+        "name": "ring-focus-quiet",
+        "value": "0 0 0 2px color-mix(in srgb, var(--ring) 30%, transparent)",
+        "purpose": "Nav search field."
+      },
+      {
+        "name": "ring-state",
+        "value": "0 0 0 3px var(--<state>-soft)",
+        "purpose": "Current stepper dot and current stage node; --muted when on track."
+      },
+      {
+        "name": "ring-selected",
+        "value": "1px solid var(--primary) + background var(--accent)",
+        "purpose": "Selected rollout row."
+      }
+    ],
+    "motion": [
+      {
+        "name": "transition-colors",
+        "value": "color, background-color, border-color 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Hover/selection on rows, chips, nav links, buttons (Tailwind default)."
+      },
+      {
+        "name": "tooltip-enter",
+        "value": "fade-in + zoom-in 95%, tw-animate-css, 0ms delay",
+        "purpose": "Tooltip open/close."
+      },
+      {
+        "name": "press",
+        "value": "translateY(1px) on :active",
+        "purpose": "Buttons."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ],
+    "stateVocabulary": {
+      "on_track": {
+        "text": null,
+        "soft": null,
+        "line": "--ok-line",
+        "note": "No chip, no row dot; current dot/node ringed ink over --muted."
+      },
+      "due_soon": {
+        "text": "--warn",
+        "soft": "--warn-soft",
+        "line": "--warn-line"
+      },
+      "over_sla": {
+        "text": "--warn",
+        "soft": "--warn-soft",
+        "line": "--warn-line"
+      },
+      "overdue": {
+        "text": "--bad",
+        "soft": "--bad-soft",
+        "line": "--bad-line"
+      },
+      "done (stage status)": {
+        "text": "--ok",
+        "soft": "--ok-soft",
+        "line": "--ok-line"
+      }
+    },
+    "boundary": "frontend/ only (React + shadcn base-nova on Base UI, `render` prop not `asChild`). templates/ and static/style.css are the frozen retired identity and are excluded."
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one blue action per view: New project, Advance to {stage}, Log in.",
+      "html": "<button class=\"ds-btn-primary\">Advance to Tuning &amp; UAT <svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></button>",
+      "css": ".ds-btn-primary { font-family: Inter, system-ui, -apple-system, sans-serif; display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 10px; border:1px solid transparent; border-radius:var(--radius); background:var(--primary); color:var(--primary-foreground); font-size:14px; font-weight:500; cursor:pointer; transition:background .15s, box-shadow .15s; } .ds-btn-primary:hover { background:color-mix(in srgb, var(--primary) 80%, transparent); } .ds-btn-primary:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); } .ds-btn-primary:active { transform:translateY(1px); } .ds-btn-primary:disabled { opacity:.5; pointer-events:none; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary navigation action, e.g. Open project.",
+      "html": "<button class=\"ds-btn-outline\">Open project</button>",
+      "css": ".ds-btn-outline { font-family: Inter, system-ui, -apple-system, sans-serif; display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border:1px solid var(--border); border-radius:calc(var(--radius) * 0.8); background:var(--background); color:var(--foreground); font-size:12.8px; font-weight:500; cursor:pointer; transition:background .15s; } .ds-btn-outline:hover { background:var(--muted); } .ds-btn-outline:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "filter-chip",
+      "description": "List filters: All / Needs attention / Mine. Selected chip inverts to ink.",
+      "html": "<div style=\"display:flex;gap:6px\"><button class=\"ds-chip ds-chip--on\">All <span>32</span></button><button class=\"ds-chip\">Needs attention <span>7</span></button></div>",
+      "css": ".ds-chip { font-family: Inter, system-ui, -apple-system, sans-serif; height:28px; padding:0 12px; border:1px solid var(--border); border-radius:9999px; background:transparent; color:var(--nav-fg); font-size:12.5px; font-weight:500; cursor:pointer; transition:background .15s; } .ds-chip span { margin-left:4px; color:var(--muted-foreground); } .ds-chip:hover { background:var(--muted); } .ds-chip--on { border-color:var(--foreground); background:var(--foreground); color:var(--background); } .ds-chip--on span { color:color-mix(in srgb, var(--background) 70%, transparent); } .ds-chip:focus-visible { outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); }"
+    },
+    {
+      "name": "State Chip",
+      "kind": "chip",
+      "refersTo": "state-chip-bad",
+      "description": "Lateness state on a row: bad for overdue, warn for due soon / over SLA; on-track rows show plain text.",
+      "html": "<div style=\"display:flex;gap:8px;align-items:center\"><span class=\"ds-state ds-state--bad\">Overdue 237 d</span><span class=\"ds-state ds-state--warn\">12 d · 3 over SLA</span><span class=\"ds-state ds-state--ok\">Moved to Deployment</span><span class=\"ds-state--none\">4 d</span></div>",
+      "css": ".ds-state { font-family: Inter, system-ui, -apple-system, sans-serif; display:inline-block; padding:2px 8px; border-radius:calc(var(--radius) * 0.8); font-size:12px; font-weight:500; white-space:nowrap; } .ds-state--bad { background:var(--bad-soft); color:var(--bad); } .ds-state--warn { background:var(--warn-soft); color:var(--warn); } .ds-state--ok { background:var(--ok-soft); color:var(--ok); } .ds-state--none { font-family: Inter, system-ui, -apple-system, sans-serif; font-size:12px; color:var(--muted-foreground); }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Text field: stroke border, transparent fill, accent ring on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"Note for the history (optional)\" />",
+      "css": ".ds-input { font-family: Inter, system-ui, -apple-system, sans-serif; height:32px; width:100%; min-width:0; padding:4px 10px; border:1px solid var(--input); border-radius:var(--radius); background:transparent; color:var(--foreground); font-size:13px; outline:none; transition:border-color .15s, box-shadow .15s; } .ds-input::placeholder { color:var(--muted-foreground); } .ds-input:focus-visible { border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); } .ds-input:disabled { opacity:.5; background:color-mix(in srgb, var(--input) 50%, transparent); cursor:not-allowed; }"
+    },
+    {
+      "name": "Top Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "White 52px bar; chrome-text links, current section in ink with a 2px accent underline; count badge in bad-soft.",
+      "html": "<header class=\"ds-nav\"><a class=\"ds-nav__brand\" href=\"#\">Odin</a><a class=\"ds-nav__link ds-nav__link--current\" href=\"#\">Flow</a><a class=\"ds-nav__link\" href=\"#\">My work</a><a class=\"ds-nav__link\" href=\"#\">Projects</a><a class=\"ds-nav__link\" href=\"#\">Alerts <span class=\"ds-nav__count\">7</span></a><span style=\"flex:1\"></span><input class=\"ds-nav__search\" placeholder=\"Search projects…\" /><button class=\"ds-nav__new\">New project</button><span class=\"ds-nav__avatar\">A</span></header>",
+      "css": ".ds-nav { font-family: Inter, system-ui, -apple-system, sans-serif; display:flex; align-items:center; gap:24px; height:52px; padding:0 20px; background:var(--background); border-bottom:1px solid var(--border); font-size:13px; } .ds-nav__brand { font-size:15px; font-weight:700; letter-spacing:-0.025em; color:var(--foreground); text-decoration:none; } .ds-nav__link { position:relative; display:inline-flex; align-items:center; gap:6px; min-height:32px; color:var(--nav-fg); font-weight:500; text-decoration:none; white-space:nowrap; transition:color .15s; } .ds-nav__link:hover { color:var(--foreground); } .ds-nav__link--current { color:var(--foreground); } .ds-nav__link--current::after { content:''; position:absolute; left:0; right:0; bottom:-10px; height:2px; background:var(--primary); } .ds-nav__count { display:inline-flex; align-items:center; justify-content:center; height:20px; min-width:20px; padding:0 6px; border-radius:9999px; background:var(--bad-soft); color:var(--bad); font-size:11px; font-weight:500; } .ds-nav__search { font-family: Inter, system-ui, -apple-system, sans-serif; height:32px; width:224px; padding:0 10px; border:1px solid var(--border); border-radius:calc(var(--radius) * 0.8); background:var(--secondary); font-size:13px; outline:none; } .ds-nav__search:focus-visible { border-color:var(--ring); box-shadow:0 0 0 2px color-mix(in srgb, var(--ring) 30%, transparent); } .ds-nav__new { font-family: Inter, system-ui, -apple-system, sans-serif; height:28px; padding:0 10px; border:0; border-radius:calc(var(--radius) * 0.8); background:var(--primary); color:var(--primary-foreground); font-size:12.8px; font-weight:500; cursor:pointer; } .ds-nav__new:hover { background:color-mix(in srgb, var(--primary) 80%, transparent); } .ds-nav__avatar { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:9999px; background:var(--accent); color:var(--accent-foreground); font-size:11px; font-weight:600; box-shadow:inset 0 0 0 1px var(--border); }"
+    },
+    {
+      "name": "Rail Panel",
+      "kind": "card",
+      "refersTo": "rail-panel",
+      "description": "Right-rail container: hairline, 8px radius, 12px padding, chrome-text label.",
+      "html": "<section class=\"ds-panel\"><h3 class=\"ds-panel__h\">Next up</h3><p class=\"ds-panel__t\">Collect asset inventory</p><p class=\"ds-panel__m\">SALES1 · Sep 15</p></section>",
+      "css": ".ds-panel { font-family: Inter, system-ui, -apple-system, sans-serif; width:280px; padding:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--background); color:var(--foreground); font-size:13px; } .ds-panel__h { margin:0 0 8px; font-size:12px; font-weight:600; color:var(--nav-fg); } .ds-panel__t { margin:0; font-weight:500; } .ds-panel__m { margin:4px 0 0; color:var(--muted-foreground); }"
+    },
+    {
+      "name": "Stepper",
+      "kind": "custom",
+      "refersTo": "rollout-row",
+      "description": "Seven 12px dots joined by 1.5px lines: done green, current state-ringed, upcoming stroke-grey.",
+      "html": "<div class=\"ds-stepper\"><i class=\"ds-dot ds-dot--done\"></i><b class=\"ds-line ds-line--done\"></b><i class=\"ds-dot ds-dot--done\"></i><b class=\"ds-line ds-line--done\"></b><i class=\"ds-dot ds-dot--cur ds-dot--warn\"></i><b class=\"ds-line\"></b><i class=\"ds-dot\"></i><b class=\"ds-line\"></b><i class=\"ds-dot\"></i><b class=\"ds-line\"></b><i class=\"ds-dot\"></i><b class=\"ds-line\"></b><i class=\"ds-dot\"></i></div>",
+      "css": ".ds-stepper { display:flex; align-items:center; width:420px; } .ds-dot { display:block; width:12px; height:12px; flex:none; border-radius:9999px; border:1.5px solid var(--input); background:var(--background); } .ds-dot--done { border-color:var(--ok-line); background:var(--ok-line); } .ds-dot--cur { border-color:var(--foreground); box-shadow:0 0 0 3px var(--muted); } .ds-dot--warn { border-color:var(--warn-line); box-shadow:0 0 0 3px var(--warn-soft); } .ds-dot--bad { border-color:var(--bad-line); box-shadow:0 0 0 3px var(--bad-soft); } .ds-line { display:block; flex:1; height:1.5px; background:var(--input); } .ds-line--done { background:var(--ok-line); }"
+    },
+    {
+      "name": "Stage Node Flow",
+      "kind": "custom",
+      "refersTo": "stage-node",
+      "description": "Flowchart nodes with drawn arrows: done (green soft), current (state ring), next (dashed).",
+      "html": "<ol class=\"ds-flow\"><li class=\"ds-node ds-node--done\"><div class=\"ds-node__n\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg> Kickoff</div><div class=\"ds-node__m\">0 d</div></li><li class=\"ds-node ds-node--cur\"><span class=\"ds-arrow ds-arrow--done\"><b></b><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></span><div class=\"ds-node__n\">Deployment</div><div class=\"ds-node__m\">1 d · SLA 30</div></li><li class=\"ds-node ds-node--next\"><span class=\"ds-arrow\"><b></b><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></span><div class=\"ds-node__n\">Tuning &amp; UAT</div><div class=\"ds-node__m\">—</div></li></ol>",
+      "css": ".ds-flow { font-family: Inter, system-ui, -apple-system, sans-serif; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); list-style:none; margin:0; padding:0; width:420px; } .ds-node { position:relative; min-height:58px; margin:0 6px; padding:8px 10px; border:1.5px solid var(--input); border-radius:var(--radius); background:var(--card); box-sizing:border-box; } .ds-node:first-child { margin-left:0 } .ds-node:last-child { margin-right:0 } .ds-node--done { border-color:var(--ok-line); background:var(--ok-soft); } .ds-node--cur { border-color:var(--foreground); box-shadow:0 0 0 3px var(--muted); } .ds-node--next { border-style:dashed; } .ds-node--next .ds-node__n { color:var(--nav-fg); } .ds-node__n { display:flex; align-items:flex-start; gap:4px; font-size:12.5px; font-weight:600; line-height:1.25; color:var(--foreground); } .ds-node--done .ds-node__n svg { color:var(--ok); margin-top:1px; } .ds-node__m { margin-top:2px; font-size:11.5px; color:var(--muted-foreground); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .ds-arrow { position:absolute; left:-16px; top:18px; width:16px; display:flex; align-items:center; color:var(--input); } .ds-arrow b { flex:1; height:1.5px; background:var(--input); } .ds-arrow svg { margin-left:-6px; width:12px; height:12px; } .ds-arrow--done { color:var(--ok-line); } .ds-arrow--done b { background:var(--ok-line); }"
+    },
+    {
+      "name": "Tooltip",
+      "kind": "custom",
+      "refersTo": "tooltip",
+      "description": "Inverted ink bubble on hover — the only floating surface, no shadow.",
+      "html": "<span class=\"ds-tip\">Scoping · done</span>",
+      "css": ".ds-tip { font-family: Inter, system-ui, -apple-system, sans-serif; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:calc(var(--radius) * 0.8); background:var(--foreground); color:var(--background); font-size:12px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Whiteboard Flowchart",
+    "overview": "Odin answers one question before anything is read: where is every rollout, and what is stuck. The built world is convention played straight, benchmarked against Linear and FigJam: a white ground, ink text, hairline borders, and stage nodes with arrows drawn between them. It has no metaphor and no atmosphere; the interface is the diagram. There is exactly one accent, a saturated blue, and it is spent only on selection, the primary action, focus and the \"today\" marker. Every other colour on the screen is a state (done, on track, due soon / over SLA, overdue) and means nothing else.\n\nDensity is high but scannable. The first screen is a resizable vertical split: a list of rollout rows above (stuck rows first, each carrying a 7-dot stepper), and the selected rollout below drawn as a left-to-right flowchart with its open tasks hung under the current node, a right rail for next-up / ETA / advance, and a time strip along the bottom. Type is small (13 px body) but never below 11 px, and nothing is uppercased. Surfaces are flat: no shadows anywhere, depth comes from hairlines and tonal fills.\n\nThe build rejected, by the user's explicit choice, the dark/industrial look, kanban-style SaaS boards and number-dense grids. Where the direction contract and the build differ, this file records the build.",
+    "keyCharacteristics": [
+      "White ground, ink text, one blue accent; state colours in matched text / soft-fill / line triplets",
+      "Inter throughout with `cv11` + `ss01` features; sentence case, no tracked uppercase labels",
+      "8 px base radius (`--radius: 0.5rem`) scaled by shadcn's ratios; pills and dots are fully round",
+      "Hairline 1 px borders (`#E4E6EB`); 1.5 px strokes only for flow geometry (nodes, dots, connectors)",
+      "No box-shadows; focus and selection are 3 px translucent rings",
+      "Master-detail vertical split; flowchart nodes with drawn arrows at `md` and up, stacked without arrows below"
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Blue appears only as selection (row border + wash, nav underline), the primary action, the focus ring and the today marker. It never labels a state, never decorates, and never appears as a heading colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The Colour-Is-State Rule",
+        "body": "Green, amber and red mean done / warning / overdue and nothing else. `on_track` has *no* colour: an on-track row shows a plain grey duration and a transparent dot, so a coloured row is always a row needing attention.",
+        "section": "colors"
+      },
+      {
+        "name": "The Triplet Rule",
+        "body": "State text uses the base token, state fills use `-soft`, state strokes and dots use `-line`. Never put the text shade in a fill or the line shade under text.",
+        "section": "colors"
+      },
+      {
+        "name": "The Accent-as-Text Rule",
+        "body": "When the accent is text on white, use `--primary-text` (`#2F47D6`), not `--primary`.",
+        "section": "colors"
+      },
+      {
+        "name": "The Sentence-Case Rule",
+        "body": "No uppercase, no letter-spaced labels. A label is 12 px, weight 600, chrome text. The tracked-caps device belongs to the retired identity.",
+        "section": "typography"
+      },
+      {
+        "name": "The Thirteen Rule",
+        "body": "13 px is body. Sizes step by half-pixels (13.5 / 12.5 / 11.5) to separate levels without visibly changing scale; do not add sizes above 17 px outside the login display.",
+        "section": "typography"
+      },
+      {
+        "name": "The Stuck-First Rule",
+        "body": "The list is ordered by state severity, and on load it opens at the top; the deep-linked row is scrolled into view only after a click so the stuck rows are never hidden.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Rule",
+        "body": "Surfaces are flat at rest and under interaction. Do not add `shadow-*` to a panel, popover or button; use a border, a ring, or a fill step.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep Accent Blue to selection, the single primary action, focus and the today marker (The One Accent Rule).",
+      "Do map rollout state to its triplet exactly: `overdue` → `bad`, `due_soon` and `over_sla` → `warn`, done stages → `ok`; `on_track` gets no colour.",
+      "Do pair every state colour with a second channel — the chip text, a visually-hidden label, the check glyph, dashed vs solid borders.",
+      "Do use `--primary-text` for accent-coloured text on white.",
+      "Do build on the base-nova components with the `render` prop; apply `buttonVariants()` to anchors that navigate to un-ported Jinja pages.",
+      "Do keep chrome at 12–13 px, sentence case, weight 500–600, in Chrome Text or Muted Text.",
+      "Do use 1 px hairlines for structure and 1.5 px strokes only for flow geometry (nodes, dots, connectors, today marker).",
+      "Do convey depth with borders, rings and fill steps (Paper → Muted Fill → Accent Wash)."
+    ],
+    "donts": [
+      "Don't add box-shadows, gradients, or an off-white page tint; the ground is `#FFFFFF` and surfaces are flat.",
+      "Don't uppercase or letter-space labels, or reintroduce the retired identity's dark nav, brand red, Chakra Petch or 2 px corners — those live only in the frozen `static/style.css`.",
+      "Don't use green for \"on track\" rows or amber/red for anything that is not a lateness state; don't use `--destructive` for rollout state.",
+      "Don't put a state's text shade in a fill or its line shade under text.",
+      "Don't invent tokens: use the `:root` block in `frontend/src/index.css` and its `@theme inline` aliases (`ok-*`, `warn-*`, `bad-*`, `primary-text`, `nav-fg`); there is no `.dark` block and none should be added ad hoc.",
+      "Don't render the flow as a kanban board or a numeric table; the stepper and the node row are the read."
+    ]
+  }
+}

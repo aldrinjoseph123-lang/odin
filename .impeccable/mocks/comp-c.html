@@ -1,0 +1,30 @@
+<!doctype html><meta charset="utf-8"><title>Odin comp C</title><link rel="stylesheet" href="_shared.css"><style>
+.split{display:grid;grid-template-columns:1fr 300px;gap:20px}
+.bands{position:relative;height:190px}.bn{position:absolute;top:0;width:13%}.bx{border:1.5px solid var(--line-2);border-radius:var(--r);padding:8px 10px;background:#fff;font-size:12.5px;display:flex;justify-content:space-between}.bx .c{color:var(--muted)}
+.bar{margin:10px 6px 0;background:linear-gradient(90deg,var(--accent-soft),#DCE3FF);border-radius:4px;min-height:6px}
+.thread{position:absolute;left:0;right:0;top:66px;height:0;border-top:2px solid var(--line-2)}
+.stuck{display:flex;flex-direction:column;gap:6px}.sk{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-s);font-size:12.5px;background:#fff}.sk.sel{border-color:var(--accent);background:var(--accent-soft)}
+.sel-thread{position:absolute;top:50px;left:28.6%;width:13%;height:4px;background:var(--accent);border-radius:2px}
+</style>
+<nav class="top"><span class="brand">Odin</span><a class="on">Flow</a><a>My work</a><a>Rollouts</a><a>Cycle time</a><a>Alerts <span class="tag bad" style="margin-left:4px">7</span></a><span class="sp"></span><span class="search">Search rollouts…</span><button class="btn pri">New rollout</button><span class="me">AJ</span></nav><main>
+<section><div class="row" style="justify-content:space-between;margin-bottom:12px"><div><h1>All rollouts</h1><div class="sub">32 active flowing through 7 stages · one thread highlighted</div></div><div class="chips"><span class="chip on">Volume</span><span class="chip">Time in stage</span></div></div>
+<div class="split"><div class="bands"><div class="bn" style="left:0.0%"><div class="bx"><div class="n">PO Received</div><div class="c">30</div></div><div class="bar" style="height:66.0px"></div></div><div class="bn" style="left:14.3%"><div class="bx"><div class="n">Scoping</div><div class="c">1</div></div><div class="bar" style="height:6px"></div></div><div class="bn" style="left:28.6%"><div class="bx"><div class="n">Kickoff</div><div class="c">1</div></div><div class="bar" style="height:6px"></div></div><div class="bn" style="left:42.900000000000006%"><div class="bx"><div class="n">Deployment</div><div class="c">1</div></div><div class="bar" style="height:6px"></div></div><div class="bn" style="left:57.2%"><div class="bx"><div class="n">Tuning / UAT</div><div class="c">0</div></div><div class="bar" style="height:6px"></div></div><div class="bn" style="left:71.5%"><div class="bx"><div class="n">Hypercare</div><div class="c">0</div></div><div class="bar" style="height:6px"></div></div><div class="bn" style="left:85.80000000000001%"><div class="bx"><div class="n">Closed</div><div class="c">0</div></div><div class="bar" style="height:6px"></div></div><div class="sel-thread"></div></div>
+<div><h2 style="margin-bottom:8px">Needs attention <span class="sub">8</span></h2><div class="stuck"><div class="sk sel"><span><span class="dot warn"></span> EDR Rollout — Globex</span><span class="tag warn">4 d over SLA</span></div><div class="sk"><span><span class="dot bad"></span> Bulk 27</span><span class="tag bad">overdue</span></div><div class="sk"><span><span class="dot bad"></span> Bulk 23</span><span class="tag bad">overdue</span></div><div class="sk"><span><span class="dot bad"></span> Bulk 19</span><span class="tag bad">overdue</span></div><div class="sk"><span><span class="dot bad"></span> Bulk 15</span><span class="tag bad">overdue</span></div><div class="sk"><span><span class="dot bad"></span> Bulk 11</span><span class="tag bad">overdue</span></div><div class="sub" style="padding:4px 10px">+2 more overdue</div></div></div></div></section>
+<section class="card" style="padding:18px 16px 16px">
+<div class="row" style="justify-content:space-between;margin:0 10px 14px"><div><h1>EDR Rollout — Globex</h1><div class="sub">CrowdStrike · Falcon Complete · owner PM1 · target 30 Nov 2026</div></div><div class="row"><span class="tag warn">Kickoff 9 days · 4 over SLA</span><button class="btn">Customer link</button><button class="btn">Vendor link</button><button class="btn pri">Advance to Deployment</button></div></div>
+<div class="flow">
+ <div class="node done"><div class="box"><div class="n">PO Received</div><div class="d">3 days</div></div></div>
+ <div class="node done"><div class="box"><div class="n">Scoping</div><div class="d">4 days</div></div></div>
+ <div class="node cur late"><span class="gate open">✓</span><div class="box"><div class="n">Kickoff</div><div class="d">9 days · SLA 5</div></div>
+   <div class="under"><div class="t done">Collect asset inventory</div><div class="t">Deploy sensors to pilot group <span class="tag mut">due 25 Sep</span></div><div class="g">Gate: signed scope document missing</div></div></div>
+ <div class="node next"><span class="gate shut">✕</span><div class="box"><div class="n">Deployment</div><div class="d">SLA 30 days</div></div></div>
+ <div class="node next"><div class="box"><div class="n">Tuning / UAT</div><div class="d">—</div></div></div>
+ <div class="node next"><div class="box"><div class="n">Hypercare</div><div class="d">—</div></div></div>
+ <div class="node next"><div class="box"><div class="n">Closed</div><div class="d">—</div></div></div>
+</div>
+<div class="time">
+ <span class="tk" style="left:0%">Aug 22</span><span class="tk" style="left:25%">Sep 8</span><span class="tk" style="left:50%">Oct</span><span class="tk" style="left:75%">Nov</span><span class="tk" style="left:100%">Nov 30</span>
+ <span class="plan" style="left:0;width:100%"></span><span class="act" style="left:0;width:9%"></span><span class="act" style="left:9%;width:8%"></span><span class="act late" style="left:17%;width:12%"></span>
+ <span class="today" style="left:29%"><span>today</span></span>
+</div>
+</section></main>

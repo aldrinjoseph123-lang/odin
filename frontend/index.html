@@ -6,7 +6,22 @@
     <title>Odin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!--
+      DIRECTION CONTRACT — Flow (first screen)
+      THESIS: Where every rollout is and what is stuck, read as a flow, not a table;
+        refuses the SaaS kanban dashboard and the number-dense grid.
+      OWN-WORLD: white ground, ink text, one accent (#3D5AFE) for selection and the
+        primary action; green/amber/red only as state; Inter; 8px corners; hairline
+        borders; arrows drawn between stage nodes.
+      STORY: the lead sees stuck rollouts on top, clicks one, sees its stages as a
+        flowchart with the next task, owner and ETA, and acts (advance, open).
+      FIRST VIEWPORT: a resizable vertical split — top pane: rows of rollouts each
+        with a 7-dot stepper, stuck first; bottom pane: the selected rollout's stage
+        flow, tasks under the current node, next-up + ETA at right, time strip below.
+      FORM: canon (convention played straight) — grounded list retired by the user's
+        choice; staging = master-detail split; seed keys 8533f9f4 / f1e2be4e.
+    -->
   </head>
   <body>
     <div id="root"></div>

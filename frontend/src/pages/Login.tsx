@@ -38,7 +38,7 @@ export default function Login() {
     <main className="flex min-h-svh items-center justify-center p-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="font-heading text-2xl font-bold tracking-tight">Odin</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-tight">Odin</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="grid gap-4" noValidate>

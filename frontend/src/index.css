@@ -5,17 +5,19 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --color-danger: var(--danger);
-    --color-danger-bg: var(--danger-bg);
-    --color-danger-border: var(--danger-border);
+    --color-ok: var(--ok);
+    --color-ok-soft: var(--ok-soft);
+    --color-ok-line: var(--ok-line);
     --color-warn: var(--warn);
-    --color-warn-bg: var(--warn-bg);
-    --color-warn-border: var(--warn-border);
-    --color-success: var(--success);
+    --color-warn-soft: var(--warn-soft);
+    --color-warn-line: var(--warn-line);
+    --color-bad: var(--bad);
+    --color-bad-soft: var(--bad-soft);
+    --color-bad-line: var(--bad-line);
     --color-primary-text: var(--primary-text);
     --color-nav-fg: var(--nav-fg);
     --font-heading: var(--font-sans);
-    --font-sans: 'Chakra Petch', system-ui, -apple-system, sans-serif;
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -57,50 +59,52 @@
 }
 
 :root {
-    /* Odin skin on shadcn's variable contract. Values are the brand hexes from
-       CLAUDE.md — kept exact. --primary is the brand red for fills; red as
-       text on the light ground measures 4.39:1, so text uses --primary-text. */
-    --background: #F6F6F4;
-    --foreground: #0A0A0A;
+    /* Odin — light, direct flowchart world (convention played straight; bar:
+       Linear, FigJam). One accent for selection and the primary action; every
+       other colour is a state and nothing else. */
+    --background: #FFFFFF;
+    --foreground: #101114;
     --card: #FFFFFF;
-    --card-foreground: #0A0A0A;
+    --card-foreground: #101114;
     --popover: #FFFFFF;
-    --popover-foreground: #0A0A0A;
-    --primary: #E11D2E;
+    --popover-foreground: #101114;
+    --primary: #3D5AFE;
     --primary-foreground: #FFFFFF;
-    --primary-text: #BE1827;
-    --secondary: #0A0A0A;
-    --secondary-foreground: #FFFFFF;
-    --muted: #ECECE9;
-    --muted-foreground: #6B6B6B;
-    --accent: #ECECE9;
-    --accent-foreground: #0A0A0A;
-    --destructive: #E11D2E;
-    --border: #D8D8D5;
-    --input: #D8D8D5;
-    --ring: #E11D2E;
-    --chart-1: #2A5FA8;
-    --chart-2: #E11D2E;
-    --chart-3: #0A0A0A;
-    --chart-4: #6B6B6B;
-    --chart-5: #D8D8D5;
-    --radius: 2px;   /* sharp corners everywhere — never rounded */
-    --danger: #6E1A22;
-    --danger-bg: #FBE9EB;
-    --danger-border: #F2B6BC;
-    --warn: #5C3A0B;
-    --warn-bg: #FBF3E5;
-    --warn-border: #E7CFA2;
-    --success: #0B6B33;
-    --nav-fg: #999999;
-    --sidebar: #0A0A0A;
-    --sidebar-foreground: #999999;
-    --sidebar-primary: #E11D2E;
+    --primary-text: #2F47D6;        /* accent as text: 6.1:1 on white */
+    --secondary: #F7F7F8;
+    --secondary-foreground: #101114;
+    --muted: #F3F4F6;
+    --muted-foreground: #6B7280;    /* 4.8:1 on white */
+    --accent: #EEF1FF;
+    --accent-foreground: #2F47D6;
+    --destructive: #D6372F;
+    --border: #E4E6EB;
+    --input: #D0D3DA;
+    --ring: #3D5AFE;
+    --chart-1: #3D5AFE;
+    --chart-2: #101114;
+    --chart-3: #6B7280;
+    --chart-4: #D0D3DA;
+    --chart-5: #E4E6EB;
+    --radius: 0.5rem;
+    --ok: #177A42;
+    --ok-soft: #E6F6EC;
+    --ok-line: #1F9D55;
+    --warn: #8A5300;
+    --warn-soft: #FFF4E0;
+    --warn-line: #E39B1D;
+    --bad: #B4231C;
+    --bad-soft: #FDECEB;
+    --bad-line: #E0463D;
+    --nav-fg: #4B4F58;
+    --sidebar: #F7F7F8;
+    --sidebar-foreground: #101114;
+    --sidebar-primary: #3D5AFE;
     --sidebar-primary-foreground: #FFFFFF;
-    --sidebar-accent: #1C1C1C;
-    --sidebar-accent-foreground: #FFFFFF;
-    --sidebar-border: #4A4A4A;
-    --sidebar-ring: #E11D2E;
+    --sidebar-accent: #EEF1FF;
+    --sidebar-accent-foreground: #2F47D6;
+    --sidebar-border: #E4E6EB;
+    --sidebar-ring: #3D5AFE;
 }
 
 
@@ -113,9 +117,6 @@
     }
   html {
     @apply font-sans antialiased;
-    }
-  /* Uppercase tracked labels are the Odin voice for UI chrome — never for user data. */
-  .label-caps {
-    @apply text-xs font-semibold uppercase tracking-[0.06em];
+    font-feature-settings: "cv11", "ss01";
     }
 }

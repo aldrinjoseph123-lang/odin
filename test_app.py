@@ -1166,6 +1166,43 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(data["real_alerts"]["project_overdue"], 1)   # the truth is untouched
         self.assertEqual(c.post("/api/alerts/1/dismiss/bogus", headers={"X-CSRF-Token": csrf}).status_code, 404)
 
+    def test_api_flow_lists_active_rollouts_stuck_first_with_next_task(self):
+        self.new_project(name="Fine", client="C", target_end_date="2099-01-01")
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        self.new_project(name="Stuck", client="C", target_end_date="2099-01-01")
+        with self.raw_db() as db:
+            db.execute("UPDATE stages SET sla_days = 2 WHERE position = 0")
+            db.execute("UPDATE projects SET stage_entered_at = datetime('now','-5 days') WHERE name='Stuck'")
+            uid = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()["id"]
+            db.commit()
+        self.client.post("/projects/3/tasks", data={"title": "Call vendor", "assignee_id": uid, "due_date": "2026-10-01"})
+        c, _ = self._api_client()
+        data = c.get("/api/flow").get_json()
+        self.assertEqual([r["name"] for r in data["rows"]], ["Late", "Stuck", "Fine"])
+        self.assertEqual([r["state"] for r in data["rows"]], ["overdue", "over_sla", "on_track"])
+        stuck = data["rows"][1]
+        self.assertEqual(stuck["sla_days"], 2); self.assertGreater(stuck["over_by"], 2.5)
+        self.assertEqual(stuck["next_task"]["title"], "Call vendor"); self.assertEqual(stuck["next_task"]["assignee"], "Admin")
+        self.assertEqual(data["counts"]["overdue"], 1)
+        self.assertEqual(app_module.app.test_client().get("/api/flow").status_code, 302)
+
+    def test_api_project_flow_gives_stage_timeline_tasks_and_eta(self):
+        self.new_project(name="F", client="C", target_end_date="2099-01-01")
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM stages ORDER BY position")]
+        self.client.post("/projects/1/stage", data={"stage": stages[1], "note": "scoped"})
+        self.client.post("/projects/1/tasks", data={"title": "Open one"})
+        self.client.post("/projects/1/tasks", data={"title": "Done one"})
+        self.client.post("/projects/1/tasks/2/toggle")
+        c, _ = self._api_client()
+        d = c.get("/api/projects/1/flow").get_json()
+        self.assertEqual(d["stage"], stages[1]); self.assertEqual(d["next_stage"], stages[2])
+        self.assertEqual([s["status"] for s in d["stages"]][:3], ["done", "current", "next"])
+        self.assertIsNotNone(d["stages"][0]["days"]); self.assertIsNotNone(d["stages"][1]["entered_at"])
+        self.assertEqual([t["done"] for t in d["tasks"]], [False, True])
+        self.assertGreater(d["days_left"], 20000)
+        self.assertEqual(c.get("/api/projects/999/flow").status_code, 404)
+
     # ---- audit fixes: roles, sessions, evidence, operations ----------------
 
     def _make_user(self, username, role, password=STRONG_PASSWORD):
