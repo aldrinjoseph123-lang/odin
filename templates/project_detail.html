@@ -48,11 +48,60 @@
   {% endif %}
 </p>
 {% endif %}
+{% set stage_names = stages | map(attribute='name') | list %}
+{% set current_index = stage_names.index(project.stage) if project.stage in stage_names else -1 %}
 <div class="stage-bar">
-  {% for stage in STAGES %}
-  <span class="stage-step {{ 'done' if STAGES.index(stage) < STAGES.index(project.stage) else '' }} {{ 'current' if stage == project.stage else '' }}">{{ stage }}</span>
+  {% for stage in stage_names %}
+  <span class="stage-step {{ 'done' if loop.index0 < current_index else '' }} {{ 'current' if stage == project.stage else '' }}">{{ stage }}</span>
   {% endfor %}
 </div>
+
+{% if not is_viewer %}
+<details class="panel" id="stages" style="margin-bottom:1.5rem;">
+  <summary style="cursor:pointer;"><h2 style="display:inline;">This project's stages</h2> <span class="muted" style="font-size:var(--text-xs);">— add, rename, reorder, delete, SLAs. Only this project changes.</span></summary>
+  {% for s in stages %}
+  <div class="stage-row">
+    <form method="post" action="{{ url_for('project_stage_move', project_id=project.id, stage_id=s.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="direction" value="up">
+      <button type="submit" class="icon-btn" {{ 'disabled' if loop.first }} aria-label="Move {{ s.name }} up">&uarr;</button>
+    </form>
+    <form method="post" action="{{ url_for('project_stage_move', project_id=project.id, stage_id=s.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="direction" value="down">
+      <button type="submit" class="icon-btn" {{ 'disabled' if loop.last }} aria-label="Move {{ s.name }} down">&darr;</button>
+    </form>
+    <form method="post" action="{{ url_for('project_stage_rename', project_id=project.id, stage_id=s.id) }}" class="name" style="display:flex; gap:0.4rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="text" name="name" value="{{ s.name }}" aria-label="Rename stage {{ s.name }}" style="flex:1;">
+      <button type="submit" class="icon-btn">Rename</button>
+    </form>
+    <form method="post" action="{{ url_for('project_stage_delete', project_id=project.id, stage_id=s.id) }}" onsubmit="return confirm('Delete stage {{ s.name }} from this project?')">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="icon-btn" style="color:var(--accent);" {{ 'disabled' if s.name == project.stage }}>Delete</button>
+    </form>
+  </div>
+  {% endfor %}
+  <form method="post" action="{{ url_for('project_stage_add', project_id=project.id) }}" class="inline-form" style="margin-top:var(--space-2);">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="text" name="name" placeholder="New stage name" required aria-label="New stage name">
+    <button type="submit">Add Stage</button>
+  </form>
+  <form method="post" action="{{ url_for('project_stage_sla', project_id=project.id) }}" style="margin-top:var(--space-3);">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <table>
+      <thead><tr><th>Stage</th><th>SLA (days)</th></tr></thead>
+      <tbody>
+        {% for s in stages %}
+        <tr><td><span class="stage-badge">{{ s.name }}</span></td>
+          <td><input type="number" min="1" name="sla::{{ s.id }}" aria-label="SLA days for {{ s.name }}" value="{{ s.sla_days or '' }}" placeholder="—" style="width:7rem;"></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button type="submit">Save SLAs</button>
+  </form>
+</details>
+{% endif %}
 
 <div class="grid-2">
   <div class="panel">
@@ -86,7 +135,7 @@
     <form method="post" action="{{ url_for('project_stage', project_id=project.id) }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <select name="stage" aria-label="Move project to stage">
-        {% for stage in STAGES %}
+        {% for stage in stage_names %}
         <option value="{{ stage }}" {{ 'selected' if stage == project.stage }}>{{ stage }}</option>
         {% endfor %}
       </select>

@@ -256,9 +256,9 @@ class PMSTestCase(unittest.TestCase):
 
         db = sqlite3.connect(db_module.DB_PATH)
         db.row_factory = sqlite3.Row
-        row = db.execute("SELECT id FROM stages WHERE name = 'PO Received'").fetchone()
+        row = db.execute("SELECT id FROM project_stages WHERE project_id = 1 AND name = 'PO Received'").fetchone()
         db.close()
-        self.client.post(f"/settings/stages/{row['id']}/rename", data={"name": "PO In Hand"})
+        self.client.post(f"/projects/1/stages/{row['id']}/rename", data={"name": "PO In Hand"})
 
         resp = self.client.get("/projects/1")
         self.assertIn(b"PO In Hand", resp.data)
@@ -271,13 +271,13 @@ class PMSTestCase(unittest.TestCase):
         )
         db = sqlite3.connect(db_module.DB_PATH)
         db.row_factory = sqlite3.Row
-        row = db.execute("SELECT id FROM stages WHERE name = 'PO Received'").fetchone()
+        row = db.execute("SELECT id FROM project_stages WHERE project_id = 1 AND name = 'PO Received'").fetchone()
         db.close()
-        self.client.post(f"/settings/stages/{row['id']}/delete")
+        self.client.post(f"/projects/1/stages/{row['id']}/delete")
 
         db = sqlite3.connect(db_module.DB_PATH)
         db.row_factory = sqlite3.Row
-        still_there = db.execute("SELECT 1 FROM stages WHERE name = 'PO Received'").fetchone()
+        still_there = db.execute("SELECT 1 FROM project_stages WHERE project_id = 1 AND name = 'PO Received'").fetchone()
         db.close()
         self.assertIsNotNone(still_there)
 
@@ -695,7 +695,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_overdue_filter_excludes_terminal_stage(self):
         self.new_project(name="ClosedLate", client="C", target_end_date="2020-01-01")
         with self.raw_db() as db:
-            terminal = db.execute("SELECT name FROM stages ORDER BY position DESC LIMIT 1").fetchone()["name"]
+            terminal = db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position DESC LIMIT 1").fetchone()["name"]
             db.execute("UPDATE projects SET stage=? WHERE id=1", (terminal,))
             db.commit()
         self.assertNotIn(b"ClosedLate", self.client.get("/projects?view=overdue").data)
@@ -1067,6 +1067,116 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- Phase 1: every project owns its stage list ------------------------
+
+    def test_new_project_copies_the_chosen_template_and_owns_the_copy(self):
+        self.client.post("/settings/templates/add", data={"name": "EDR rollout"})
+        with self.raw_db() as db:
+            edr = db.execute("SELECT id FROM stage_templates WHERE name='EDR rollout'").fetchone()["id"]
+            sid = db.execute("SELECT id FROM stage_template_stages WHERE template_id=? AND name='Kickoff'", (edr,)).fetchone()["id"]
+        self.client.post(f"/settings/templates/{edr}/stages/{sid}/rename", data={"name": "Sensor pilot"})
+        self.new_project(name="A", client="C", stage_template_id=edr)
+        self.new_project(name="B", client="C")                       # default: first template (Generic)
+        with self.raw_db() as db:
+            a = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+            b = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=2 ORDER BY position")]
+            self.assertEqual(db.execute("SELECT stage_template_id FROM projects WHERE id=1").fetchone()[0], edr)
+        self.assertIn("Sensor pilot", a); self.assertNotIn("Sensor pilot", b); self.assertEqual(a[0], b[0])
+        # editing the template afterwards never touches the project's copy
+        self.client.post(f"/settings/templates/{edr}/stages/add", data={"name": "Tuning window"})
+        with self.raw_db() as db:
+            a_after = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        self.assertEqual(a, a_after)
+
+    def test_closed_is_per_project(self):
+        """Two projects, two lists, two different terminal stages. Closing one
+        by its own last stage hides it; the other, whose list is longer, stays
+        open even though its stage has the same name."""
+        self.new_project(name="Short", client="C")
+        self.new_project(name="Long", client="C")
+        with self.raw_db() as db:
+            last = db.execute("SELECT id, name FROM project_stages WHERE project_id=2 ORDER BY position DESC LIMIT 1").fetchone()
+        self.client.post("/projects/2/stages/add", data={"name": "Post-mortem"})   # before Closed
+        with self.raw_db() as db:
+            pm = db.execute("SELECT id FROM project_stages WHERE project_id=2 AND name='Post-mortem'").fetchone()["id"]
+        self.client.post(f"/projects/2/stages/{pm}/move", data={"direction": "down"})   # now Post-mortem is last
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT name FROM project_stages WHERE project_id=2 ORDER BY position DESC LIMIT 1").fetchone()[0], "Post-mortem")
+        self.client.post("/projects/1/stage", data={"stage": last["name"]})
+        self.client.post("/projects/2/stage", data={"stage": last["name"]})
+        listing = self.client.get("/projects").data
+        self.assertNotIn(b"Short", listing)   # Closed is Short's last stage
+        self.assertIn(b"Long", listing)       # Closed is not Long's last stage any more
+        flow = self._api_client()[0].get("/api/flow").get_json()
+        self.assertEqual([r["name"] for r in flow["rows"]], ["Long"])
+        self.assertEqual(flow["rows"][0]["stages"][-1], "Post-mortem")
+
+    def test_project_stage_edits_are_scoped_guarded_and_audited(self):
+        self.new_project(name="P", client="C")
+        self.new_project(name="Q", client="C")
+        with self.raw_db() as db:
+            first = db.execute("SELECT id, name FROM project_stages WHERE project_id=1 ORDER BY position LIMIT 1").fetchone()
+        self.client.post("/projects/1/note", data={"note": "before rename"})
+        self.client.post(f"/projects/1/stages/{first['id']}/rename", data={"name": "Order received"})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=1").fetchone()[0], "Order received")
+            self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=2").fetchone()[0], first["name"])   # untouched
+            self.assertEqual(db.execute("SELECT stage FROM status_notes WHERE project_id=1 ORDER BY id DESC LIMIT 1").fetchone()[0], "Order received")
+        # cannot delete the stage the project is in
+        resp = self.client.post(f"/projects/1/stages/{first['id']}/delete", follow_redirects=True)
+        self.assertIn(b"the project is in it", resp.data)
+        # a stage cannot be moved through the other project's route
+        self.assertEqual(self.client.post(f"/projects/2/stages/{first['id']}/rename", data={"name": "x"}, follow_redirects=True).status_code, 200)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT name FROM project_stages WHERE id=?", (first["id"],)).fetchone()[0], "Order received")
+            actions = {r[0] for r in db.execute("SELECT action FROM audit_logs")}
+        self.assertIn("rename_project_stage", actions)
+        # viewers cannot touch stages
+        self.client.post("/users", data={"username": "v", "name": "V", "password": STRONG_PASSWORD, "role": "Viewer"})
+        v = app_module.app.test_client(); v.post("/login", data={"username": "v", "password": STRONG_PASSWORD})
+        self.assertEqual(v.post("/projects/1/stages/add", data={"name": "nope"}).status_code, 403)
+
+    def test_migration_turns_the_global_list_into_a_template_and_project_copies(self):
+        """An install from before Phase 1 has a global `stages` table and no
+        project lists. Boot must give every project its copy and keep its
+        current stage even if that name is not in the template."""
+        self.new_project(name="Old", client="C")
+        with self.raw_db() as db:
+            db.execute("DELETE FROM project_stages"); db.execute("DELETE FROM stage_template_stages"); db.execute("DELETE FROM stage_templates")
+            db.execute("DELETE FROM stages")
+            for i, name in enumerate(["Intake", "Build", "Done"]):
+                db.execute("INSERT INTO stages (name, position, sla_days) VALUES (?, ?, ?)", (name, i, 7 if name == "Build" else None))
+            db.execute("UPDATE projects SET stage='Legacy step', stage_template_id=NULL WHERE id=1")
+            db.commit()
+        app_module.init_db()
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT name FROM stage_templates").fetchone()[0], "Generic")
+            tpl = [tuple(r) for r in db.execute("SELECT name, sla_days FROM stage_template_stages ORDER BY position")]
+            own = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        self.assertEqual(tpl, [("Intake", None), ("Build", 7), ("Done", None)])
+        self.assertEqual(own, ["Intake", "Build", "Legacy step", "Done"])   # kept, before the terminal stage
+
+    def test_analytics_is_per_template(self):
+        self.client.post("/settings/templates/add", data={"name": "SIEM"})
+        self.new_project(name="On generic", client="C")
+        self.new_project(name="On siem", client="C", stage_template_id=2)
+        page = self.client.get("/analytics").data
+        self.assertIn(b"On generic", page) if b"Aging" in page else None
+        self.assertIn(b"per template", page); self.assertIn(b"Generic", page); self.assertIn(b"SIEM", page)
+        siem = self.client.get("/analytics?template=2").data
+        self.assertNotIn(b"On generic", siem)
+
+    def test_template_delete_leaves_projects_intact(self):
+        self.client.post("/settings/templates/add", data={"name": "Temp"})
+        self.new_project(name="Kept", client="C", stage_template_id=2)
+        self.client.post("/settings/templates/2/delete")
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT id FROM stage_templates WHERE id=2").fetchone())
+            self.assertGreater(db.execute("SELECT COUNT(*) FROM project_stages WHERE project_id=1").fetchone()[0], 3)
+            self.assertIsNone(db.execute("SELECT stage_template_id FROM projects WHERE id=1").fetchone()[0])
+        self.assertEqual(self.client.get("/projects/1").status_code, 200)
+        self.assertIn(b"Cannot delete the last template", self.client.post("/settings/templates/1/delete", follow_redirects=True).data)
+
     # ---- JSON API + SPA serving (strangler migration to React) ------------
 
     def test_api_session_anonymous_gives_csrf_and_no_user(self):
@@ -1126,7 +1236,6 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
         c, _ = self._api_client()
         data = c.get("/api/board").get_json()
-        self.assertEqual(data["stages"][-1], data["terminal"])
         self.assertEqual([card["name"] for card in data["columns"][data["stages"][0]]], ["Late"])
         self.assertEqual(data["alerts"]["project_overdue"][0]["name"], "Late")
         self.assertEqual(data["real_alerts"]["project_overdue"], 1)
@@ -1140,7 +1249,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="P", client="C")
         c, csrf = self._api_client()
         with self.raw_db() as db:
-            stages = [r[0] for r in db.execute("SELECT name FROM stages ORDER BY position")]
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         bad = c.post("/api/projects/1/stage", json={"stage": "Nope"}, headers={"X-CSRF-Token": csrf})
         self.assertEqual(bad.status_code, 400); self.assertEqual(bad.get_json()["error"], "Invalid stage")
         ok = c.post("/api/projects/1/stage", json={"stage": stages[1], "note": "via api"}, headers={"X-CSRF-Token": csrf})
@@ -1171,7 +1280,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
         self.new_project(name="Stuck", client="C", target_end_date="2099-01-01")
         with self.raw_db() as db:
-            db.execute("UPDATE stages SET sla_days = 2 WHERE position = 0")
+            db.execute("UPDATE project_stages SET sla_days = 2 WHERE project_id = 3 AND position = 0")
             db.execute("UPDATE projects SET stage_entered_at = datetime('now','-5 days') WHERE name='Stuck'")
             uid = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()["id"]
             db.commit()
@@ -1189,7 +1298,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_api_project_flow_gives_stage_timeline_tasks_and_eta(self):
         self.new_project(name="F", client="C", target_end_date="2099-01-01")
         with self.raw_db() as db:
-            stages = [r[0] for r in db.execute("SELECT name FROM stages ORDER BY position")]
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         self.client.post("/projects/1/stage", data={"stage": stages[1], "note": "scoped"})
         self.client.post("/projects/1/tasks", data={"title": "Open one"})
         self.client.post("/projects/1/tasks", data={"title": "Done one"})
@@ -1216,7 +1325,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 x"), "po.pdf"), "name": "S", "client": "C"})
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0], 1)
-            stages = [r[0] for r in db.execute("SELECT name FROM stages ORDER BY position")]
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         self.assertEqual(c.post("/projects/1/note", data={"note": "hi"}).status_code, 302)
         self.assertEqual(c.post("/projects/1/stage", data={"stage": stages[-1]}).status_code, 403)
         self.assertEqual(c.post("/projects/1/delete").status_code, 403)
@@ -1285,7 +1394,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_fresh_install_stages_are_a_delivery_lifecycle(self):
         with self.raw_db() as db:
-            names = [r[0] for r in db.execute("SELECT name FROM stages ORDER BY position")]
+            names = [r[0] for r in db.execute("SELECT name FROM stage_template_stages ORDER BY position")]
         for commercial in ("Invoiced", "Payment Pending"):
             self.assertNotIn(commercial, names)
         self.assertEqual(names[-1], "Closed")
@@ -1345,7 +1454,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="V", client="C", delivery_mode="Outsourced", outsourcer_name="VendorCo")
         with self.raw_db() as db:
             tok = db.execute("SELECT access_token FROM projects WHERE id=1").fetchone()[0]
-            stages = [r[0] for r in db.execute("SELECT name FROM stages ORDER BY position")]
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         g = app_module.app.test_client()
         page = g.get(f"/guest/{tok}").data.decode()
         self.assertIn(f"Advance to {stages[1]}", page)
@@ -1454,7 +1563,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
             # attempt_login audits every outcome itself; both login doors use it.
-            if "audit_log(" not in src and "attempt_login(" not in src and "change_stage(" not in src:
+            if not any(marker in src for marker in ("audit_log(", "attempt_login(", "change_stage(", "_stage_change(", "_template_change(")):
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"POST routes without an audit entry: {missing}")
 
@@ -1548,15 +1657,15 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_adding_a_stage_does_not_reopen_closed_projects(self):
         """The last stage is terminal everywhere. Appending a new stage would
         hand that role over and put every closed project back on the board."""
-        with self.raw_db() as db:
-            terminal_before = db.execute("SELECT name FROM stages ORDER BY position DESC LIMIT 1").fetchone()["name"]
         self.new_project(name="Finished", client="C")
+        with self.raw_db() as db:
+            terminal_before = db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position DESC LIMIT 1").fetchone()["name"]
         self.client.post("/projects/1/stage", data={"stage": terminal_before, "note": "done"})
         self.assertNotIn(b"Finished", self.client.get("/projects").data)   # closed = hidden
 
-        self.client.post("/settings/stages/add", data={"name": "Post-Mortem"})
+        self.client.post("/projects/1/stages/add", data={"name": "Post-Mortem"})
         with self.raw_db() as db:
-            terminal_after = db.execute("SELECT name FROM stages ORDER BY position DESC LIMIT 1").fetchone()["name"]
+            terminal_after = db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position DESC LIMIT 1").fetchone()["name"]
         self.assertEqual(terminal_after, terminal_before)                  # still the closed stage
         self.assertNotIn(b"Finished", self.client.get("/projects").data)   # still closed
 
@@ -1680,9 +1789,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="Measured", client="C")
         # give PO Received a real completed visit by moving the project on
         self.client.post("/projects/1/stage", data={"stage": "Kickoff", "note": "moved"})
-        self.client.post("/settings/stages/sla/from-measured")
+        self.client.post("/settings/templates/1/sla/from-measured")
         with self.raw_db() as db:
-            rows = {r["name"]: r["sla_days"] for r in db.execute("SELECT name, sla_days FROM stages")}
+            rows = {r["name"]: r["sla_days"] for r in db.execute("SELECT name, sla_days FROM stage_template_stages WHERE template_id=1")}
         self.assertIsNotNone(rows["PO Received"])     # has a completed visit
         self.assertGreaterEqual(rows["PO Received"], 1)   # never rounds down to zero
         self.assertIsNone(rows["Kickoff"])           # nothing has left Kickoff yet
@@ -1743,7 +1852,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         that project never left its first stage, so entry is its creation."""
         self.new_project(name="Backfilled", client="C")
         with self.raw_db() as db:
-            first_stage = db.execute("SELECT name FROM stages ORDER BY position LIMIT 1").fetchone()["name"]
+            first_stage = db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position LIMIT 1").fetchone()["name"]
             db.execute("UPDATE projects SET created_at='2026-01-01T00:00:00', stage_entered_at=NULL WHERE id=1")
             db.execute(
                 "INSERT INTO status_notes (project_id,author,note,stage,created_at) VALUES (1,'x','n',?,?)",
@@ -1759,7 +1868,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_sla_breach_raises_an_alert_and_clears_when_stage_moves(self):
         self.new_project(name="Stuck", client="C")
         with self.raw_db() as db:
-            db.execute("UPDATE stages SET sla_days=1 WHERE name='Kickoff'")
+            db.execute("UPDATE project_stages SET sla_days=1 WHERE project_id=1 AND name='Kickoff'")
             db.execute("UPDATE projects SET stage='Kickoff', stage_entered_at='2026-01-01T00:00:00' WHERE id=1")
             db.commit()
         board = self.client.get("/board").data
@@ -1774,22 +1883,22 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_settings_sla_saves_and_blank_clears(self):
         with self.raw_db() as db:
-            sid = db.execute("SELECT id FROM stages WHERE name='Kickoff'").fetchone()["id"]
-        self.client.post("/settings/stages/sla", data={f"sla::{sid}": "5"})
+            sid = db.execute("SELECT id FROM stage_template_stages WHERE template_id=1 AND name='Kickoff'").fetchone()["id"]
+        self.client.post("/settings/templates/1/sla", data={f"sla::{sid}": "5"})
         with self.raw_db() as db:
-            self.assertEqual(db.execute("SELECT sla_days FROM stages WHERE id=?", (sid,)).fetchone()[0], 5)
-        self.client.post("/settings/stages/sla", data={f"sla::{sid}": ""})
+            self.assertEqual(db.execute("SELECT sla_days FROM stage_template_stages WHERE id=?", (sid,)).fetchone()[0], 5)
+        self.client.post("/settings/templates/1/sla", data={f"sla::{sid}": ""})
         with self.raw_db() as db:
-            self.assertIsNone(db.execute("SELECT sla_days FROM stages WHERE id=?", (sid,)).fetchone()[0])
+            self.assertIsNone(db.execute("SELECT sla_days FROM stage_template_stages WHERE id=?", (sid,)).fetchone()[0])
 
     def test_settings_sla_rejects_junk_and_zero(self):
         with self.raw_db() as db:
-            sid = db.execute("SELECT id FROM stages WHERE name='Kickoff'").fetchone()["id"]
-            db.execute("UPDATE stages SET sla_days=9 WHERE id=?", (sid,)); db.commit()
+            sid = db.execute("SELECT id FROM stage_template_stages WHERE template_id=1 AND name='Kickoff'").fetchone()["id"]
+            db.execute("UPDATE stage_template_stages SET sla_days=9 WHERE id=?", (sid,)); db.commit()
         for bad in ["abc", "0", "-3"]:
-            self.client.post("/settings/stages/sla", data={f"sla::{sid}": bad})
+            self.client.post("/settings/templates/1/sla", data={f"sla::{sid}": bad})
             with self.raw_db() as db:
-                self.assertEqual(db.execute("SELECT sla_days FROM stages WHERE id=?", (sid,)).fetchone()[0], 9,
+                self.assertEqual(db.execute("SELECT sla_days FROM stage_template_stages WHERE id=?", (sid,)).fetchone()[0], 9,
                                  f"{bad!r} should have been rejected")
 
     # ---- cycle-time analytics -------------------------------------------

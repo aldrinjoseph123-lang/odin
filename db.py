@@ -113,7 +113,7 @@ def cleanup_soft_deletes(db=None):
         _remove_upload(project_id, stored_name)
 
     if doomed:
-        for table in ("status_notes", "tasks", "alerts", "documents"):
+        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
@@ -138,7 +138,7 @@ def _purge_orphans(db):
     their children. Everything removed here is unreachable by definition: no
     project row means no page can ever display it.
     """
-    for table in ("status_notes", "tasks", "alerts"):
+    for table in ("status_notes", "tasks", "alerts", "project_stages"):
         column = "project_id"
         db.execute(
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
@@ -167,12 +167,18 @@ def _backfill_stage_entered_at(db):
     ).fetchall()
     if not rows:
         return
-    first_stage_row = db.execute("SELECT name FROM stages ORDER BY position LIMIT 1").fetchone()
-    if first_stage_row is None:
-        return
-    first_stage = first_stage_row[0]
 
     for project_id, stage, created_at in rows:
+        # Each project's own first stage; a project with no list yet falls
+        # back to the first template's opening stage.
+        first_stage_row = db.execute(
+            "SELECT name FROM project_stages WHERE project_id = ? ORDER BY position LIMIT 1", (project_id,)
+        ).fetchone() or db.execute(
+            "SELECT name FROM stage_template_stages ORDER BY template_id, position LIMIT 1"
+        ).fetchone()
+        if first_stage_row is None:
+            continue
+        first_stage = first_stage_row[0]
         notes = db.execute(
             "SELECT stage, created_at FROM status_notes WHERE project_id = ? ORDER BY created_at",
             (project_id,),
@@ -245,9 +251,7 @@ def migrate_db(db):
     if "guest_visible" not in note_columns:
         db.execute("ALTER TABLE status_notes ADD COLUMN guest_visible INTEGER NOT NULL DEFAULT 0")
 
-    if not db.execute("SELECT 1 FROM stages LIMIT 1").fetchone():
-        for position, name in enumerate(DEFAULT_STAGES):
-            db.execute("INSERT INTO stages (name, position) VALUES (?, ?)", (name, position))
+    _migrate_stage_lists(db)
 
     if not db.execute("SELECT 1 FROM doc_categories LIMIT 1").fetchone():
         for name in DEFAULT_DOC_CATEGORIES:
@@ -434,13 +438,144 @@ def init_db():
     db.close()
 
 
-def get_stage_names():
+# ---- stages: every project owns its own list ------------------------------
+#
+# projects.stage and status_notes.stage hold stage *names*. A project's list
+# lives in project_stages; templates in Settings are only where a new project
+# copies its list from. "Closed" is therefore per project: its stage equals the
+# last name in its own list. COALESCE keeps a project with no list yet (a row
+# inserted outside the app) counted as open rather than vanishing.
+PROJECT_CLOSED_SQL = (
+    "COALESCE(p.stage = (SELECT ps.name FROM project_stages ps WHERE ps.project_id = p.id "
+    "ORDER BY ps.position DESC LIMIT 1), 0)"
+)
+PROJECT_OPEN_SQL = f"({PROJECT_CLOSED_SQL} = 0)"
+
+
+def _migrate_stage_lists(db):
+    """Templates + per-project stage lists. The old global `stages` table
+    becomes the "Generic" template; every project without a list gets a copy."""
+    db.execute("""CREATE TABLE IF NOT EXISTS stage_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+    )""")
+    db.execute("""CREATE TABLE IF NOT EXISTS stage_template_stages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id INTEGER NOT NULL REFERENCES stage_templates(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        sla_days INTEGER,
+        UNIQUE (template_id, name)
+    )""")
+    db.execute("""CREATE TABLE IF NOT EXISTS project_stages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        sla_days INTEGER,
+        UNIQUE (project_id, name)
+    )""")
+    if not db.execute("SELECT 1 FROM stage_templates LIMIT 1").fetchone():
+        legacy = db.execute("SELECT name, sla_days FROM stages ORDER BY position").fetchall()
+        source = [(row[0], row[1]) for row in legacy] or [(name, None) for name in DEFAULT_STAGES]
+        db.execute("INSERT INTO stage_templates (name) VALUES ('Generic')")
+        template_id = db.execute("SELECT id FROM stage_templates WHERE name = 'Generic'").fetchone()[0]
+        for position, (name, sla) in enumerate(source):
+            db.execute(
+                "INSERT INTO stage_template_stages (template_id, name, position, sla_days) VALUES (?, ?, ?, ?)",
+                (template_id, name, position, sla),
+            )
+    template_id = db.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone()[0]
+    orphans = db.execute(
+        "SELECT id, stage FROM projects WHERE id NOT IN (SELECT DISTINCT project_id FROM project_stages)"
+    ).fetchall()
+    for project_id, current in orphans:
+        copy_template_stages(db, template_id, project_id)
+        # A project sitting in a stage its new list lacks keeps that stage,
+        # slotted before the terminal one, so nothing is silently re-staged.
+        if current and not db.execute(
+            "SELECT 1 FROM project_stages WHERE project_id = ? AND name = ?", (project_id, current)
+        ).fetchone():
+            last = db.execute(
+                "SELECT MAX(position) FROM project_stages WHERE project_id = ?", (project_id,)
+            ).fetchone()[0] or 0
+            db.execute("UPDATE project_stages SET position = position + 1 WHERE project_id = ? AND position = ?", (project_id, last))
+            db.execute("INSERT INTO project_stages (project_id, name, position) VALUES (?, ?, ?)", (project_id, current, last))
+
+
+def copy_template_stages(db, template_id, project_id):
+    """Give a project its own copy of a template's stages (names, order, SLAs)."""
+    for name, position, sla in db.execute(
+        "SELECT name, position, sla_days FROM stage_template_stages WHERE template_id = ? ORDER BY position",
+        (template_id,),
+    ).fetchall():
+        db.execute(
+            "INSERT OR IGNORE INTO project_stages (project_id, name, position, sla_days) VALUES (?, ?, ?, ?)",
+            (project_id, name, position, sla),
+        )
+    db.execute(
+        "UPDATE projects SET stage_template_id = ? WHERE id = ? AND stage_template_id IS NULL",
+        (template_id, project_id),
+    )
+
+
+def stage_rows(project_id):
+    """This project's stages, in order. A project with no list (inserted outside
+    the app, e.g. a bulk import) adopts the first template's on first read."""
     db = get_db()
-    return [row["name"] for row in db.execute("SELECT name FROM stages ORDER BY position")]
+    rows = db.execute(
+        "SELECT * FROM project_stages WHERE project_id = ? ORDER BY position", (project_id,)
+    ).fetchall()
+    if rows:
+        return rows
+    if not db.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone():
+        return []
+    template = db.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone()
+    if template is None:
+        return []
+    copy_template_stages(db, template["id"], project_id)
+    db.commit()
+    return db.execute(
+        "SELECT * FROM project_stages WHERE project_id = ? ORDER BY position", (project_id,)
+    ).fetchall()
 
 
-def get_terminal_stage():
-    return get_stage_names()[-1]
+def stages_for_projects(project_ids):
+    """{project_id: [stage rows]} in one query — for the board and alerts."""
+    ids = list(project_ids)
+    if not ids:
+        return {}
+    marks = ",".join("?" for _ in ids)
+    grouped = {}
+    for row in get_db().execute(
+        f"SELECT * FROM project_stages WHERE project_id IN ({marks}) ORDER BY project_id, position", ids
+    ):
+        grouped.setdefault(row["project_id"], []).append(row)
+    for project_id in ids:
+        if project_id not in grouped:
+            grouped[project_id] = stage_rows(project_id)
+    return grouped
+
+
+def get_stage_names(project_id=None):
+    """A project's stage names in order. Without a project: every name in use
+    across projects, ordered by where it typically sits — for the list filters
+    and the kanban columns, which span projects with different lists."""
+    if project_id is None:
+        return [row[0] for row in get_db().execute(
+            "SELECT name FROM project_stages GROUP BY name ORDER BY MIN(position), name"
+        )]
+    return [row["name"] for row in stage_rows(project_id)]
+
+
+def get_terminal_stage(project_id):
+    names = get_stage_names(project_id)
+    return names[-1] if names else None
+
+
+def sla_for_project(project_id):
+    """{stage name: sla_days} for this project's stages that have one."""
+    return {row["name"]: row["sla_days"] for row in stage_rows(project_id) if row["sla_days"]}
 
 
 def get_doc_category_names():

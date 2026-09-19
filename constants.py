@@ -107,6 +107,9 @@ NEW_PROJECT_COLUMNS = {
     # Second guest link. access_token is the vendor/outsourcer link (may
     # advance the stage); customer_token is view-and-comment only.
     "customer_token": "TEXT",
+    # Which template this project's own stage list was copied from. Analytics
+    # compares projects only within a template, since their stages match.
+    "stage_template_id": "INTEGER",
     "via": "TEXT",
     "account_manager_name": "TEXT",
     "account_manager_email": "TEXT",

@@ -90,12 +90,12 @@ export function dismissAlert(projectId: number, alertType: string) {
 // ---- Flow: first screen ----
 export type FlowState = "overdue" | "over_sla" | "due_soon" | "on_track"
 export type FlowRow = {
-  id: number; name: string; client: string; stage: string; stage_index: number; owner_name: string
+  id: number; name: string; client: string; stage: string; stages: string[]; stage_index: number; owner_name: string
   delivery_mode: string; target_end_date: string | null; days_in_stage: number | null; sla_days: number | null
   over_by: number | null; state: FlowState; open_tasks: number; total_tasks: number
   next_task: { title: string; due_date: string | null; assignee: string | null } | null; updated_at: string
 }
-export type FlowData = { stages: string[]; terminal: string; rows: FlowRow[]; counts: Record<FlowState, number>; can_move: boolean }
+export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState, number>; can_move: boolean }
 export type FlowStage = { name: string; status: "done" | "current" | "next"; sla_days: number | null; entered_at: string | null; days: number | null }
 export type FlowTask = { id: number; title: string; done: boolean; due_date: string | null; assignee: string | null }
 export type FlowDetail = {

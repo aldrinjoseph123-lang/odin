@@ -39,13 +39,18 @@ from db import (
     get_db,
     get_doc_category_names,
     get_setting,
+    PROJECT_OPEN_SQL,
+    copy_template_stages,
     get_stage_names,
     get_terminal_stage,
+    sla_for_project,
+    stage_rows,
     restore_deleted,
     soft_delete,
 )
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import sla_by_stage, stage_sla_state
+from services import stages as stage_ops
 from services.audit import audit_log
 from services.notifications import notify_event
 
@@ -126,20 +131,19 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
         query += " AND p.updated_at < ?"
         params.append(stale_cutoff)
         if not show_closed:
-            query += " AND p.stage != ?"
-            params.append(get_terminal_stage())
+            query += f" AND {PROJECT_OPEN_SQL}"
     elif view == "overdue":
         # past target end date, not yet in the terminal stage
         today = datetime.utcnow().date().isoformat()
-        query += " AND p.target_end_date IS NOT NULL AND p.target_end_date < ? AND p.stage != ?"
-        params.extend([today, get_terminal_stage()])
+        query += f" AND p.target_end_date IS NOT NULL AND p.target_end_date < ? AND {PROJECT_OPEN_SQL}"
+        params.append(today)
     elif view == "at_risk":
         # target end date within the due-soon window (and not already overdue/terminal)
         soon_days = get_alert_type_settings().get("project_due_soon", DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
         today = datetime.utcnow().date()
         soon = (today + timedelta(days=soon_days)).isoformat()
-        query += " AND p.target_end_date IS NOT NULL AND p.target_end_date >= ? AND p.target_end_date <= ? AND p.stage != ?"
-        params.extend([today.isoformat(), soon, get_terminal_stage()])
+        query += f" AND p.target_end_date IS NOT NULL AND p.target_end_date >= ? AND p.target_end_date <= ? AND {PROJECT_OPEN_SQL}"
+        params.extend([today.isoformat(), soon])
     elif stage_filter:
         query += " AND p.stage = ?"
         params.append(stage_filter)
@@ -147,11 +151,9 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
         query += " AND p.delivery_mode = ?"
         params.append(delivery_mode_filter)
         if not show_closed:
-            query += " AND p.stage != ?"
-            params.append(get_terminal_stage())
+            query += f" AND {PROJECT_OPEN_SQL}"
     elif not show_closed:
-        query += " AND p.stage != ?"
-        params.append(get_terminal_stage())
+        query += f" AND {PROJECT_OPEN_SQL}"
     if search:
         # free-text across the fields a user searches by. LIKE is parameterised;
         # the % wrapping is on the value, never interpolated into the SQL.
@@ -206,8 +208,7 @@ def report_all():
     db = get_db()
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        "WHERE p.stage != ? AND p.deleted_at IS NULL ORDER BY p.client, p.name",
-        (get_terminal_stage(),),
+        f"WHERE {PROJECT_OPEN_SQL} AND p.deleted_at IS NULL ORDER BY p.client, p.name"
     ).fetchall()
     return render_template(
         "report_all.html",
@@ -255,6 +256,18 @@ def project_new():
             flash("That file's contents don't match its extension")
             return redirect(url_for("project_new"))
 
+        template = _chosen_template(db, request.form.get("stage_template_id"))
+        if template is None:
+            flash("Create a stage template in Settings before adding projects")
+            return redirect(url_for("project_new"))
+        first_stage = db.execute(
+            "SELECT name FROM stage_template_stages WHERE template_id = ? ORDER BY position LIMIT 1",
+            (template["id"],),
+        ).fetchone()
+        if first_stage is None:
+            flash(f"Template '{template['name']}' has no stages yet")
+            return redirect(url_for("project_new"))
+
         now = datetime.utcnow().isoformat()
         name = request.form["name"].strip()[:200]
         cursor = db.execute(
@@ -264,14 +277,14 @@ def project_new():
              partner_name, partner_account_manager_name, partner_account_manager_email,
              start_date, target_end_date, delivery_mode,
              outsourcer_name, outsourcer_email, vendor_name, product_name,
-             access_token, customer_token, created_at, updated_at, stage_entered_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             access_token, customer_token, stage_template_id, created_at, updated_at, stage_entered_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 name,
                 request.form["client"].strip()[:200],
                 request.form.get("po_number") or None,
                 request.form.get("po_date") or None,
-                get_stage_names()[0],
+                first_stage["name"],
                 session["user_id"],
                 request.form.get("via") or None,
                 request.form.get("account_manager_name") or None,
@@ -288,12 +301,14 @@ def project_new():
                 request.form.get("product_name") or None,
                 secrets.token_urlsafe(16),   # vendor link
                 secrets.token_urlsafe(16),   # customer link
+                template["id"],
                 now,
                 now,
                 now,
             ),
         )
         project_id = cursor.lastrowid
+        copy_template_stages(db, template["id"], project_id)
         save_document(project_id, po_document, CLIENT_PO_DOC_CATEGORY, session["user_name"])
         db.commit()
         audit_log("create_project", "project", project_id, name, f"client={request.form['client']}")
@@ -312,7 +327,8 @@ def project_new():
             "SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL", (duplicate_of,)
         ).fetchone()
     return render_template(
-        "project_form.html", users=users, project=source, duplicating=bool(source),
+        "project_form.html",
+        stage_templates=get_db().execute("SELECT id, name FROM stage_templates ORDER BY name").fetchall(), users=users, project=source, duplicating=bool(source),
         **get_contact_lists()
     )
 
@@ -357,12 +373,9 @@ def project_detail(project_id):
         documents=documents,
         tasks=tasks,
         task_users=task_users,
+        stages=stage_rows(project_id),
         schedule=schedule_status(project),
-        sla=stage_sla_state(
-            project,
-            sla_by_stage(db.execute("SELECT name, sla_days FROM stages").fetchall()),
-            get_terminal_stage(),
-        ),
+        sla=stage_sla_state(project, sla_for_project(project_id), get_terminal_stage(project_id)),
         today=datetime.utcnow().date().isoformat(),
         has_client_po_doc=has_required_document(project_id, CLIENT_PO_DOC_CATEGORY),
         **get_contact_lists(),
@@ -436,7 +449,9 @@ def project_edit(project_id):
         return redirect(url_for("project_detail", project_id=project_id))
 
     users = db.execute("SELECT * FROM users ORDER BY name").fetchall()
-    return render_template("project_form.html", project=project, users=users, **get_contact_lists())
+    return render_template(
+        "project_form.html",
+        stage_templates=get_db().execute("SELECT id, name FROM stage_templates ORDER BY name").fetchall(), project=project, users=users, **get_contact_lists())
 
 
 @app.route("/projects/<int:project_id>/stage", methods=["POST"])
@@ -454,18 +469,16 @@ def project_stage(project_id):
 def change_stage(project_id, new_stage, note_text):
     """The one stage-change path (form + JSON). Returns an error message or
     None; 404s when the project is gone. Caller must hold edit_project_stage."""
-    if new_stage not in get_stage_names():
-        return "Invalid stage"
     db = get_db()
-    # Check before writing. Without this a stale tab could move the stage of a
-    # project someone else just deleted: the UPDATE has no deleted_at filter, so
-    # it mutated the deleted row and wrote an orphan note before crashing on the
-    # follow-up lookup, which does filter deleted_at.
+    # Existence first, then validity: a missing project is a 404, not an
+    # "invalid stage" — and its (empty) stage list must never be consulted.
     project = db.execute(
         "SELECT owner_id, name FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)
     ).fetchone()
     if project is None:
         abort(404)
+    if new_stage not in get_stage_names(project_id):
+        return "Invalid stage"
     now = datetime.utcnow().isoformat()
     db.execute(
         "UPDATE projects SET stage = ?, updated_at = ?, stage_entered_at = ? WHERE id = ?",
@@ -627,6 +640,73 @@ def project_rotate_token(project_id):
     audit_log("rotate_guest_token", "project", project_id, project["name"])
     flash("Guest links rotated — the previous vendor and customer links no longer work")
     return redirect(url_for("project_detail", project_id=project_id))
+
+
+def _chosen_template(db, raw_id):
+    """The template a new project copies its stages from: the one chosen on
+    the form, else the first one. None only when Settings has no templates."""
+    if raw_id:
+        row = db.execute("SELECT id, name FROM stage_templates WHERE id = ?", (raw_id,)).fetchone()
+        if row:
+            return row
+    return db.execute("SELECT id, name FROM stage_templates ORDER BY id LIMIT 1").fetchone()
+
+
+# ---- a project's own stages: add / rename / reorder / delete / SLAs ---------
+
+def _live_project(project_id):
+    project = get_db().execute(
+        "SELECT id, name, stage FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)
+    ).fetchone()
+    if project is None:
+        abort(404)
+    return project
+
+
+def _stage_change(project_id, action, error, detail):
+    if error:
+        flash(error)
+    else:
+        audit_log(action, "project", project_id, _live_project(project_id)["name"], detail)
+    return redirect(url_for("project_detail", project_id=project_id) + "#stages")
+
+
+@app.route("/projects/<int:project_id>/stages/add", methods=["POST"])
+@permission_required("edit_project")
+def project_stage_add(project_id):
+    _live_project(project_id)
+    name = request.form.get("name", "")
+    return _stage_change(project_id, "add_project_stage", stage_ops.add_stage("project", project_id, name), name)
+
+
+@app.route("/projects/<int:project_id>/stages/<int:stage_id>/rename", methods=["POST"])
+@permission_required("edit_project")
+def project_stage_rename(project_id, stage_id):
+    _live_project(project_id)
+    name = request.form.get("name", "")
+    return _stage_change(project_id, "rename_project_stage", stage_ops.rename_stage("project", project_id, stage_id, name), f"stage_id={stage_id} -> {name}")
+
+
+@app.route("/projects/<int:project_id>/stages/<int:stage_id>/move", methods=["POST"])
+@permission_required("edit_project")
+def project_stage_move(project_id, stage_id):
+    _live_project(project_id)
+    direction = request.form.get("direction", "")
+    return _stage_change(project_id, "move_project_stage", stage_ops.move_stage("project", project_id, stage_id, direction), f"stage_id={stage_id} {direction}")
+
+
+@app.route("/projects/<int:project_id>/stages/<int:stage_id>/delete", methods=["POST"])
+@permission_required("edit_project")
+def project_stage_delete(project_id, stage_id):
+    _live_project(project_id)
+    return _stage_change(project_id, "delete_project_stage", stage_ops.delete_stage("project", project_id, stage_id), f"stage_id={stage_id}")
+
+
+@app.route("/projects/<int:project_id>/stages/sla", methods=["POST"])
+@permission_required("edit_project")
+def project_stage_sla(project_id):
+    _live_project(project_id)
+    return _stage_change(project_id, "update_project_stage_slas", stage_ops.set_slas("project", project_id, request.form), None)
 
 
 @app.route("/undo/project/<int:project_id>", methods=["POST"])

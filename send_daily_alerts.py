@@ -16,7 +16,7 @@ real, current alert state regardless of what anyone clicked on the board.
 import sys
 
 from app import app  # only for the Flask app context that get_db() needs
-from db import get_db, get_setting, get_terminal_stage
+from db import PROJECT_OPEN_SQL, get_db, get_setting
 from services.alerts import build_alerts
 
 import graph
@@ -42,7 +42,7 @@ def main():
     with app.app_context():
         db = get_db()
         projects = db.execute(
-            "SELECT * FROM projects WHERE stage != ?", (get_terminal_stage(),)
+            f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}"
         ).fetchall()
         alerts = build_alerts(projects)
         html = _format_alerts_html(alerts)

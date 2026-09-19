@@ -115,6 +115,14 @@
   </div>
 
   {% if not editing %}
+  <label>Stage template</label>
+  <select aria-label="Stage template" name="stage_template_id">
+    {% for t in stage_templates %}
+    <option value="{{ t.id }}" {{ 'selected' if src and src.stage_template_id == t.id }}>{{ t.name }}</option>
+    {% endfor %}
+  </select>
+  <p class="muted" style="font-size:0.78rem;">The project gets its own copy of these stages; edit them on the project afterwards.</p>
+
   <label>Client PO Document *
     <input type="file" name="po_document" required></label>
   <p class="muted" style="font-size:0.78rem;">Required — the project can't be created without the client's PO on file.</p>

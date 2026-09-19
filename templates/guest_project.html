@@ -5,9 +5,10 @@
 {#- The PO number is the client's; the vendor link does not get it. -#}
 <p class="muted">Client: {{ project.client }}{% if party == 'customer' and project.po_number %} · PO {{ project.po_number }}{% endif %}</p>
 
+{% set current_index = stages.index(project.stage) if project.stage in stages else -1 %}
 <div class="stage-bar">
-  {% for stage in STAGES %}
-  <span class="stage-step {{ 'done' if STAGES.index(stage) < STAGES.index(project.stage) else '' }} {{ 'current' if stage == project.stage else '' }}">{{ stage }}</span>
+  {% for stage in stages %}
+  <span class="stage-step {{ 'done' if loop.index0 < current_index else '' }} {{ 'current' if stage == project.stage else '' }}">{{ stage }}</span>
   {% endfor %}
 </div>
 

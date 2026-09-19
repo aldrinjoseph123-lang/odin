@@ -17,7 +17,7 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from db import get_db, get_stage_names, get_terminal_stage
+from db import get_db, get_stage_names, get_terminal_stage, stages_for_projects
 from services.analytics import sla_by_stage, stage_sla_state
 from services.notifications import notify_event
 
@@ -136,7 +136,7 @@ def schedule_status(project, today=None, soon_days=None, terminal_stage=None):
     terminal stage where a deadline no longer applies)."""
     if not project["target_end_date"]:
         return None
-    if (terminal_stage or get_terminal_stage()) == project["stage"]:
+    if (terminal_stage or get_terminal_stage(project["id"])) == project["stage"]:
         return None
     today = today or date.today()
     if soon_days is None:
@@ -171,10 +171,12 @@ def build_alerts(projects, dismissed=None):
     stale_cutoff = datetime.utcnow() - timedelta(days=thresholds.get("stale", DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"])
     soon_days = thresholds.get("project_due_soon", DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
     today = date.today()
-    terminal = get_terminal_stage()
-    slas = sla_by_stage(get_db().execute("SELECT name, sla_days FROM stages").fetchall())
+    stage_lists = stages_for_projects([p["id"] for p in projects])
     alerts = {"project_overdue": [], "project_due_soon": [], "stage_sla_breach": [], "stale": []}
     for p in projects:
+        rows = stage_lists.get(p["id"]) or []
+        terminal = rows[-1]["name"] if rows else None
+        slas = sla_by_stage(rows)
         status = schedule_status(p, today=today, soon_days=soon_days, terminal_stage=terminal)
         if status == "overdue" and not is_alert_dismissed(dismissed, p, "project_overdue"):
             alerts["project_overdue"].append(p)

@@ -4,66 +4,86 @@
 <h1>Settings</h1>
 
 <div class="grid-2">
-  <div class="panel settings-section">
-    <h2>Lifecycle Stages</h2>
-    {% for s in stages %}
-    <div class="stage-row">
-      <form method="post" action="{{ url_for('settings_stage_move', stage_id=s.id) }}">
+  <div class="panel settings-section" id="templates">
+    <h2>Stage Templates <span class="muted" style="text-transform:none; font-weight:400;">(a new project copies one, then owns its list)</span></h2>
+    {% for t in templates %}
+    <div class="template-block" style="margin-bottom:var(--space-6); padding-bottom:var(--space-4); border-bottom:1px solid var(--border);">
+      <div style="display:flex; gap:0.4rem; align-items:center; margin-bottom:var(--space-2);">
+        <form method="post" action="{{ url_for('settings_template_rename', template_id=t.id) }}" style="display:flex; gap:0.4rem; flex:1;">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-        <input type="hidden" name="direction" value="up">
-        <button type="submit" class="icon-btn" {{ 'disabled' if loop.first }}>&uarr;</button>
-      </form>
-      <form method="post" action="{{ url_for('settings_stage_move', stage_id=s.id) }}">
+          <input type="text" name="name" value="{{ t.name }}" aria-label="Rename template {{ t.name }}" style="flex:1; font-weight:600;">
+          <button type="submit" class="icon-btn">Rename</button>
+        </form>
+        <span class="muted" style="font-size:var(--text-xs); white-space:nowrap;">{{ t.projects }} project{{ 's' if t.projects != 1 }}</span>
+        <form method="post" action="{{ url_for('settings_template_delete', template_id=t.id) }}" onsubmit="return confirm('Delete template {{ t.name }}? Projects keep their own copies.')">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-        <input type="hidden" name="direction" value="down">
-        <button type="submit" class="icon-btn" {{ 'disabled' if loop.last }}>&darr;</button>
-      </form>
-      <form method="post" action="{{ url_for('settings_stage_rename', stage_id=s.id) }}" class="name" style="display:flex; gap:0.4rem;">
+          <button type="submit" class="icon-btn" style="color:var(--accent);" {{ 'disabled' if templates|length <= 1 }}>Delete</button>
+        </form>
+      </div>
+      {% for s in t.stages %}
+      <div class="stage-row">
+        <form method="post" action="{{ url_for('settings_stage_move', template_id=t.id, stage_id=s.id) }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-        <input type="text" name="name" value="{{ s.name }}" aria-label="Rename stage {{ s.name }}" style="flex:1;">
-        <button type="submit" class="icon-btn">Rename</button>
-      </form>
-      <form method="post" action="{{ url_for('settings_stage_delete', stage_id=s.id) }}" onsubmit="return confirm('Delete stage {{ s.name }}?')">
+          <input type="hidden" name="direction" value="up">
+          <button type="submit" class="icon-btn" {{ 'disabled' if loop.first }} aria-label="Move {{ s.name }} up">&uarr;</button>
+        </form>
+        <form method="post" action="{{ url_for('settings_stage_move', template_id=t.id, stage_id=s.id) }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-        <button type="submit" class="icon-btn" style="color:#dc2626;">Delete</button>
+          <input type="hidden" name="direction" value="down">
+          <button type="submit" class="icon-btn" {{ 'disabled' if loop.last }} aria-label="Move {{ s.name }} down">&darr;</button>
+        </form>
+        <form method="post" action="{{ url_for('settings_stage_rename', template_id=t.id, stage_id=s.id) }}" class="name" style="display:flex; gap:0.4rem;">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="text" name="name" value="{{ s.name }}" aria-label="Rename stage {{ s.name }}" style="flex:1;">
+          <button type="submit" class="icon-btn">Rename</button>
+        </form>
+        <form method="post" action="{{ url_for('settings_stage_delete', template_id=t.id, stage_id=s.id) }}" onsubmit="return confirm('Delete stage {{ s.name }} from {{ t.name }}?')">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button type="submit" class="icon-btn" style="color:var(--accent);">Delete</button>
+        </form>
+      </div>
+      {% endfor %}
+      <form method="post" action="{{ url_for('settings_stage_add', template_id=t.id) }}" class="inline-form" style="margin-top:var(--space-2);">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="text" name="name" placeholder="New stage name" required aria-label="New stage for {{ t.name }}">
+        <button type="submit">Add Stage</button>
       </form>
+      <details style="margin-top:var(--space-2);">
+        <summary class="icon-btn" style="display:inline-block; cursor:pointer;">Stage SLAs</summary>
+        <form method="post" action="{{ url_for('settings_stage_sla', template_id=t.id) }}" style="margin-top:var(--space-2);">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <table>
+            <thead><tr><th>Stage</th><th>SLA (days)</th></tr></thead>
+            <tbody>
+              {% for s in t.stages %}
+              <tr>
+                <td><span class="stage-badge">{{ s.name }}</span></td>
+                <td><input type="number" min="1" name="sla::{{ s.id }}" aria-label="SLA days for {{ s.name }} in {{ t.name }}" value="{{ s.sla_days or '' }}" placeholder="—" style="width:7rem;"></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <button type="submit">Save SLAs</button>
+        </form>
+        <form method="post" action="{{ url_for('settings_stage_sla_from_measured', template_id=t.id) }}"
+              onsubmit="return confirm('Overwrite this template\'s SLAs with measured averages?')" style="margin-top:var(--space-2);">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-outline">Set from measured averages</button>
+          <span class="muted" style="margin-left:var(--space-2); font-size:var(--text-xs);">From projects created with this template. Applies to new projects; existing ones keep their own SLAs.</span>
+        </form>
+      </details>
     </div>
     {% endfor %}
-    <form method="post" action="{{ url_for('settings_stage_add') }}" class="inline-form" style="margin-top:1rem;">
+    <form method="post" action="{{ url_for('settings_template_add') }}" class="inline-form">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-      <input type="text" name="name" placeholder="New stage name" required aria-label="New stage name">
-      <button type="submit">Add Stage</button>
+      <input type="text" name="name" placeholder="New template name (e.g. EDR rollout)" required aria-label="New template name">
+      <button type="submit">Add Template</button>
     </form>
-    <p class="muted" style="font-size:0.8rem;">The last stage in the list is treated as the terminal/closed stage everywhere (board, filters, reports).</p>
+    <p class="muted" style="font-size:0.8rem;">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
   </div>
 
   <div class="panel settings-section">
     
-<div class="settings-section">
-  <h2>Stage SLAs <span class="muted" style="text-transform:none; font-weight:400;">(expected days in each stage — blank means not measured)</span></h2>
-  <form method="post" action="{{ url_for('settings_stage_sla') }}">
-    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-    <table>
-      <thead><tr><th>Stage</th><th>SLA (days)</th></tr></thead>
-      <tbody>
-        {% for s in stages %}
-        <tr>
-          <td><span class="stage-badge">{{ s.name }}</span></td>
-          <td><input type="number" min="1" name="sla::{{ s.id }}" aria-label="SLA days for {{ s.name }}" value="{{ s.sla_days or '' }}" placeholder="—" style="width:7rem;"></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <button type="submit">Save SLAs</button>
-  </form>
-  <form method="post" action="{{ url_for('settings_stage_sla_from_measured') }}"
-        onsubmit="return confirm('Overwrite SLAs with each stage\'s measured average?')" style="margin-top:var(--space-2);">
-    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-    <button type="submit" class="btn btn-outline">Set from measured averages</button>
-    <span class="muted" style="margin-left:var(--space-2); font-size:var(--text-xs);">Uses Cycle Time data. Stages with no completed visits are left alone.</span>
-  </form>
-</div>
-
 <h2>Document Categories</h2>
     {% for c in doc_categories %}
     <div class="cat-row">

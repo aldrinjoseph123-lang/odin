@@ -16,6 +16,7 @@ from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, PERMISSIONS, ROLES
 from core import admin_required, app, permission_required, undo_button, write_required
 from db import get_db, get_setting, restore_deleted, soft_delete
 from services.alerts import get_alert_type_settings
+from services import stages as stage_ops
 from services.audit import audit_log
 
 
@@ -132,7 +133,11 @@ def audit_logs_view():
 @permission_required("manage_settings")
 def settings():
     db = get_db()
-    stages = db.execute("SELECT * FROM stages ORDER BY position").fetchall()
+    templates = [
+        {"id": t["id"], "name": t["name"], "stages": stage_ops.list_stages("template", t["id"]),
+         "projects": db.execute("SELECT COUNT(*) FROM projects WHERE stage_template_id = ? AND deleted_at IS NULL", (t["id"],)).fetchone()[0]}
+        for t in db.execute("SELECT * FROM stage_templates ORDER BY id").fetchall()
+    ]
     doc_categories = db.execute("SELECT * FROM doc_categories ORDER BY name").fetchall()
 
     connection = graph.get_connection()
@@ -145,7 +150,7 @@ def settings():
 
     return render_template(
         "settings.html",
-        stages=stages,
+        templates=templates,
         doc_categories=doc_categories,
         alert_type_settings=get_alert_type_settings(),
         alert_type_titles=ALERT_TYPE_TITLES,
@@ -199,167 +204,151 @@ def settings_rbac_update():
     return redirect(url_for("settings_rbac"))
 
 
-@app.route("/settings/stages/add", methods=["POST"])
+# ---- stage templates: what a new project copies its stage list from ---------
+
+def _template(template_id):
+    row = get_db().execute("SELECT * FROM stage_templates WHERE id = ?", (template_id,)).fetchone()
+    if row is None:
+        abort(404)
+    return row
+
+
+def _template_change(action, error, detail=None):
+    if error:
+        flash(error)
+    else:
+        audit_log(action, "stage_template", None, None, detail)
+    return redirect(url_for("settings") + "#templates")
+
+
+@app.route("/settings/templates/add", methods=["POST"])
 @admin_required
-def settings_stage_add():
-    name = request.form.get("name", "").strip()
+def settings_template_add():
+    name = request.form.get("name", "").strip()[:80]
     db = get_db()
     if not name:
-        flash("Stage name required")
-    elif db.execute("SELECT 1 FROM stages WHERE name = ?", (name,)).fetchone():
-        flash("Stage already exists")
-    else:
-        # Insert *before* the terminal stage, not after it. The last stage is
-        # treated as "closed" everywhere, so appending would silently hand that
-        # role to the new stage and reopen every closed project — putting them
-        # back on the board and back into overdue/stale/SLA alerting.
-        max_pos = db.execute("SELECT MAX(position) AS m FROM stages").fetchone()["m"]
-        if max_pos is None:
-            db.execute("INSERT INTO stages (name, position) VALUES (?, 0)", (name,))
-            db.commit()
-            audit_log("add_stage", "stage", None, name)
-            flash(f"Stage '{name}' added")
-        else:
-            terminal = db.execute(
-                "SELECT name FROM stages ORDER BY position DESC LIMIT 1"
-            ).fetchone()["name"]
-            db.execute("UPDATE stages SET position = position + 1 WHERE position = ?", (max_pos,))
-            db.execute("INSERT INTO stages (name, position) VALUES (?, ?)", (name, max_pos))
-            db.commit()
-            audit_log("add_stage", "stage", None, name)
-            flash(f"Stage '{name}' added before '{terminal}', which stays the closed stage")
-    return redirect(url_for("settings"))
-
-
-@app.route("/settings/stages/<int:stage_id>/rename", methods=["POST"])
-@admin_required
-def settings_stage_rename(stage_id):
-    new_name = request.form.get("name", "").strip()
-    db = get_db()
-    stage = db.execute("SELECT * FROM stages WHERE id = ?", (stage_id,)).fetchone()
-    if not stage:
-        abort(404)
-    if not new_name:
-        flash("Stage name required")
-    elif db.execute("SELECT 1 FROM stages WHERE name = ? AND id != ?", (new_name, stage_id)).fetchone():
-        flash("Stage name already in use")
-    else:
-        old_name = stage["name"]
-        db.execute("UPDATE stages SET name = ? WHERE id = ?", (new_name, stage_id))
-        db.execute("UPDATE projects SET stage = ? WHERE stage = ?", (new_name, old_name))
-        db.execute("UPDATE status_notes SET stage = ? WHERE stage = ?", (new_name, old_name))
-        db.commit()
-        audit_log("rename_stage", "stage", stage_id, new_name, f"was {old_name}")
-        flash(f"Stage renamed to '{new_name}'")
-    return redirect(url_for("settings"))
-
-
-@app.route("/settings/stages/<int:stage_id>/move", methods=["POST"])
-@admin_required
-def settings_stage_move(stage_id):
-    direction = request.form.get("direction")
-    db = get_db()
-    stages = db.execute("SELECT * FROM stages ORDER BY position").fetchall()
-    index = next((i for i, s in enumerate(stages) if s["id"] == stage_id), None)
-    if index is None:
-        abort(404)
-    swap_index = index - 1 if direction == "up" else index + 1
-    if 0 <= swap_index < len(stages):
-        a, b = stages[index], stages[swap_index]
-        db.execute("UPDATE stages SET position = ? WHERE id = ?", (b["position"], a["id"]))
-        db.execute("UPDATE stages SET position = ? WHERE id = ?", (a["position"], b["id"]))
-        db.commit()
-        audit_log("move_stage", "stage", stage_id, None, direction)
-    return redirect(url_for("settings"))
-
-
-@app.route("/settings/stages/<int:stage_id>/delete", methods=["POST"])
-@admin_required
-def settings_stage_delete(stage_id):
-    db = get_db()
-    stage = db.execute("SELECT * FROM stages WHERE id = ?", (stage_id,)).fetchone()
-    if not stage:
-        abort(404)
-    stage_count = db.execute("SELECT COUNT(*) AS c FROM stages").fetchone()["c"]
-    in_use = db.execute("SELECT COUNT(*) AS c FROM projects WHERE stage = ?", (stage["name"],)).fetchone()["c"]
-    if stage_count <= 1:
-        flash("Cannot delete the last remaining stage")
-    elif in_use:
-        flash(f"Cannot delete '{stage['name']}' — {in_use} project(s) currently use it")
-    else:
-        db.execute("DELETE FROM stages WHERE id = ?", (stage_id,))
-        db.commit()
-        audit_log("delete_stage", "stage", stage_id, stage["name"])
-        flash(f"Stage '{stage['name']}' deleted")
-    return redirect(url_for("settings"))
-
-
-@app.route("/settings/stages/sla", methods=["POST"])
-@admin_required
-def settings_stage_sla():
-    """Set the expected days-in-stage per stage. Blank clears the SLA, which
-    means that stage simply isn't measured — not that its target is zero."""
-    db = get_db()
-    for stage in db.execute("SELECT id, name FROM stages").fetchall():
-        raw = request.form.get(f"sla::{stage['id']}", "").strip()
-        if not raw:
-            db.execute("UPDATE stages SET sla_days = NULL WHERE id = ?", (stage["id"],))
-            continue
-        try:
-            days = int(raw)
-        except ValueError:
-            flash(f"SLA for {stage['name']} must be a whole number of days")
-            return redirect(url_for("settings"))
-        if days < 1:
-            flash(f"SLA for {stage['name']} must be at least 1 day")
-            return redirect(url_for("settings"))
-        db.execute("UPDATE stages SET sla_days = ? WHERE id = ?", (days, stage["id"]))
+        return _template_change("add_stage_template", "Template name required")
+    if db.execute("SELECT 1 FROM stage_templates WHERE name = ?", (name,)).fetchone():
+        return _template_change("add_stage_template", "Template already exists")
+    cursor = db.execute("INSERT INTO stage_templates (name) VALUES (?)", (name,))
+    # Start from the Generic list rather than empty — an empty template cannot
+    # create projects, and copying is one delete away from any shape wanted.
+    source = db.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone()
+    if source and source["id"] != cursor.lastrowid:
+        for row in db.execute(
+            "SELECT name, position, sla_days FROM stage_template_stages WHERE template_id = ? ORDER BY position", (source["id"],)
+        ).fetchall():
+            db.execute(
+                "INSERT INTO stage_template_stages (template_id, name, position, sla_days) VALUES (?, ?, ?, ?)",
+                (cursor.lastrowid, row["name"], row["position"], row["sla_days"]),
+            )
     db.commit()
-    audit_log("update_stage_slas")
-    flash("Stage SLAs updated")
-    return redirect(url_for("settings"))
+    return _template_change("add_stage_template", None, name)
 
 
-@app.route("/settings/stages/sla/from-measured", methods=["POST"])
+@app.route("/settings/templates/<int:template_id>/rename", methods=["POST"])
 @admin_required
-def settings_stage_sla_from_measured():
-    """Adopt each stage's measured average as its SLA.
+def settings_template_rename(template_id):
+    _template(template_id)
+    name = request.form.get("name", "").strip()[:80]
+    db = get_db()
+    if not name:
+        return _template_change("rename_stage_template", "Template name required")
+    if db.execute("SELECT 1 FROM stage_templates WHERE name = ? AND id != ?", (name, template_id)).fetchone():
+        return _template_change("rename_stage_template", "Template name already in use")
+    db.execute("UPDATE stage_templates SET name = ? WHERE id = ?", (name, template_id))
+    db.commit()
+    return _template_change("rename_stage_template", None, f"{template_id} -> {name}")
 
-    Only stages with completed visits get a target — a stage nothing has passed
-    through yet has no evidence to set one from, so it's left alone rather than
-    given a made-up number. Rounds up, so the target is never stricter than the
-    average it came from.
-    """
+
+@app.route("/settings/templates/<int:template_id>/delete", methods=["POST"])
+@admin_required
+def settings_template_delete(template_id):
+    template = _template(template_id)
+    db = get_db()
+    if db.execute("SELECT COUNT(*) FROM stage_templates").fetchone()[0] <= 1:
+        return _template_change("delete_stage_template", "Cannot delete the last template")
+    # Projects keep their own copies; only the source list goes.
+    db.execute("UPDATE projects SET stage_template_id = NULL WHERE stage_template_id = ?", (template_id,))
+    db.execute("DELETE FROM stage_template_stages WHERE template_id = ?", (template_id,))
+    db.execute("DELETE FROM stage_templates WHERE id = ?", (template_id,))
+    db.commit()
+    return _template_change("delete_stage_template", None, template["name"])
+
+
+@app.route("/settings/templates/<int:template_id>/stages/add", methods=["POST"])
+@admin_required
+def settings_stage_add(template_id):
+    _template(template_id)
+    name = request.form.get("name", "")
+    return _template_change("add_template_stage", stage_ops.add_stage("template", template_id, name), f"{template_id}: {name}")
+
+
+@app.route("/settings/templates/<int:template_id>/stages/<int:stage_id>/rename", methods=["POST"])
+@admin_required
+def settings_stage_rename(template_id, stage_id):
+    _template(template_id)
+    name = request.form.get("name", "")
+    return _template_change("rename_template_stage", stage_ops.rename_stage("template", template_id, stage_id, name), f"{stage_id} -> {name}")
+
+
+@app.route("/settings/templates/<int:template_id>/stages/<int:stage_id>/move", methods=["POST"])
+@admin_required
+def settings_stage_move(template_id, stage_id):
+    _template(template_id)
+    direction = request.form.get("direction", "")
+    return _template_change("move_template_stage", stage_ops.move_stage("template", template_id, stage_id, direction), f"{stage_id} {direction}")
+
+
+@app.route("/settings/templates/<int:template_id>/stages/<int:stage_id>/delete", methods=["POST"])
+@admin_required
+def settings_stage_delete(template_id, stage_id):
+    _template(template_id)
+    return _template_change("delete_template_stage", stage_ops.delete_stage("template", template_id, stage_id), str(stage_id))
+
+
+@app.route("/settings/templates/<int:template_id>/sla", methods=["POST"])
+@admin_required
+def settings_stage_sla(template_id):
+    """Expected days per stage for projects created from this template."""
+    _template(template_id)
+    return _template_change("update_template_slas", stage_ops.set_slas("template", template_id, request.form), str(template_id))
+
+
+@app.route("/settings/templates/<int:template_id>/sla/from-measured", methods=["POST"])
+@admin_required
+def settings_stage_sla_from_measured(template_id):
+    """Adopt each stage's measured average across projects created from this
+    template. Stages nothing has passed through are left alone — no evidence,
+    no made-up number. Rounds up, so the target is never stricter than the
+    average it came from."""
     import math
     from services.analytics import build_cycle_times
 
+    _template(template_id)
     db = get_db()
-    projects = db.execute("SELECT * FROM projects WHERE deleted_at IS NULL").fetchall()
+    projects = db.execute(
+        "SELECT * FROM projects WHERE deleted_at IS NULL AND stage_template_id = ?", (template_id,)
+    ).fetchall()
     notes_by_project = {}
     for note in db.execute("SELECT project_id, stage, created_at FROM status_notes ORDER BY created_at"):
         notes_by_project.setdefault(note["project_id"], []).append(note)
-    stage_names = [row["name"] for row in db.execute("SELECT name FROM stages ORDER BY position")]
+    stage_names = [row["name"] for row in stage_ops.list_stages("template", template_id)]
     if not stage_names:
-        flash("No stages defined")
-        return redirect(url_for("settings"))
-
+        return _template_change("set_template_slas_from_measured", "Template has no stages")
     stats = build_cycle_times(projects, notes_by_project, stage_names, stage_names[-1])
     applied = 0
     for row in stats["stages"]:
         if row["avg_days"] is None or row["stage"] == stage_names[-1]:
             continue
         db.execute(
-            "UPDATE stages SET sla_days = ? WHERE name = ?",
-            (max(1, math.ceil(row["avg_days"])), row["stage"]),
+            "UPDATE stage_template_stages SET sla_days = ? WHERE template_id = ? AND name = ?",
+            (max(1, math.ceil(row["avg_days"])), template_id, row["stage"]),
         )
         applied += 1
     db.commit()
-    audit_log("set_stage_slas_from_measured", details=f"{applied} stage(s)")
-    flash(
-        f"Set {applied} SLA(s) from measured averages"
-        if applied else "No stage has completed visits yet — nothing to measure"
-    )
-    return redirect(url_for("settings"))
+    flash(f"Set {applied} SLA(s) from measured averages" if applied else "No stage has completed visits yet — nothing to measure")
+    return _template_change("set_template_slas_from_measured", None, f"{applied} stage(s)")
 
 
 @app.route("/settings/doc-categories/add", methods=["POST"])

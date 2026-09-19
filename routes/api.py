@@ -8,7 +8,7 @@ from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, DELIVERY_MODES
 from core import app, login_required, nav_counts, permission_required, role_has_permission
-from db import get_db, get_stage_names, get_terminal_stage
+from db import PROJECT_OPEN_SQL, get_db, get_stage_names, get_terminal_stage, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, board_data, dismiss_alert
 from routes.projects import change_stage
@@ -81,7 +81,6 @@ def api_board():
     data = board_data()
     return jsonify({
         "stages": get_stage_names(),
-        "terminal": get_terminal_stage(),
         "delivery_modes": list(DELIVERY_MODES),
         "alert_titles": ALERT_TYPE_TITLES,
         "columns": {stage: [_card(p) for p in cards] for stage, cards in data["columns"].items()},
@@ -143,17 +142,15 @@ def _days_since(iso, now):
 @permission_required("view_board")
 def api_flow():
     db = get_db()
-    stages, terminal = get_stage_names(), get_terminal_stage()
-    slas = sla_by_stage(db.execute("SELECT name, sla_days FROM stages").fetchall())
     now = datetime.utcnow()
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name, "
         "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.done = 0) AS open_tasks, "
         "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_tasks "
         "FROM projects p JOIN users u ON u.id = p.owner_id "
-        "WHERE p.deleted_at IS NULL AND p.stage != ? ORDER BY p.updated_at DESC",
-        (terminal,),
+        f"WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.updated_at DESC"
     ).fetchall()
+    stage_lists = stages_for_projects([p["id"] for p in projects])
     # Earliest-due open task per project = the next actionable item.
     next_task = {}
     for t in db.execute(
@@ -164,11 +161,16 @@ def api_flow():
         next_task.setdefault(t["project_id"], {"title": t["title"], "due_date": t["due_date"], "assignee": t["assignee_name"]})
     rows = []
     for p in projects:
+        own = stage_lists.get(p["id"]) or []
+        stages = [r["name"] for r in own]
+        terminal = stages[-1] if stages else None
+        slas = sla_by_stage(own)
         sla = stage_sla_state(p, slas, terminal, now)
         schedule = schedule_status(p, terminal_stage=terminal)
         state = _flow_state(p, sla, schedule)
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
+            "stages": stages,
             "stage_index": stages.index(p["stage"]) if p["stage"] in stages else 0,
             "owner_name": p["owner_name"], "delivery_mode": p["delivery_mode"],
             "target_end_date": p["target_end_date"], "days_in_stage": _days_since(p["stage_entered_at"], now),
@@ -180,7 +182,7 @@ def api_flow():
     # inside each state, most recently touched first
     rows.sort(key=lambda r: (STATE_RANK[r["state"]], -(_parse(r["updated_at"]) or now).timestamp()))
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}
-    return jsonify({"stages": stages, "terminal": terminal, "rows": rows, "counts": counts,
+    return jsonify({"stages": get_stage_names(), "rows": rows, "counts": counts,
                     "can_move": role_has_permission(session.get("role"), "edit_project_stage")})
 
 
@@ -194,8 +196,8 @@ def api_project_flow(project_id):
     ).fetchone()
     if project is None:
         abort(404)
-    stages, terminal = get_stage_names(), get_terminal_stage()
-    slas = sla_by_stage(db.execute("SELECT name, sla_days FROM stages").fetchall())
+    stages, terminal = get_stage_names(project_id), get_terminal_stage(project_id)
+    slas = sla_for_project(project_id)
     now = datetime.utcnow()
     notes = db.execute("SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at", (project_id,)).fetchall()
     timeline = stage_timeline(project, notes, stages[0])

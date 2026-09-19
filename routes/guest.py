@@ -36,7 +36,7 @@ def get_project_by_token(token):
 def next_stage_for(project):
     """The one stage a vendor may move to: the next one, never the terminal
     stage — closing a project is an internal decision."""
-    names = get_stage_names()
+    names = get_stage_names(project["id"])
     index = names.index(project["stage"]) if project["stage"] in names else -1
     return names[index + 1] if 0 <= index < len(names) - 2 else None
 
@@ -73,6 +73,7 @@ def guest_view(token):
     ).fetchall()
     response = make_response(render_template(
         "guest_project.html", project=project, notes=notes, party=party,
+        stages=get_stage_names(project["id"]),
         next_stage=next_stage_for(project) if party == "vendor" else None,
     ))
     # The token is the credential and it lives in the URL: keep it out of

@@ -5,7 +5,7 @@ from flask import abort, redirect, render_template, request, session, url_for
 
 from constants import ALERT_TYPES, ALERT_TYPE_TITLES
 from core import app, login_required, permission_required
-from db import get_db, get_stage_names, get_terminal_stage
+from db import PROJECT_OPEN_SQL, get_db, get_stage_names, get_terminal_stage, stages_for_projects
 from services.analytics import build_cycle_times
 from spa import spa_index, spa_serves
 from services.alerts import (
@@ -34,16 +34,15 @@ COLUMN_CARDS = 20
 def my_work():
     db = get_db()
     uid = session["user_id"]
-    terminal = get_terminal_stage()
     from datetime import datetime as _dt
     today = _dt.utcnow().date().isoformat()
 
     owned = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        "WHERE p.owner_id = ? AND p.deleted_at IS NULL AND p.stage != ? ORDER BY p.updated_at DESC",
-        (uid, terminal),
+        f"WHERE p.owner_id = ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.updated_at DESC",
+        (uid,),
     ).fetchall()
-    my_projects = [{"project": p, "schedule": schedule_status(p, terminal_stage=terminal)} for p in owned]
+    my_projects = [{"project": p, "schedule": schedule_status(p)} for p in owned]
 
     my_tasks = db.execute(
         "SELECT t.*, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
@@ -71,12 +70,12 @@ def board_data():
         "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.done = 1) AS task_done "
         "FROM projects p "
         "JOIN users u ON u.id = p.owner_id "
-        "WHERE p.stage != ? AND p.deleted_at IS NULL ORDER BY p.updated_at DESC",
-        (get_terminal_stage(),),
+        f"WHERE {PROJECT_OPEN_SQL} AND p.deleted_at IS NULL ORDER BY p.updated_at DESC"
     ).fetchall()
+    stages_for_projects([p["id"] for p in projects])   # bulk-inserted projects adopt a list here
     columns = {stage: [] for stage in get_stage_names()}
     for p in projects:
-        columns[p["stage"]].append(p)
+        columns.setdefault(p["stage"], []).append(p)
     # notifications (the alerts banner) respect this login's dismissals;
     # the real_alerts counts feeding the stat tiles never do — dismissing a
     # notification hides it from the banner, it doesn't change the real data
@@ -123,20 +122,28 @@ def analytics():
     """Where projects actually get stuck. Reuses view_reports rather than
     minting a new permission — this is a report, and every permission in the
     matrix has to be enforced somewhere (see the RBAC guard test)."""
+    # Stage timings only compare across projects that share a stage list, so
+    # the report is per template. Projects on a bespoke list are their own
+    # history and are counted in the picker as "custom".
     db = get_db()
+    templates = db.execute("SELECT id, name FROM stage_templates ORDER BY id").fetchall()
+    template_id = request.args.get("template", type=int) or (templates[0]["id"] if templates else None)
+    template = next((t for t in templates if t["id"] == template_id), None)
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        "WHERE p.deleted_at IS NULL"
+        "WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?", (template_id,)
     ).fetchall()
     notes_by_project = {}
     for note in db.execute("SELECT project_id, stage, created_at FROM status_notes ORDER BY created_at"):
         notes_by_project.setdefault(note["project_id"], []).append(note)
-
-    slas = {row["name"]: row["sla_days"] for row in db.execute("SELECT name, sla_days FROM stages")}
-    stats = build_cycle_times(
-        projects, notes_by_project, get_stage_names(), get_terminal_stage()
-    )
-    return render_template("analytics.html", stats=stats, slas=slas)
+    stage_rows_ = db.execute(
+        "SELECT name, sla_days FROM stage_template_stages WHERE template_id = ? ORDER BY position", (template_id,)
+    ).fetchall() if template_id else []
+    names = [r["name"] for r in stage_rows_]
+    slas = {r["name"]: r["sla_days"] for r in stage_rows_}
+    stats = build_cycle_times(projects, notes_by_project, names, names[-1] if names else None) if names else None
+    custom = db.execute("SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL AND stage_template_id IS NULL").fetchone()[0]
+    return render_template("analytics.html", stats=stats, slas=slas, templates=templates, template=template, custom_count=custom)
 
 
 @app.route("/alerts")

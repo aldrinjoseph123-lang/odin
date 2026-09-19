@@ -85,10 +85,10 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter, user }: {
           ))}
         </div>
       </div>
+      {/* No shared stage header: every project owns its own stage list, so the
+          row carries its stage by name and the stepper draws that project's stages. */}
       <div className="hidden grid-cols-[minmax(200px,1.2fr)_2fr_170px_36px] gap-4 px-5 pb-1.5 text-[11.5px] text-muted-foreground md:grid">
-        <span>Rollout</span>
-        <span className="flex justify-between">{data.stages.map((s) => <span key={s} className="truncate">{s}</span>)}</span>
-        <span>In stage</span><span />
+        <span>Rollout</span><span>Progress</span><span>Stage</span><span />
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <ul className="grid gap-0.5 px-3 pb-3">
@@ -104,9 +104,12 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter, user }: {
                     <span className="truncate text-[13.5px] font-medium">{r.name}</span>
                     <span className="hidden truncate text-[12px] text-muted-foreground sm:inline">{r.client}</span>
                   </span>
-                  <span className="col-span-2 md:col-span-1"><Stepper stages={data.stages} index={r.stage_index} state={r.state} selected={selected} /></span>
-                  <span className={cn("justify-self-end whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium md:justify-self-start", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal")}>
-                    <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
+                  <span className="col-span-2 md:col-span-1"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} /></span>
+                  <span className="flex min-w-0 items-center gap-1.5 justify-self-end md:justify-self-start">
+                    <span className="truncate text-[12.5px] font-medium">{r.stage}</span>
+                    <span className={cn("whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
+                      <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
+                  </span>
                   <Avatar className="hidden h-6 w-6 md:flex" title={r.owner_name}><AvatarFallback className="bg-secondary text-[10px] font-semibold text-nav-fg">{initials(r.owner_name)}</AvatarFallback></Avatar>
                 </button>
               </li>

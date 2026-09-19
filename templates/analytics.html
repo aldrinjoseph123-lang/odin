@@ -2,8 +2,18 @@
 {% block title %}Cycle Time{% endblock %}
 {% block content %}
 <h1>Cycle Time</h1>
+<div class="filters">
+  {% for t in templates %}
+  <a href="{{ url_for('analytics', template=t.id) }}" class="{{ 'active' if template and template.id == t.id }}">{{ t.name }}</a>
+  {% endfor %}
+  {% if custom_count %}<span class="muted" style="align-self:center; font-size:var(--text-xs);">{{ custom_count }} project{{ 's' if custom_count != 1 }} on a custom stage list (not compared)</span>{% endif %}
+</div>
+{% if not stats %}
+<p class="muted">No stage template yet — create one in Settings.</p>
+{% else %}
 <p class="muted" style="margin-bottom:1.5rem;">
-  Reconstructed from stage history across {{ stats.measured_projects }} project{{ 's' if stats.measured_projects != 1 }}.
+  Stage timings are only comparable between projects that share a stage list, so this is per template: <strong>{{ template.name }}</strong>,
+  reconstructed from stage history across {{ stats.measured_projects }} project{{ 's' if stats.measured_projects != 1 }}.
   Averages count only stages a project has already <em>left</em> — a stage something is still sitting in has no finished duration yet, so it's reported under Aging instead.
 </p>
 
@@ -107,4 +117,5 @@
     </div>
   </div>
 </div>
+{% endif %}
 {% endblock %}
