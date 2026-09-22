@@ -253,6 +253,16 @@ def migrate_db(db):
 
     _migrate_stage_lists(db)
     _migrate_participants(db)
+    db.execute("""CREATE TABLE IF NOT EXISTS login_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        created_by INTEGER,
+        ip_address TEXT
+    )""")
 
     if not db.execute("SELECT 1 FROM doc_categories LIMIT 1").fetchone():
         for name in DEFAULT_DOC_CATEGORIES:

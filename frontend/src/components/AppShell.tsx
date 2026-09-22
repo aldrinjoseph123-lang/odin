@@ -37,7 +37,7 @@ function NavLink({ item, current, onClick }: { item: Item; current: boolean; onC
 export default function AppShell({ user, children }: { user: User; children: ReactNode }) {
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
-  const items: Item[] = [
+  const all: Item[] = [
     { href: "/board", label: "Flow", match: (p) => p === "/board" },
     { href: "/my-work", label: "My work", count: user.nav.my_open_task_count, match: (p) => p === "/my-work" },
     { href: user.nav.projects_nav_url, label: "Projects", match: (p) => p.startsWith("/projects") },
@@ -45,6 +45,8 @@ export default function AppShell({ user, children }: { user: User; children: Rea
     { href: "/alerts", label: "Alerts", count: user.nav.active_alert_count, match: (p) => p === "/alerts" },
     ...(user.role === "Admin" ? [{ href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") || p === "/audit-logs" }] : []),
   ]
+  // External partners get their projects and the flow — nothing product-wide.
+  const items = all.filter((item) => user.kind !== "external" || ["Flow", "Projects"].includes(item.label))
   async function signOut() {
     await logout()
     window.location.assign("/login")
@@ -61,8 +63,9 @@ export default function AppShell({ user, children }: { user: User; children: Rea
           <form method="get" action="/projects" className="md:w-56">
             <input type="search" name="q" placeholder="Search projects…" aria-label="Search projects" className="h-8 w-full rounded-md border border-border bg-secondary px-2.5 text-[13px] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30" />
           </form>
-          {user.role !== "Viewer" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
+          {user.role !== "Viewer" && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
+          {user.kind === "external" && <Badge variant="secondary">Partner access</Badge>}
           <a href="/account" className="flex items-center gap-2 text-[13px] text-nav-fg hover:text-foreground" title={user.name}>
             <Avatar className="h-7 w-7"><AvatarFallback className="bg-accent text-[11px] font-semibold text-accent-foreground">{initials(user.name)}</AvatarFallback></Avatar>
           </a>

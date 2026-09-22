@@ -75,6 +75,11 @@ export default function Login() {
               {busy ? "Signing in…" : "Log in"}
             </Button>
           </form>
+          {/* External partners and customers have no password; Flask serves the
+              link-request page and the link itself outside Cloudflare Access. */}
+          <p className="mt-4 text-center text-[12.5px] text-muted-foreground">
+            Partner or customer? <a href="/auth/link" className="text-primary-text hover:underline">Sign in with an email link</a>
+          </p>
         </CardContent>
       </Card>
     </main>

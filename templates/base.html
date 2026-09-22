@@ -27,7 +27,7 @@
     <a href="{{ projects_nav_url }}" class="{{ 'active' if ep in ('projects_list', 'project_detail', 'project_edit') }}">All Projects</a>
     <a href="{{ url_for('analytics') }}" class="{{ 'active' if ep == 'analytics' }}">Cycle Time</a>
     <a href="{{ url_for('alerts_log_view') }}" class="{{ 'active' if ep == 'alerts_log_view' }}">Alerts{% if active_alert_count %} ({{ active_alert_count }}){% endif %}</a>
-    {% if not is_viewer %}<a href="{{ url_for('project_new') }}" class="{{ 'active' if ep == 'project_new' }}">+ New Project</a>{% endif %}
+    {% if not is_viewer and not is_external %}<a href="{{ url_for('project_new') }}" class="{{ 'active' if ep == 'project_new' }}">+ New Project</a>{% endif %}
     {% if is_admin %}<a href="{{ url_for('settings') }}" class="{{ 'active' if ep.startswith('settings') or ep == 'audit_logs_view' }}">Settings</a>{% endif %}
     <span class="spacer"></span>
     {# Global search. Posts into the existing project list rather than adding a
@@ -35,7 +35,7 @@
     <form method="get" action="{{ url_for('projects_list') }}" class="nav-search">
       <input type="search" name="q" placeholder="Search projects…" aria-label="Search projects">
     </form>
-    {% if is_viewer %}<span class="role-badge">Read-only</span>{% endif %}
+    {% if is_external %}<span class="role-badge">Partner access</span>{% elif is_viewer %}<span class="role-badge">Read-only</span>{% endif %}
     <a href="{{ url_for('account') }}" class="user">{{ current_user }}</a>
     <a href="{{ url_for('logout') }}">Logout</a>
   </nav>

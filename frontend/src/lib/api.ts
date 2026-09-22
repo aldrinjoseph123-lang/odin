@@ -4,7 +4,8 @@
 export type User = {
   id: number
   name: string
-  role: "Admin" | "Member" | "Contributor" | "Viewer"
+  role: "Admin" | "Member" | "Contributor" | "Viewer" | "External"
+  kind: "internal" | "external"
   must_change_password: boolean
   permissions: string[]
   nav: Nav

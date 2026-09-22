@@ -27,14 +27,15 @@ from werkzeug.utils import secure_filename
 
 import graph
 from constants import (
+    EXTERNAL_PROJECT_ROLES,
     PROJECT_MANAGER,
     PROJECT_ROLES,
     CLIENT_PO_DOC_CATEGORY,
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, permission_required, undo_button, write_required
-from security import ALLOWED_UPLOAD_EXTENSIONS, allowed_upload, content_matches_extension
+from core import app, permission_required, undo_button, write_required, project_scope
+from security import ALLOWED_UPLOAD_EXTENSIONS, allowed_upload, content_matches_extension, valid_email
 from db import (
     UPLOAD_DIR,
     get_contact_lists,
@@ -152,7 +153,8 @@ def projects_list():
 
 def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filter="", search="", sort=DEFAULT_SORT, direction="desc"):
     query = "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL"
-    params = []
+    scope_sql, params = project_scope()
+    query += scope_sql
     if view == "stale":
         stale_threshold = get_alert_type_settings().get("stale", DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
         stale_cutoff = (datetime.utcnow() - timedelta(days=stale_threshold)).isoformat()
@@ -236,7 +238,8 @@ def report_all():
     db = get_db()
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        f"WHERE {PROJECT_OPEN_SQL} AND p.deleted_at IS NULL ORDER BY p.client, p.name"
+        f"WHERE {PROJECT_OPEN_SQL} AND p.deleted_at IS NULL{project_scope()[0]} ORDER BY p.client, p.name",
+        project_scope()[1],
     ).fetchall()
     return render_template(
         "report_all.html",
@@ -702,6 +705,60 @@ def participant_add(project_id):
     return redirect(url_for("project_detail", project_id=project_id) + "#team")
 
 
+@app.route("/projects/<int:project_id>/participants/invite", methods=["POST"])
+@permission_required("edit_project")
+def participant_invite(project_id):
+    """Add an outside party by email. An address already belonging to a staff
+    account just joins the team; anyone else becomes an external account
+    (no password) and receives a single-use sign-in link."""
+    from routes.auth import issue_login_link, send_login_link
+    project = load_project(project_id)
+    email = request.form.get("email", "").strip().lower()[:200]
+    name = request.form.get("name", "").strip()[:80] or email.split("@")[0]
+    role = request.form.get("role", "")
+    db = get_db()
+    if not valid_email(email):
+        flash("Enter a valid email address")
+    elif role not in EXTERNAL_PROJECT_ROLES:
+        flash("Pick a role")
+    else:
+        user = db.execute("SELECT * FROM users WHERE lower(email) = ?", (email,)).fetchone()
+        now = datetime.utcnow().isoformat()
+        if user is None:
+            db.execute(
+                "INSERT INTO users (username, password_hash, name, role, active, email, created_at, kind) "
+                "VALUES (?, 'external:no-password', ?, 'External', 1, ?, ?, 'external')",
+                (email, name, email, now),
+            )
+            user = db.execute("SELECT * FROM users WHERE lower(email) = ?", (email,)).fetchone()
+            audit_log("create_user", "user", user["id"], email, "external, invited")
+        if user["id"] == project["owner_id"]:
+            flash("That is the project manager")
+            return redirect(url_for("project_detail", project_id=project_id) + "#team")
+        db.execute(
+            "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
+            (project_id, user["id"], role, session["user_id"], now),
+        )
+        db.commit()
+        audit_log("invite_participant", "project", project_id, project["name"], f"{email} as {role}")
+        if user["kind"] != "external" or not user["active"]:
+            flash(f"{user['name']} added as {role}" + ("" if user["active"] else " (account is deactivated)"))
+        else:
+            raw = issue_login_link(user["id"], session["user_id"])
+            ok, error = send_login_link(user, raw, session["user_name"], project["name"])
+            if ok:
+                flash(f"{user['name']} added as {role} — sign-in link emailed to {email}")
+            else:
+                # No mail yet (Microsoft 365 not connected) — the inviter carries
+                # the link by hand. It still works once and expires in 30 minutes.
+                link = url_for("auth_link_consume", token=raw, _external=True)
+                flash(Markup(f"{escape(user['name'])} added as {escape(role)}. Email could not be sent "
+                             f"({escape(error or 'not configured')}) — send them this link yourself: "
+                             f"<code>{escape(link)}</code>"))
+    return redirect(url_for("project_detail", project_id=project_id) + "#team")
+
+
 @app.route("/projects/<int:project_id>/participants/<int:participant_id>/remove", methods=["POST"])
 @permission_required("edit_project")
 def participant_remove(project_id, participant_id):
@@ -814,9 +871,11 @@ def project_note(project_id):
     if project is None:
         abort(404)
     now = datetime.utcnow().isoformat()
+    # An external participant's note is theirs to see again — and the
+    # project's other outsiders may see it too. Staff notes stay internal.
     db.execute(
-        "INSERT INTO status_notes (project_id, author, note, stage, created_at) VALUES (?, ?, ?, ?, ?)",
-        (project_id, session["user_name"], note_text, project["stage"], now),
+        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (?, ?, ?, ?, ?, ?)",
+        (project_id, session["user_name"], note_text, project["stage"], now, 1 if session.get("kind") == "external" else 0),
     )
     db.commit()
     audit_log("add_project_note", "project", project_id, project["name"], note_text)

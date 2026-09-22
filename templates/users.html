@@ -10,7 +10,7 @@
     <tbody>
       {% for u in users %}
       <tr>
-        <td>{{ u.name }}</td>
+        <td>{{ u.name }}{% if u.kind == 'external' %} <span class="stage-badge">External</span>{% endif %}</td>
         <td>{{ u.username }}</td>
         <td>
           <details>
@@ -43,6 +43,7 @@
             <button type="submit" class="icon-btn">{{ 'Deactivate' if u.active else 'Reactivate' }}</button>
           </form>
           {% endif %}
+          {% if u.kind != 'external' %}
           <details>
             <summary class="icon-btn" style="display:inline-block; cursor:pointer;">Reset Password</summary>
             <form method="post" action="{{ url_for('user_reset_password', user_id=u.id) }}" style="margin-top:0.4rem; display:flex; gap:0.4rem;">
@@ -51,6 +52,7 @@
               <button type="submit" class="icon-btn">Set</button>
             </form>
           </details>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

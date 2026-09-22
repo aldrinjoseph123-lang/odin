@@ -7,7 +7,7 @@ from flask import abort, jsonify, request, session
 from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, DELIVERY_MODES
-from core import app, login_required, nav_counts, permission_required, role_has_permission
+from core import app, login_required, nav_counts, permission_required, project_scope, role_has_permission
 from db import PROJECT_OPEN_SQL, get_db, get_stage_names, get_terminal_stage, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, board_data, dismiss_alert
@@ -35,6 +35,7 @@ def _current_user():
         "id": session["user_id"],
         "name": session.get("user_name"),
         "role": session.get("role"),
+        "kind": session.get("kind", "internal"),
         "must_change_password": bool(session.get("must_change_password")),
         "permissions": _permissions_for(session.get("role")),
         "nav": nav_counts(),
@@ -150,7 +151,8 @@ def api_flow():
         "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.done = 0) AS open_tasks, "
         "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_tasks "
         "FROM projects p JOIN users u ON u.id = p.owner_id "
-        f"WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.updated_at DESC"
+        f"WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{project_scope()[0]} ORDER BY p.updated_at DESC",
+        project_scope()[1],
     ).fetchall()
     stage_lists = stages_for_projects([p["id"] for p in projects])
     mine = my_project_ids(session["user_id"])

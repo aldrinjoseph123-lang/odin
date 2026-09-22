@@ -1067,6 +1067,141 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- Phase 3: external accounts by email sign-in link -----------------
+
+    def _invite(self, project_id, email, role="Contractor", name="Ext"):
+        with patch("graph.send_mail", return_value=(False, "not configured")) as send:
+            resp = self.client.post(f"/projects/{project_id}/participants/invite",
+                                    data={"email": email, "name": name, "role": role}, follow_redirects=True)
+        return resp, send
+
+    def _link_for(self, email):
+        from security import issue_login_link
+        with self.raw_db() as db:
+            uid = db.execute("SELECT id FROM users WHERE lower(email)=?", (email.lower(),)).fetchone()["id"]
+        with app_module.app.test_request_context():
+            return issue_login_link(uid)
+
+    def _external_client(self, email):
+        c = app_module.app.test_client()
+        c.get(f"/auth/link/{self._link_for(email)}")
+        return c
+
+    def test_invite_creates_external_account_participant_and_hashed_link(self):
+        self.new_project(name="P", client="C")
+        resp, send = self._invite(1, "Jane@Vendor.example", "Contractor", "Jane")
+        self.assertTrue(send.called)
+        body = resp.data.decode()
+        self.assertIn("send them this link yourself", body)          # mail not configured → fallback
+        with self.raw_db() as db:
+            u = db.execute("SELECT * FROM users WHERE email='jane@vendor.example'").fetchone()
+            self.assertEqual((u["kind"], u["role"], u["active"]), ("external", "External", 1))
+            self.assertEqual(db.execute("SELECT role FROM project_participants WHERE user_id=?", (u["id"],)).fetchone()[0], "Contractor")
+            link = db.execute("SELECT * FROM login_links WHERE user_id=?", (u["id"],)).fetchone()
+            self.assertEqual(len(link["token_hash"]), 64)             # sha256, never the raw token
+            self.assertNotIn(link["token_hash"], body)
+            actions = [r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action IN ('create_user','invite_participant')")]
+        self.assertEqual(actions, ["create_user", "invite_participant"])
+        # inviting a staff address just adds them — no external account, no link
+        self._make_user("staff", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email='staff@odin.example' WHERE username='staff'"); db.commit()
+        self._invite(1, "staff@odin.example", "Reseller")
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT kind FROM users WHERE username='staff'").fetchone()[0], "internal")
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM login_links").fetchone()[0], 1)
+
+    def test_sign_in_link_is_single_use_short_lived_and_account_bound(self):
+        self.new_project(name="P", client="C")
+        self._invite(1, "jane@vendor.example")
+        raw = self._link_for("jane@vendor.example")
+        c = app_module.app.test_client()
+        self.assertEqual(c.get(f"/auth/link/{raw}").headers["Location"].endswith("/board"), True)
+        self.assertEqual(c.get("/api/session").get_json()["user"]["kind"], "external")
+        again = app_module.app.test_client()
+        self.assertIn("/auth/link", again.get(f"/auth/link/{raw}").headers["Location"])      # used once
+        self.assertIsNone(again.get("/api/session").get_json()["user"])
+        self.assertIn("/auth/link", again.get("/auth/link/not-a-token").headers["Location"])
+        expired = self._link_for("jane@vendor.example")
+        with self.raw_db() as db:
+            db.execute("UPDATE login_links SET expires_at='2020-01-01T00:00:00' WHERE used_at IS NULL"); db.commit()
+        self.assertIsNone(again.get(f"/auth/link/{expired}") and again.get("/api/session").get_json()["user"])
+        fresh = self._link_for("jane@vendor.example")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET active=0 WHERE email='jane@vendor.example'"); db.commit()
+        self.assertIsNone(again.get(f"/auth/link/{fresh}") and again.get("/api/session").get_json()["user"])
+        with self.raw_db() as db:
+            self.assertGreaterEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='login_link_rejected'").fetchone()[0], 3)
+
+    def test_external_sees_only_projects_they_are_on(self):
+        self.new_project(name="Theirs", client="Acme")
+        self.new_project(name="NotTheirs", client="Globex", target_end_date="2020-01-01")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        c = self._external_client("ann@acme.example")
+        listing = c.get("/projects").data.decode()
+        self.assertIn("Theirs", listing); self.assertNotIn("NotTheirs", listing)
+        self.assertNotIn("NotTheirs", c.get("/projects?q=Not").data.decode())
+        self.assertNotIn("NotTheirs", c.get("/projects?view=overdue").data.decode())
+        self.assertEqual(c.get("/projects/2").status_code, 404)
+        self.assertEqual(c.get("/projects/1").status_code, 200)
+        self.assertEqual([r["name"] for r in c.get("/api/flow").get_json()["rows"]], ["Theirs"])
+        self.assertEqual(c.get("/api/projects/2/flow").status_code, 404)
+        self.assertNotIn("NotTheirs", c.get("/projects/export.csv").data.decode())
+        self.assertNotIn("NotTheirs", c.get("/reports/all").data.decode())
+        self.assertEqual(c.get("/api/session").get_json()["user"]["nav"]["active_alert_count"], 0)   # NotTheirs is overdue; not theirs
+        with self.raw_db() as db:
+            doc = db.execute("SELECT id FROM documents WHERE project_id=2").fetchone()["id"]
+        self.assertEqual(c.get(f"/projects/2/documents/{doc}/download").status_code, 404)
+
+    def test_external_can_read_and_comment_but_nothing_else(self):
+        self.new_project(name="Theirs", client="Acme")
+        self._invite(1, "raj@vendor.example", "Contractor", "Raj")
+        c = self._external_client("raj@vendor.example")
+        self.assertEqual(c.post("/projects/1/note", data={"note": "sensors shipped"}).status_code, 302)
+        with self.raw_db() as db:
+            note = db.execute("SELECT author, guest_visible FROM status_notes ORDER BY id DESC LIMIT 1").fetchone()
+        self.assertEqual((note["author"], note["guest_visible"]), ("Raj", 1))
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        for path, data in [("/projects/1/stage", {"stage": stages[1]}), ("/projects/1/tasks", {"title": "x"}),
+                           ("/projects/1/edit", {"name": "X"}), ("/projects/1/stages/add", {"name": "x"}),
+                           ("/projects/1/participants/add", {"user_id": "1", "role": "Sales"})]:
+            self.assertEqual(c.post(path, data=data).status_code, 403, path)
+        for path in ["/projects/new", "/settings", "/users", "/audit-logs"]:
+            self.assertEqual(c.get(path).status_code, 403, path)
+        self.assertNotIn(b"New Project", c.get("/projects").data)
+        detail = c.get("/projects/1").data.decode()
+        self.assertIn("Add Note", detail)
+        for control in ["Update Stage", "Invite by email", "Add a person", "Delete project", ">Upload<"]:
+            self.assertNotIn(control, detail, control)
+        # no password: the form refuses without confirming the address exists
+        resp = app_module.app.test_client().post("/login", data={"username": "raj@vendor.example", "password": "anything"}, follow_redirects=True)
+        self.assertIn(b"Bad username or password", resp.data)
+        with self.raw_db() as db:
+            self.assertIn("sign-in links only", db.execute("SELECT details FROM audit_logs WHERE action='login_failure' ORDER BY id DESC LIMIT 1").fetchone()[0])
+        # and an admin cannot give them one
+        with self.raw_db() as db:
+            uid = db.execute("SELECT id FROM users WHERE email='raj@vendor.example'").fetchone()[0]
+        resp = self.client.post(f"/users/{uid}/reset-password", data={"new_password": STRONG_PASSWORD}, follow_redirects=True)
+        self.assertIn(b"nothing to reset", resp.data)
+
+    def test_link_request_never_confirms_an_address_and_is_rate_limited(self):
+        self.new_project(name="P", client="C")
+        self._invite(1, "jane@vendor.example")
+        anon = app_module.app.test_client()
+        with patch("graph.send_mail", return_value=(True, None)) as send:
+            known = anon.post("/auth/link", data={"email": "jane@vendor.example"}, follow_redirects=True).data
+            unknown = anon.post("/auth/link", data={"email": "nobody@nowhere.example"}, follow_redirects=True).data
+        self.assertIn(b"a sign-in link is on its way", known); self.assertIn(b"a sign-in link is on its way", unknown)
+        self.assertEqual(send.call_count, 1)
+        with patch("graph.send_mail", return_value=(True, None)):
+            for _ in range(3):
+                anon.post("/auth/link", data={"email": "jane@vendor.example"})
+            limited = anon.post("/auth/link", data={"email": "jane@vendor.example"}, follow_redirects=True).data
+        self.assertIn(b"Too many requests", limited)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='login_link_requested'").fetchone()[0], 4)   # 3 per address; the rest never reach the DB
+
     # ---- Phase 2: participants -------------------------------------------
 
     def test_creator_is_project_manager_and_team_joins_as_coordinators(self):

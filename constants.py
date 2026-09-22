@@ -57,7 +57,10 @@ CONTACT_LISTS = {
 
 # Contributor: creates and comments (sales / account managers) but never moves
 # a delivery stage or deletes. Member is the delivery team.
-ROLES = ["Admin", "Member", "Contributor", "Viewer"]
+# External: contractors, resellers and customer contacts invited by email. No
+# password, no product surface beyond the projects they participate in.
+ROLES = ["Admin", "Member", "Contributor", "Viewer", "External"]
+EXTERNAL_PROJECT_ROLES = ["Contractor", "Reseller", "Customer"]
 
 # What someone is *on one project*, independent of their global role. The
 # project manager is the owner (set at creation, follows owner reassignment).
@@ -68,17 +71,17 @@ PROJECT_MANAGER = PROJECT_ROLES[0]
 # source of truth at runtime — this dict only seeds first migration and
 # defines the fixed display order for the RBAC settings matrix).
 PERMISSIONS = {
-    "view_board": ["Admin", "Member", "Contributor", "Viewer"],
-    "view_projects": ["Admin", "Member", "Contributor", "Viewer"],
-    "view_project_detail": ["Admin", "Member", "Contributor", "Viewer"],
+    "view_board": ["Admin", "Member", "Contributor", "Viewer", "External"],
+    "view_projects": ["Admin", "Member", "Contributor", "Viewer", "External"],
+    "view_project_detail": ["Admin", "Member", "Contributor", "Viewer", "External"],
     "create_project": ["Admin", "Member", "Contributor"],
     "edit_project": ["Admin", "Member", "Contributor"],
     "delete_project": ["Admin"],
-    "view_reports": ["Admin", "Member", "Contributor", "Viewer"],
+    "view_reports": ["Admin", "Member", "Contributor", "Viewer", "External"],
     "edit_project_stage": ["Admin", "Member"],
-    "add_project_note": ["Admin", "Member", "Contributor"],
+    "add_project_note": ["Admin", "Member", "Contributor", "External"],
     "upload_document": ["Admin", "Member", "Contributor"],
-    "download_document": ["Admin", "Member", "Contributor", "Viewer"],
+    "download_document": ["Admin", "Member", "Contributor", "Viewer", "External"],
     "delete_document": ["Admin"],
     "manage_contacts": ["Admin"],
     "manage_settings": ["Admin"],
@@ -152,4 +155,6 @@ NEW_USER_COLUMNS = {
     # Access-review evidence: who exists since when, and who has gone quiet.
     "created_at": "TEXT",
     "last_login_at": "TEXT",
+    # internal (password, Cloudflare Access) or external (email sign-in link)
+    "kind": "TEXT NOT NULL DEFAULT 'internal'",
 }

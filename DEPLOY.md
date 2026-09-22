@@ -101,7 +101,9 @@ record goes live:
    logins would lock out everyone.
 3. **Access = your MFA/SSO.** Create an Access application for the hostname:
    Allow policy = your Entra ID tenant (MFA enforced in Entra); a **Bypass**
-   policy for path `/guest/*` so customers and vendors can open their links;
+   policy for `/auth/link*` (external partners and customers sign in by
+   email link there — Access must not stand in front of it) and for
+   `/guest/*` while the old anonymous links are still in use;
    enable *Protect with Access* on the tunnel so nothing skips the check.
 4. **WAF + rate limits.** Managed ruleset on. Rate-limit `/login` (5/min per
    IP) and POSTs to `/guest/*` (10/min per IP). Bot Fight Mode on. Consider

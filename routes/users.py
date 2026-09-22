@@ -107,6 +107,9 @@ def user_set_active(user_id):
 @app.route("/users/<int:user_id>/reset-password", methods=["POST"])
 @permission_required("manage_users")
 def user_reset_password(user_id):
+    if get_db().execute("SELECT kind FROM users WHERE id = ?", (user_id,)).fetchone()["kind"] == "external":
+        flash("External accounts sign in by email link — nothing to reset")
+        return redirect(url_for("users"))
     new_password = request.form.get("new_password", "")
     problem = password_problem(new_password)
     if problem:

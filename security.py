@@ -135,6 +135,48 @@ def content_matches_extension(file):
     return any(head.startswith(sig) for sig in signatures)
 
 
+# --- authentication: email sign-in links for external accounts --------------
+#
+# The link is a bearer credential travelling through email, so: 256 bits of
+# entropy, only its SHA-256 stored, one use, a short life, and every issue and
+# use lands in the audit trail (done by the routes).
+
+LINK_TTL_MINUTES = 30
+
+
+def issue_login_link(user_id, created_by=None):
+    """Mint a single-use sign-in link for a user; returns the raw token, which
+    exists only in the email (and the inviter's fallback flash)."""
+    import hashlib
+    raw = secrets.token_urlsafe(32)
+    now = datetime.utcnow()
+    get_db().execute(
+        "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, hashlib.sha256(raw.encode()).hexdigest(), now.isoformat(),
+         (now + timedelta(minutes=LINK_TTL_MINUTES)).isoformat(), created_by, request.remote_addr),
+    )
+    get_db().commit()
+    return raw
+
+
+def consume_login_link(raw):
+    """The user for a valid, unexpired, unused link — marking it used — or
+    None. Invalid for internal accounts: they sign in with a password."""
+    import hashlib
+    db = get_db()
+    row = db.execute(
+        "SELECT l.*, u.active, u.kind FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
+        (hashlib.sha256((raw or "").encode()).hexdigest(),),
+    ).fetchone()
+    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat():
+        return None
+    if not row["active"] or row["kind"] != "external":
+        return None
+    db.execute("UPDATE login_links SET used_at = ? WHERE id = ?", (datetime.utcnow().isoformat(), row["id"]))
+    db.commit()
+    return db.execute("SELECT * FROM users WHERE id = ?", (row["user_id"],)).fetchone()
+
+
 # Deliberately loose — one @, a dot in the domain, no whitespace. Enough to
 # catch fat-finger input; real deliverability is proven by the test-email button.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

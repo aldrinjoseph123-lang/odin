@@ -4,7 +4,7 @@ per-project alert dismissal. Imported for route registration side effects.
 from flask import abort, redirect, render_template, request, session, url_for
 
 from constants import ALERT_TYPES, ALERT_TYPE_TITLES
-from core import app, login_required, permission_required
+from core import app, login_required, permission_required, project_scope
 from db import PROJECT_OPEN_SQL, get_db, get_stage_names, get_terminal_stage, stages_for_projects
 from services.analytics import build_cycle_times
 from spa import spa_index, spa_serves
@@ -39,8 +39,8 @@ def my_work():
 
     owned = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        f"WHERE p.owner_id = ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.updated_at DESC",
-        (uid,),
+        f"WHERE p.owner_id = ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{project_scope()[0]} ORDER BY p.updated_at DESC",
+        (uid, *project_scope()[1]),
     ).fetchall()
     my_projects = [{"project": p, "schedule": schedule_status(p)} for p in owned]
 
@@ -70,7 +70,8 @@ def board_data():
         "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.done = 1) AS task_done "
         "FROM projects p "
         "JOIN users u ON u.id = p.owner_id "
-        f"WHERE {PROJECT_OPEN_SQL} AND p.deleted_at IS NULL ORDER BY p.updated_at DESC"
+        f"WHERE {PROJECT_OPEN_SQL} AND p.deleted_at IS NULL{project_scope()[0]} ORDER BY p.updated_at DESC",
+        project_scope()[1],
     ).fetchall()
     stages_for_projects([p["id"] for p in projects])   # bulk-inserted projects adopt a list here
     columns = {stage: [] for stage in get_stage_names()}
@@ -131,7 +132,7 @@ def analytics():
     template = next((t for t in templates if t["id"] == template_id), None)
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        "WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?", (template_id,)
+        f"WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{project_scope()[0]}", (template_id, *project_scope()[1])
     ).fetchall()
     notes_by_project = {}
     for note in db.execute("SELECT project_id, stage, created_at FROM status_notes ORDER BY created_at"):

@@ -191,14 +191,28 @@ def permission_required(permission):
     return decorator
 
 
+def project_scope():
+    """SQL that narrows any `projects p` query to what this session may see:
+    nothing extra for staff, only participated projects for an external
+    account. Every list/export/board query appends it; load_project applies
+    the same rule for single rows."""
+    if session.get("kind") != "external":
+        return "", []
+    return " AND p.id IN (SELECT project_id FROM project_participants WHERE user_id = ?)", [session["user_id"]]
+
+
 def nav_counts():
     """Badges on the nav bar — the same three numbers whether Jinja or React
     draws the bar."""
     if not session.get("user_id"):
         return {"active_alert_count": 0, "my_open_task_count": 0, "projects_nav_url": url_for("projects_list")}
     db = get_db()
+    scope_sql, scope_params = project_scope()
     return {
-        "active_alert_count": db.execute("SELECT COUNT(*) AS count FROM alerts WHERE resolved = 0").fetchone()["count"],
+        "active_alert_count": db.execute(
+            f"SELECT COUNT(*) AS count FROM alerts a JOIN projects p ON p.id = a.project_id WHERE a.resolved = 0{scope_sql}",
+            scope_params,
+        ).fetchone()["count"],
         "my_open_task_count": db.execute(
             "SELECT COUNT(*) AS count FROM tasks t JOIN projects p ON p.id = t.project_id "
             "WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL",
@@ -220,6 +234,10 @@ def inject_globals():
         "VIA_OPTIONS": VIA_OPTIONS,
         "current_user": session.get("user_name"),
         "is_admin": session.get("role") == "Admin",
-        "is_viewer": session.get("role") == "Viewer",
+        # is_viewer = "hide every edit control": Viewers, and external
+        # partners, who only read and comment. The routes enforce the same.
+        "is_viewer": session.get("role") == "Viewer" or session.get("kind") == "external",
+        "is_external": session.get("kind") == "external",
+        "can_note": role_has_permission(session.get("role"), "add_project_note"),
         "session_user_id": session.get("user_id"),
     }

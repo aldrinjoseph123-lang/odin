@@ -140,6 +140,16 @@
     <button type="submit">Add</button>
     <span class="muted" style="font-size:var(--text-xs);">The owner is the project manager; change it on Edit.</span>
   </form>
+  <form method="post" action="{{ url_for('participant_invite', project_id=project.id) }}" class="inline-form" style="margin-top:var(--space-2);">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="email" name="email" placeholder="Invite by email (contractor, reseller, customer)" aria-label="Invite by email" required style="min-width:18rem;">
+    <input type="text" name="name" placeholder="Name" aria-label="Name" maxlength="80">
+    <select name="role" aria-label="Their role">
+      {% for r in ['Contractor', 'Reseller', 'Customer'] %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+    </select>
+    <button type="submit">Invite</button>
+    <span class="muted" style="font-size:var(--text-xs);">They get a one-time sign-in link and see only their projects.</span>
+  </form>
   {% endif %}
 </div>
 
@@ -182,15 +192,15 @@
       <textarea name="note" maxlength="5000" aria-label="Status note for this stage change" placeholder="Status note (what happened, what's next)" rows="3"></textarea>
       <button type="submit">Update Stage</button>
     </form>
+    {% endif %}
 
     <h2>Status Notes</h2>
+    {% if can_note %}
     <form method="post" action="{{ url_for('project_note', project_id=project.id) }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <textarea name="note" maxlength="5000" aria-label="Add a note" placeholder="Add a note" rows="2" required></textarea>
       <button type="submit">Add Note</button>
     </form>
-    {% else %}
-    <h2>Status Notes</h2>
     {% endif %}
     <div class="notes">
       {% for n in notes %}
