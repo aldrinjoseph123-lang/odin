@@ -17,6 +17,13 @@
   <label>Client *
     <input type="text" name="client" required maxlength="200" value="{{ src.client if src else '' }}"></label>
 
+  {% if not editing %}
+  <label>Team <span class="muted" style="text-transform:none;">(optional — added as coordinators; you are the project manager)</span></label>
+  <select aria-label="Team members" name="team_user_ids" multiple size="4">
+    {% for u in users %}{% if u.id != session_user_id %}<option value="{{ u.id }}">{{ u.name }}</option>{% endif %}{% endfor %}
+  </select>
+  {% endif %}
+
   {% if editing %}
   <label>Owner</label>
   <select aria-label="Owner" name="owner_id">

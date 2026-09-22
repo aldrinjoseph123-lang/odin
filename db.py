@@ -113,7 +113,7 @@ def cleanup_soft_deletes(db=None):
         _remove_upload(project_id, stored_name)
 
     if doomed:
-        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages"):
+        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
@@ -138,7 +138,7 @@ def _purge_orphans(db):
     their children. Everything removed here is unreachable by definition: no
     project row means no page can ever display it.
     """
-    for table in ("status_notes", "tasks", "alerts", "project_stages"):
+    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants"):
         column = "project_id"
         db.execute(
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
@@ -252,6 +252,7 @@ def migrate_db(db):
         db.execute("ALTER TABLE status_notes ADD COLUMN guest_visible INTEGER NOT NULL DEFAULT 0")
 
     _migrate_stage_lists(db)
+    _migrate_participants(db)
 
     if not db.execute("SELECT 1 FROM doc_categories LIMIT 1").fetchone():
         for name in DEFAULT_DOC_CATEGORIES:
@@ -501,6 +502,55 @@ def _migrate_stage_lists(db):
             ).fetchone()[0] or 0
             db.execute("UPDATE project_stages SET position = position + 1 WHERE project_id = ? AND position = ?", (project_id, last))
             db.execute("INSERT INTO project_stages (project_id, name, position) VALUES (?, ?, ?)", (project_id, current, last))
+
+
+def _migrate_participants(db):
+    """Who is on a project, in what capacity. The owner is always its project
+    manager; existing projects get that row on first boot."""
+    db.execute("""CREATE TABLE IF NOT EXISTS project_participants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        role TEXT NOT NULL,
+        added_by INTEGER,
+        added_at TEXT NOT NULL,
+        UNIQUE (project_id, user_id)
+    )""")
+    db.execute(
+        "INSERT OR IGNORE INTO project_participants (project_id, user_id, role, added_by, added_at) "
+        "SELECT id, owner_id, 'Project manager', NULL, created_at FROM projects"
+    )
+
+
+def set_project_manager(db, project_id, user_id, added_by=None):
+    """The PM row follows the owner: the new owner becomes PM (upsert), and a
+    previous owner who was PM is kept on the team as a coordinator."""
+    db.execute(
+        "UPDATE project_participants SET role = 'Coordinator' WHERE project_id = ? AND role = 'Project manager' AND user_id != ?",
+        (project_id, user_id),
+    )
+    db.execute(
+        "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, 'Project manager', ?, ?) "
+        "ON CONFLICT(project_id, user_id) DO UPDATE SET role = 'Project manager'",
+        (project_id, user_id, added_by, datetime.utcnow().isoformat()),
+    )
+
+
+def participants_for(project_id):
+    return get_db().execute(
+        "SELECT pp.*, u.name, u.email, u.active FROM project_participants pp JOIN users u ON u.id = pp.user_id "
+        "WHERE pp.project_id = ? ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name",
+        (project_id,),
+    ).fetchall()
+
+
+def my_project_ids(user_id):
+    """Projects this user owns or participates in — the board's 'Mine' filter
+    today, and the whole visible set for external accounts later."""
+    return {row[0] for row in get_db().execute(
+        "SELECT project_id FROM project_participants WHERE user_id = ? UNION SELECT id FROM projects WHERE owner_id = ?",
+        (user_id, user_id),
+    )}
 
 
 def copy_template_stages(db, template_id, project_id):

@@ -1067,6 +1067,95 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- Phase 2: participants -------------------------------------------
+
+    def test_creator_is_project_manager_and_team_joins_as_coordinators(self):
+        uid = self._make_user("dev1", "Member")
+        self.new_project(name="T", client="C", team_user_ids=[str(uid)])
+        with self.raw_db() as db:
+            rows = {r["name"]: r["role"] for r in db.execute(
+                "SELECT u.name, pp.role FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.project_id = 1")}
+        self.assertEqual(rows, {"Admin": "Project manager", "dev1": "Coordinator"})
+        page = self.client.get("/projects/1").data.decode()
+        self.assertIn("Project manager", page); self.assertIn("dev1", page)
+
+    def test_participants_add_remove_and_pm_guards(self):
+        self.new_project(name="T", client="C")
+        s = self._make_user("sales", "Contributor")
+        self.client.post("/projects/1/participants/add", data={"user_id": s, "role": "Sales"})
+        self.client.post("/projects/1/participants/add", data={"user_id": s, "role": "Reseller"})   # upsert changes the role
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT role FROM project_participants WHERE project_id=1 AND user_id=?", (s,)).fetchone()[0], "Reseller")
+            pm = db.execute("SELECT id FROM project_participants WHERE project_id=1 AND role='Project manager'").fetchone()[0]
+            actions = [r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action LIKE '%participant%'")]
+        self.assertEqual(actions, ["add_participant", "add_participant"])
+        resp = self.client.post(f"/projects/1/participants/{pm}/remove", follow_redirects=True)
+        self.assertIn(b"cannot be removed", resp.data)
+        resp = self.client.post("/projects/1/participants/add", data={"user_id": s, "role": "Project manager"}, follow_redirects=True)
+        self.assertIn(b"project manager is the owner", resp.data)
+        with self.raw_db() as db:
+            pid = db.execute("SELECT id FROM project_participants WHERE project_id=1 AND user_id=?", (s,)).fetchone()[0]
+        self.client.post(f"/projects/1/participants/{pid}/remove")
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM project_participants WHERE project_id=1 AND user_id=?", (s,)).fetchone())
+        self.new_project(name="U", client="C")
+        with self.raw_db() as db:
+            other_pm = db.execute("SELECT id FROM project_participants WHERE project_id=2").fetchone()[0]
+        self.assertEqual(self.client.post(f"/projects/1/participants/{other_pm}/remove").status_code, 404)
+
+    def test_pm_follows_owner_reassignment(self):
+        self.new_project(name="T", client="C")
+        new_owner = self._make_user("pm2", "Member")
+        self.client.post("/projects/1/edit", data={"name": "T", "client": "C", "via": "Direct", "delivery_mode": "Distribution/MSSP", "owner_id": new_owner})
+        with self.raw_db() as db:
+            rows = {r["name"]: r["role"] for r in db.execute(
+                "SELECT u.name, pp.role FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.project_id = 1")}
+        self.assertEqual(rows, {"pm2": "Project manager", "Admin": "Coordinator"})
+
+    def test_flow_marks_my_projects_and_lists_the_team(self):
+        self.new_project(name="Mine", client="C")
+        dev = self._make_user("dev1", "Member")
+        c = app_module.app.test_client(); c.post("/login", data={"username": "dev1", "password": STRONG_PASSWORD})
+        c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 x"), "po.pdf"), "name": "Theirs", "client": "C"})
+        self.client.post("/projects/1/participants/add", data={"user_id": dev, "role": "Contractor"})
+        api, _ = self._api_client("dev1", STRONG_PASSWORD)
+        rows = {r["name"]: r["mine"] for r in api.get("/api/flow").get_json()["rows"]}
+        self.assertEqual(rows, {"Mine": True, "Theirs": True})
+        admin, _ = self._api_client()
+        rows = {r["name"]: r["mine"] for r in admin.get("/api/flow").get_json()["rows"]}
+        self.assertEqual(rows, {"Mine": True, "Theirs": False})
+        team = admin.get("/api/projects/1/flow").get_json()["participants"]
+        self.assertEqual([(t["name"], t["role"]) for t in team], [("Admin", "Project manager"), ("dev1", "Contractor")])
+
+    def test_every_project_route_loads_through_the_one_door(self):
+        """load_project() is where visibility is decided. A project-scoped
+        route that fetches the project any other way bypasses that decision —
+        harmless today, a data leak the day external accounts exist."""
+        import inspect
+        missing = []
+        for rule in app_module.app.url_map.iter_rules():
+            if "<int:project_id>" not in rule.rule:
+                continue
+            src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
+            if not any(m in src for m in ("load_project(", "_live_project(", "change_stage(", "dismiss_alert(")):
+                missing.append(rule.rule)
+        self.assertEqual(missing, [], f"project routes bypassing load_project: {missing}")
+
+    def test_migration_gives_existing_projects_their_project_manager(self):
+        self.new_project(name="Old", client="C")
+        with self.raw_db() as db:
+            db.execute("DELETE FROM project_participants"); db.commit()
+        app_module.init_db()
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT role FROM project_participants WHERE project_id=1").fetchone()[0], "Project manager")
+
+    def test_undo_restores_a_deleted_project_through_the_one_door(self):
+        self.new_project(name="Gone", client="C")
+        self.client.post("/projects/1/delete")
+        self.assertEqual(self.client.get("/projects/1").status_code, 404)
+        self.assertEqual(self.client.post("/undo/project/1").status_code, 302)
+        self.assertEqual(self.client.get("/projects/1").status_code, 200)
+
     # ---- Phase 1: every project owns its stage list ------------------------
 
     def test_new_project_copies_the_chosen_template_and_owns_the_copy(self):

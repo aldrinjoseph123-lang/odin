@@ -56,15 +56,15 @@ function Stepper({ stages, index, state, selected }: { stages: string[]; index: 
 }
 
 // ---- top pane: every active rollout, stuck first -------------------------------
-function RolloutList({ data, selectedId, onSelect, filter, setFilter, user }: {
+function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
   data: FlowData; selectedId: number | null; onSelect: (id: number) => void
-  filter: "all" | "attention" | "mine"; setFilter: (f: "all" | "attention" | "mine") => void; user: User
+  filter: "all" | "attention" | "mine"; setFilter: (f: "all" | "attention" | "mine") => void; user?: User
 }) {
   const rows = useMemo(() => data.rows.filter((r) =>
-    filter === "attention" ? r.state !== "on_track" : filter === "mine" ? r.owner_name === user.name : true), [data.rows, filter, user.name])
+    filter === "attention" ? r.state !== "on_track" : filter === "mine" ? r.mine : true), [data.rows, filter])
   const stuck = data.counts.overdue + data.counts.over_sla + data.counts.due_soon
   const chips: { key: typeof filter; label: string; n: number }[] = [
-    { key: "all", label: "All", n: data.rows.length }, { key: "attention", label: "Needs attention", n: stuck }, { key: "mine", label: "Mine", n: data.rows.filter((r) => r.owner_name === user.name).length },
+    { key: "all", label: "All", n: data.rows.length }, { key: "attention", label: "Needs attention", n: stuck }, { key: "mine", label: "Mine", n: data.rows.filter((r) => r.mine).length },
   ]
   return (
     <div className="flex h-full flex-col">
@@ -273,6 +273,19 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
             {err && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
           </section>
         )}
+        <section>
+          <h3 className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><UserRound className="h-3.5 w-3.5" /> Team</h3>
+          <ul className="grid gap-1.5">
+            {d.participants.map((m) => (
+              <li key={m.id} className="flex items-center gap-2 text-[12.5px]">
+                <Avatar className="h-6 w-6"><AvatarFallback className="bg-secondary text-[10px] font-semibold text-nav-fg">{initials(m.name)}</AvatarFallback></Avatar>
+                <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
+                <span className="text-muted-foreground">{m.role}</span>
+              </li>
+            ))}
+          </ul>
+          <a href={`/projects/${d.id}#team`} className="mt-1.5 inline-block text-[12px] text-primary-text hover:underline">Manage team</a>
+        </section>
         {d.recent_notes.length > 0 && (
           <section>
             <h3 className="mb-1.5 text-[12px] font-semibold text-nav-fg">Recent</h3>
@@ -288,7 +301,7 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
   )
 }
 
-export default function Flow({ user }: { user: User }) {
+export default function Flow(_props: { user: User }) {
   const [data, setData] = useState<FlowData | null>(null)
   // ?rollout=<id> deep-links a rollout: shareable, and the URL follows selection.
   const [selectedId, setSelectedIdState] = useState<number | null>(() => {
@@ -324,7 +337,7 @@ export default function Flow({ user }: { user: User }) {
   return (
     <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
       <ResizablePanel defaultSize={selectedId == null ? 100 : 48} minSize={20}>
-        <RolloutList data={data} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} user={user} />
+        <RolloutList data={data} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} />
       </ResizablePanel>
       {selectedId != null && (
         <>

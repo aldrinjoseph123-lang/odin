@@ -27,6 +27,8 @@ from werkzeug.utils import secure_filename
 
 import graph
 from constants import (
+    PROJECT_MANAGER,
+    PROJECT_ROLES,
     CLIENT_PO_DOC_CATEGORY,
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
@@ -41,6 +43,9 @@ from db import (
     get_setting,
     PROJECT_OPEN_SQL,
     copy_template_stages,
+    my_project_ids,
+    participants_for,
+    set_project_manager,
     get_stage_names,
     get_terminal_stage,
     sla_for_project,
@@ -71,6 +76,29 @@ SORT_COLUMNS = {
     "updated": "p.updated_at",
 }
 DEFAULT_SORT = "updated"
+
+
+# ---- the one door into a project ---------------------------------------------
+
+def load_project(project_id, include_deleted=False):
+    """Fetch a project the current user may see, or 404. Every route scoped
+    to a project goes through here (a meta-test enforces it), so the
+    visibility rule — Admin and internal staff see all, an external account
+    only its own projects — lives in exactly one place. Soft-deleted rows
+    are invisible except to undo, which exists to bring them back."""
+    project = get_db().execute(
+        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
+        "WHERE p.id = ?" + ("" if include_deleted else " AND p.deleted_at IS NULL"), (project_id,),
+    ).fetchone()
+    if project is None or not project_visible(project):
+        abort(404)
+    return project
+
+
+def project_visible(project):
+    if session.get("kind") != "external":
+        return True
+    return project["id"] in my_project_ids(session["user_id"])
 
 
 @app.route("/projects")
@@ -221,13 +249,7 @@ def report_all():
 @permission_required("view_reports")
 def report_single(project_id):
     db = get_db()
-    project = db.execute(
-        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.id = ? AND p.deleted_at IS NULL",
-        (project_id,),
-    ).fetchone()
-    if project is None:
-        flash("Project not found")
-        return redirect(url_for("board"))
+    project = load_project(project_id)
     notes = db.execute(
         "SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at DESC", (project_id,)
     ).fetchall()
@@ -309,6 +331,13 @@ def project_new():
         )
         project_id = cursor.lastrowid
         copy_template_stages(db, template["id"], project_id)
+        set_project_manager(db, project_id, session["user_id"], session["user_id"])
+        for raw in request.form.getlist("team_user_ids"):
+            if raw.isdigit() and int(raw) != session["user_id"] and db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (raw,)).fetchone():
+                db.execute(
+                    "INSERT OR IGNORE INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, 'Coordinator', ?, ?)",
+                    (project_id, int(raw), session["user_id"], now),
+                )
         save_document(project_id, po_document, CLIENT_PO_DOC_CATEGORY, session["user_name"])
         db.commit()
         audit_log("create_project", "project", project_id, name, f"client={request.form['client']}")
@@ -323,9 +352,7 @@ def project_new():
     source = None
     duplicate_of = request.args.get("from", type=int)
     if duplicate_of:
-        source = db.execute(
-            "SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL", (duplicate_of,)
-        ).fetchone()
+        source = load_project(duplicate_of)   # only a project you may see can be duplicated
     return render_template(
         "project_form.html",
         stage_templates=get_db().execute("SELECT id, name FROM stage_templates ORDER BY name").fetchall(), users=users, project=source, duplicating=bool(source),
@@ -337,10 +364,7 @@ def project_new():
 @permission_required("view_project_detail")
 def project_detail(project_id):
     db = get_db()
-    project = db.execute(
-        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.id = ? AND p.deleted_at IS NULL",
-        (project_id,),
-    ).fetchone()
+    project = load_project(project_id)
     if project is None:
         flash("Project not found")
         return redirect(url_for("board"))
@@ -356,10 +380,7 @@ def project_detail(project_id):
         token = secrets.token_urlsafe(16)
         db.execute("UPDATE projects SET access_token = ? WHERE id = ?", (token, project_id))
         db.commit()
-        project = db.execute(
-            "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.id = ? AND p.deleted_at IS NULL",
-            (project_id,),
-        ).fetchone()
+        project = load_project(project_id)
     tasks = db.execute(
         "SELECT t.*, u.name AS assignee_name FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
         "WHERE t.project_id = ? ORDER BY t.done ASC, t.due_date IS NULL, t.due_date ASC, t.id ASC",
@@ -373,6 +394,8 @@ def project_detail(project_id):
         documents=documents,
         tasks=tasks,
         task_users=task_users,
+        participants=participants_for(project_id),
+        project_roles=PROJECT_ROLES,
         stages=stage_rows(project_id),
         schedule=schedule_status(project),
         sla=stage_sla_state(project, sla_for_project(project_id), get_terminal_stage(project_id)),
@@ -386,10 +409,7 @@ def project_detail(project_id):
 @permission_required("edit_project")
 def project_edit(project_id):
     db = get_db()
-    project = db.execute(
-        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.id = ? AND p.deleted_at IS NULL",
-        (project_id,),
-    ).fetchone()
+    project = load_project(project_id)
     if project is None:
         flash("Project not found")
         return redirect(url_for("board"))
@@ -443,6 +463,8 @@ def project_edit(project_id):
                 now, project_id,
             ),
         )
+        if owner_id != project["owner_id"]:
+            set_project_manager(db, project_id, owner_id, session["user_id"])
         db.commit()
         audit_log("update_project", "project", project_id, name, f"client={client}; owner_id={owner_id}")
         flash("Project updated")
@@ -472,9 +494,7 @@ def change_stage(project_id, new_stage, note_text):
     db = get_db()
     # Existence first, then validity: a missing project is a 404, not an
     # "invalid stage" — and its (empty) stage list must never be consulted.
-    project = db.execute(
-        "SELECT owner_id, name FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)
-    ).fetchone()
+    project = load_project(project_id)
     if project is None:
         abort(404)
     if new_stage not in get_stage_names(project_id):
@@ -547,7 +567,7 @@ def save_document(project_id, file, category, uploaded_by):
 @permission_required("upload_document")
 def document_upload(project_id):
     db = get_db()
-    if not db.execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
+    if not load_project(project_id):
         abort(404)
     file = request.files.get("file")
     category = request.form.get("category", "")
@@ -573,6 +593,7 @@ def document_upload(project_id):
 @app.route("/projects/<int:project_id>/documents/<int:doc_id>/download")
 @permission_required("download_document")
 def document_download(project_id, doc_id):
+    load_project(project_id)   # visibility decided in one place
     db = get_db()
     doc = db.execute(
         "SELECT * FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL", (doc_id, project_id)
@@ -593,6 +614,7 @@ def document_download(project_id, doc_id):
 @app.route("/projects/<int:project_id>/documents/<int:doc_id>/delete", methods=["POST"])
 @permission_required("delete_document")
 def document_delete(project_id, doc_id):
+    load_project(project_id)   # visibility decided in one place
     db = get_db()
     doc = db.execute(
         "SELECT * FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL", (doc_id, project_id)
@@ -610,9 +632,7 @@ def project_delete(project_id):
     db = get_db()
     # deleted_at filter matters: re-deleting would re-stamp deleted_at, restarting
     # the undo window and writing a second audit entry for one user action.
-    project = db.execute(
-        "SELECT name FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)
-    ).fetchone()
+    project = load_project(project_id)
     if not project:
         abort(404)
     soft_delete("projects", project_id)
@@ -629,7 +649,7 @@ def project_delete(project_id):
 def project_rotate_token(project_id):
     """Mint a fresh guest access token — instantly revokes any leaked old link."""
     db = get_db()
-    project = db.execute("SELECT name FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone()
+    project = load_project(project_id)
     if not project:
         abort(404)
     db.execute(
@@ -652,12 +672,61 @@ def _chosen_template(db, raw_id):
     return db.execute("SELECT id, name FROM stage_templates ORDER BY id LIMIT 1").fetchone()
 
 
+# ---- participants: who is on the project, and as what ------------------------
+
+@app.route("/projects/<int:project_id>/participants/add", methods=["POST"])
+@permission_required("edit_project")
+def participant_add(project_id):
+    project = load_project(project_id)
+    role = request.form.get("role", "")
+    raw = request.form.get("user_id", "")
+    db = get_db()
+    user = db.execute("SELECT id, name FROM users WHERE id = ? AND active = 1", (raw,)).fetchone() if raw.isdigit() else None
+    if user is None:
+        flash("Pick an active user")
+    elif role not in PROJECT_ROLES:
+        flash("Pick a role")
+    elif role == PROJECT_MANAGER and user["id"] != project["owner_id"]:
+        flash("The project manager is the owner — change the owner on Edit")
+    elif user["id"] == project["owner_id"] and role != PROJECT_MANAGER:
+        flash("The owner is the project manager")
+    else:
+        db.execute(
+            "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
+            (project_id, user["id"], role, session["user_id"], datetime.utcnow().isoformat()),
+        )
+        db.commit()
+        audit_log("add_participant", "project", project_id, project["name"], f"{user['name']} as {role}")
+        flash(f"{user['name']} added as {role}")
+    return redirect(url_for("project_detail", project_id=project_id) + "#team")
+
+
+@app.route("/projects/<int:project_id>/participants/<int:participant_id>/remove", methods=["POST"])
+@permission_required("edit_project")
+def participant_remove(project_id, participant_id):
+    project = load_project(project_id)
+    db = get_db()
+    row = db.execute(
+        "SELECT pp.*, u.name FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.id = ? AND pp.project_id = ?",
+        (participant_id, project_id),
+    ).fetchone()
+    if row is None:
+        abort(404)
+    if row["user_id"] == project["owner_id"]:
+        flash("The project manager cannot be removed — reassign the owner on Edit")
+    else:
+        db.execute("DELETE FROM project_participants WHERE id = ?", (participant_id,))
+        db.commit()
+        audit_log("remove_participant", "project", project_id, project["name"], f"{row['name']} ({row['role']})")
+        flash(f"{row['name']} removed")
+    return redirect(url_for("project_detail", project_id=project_id) + "#team")
+
+
 # ---- a project's own stages: add / rename / reorder / delete / SLAs ---------
 
 def _live_project(project_id):
-    project = get_db().execute(
-        "SELECT id, name, stage FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)
-    ).fetchone()
+    project = load_project(project_id)
     if project is None:
         abort(404)
     return project
@@ -712,6 +781,7 @@ def project_stage_sla(project_id):
 @app.route("/undo/project/<int:project_id>", methods=["POST"])
 @write_required
 def undo_project(project_id):
+    load_project(project_id, include_deleted=True)   # the row is deleted by definition
     restore_deleted("projects", project_id)
     db = get_db()
     db.execute("UPDATE documents SET deleted_at = NULL WHERE project_id = ?", (project_id,))
@@ -740,7 +810,7 @@ def project_note(project_id):
     if not note_text:
         return redirect(url_for("project_detail", project_id=project_id))
     db = get_db()
-    project = db.execute("SELECT name, stage FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone()
+    project = load_project(project_id)
     if project is None:
         abort(404)
     now = datetime.utcnow().isoformat()
@@ -772,7 +842,7 @@ def _notify_assignee(assignee_id, project_id, title):
 @permission_required("edit_project")
 def task_add(project_id):
     db = get_db()
-    if not db.execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
+    if not load_project(project_id):
         abort(404)
     title = request.form.get("title", "").strip()[:200]
     if not title:
@@ -797,6 +867,7 @@ def task_add(project_id):
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/toggle", methods=["POST"])
 @permission_required("edit_project")
 def task_toggle(project_id, task_id):
+    load_project(project_id)   # visibility decided in one place
     db = get_db()
     task = db.execute("SELECT done FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
@@ -814,6 +885,7 @@ def task_toggle(project_id, task_id):
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/delete", methods=["POST"])
 @permission_required("edit_project")
 def task_delete(project_id, task_id):
+    load_project(project_id)   # visibility decided in one place
     db = get_db()
     db.execute("DELETE FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id))
     db.commit()
@@ -826,6 +898,7 @@ def task_delete(project_id, task_id):
 def task_edit(project_id, task_id):
     """Correct a task in place. Fixing a typo previously meant deleting the
     task and retyping it, which also threw away its done state."""
+    load_project(project_id)   # visibility decided in one place
     db = get_db()
     task = db.execute("SELECT id, assignee_id FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
@@ -859,6 +932,7 @@ def task_bulk(project_id):
     Ids are filtered against this project rather than trusted from the form, so
     a doctored checkbox can't reach a task belonging to somebody else's project.
     """
+    load_project(project_id)   # visibility decided in one place
     action = request.form.get("action")
     if action not in ("complete", "reopen", "delete"):
         abort(400)
@@ -902,6 +976,7 @@ def task_bulk(project_id):
 def task_clear_completed(project_id):
     """Drop every finished task at once, so the checklist stays about what's
     still outstanding."""
+    load_project(project_id)   # visibility decided in one place
     db = get_db()
     cursor = db.execute("DELETE FROM tasks WHERE project_id = ? AND done = 1", (project_id,))
     db.commit()

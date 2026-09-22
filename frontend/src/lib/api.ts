@@ -90,7 +90,7 @@ export function dismissAlert(projectId: number, alertType: string) {
 // ---- Flow: first screen ----
 export type FlowState = "overdue" | "over_sla" | "due_soon" | "on_track"
 export type FlowRow = {
-  id: number; name: string; client: string; stage: string; stages: string[]; stage_index: number; owner_name: string
+  id: number; name: string; client: string; stage: string; stages: string[]; stage_index: number; owner_name: string; mine: boolean
   delivery_mode: string; target_end_date: string | null; days_in_stage: number | null; sla_days: number | null
   over_by: number | null; state: FlowState; open_tasks: number; total_tasks: number
   next_task: { title: string; due_date: string | null; assignee: string | null } | null; updated_at: string
@@ -104,6 +104,7 @@ export type FlowDetail = {
   state: FlowState; over_by: number | null; start_date: string; target_end_date: string | null; days_left: number | null; today: string
   stages: FlowStage[]; tasks: FlowTask[]; documents: number
   recent_notes: { author: string; note: string; stage: string; created_at: string }[]; can_move: boolean
+  participants: { id: number; user_id: number; name: string; role: string }[]
 }
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: "same-origin" })

@@ -8,10 +8,10 @@ from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, DELIVERY_MODES
 from core import app, login_required, nav_counts, permission_required, role_has_permission
-from db import PROJECT_OPEN_SQL, get_db, get_stage_names, get_terminal_stage, sla_for_project, stages_for_projects
+from db import PROJECT_OPEN_SQL, get_db, get_stage_names, get_terminal_stage, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, board_data, dismiss_alert
-from routes.projects import change_stage
+from routes.projects import change_stage, load_project
 from security import csrf_token
 from services.alerts import schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
@@ -101,6 +101,7 @@ def api_board():
 @app.route("/api/projects/<int:project_id>/stage", methods=["POST"])
 @permission_required("edit_project_stage")
 def api_project_stage(project_id):
+    load_project(project_id)
     data = request.get_json(silent=True) or {}
     # change_stage audits and notifies; this is the same door the form uses.
     error = change_stage(project_id, data.get("stage", ""), (data.get("note") or "").strip()[:5000])
@@ -112,6 +113,7 @@ def api_project_stage(project_id):
 @app.route("/api/alerts/<int:project_id>/dismiss/<alert_type>", methods=["POST"])
 @login_required
 def api_alert_dismiss(project_id, alert_type):
+    load_project(project_id)
     dismiss_alert(project_id, alert_type)
     audit_log("dismiss_alert", "project", project_id, None, alert_type)
     return jsonify({"ok": True})
@@ -151,6 +153,7 @@ def api_flow():
         f"WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.updated_at DESC"
     ).fetchall()
     stage_lists = stages_for_projects([p["id"] for p in projects])
+    mine = my_project_ids(session["user_id"])
     # Earliest-due open task per project = the next actionable item.
     next_task = {}
     for t in db.execute(
@@ -170,7 +173,7 @@ def api_flow():
         state = _flow_state(p, sla, schedule)
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
-            "stages": stages,
+            "stages": stages, "mine": p["id"] in mine,
             "stage_index": stages.index(p["stage"]) if p["stage"] in stages else 0,
             "owner_name": p["owner_name"], "delivery_mode": p["delivery_mode"],
             "target_end_date": p["target_end_date"], "days_in_stage": _days_since(p["stage_entered_at"], now),
@@ -190,12 +193,7 @@ def api_flow():
 @permission_required("view_project_detail")
 def api_project_flow(project_id):
     db = get_db()
-    project = db.execute(
-        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        "WHERE p.id = ? AND p.deleted_at IS NULL", (project_id,),
-    ).fetchone()
-    if project is None:
-        abort(404)
+    project = load_project(project_id)
     stages, terminal = get_stage_names(project_id), get_terminal_stage(project_id)
     slas = sla_for_project(project_id)
     now = datetime.utcnow()
@@ -236,6 +234,7 @@ def api_project_flow(project_id):
                    "assignee": t["assignee_name"]} for t in tasks],
         "documents": db.execute("SELECT COUNT(*) AS c FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,)).fetchone()["c"],
         "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]} for n in notes[-4:][::-1]],
+        "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"]} for r in participants_for(project_id)],
         "can_move": role_has_permission(session.get("role"), "edit_project_stage"),
     })
 

@@ -59,6 +59,11 @@ CONTACT_LISTS = {
 # a delivery stage or deletes. Member is the delivery team.
 ROLES = ["Admin", "Member", "Contributor", "Viewer"]
 
+# What someone is *on one project*, independent of their global role. The
+# project manager is the owner (set at creation, follows owner reassignment).
+PROJECT_ROLES = ["Project manager", "Sales", "Coordinator", "Contractor", "Reseller", "Customer"]
+PROJECT_MANAGER = PROJECT_ROLES[0]
+
 # Canonical permission list + seed values for role_permissions (DB is the
 # source of truth at runtime — this dict only seeds first migration and
 # defines the fixed display order for the RBAC settings matrix).
