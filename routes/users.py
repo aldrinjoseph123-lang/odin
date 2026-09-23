@@ -8,6 +8,7 @@ from werkzeug.security import generate_password_hash
 
 from constants import ROLES
 from core import app, permission_required
+from spa import spa_index, spa_serves
 from db import get_db
 from security import password_problem, valid_email
 from services.audit import audit_log
@@ -16,6 +17,8 @@ from services.audit import audit_log
 @app.route("/users", methods=["GET", "POST"])
 @permission_required("manage_users")
 def users():
+    if request.method == "GET" and spa_serves("users"):
+        return spa_index()
     db = get_db()
     if request.method == "POST":
         username = request.form["username"].strip()

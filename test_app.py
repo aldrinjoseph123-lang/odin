@@ -1067,6 +1067,33 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- users and audit as JSON (React port) --------------------------------
+
+    def test_api_users_and_audit_feed_the_admin_pages(self):
+        self._make_user("pm1", "Member")
+        self.new_project(name="P", client="C")
+        c, csrf = self._api_client()
+        d = c.get("/api/users").get_json()
+        self.assertEqual([u["username"] for u in d["users"]], ["admin", "pm1"]); self.assertEqual(d["me"], 1)
+        self.assertEqual(d["roles"], ["Admin", "Member", "Contributor", "Viewer", "External"])
+        self.assertTrue(d["users"][0]["active"]); self.assertEqual(d["users"][0]["kind"], "internal")
+        # create through the bridge; the same route the Jinja form posts
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        r = c.post("/users", data={"name": "Sam", "username": "sam", "password": STRONG_PASSWORD, "role": "Viewer"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["User Sam created"])
+        r = c.post("/users", data={"name": "Sam", "username": "sam", "password": STRONG_PASSWORD, "role": "Viewer"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Username already exists"])
+        r = c.post("/users/1/role", data={"role": "Viewer"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["You cannot remove your own Admin role"])
+        a = c.get("/api/audit?action=create_user").get_json()
+        self.assertEqual([x["resource_name"] for x in a["rows"]], ["sam", "pm1"]); self.assertEqual(a["total"], 2)
+        self.assertIn("create_user", a["actions"]); self.assertEqual(a["projects"][0]["name"], "P"); self.assertEqual(a["filters"]["action"], "create_user")
+        self.assertEqual(c.get("/api/audit?project_id=1").get_json()["rows"][0]["action"], "create_project")
+        self.assertEqual(c.get("/api/audit?from=2099-01-01").get_json()["total"], 0)
+        self.assertEqual(c.get("/api/audit?page=99").get_json()["page"], 1)
+        m, _ = self._api_client("pm1", STRONG_PASSWORD)
+        self.assertEqual(m.get("/api/users").status_code, 403); self.assertEqual(m.get("/api/audit").status_code, 403)
+
     # ---- project page as JSON + the form-route bridge (React port) ----------
 
     def test_api_project_gives_the_page_its_record_team_notes_documents_and_rights(self):

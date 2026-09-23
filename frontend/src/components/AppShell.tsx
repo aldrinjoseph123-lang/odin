@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 
 // White top bar, ink links, accent underline on the current section. Un-ported
 // pages are plain anchors (full navigation to Flask); React pages use <Link>.
-const REACT_PAGES = new Set(["/board", "/projects"])
+const REACT_PAGES = new Set(["/board", "/projects", "/users", "/audit-logs"])
 type Item = { href: string; label: string; count?: number; match: (path: string) => boolean }
 
 function initials(name: string) {
@@ -43,7 +43,7 @@ export default function AppShell({ user, children }: { user: User; children: Rea
     { href: user.nav.projects_nav_url, label: "Projects", match: (p) => p.startsWith("/projects") },
     { href: "/analytics", label: "Cycle time", match: (p) => p === "/analytics" },
     { href: "/alerts", label: "Alerts", count: user.nav.active_alert_count, match: (p) => p === "/alerts" },
-    ...(user.role === "Admin" ? [{ href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") || p === "/audit-logs" }] : []),
+    ...(user.role === "Admin" ? [{ href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") || p === "/audit-logs" || p === "/users" }] : []),
   ]
   // External partners get their projects and the flow — nothing product-wide.
   const items = all.filter((item) => user.kind !== "external" || ["Flow", "Projects"].includes(item.label))

@@ -6,7 +6,7 @@ from flask import abort, jsonify, request, session, url_for
 
 from datetime import date, datetime
 
-from constants import ALERT_TYPE_TITLES, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PROJECT_MANAGER, PROJECT_ROLES
+from constants import ALERT_TYPE_TITLES, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PROJECT_MANAGER, PROJECT_ROLES, ROLES
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import get_doc_category_names, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
@@ -108,6 +108,37 @@ def api_approval_decide(project_id, approval_id):
     if error:
         return jsonify(error=error), 400
     return jsonify(ok=True)
+
+
+@app.route("/api/users")
+@permission_required("manage_users")
+def api_users():
+    rows = get_db().execute(
+        "SELECT id, username, name, email, role, active, kind, last_login_at, created_at FROM users ORDER BY name"
+    ).fetchall()
+    return jsonify(users=[dict(r) | {"active": bool(r["active"])} for r in rows], roles=list(ROLES), me=session["user_id"])
+
+
+@app.route("/api/audit")
+@permission_required("manage_settings")
+def api_audit():
+    """The audit viewer's data: same filter helper as the Jinja page and the
+    CSV export, so all three answer the same query."""
+    from routes.settings import _audit_filter
+    db = get_db()
+    where, params, filters = _audit_filter()
+    limit = 100
+    page = max(1, request.args.get("page", 1, type=int))
+    total = db.execute(f"SELECT COUNT(*) AS c FROM audit_logs{where}", params).fetchone()["c"]
+    total_pages = max(1, (total + limit - 1) // limit)
+    page = min(page, total_pages)
+    rows = db.execute(f"SELECT * FROM audit_logs{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?", (*params, limit, (page - 1) * limit)).fetchall()
+    return jsonify(
+        rows=[dict(r) for r in rows], page=page, total=total, total_pages=total_pages, filters=filters,
+        usernames=[r[0] for r in db.execute("SELECT DISTINCT username FROM audit_logs ORDER BY username")],
+        actions=[r[0] for r in db.execute("SELECT DISTINCT action FROM audit_logs ORDER BY action")],
+        projects=[{"id": r["id"], "name": r["name"]} for r in db.execute("SELECT id, name FROM projects ORDER BY name")],
+    )
 
 
 @app.route("/api/projects")

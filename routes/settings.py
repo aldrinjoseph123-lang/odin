@@ -18,6 +18,7 @@ from db import get_db, get_setting, restore_deleted, soft_delete
 from services.alerts import get_alert_type_settings
 from services import stages as stage_ops
 from services.audit import audit_log
+from spa import spa_index, spa_serves
 
 
 @app.route("/undo/contact/<list_key>/<int:item_id>", methods=["POST"])
@@ -100,6 +101,8 @@ def audit_logs_export():
 @app.route("/audit-logs")
 @permission_required("manage_settings")
 def audit_logs_view():
+    if spa_serves("audit_logs_view"):
+        return spa_index()
     db = get_db()
     page = request.args.get("page", 1, type=int)
     where, params, filters = _audit_filter()

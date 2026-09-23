@@ -162,6 +162,17 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
   return data
 }
 
+// ---- admin: users and the audit log ----
+export type AdminUser = { id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"; last_login_at: string | null; created_at: string | null }
+export const users = () => getJson<{ users: AdminUser[]; roles: string[]; me: number }>("/api/users")
+export type AuditRow = { id: number; timestamp: string; username: string; action: string; resource_type: string | null; resource_id: number | null; resource_name: string | null; details: string | null; ip_address: string | null }
+export type AuditData = {
+  rows: AuditRow[]; page: number; total: number; total_pages: number
+  filters: { user: string; action: string; project_id: string; from: string; to: string }
+  usernames: string[]; actions: string[]; projects: { id: number; name: string }[]
+}
+export const audit = (query: string) => getJson<AuditData>(`/api/audit${query ? `?${query}` : ""}`)
+
 // ---- tasks: the same Flask routes the project page posts as forms ----
 export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null }) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)
