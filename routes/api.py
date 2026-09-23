@@ -8,10 +8,10 @@ from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, DELIVERY_MODES
 from core import app, login_required, nav_counts, permission_required, project_scope, role_has_permission
-from db import PROJECT_OPEN_SQL, get_db, get_stage_names, get_terminal_stage, my_project_ids, participants_for, sla_for_project, stages_for_projects
+from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, board_data, dismiss_alert
-from routes.projects import change_stage, load_project
+from routes.projects import change_stage, decide_approval, load_project
 from security import csrf_token
 from services.alerts import schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
@@ -99,6 +99,16 @@ def api_board():
     })
 
 
+@app.route("/api/projects/<int:project_id>/approvals/<int:approval_id>", methods=["POST"])
+@login_required
+def api_approval_decide(project_id, approval_id):
+    body = request.get_json(silent=True) or {}
+    error = decide_approval(project_id, approval_id, body.get("decision"), body.get("comment"))
+    if error:
+        return jsonify(error=error), 400
+    return jsonify(ok=True)
+
+
 @app.route("/api/projects/<int:project_id>/stage", methods=["POST"])
 @permission_required("edit_project_stage")
 def api_project_stage(project_id):
@@ -156,6 +166,13 @@ def api_flow():
     ).fetchall()
     stage_lists = stages_for_projects([p["id"] for p in projects])
     mine = my_project_ids(session["user_id"])
+    # latest approval per project, only meaningful for the current stage
+    approvals = {}
+    for r in db.execute(
+        "SELECT a.project_id, a.stage, a.status FROM stage_approvals a "
+        "WHERE a.id = (SELECT MAX(id) FROM stage_approvals WHERE project_id = a.project_id)"
+    ):
+        approvals[r["project_id"]] = r
     team = {}   # project_id -> participant names, PM first (avatars on the row)
     for r in db.execute(
         "SELECT pp.project_id, u.name FROM project_participants pp JOIN users u ON u.id = pp.user_id "
@@ -182,6 +199,7 @@ def api_flow():
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [p["owner_name"]]),
+            "approval": (approvals[p["id"]]["status"] if p["id"] in approvals and approvals[p["id"]]["stage"] == p["stage"] else None),
             "stage_index": stages.index(p["stage"]) if p["stage"] in stages else 0,
             "owner_name": p["owner_name"], "delivery_mode": p["delivery_mode"],
             "target_end_date": p["target_end_date"], "days_in_stage": _days_since(p["stage_entered_at"], now),
@@ -249,6 +267,10 @@ def api_project_flow(project_id):
         "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]} for n in notes[-4:][::-1]],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"]} for r in participants_for(project_id)],
         "can_move": role_has_permission(session.get("role"), "edit_project_stage"),
+        "customer_approval": bool(project["customer_approval"]),
+        "approval": ({"id": a["id"], "stage": a["stage"], "status": a["status"], "decided_by": a["decided_by"], "comment": a["comment"]}
+                     if (a := current_approval(project_id)) else None),
+        "can_approve": is_customer_on(project_id, session["user_id"]),
     })
 
 

@@ -48,6 +48,23 @@
   {% endif %}
 </p>
 {% endif %}
+{% if approval and approval.stage == project.stage %}
+<div class="panel" id="approval" style="margin-bottom:1rem;">
+  {% if approval.status == 'pending' %}
+  <p style="margin:0;"><span class="countdown countdown-warning">Awaiting customer approval</span> <span class="muted">{{ approval.stage }} · requested by {{ approval.requested_by }} · {{ approval.requested_at | localdt }}</span></p>
+  {% if can_approve %}
+  <form method="post" action="{{ url_for('approval_decide', project_id=project.id, approval_id=approval.id) }}" class="inline-form" style="margin-top:var(--space-2);">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="text" name="comment" placeholder="Comment (optional)" aria-label="Comment" maxlength="2000" style="min-width:16rem;">
+    <button type="submit" name="decision" value="approved">Approve {{ approval.stage }}</button>
+    <button type="submit" name="decision" value="declined" class="icon-btn">Decline</button>
+  </form>
+  {% endif %}
+  {% else %}
+  <p style="margin:0;"><span class="countdown {{ 'countdown-normal' if approval.status == 'approved' else 'countdown-overdue' }}">{{ approval.stage }} {{ approval.status }} by the customer</span> <span class="muted">{{ approval.decided_by }} · {{ approval.decided_at | localdt }}{% if approval.comment %} · {{ approval.comment }}{% endif %}</span></p>
+  {% endif %}
+</div>
+{% endif %}
 {% set stage_names = stages | map(attribute='name') | list %}
 {% set current_index = stage_names.index(project.stage) if project.stage in stage_names else -1 %}
 <div class="stage-bar">

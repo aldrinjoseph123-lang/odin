@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ApiError, addTask, changeStage, deleteTask, flow, flowDetail, toggleTask, type FlowData, type FlowDetail, type FlowState, type FlowTask, type User } from "@/lib/api"
+import { ApiError, addTask, changeStage, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowState, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 // ---- state vocabulary: colour is a state and nothing else -------------------
@@ -16,6 +16,18 @@ const STATE: Record<FlowState, { label: string; ring: string; chip: string; dot:
   over_sla: { label: "Over SLA",  ring: "border-warn-line ring-warn-soft", chip: "bg-warn-soft text-warn", dot: "bg-warn-line" },
   due_soon: { label: "Due soon",  ring: "border-warn-line ring-warn-soft", chip: "bg-warn-soft text-warn", dot: "bg-warn-line" },
   on_track: { label: "On track",  ring: "border-foreground ring-muted",    chip: "bg-muted text-muted-foreground", dot: "bg-ok-line" },
+}
+
+// Customer approval of the current stage: amber while open, green/red once decided.
+const APPROVAL: Record<ApprovalStatus, { label: string; chip: string } | null> = {
+  pending:    { label: "Awaiting approval", chip: "bg-warn-soft text-warn" },
+  approved:   { label: "Approved",          chip: "bg-ok-soft text-ok" },
+  declined:   { label: "Declined",          chip: "bg-bad-soft text-bad" },
+  superseded: null,
+}
+function ApprovalChip({ status, className }: { status: ApprovalStatus | null; className?: string }) {
+  const a = status && APPROVAL[status]
+  return a ? <span className={cn("whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium", a.chip, className)}>{a.label}</span> : null
 }
 
 const initials = (name: string | null | undefined) => (name ?? "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()
@@ -181,6 +193,7 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
                   <span className="col-span-2 md:col-span-1"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} /></span>
                   <span className="flex min-w-0 items-center gap-1.5 justify-self-end md:justify-self-start">
                     <span className="truncate text-[12.5px] font-medium">{r.stage}</span>
+                    <ApprovalChip status={r.approval} />
                     <span className={cn("whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
                       <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
                   </span>
@@ -241,8 +254,19 @@ function TimeStrip({ d }: { d: FlowDetail }) {
 
 function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string) => void }) {
   const [note, setNote] = useState("")
+  const [comment, setComment] = useState("")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  async function decide(decision: "approved" | "declined") {
+    if (!d.approval) return
+    setBusy(true); setErr(null)
+    try {
+      await decideApproval(d.id, d.approval.id, decision, comment)
+      setComment("")
+      onMoved(`${d.stage} ${decision}`)
+      await reload()
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not record the decision") } finally { setBusy(false) }
+  }
   const open = d.tasks.filter((t) => !t.done)
   const next = open[0]
   const openHere = open.filter((t) => t.stage === d.stage).length
@@ -267,6 +291,7 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {d.approval && d.approval.stage === d.stage && <ApprovalChip status={d.approval.status} className="px-2 py-1 text-[12px]" />}
             {d.state !== "on_track" && <span className={cn("rounded-md px-2 py-1 text-[12px] font-medium", STATE[d.state].chip)}>{stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })}</span>}
             <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>
             <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open project <ExternalLink className="h-3.5 w-3.5" /></a>
@@ -329,6 +354,20 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
           ) : <p className="text-muted-foreground">No target date set.</p>}
           <p className="mt-1 text-muted-foreground">{d.documents} document{d.documents === 1 ? "" : "s"} · {d.tasks.filter((t) => t.done).length}/{d.tasks.length} tasks done</p>
         </section>
+        {d.approval && d.approval.stage === d.stage && d.approval.status === "pending" && d.can_approve && (
+          <section className="rounded-lg border border-warn-line bg-warn-soft/40 p-3">
+            <h3 className="mb-1 text-[12px] font-semibold text-nav-fg">Your approval</h3>
+            <p className="mb-2 text-[12.5px] text-muted-foreground">The project moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
+            <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (optional)" aria-label="Approval comment" maxLength={2000} className="h-8 text-[13px]" />
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" className="flex-1" disabled={busy} onClick={() => decide("approved")}>Approve</Button>
+              <Button size="sm" variant="outline" className="flex-1" disabled={busy} onClick={() => decide("declined")}>Decline</Button>
+            </div>
+          </section>
+        )}
+        {d.approval && d.approval.stage === d.stage && d.approval.status !== "pending" && d.approval.status !== "superseded" && (
+          <p className="text-[12.5px] text-muted-foreground">{d.stage} {d.approval.status} by {d.approval.decided_by}{d.approval.comment ? ` · ${d.approval.comment}` : ""}</p>
+        )}
         {d.can_move && d.next_stage && (
           <section className="rounded-lg border border-border p-3">
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the history (optional)" aria-label="Stage change note" maxLength={5000} className="h-8 text-[13px]" />

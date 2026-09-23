@@ -1067,6 +1067,86 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- Phase 6: notify everyone on the project; optional customer approval
+
+    @patch("graph.send_mail", return_value=(True, None))
+    @patch("graph.send_teams_message", return_value=(True, None))
+    def test_stage_change_emails_every_participant_but_the_actor(self, _teams, mail):
+        with app_module.app.test_request_context():
+            app_module.set_setting("notify_email_enabled", "1")
+        self.new_project(name="Loud", client="Acme")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email='admin@odin.example' WHERE id=1"); db.commit()
+        pm1 = self._make_user("pm1", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email='pm1@odin.example' WHERE id=?", (pm1,)); db.commit()
+        self.client.post("/projects/1/participants/add", data={"user_id": pm1, "role": "Coordinator"})
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        mail.reset_mock()
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        self.client.post("/projects/1/stage", data={"stage": stages[1], "note": "kicked off"})
+        to = sorted(c.args[0] for c in mail.call_args_list)
+        # owner (notify_event) + the two others; admin is the actor so not a second time
+        self.assertEqual(to, ["admin@odin.example", "ann@acme.example", "pm1@odin.example"])
+        ann_mail = next(c for c in mail.call_args_list if c.args[0] == "ann@acme.example")
+        self.assertIn("kicked off", ann_mail.args[2]); self.assertIn("partner page", ann_mail.args[2])
+        self.assertNotIn("approve", ann_mail.args[2])                       # approval switch is off
+
+    def test_customer_approval_is_optional_per_project_and_only_the_customer_decides(self):
+        self.new_project(name="Plain", client="Acme")
+        self.new_project(name="Careful", client="Globex", customer_approval="1")
+        with self.raw_db() as db:
+            self.assertEqual([r[0] for r in db.execute("SELECT customer_approval FROM projects ORDER BY id")], [0, 1])
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=2 ORDER BY position")]
+        self._invite(2, "ann@globex.example", "Customer", "Ann")
+        self._invite(2, "raj@vendor.example", "Contractor", "Raj")
+        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        self.client.post("/projects/2/stage", data={"stage": stages[1]})
+        with self.raw_db() as db:
+            rows = db.execute("SELECT project_id, stage, status FROM stage_approvals").fetchall()
+        self.assertEqual([tuple(r) for r in rows], [(2, stages[1], "pending")])
+        c, _ = self._api_client()
+        flow = {r["name"]: r["approval"] for r in c.get("/api/flow").get_json()["rows"]}
+        self.assertEqual(flow, {"Plain": None, "Careful": "pending"})
+        self.assertIn(b"Awaiting customer approval", self.client.get("/projects/2").data)
+        self.assertNotIn(b"Approve ", self.client.get("/projects/2").data)     # staff cannot decide
+        self.assertEqual(self.client.post("/projects/2/approvals/1/decide", data={"decision": "approved"}).status_code, 403)
+        raj = self._external_client("raj@vendor.example")
+        self.assertEqual(raj.post("/projects/2/approvals/1/decide", data={"decision": "approved"}).status_code, 403)
+        ann = self._external_client("ann@globex.example")
+        d = ann.get("/api/projects/2/flow").get_json()
+        self.assertTrue(d["can_approve"]); self.assertEqual(d["approval"]["status"], "pending")
+        csrf = ann.get("/api/session").get_json()["csrf"]
+        r = ann.post("/api/projects/2/approvals/1", json={"decision": "approved", "comment": "Looks good"}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(r.get_json(), {"ok": True})
+        self.assertEqual(ann.post("/api/projects/2/approvals/1", json={"decision": "declined"}, headers={"X-CSRF-Token": csrf}).status_code, 400)
+        with self.raw_db() as db:
+            a = db.execute("SELECT * FROM stage_approvals WHERE id=1").fetchone()
+            self.assertEqual((a["status"], a["decided_by"], a["comment"]), ("approved", "Ann", "Looks good"))
+            note = db.execute("SELECT note, guest_visible FROM status_notes ORDER BY id DESC LIMIT 1").fetchone()
+            self.assertEqual((note["note"], note["guest_visible"]), (f"Approved {stages[1]}: Looks good", 1))
+            self.assertEqual(db.execute("SELECT details FROM audit_logs WHERE action='approval_decision'").fetchone()[0], f"{stages[1]} approved")
+        self.assertEqual(c.get("/api/flow").get_json()["rows"][0]["approval"], "approved")
+        self.assertIn(f"{stages[1]} approved by the customer".encode(), self.client.get("/projects/2").data)
+        # the next change supersedes nothing (decided) and opens a new request; Ann declines by form
+        self.client.post("/projects/2/stage", data={"stage": stages[2]})
+        page = ann.get("/projects/2").data.decode()
+        self.assertIn("Awaiting customer approval", page); self.assertIn("Approve ", page)
+        ann.post("/projects/2/approvals/2/decide", data={"decision": "declined", "comment": "Not yet"})
+        with self.raw_db() as db:
+            self.assertEqual([r[0] for r in db.execute("SELECT status FROM stage_approvals ORDER BY id")], ["approved", "declined"])
+        # a change while a request is still open supersedes it
+        self.client.post("/projects/2/stage", data={"stage": stages[3]})
+        self.client.post("/projects/2/stage", data={"stage": stages[4]})
+        with self.raw_db() as db:
+            self.assertEqual([r[0] for r in db.execute("SELECT status FROM stage_approvals ORDER BY id")], ["approved", "declined", "superseded", "pending"])
+        # switch it off on edit: no new requests
+        self.client.post("/projects/2/edit", data={"name": "Careful", "client": "Globex"})
+        self.client.post("/projects/2/stage", data={"stage": stages[5]})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM stage_approvals").fetchone()[0], 4)
+
     # ---- Phase 5: project reports, drafted then owned by the PM -------------
 
     def test_report_draft_comes_from_timeline_tasks_notes_and_documents(self):
@@ -1377,7 +1457,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             if "<int:project_id>" not in rule.rule:
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
-            if not any(m in src for m in ("load_project(", "_live_project(", "change_stage(", "dismiss_alert(")):
+            if not any(m in src for m in ("load_project(", "_live_project(", "change_stage(", "dismiss_alert(", "decide_approval(")):
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"project routes bypassing load_project: {missing}")
 
@@ -1892,7 +1972,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
             # attempt_login audits every outcome itself; both login doors use it.
-            if not any(marker in src for marker in ("audit_log(", "attempt_login(", "change_stage(", "_stage_change(", "_template_change(")):
+            if not any(marker in src for marker in ("audit_log(", "attempt_login(", "change_stage(", "_stage_change(", "_template_change(", "decide_approval(")):
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"POST routes without an audit entry: {missing}")
 

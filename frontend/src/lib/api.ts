@@ -90,8 +90,10 @@ export function dismissAlert(projectId: number, alertType: string) {
 
 // ---- Flow: first screen ----
 export type FlowState = "overdue" | "over_sla" | "due_soon" | "on_track"
+export type ApprovalStatus = "pending" | "approved" | "declined" | "superseded"
 export type FlowRow = {
   id: number; name: string; client: string; stage: string; stages: string[]; stage_index: number; owner_name: string; mine: boolean; team: string[]
+  approval: ApprovalStatus | null
   delivery_mode: string; target_end_date: string | null; days_in_stage: number | null; sla_days: number | null
   over_by: number | null; state: FlowState; open_tasks: number; total_tasks: number
   next_task: { title: string; due_date: string | null; assignee: string | null } | null; updated_at: string
@@ -107,7 +109,11 @@ export type FlowDetail = {
   recent_notes: { author: string; note: string; stage: string; created_at: string }[]; can_move: boolean
   participants: { id: number; user_id: number; name: string; role: string }[]
   assignable: { id: number; name: string }[]; can_edit: boolean; me: number
+  customer_approval: boolean; can_approve: boolean
+  approval: { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null } | null
 }
+export const decideApproval = (projectId: number, approvalId: number, decision: "approved" | "declined", comment = "") =>
+  post<{ ok: true }>(`/api/projects/${projectId}/approvals/${approvalId}`, { decision, comment })
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: "same-origin" })
   if (!res.ok) throw new ApiError(res.status, `Request failed (${res.status})`)

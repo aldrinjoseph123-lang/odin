@@ -33,6 +33,11 @@
   </select>
   {% endif %}
 
+  <label style="display:flex; align-items:center; gap:0.5rem;">
+    <input type="checkbox" name="customer_approval" value="1" style="width:auto;" {{ 'checked' if src and src.customer_approval }}>
+    Ask the customer contact to approve each stage change
+  </label>
+
   <label>Via *</label>
   <select aria-label="Via" name="via" id="new_via" onchange="toggleGroup(this, {Direct: 'new-via-direct', Partner: 'new-via-partner'})">
     {% for option in VIA_OPTIONS %}

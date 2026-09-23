@@ -7,6 +7,25 @@ import graph
 from db import get_db, get_setting
 
 
+def notify_participants(project_id, subject, message_html, exclude_user_id=None):
+    """Email every active participant who has an address — internal or
+    external — except the person who caused the event. Same admin toggle as
+    notify_event; best effort, never raises."""
+    if get_setting("notify_email_enabled") != "1":
+        return
+    rows = get_db().execute(
+        "SELECT u.id, u.email, u.kind FROM project_participants pp JOIN users u ON u.id = pp.user_id "
+        "WHERE pp.project_id = ? AND u.active = 1 AND u.email IS NOT NULL AND u.email != ''", (project_id,)
+    ).fetchall()
+    for r in rows:
+        if r["id"] == exclude_user_id:
+            continue
+        footer = ("<p>Sign in at Odin's partner page to see the project.</p>" if r["kind"] == "external" else "")
+        ok, error = graph.send_mail(r["email"], subject, message_html + footer)
+        if not ok:
+            print(f"[notify_participants] email to {r['email']} failed: {error}")
+
+
 def notify_event(project, subject, message_html, channels=None):
     """Best-effort Outlook + Teams notification for a project event.
 

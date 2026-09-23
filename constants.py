@@ -118,6 +118,8 @@ NEW_PROJECT_COLUMNS = {
     # Which template this project's own stage list was copied from. Analytics
     # compares projects only within a template, since their stages match.
     "stage_template_id": "INTEGER",
+    # 1 = every stage change asks the customer contact to approve it
+    "customer_approval": "INTEGER NOT NULL DEFAULT 0",
     "via": "TEXT",
     "account_manager_name": "TEXT",
     "account_manager_email": "TEXT",

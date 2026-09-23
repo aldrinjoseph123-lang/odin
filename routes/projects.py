@@ -48,6 +48,8 @@ from db import (
     my_project_ids,
     participants_for,
     set_project_manager,
+    current_approval,
+    is_customer_on,
     get_stage_names,
     get_terminal_stage,
     sla_for_project,
@@ -59,7 +61,7 @@ from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import sla_by_stage, stage_sla_state
 from services import stages as stage_ops
 from services.audit import audit_log
-from services.notifications import notify_event
+from services.notifications import notify_event, notify_participants
 
 PROJECTS_PER_PAGE = 25
 
@@ -330,8 +332,8 @@ def project_new():
              partner_name, partner_account_manager_name, partner_account_manager_email,
              start_date, target_end_date, delivery_mode,
              outsourcer_name, outsourcer_email, vendor_name, product_name,
-             access_token, customer_token, stage_template_id, created_at, updated_at, stage_entered_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             access_token, customer_token, stage_template_id, created_at, updated_at, stage_entered_at, customer_approval)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 name,
                 request.form["client"].strip()[:200],
@@ -358,6 +360,7 @@ def project_new():
                 now,
                 now,
                 now,
+                1 if request.form.get("customer_approval") else 0,
             ),
         )
         project_id = cursor.lastrowid
@@ -432,6 +435,8 @@ def project_detail(project_id):
         sla=stage_sla_state(project, sla_for_project(project_id), get_terminal_stage(project_id)),
         today=datetime.utcnow().date().isoformat(),
         has_client_po_doc=has_required_document(project_id, CLIENT_PO_DOC_CATEGORY),
+        approval=current_approval(project_id),
+        can_approve=is_customer_on(project_id, session["user_id"]),
         **get_contact_lists(),
     )
 
@@ -472,7 +477,8 @@ def project_edit(project_id):
                 via=?, account_manager_name=?, account_manager_email=?,
                 partner_name=?, partner_account_manager_name=?, partner_account_manager_email=?,
                 start_date=?, target_end_date=?, delivery_mode=?,
-                outsourcer_name=?, outsourcer_email=?, vendor_name=?, product_name=?, updated_at=?
+                outsourcer_name=?, outsourcer_email=?, vendor_name=?, product_name=?, updated_at=?,
+                customer_approval=?
                WHERE id=?""",
             (
                 name, client, owner_id,
@@ -491,7 +497,7 @@ def project_edit(project_id):
                 request.form.get("outsourcer_email") or None,
                 request.form.get("vendor_name") or None,
                 request.form.get("product_name") or None,
-                now, project_id,
+                now, 1 if request.form.get("customer_approval") else 0, project_id,
             ),
         )
         if owner_id != project["owner_id"]:
@@ -545,15 +551,60 @@ def change_stage(project_id, new_stage, note_text):
             now,
         ),
     )
+    if project["customer_approval"]:
+        # A newer change makes an undecided older request moot.
+        db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
+        db.execute(
+            "INSERT INTO stage_approvals (project_id, stage, requested_by, requested_at) VALUES (?, ?, ?, ?)",
+            (project_id, new_stage, session["user_name"], now),
+        )
     db.commit()
     audit_log("update_project_stage", "project", project_id, project["name"], f"stage={new_stage}")
-    notify_event(
-        project,
-        f"Stage changed: {escape(project['name'])}",
-        f"Stage moved to <b>{escape(new_stage)}</b> by {escape(session['user_name'])}."
-        + (f"<br>{escape(note_text)}" if note_text else ""),
-    )
+    body = (f"Stage moved to <b>{escape(new_stage)}</b> by {escape(session['user_name'])}."
+            + (f"<br>{escape(note_text)}" if note_text else "")
+            + ("<br>Please review and approve this step." if project["customer_approval"] else ""))
+    notify_event(project, f"Stage changed: {escape(project['name'])}", body)
+    notify_participants(project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=session["user_id"])
     return None
+
+
+def decide_approval(project_id, approval_id, decision, comment):
+    """The one approval path (form + JSON). The customer contact on the
+    project approves or declines the latest stage change; anyone else —
+    staff included — is refused, because an approval only means something
+    when the customer gave it. Returns an error message or None."""
+    project = load_project(project_id)
+    db = get_db()
+    if not is_customer_on(project_id, session["user_id"]):
+        abort(403)
+    row = db.execute("SELECT * FROM stage_approvals WHERE id = ? AND project_id = ?", (approval_id, project_id)).fetchone()
+    if row is None:
+        abort(404)
+    if row["status"] != "pending" or decision not in ("approved", "declined"):
+        return "That request is no longer open"
+    comment = (comment or "").strip()[:2000]
+    now = datetime.utcnow().isoformat()
+    db.execute(
+        "UPDATE stage_approvals SET status = ?, decided_by = ?, decided_at = ?, comment = ? WHERE id = ?",
+        (decision, session["user_name"], now, comment or None, approval_id),
+    )
+    db.execute(
+        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (?, ?, ?, ?, ?, 1)",
+        (project_id, session["user_name"], f"{decision.capitalize()} {row['stage']}" + (f": {comment}" if comment else ""), project["stage"], now),
+    )
+    db.commit()
+    audit_log("approval_decision", "project", project_id, project["name"], f"{row['stage']} {decision}")
+    notify_event(project, f"{project['name']}: {row['stage']} {decision} by the customer",
+                 f"{escape(session['user_name'])} {decision} <b>{escape(row['stage'])}</b>." + (f"<br>{escape(comment)}" if comment else ""))
+    return None
+
+
+@app.route("/projects/<int:project_id>/approvals/<int:approval_id>/decide", methods=["POST"])
+@login_required
+def approval_decide(project_id, approval_id):
+    error = decide_approval(project_id, approval_id, request.form.get("decision"), request.form.get("comment"))
+    flash(error or "Thank you — your decision is recorded")
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
 def has_required_document(project_id, category):

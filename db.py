@@ -113,7 +113,7 @@ def cleanup_soft_deletes(db=None):
         _remove_upload(project_id, stored_name)
 
     if doomed:
-        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports"):
+        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
@@ -138,7 +138,7 @@ def _purge_orphans(db):
     their children. Everything removed here is unreachable by definition: no
     project row means no page can ever display it.
     """
-    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports"):
+    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals"):
         column = "project_id"
         db.execute(
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
@@ -257,6 +257,19 @@ def migrate_db(db):
     # NULL = "whatever stage the project is in" — old tasks and quick adds.
     if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
         db.execute("ALTER TABLE tasks ADD COLUMN stage TEXT")
+    # Customer approval of a stage change, when the project asks for it.
+    # One row per change; a newer change supersedes an undecided older one.
+    db.execute("""CREATE TABLE IF NOT EXISTS stage_approvals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        stage TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        requested_by TEXT NOT NULL,
+        requested_at TEXT NOT NULL,
+        decided_by TEXT,
+        decided_at TEXT,
+        comment TEXT
+    )""")
     # Project reports: the PM's text, one row per saved version, never edited in place.
     db.execute("""CREATE TABLE IF NOT EXISTS project_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -566,6 +579,19 @@ def participants_for(project_id):
         "WHERE pp.project_id = ? ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name",
         (project_id,),
     ).fetchall()
+
+
+def current_approval(project_id):
+    """The approval row for the latest stage change, or None."""
+    return get_db().execute(
+        "SELECT * FROM stage_approvals WHERE project_id = ? ORDER BY id DESC LIMIT 1", (project_id,)
+    ).fetchone()
+
+
+def is_customer_on(project_id, user_id):
+    return get_db().execute(
+        "SELECT 1 FROM project_participants WHERE project_id = ? AND user_id = ? AND role = 'Customer'", (project_id, user_id)
+    ).fetchone() is not None
 
 
 def my_project_ids(user_id):
