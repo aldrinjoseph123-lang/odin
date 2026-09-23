@@ -345,6 +345,9 @@ Quiet, small, and rarely blue: one primary per view.
 - **Count badge** (nav "Alerts 7", "My work"): 20 px round badge, `bad-soft` fill, `bad` text, 11 px.
 - **Success notice** (after a stage move): `ok-soft` bar, `ok` text, 12.5 px, 6.4 px radius, with a plain "×" dismiss.
 
+### Table (projects list)
+- Hairline-bordered container (`rounded-lg`), sticky white header row of 11.5 px muted captions; sortable heads are plain buttons that turn ink + medium with a 12 px arrow when active (`aria-sort` carries state). Body 13 px, 8 px vertical / 12 px side cell padding, hairline row dividers, Muted Fill on hover. The project name is a 500-weight link; the Stage cell draws the row's own 7-dot stepper (on-track styling, 96 px) before the stage name and links to the flow. Columns drop from the right as the viewport narrows (`xl` → `lg` → `md` → `sm`); the client folds under the name below `sm`. Filters sit above as filter chips plus two native selects styled as 28 px outline chips and a 28 px search field with an icon submit.
+
 ### Cards / Containers
 - **Rail panel** (Next up / ETA / Advance): white, 1 px hairline, 8 px radius, 12 px padding, 13 px body, 12 px semibold chrome-text header with a 14 px icon; panels stack with 16 px gaps.
 - **Card** (login): white, `ring-1` ink/10 instead of a border, 11.2 px radius, 16 px internal spacing, `max-w-sm`.

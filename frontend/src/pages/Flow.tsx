@@ -9,14 +9,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ApiError, addTask, changeStage, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowState, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { STATE } from "@/lib/state"
+import { Stepper } from "@/components/Stepper"
 
-// ---- state vocabulary: colour is a state and nothing else -------------------
-const STATE: Record<FlowState, { label: string; ring: string; chip: string; dot: string }> = {
-  overdue:  { label: "Overdue",   ring: "border-bad-line ring-bad-soft",   chip: "bg-bad-soft text-bad",   dot: "bg-bad-line" },
-  over_sla: { label: "Over SLA",  ring: "border-warn-line ring-warn-soft", chip: "bg-warn-soft text-warn", dot: "bg-warn-line" },
-  due_soon: { label: "Due soon",  ring: "border-warn-line ring-warn-soft", chip: "bg-warn-soft text-warn", dot: "bg-warn-line" },
-  on_track: { label: "On track",  ring: "border-foreground ring-muted",    chip: "bg-muted text-muted-foreground", dot: "bg-ok-line" },
-}
 
 // Customer approval of the current stage: amber while open, green/red once decided.
 const APPROVAL: Record<ApprovalStatus, { label: string; chip: string } | null> = {
@@ -42,30 +37,6 @@ function stateText(r: { state: FlowState; days_in_stage: number | null; over_by:
   return days(r.days_in_stage)
 }
 
-// ---- the 7-dot stepper: one row's whole flow at a glance ----------------------
-function Stepper({ stages, index, state, selected }: { stages: string[]; index: number; state: FlowState; selected: boolean }) {
-  return (
-    <div className="flex items-center" aria-label={`Stage ${index + 1} of ${stages.length}: ${stages[index]}`}>
-      {stages.map((s, i) => (
-        <div key={s} className="flex flex-1 items-center last:flex-none">
-          <Tooltip>
-            <TooltipTrigger
-              render={<span />}
-              className={cn(
-                "block h-3 w-3 shrink-0 rounded-full border-[1.5px] bg-background",
-                i < index && "border-ok-line bg-ok-line",
-                i === index && cn("ring-[3px]", STATE[state].ring, selected && "scale-110"),
-                i > index && "border-input",
-              )}
-            />
-            <TooltipContent>{s}{i === index ? " · current" : i < index ? " · done" : ""}</TooltipContent>
-          </Tooltip>
-          {i < stages.length - 1 && <span className={cn("h-[1.5px] flex-1", i < index ? "bg-ok-line" : "bg-input")} />}
-        </div>
-      ))}
-    </div>
-  )
-}
 
 // Who is on it, at a glance: PM first, then up to two more, then "+n".
 function TeamStack({ names, className }: { names: string[]; className?: string }) {

@@ -1067,6 +1067,41 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- projects list as JSON (React port) --------------------------------
+
+    def test_api_projects_filters_sorts_pages_and_remembers_the_query(self):
+        for i in range(27):
+            self.new_project(name=f"Proj {i:02d}", client="Acme" if i % 2 else "Globex", target_end_date="2020-01-01" if i == 3 else None)
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        self.client.post("/projects/1/stage", data={"stage": stages[-1]})          # closed
+        c, _ = self._api_client()
+        d = c.get("/api/projects").get_json()
+        self.assertEqual((d["total"], d["page"], d["total_pages"], len(d["rows"])), (26, 1, 2, 25))
+        self.assertEqual(d["sort"], "updated"); self.assertTrue(d["can_create"])
+        self.assertEqual(d["rows"][0]["stages"], stages)
+        self.assertEqual(len(c.get("/api/projects?page=2").get_json()["rows"]), 1)
+        self.assertEqual(c.get("/api/projects?closed=1").get_json()["total"], 27)
+        self.assertTrue(any(r["closed"] for r in c.get("/api/projects?closed=1&sort=name&dir=asc").get_json()["rows"]))
+        self.assertEqual([r["name"] for r in c.get("/api/projects?view=overdue").get_json()["rows"]], ["Proj 03"])
+        self.assertEqual(c.get("/api/projects?q=acme").get_json()["total"], 13)
+        names = [r["name"] for r in c.get("/api/projects?sort=name&dir=asc").get_json()["rows"]]
+        self.assertEqual(names[:2], ["Proj 01", "Proj 02"])
+        self.assertEqual(c.get("/api/projects?sort=drop+table").get_json()["sort"], "updated")
+        self.assertEqual(c.get(f"/api/projects?stage={stages[0]}").get_json()["total"], 26)
+        self.assertEqual(sorted(c.get("/api/projects?closed=1").get_json()["stages"]), sorted([stages[0], stages[-1]]))
+        self.assertEqual(c.get("/api/session").get_json()["user"]["nav"]["projects_nav_url"], "/projects?closed=1")
+        self.assertEqual(app_module.app.test_client().get("/api/projects").status_code, 302)
+
+    def test_api_projects_is_scoped_for_externals(self):
+        self.new_project(name="Theirs", client="Acme")
+        self.new_project(name="NotTheirs", client="Globex")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        c = self._external_client("ann@acme.example")
+        d = c.get("/api/projects?closed=1&q=Not").get_json()
+        self.assertEqual(d["rows"], []); self.assertFalse(d["can_create"])
+        self.assertEqual([r["name"] for r in c.get("/api/projects").get_json()["rows"]], ["Theirs"])
+
     # ---- project roles bind internal staff too -------------------------------
 
     def _member_client(self, username):

@@ -37,6 +37,7 @@ from constants import (
 )
 from core import app, login_required, permission_required, project_allows, project_role_required, undo_button, write_required, project_scope
 from security import ALLOWED_UPLOAD_EXTENSIONS, allowed_upload, content_matches_extension, valid_email
+from spa import spa_index, spa_serves
 from db import (
     UPLOAD_DIR,
     get_contact_lists,
@@ -108,6 +109,8 @@ def project_visible(project):
 @app.route("/projects")
 @permission_required("view_projects")
 def projects_list():
+    if spa_serves("projects_list"):
+        return spa_index()
     db = get_db()
     stage_filter = request.args.get("stage", "")
     show_closed = request.args.get("closed") == "1"

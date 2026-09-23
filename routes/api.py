@@ -11,7 +11,7 @@ from core import app, login_required, nav_counts, permission_required, project_a
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, board_data, dismiss_alert
-from routes.projects import change_stage, decide_approval, load_project
+from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project
 from security import csrf_token
 from services.alerts import schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
@@ -107,6 +107,45 @@ def api_approval_decide(project_id, approval_id):
     if error:
         return jsonify(error=error), 400
     return jsonify(ok=True)
+
+
+@app.route("/api/projects")
+@permission_required("view_projects")
+def api_projects():
+    """The projects list: same filters, sort, search, paging and scope as the
+    Jinja page (one query builder), rows carrying their own stage list."""
+    args = request.args
+    sort = args.get("sort", DEFAULT_SORT)
+    sort = sort if sort in SORT_COLUMNS else DEFAULT_SORT
+    direction = "asc" if args.get("dir") == "asc" else "desc"
+    view, stage, mode = args.get("view", ""), args.get("stage", ""), args.get("delivery_mode", "")
+    closed, q = args.get("closed") == "1", args.get("q", "").strip()
+    page = max(1, args.get("page", 1, type=int))
+    # the nav's Projects link returns to this filter (page deliberately not kept)
+    session["projects_query"] = {k: v for k, v in args.items() if k in ("view", "stage", "delivery_mode", "closed", "q", "sort", "dir") and v}
+    db = get_db()
+    query, params = filtered_projects_query(view, stage, closed, mode, q, sort, direction)
+    total = db.execute(f"SELECT COUNT(*) AS c FROM ({query})", params).fetchone()["c"]
+    total_pages = max(1, (total + PROJECTS_PER_PAGE - 1) // PROJECTS_PER_PAGE)
+    page = min(page, total_pages)
+    rows = db.execute(query + " LIMIT ? OFFSET ?", (*params, PROJECTS_PER_PAGE, (page - 1) * PROJECTS_PER_PAGE)).fetchall()
+    lists = stages_for_projects([r["id"] for r in rows])
+    scope_sql, scope_params = project_scope()
+    stage_names = [r[0] for r in db.execute(
+        f"SELECT DISTINCT p.stage FROM projects p WHERE p.deleted_at IS NULL{scope_sql} ORDER BY p.stage", scope_params)]
+    out = []
+    for r in rows:
+        names = [s["name"] for s in (lists.get(r["id"]) or [])]
+        out.append({
+            "id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"], "stage": r["stage"],
+            "stages": names, "stage_index": names.index(r["stage"]) if r["stage"] in names else 0,
+            "closed": bool(names) and r["stage"] == names[-1],
+            "owner_name": r["owner_name"], "delivery_mode": r["delivery_mode"], "vendor_name": r["vendor_name"],
+            "product_name": r["product_name"], "target_end_date": r["target_end_date"], "updated_at": r["updated_at"],
+        })
+    return jsonify(rows=out, total=total, page=page, total_pages=total_pages, sort=sort, dir=direction,
+                   stages=stage_names, delivery_modes=list(DELIVERY_MODES),
+                   can_create=role_has_permission(session.get("role"), "create_project"))
 
 
 @app.route("/api/projects/<int:project_id>/stage", methods=["POST"])

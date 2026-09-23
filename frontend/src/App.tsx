@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom"
 import AppShell from "@/components/AppShell"
 import Flow from "@/pages/Flow"
+import Projects from "@/pages/Projects"
 import Login from "@/pages/Login"
 import { session, type User } from "@/lib/api"
 
@@ -34,6 +35,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/board" element={<Protected>{(user) => <Flow user={user} />}</Protected>} />
+        <Route path="/projects" element={<Protected>{(user) => <Projects user={user} />}</Protected>} />
         <Route path="*" element={<HandOffToFlask />} />
       </Routes>
     </BrowserRouter>

@@ -3,6 +3,7 @@ password change, email update. Imported for route registration side effects.
 """
 from datetime import datetime
 
+from markupsafe import escape
 from flask import flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -77,7 +78,9 @@ def send_login_link(user, raw_token, invited_by=None, project_name=None):
     """Email the link; returns (ok, error). Never raises."""
     import graph
     link = url_for("auth_link_consume", token=raw_token, _external=True)
-    intro = (f"{invited_by} added you to the project <b>{project_name}</b> in Odin." if project_name
+    # Names come from the users table and the project form: escape them, this
+    # is HTML going into a mail client.
+    intro = (f"{escape(invited_by)} added you to the project <b>{escape(project_name)}</b> in Odin." if project_name
              else "Here is your Odin sign-in link.")
     html = (f"<p>{intro}</p><p><a href=\"{link}\">Sign in to Odin</a></p>"
             f"<p>The link works once and expires in 30 minutes. If it has expired, request a new one from the sign-in page.</p>")

@@ -242,8 +242,8 @@ def nav_counts():
         ).fetchone()["count"],
         "my_open_task_count": db.execute(
             "SELECT COUNT(*) AS count FROM tasks t JOIN projects p ON p.id = t.project_id "
-            "WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL",
-            (session.get("user_id"),),
+            f"WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL{scope_sql}",
+            (session.get("user_id"), *scope_params),
         ).fetchone()["count"],
         # Nav link back into the project list restores the last filter/sort the
         # user had applied, rather than dumping them on an unfiltered list.

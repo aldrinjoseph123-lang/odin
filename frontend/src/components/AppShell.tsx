@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 
 // White top bar, ink links, accent underline on the current section. Un-ported
 // pages are plain anchors (full navigation to Flask); React pages use <Link>.
-const REACT_PAGES = new Set(["/board"])
+const REACT_PAGES = new Set(["/board", "/projects"])
 type Item = { href: string; label: string; count?: number; match: (path: string) => boolean }
 
 function initials(name: string) {

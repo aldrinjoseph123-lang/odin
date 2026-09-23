@@ -22,7 +22,7 @@ Decision (8 Sep 2026): the UI moves to **Vite + React + TypeScript + shadcn/ui**
 in `frontend/`, Flask becomes the JSON API. **Strangler rollout**: a Jinja page
 stays live until its React replacement has passed tests and UAT; then its
 endpoint name is added to `SPA_PAGES` in `spa.py` and Flask serves the built
-bundle for it. Order: login ✅ → board → projects → project detail → settings
+bundle for it. Order: login ✅ → board ✅ → projects ✅ → project detail → settings
 / users / audit → guest.
 
 Rules while both UIs exist:

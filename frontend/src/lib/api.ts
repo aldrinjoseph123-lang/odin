@@ -122,6 +122,17 @@ async function getJson<T>(path: string): Promise<T> {
 export const flow = () => getJson<FlowData>("/api/flow")
 export const flowDetail = (id: number) => getJson<FlowDetail>(`/api/projects/${id}/flow`)
 
+// ---- projects list ----
+export type ProjectRow = {
+  id: number; name: string; client: string; po_number: string | null; stage: string; stages: string[]; stage_index: number; closed: boolean
+  owner_name: string; delivery_mode: string; vendor_name: string | null; product_name: string | null; target_end_date: string | null; updated_at: string
+}
+export type ProjectsData = {
+  rows: ProjectRow[]; total: number; page: number; total_pages: number; sort: string; dir: "asc" | "desc"
+  stages: string[]; delivery_modes: string[]; can_create: boolean
+}
+export const projects = (query: string) => getJson<ProjectsData>(`/api/projects${query ? `?${query}` : ""}`)
+
 // ---- tasks: the same Flask routes the project page posts as forms ----
 export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null }) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)
