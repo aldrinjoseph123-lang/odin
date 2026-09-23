@@ -2,12 +2,13 @@
 (sent as X-CSRF-Token), same decorators and audit trail as the HTML routes —
 the API is a second door into the same rooms, not a second house.
 """
-from flask import abort, jsonify, request, session
+from flask import abort, jsonify, request, session, url_for
 
 from datetime import date, datetime
 
-from constants import ALERT_TYPE_TITLES, DELIVERY_MODES
+from constants import ALERT_TYPE_TITLES, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PROJECT_MANAGER, PROJECT_ROLES
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
+from db import get_doc_category_names, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, board_data, dismiss_alert
@@ -146,6 +147,47 @@ def api_projects():
     return jsonify(rows=out, total=total, page=page, total_pages=total_pages, sort=sort, dir=direction,
                    stages=stage_names, delivery_modes=list(DELIVERY_MODES),
                    can_create=role_has_permission(session.get("role"), "create_project"))
+
+
+@app.route("/api/projects/<int:project_id>")
+@permission_required("view_project_detail")
+def api_project(project_id):
+    """Everything the project page shows beyond the flow detail: the record,
+    guest links, the editable stage list, team, notes, documents, and what
+    this session may do. Mutations go to the existing form routes."""
+    db = get_db()
+    project = load_project(project_id)
+    role = session.get("role")
+    fields = ["client", "via", "partner_name", "partner_account_manager_name", "partner_account_manager_email",
+              "account_manager_name", "account_manager_email", "po_number", "po_date", "start_date", "target_end_date",
+              "delivery_mode", "outsourcer_name", "outsourcer_email", "vendor_name", "product_name"]
+    can_manage = project_allows(project_id, "manage_project")
+    return jsonify({
+        "id": project["id"], "name": project["name"], "owner_id": project["owner_id"],
+        "details": {f: project[f] for f in fields},
+        "customer_approval": bool(project["customer_approval"]),
+        "guest_links": {
+            "customer": url_for("guest_view", token=project["customer_token"], _external=True) if project["customer_token"] else None,
+            "vendor": url_for("guest_view", token=project["access_token"], _external=True)
+            if project["delivery_mode"] == "Outsourced" and project["access_token"] else None,
+        } if can_manage or role != "External" else {"customer": None, "vendor": None},
+        "stage_rows": [{"id": r["id"], "name": r["name"], "sla_days": r["sla_days"]} for r in stage_rows(project_id)],
+        "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"], "email": r["email"], "active": bool(r["active"])}
+                         for r in participants_for(project_id)],
+        "notes": [{"id": n["id"], "author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]}
+                  for n in db.execute("SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at DESC", (project_id,))],
+        "documents": [{"id": d["id"], "category": d["category"], "filename": d["filename"], "uploaded_by": d["uploaded_by"], "uploaded_at": d["uploaded_at"]}
+                      for d in db.execute("SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", (project_id,))],
+        "doc_categories": get_doc_category_names(),
+        "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")] if can_manage else [],
+        "roles": [r for r in PROJECT_ROLES if r != PROJECT_MANAGER], "external_roles": list(EXTERNAL_PROJECT_ROLES),
+        "can": {
+            "manage": can_manage, "tasks": project_allows(project_id, "manage_tasks"),
+            "docs": project_allows(project_id, "manage_documents"), "move": project_allows(project_id, "move_stage"),
+            "note": role_has_permission(role, "add_project_note"), "download": role_has_permission(role, "download_document"),
+            "create": role_has_permission(role, "create_project"),
+        },
+    })
 
 
 @app.route("/api/projects/<int:project_id>/stage", methods=["POST"])

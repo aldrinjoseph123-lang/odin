@@ -133,6 +133,35 @@ export type ProjectsData = {
 }
 export const projects = (query: string) => getJson<ProjectsData>(`/api/projects${query ? `?${query}` : ""}`)
 
+// ---- project page extras (beyond the flow detail) ----
+export type ProjectExtras = {
+  id: number; name: string; owner_id: number
+  details: Record<string, string | null>
+  customer_approval: boolean
+  guest_links: { customer: string | null; vendor: string | null }
+  stage_rows: { id: number; name: string; sla_days: number | null }[]
+  participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean }[]
+  notes: { id: number; author: string; note: string; stage: string; created_at: string }[]
+  documents: { id: number; category: string; filename: string; uploaded_by: string; uploaded_at: string }[]
+  doc_categories: string[]; users: { id: number; name: string }[]; roles: string[]; external_roles: string[]
+  can: { manage: boolean; tasks: boolean; docs: boolean; move: boolean; note: boolean; download: boolean; create: boolean }
+}
+export const projectExtras = (id: number) => getJson<ProjectExtras>(`/api/projects/${id}`)
+
+// Post to one of Flask's form routes and read its flashes back as JSON. The
+// route is unchanged (same permission, audit row and validation); only the
+// answer differs because we ask for JSON.
+export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null }
+export async function postForm(path: string, fields: Record<string, string> | FormData = {}): Promise<FormReply> {
+  if (!csrfToken) await session()
+  const body = fields instanceof FormData ? fields : new URLSearchParams(fields)
+  const res = await fetch(path, { method: "POST", credentials: "same-origin", body, headers: { Accept: "application/json", "X-CSRF-Token": csrfToken ?? "" } })
+  if (!res.ok) throw new ApiError(res.status, res.status === 403 ? "You cannot do that on this project" : res.status === 404 ? "Not found" : `Request failed (${res.status})`)
+  const data = (await res.json().catch(() => null)) as FormReply | null
+  if (!data) throw new ApiError(res.status, "Your session has ended — sign in again")
+  return data
+}
+
 // ---- tasks: the same Flask routes the project page posts as forms ----
 export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null }) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)

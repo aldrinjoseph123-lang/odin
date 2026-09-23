@@ -401,6 +401,8 @@ def project_new():
 @app.route("/projects/<int:project_id>")
 @permission_required("view_project_detail")
 def project_detail(project_id):
+    if spa_serves("project_detail"):
+        return spa_index()
     db = get_db()
     project = load_project(project_id)
     if project is None:

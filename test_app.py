@@ -1067,6 +1067,61 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- project page as JSON + the form-route bridge (React port) ----------
+
+    def test_api_project_gives_the_page_its_record_team_notes_documents_and_rights(self):
+        self.new_project(name="P", client="Acme", po_number="PO-1", delivery_mode="Outsourced", outsourcer_name="VendorCo")
+        self.client.post("/projects/1/note", data={"note": "first"})
+        c, _ = self._api_client()
+        d = c.get("/api/projects/1").get_json()
+        self.assertEqual((d["name"], d["details"]["client"], d["details"]["po_number"], d["details"]["outsourcer_name"]), ("P", "Acme", "PO-1", "VendorCo"))
+        self.assertTrue(d["guest_links"]["customer"].startswith("http://localhost/guest/")); self.assertIsNotNone(d["guest_links"]["vendor"])
+        self.assertEqual(len(d["stage_rows"]), 7); self.assertIn("sla_days", d["stage_rows"][0])
+        self.assertEqual([p["role"] for p in d["participants"]], ["Project manager"])
+        self.assertEqual([n["note"] for n in d["notes"]], ["first"])
+        self.assertEqual([x["filename"] for x in d["documents"]], ["po.pdf"]); self.assertIn("Client PO", d["doc_categories"])
+        self.assertEqual(d["can"], {"manage": True, "tasks": True, "docs": True, "move": True, "note": True, "download": True, "create": True})
+        self.assertNotIn("Project manager", d["roles"]); self.assertEqual(d["external_roles"], ["Contractor", "Reseller", "Customer"])
+        self.assertEqual(c.get("/api/projects/9").status_code, 404)
+        # an external customer: their project only, no guest links, no users list, read + note
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        ann = self._external_client("ann@acme.example")
+        e = ann.get("/api/projects/1").get_json()
+        self.assertEqual(e["guest_links"], {"customer": None, "vendor": None}); self.assertEqual(e["users"], [])
+        self.assertEqual(e["can"], {"manage": False, "tasks": False, "docs": False, "move": False, "note": True, "download": True, "create": False})
+        self.new_project(name="Other", client="Globex")
+        self.assertEqual(ann.get("/api/projects/2").status_code, 404)
+
+    def test_form_routes_answer_json_when_asked_and_keep_their_rules(self):
+        self.new_project(name="P", client="Acme")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        # not signed in: never a JSON success (CSRF, then the login gate, answer first)
+        anon = app_module.app.test_client()
+        r = anon.post("/projects/1/note", data={"note": "x"}, headers={"Accept": "application/json"})
+        self.assertNotEqual(r.status_code, 200); self.assertNotIn(b'"ok"', r.data)
+        r = c.post("/projects/1/note", data={"note": "via fetch"}, headers=h)
+        self.assertEqual((r.status_code, r.get_json()["ok"], r.get_json()["messages"]), (200, True, []))
+        # a plain form post is untouched
+        self.assertEqual(self.client.post("/projects/1/note", data={"note": "form"}).status_code, 302)
+        r = c.post("/projects/1/participants/add", data={"user_id": "999", "role": "Sales"}, headers=h)
+        self.assertEqual(r.get_json()["messages"], ["Pick an active user"])
+        r = c.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"%PDF-1.4 report"), "final.pdf")}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Uploaded final.pdf"])
+        r = c.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"MZ binary"), "tool.exe")}, headers=h).get_json()
+        self.assertIn("isn't allowed", r["messages"][0])
+        with self.raw_db() as db:
+            doc = db.execute("SELECT id FROM documents WHERE project_id=1 AND filename='po.pdf'").fetchone()[0]
+        r = c.post(f"/projects/1/documents/{doc}/delete", data={}, headers=h).get_json()
+        self.assertIn("Deleted po.pdf", r["messages"][0]); self.assertEqual(r["undo"], f"/undo/document/{doc}")
+        self.assertNotIn("<", r["messages"][0])
+        r = c.post("/projects/1/delete", data={}, headers=h).get_json()
+        self.assertEqual((r["location"], r["undo"]), ("/board", "/undo/project/1"))
+        with self.raw_db() as db:
+            self.assertEqual([a[0] for a in db.execute("SELECT action FROM audit_logs WHERE action IN ('add_project_note','delete_document','delete_project') ORDER BY id")],
+                             ["add_project_note", "add_project_note", "delete_document", "delete_project"])
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='upload_document'").fetchone()[0], 1)   # final.pdf; the PO rides on create_project
+
     # ---- projects list as JSON (React port) --------------------------------
 
     def test_api_projects_filters_sorts_pages_and_remembers_the_query(self):

@@ -8,7 +8,7 @@ imports routes or app.py).
 import os
 from functools import wraps
 
-from flask import Flask, abort, flash, g, redirect, request, session, url_for
+from flask import Flask, abort, flash, g, get_flashed_messages, jsonify, redirect, request, session, url_for
 from markupsafe import Markup, escape
 
 from datetime import datetime, timedelta
@@ -189,6 +189,29 @@ def permission_required(permission):
             return view(*args, **kwargs)
         return wrapped
     return decorator
+
+
+@app.after_request
+def json_for_fetch(response):
+    """The React pages post to the same form routes the Jinja pages do. A
+    form route answers with a flash and a redirect; when the caller asked
+    for JSON, hand back the flashes as JSON instead so the page can show
+    them and refetch. The login redirect is left alone so the client sees
+    it for what it is. Nothing about the route changes: same permission,
+    same audit row, same validation."""
+    if (request.method == "POST" and request.headers.get("Accept") == "application/json"
+            and 300 <= response.status_code < 400
+            and not (response.headers.get("Location") or "").startswith(("/login", "http://localhost/login"))):
+        import re
+        messages, undo = [], None
+        for m in get_flashed_messages():
+            html = str(m)
+            found = re.search(r"action='(/undo/[^']+)'", html)
+            if found:
+                undo = found.group(1)
+            messages.append(re.sub(r"<[^>]+>", "", html).replace("  ", " ").strip())
+        return jsonify(ok=True, messages=messages, undo=undo, location=response.headers.get("Location"))
+    return response
 
 
 def project_allows(project_id, action):

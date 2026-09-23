@@ -223,7 +223,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   )
 }
 
-function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string) => void }) {
+export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string) => void; standalone?: boolean }) {
   const [note, setNote] = useState("")
   const [comment, setComment] = useState("")
   const [busy, setBusy] = useState(false)
@@ -264,8 +264,8 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
           <div className="flex flex-wrap items-center gap-2">
             {d.approval && d.approval.stage === d.stage && <ApprovalChip status={d.approval.status} className="px-2 py-1 text-[12px]" />}
             {d.state !== "on_track" && <span className={cn("rounded-md px-2 py-1 text-[12px] font-medium", STATE[d.state].chip)}>{stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })}</span>}
-            <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>
-            <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open project <ExternalLink className="h-3.5 w-3.5" /></a>
+            {!standalone && <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>}
+            {!standalone && <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open project <ExternalLink className="h-3.5 w-3.5" /></a>}
           </div>
         </div>
 
@@ -357,14 +357,15 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
               </li>
             ))}
           </ul>
-          <a href={`/projects/${d.id}#team`} className="mt-1.5 inline-block text-[12px] text-primary-text hover:underline">Manage team</a>
+          {!standalone && <a href={`/projects/${d.id}#team`} className="mt-1.5 inline-block text-[12px] text-primary-text hover:underline">Manage team</a>}
         </section>
         {d.recent_notes.length > 0 && (
-          <section>
+          <section className="min-w-0">
+            {/* min-w-0 all the way down: a truncated note must not widen the rail */}
             <h3 className="mb-1.5 text-[12px] font-semibold text-nav-fg">Recent</h3>
-            <ul className="grid gap-1.5">
+            <ul className="grid min-w-0 gap-1.5">
               {d.recent_notes.map((n, i) => (
-                <li key={i} className="text-[12.5px]"><span className="font-medium">{n.author}</span> <span className="text-muted-foreground">· {n.stage} · {fmtDate(n.created_at)}</span><div className="truncate text-nav-fg">{n.note}</div></li>
+                <li key={i} className="min-w-0 text-[12.5px]"><span className="font-medium">{n.author}</span> <span className="text-muted-foreground">· {n.stage} · {fmtDate(n.created_at)}</span><div className="truncate text-nav-fg">{n.note}</div></li>
               ))}
             </ul>
           </section>

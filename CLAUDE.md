@@ -22,7 +22,7 @@ Decision (8 Sep 2026): the UI moves to **Vite + React + TypeScript + shadcn/ui**
 in `frontend/`, Flask becomes the JSON API. **Strangler rollout**: a Jinja page
 stays live until its React replacement has passed tests and UAT; then its
 endpoint name is added to `SPA_PAGES` in `spa.py` and Flask serves the built
-bundle for it. Order: login ✅ → board ✅ → projects ✅ → project detail → settings
+bundle for it. Order: login ✅ → board ✅ → projects ✅ → project detail ✅ → settings
 / users / audit → guest.
 
 Rules while both UIs exist:
@@ -32,6 +32,10 @@ Rules while both UIs exist:
   decorators, permissions and `audit_log` — never a second auth path. The
   audit meta-test enforces this; `attempt_login()` is the shared login door.
 - Mutations send `X-CSRF-Token` from `/api/session`. Same session cookie.
+  A React page may post to an existing **form** route instead of adding a
+  JSON twin: send `Accept: application/json` and the `json_for_fetch`
+  hook in `core.py` returns the flashes as JSON (`postForm` in
+  `frontend/src/lib/api.ts`). One route, one permission, one audit row.
 - `frontend/dist` is built by the Docker stage and CI; never committed.
 - Dev: `npm --prefix frontend run dev` (5173, proxies un-ported paths to Flask
   on 5050) or build once and let Flask serve it (`npm --prefix frontend run build`).
