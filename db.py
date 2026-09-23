@@ -588,6 +588,13 @@ def current_approval(project_id):
     ).fetchone()
 
 
+def project_role_of(project_id, user_id):
+    row = get_db().execute(
+        "SELECT role FROM project_participants WHERE project_id = ? AND user_id = ?", (project_id, user_id)
+    ).fetchone()
+    return row["role"] if row else None
+
+
 def is_customer_on(project_id, user_id):
     return get_db().execute(
         "SELECT 1 FROM project_participants WHERE project_id = ? AND user_id = ? AND role = 'Customer'", (project_id, user_id)

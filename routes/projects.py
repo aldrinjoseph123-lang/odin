@@ -35,7 +35,7 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, login_required, permission_required, role_has_permission, undo_button, write_required, project_scope
+from core import app, login_required, permission_required, project_allows, project_role_required, undo_button, write_required, project_scope
 from security import ALLOWED_UPLOAD_EXTENSIONS, allowed_upload, content_matches_extension, valid_email
 from db import (
     UPLOAD_DIR,
@@ -262,7 +262,7 @@ def report_single(project_id):
     from services.reports import draft_report, render_blocks, report_versions
     db = get_db()
     project = load_project(project_id)
-    can_edit = role_has_permission(session.get("role"), "edit_project")
+    can_edit = project_allows(project_id, "manage_project")
     versions = report_versions(project_id)
     wanted = request.args.get("v", type=int)
     current = None
@@ -282,6 +282,7 @@ def report_single(project_id):
 
 @app.route("/projects/<int:project_id>/report/save", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def report_save(project_id):
     from services.reports import save_report
     project = load_project(project_id)
@@ -437,12 +438,17 @@ def project_detail(project_id):
         has_client_po_doc=has_required_document(project_id, CLIENT_PO_DOC_CATEGORY),
         approval=current_approval(project_id),
         can_approve=is_customer_on(project_id, session["user_id"]),
+        can_move=project_allows(project_id, "move_stage"),
+        can_manage=project_allows(project_id, "manage_project"),
+        can_tasks=project_allows(project_id, "manage_tasks"),
+        can_docs=project_allows(project_id, "manage_documents"),
         **get_contact_lists(),
     )
 
 
 @app.route("/projects/<int:project_id>/edit", methods=["GET", "POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def project_edit(project_id):
     db = get_db()
     project = load_project(project_id)
@@ -515,6 +521,7 @@ def project_edit(project_id):
 
 @app.route("/projects/<int:project_id>/stage", methods=["POST"])
 @permission_required("edit_project_stage")
+@project_role_required("move_stage")
 def project_stage(project_id):
     error = change_stage(project_id, request.form["stage"], request.form.get("note", "").strip()[:5000])
     if error:
@@ -647,6 +654,7 @@ def save_document(project_id, file, category, uploaded_by):
 
 @app.route("/projects/<int:project_id>/documents", methods=["POST"])
 @permission_required("upload_document")
+@project_role_required("manage_documents")
 def document_upload(project_id):
     db = get_db()
     if not load_project(project_id):
@@ -695,6 +703,7 @@ def document_download(project_id, doc_id):
 
 @app.route("/projects/<int:project_id>/documents/<int:doc_id>/delete", methods=["POST"])
 @permission_required("delete_document")
+@project_role_required("manage_documents")
 def document_delete(project_id, doc_id):
     load_project(project_id)   # visibility decided in one place
     db = get_db()
@@ -710,6 +719,7 @@ def document_delete(project_id, doc_id):
 
 @app.route("/projects/<int:project_id>/delete", methods=["POST"])
 @permission_required("delete_project")
+@project_role_required("manage_project")
 def project_delete(project_id):
     db = get_db()
     # deleted_at filter matters: re-deleting would re-stamp deleted_at, restarting
@@ -728,6 +738,7 @@ def project_delete(project_id):
 
 @app.route("/projects/<int:project_id>/rotate-token", methods=["POST"])
 @write_required
+@project_role_required("manage_project")
 def project_rotate_token(project_id):
     """Mint a fresh guest access token — instantly revokes any leaked old link."""
     db = get_db()
@@ -758,6 +769,7 @@ def _chosen_template(db, raw_id):
 
 @app.route("/projects/<int:project_id>/participants/add", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def participant_add(project_id):
     project = load_project(project_id)
     role = request.form.get("role", "")
@@ -786,6 +798,7 @@ def participant_add(project_id):
 
 @app.route("/projects/<int:project_id>/participants/invite", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def participant_invite(project_id):
     """Add an outside party by email. An address already belonging to a staff
     account just joins the team; anyone else becomes an external account
@@ -840,6 +853,7 @@ def participant_invite(project_id):
 
 @app.route("/projects/<int:project_id>/participants/<int:participant_id>/remove", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def participant_remove(project_id, participant_id):
     project = load_project(project_id)
     db = get_db()
@@ -878,6 +892,7 @@ def _stage_change(project_id, action, error, detail):
 
 @app.route("/projects/<int:project_id>/stages/add", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def project_stage_add(project_id):
     _live_project(project_id)
     name = request.form.get("name", "")
@@ -886,6 +901,7 @@ def project_stage_add(project_id):
 
 @app.route("/projects/<int:project_id>/stages/<int:stage_id>/rename", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def project_stage_rename(project_id, stage_id):
     _live_project(project_id)
     name = request.form.get("name", "")
@@ -894,6 +910,7 @@ def project_stage_rename(project_id, stage_id):
 
 @app.route("/projects/<int:project_id>/stages/<int:stage_id>/move", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def project_stage_move(project_id, stage_id):
     _live_project(project_id)
     direction = request.form.get("direction", "")
@@ -902,6 +919,7 @@ def project_stage_move(project_id, stage_id):
 
 @app.route("/projects/<int:project_id>/stages/<int:stage_id>/delete", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def project_stage_delete(project_id, stage_id):
     _live_project(project_id)
     return _stage_change(project_id, "delete_project_stage", stage_ops.delete_stage("project", project_id, stage_id), f"stage_id={stage_id}")
@@ -909,6 +927,7 @@ def project_stage_delete(project_id, stage_id):
 
 @app.route("/projects/<int:project_id>/stages/sla", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_project")
 def project_stage_sla(project_id):
     _live_project(project_id)
     return _stage_change(project_id, "update_project_stage_slas", stage_ops.set_slas("project", project_id, request.form), None)
@@ -999,6 +1018,7 @@ def _task_stage(project_id, requested):
 
 @app.route("/projects/<int:project_id>/tasks", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_tasks")
 def task_add(project_id):
     db = get_db()
     if not load_project(project_id):
@@ -1033,7 +1053,7 @@ def task_toggle(project_id, task_id):
     task = db.execute("SELECT done, assignee_id FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
-    if not (role_has_permission(session.get("role"), "edit_project") or task["assignee_id"] == session["user_id"]):
+    if not (project_allows(project_id, "manage_tasks") or task["assignee_id"] == session["user_id"]):
         abort(403)
     new_done = 0 if task["done"] else 1
     db.execute(
@@ -1047,6 +1067,7 @@ def task_toggle(project_id, task_id):
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/delete", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_tasks")
 def task_delete(project_id, task_id):
     load_project(project_id)   # visibility decided in one place
     db = get_db()
@@ -1058,6 +1079,7 @@ def task_delete(project_id, task_id):
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/edit", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_tasks")
 def task_edit(project_id, task_id):
     """Correct a task in place. Fixing a typo previously meant deleting the
     task and retyping it, which also threw away its done state."""
@@ -1090,6 +1112,7 @@ def task_edit(project_id, task_id):
 
 @app.route("/projects/<int:project_id>/tasks/bulk", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_tasks")
 def task_bulk(project_id):
     """Complete or delete several tasks at once.
 
@@ -1137,6 +1160,7 @@ def task_bulk(project_id):
 
 @app.route("/projects/<int:project_id>/tasks/clear-completed", methods=["POST"])
 @permission_required("edit_project")
+@project_role_required("manage_tasks")
 def task_clear_completed(project_id):
     """Drop every finished task at once, so the checklist stays about what's
     still outstanding."""

@@ -1067,6 +1067,63 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- project roles bind internal staff too -------------------------------
+
+    def _member_client(self, username):
+        self._make_user(username, "Member")
+        c, csrf = self._api_client(username, STRONG_PASSWORD)
+        return c, {"X-CSRF-Token": csrf}
+
+    def test_coordinator_runs_tasks_notes_and_documents_but_never_moves_the_stage(self):
+        self.new_project(name="P", client="C")
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+            sid = db.execute("SELECT id FROM project_stages WHERE project_id=1 ORDER BY position LIMIT 1").fetchone()[0]
+        c, h = self._member_client("coord")
+        with self.raw_db() as db:
+            uid = db.execute("SELECT id FROM users WHERE username='coord'").fetchone()[0]
+        self.client.post("/projects/1/participants/add", data={"user_id": uid, "role": "Coordinator"})
+        self.assertEqual(c.post("/projects/1/tasks", json={"title": "Order cables"}, headers=h).status_code, 200)
+        self.assertEqual(c.post("/projects/1/note", data={"note": "cables ordered"}, headers=h).status_code, 302)
+        self.assertEqual(c.post("/projects/1/documents", data={"category": "Deliverable", "document": (io.BytesIO(b"%PDF-1.4 x"), "x.pdf")}, headers=h).status_code, 302)
+        d = c.get("/api/projects/1/flow").get_json()
+        self.assertEqual((d["can_edit"], d["can_move"]), (True, False))
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[1]}, headers=h).status_code, 403)
+        self.assertEqual(c.post("/projects/1/stage", data={"stage": stages[1]}, headers=h).status_code, 403)
+        for path, data in [("/projects/1/edit", {"name": "X", "client": "C"}), ("/projects/1/delete", {}),
+                           ("/projects/1/participants/add", {"user_id": "1", "role": "Sales"}),
+                           ("/projects/1/stages/add", {"name": "Extra"}), (f"/projects/1/stages/{sid}/rename", {"name": "Z"}),
+                           ("/projects/1/report/save", {"body": "# mine"}), ("/projects/1/rotate-token", {})]:
+            self.assertEqual(c.post(path, data=data, headers=h).status_code, 403, path)
+        page = c.get("/projects/1").data.decode()
+        self.assertIn("Add Task", page); self.assertIn("Add Note", page); self.assertIn(">Upload<", page)
+        for control in ["Update Stage", 'href="/projects/1/edit"', "Delete Project", "Add a person", "Rotate guest links", 'id="stages"']:
+            self.assertNotIn(control, page, control)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=1").fetchone()[0], stages[0])
+
+    def test_staff_off_the_project_read_and_comment_only_and_admins_bypass(self):
+        self.new_project(name="P", client="C")
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        c, h = self._member_client("bystander")
+        self.assertEqual(c.get("/projects/1").status_code, 200)
+        self.assertEqual(c.post("/projects/1/note", data={"note": "seen"}, headers=h).status_code, 302)
+        self.assertEqual(c.post("/projects/1/tasks", json={"title": "x"}, headers=h).status_code, 403)
+        self.assertEqual(c.post("/projects/1/stage", data={"stage": stages[1]}, headers=h).status_code, 403)
+        self.assertEqual(c.post("/projects/1/documents", data={"category": "Deliverable", "document": (io.BytesIO(b"%PDF-1.4 x"), "x.pdf")}, headers=h).status_code, 403)
+        d = c.get("/api/projects/1/flow").get_json()
+        self.assertEqual((d["can_edit"], d["can_move"]), (False, False))
+        self.assertNotIn("Add Task", c.get("/projects/1").data.decode())
+        # tagged on a task: may tick it, still cannot move anything
+        self.client.post("/projects/1/tasks", data={"title": "Theirs", "assignee_id": str(c.get("/api/session").get_json()["user"]["id"])})
+        self.assertEqual(c.post("/projects/1/tasks/1/toggle", json={}, headers=h).get_json()["done"], True)
+        # the PM (owner) and an admin who is on no project both keep full control
+        self.assertEqual(self.client.post("/projects/1/stage", data={"stage": stages[1]}).status_code, 302)
+        admin2 = self._make_user("admin2", "Admin")
+        a, ah = self._api_client("admin2", STRONG_PASSWORD)
+        self.assertEqual(a.post("/api/projects/1/stage", json={"stage": stages[2]}, headers={"X-CSRF-Token": ah}).status_code, 200)
+
     # ---- Phase 6: notify everyone on the project; optional customer approval
 
     @patch("graph.send_mail", return_value=(True, None))

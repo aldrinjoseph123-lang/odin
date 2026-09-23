@@ -2,11 +2,11 @@
 {% block title %}{{ project.name }}{% endblock %}
 {% block content %}
 <h1>{{ project.name }}
-  {% if not is_viewer %}<a class="btn-link" href="{{ url_for('project_edit', project_id=project.id) }}">Edit</a>
-  <a class="btn-link" href="{{ url_for('project_new', **{'from': project.id}) }}">Duplicate</a>{% endif %}
+  {% if can_manage %}<a class="btn-link" href="{{ url_for('project_edit', project_id=project.id) }}">Edit</a>{% endif %}
+  {% if not is_viewer %}<a class="btn-link" href="{{ url_for('project_new', **{'from': project.id}) }}">Duplicate</a>{% endif %}
   <a class="btn-link" href="{{ url_for('report_single', project_id=project.id) }}" target="_blank">Report</a>
 </h1>
-{% if not is_viewer %}
+{% if can_manage %}
 <form method="post" action="{{ url_for('project_delete', project_id=project.id) }}" onsubmit="return confirm('Delete this project? This cannot be undone.')" style="margin-bottom:1rem;">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <button type="submit" class="link-btn">Delete Project</button>
@@ -26,7 +26,7 @@
   <button type="button" class="link-btn" data-copy="{{ guest_url }}" onclick="copyText(this)">Copy</button>
 </p>
 {% endif %}
-{% if not is_viewer %}
+{% if can_manage %}
 <form method="post" action="{{ url_for('project_rotate_token', project_id=project.id) }}" onsubmit="return confirm('Rotate both guest links? The current links will stop working immediately.')" style="display:inline">
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <button type="submit" class="link-btn">Rotate guest links</button>
@@ -73,7 +73,7 @@
   {% endfor %}
 </div>
 
-{% if not is_viewer %}
+{% if can_manage %}
 <details class="panel" id="stages" style="margin-bottom:1.5rem;">
   <summary style="cursor:pointer;"><h2 style="display:inline;">This project's stages</h2> <span class="muted" style="font-size:var(--text-xs);">— add, rename, reorder, delete, SLAs. Only this project changes.</span></summary>
   {% for s in stages %}
@@ -123,14 +123,14 @@
 <div class="panel" id="team" style="margin-bottom:1.5rem;">
   <h2>Team <span class="muted" style="text-transform:none; font-weight:400;">(who is on this project, and as what)</span></h2>
   <table>
-    <thead><tr><th>Name</th><th>Role</th><th>Email</th>{% if not is_viewer %}<th></th>{% endif %}</tr></thead>
+    <thead><tr><th>Name</th><th>Role</th><th>Email</th>{% if can_manage %}<th></th>{% endif %}</tr></thead>
     <tbody>
       {% for m in participants %}
       <tr>
         <td>{{ m.name }}{% if not m.active %} <span class="muted">(deactivated)</span>{% endif %}</td>
         <td><span class="stage-badge">{{ m.role }}</span></td>
         <td class="muted">{{ m.email or '—' }}</td>
-        {% if not is_viewer %}
+        {% if can_manage %}
         <td style="text-align:right;">
           {% if m.user_id != project.owner_id %}
           <form method="post" action="{{ url_for('participant_remove', project_id=project.id, participant_id=m.id) }}" style="display:inline" onsubmit="return confirm('Remove {{ m.name }} from this project?')">
@@ -144,7 +144,7 @@
       {% endfor %}
     </tbody>
   </table>
-  {% if not is_viewer %}
+  {% if can_manage %}
   <form method="post" action="{{ url_for('participant_add', project_id=project.id) }}" class="inline-form" style="margin-top:var(--space-3);">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <select name="user_id" aria-label="Add team member" required>
@@ -197,7 +197,7 @@
   </div>
 
   <div class="panel">
-    {% if not is_viewer %}
+    {% if can_move %}
     <h2>Change Stage</h2>
     <form method="post" action="{{ url_for('project_stage', project_id=project.id) }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
@@ -235,14 +235,14 @@
 <div class="panel" id="tasks">
   {% set done_count = tasks | selectattr('done') | list | length %}
   <h2>Tasks <span class="muted" style="text-transform:none; font-weight:400;">{{ done_count }}/{{ tasks|length }} done</span>
-    {% if not is_viewer and done_count %}
+    {% if can_tasks and done_count %}
     <form method="post" action="{{ url_for('task_clear_completed', project_id=project.id) }}" onsubmit="return confirm('Remove all completed tasks?')" style="display:inline; margin-left:var(--space-3);">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <button type="submit" class="link-btn">Clear completed</button>
     </form>
     {% endif %}
   </h2>
-  {% if not is_viewer %}
+  {% if can_tasks %}
   <form method="post" action="{{ url_for('task_add', project_id=project.id) }}" class="task-form">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <input type="text" name="title" placeholder="New task…" required maxlength="200" class="task-title" aria-label="New task title">
@@ -259,7 +259,7 @@
     <button type="submit">Add Task</button>
   </form>
   {% endif %}
-  {% if not is_viewer and tasks %}
+  {% if can_tasks and tasks %}
   {# Standalone, NOT wrapping the table. The per-row toggle/delete/edit forms
      live inside the table, and nesting forms is invalid HTML — the browser
      silently drops the inner ones and reassigns their buttons to the outer
@@ -274,15 +274,15 @@
   {% endif %}
   <table>
     <thead><tr>
-      {% if not is_viewer and tasks %}<th style="width:1.5rem;"><input type="checkbox" onclick="toggleAllTasks(this)" aria-label="Select all tasks" style="width:auto;"></th>{% endif %}
-      <th></th><th>Task</th><th>Assignee</th><th>Due</th>{% if not is_viewer %}<th></th>{% endif %}
+      {% if can_tasks and tasks %}<th style="width:1.5rem;"><input type="checkbox" onclick="toggleAllTasks(this)" aria-label="Select all tasks" style="width:auto;"></th>{% endif %}
+      <th></th><th>Task</th><th>Assignee</th><th>Due</th>{% if can_tasks %}<th></th>{% endif %}
     </tr></thead>
     <tbody>
       {% for t in tasks %}
       <tr>
-        {% if not is_viewer %}<td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="task-bulk-form" class="task-check" aria-label="Select task" style="width:auto;"></td>{% endif %}
+        {% if can_tasks %}<td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="task-bulk-form" class="task-check" aria-label="Select task" style="width:auto;"></td>{% endif %}
         <td>
-          {% if not is_viewer %}
+          {% if can_tasks %}
           <form method="post" action="{{ url_for('task_toggle', project_id=project.id, task_id=t.id) }}" style="display:inline">
             <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
             <button type="submit" class="link-btn" title="{{ 'Mark not done' if t.done else 'Mark done' }}">{{ '☑' if t.done else '☐' }}</button>
@@ -294,7 +294,7 @@
         <td>
           {% if t.due_date %}{% if not t.done and t.due_date < today %}<span class="countdown countdown-overdue">{{ t.due_date }}</span>{% else %}{{ t.due_date }}{% endif %}{% else %}—{% endif %}
         </td>
-        {% if not is_viewer %}
+        {% if can_tasks %}
         <td style="white-space:nowrap;">
           <button type="button" class="link-btn" onclick="toggleTaskEdit({{ t.id }})">Edit</button>
           <form method="post" action="{{ url_for('task_delete', project_id=project.id, task_id=t.id) }}" onsubmit="return confirm('Delete this task?')" style="display:inline; margin-left:var(--space-2);">
@@ -304,7 +304,7 @@
         </td>
         {% endif %}
       </tr>
-      {% if not is_viewer %}
+      {% if can_tasks %}
       {# Edit form lives in a sibling row, hidden until Edit is pressed. Keeps
          the list scannable while making a typo a two-click fix rather than a
          delete-and-retype that also loses the task's done state. #}
@@ -326,7 +326,7 @@
       </tr>
       {% endif %}
       {% else %}
-      <tr><td colspan="{{ 6 if not is_viewer else 4 }}" class="muted">No tasks yet.</td></tr>
+      <tr><td colspan="{{ 6 if can_tasks else 4 }}" class="muted">No tasks yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -334,7 +334,7 @@
 
 <div class="panel">
   <h2>Documents</h2>
-  {% if not is_viewer %}
+  {% if can_docs %}
   <form method="post" action="{{ url_for('document_upload', project_id=project.id) }}" enctype="multipart/form-data" class="upload-form">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <select name="category" required aria-label="Document category">
@@ -359,7 +359,7 @@
         <td>{{ d.uploaded_by }}</td>
         <td>{{ d.uploaded_at | localdt('date') }}</td>
         <td>
-          {% if not is_viewer %}
+          {% if can_docs %}
           <form method="post" action="{{ url_for('document_delete', project_id=project.id, doc_id=d.id) }}" onsubmit="return confirm('Delete this file?')">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
             <button type="submit" class="link-btn">Delete</button>

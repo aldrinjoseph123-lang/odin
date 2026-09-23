@@ -7,7 +7,7 @@ from flask import abort, jsonify, request, session
 from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, DELIVERY_MODES
-from core import app, login_required, nav_counts, permission_required, project_scope, role_has_permission
+from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, board_data, dismiss_alert
@@ -111,6 +111,7 @@ def api_approval_decide(project_id, approval_id):
 
 @app.route("/api/projects/<int:project_id>/stage", methods=["POST"])
 @permission_required("edit_project_stage")
+@project_role_required("move_stage")
 def api_project_stage(project_id):
     load_project(project_id)
     data = request.get_json(silent=True) or {}
@@ -261,12 +262,12 @@ def api_project_flow(project_id):
                    "assignee": t["assignee_name"], "assignee_id": t["assignee_id"],
                    "stage": t["stage"] if t["stage"] in stages else project["stage"]} for t in tasks],
         "assignable": [{"id": r["user_id"], "name": r["name"]} for r in participants_for(project_id) if r["active"]],
-        "can_edit": role_has_permission(session.get("role"), "edit_project"),
+        "can_edit": project_allows(project_id, "manage_tasks"),
         "me": session["user_id"],
         "documents": db.execute("SELECT COUNT(*) AS c FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,)).fetchone()["c"],
         "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]} for n in notes[-4:][::-1]],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"]} for r in participants_for(project_id)],
-        "can_move": role_has_permission(session.get("role"), "edit_project_stage"),
+        "can_move": project_allows(project_id, "move_stage"),
         "customer_approval": bool(project["customer_approval"]),
         "approval": ({"id": a["id"], "stage": a["stage"], "status": a["status"], "decided_by": a["decided_by"], "comment": a["comment"]}
                      if (a := current_approval(project_id)) else None),

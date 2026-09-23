@@ -57,6 +57,17 @@ CONTACT_LISTS = {
 
 # Contributor: creates and comments (sales / account managers) but never moves
 # a delivery stage or deletes. Member is the delivery team.
+# What a project role may do on that project, on top of the global
+# permission: (global permission, project roles allowed). Admins bypass the
+# role check; everyone else — including staff not on the project — reads,
+# comments, and ticks tasks tagged to them.
+PROJECT_ACTIONS = {
+    "move_stage":       ("edit_project_stage", {"Project manager"}),
+    "manage_project":   ("edit_project", {"Project manager"}),                 # edit, delete, stages, team, report, guest links
+    "manage_tasks":     ("edit_project", {"Project manager", "Coordinator"}),
+    "manage_documents": ("upload_document", {"Project manager", "Coordinator"}),
+}
+
 # External: contractors, resellers and customer contacts invited by email. No
 # password, no product surface beyond the projects they participate in.
 ROLES = ["Admin", "Member", "Contributor", "Viewer", "External"]

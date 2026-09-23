@@ -18,7 +18,7 @@ from constants import (
     PERMISSIONS,
     VIA_OPTIONS,
 )
-from db import get_db, get_doc_category_names, get_stage_names
+from db import get_db, get_doc_category_names, get_stage_names, project_role_of
 from security import ABSOLUTE_SESSION_HOURS, csrf_token, init_security
 
 DEV_SECRET = "dev-secret-change-me"
@@ -185,6 +185,33 @@ def permission_required(permission):
                 abort(500)
             user_role = session.get("role", "Viewer")
             if not role_has_permission(user_role, permission):
+                abort(403)
+            return view(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def project_allows(project_id, action):
+    """May this session do `action` on this project? Global permission first,
+    then the project role (Admins skip the role check). One function for the
+    routes, the API flags and the templates."""
+    from constants import PROJECT_ACTIONS
+    permission, roles = PROJECT_ACTIONS[action]
+    role = session.get("role", "Viewer")
+    if not role_has_permission(role, permission):
+        return False
+    return role == "Admin" or project_role_of(project_id, session["user_id"]) in roles
+
+
+def project_role_required(action):
+    """Stacks under permission_required on project-scoped mutations."""
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            gate = _auth_gate()
+            if gate:
+                return gate
+            if not project_allows(kwargs["project_id"], action):
                 abort(403)
             return view(*args, **kwargs)
         return wrapped
