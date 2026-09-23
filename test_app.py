@@ -1202,6 +1202,30 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                              ["add_project_note", "add_project_note", "delete_document", "delete_project"])
             self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='upload_document'").fetchone()[0], 1)   # final.pdf; the PO rides on create_project
 
+    # ---- reports as JSON (React port) ------------------------------------------
+
+    def test_api_reports_feed_the_pages_and_save_through_the_bridge(self):
+        self.new_project(name="Rep", client="Acme", target_end_date="2027-01-31")
+        self.new_project(name="Other", client="Globex")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        a = c.get("/api/reports/all").get_json()
+        self.assertEqual([r["name"] for r in a["rows"]], ["Rep", "Other"]); self.assertIn("generated_at", a)
+        r = c.get("/api/projects/1/report").get_json()
+        self.assertEqual((r["is_draft"], r["can_edit"], r["current"], r["versions"]), (True, True, None, []))
+        self.assertIn(["h", "Timeline"], r["blocks"]); self.assertIn("# Timeline", r["editor_text"])
+        self.assertEqual(c.post("/projects/1/report/save", data={"body": "# Summary\nAll good."}, headers=h).get_json()["messages"], ["Report version 1 saved"])
+        r = c.get("/api/projects/1/report").get_json()
+        self.assertEqual((r["is_draft"], r["current"]["version"], r["blocks"]), (False, 1, [["h", "Summary"], ["p", "All good."]]))
+        self.assertIn("# Timeline", c.get("/api/projects/1/report?draft=1").get_json()["editor_text"])
+        self.assertEqual(c.get("/api/projects/1/report?v=7").status_code, 404)
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        ann = self._external_client("ann@acme.example")
+        e = ann.get("/api/projects/1/report").get_json()
+        self.assertEqual((e["can_edit"], e["blocks"][0]), (False, ["h", "Summary"]))
+        self.assertEqual([x["name"] for x in ann.get("/api/reports/all").get_json()["rows"]], ["Rep"])
+        self.assertEqual(ann.get("/api/projects/2/report").status_code, 404)
+
     # ---- account, my work, alerts, analytics as JSON (React port) -------------
 
     def test_api_account_my_work_alerts_and_analytics(self):
@@ -1740,7 +1764,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             if "<int:project_id>" not in rule.rule:
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
-            if not any(m in src for m in ("load_project(", "_live_project(", "change_stage(", "dismiss_alert(", "decide_approval(")):
+            if not any(m in src for m in ("load_project(", "_live_project(", "change_stage(", "dismiss_alert(", "decide_approval(", "report_context(")):
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"project routes bypassing load_project: {missing}")
 

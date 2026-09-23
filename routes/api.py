@@ -12,7 +12,7 @@ from db import get_doc_category_names, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
-from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project
+from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context
 from security import csrf_token
 from services.alerts import schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
@@ -217,6 +217,29 @@ def api_audit():
         usernames=[r[0] for r in db.execute("SELECT DISTINCT username FROM audit_logs ORDER BY username")],
         actions=[r[0] for r in db.execute("SELECT DISTINCT action FROM audit_logs ORDER BY action")],
         projects=[{"id": r["id"], "name": r["name"]} for r in db.execute("SELECT id, name FROM projects ORDER BY name")],
+    )
+
+
+@app.route("/api/reports/all")
+@permission_required("view_reports")
+def api_report_all():
+    rows = get_db().execute(
+        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
+        f"WHERE {PROJECT_OPEN_SQL} AND p.deleted_at IS NULL{project_scope()[0]} ORDER BY p.client, p.name", project_scope()[1],
+    ).fetchall()
+    return jsonify(generated_at=datetime.utcnow().isoformat(), rows=[
+        {k: p[k] for k in ("id", "name", "client", "stage", "owner_name", "delivery_mode", "vendor_name", "product_name", "target_end_date")} for p in rows])
+
+
+@app.route("/api/projects/<int:project_id>/report")
+@permission_required("view_reports")
+def api_report(project_id):
+    c = report_context(project_id)
+    return jsonify(
+        project={"id": c["project"]["id"], "name": c["project"]["name"], "client": c["project"]["client"], "owner_name": c["project"]["owner_name"], "stage": c["project"]["stage"]},
+        versions=[{"version": v["version"], "created_by": v["created_by"], "created_at": v["created_at"]} for v in c["versions"]],
+        current=None if c["current"] is None else {"version": c["current"]["version"], "created_by": c["current"]["created_by"], "created_at": c["current"]["created_at"]},
+        blocks=c["blocks"], editor_text=c["editor_text"], can_edit=c["can_edit"], is_draft=c["is_draft"],
     )
 
 

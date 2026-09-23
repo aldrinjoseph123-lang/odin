@@ -241,6 +241,8 @@ def projects_export_csv():
 @app.route("/reports/all")
 @permission_required("view_reports")
 def report_all():
+    if spa_serves("report_all"):
+        return spa_index()
     db = get_db()
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
@@ -262,6 +264,13 @@ def report_single(project_id):
     editor). Everyone else — partners, customers, viewers — sees only what
     was saved: the draft is built from internal notes and is the PM's to
     trim before it goes out."""
+    if spa_serves("report_single"):
+        return spa_index()
+    return render_template("report_single.html", **report_context(project_id))
+
+
+def report_context(project_id):
+    """The report page's data, for Jinja and JSON alike."""
     from services.reports import draft_report, render_blocks, report_versions
     db = get_db()
     project = load_project(project_id)
@@ -276,8 +285,8 @@ def report_single(project_id):
         ).fetchone() or abort(404)
     draft = draft_report(project) if can_edit and (current is None or request.args.get("draft")) else None
     body = current["body"] if current else (draft or "")
-    return render_template(
-        "report_single.html", project=project, versions=versions, current=current, can_edit=can_edit,
+    return dict(
+        project=project, versions=versions, current=current, can_edit=can_edit,
         blocks=render_blocks(body), editor_text=draft if draft is not None else body,
         is_draft=current is None or bool(request.args.get("draft")),
     )

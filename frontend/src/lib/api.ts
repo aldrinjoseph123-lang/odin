@@ -195,6 +195,17 @@ export type AuditData = {
 }
 export const audit = (query: string) => getJson<AuditData>(`/api/audit${query ? `?${query}` : ""}`)
 
+// ---- reports ----
+export type ReportAllData = { generated_at: string; rows: { id: number; name: string; client: string; stage: string; owner_name: string; delivery_mode: string; vendor_name: string | null; product_name: string | null; target_end_date: string | null }[] }
+export const reportAll = () => getJson<ReportAllData>("/api/reports/all")
+export type ReportData = {
+  project: { id: number; name: string; client: string; owner_name: string; stage: string }
+  versions: { version: number; created_by: string; created_at: string }[]
+  current: { version: number; created_by: string; created_at: string } | null
+  blocks: ["h" | "li" | "p", string][]; editor_text: string; can_edit: boolean; is_draft: boolean
+}
+export const report = (id: number, query: string) => getJson<ReportData>(`/api/projects/${id}/report${query ? `?${query}` : ""}`)
+
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean }>("/api/account")
 export type MyWorkData = {

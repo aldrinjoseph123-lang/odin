@@ -54,7 +54,7 @@ export default function AppShell({ user, children }: { user: User; children: Rea
   return (
     <div className="flex min-h-svh flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">Skip to content</a>
-      <header className="flex h-13 shrink-0 items-center gap-6 border-b border-border bg-background px-5">
+      <header className="flex h-13 shrink-0 items-center gap-6 border-b border-border bg-background px-5 print:hidden">
         <Link to="/board" className="text-[15px] font-bold tracking-tight">Odin</Link>
         <button type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted md:hidden"><Menu className="h-5 w-5" /></button>
         <nav className={cn("absolute inset-x-0 top-13 z-40 flex-col gap-3 border-b border-border bg-background px-5 py-4 md:static md:flex md:flex-1 md:flex-row md:items-center md:gap-6 md:border-0 md:p-0", open ? "flex" : "hidden")}>

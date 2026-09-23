@@ -14,6 +14,8 @@ import Account from "@/pages/Account"
 import MyWork from "@/pages/MyWork"
 import Alerts from "@/pages/Alerts"
 import Analytics from "@/pages/Analytics"
+import ReportAll from "@/pages/ReportAll"
+import Report from "@/pages/Report"
 import Login from "@/pages/Login"
 import { session, type User } from "@/lib/api"
 
@@ -49,6 +51,8 @@ export default function App() {
         <Route path="/projects" element={<Protected>{(user) => <Projects user={user} />}</Protected>} />
         <Route path="/projects/new" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
         <Route path="/projects/:id/edit" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
+        <Route path="/projects/:id/report" element={<Protected>{(user) => <Report user={user} />}</Protected>} />
+        <Route path="/reports/all" element={<Protected>{(user) => <ReportAll user={user} />}</Protected>} />
         <Route path="/projects/:id" element={<Protected>{(user) => <Project user={user} />}</Protected>} />
         <Route path="/users" element={<Protected>{(user) => <Users user={user} />}</Protected>} />
         <Route path="/audit-logs" element={<Protected>{(user) => <Audit user={user} />}</Protected>} />
