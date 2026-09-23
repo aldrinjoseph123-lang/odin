@@ -252,18 +252,45 @@ def report_all():
 @app.route("/projects/<int:project_id>/report")
 @permission_required("view_reports")
 def report_single(project_id):
+    """The project report. Editors see the latest saved version, or a fresh
+    draft when nothing is saved yet (?draft=1 forces a fresh draft into the
+    editor). Everyone else — partners, customers, viewers — sees only what
+    was saved: the draft is built from internal notes and is the PM's to
+    trim before it goes out."""
+    from services.reports import draft_report, render_blocks, report_versions
     db = get_db()
     project = load_project(project_id)
-    notes = db.execute(
-        "SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at DESC", (project_id,)
-    ).fetchall()
-    documents = db.execute(
-        "SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY category", (project_id,)
-    ).fetchall()
+    can_edit = role_has_permission(session.get("role"), "edit_project")
+    versions = report_versions(project_id)
+    wanted = request.args.get("v", type=int)
+    current = None
+    if versions:
+        current = db.execute(
+            "SELECT * FROM project_reports WHERE project_id = ? AND version = ?",
+            (project_id, wanted or versions[0]["version"]),
+        ).fetchone() or abort(404)
+    draft = draft_report(project) if can_edit and (current is None or request.args.get("draft")) else None
+    body = current["body"] if current else (draft or "")
     return render_template(
-        "report_single.html", project=project, notes=notes, documents=documents,
-        generated_at=datetime.utcnow(),
+        "report_single.html", project=project, versions=versions, current=current, can_edit=can_edit,
+        blocks=render_blocks(body), editor_text=draft if draft is not None else body,
+        is_draft=current is None or bool(request.args.get("draft")),
     )
+
+
+@app.route("/projects/<int:project_id>/report/save", methods=["POST"])
+@permission_required("edit_project")
+def report_save(project_id):
+    from services.reports import save_report
+    project = load_project(project_id)
+    body = request.form.get("body", "").strip()[:50000]
+    if not body:
+        flash("The report is empty")
+        return redirect(url_for("report_single", project_id=project_id))
+    version = save_report(project_id, body, session["user_name"])
+    audit_log("save_report", "project", project_id, project["name"], f"version {version}")
+    flash(f"Report version {version} saved")
+    return redirect(url_for("report_single", project_id=project_id))
 
 
 @app.route("/projects/new", methods=["GET", "POST"])

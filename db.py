@@ -113,7 +113,7 @@ def cleanup_soft_deletes(db=None):
         _remove_upload(project_id, stored_name)
 
     if doomed:
-        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants"):
+        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
@@ -138,7 +138,7 @@ def _purge_orphans(db):
     their children. Everything removed here is unreachable by definition: no
     project row means no page can ever display it.
     """
-    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants"):
+    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports"):
         column = "project_id"
         db.execute(
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
@@ -257,6 +257,16 @@ def migrate_db(db):
     # NULL = "whatever stage the project is in" — old tasks and quick adds.
     if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
         db.execute("ALTER TABLE tasks ADD COLUMN stage TEXT")
+    # Project reports: the PM's text, one row per saved version, never edited in place.
+    db.execute("""CREATE TABLE IF NOT EXISTS project_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        version INTEGER NOT NULL,
+        body TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (project_id, version)
+    )""")
     db.execute("""CREATE TABLE IF NOT EXISTS login_links (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),

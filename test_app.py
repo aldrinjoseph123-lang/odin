@@ -1067,6 +1067,48 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- Phase 5: project reports, drafted then owned by the PM -------------
+
+    def test_report_draft_comes_from_timeline_tasks_notes_and_documents(self):
+        self.new_project(name="Rep", client="Acme", target_end_date="2027-01-31")
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        self.client.post("/projects/1/stage", data={"stage": stages[1], "note": "Scope agreed with Acme"})
+        self.client.post("/projects/1/tasks", data={"title": "Order hardware", "assignee_id": "1"})
+        self.client.post("/projects/1/tasks", data={"title": "Done thing"})
+        self.client.post("/projects/1/tasks/2/toggle")
+        page = self.client.get("/projects/1/report").data.decode()
+        for expected in ["No report saved yet", "# Timeline", f"{stages[0]}  (", f"{stages[1]}  (0 d, current)",
+                         f"Next: {stages[2]}", "1 of 2 tasks done", "[ ] Order hardware — Admin", "[x] Done thing",
+                         "Scope agreed with Acme", "po.pdf", "Target: 2027-01-31"]:
+            self.assertIn(expected, page, expected)
+        self.assertIn("<h2>Timeline</h2>", page)          # the draft is also rendered
+
+    def test_report_saves_versions_and_partners_see_only_saved_ones(self):
+        self.new_project(name="Rep", client="Acme")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        ann = self._external_client("ann@acme.example")
+        self.assertIn(b"No report has been published", ann.get("/projects/1/report").data)
+        self.assertNotIn(b"Edit report", ann.get("/projects/1/report").data)
+        self.assertEqual(ann.post("/projects/1/report/save", data={"body": "# Mine"}).status_code, 403)
+        r = self.client.post("/projects/1/report/save", data={"body": "# Summary\nPilot complete, fleet next.\n- item one\n- item two"}, follow_redirects=True)
+        self.assertIn(b"Report version 1 saved", r.data)
+        self.client.post("/projects/1/report/save", data={"body": "# Summary\nFleet rollout under way."})
+        page = self.client.get("/projects/1/report").data.decode()
+        self.assertIn("Fleet rollout under way", page); self.assertNotIn("Pilot complete", page)
+        self.assertIn("Save as version 3", page); self.assertIn("Regenerate draft", page)
+        old = self.client.get("/projects/1/report?v=1").data.decode()
+        self.assertIn("Pilot complete", old); self.assertIn("<ul><li>item one</li><li>item two</li></ul>", old.replace("\n", "").replace("  ", ""))
+        self.assertEqual(self.client.get("/projects/1/report?v=9").status_code, 404)
+        self.assertIn("# Timeline", self.client.get("/projects/1/report?draft=1").data.decode())
+        partner = ann.get("/projects/1/report").data.decode()
+        self.assertIn("Fleet rollout under way", partner); self.assertNotIn("# Timeline", partner)
+        self.client.post("/projects/1/report/save", data={"body": "   "})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM project_reports").fetchone()[0], 2)
+            self.assertEqual([r[0] for r in db.execute("SELECT details FROM audit_logs WHERE action='save_report' ORDER BY id")], ["version 1", "version 2"])
+        self.assertEqual(self.client.get("/projects/2/report").status_code, 404)
+
     # ---- Phase 4: tasks per stage, worked from the flow screen --------------
 
     def test_task_belongs_to_a_stage_and_follows_renames_and_deletes(self):

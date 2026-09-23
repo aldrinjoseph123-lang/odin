@@ -9,63 +9,60 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <style>
     body { max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
-    .report-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem; }
-    .report-section { margin-bottom: 1.5rem; }
-    .report-section h3 { border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+    .report-bar { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-bottom: 1rem; }
+    .report h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; margin-top: 1.5rem; }
+    .report ul { padding-left: 1.2rem; }
+    .report li, .report p { margin: 0.3rem 0; white-space: pre-wrap; }
+    textarea.report-editor { width: 100%; min-height: 28rem; font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem; line-height: 1.45; }
     @media print { .no-print { display: none; } }
   </style>
 </head>
 <body>
-  <button class="no-print" onclick="window.print()" style="float:right; padding:0.6rem 1.2rem; margin-bottom:1rem; background:var(--dark); color:white; border:none; border-radius:var(--radius); text-transform:uppercase; letter-spacing:0.05em; font-size:0.75rem; font-weight:600; font-family:inherit; cursor:pointer;">Print / Save as PDF</button>
-  <div class="report-header">
-    <div>
-      <h1>{{ project.name }}</h1>
-      <p class="muted">Client: {{ project.client }} · Owner: {{ project.owner_name }} · Stage: {{ project.stage }}</p>
-    </div>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}<div class="flash no-print">{% for m in messages %}<div>{{ m }}</div>{% endfor %}</div>{% endif %}
+  {% endwith %}
+  <div class="report-bar no-print">
+    <a href="{{ url_for('project_detail', project_id=project.id) }}">&larr; {{ project.name }}</a>
+    {% if versions %}
+    <label>Version
+      <select onchange="location.href='?v=' + this.value" aria-label="Report version">
+        {% for v in versions %}<option value="{{ v.version }}" {{ 'selected' if current and v.version == current.version }}>v{{ v.version }} · {{ v.created_by }} · {{ v.created_at[:16].replace('T', ' ') }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    {% if can_edit and versions and not is_draft %}<a href="?draft=1">Regenerate draft</a>{% endif %}
+    <span class="spacer" style="flex:1;"></span>
+    <button type="button" onclick="window.print()" class="btn">Print / Save as PDF</button>
   </div>
 
-  <div class="report-section">
-    <h2>Project Details</h2>
-    <div class="kv">
-      <div>PO Number</div><div>{{ project.po_number or '—' }}</div>
-      <div>PO Date</div><div>{{ project.po_date or '—' }}</div>
-      <div>Start Date</div><div>{{ project.start_date or '—' }}</div>
-      <div>Target End Date</div><div>{{ project.target_end_date or '—' }}</div>
-      <div>Delivery Mode</div><div>{{ project.delivery_mode }}</div>
-      {% if project.delivery_mode == 'Outsourced' %}
-      <div>Outsourcer</div><div>{{ project.outsourcer_name or '—' }} ({{ project.outsourcer_email or '—' }})</div>
-      {% endif %}
-    </div>
-  </div>
+  {% if is_draft and can_edit %}
+  <p class="muted no-print">{% if versions %}Fresh draft from today's data — nothing is saved until you click Save.{% else %}No report saved yet. This draft comes from the timeline, tasks, notes and documents; edit it and save the first version. Partners and customers see saved versions only.{% endif %}</p>
+  {% endif %}
 
-  <div class="report-section">
-    <h2>Documents</h2>
-    <table>
-      <thead><tr><th>Category</th><th>File</th><th>Uploaded By</th><th>Date</th></tr></thead>
-      <tbody>
-        {% for d in documents %}
-        <tr><td>{{ d.category }}</td><td>{{ d.filename }}</td><td>{{ d.uploaded_by }}</td><td>{{ d.uploaded_at[:10] }}</td></tr>
-        {% else %}
-        <tr><td colspan="4">No documents.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {% if blocks %}
+  <div class="report">
+    {% for kind, text in blocks %}
+      {% if kind == 'h' %}<h2>{{ text }}</h2>
+      {% elif kind == 'li' %}{% if loop.previtem is not defined or loop.previtem[0] != 'li' %}<ul>{% endif %}<li>{{ text }}</li>{% if loop.nextitem is not defined or loop.nextitem[0] != 'li' %}</ul>{% endif %}
+      {% else %}<p>{{ text }}</p>{% endif %}
+    {% endfor %}
   </div>
+  {% else %}
+  <p class="muted">No report has been published for this project yet.</p>
+  {% endif %}
 
-  <div class="report-section">
-    <h2>Status Notes History</h2>
-    <div class="notes">
-      {% for n in notes %}
-      <div class="note">
-        <div class="note-meta"><strong>{{ n.author }}</strong> · {{ n.stage }} · {{ n.created_at[:16].replace('T', ' ') }}</div>
-        <div class="note-text">{{ n.note }}</div>
-      </div>
-      {% else %}
-      <p class="muted">No notes.</p>
-      {% endfor %}
-    </div>
-  </div>
+  {% if can_edit %}
+  <details class="no-print" style="margin-top:2rem;" {{ 'open' if is_draft }}>
+    <summary>Edit report</summary>
+    <form method="post" action="{{ url_for('report_save', project_id=project.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <p class="muted" style="font-size:0.8rem;">Plain text. A line starting with <code># </code> is a heading, <code>- </code> a list item. Saving creates a new version; earlier versions stay.</p>
+      <textarea name="body" class="report-editor" aria-label="Report text" maxlength="50000" required>{{ editor_text }}</textarea>
+      <button type="submit" style="margin-top:0.6rem;">Save as version {{ (versions[0].version + 1) if versions else 1 }}</button>
+    </form>
+  </details>
+  {% endif %}
 
-  <p class="muted" style="font-size:0.75rem;">Generated {{ generated_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+  {% if current %}<p class="muted" style="font-size:0.75rem; margin-top:2rem;">Version {{ current.version }} · {{ current.created_by }} · {{ current.created_at[:16].replace('T', ' ') }} UTC</p>{% endif %}
 </body>
 </html>
