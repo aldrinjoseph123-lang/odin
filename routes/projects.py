@@ -15,6 +15,7 @@ from flask import (
     Response,
     abort,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -34,7 +35,7 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, permission_required, undo_button, write_required, project_scope
+from core import app, login_required, permission_required, role_has_permission, undo_button, write_required, project_scope
 from security import ALLOWED_UPLOAD_EXTENSIONS, allowed_upload, content_matches_extension, valid_email
 from db import (
     UPLOAD_DIR,
@@ -897,40 +898,65 @@ def _notify_assignee(assignee_id, project_id, title):
     )
 
 
+# The task routes serve two front ends: the Jinja project page posts forms
+# and expects a redirect, the React flow screen posts JSON and expects JSON.
+# One route each — same permission, same audit row, same validation.
+
+def _task_input():
+    return request.get_json(silent=True) or request.form
+
+
+def _task_reply(project_id, error=None, **payload):
+    if request.is_json:
+        return (jsonify(error=error), 400) if error else jsonify(ok=True, **payload)
+    if error:
+        flash(error)
+    return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
+
+
+def _task_stage(project_id, requested):
+    """A stage name from this project's list, or None for 'current stage'."""
+    return requested if requested and requested in get_stage_names(project_id) else None
+
+
 @app.route("/projects/<int:project_id>/tasks", methods=["POST"])
 @permission_required("edit_project")
 def task_add(project_id):
     db = get_db()
     if not load_project(project_id):
         abort(404)
-    title = request.form.get("title", "").strip()[:200]
+    form = _task_input()
+    title = (form.get("title") or "").strip()[:200]
     if not title:
-        flash("Task needs a title")
-        return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
-    assignee_id = request.form.get("assignee_id") or None
+        return _task_reply(project_id, "Task needs a title")
+    assignee_id = form.get("assignee_id") or None
     # must be a real, still-active user: the dropdown only offers active ones,
     # but a hand-crafted POST could name a deactivated account.
     if assignee_id and not db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (assignee_id,)).fetchone():
         assignee_id = None
-    db.execute(
-        "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-        (project_id, title, assignee_id, request.form.get("due_date") or None,
-         datetime.utcnow().isoformat(), session["user_name"]),
+    cur = db.execute(
+        "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (project_id, title, assignee_id, form.get("due_date") or None,
+         datetime.utcnow().isoformat(), session["user_name"], _task_stage(project_id, form.get("stage"))),
     )
     db.commit()
     _notify_assignee(assignee_id, project_id, title)
-    audit_log("add_task", "project", project_id, None, request.form.get("title", "")[:80])
-    return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
+    audit_log("add_task", "project", project_id, None, title[:80])
+    return _task_reply(project_id, id=cur.lastrowid)
 
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/toggle", methods=["POST"])
-@permission_required("edit_project")
+@login_required
 def task_toggle(project_id, task_id):
+    """Anyone who can edit the project, or the person the task is tagged to —
+    a contractor ticks off their own work without gaining anything else."""
     load_project(project_id)   # visibility decided in one place
     db = get_db()
-    task = db.execute("SELECT done FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
+    task = db.execute("SELECT done, assignee_id FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
+    if not (role_has_permission(session.get("role"), "edit_project") or task["assignee_id"] == session["user_id"]):
+        abort(403)
     new_done = 0 if task["done"] else 1
     db.execute(
         "UPDATE tasks SET done = ?, done_at = ? WHERE id = ?",
@@ -938,7 +964,7 @@ def task_toggle(project_id, task_id):
     )
     db.commit()
     audit_log("toggle_task", "project", project_id, None, f"task_id={task_id}")
-    return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
+    return _task_reply(project_id, done=bool(new_done))
 
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/delete", methods=["POST"])
@@ -949,7 +975,7 @@ def task_delete(project_id, task_id):
     db.execute("DELETE FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id))
     db.commit()
     audit_log("delete_task", "project", project_id, None, f"task_id={task_id}")
-    return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
+    return _task_reply(project_id)
 
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/edit", methods=["POST"])
@@ -959,28 +985,29 @@ def task_edit(project_id, task_id):
     task and retyping it, which also threw away its done state."""
     load_project(project_id)   # visibility decided in one place
     db = get_db()
-    task = db.execute("SELECT id, assignee_id FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
+    task = db.execute("SELECT id, assignee_id, stage FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
-    title = request.form.get("title", "").strip()[:200]
+    form = _task_input()
+    title = (form.get("title") or "").strip()[:200]
     if not title:
-        flash("Task needs a title")
-        return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
-    assignee_id = request.form.get("assignee_id") or None
+        return _task_reply(project_id, "Task needs a title")
+    assignee_id = form.get("assignee_id") or None
     # must be a real, still-active user: the dropdown only offers active ones,
     # but a hand-crafted POST could name a deactivated account.
     if assignee_id and not db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (assignee_id,)).fetchone():
         assignee_id = None
+    stage = _task_stage(project_id, form.get("stage")) if "stage" in form else task["stage"]
     db.execute(
-        "UPDATE tasks SET title = ?, assignee_id = ?, due_date = ? WHERE id = ?",
-        (title, assignee_id, request.form.get("due_date") or None, task_id),
+        "UPDATE tasks SET title = ?, assignee_id = ?, due_date = ?, stage = ? WHERE id = ?",
+        (title, assignee_id, form.get("due_date") or None, stage, task_id),
     )
     db.commit()
     # only ping on a genuine reassignment, not on every title tweak
     if assignee_id and str(assignee_id) != str(task["assignee_id"]):
         _notify_assignee(assignee_id, project_id, title)
     audit_log("edit_task", "project", project_id, None, f"task_id={task_id}")
-    return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
+    return _task_reply(project_id)
 
 
 @app.route("/projects/<int:project_id>/tasks/bulk", methods=["POST"])

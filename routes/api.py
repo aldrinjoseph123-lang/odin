@@ -156,6 +156,12 @@ def api_flow():
     ).fetchall()
     stage_lists = stages_for_projects([p["id"] for p in projects])
     mine = my_project_ids(session["user_id"])
+    team = {}   # project_id -> participant names, PM first (avatars on the row)
+    for r in db.execute(
+        "SELECT pp.project_id, u.name FROM project_participants pp JOIN users u ON u.id = pp.user_id "
+        "WHERE u.active = 1 ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name"
+    ):
+        team.setdefault(r["project_id"], []).append(r["name"])
     # Earliest-due open task per project = the next actionable item.
     next_task = {}
     for t in db.execute(
@@ -175,7 +181,7 @@ def api_flow():
         state = _flow_state(p, sla, schedule)
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
-            "stages": stages, "mine": p["id"] in mine,
+            "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [p["owner_name"]]),
             "stage_index": stages.index(p["stage"]) if p["stage"] in stages else 0,
             "owner_name": p["owner_name"], "delivery_mode": p["delivery_mode"],
             "target_end_date": p["target_end_date"], "days_in_stage": _days_since(p["stage_entered_at"], now),
@@ -232,8 +238,13 @@ def api_project_flow(project_id):
         "days_left": (target - date.today()).days if target else None,
         "today": date.today().isoformat(),
         "stages": stage_rows,
+        # a task without a stage belongs to whatever stage the project is in
         "tasks": [{"id": t["id"], "title": t["title"], "done": bool(t["done"]), "due_date": t["due_date"],
-                   "assignee": t["assignee_name"]} for t in tasks],
+                   "assignee": t["assignee_name"], "assignee_id": t["assignee_id"],
+                   "stage": t["stage"] if t["stage"] in stages else project["stage"]} for t in tasks],
+        "assignable": [{"id": r["user_id"], "name": r["name"]} for r in participants_for(project_id) if r["active"]],
+        "can_edit": role_has_permission(session.get("role"), "edit_project"),
+        "me": session["user_id"],
         "documents": db.execute("SELECT COUNT(*) AS c FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,)).fetchone()["c"],
         "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]} for n in notes[-4:][::-1]],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"]} for r in participants_for(project_id)],

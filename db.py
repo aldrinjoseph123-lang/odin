@@ -253,6 +253,10 @@ def migrate_db(db):
 
     _migrate_stage_lists(db)
     _migrate_participants(db)
+    # tasks.stage: which stage a task belongs to (name, like status_notes).
+    # NULL = "whatever stage the project is in" — old tasks and quick adds.
+    if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
+        db.execute("ALTER TABLE tasks ADD COLUMN stage TEXT")
     db.execute("""CREATE TABLE IF NOT EXISTS login_links (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),

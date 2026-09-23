@@ -1067,6 +1067,69 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- Phase 4: tasks per stage, worked from the flow screen --------------
+
+    def test_task_belongs_to_a_stage_and_follows_renames_and_deletes(self):
+        self.new_project(name="P", client="C")
+        with self.raw_db() as db:
+            rows = db.execute("SELECT id, name FROM project_stages WHERE project_id=1 ORDER BY position").fetchall()
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf}
+        r = c.post("/projects/1/tasks", json={"title": "Order sensors", "stage": rows[2]["name"]}, headers=h)
+        self.assertEqual((r.status_code, r.get_json()["ok"]), (200, True))
+        c.post("/projects/1/tasks", json={"title": "Bogus stage", "stage": "Nope"}, headers=h)
+        c.post("/projects/1/tasks", json={"title": "No stage"}, headers=h)
+        self.assertEqual(c.post("/projects/1/tasks", json={"title": "  "}, headers=h).status_code, 400)
+        d = c.get("/api/projects/1/flow").get_json()
+        self.assertEqual([t["stage"] for t in d["tasks"]], [rows[2]["name"], rows[0]["name"], rows[0]["name"]])
+        self.assertEqual([a["name"] for a in d["assignable"]], ["Admin"])
+        self.assertTrue(d["can_edit"]); self.assertEqual(d["me"], 1)
+        self.client.post(f"/projects/1/stages/{rows[2]['id']}/rename", data={"name": "Pilot"})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT stage FROM tasks WHERE title='Order sensors'").fetchone()[0], "Pilot")
+        self.client.post(f"/projects/1/stages/{rows[2]['id']}/delete")
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT stage FROM tasks WHERE title='Order sensors'").fetchone()[0])
+        # edit keeps the stage unless one is sent
+        c.post("/projects/1/tasks/1/edit", json={"title": "Order sensors now", "stage": rows[1]["name"]}, headers=h)
+        c.post("/projects/1/tasks/3/edit", json={"title": "Still no stage"}, headers=h)
+        with self.raw_db() as db:
+            self.assertEqual([r[0] for r in db.execute("SELECT stage FROM tasks ORDER BY id")], [rows[1]["name"], None, None])
+
+    def test_flow_rows_carry_the_team_and_json_toggle_answers_json(self):
+        self.new_project(name="P", client="C")
+        self._make_user("pm1", "Member")
+        self.client.post("/projects/1/participants/add", data={"user_id": "2", "role": "Coordinator"})
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf}
+        self.assertEqual(c.get("/api/flow").get_json()["rows"][0]["team"], ["Admin", "pm1"])
+        tid = c.post("/projects/1/tasks", json={"title": "T"}, headers=h).get_json()["id"]
+        self.assertEqual(c.post(f"/projects/1/tasks/{tid}/toggle", json={}, headers=h).get_json(), {"ok": True, "done": True})
+        self.assertEqual(c.post(f"/projects/1/tasks/{tid}/delete", json={}, headers=h).get_json(), {"ok": True})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0)
+        # the Jinja form path is unchanged: redirect back to the project page
+        self.assertEqual(self.client.post("/projects/1/tasks", data={"title": "Form task"}).status_code, 302)
+
+    def test_assignee_can_tick_their_own_task_and_nothing_else(self):
+        self.new_project(name="Theirs", client="Acme")
+        self._invite(1, "raj@vendor.example", "Contractor", "Raj")
+        with self.raw_db() as db:
+            raj = db.execute("SELECT id FROM users WHERE email='raj@vendor.example'").fetchone()[0]
+        self.client.post("/projects/1/tasks", data={"title": "Rack the appliance", "assignee_id": raj})
+        self.client.post("/projects/1/tasks", data={"title": "Someone else's"})
+        c = self._external_client("raj@vendor.example")
+        csrf = c.get("/api/session").get_json()["csrf"]
+        h = {"X-CSRF-Token": csrf}
+        d = c.get("/api/projects/1/flow").get_json()
+        self.assertFalse(d["can_edit"]); self.assertEqual(d["me"], raj)
+        self.assertEqual(c.post("/projects/1/tasks/1/toggle", json={}, headers=h).get_json()["done"], True)
+        self.assertEqual(c.post("/projects/1/tasks/2/toggle", json={}, headers=h).status_code, 403)
+        self.assertEqual(c.post("/projects/1/tasks", json={"title": "x"}, headers=h).status_code, 403)
+        self.assertEqual(c.post("/projects/1/tasks/1/delete", json={}, headers=h).status_code, 403)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='toggle_task'").fetchone()[0], 1)
+
     # ---- Phase 3: external accounts by email sign-in link -----------------
 
     def _invite(self, project_id, email, role="Contractor", name="Ext"):

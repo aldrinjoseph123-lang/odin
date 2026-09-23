@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
-import { ArrowRight, CalendarDays, Check, ChevronRight, Clock, ExternalLink, UserRound } from "lucide-react"
+import { ArrowRight, CalendarDays, Check, ChevronRight, Clock, ExternalLink, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ApiError, changeStage, flow, flowDetail, type FlowData, type FlowDetail, type FlowState, type User } from "@/lib/api"
+import { ApiError, addTask, changeStage, deleteTask, flow, flowDetail, toggleTask, type FlowData, type FlowDetail, type FlowState, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 // ---- state vocabulary: colour is a state and nothing else -------------------
@@ -55,6 +55,80 @@ function Stepper({ stages, index, state, selected }: { stages: string[]; index: 
   )
 }
 
+// Who is on it, at a glance: PM first, then up to two more, then "+n".
+function TeamStack({ names, className }: { names: string[]; className?: string }) {
+  const shown = names.slice(0, 3)
+  return (
+    <span className={cn("items-center -space-x-1.5", className)} title={names.join(", ")}>
+      {shown.map((n, i) => (
+        <Avatar key={i} className="h-6 w-6 ring-2 ring-background"><AvatarFallback className="bg-secondary text-[10px] font-semibold text-nav-fg">{initials(n)}</AvatarFallback></Avatar>
+      ))}
+      {names.length > 3 && <span className="ml-1 pl-1.5 text-[11px] text-muted-foreground">+{names.length - 3}</span>}
+    </span>
+  )
+}
+
+// ---- tasks under a stage box: tick, add, remove — no page change --------------
+function StageTasks({ d, stage, reload, onError }: { d: FlowDetail; stage: string; reload: () => Promise<void>; onError: (m: string | null) => void }) {
+  const tasks = d.tasks.filter((t) => t.stage === stage)
+  const [adding, setAdding] = useState(false)
+  const [title, setTitle] = useState("")
+  const [assignee, setAssignee] = useState<string>("")
+  const [busy, setBusy] = useState(false)
+  const canTick = (t: FlowTask) => d.can_edit || t.assignee_id === d.me
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true); onError(null)
+    try { await fn(); await reload() } catch (e) { onError(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+  }
+  async function submit() {
+    const t = title.trim()
+    if (!t) return
+    await run(() => addTask(d.id, { title: t, stage, assignee_id: assignee ? Number(assignee) : null }))
+    setTitle("")
+  }
+  return (
+    <div className="mt-2 text-[12.5px]">
+      {tasks.length > 0 && (
+        <ul className="divide-y divide-border border-t border-border">
+          {tasks.map((t) => (
+            <li key={t.id} className={cn("group flex items-center gap-1.5 py-1.5", t.done && "text-muted-foreground")}>
+              <button type="button" disabled={!canTick(t) || busy} onClick={() => run(() => toggleTask(d.id, t.id))}
+                aria-label={t.done ? `Reopen ${t.title}` : `Complete ${t.title}`}
+                className={cn("flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border", t.done ? "border-ok-line bg-ok-line text-background" : "border-input bg-background", canTick(t) ? "hover:border-foreground" : "cursor-default opacity-60")}>
+                {t.done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+              </button>
+              <span className={cn("min-w-0 flex-1 break-words line-clamp-2", t.done && "line-through")} title={t.due_date ? `due ${fmtDate(t.due_date)}` : undefined}>{t.title}</span>
+              {t.assignee && <Avatar className="h-5 w-5" title={t.assignee}><AvatarFallback className="bg-secondary text-[9px] font-semibold text-nav-fg">{initials(t.assignee)}</AvatarFallback></Avatar>}
+              {d.can_edit && (
+                <button type="button" disabled={busy} onClick={() => run(() => deleteTask(d.id, t.id))} aria-label={`Delete ${t.title}`}
+                  className="hidden shrink-0 text-muted-foreground hover:text-bad group-hover:block group-focus-within:block"><Trash2 className="h-3.5 w-3.5" /></button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {d.can_edit && (adding ? (
+        <form className="mt-1.5 grid gap-1" onSubmit={(e) => { e.preventDefault(); void submit() }}>
+          <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task" aria-label={`New task in ${stage}`} maxLength={200} className="h-7 px-2 text-[12.5px]"
+            onKeyDown={(e) => { if (e.key === "Escape") { setAdding(false); setTitle("") } }} />
+          <div className="flex items-center gap-1">
+            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} aria-label="Assign to" className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[12px]">
+              <option value="">Unassigned</option>
+              {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <Button type="submit" size="sm" className="h-7 px-2" disabled={busy || !title.trim()} aria-label="Add task"><Plus className="h-3.5 w-3.5" /></Button>
+            <Button type="button" size="sm" variant="ghost" className="h-7 px-1.5" onClick={() => { setAdding(false); setTitle("") }} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className="mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text">
+          <Plus className="h-3 w-3" /> Task
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ---- top pane: every active rollout, stuck first -------------------------------
 function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
   data: FlowData; selectedId: number | null; onSelect: (id: number) => void
@@ -87,8 +161,8 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
       </div>
       {/* No shared stage header: every project owns its own stage list, so the
           row carries its stage by name and the stepper draws that project's stages. */}
-      <div className="hidden grid-cols-[minmax(200px,1.2fr)_2fr_170px_36px] gap-4 px-5 pb-1.5 text-[11.5px] text-muted-foreground md:grid">
-        <span>Rollout</span><span>Progress</span><span>Stage</span><span />
+      <div className="hidden grid-cols-[minmax(200px,1.2fr)_2fr_170px_76px] gap-4 px-5 pb-1.5 text-[11.5px] text-muted-foreground md:grid">
+        <span>Rollout</span><span>Progress</span><span>Stage</span><span>Team</span>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <ul className="grid gap-0.5 px-3 pb-3">
@@ -97,7 +171,7 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
             return (
               <li key={r.id}>
                 <button type="button" onClick={() => onSelect(r.id)} aria-current={selected || undefined}
-                  className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors md:grid-cols-[minmax(200px,1.2fr)_2fr_170px_36px] md:gap-4",
+                  className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors md:grid-cols-[minmax(200px,1.2fr)_2fr_170px_76px] md:gap-4",
                     selected ? "border-primary bg-accent" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
                   <span className="flex min-w-0 items-center gap-2">
                     <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
@@ -110,7 +184,7 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
                     <span className={cn("whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
                       <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
                   </span>
-                  <Avatar className="hidden h-6 w-6 md:flex" title={r.owner_name}><AvatarFallback className="bg-secondary text-[10px] font-semibold text-nav-fg">{initials(r.owner_name)}</AvatarFallback></Avatar>
+                  <TeamStack names={r.team} className="hidden md:flex" />
                 </button>
               </li>
             )
@@ -171,6 +245,7 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
   const [err, setErr] = useState<string | null>(null)
   const open = d.tasks.filter((t) => !t.done)
   const next = open[0]
+  const openHere = open.filter((t) => t.stage === d.stage).length
   async function advance() {
     if (!d.next_stage) return
     setBusy(true); setErr(null)
@@ -198,7 +273,9 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
         </div>
 
         {/* the flowchart */}
-        <ol className="mt-4 grid grid-cols-1 items-start gap-2 md:gap-0 md:[grid-template-columns:var(--cols)]" style={{ "--cols": `repeat(${d.stages.length}, minmax(0, 1fr))` } as CSSProperties} aria-label="Stages">
+        {/* Each stage column keeps a readable width; a long list scrolls sideways
+            rather than breaking stage names mid-word. */}
+        <ol className="mt-4 grid grid-cols-1 items-start gap-2 md:gap-0 md:overflow-x-auto md:pb-2 md:[grid-template-columns:var(--cols)]" style={{ "--cols": `repeat(${d.stages.length}, minmax(124px, 1fr))` } as CSSProperties} aria-label="Stages">
           {d.stages.map((s, i) => (
             <li key={s.name} className="relative min-w-0 md:px-1.5 md:first:pl-0 md:last:pr-0">
               {i > 0 && (
@@ -212,34 +289,19 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
                 s.status === "current" && cn("ring-[3px]", STATE[d.state].ring),
                 s.status === "next" && "border-dashed border-input")}>
                 <div className={cn("flex items-start gap-1 text-[12.5px] font-semibold leading-tight", s.status === "next" && "text-nav-fg")}>
-                  {s.status === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}<span className="break-words line-clamp-2">{s.name}</span>
+                  {s.status === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}<span className="line-clamp-2">{s.name}</span>
                 </div>
                 <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
                   {s.status === "next" ? (s.sla_days ? `SLA ${s.sla_days} d` : "—") : s.status === "done" ? days(s.days) : `${days(s.days)}${s.sla_days ? ` · SLA ${s.sla_days}` : ""}`}
                 </div>
               </div>
-              {s.status === "current" && (
-                <div className={cn("mt-2 text-[12.5px]", i < d.stages.length - 1 && "md:w-[calc(200%+0.75rem)]")}>
-                  {open.length === 0 ? (
-                    <p className="text-muted-foreground">No open tasks</p>
-                  ) : (
-                    <ul className="divide-y divide-border border-t border-border">
-                      {open.slice(0, 4).map((t) => (
-                        <li key={t.id} className="flex items-center gap-2 py-1.5">
-                          <span className="h-3.5 w-3.5 shrink-0 rounded-[3px] border border-input" aria-hidden />
-                          <span className="min-w-0 flex-1 break-words line-clamp-2">{t.title}</span>
-                          {t.assignee && <Avatar className="h-5 w-5"><AvatarFallback className="bg-secondary text-[9px] font-semibold text-nav-fg">{initials(t.assignee)}</AvatarFallback></Avatar>}
-                        </li>
-                      ))}
-                      {open.length > 4 && <li className="py-1.5 text-muted-foreground">+{open.length - 4} more</li>}
-                    </ul>
-                  )}
-                  {open.length > 0 && <p className="mt-1.5 text-[11.5px] text-muted-foreground">{open.length} open before moving on</p>}
-                </div>
-              )}
+              {/* every stage carries its own tasks — work happens here, not on the project page */}
+              <StageTasks d={d} stage={s.name} reload={reload} onError={setErr} />
+              {s.status === "current" && openHere > 0 && <p className="mt-1 text-[11.5px] text-muted-foreground">{openHere} open before moving on</p>}
             </li>
           ))}
         </ol>
+        {err && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
 
         <TimeStrip d={d} />
       </div>
@@ -256,7 +318,7 @@ function Detail({ d, reload, onMoved }: { d: FlowDetail; reload: () => Promise<v
                 {next.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{fmtDate(next.due_date)}</span>}
               </p>
             </>
-          ) : <p className="text-muted-foreground">Nothing queued — add a task on the project page.</p>}
+          ) : <p className="text-muted-foreground">Nothing queued — add a task under a stage.</p>}
         </section>
         <section className="rounded-lg border border-border p-3">
           <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> ETA</h3>

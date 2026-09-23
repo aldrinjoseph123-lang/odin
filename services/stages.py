@@ -57,6 +57,7 @@ def rename_stage(scope, scope_id, stage_id, new_name):
     if scope == "project":
         db.execute("UPDATE projects SET stage = ? WHERE id = ? AND stage = ?", (new_name, scope_id, row["name"]))
         db.execute("UPDATE status_notes SET stage = ? WHERE project_id = ? AND stage = ?", (new_name, scope_id, row["name"]))
+        db.execute("UPDATE tasks SET stage = ? WHERE project_id = ? AND stage = ?", (new_name, scope_id, row["name"]))
     db.commit()
     return None
 
@@ -91,6 +92,8 @@ def delete_stage(scope, scope_id, stage_id):
         if current and current["stage"] == row["name"]:
             return f"Cannot delete '{row['name']}' — the project is in it"
     db.execute(f"DELETE FROM {table} WHERE id = ?", (stage_id,))
+    if scope == "project":   # its tasks fall back to "current stage" rather than vanish
+        db.execute("UPDATE tasks SET stage = NULL WHERE project_id = ? AND stage = ?", (scope_id, row["name"]))
     db.commit()
     return None
 
