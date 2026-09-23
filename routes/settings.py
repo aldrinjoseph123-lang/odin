@@ -135,6 +135,8 @@ def audit_logs_view():
 @app.route("/settings")
 @permission_required("manage_settings")
 def settings():
+    if spa_serves("settings"):
+        return spa_index()
     db = get_db()
     templates = [
         {"id": t["id"], "name": t["name"], "stages": stage_ops.list_stages("template", t["id"]),

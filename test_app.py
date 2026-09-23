@@ -1067,6 +1067,33 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             html = self.client.get(path).data.decode()
             self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
+    # ---- settings as JSON (React port) --------------------------------------
+
+    def test_api_settings_feeds_the_page_and_the_bridge_saves_alerts_and_templates(self):
+        self.new_project(name="P", client="C")
+        c, csrf = self._api_client()
+        d = c.get("/api/settings").get_json()
+        self.assertEqual(d["templates"][0]["projects"], 1); self.assertEqual(len(d["templates"][0]["stages"]), 7)
+        self.assertIn("Client PO", [x["name"] for x in d["doc_categories"]])
+        self.assertEqual([a["key"] for a in d["alerts"]], ["project_overdue", "project_due_soon", "stage_sla_breach", "stale"])
+        self.assertEqual(d["alerts"][1]["threshold_days"], 7); self.assertTrue(d["alerts"][1]["notify_inapp"])
+        self.assertFalse(d["m365"]["connected"]); self.assertEqual(d["m365"]["teams"], [])
+        self.assertEqual(d["toggles"]["notify_email_enabled"], False)
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        r = c.post("/settings/alerts", data={"threshold::project_due_soon": "10", "severity::project_due_soon": "critical", "notify_email::project_due_soon": "on",
+                                              "severity::stale": "info", "notify_inapp::stale": "on"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Alert settings updated"])
+        d = c.get("/api/settings").get_json()
+        soon = next(a for a in d["alerts"] if a["key"] == "project_due_soon")
+        self.assertEqual((soon["threshold_days"], soon["severity"], soon["notify_email"], soon["notify_inapp"]), (10, "critical", True, False))
+        self.assertEqual(c.post("/settings/templates/add", data={"name": "SIEM"}, headers=h).get_json()["ok"], True)
+        self.assertEqual([t["name"] for t in c.get("/api/settings").get_json()["templates"]][-1], "SIEM")
+        r = c.post("/settings/integrations", data={"notify_email_enabled": "on"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Integration settings saved"])
+        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "onedrive_mirror_uploads_enabled": False, "onedrive_backup_enabled": False})
+        m, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
+        self.assertEqual(m.get("/api/settings").status_code, 403)
+
     # ---- users and audit as JSON (React port) --------------------------------
 
     def test_api_users_and_audit_feed_the_admin_pages(self):

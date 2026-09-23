@@ -6,6 +6,7 @@ import Projects from "@/pages/Projects"
 import Project from "@/pages/Project"
 import Users from "@/pages/Users"
 import Audit from "@/pages/Audit"
+import Settings from "@/pages/Settings"
 import Login from "@/pages/Login"
 import { session, type User } from "@/lib/api"
 
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/projects/:id" element={<Protected>{(user) => <Project user={user} />}</Protected>} />
         <Route path="/users" element={<Protected>{(user) => <Users user={user} />}</Protected>} />
         <Route path="/audit-logs" element={<Protected>{(user) => <Audit user={user} />}</Protected>} />
+        <Route path="/settings" element={<Protected>{(user) => <Settings user={user} />}</Protected>} />
         <Route path="*" element={<HandOffToFlask />} />
       </Routes>
     </BrowserRouter>

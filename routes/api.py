@@ -110,6 +110,54 @@ def api_approval_decide(project_id, approval_id):
     return jsonify(ok=True)
 
 
+@app.route("/api/settings")
+@permission_required("manage_settings")
+def api_settings():
+    """The settings page: stage templates, document categories, alert types,
+    the Microsoft 365 connection and the integration toggles. Teams and
+    channels are listed only when connected (and channels only for the
+    ?team_id asked for): each is a Graph round trip."""
+    import graph
+    from constants import ALERT_TYPE_TITLES as TITLES, DEFAULT_ALERT_TYPE_SETTINGS
+    from db import get_setting
+    from services import stages as stage_ops
+    from services.alerts import get_alert_type_settings
+    db = get_db()
+    templates = [
+        {"id": t["id"], "name": t["name"],
+         "stages": [{"id": s["id"], "name": s["name"], "sla_days": s["sla_days"]} for s in stage_ops.list_stages("template", t["id"])],
+         "projects": db.execute("SELECT COUNT(*) FROM projects WHERE stage_template_id = ? AND deleted_at IS NULL", (t["id"],)).fetchone()[0]}
+        for t in db.execute("SELECT * FROM stage_templates ORDER BY id").fetchall()
+    ]
+    cfg = get_alert_type_settings()
+    alerts = [{"key": k, "title": title, **(cfg.get(k) or {kk: bool(v) if kk.startswith("notify") else v for kk, v in DEFAULT_ALERT_TYPE_SETTINGS[k].items()})}
+              for k, title in TITLES.items()]
+    connection = graph.get_connection()
+    connected = bool(connection and connection["refresh_token"])
+    teams, channels, teams_error = [], [], None
+    team_id = request.args.get("team_id", "")
+    if connected:
+        teams, teams_error = graph.list_joined_teams()
+        if team_id:
+            channels, teams_error = graph.list_channels(team_id)
+    return jsonify({
+        "templates": templates,
+        "doc_categories": [{"id": r["id"], "name": r["name"]} for r in db.execute("SELECT * FROM doc_categories ORDER BY name")],
+        "alerts": alerts,
+        "m365": {
+            "oauth_client_configured": graph.oauth_client_configured(),
+            "azure_app": graph.azure_app_credentials(),
+            "connected": connected,
+            "connected_email": connection["connected_email"] if connected else None,
+            "team_name": connection["team_name"] if connected else None,
+            "channel_name": connection["channel_name"] if connected else None,
+            "channel_id": connection["channel_id"] if connected else None,
+            "teams": teams, "channels": channels, "team_id": team_id, "teams_error": teams_error,
+        },
+        "toggles": {k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled", "onedrive_backup_enabled")},
+    })
+
+
 @app.route("/api/users")
 @permission_required("manage_users")
 def api_users():

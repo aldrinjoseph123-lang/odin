@@ -162,6 +162,20 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
   return data
 }
 
+// ---- settings ----
+export type SettingsData = {
+  templates: { id: number; name: string; projects: number; stages: { id: number; name: string; sla_days: number | null }[] }[]
+  doc_categories: { id: number; name: string }[]
+  alerts: { key: string; title: string; severity: "critical" | "warning" | "info"; threshold_days: number | null; notify_email: boolean; notify_teams: boolean; notify_inapp: boolean }[]
+  m365: {
+    oauth_client_configured: boolean; azure_app: { client_id: string | null; tenant_id: string | null; has_secret: boolean; source: string | null }
+    connected: boolean; connected_email: string | null; team_name: string | null; channel_name: string | null; channel_id: string | null
+    teams: { id: string; name: string }[]; channels: { id: string; name: string }[]; team_id: string; teams_error: string | null
+  }
+  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "onedrive_backup_enabled", boolean>
+}
+export const settingsData = (teamId = "") => getJson<SettingsData>(`/api/settings${teamId ? `?team_id=${encodeURIComponent(teamId)}` : ""}`)
+
 // ---- admin: users and the audit log ----
 export type AdminUser = { id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"; last_login_at: string | null; created_at: string | null }
 export const users = () => getJson<{ users: AdminUser[]; roles: string[]; me: number }>("/api/users")
