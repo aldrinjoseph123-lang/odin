@@ -177,6 +177,8 @@ def index():
 @app.route("/account", methods=["GET", "POST"])
 @login_required
 def account():
+    if request.method == "GET" and spa_serves("account"):
+        return spa_index()
     if request.method == "POST":
         current = request.form["current_password"]
         new_password = request.form["new_password"]

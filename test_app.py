@@ -1202,6 +1202,31 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                              ["add_project_note", "add_project_note", "delete_document", "delete_project"])
             self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='upload_document'").fetchone()[0], 1)   # final.pdf; the PO rides on create_project
 
+    # ---- account, my work, alerts, analytics as JSON (React port) -------------
+
+    def test_api_account_my_work_alerts_and_analytics(self):
+        self.new_project(name="Mine", client="Acme", target_end_date="2020-01-01")
+        self.client.post("/projects/1/tasks", data={"title": "Late one", "assignee_id": "1", "due_date": "2020-01-02"})
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        a = c.get("/api/account").get_json()
+        self.assertEqual((a["username"], a["kind"], a["must_change_password"]), ("admin", "internal", False))
+        self.assertEqual(c.post("/account/email", data={"email": "admin@odin.example"}, headers=h).get_json()["messages"], ["Email updated"])
+        self.assertEqual(c.post("/account", data={"current_password": "wrong", "new_password": STRONG_PASSWORD}, headers=h).get_json()["messages"], ["Current password is wrong"])
+        w = c.get("/api/my-work").get_json()
+        self.assertEqual([t["title"] for t in w["tasks"]], ["Late one"]); self.assertTrue(w["tasks"][0]["overdue"])
+        self.assertEqual((w["projects"][0]["name"], w["projects"][0]["schedule"]), ("Mine", "overdue"))
+        self.client.get("/board")   # syncs alerts
+        al = c.get("/api/alerts").get_json()
+        self.assertEqual(al["rows"][0]["alert_type"], "project_overdue"); self.assertFalse(al["show_resolved"]); self.assertIn("stale", al["types"])
+        self.assertEqual(c.get("/api/alerts?type=stale").get_json()["total"], 0)
+        an = c.get("/api/analytics").get_json()
+        self.assertEqual(an["templates"][0]["id"], an["template_id"]); self.assertEqual(an["stats"]["measured_projects"], 1)
+        self.assertEqual(an["stats"]["aging"][0]["project_name"], "Mine"); self.assertEqual(len(an["stats"]["stages"]), 7)
+        v, _ = self._api_client(self._make_user("vw", "Viewer") and "vw", STRONG_PASSWORD)
+        self.assertEqual(v.get("/api/analytics").status_code, 200)     # Viewers hold view_reports
+        self.assertEqual(v.get("/api/my-work").get_json()["projects"], [])
+
     # ---- the project form as JSON (React port) --------------------------------
 
     def test_api_project_form_serves_new_duplicate_and_edit_and_the_bridge_creates(self):

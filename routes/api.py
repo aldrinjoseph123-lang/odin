@@ -11,7 +11,7 @@ from core import app, login_required, nav_counts, permission_required, project_a
 from db import get_doc_category_names, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
-from routes.board import BANNER_NAMES, COLUMN_CARDS, board_data, dismiss_alert
+from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project
 from security import csrf_token
 from services.alerts import schedule_status
@@ -217,6 +217,80 @@ def api_audit():
         usernames=[r[0] for r in db.execute("SELECT DISTINCT username FROM audit_logs ORDER BY username")],
         actions=[r[0] for r in db.execute("SELECT DISTINCT action FROM audit_logs ORDER BY action")],
         projects=[{"id": r["id"], "name": r["name"]} for r in db.execute("SELECT id, name FROM projects ORDER BY name")],
+    )
+
+
+@app.route("/api/account")
+@login_required
+def api_account():
+    u = get_db().execute("SELECT username, name, email, kind, must_change_password FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]))
+
+
+@app.route("/api/my-work")
+@login_required
+def api_my_work():
+    db = get_db()
+    uid = session["user_id"]
+    today = date.today().isoformat()
+    owned = db.execute(
+        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
+        f"WHERE p.owner_id = ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{project_scope()[0]} ORDER BY p.updated_at DESC",
+        (uid, *project_scope()[1]),
+    ).fetchall()
+    tasks = db.execute(
+        "SELECT t.*, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
+        f"WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL{project_scope()[0]} "
+        "ORDER BY t.due_date IS NULL, t.due_date ASC, t.id ASC", (uid, *project_scope()[1]),
+    ).fetchall()
+    return jsonify(
+        tasks=[{"id": t["id"], "title": t["title"], "project_id": t["project_id"], "project_name": t["project_name"], "due_date": t["due_date"],
+                "overdue": bool(t["due_date"] and t["due_date"] < today), "stage": t["stage"]} for t in tasks],
+        projects=[{"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "schedule": schedule_status(p),
+                   "target_end_date": p["target_end_date"]} for p in owned],
+    )
+
+
+@app.route("/api/alerts")
+@login_required
+def api_alerts():
+    d = alerts_page_data()
+    return jsonify(
+        rows=[{"id": a["id"], "project_id": a["project_id"], "project_name": a["project_name"], "alert_type": a["alert_type"], "severity": a["severity"],
+               "title": a["title"], "description": a["description"], "created_at": a["created_at"], "resolved": bool(a["resolved"]), "resolved_at": a["resolved_at"]}
+              for a in d["alerts"]],
+        show_resolved=d["show_resolved"], alert_type=d["alert_type"], types=d["alert_type_titles"],
+        page=d["page"], total_pages=d["total_pages"], total=d["total"],
+    )
+
+
+@app.route("/api/analytics")
+@permission_required("view_reports")
+def api_analytics():
+    from services.analytics import build_cycle_times
+    db = get_db()
+    templates = db.execute("SELECT id, name FROM stage_templates ORDER BY id").fetchall()
+    template_id = request.args.get("template", type=int) or (templates[0]["id"] if templates else None)
+    projects = db.execute(
+        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
+        f"WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{project_scope()[0]}", (template_id, *project_scope()[1])
+    ).fetchall()
+    notes = {}
+    for n in db.execute("SELECT project_id, stage, created_at FROM status_notes ORDER BY created_at"):
+        notes.setdefault(n["project_id"], []).append(n)
+    rows = db.execute("SELECT name, sla_days FROM stage_template_stages WHERE template_id = ? ORDER BY position", (template_id,)).fetchall() if template_id else []
+    names = [r["name"] for r in rows]
+    stats = build_cycle_times(projects, notes, names, names[-1]) if names else None
+    return jsonify(
+        templates=[{"id": t["id"], "name": t["name"]} for t in templates], template_id=template_id,
+        slas={r["name"]: r["sla_days"] for r in rows},
+        custom_count=db.execute("SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL AND stage_template_id IS NULL").fetchone()[0],
+        stats=None if stats is None else {
+            "stages": stats["stages"],
+            "aging": [{"project_id": a["project"]["id"], "project_name": a["project"]["name"], "stage": a["stage"], "days": a["days"]} for a in stats["aging"][:12]],
+            "slowest": stats["slowest"], "lead_avg": stats["lead_avg"], "lead_median": stats["lead_median"],
+            "completed_count": stats["completed_count"], "throughput": stats["throughput"], "measured_projects": stats["measured_projects"],
+        },
     )
 
 

@@ -195,6 +195,29 @@ export type AuditData = {
 }
 export const audit = (query: string) => getJson<AuditData>(`/api/audit${query ? `?${query}` : ""}`)
 
+// ---- account, my work, alerts, analytics ----
+export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean }>("/api/account")
+export type MyWorkData = {
+  tasks: { id: number; title: string; project_id: number; project_name: string; due_date: string | null; overdue: boolean; stage: string | null }[]
+  projects: { id: number; name: string; client: string; stage: string; schedule: "overdue" | "at_risk" | "on_track" | null; target_end_date: string | null }[]
+}
+export const myWork = () => getJson<MyWorkData>("/api/my-work")
+export type AlertsData = {
+  rows: { id: number; project_id: number | null; project_name: string | null; alert_type: string; severity: "critical" | "warning" | "info"; title: string; description: string | null; created_at: string; resolved: boolean; resolved_at: string | null }[]
+  show_resolved: boolean; alert_type: string; types: Record<string, string>; page: number; total_pages: number; total: number
+}
+export const alerts = (query: string) => getJson<AlertsData>(`/api/alerts${query ? `?${query}` : ""}`)
+export type AnalyticsData = {
+  templates: { id: number; name: string }[]; template_id: number | null; slas: Record<string, number | null>; custom_count: number
+  stats: null | {
+    stages: { stage: string; visits: number; avg_days: number | null; median_days: number | null; max_days: number | null; in_stage_now: number }[]
+    aging: { project_id: number; project_name: string; stage: string; days: number }[]
+    slowest: { stage: string; avg_days: number } | null; lead_avg: number | null; lead_median: number | null; completed_count: number
+    throughput: [string, number][]; measured_projects: number
+  }
+}
+export const analytics = (templateId?: number | null) => getJson<AnalyticsData>(`/api/analytics${templateId ? `?template=${templateId}` : ""}`)
+
 // ---- the new / duplicate / edit project form ----
 export type ProjectFormData = {
   mode: "new" | "duplicate" | "edit"; id: number | null; me: number

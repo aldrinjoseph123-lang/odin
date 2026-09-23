@@ -32,6 +32,8 @@ COLUMN_CARDS = 20
 @app.route("/my-work")
 @login_required
 def my_work():
+    if spa_serves("my_work"):
+        return spa_index()
     db = get_db()
     uid = session["user_id"]
     from datetime import datetime as _dt
@@ -126,6 +128,8 @@ def analytics():
     # Stage timings only compare across projects that share a stage list, so
     # the report is per template. Projects on a bespoke list are their own
     # history and are counted in the picker as "custom".
+    if spa_serves("analytics"):
+        return spa_index()
     db = get_db()
     templates = db.execute("SELECT id, name FROM stage_templates ORDER BY id").fetchall()
     template_id = request.args.get("template", type=int) or (templates[0]["id"] if templates else None)
@@ -155,6 +159,13 @@ def alerts_log_view():
     a single page. The board banner links here with ?type= to drill into one
     kind rather than listing every project inline.
     """
+    if spa_serves("alerts_log_view"):
+        return spa_index()
+    return render_template("alerts_log.html", **alerts_page_data())
+
+
+def alerts_page_data():
+    """The alert list for Jinja and JSON alike."""
     db = get_db()
     show_resolved = request.args.get("resolved") == "1"
     alert_type = request.args.get("type", "")
@@ -182,11 +193,8 @@ def alerts_log_view():
         (*params, ALERTS_PER_PAGE, (page - 1) * ALERTS_PER_PAGE),
     ).fetchall()
 
-    return render_template(
-        "alerts_log.html", alerts=rows, show_resolved=show_resolved,
-        alert_type=alert_type, alert_type_titles=ALERT_TYPE_TITLES,
-        page=page, total_pages=total_pages, total=total,
-    )
+    return dict(alerts=rows, show_resolved=show_resolved, alert_type=alert_type, alert_type_titles=ALERT_TYPE_TITLES,
+                page=page, total_pages=total_pages, total=total)
 
 
 @app.route("/alerts/<int:project_id>/dismiss/<alert_type>")
