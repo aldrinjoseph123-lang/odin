@@ -354,6 +354,9 @@ Quiet, small, and rarely blue: one primary per view.
 ### Admin pages (users, audit log, settings)
 - Same page frame as the projects list: 17 px title, muted count, right-aligned outline/ghost actions, then content. Users is a table (sticky captions, 28 px inline email field that reveals Save only when changed, role as a native select disabled for yourself and for external accounts, outline Deactivate / ghost Reset password) with the add-member form as a bordered card beside it. Audit log is filter selects and two date fields over a dense table with the action in a muted `font-mono` chip. Settings is a two-column grid of the same bordered panels as the project page: stage templates (the shared stage-list editor, one per template), document categories, alert types as a small table of number inputs, selects and `accent-primary` checkboxes, Microsoft 365 (a credentials form until configured, then a connect button, then the connected line with team and channel selects), integrations as checkbox rows. Every save posts to the Jinja form route and shows Flask's flash in the muted status bar.
 
+### Project form
+- Two bordered panels side by side at `lg` (Project; Commercial route and delivery), 12 px muted labels over 32 px inputs and native selects, the three dates in a 3-column row, the PO document as a native file input, one primary "Create project" / "Save changes" under the grid. Cascading choices (Via → partner → manager; Delivery mode → vendor/product or outsourcer) swap the fields in place; derived emails are read-only muted inputs. Validation messages from Flask show in an amber `warn-soft` bar above the form.
+
 ### Cards / Containers
 - **Rail panel** (Next up / ETA / Advance): white, 1 px hairline, 8 px radius, 12 px padding, 13 px body, 12 px semibold chrome-text header with a 14 px icon; panels stack with 16 px gaps.
 - **Card** (login): white, `ring-1` ink/10 instead of a border, 11.2 px radius, 16 px internal spacing, `max-w-sm`.

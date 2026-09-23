@@ -9,6 +9,7 @@ import Audit from "@/pages/Audit"
 import Settings from "@/pages/Settings"
 import Rbac from "@/pages/Rbac"
 import Contacts from "@/pages/Contacts"
+import ProjectForm from "@/pages/ProjectForm"
 import Login from "@/pages/Login"
 import { session, type User } from "@/lib/api"
 
@@ -42,6 +43,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/board" element={<Protected>{(user) => <Flow user={user} />}</Protected>} />
         <Route path="/projects" element={<Protected>{(user) => <Projects user={user} />}</Protected>} />
+        <Route path="/projects/new" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
+        <Route path="/projects/:id/edit" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
         <Route path="/projects/:id" element={<Protected>{(user) => <Project user={user} />}</Protected>} />
         <Route path="/users" element={<Protected>{(user) => <Users user={user} />}</Protected>} />
         <Route path="/audit-logs" element={<Protected>{(user) => <Audit user={user} />}</Protected>} />

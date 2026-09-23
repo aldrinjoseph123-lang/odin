@@ -6,7 +6,7 @@ from flask import abort, jsonify, request, session, url_for
 
 from datetime import date, datetime
 
-from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES
+from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import get_doc_category_names, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
@@ -218,6 +218,49 @@ def api_audit():
         actions=[r[0] for r in db.execute("SELECT DISTINCT action FROM audit_logs ORDER BY action")],
         projects=[{"id": r["id"], "name": r["name"]} for r in db.execute("SELECT id, name FROM projects ORDER BY name")],
     )
+
+
+@app.route("/api/project-form")
+@permission_required("view_projects")
+def api_project_form():
+    """What the new / duplicate / edit project form needs: the pick-lists,
+    templates, users, and the record being edited or copied. ?edit=<id>
+    needs manage_project on that project; otherwise create_project."""
+    from db import get_contact_lists
+    db = get_db()
+    edit_id, from_id = request.args.get("edit", type=int), request.args.get("from", type=int)
+    role = session.get("role")
+    if edit_id:
+        if not project_allows(edit_id, "manage_project"):
+            abort(403)
+        source, mode = load_project(edit_id), "edit"
+    else:
+        if not role_has_permission(role, "create_project"):
+            abort(403)
+        # only a project you may see can be copied; a stale link just gives a blank form
+        source = None
+        if from_id and get_db().execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (from_id,)).fetchone():
+            source = load_project(from_id)
+        mode = "duplicate" if source else "new"
+    lists = get_contact_lists()
+    fields = ["name", "client", "via", "account_manager_name", "account_manager_email", "partner_name", "partner_account_manager_name",
+              "partner_account_manager_email", "po_number", "po_date", "start_date", "target_end_date", "delivery_mode",
+              "vendor_name", "product_name", "outsourcer_name", "outsourcer_email"]
+    project = {f: source[f] for f in fields} if source else {}
+    if source:
+        project.update({"customer_approval": bool(source["customer_approval"]), "stage_template_id": source["stage_template_id"], "owner_id": source["owner_id"]})
+        if mode == "duplicate":
+            project["name"] = f"{source['name']} (copy)"
+    return jsonify({
+        "mode": mode, "id": edit_id, "project": project, "me": session["user_id"],
+        "via_options": list(VIA_OPTIONS), "delivery_modes": list(DELIVERY_MODES),
+        "account_managers": [{"name": r["name"], "email": r["email"]} for r in lists["account_managers"]],
+        "partners": [{"id": p["id"], "name": p["name"], "managers": lists["partner_managers_by_partner"].get(str(p["id"]), [])} for p in lists["partners"]],
+        "vendors": [r["name"] for r in lists["vendors"]], "products": [r["name"] for r in lists["products"]],
+        "outsourcers": [{"name": r["name"], "email": r["email"]} for r in lists["outsourcers"]],
+        "templates": [{"id": t["id"], "name": t["name"]} for t in db.execute("SELECT id, name FROM stage_templates ORDER BY name")],
+        "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")],
+    })
 
 
 @app.route("/api/projects")

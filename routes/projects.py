@@ -302,6 +302,8 @@ def report_save(project_id):
 @app.route("/projects/new", methods=["GET", "POST"])
 @permission_required("create_project")
 def project_new():
+    if request.method == "GET" and spa_serves("project_new"):
+        return spa_index()
     db = get_db()
     if request.method == "POST":
         po_document = request.files.get("po_document")
@@ -455,6 +457,8 @@ def project_detail(project_id):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_edit(project_id):
+    if request.method == "GET" and spa_serves("project_edit"):
+        return spa_index()
     db = get_db()
     project = load_project(project_id)
     if project is None:

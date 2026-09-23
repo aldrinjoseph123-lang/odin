@@ -195,6 +195,18 @@ export type AuditData = {
 }
 export const audit = (query: string) => getJson<AuditData>(`/api/audit${query ? `?${query}` : ""}`)
 
+// ---- the new / duplicate / edit project form ----
+export type ProjectFormData = {
+  mode: "new" | "duplicate" | "edit"; id: number | null; me: number
+  project: Partial<Record<string, string | null>> & { customer_approval?: boolean; stage_template_id?: number | null; owner_id?: number }
+  via_options: string[]; delivery_modes: string[]
+  account_managers: { name: string; email: string | null }[]
+  partners: { id: number; name: string; managers: { name: string; email: string }[] }[]
+  vendors: string[]; products: string[]; outsourcers: { name: string; email: string | null }[]
+  templates: { id: number; name: string }[]; users: { id: number; name: string }[]
+}
+export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/project-form${query ? `?${query}` : ""}`)
+
 // ---- tasks: the same Flask routes the project page posts as forms ----
 export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null }) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)

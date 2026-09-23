@@ -23,7 +23,7 @@ in `frontend/`, Flask becomes the JSON API. **Strangler rollout**: a Jinja page
 stays live until its React replacement has passed tests and UAT; then its
 endpoint name is added to `SPA_PAGES` in `spa.py` and Flask serves the built
 bundle for it. Order: login ✅ → board ✅ → projects ✅ → project detail ✅ → users ✅ /
-audit ✅ → settings ✅ → RBAC ✅ / contacts ✅ → the new/edit project form →
+audit ✅ → settings ✅ → RBAC ✅ / contacts ✅ → new/edit project form ✅ →
 account / my-work / analytics / alerts / reports → guest.
 
 Rules while both UIs exist:

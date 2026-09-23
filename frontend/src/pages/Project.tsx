@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { useParams } from "react-router-dom"
-import { Copy, ExternalLink, Trash2 } from "lucide-react"
+import { Copy, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -77,7 +77,7 @@ export default function Project(_props: { user: User }) {
           <a href={`/board?rollout=${id}`} className={buttonVariants({ variant: "ghost", size: "sm" })}>On the flow</a>
           <a href={`/projects/${id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>
           {can.create && <a href={`/projects/new?from=${id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Duplicate</a>}
-          {can.manage && <a href={`/projects/${id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}>Edit <ExternalLink className="h-3.5 w-3.5" /></a>}
+          {can.manage && <a href={`/projects/${id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}>Edit</a>}
         </div>
       </div>
       {notice && (

@@ -1202,6 +1202,37 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                              ["add_project_note", "add_project_note", "delete_document", "delete_project"])
             self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='upload_document'").fetchone()[0], 1)   # final.pdf; the PO rides on create_project
 
+    # ---- the project form as JSON (React port) --------------------------------
+
+    def test_api_project_form_serves_new_duplicate_and_edit_and_the_bridge_creates(self):
+        self.client.post("/settings/contacts/partners/add", data={"name": "Redington"})
+        self.client.post("/settings/contacts/partners/1/managers/add", data={"name": "Meera", "email": "m@r.example"})
+        self.client.post("/settings/contacts/vendors/add", data={"name": "CrowdStrike"})
+        self.new_project(name="Orig", client="Acme", via="Partner", partner_name="Redington", target_end_date="2027-03-01")
+        c, csrf = self._api_client()
+        d = c.get("/api/project-form").get_json()
+        self.assertEqual((d["mode"], d["project"]), ("new", {})); self.assertEqual(d["partners"][0]["managers"][0]["email"], "m@r.example")
+        self.assertEqual(d["vendors"], ["CrowdStrike"]); self.assertEqual(d["via_options"], ["Direct", "Partner"]); self.assertTrue(d["templates"])
+        dup = c.get("/api/project-form?from=1").get_json()
+        self.assertEqual((dup["mode"], dup["project"]["name"], dup["project"]["partner_name"]), ("duplicate", "Orig (copy)", "Redington"))
+        self.assertEqual(c.get("/api/project-form?from=999").get_json()["mode"], "new")
+        ed = c.get("/api/project-form?edit=1").get_json()
+        self.assertEqual((ed["mode"], ed["id"], ed["project"]["name"], ed["project"]["owner_id"]), ("edit", 1, "Orig", 1))
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        r = c.post("/projects/new", data={"name": "Made in React", "client": "Globex", "delivery_mode": "Distribution/MSSP", "customer_approval": "1",
+                                          "po_document": (io.BytesIO(b"%PDF-1.4 po"), "po.pdf")}, headers=h).get_json()
+        self.assertEqual((r["location"], r["messages"]), ("/board", ["Project created"]))
+        r = c.post("/projects/new", data={"name": "No PO", "client": "Globex"}, headers=h).get_json()
+        self.assertTrue(r["location"].endswith("/projects/new")); self.assertIn("Upload a 'Client PO' document", r["messages"][0])
+        r = c.post("/projects/2/edit", data={"name": "Made in React 2", "client": "Globex", "owner_id": "1"}, headers=h).get_json()
+        self.assertEqual((r["location"], r["messages"]), ("/projects/2", ["Project updated"]))
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT name, customer_approval FROM projects WHERE id=2").fetchone()[:], ("Made in React 2", 0))
+        # a Member off the project may open the create form but not the edit form
+        m, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
+        self.assertEqual(m.get("/api/project-form").status_code, 200)
+        self.assertEqual(m.get("/api/project-form?edit=1").status_code, 403)
+
     # ---- projects list as JSON (React port) --------------------------------
 
     def test_api_projects_filters_sorts_pages_and_remembers_the_query(self):
