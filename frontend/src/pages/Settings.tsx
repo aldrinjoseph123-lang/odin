@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { ExternalLink, Trash2 } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -50,8 +50,8 @@ export default function Settings(_props: { user: User }) {
         <h1 className="text-[17px] font-semibold tracking-tight">Settings</h1>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a href="/users" className={buttonVariants({ variant: "outline", size: "sm" })}>Users</a>
-          <a href="/settings/rbac" className={buttonVariants({ variant: "outline", size: "sm" })}>Role permissions <ExternalLink className="h-3.5 w-3.5" /></a>
-          <a href="/settings/contacts" className={buttonVariants({ variant: "outline", size: "sm" })}>Contacts & partners <ExternalLink className="h-3.5 w-3.5" /></a>
+          <a href="/settings/rbac" className={buttonVariants({ variant: "outline", size: "sm" })}>Role permissions</a>
+          <a href="/settings/contacts" className={buttonVariants({ variant: "outline", size: "sm" })}>Contacts & partners</a>
           <a href="/audit-logs" className={buttonVariants({ variant: "outline", size: "sm" })}>Audit log</a>
         </div>
       </div>

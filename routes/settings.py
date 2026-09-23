@@ -176,6 +176,8 @@ def settings():
 @app.route("/settings/rbac")
 @permission_required("manage_settings")
 def settings_rbac():
+    if spa_serves("settings_rbac"):
+        return spa_index()
     db = get_db()
     rows = db.execute("SELECT * FROM role_permissions").fetchall()
     matrix = {perm: {role: False for role in ROLES} for perm in PERMISSIONS}
@@ -396,6 +398,8 @@ def settings_category_delete(cat_id):
 @app.route("/settings/contacts")
 @permission_required("manage_contacts")
 def settings_contacts():
+    if spa_serves("settings_contacts"):
+        return spa_index()
     db = get_db()
     partners = db.execute("SELECT * FROM partners WHERE deleted_at IS NULL ORDER BY name").fetchall()
     partner_managers = db.execute("SELECT * FROM partner_account_managers WHERE deleted_at IS NULL ORDER BY name").fetchall()

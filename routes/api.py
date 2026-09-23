@@ -6,7 +6,7 @@ from flask import abort, jsonify, request, session, url_for
 
 from datetime import date, datetime
 
-from constants import ALERT_TYPE_TITLES, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PROJECT_MANAGER, PROJECT_ROLES, ROLES
+from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import get_doc_category_names, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
@@ -156,6 +156,37 @@ def api_settings():
         },
         "toggles": {k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled", "onedrive_backup_enabled")},
     })
+
+
+@app.route("/api/settings/rbac")
+@permission_required("manage_settings")
+def api_settings_rbac():
+    """The role/permission matrix. Locked cells are what the save route
+    forces on regardless: an admin can never lock every account out."""
+    rows = get_db().execute("SELECT * FROM role_permissions").fetchall()
+    allowed = {(r["permission"], r["role"]) for r in rows if r["allowed"]}
+    return jsonify(
+        roles=list(ROLES), permissions=list(PERMISSIONS),
+        matrix={p: {r: (p, r) in allowed for r in ROLES} for p in PERMISSIONS},
+        locked={p: ["Admin"] if (p in ("manage_settings", "manage_users") or p.startswith("view_")) else [] for p in PERMISSIONS},
+    )
+
+
+@app.route("/api/settings/contacts")
+@permission_required("manage_contacts")
+def api_settings_contacts():
+    db = get_db()
+    managers = {}
+    for m in db.execute("SELECT * FROM partner_account_managers WHERE deleted_at IS NULL ORDER BY name"):
+        managers.setdefault(m["partner_id"], []).append({"id": m["id"], "name": m["name"], "email": m["email"]})
+    return jsonify(
+        lists=[{"key": key, "label": meta["label"], "has_email": meta["has_email"],
+                "items": [{"id": r["id"], "name": r["name"], "email": r["email"] if meta["has_email"] else None}
+                          for r in db.execute(f"SELECT * FROM {meta['table']} WHERE deleted_at IS NULL ORDER BY name")]}
+               for key, meta in CONTACT_LISTS.items()],
+        partners=[{"id": p["id"], "name": p["name"], "managers": managers.get(p["id"], [])}
+                  for p in db.execute("SELECT * FROM partners WHERE deleted_at IS NULL ORDER BY name")],
+    )
 
 
 @app.route("/api/users")

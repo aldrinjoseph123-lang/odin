@@ -176,6 +176,14 @@ export type SettingsData = {
 }
 export const settingsData = (teamId = "") => getJson<SettingsData>(`/api/settings${teamId ? `?team_id=${encodeURIComponent(teamId)}` : ""}`)
 
+export type RbacData = { roles: string[]; permissions: string[]; matrix: Record<string, Record<string, boolean>>; locked: Record<string, string[]> }
+export const rbac = () => getJson<RbacData>("/api/settings/rbac")
+export type ContactsData = {
+  lists: { key: string; label: string; has_email: boolean; items: { id: number; name: string; email: string | null }[] }[]
+  partners: { id: number; name: string; managers: { id: number; name: string; email: string | null }[] }[]
+}
+export const contacts = () => getJson<ContactsData>("/api/settings/contacts")
+
 // ---- admin: users and the audit log ----
 export type AdminUser = { id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"; last_login_at: string | null; created_at: string | null }
 export const users = () => getJson<{ users: AdminUser[]; roles: string[]; me: number }>("/api/users")

@@ -1094,6 +1094,32 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         m, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
         self.assertEqual(m.get("/api/settings").status_code, 403)
 
+    def test_api_rbac_and_contacts_feed_their_pages(self):
+        c, csrf = self._api_client()
+        d = c.get("/api/settings/rbac").get_json()
+        self.assertEqual(d["roles"][0], "Admin"); self.assertIn("edit_project_stage", d["permissions"])
+        self.assertTrue(d["matrix"]["edit_project_stage"]["Member"]); self.assertFalse(d["matrix"]["edit_project_stage"]["Viewer"])
+        self.assertEqual(d["locked"]["manage_users"], ["Admin"]); self.assertEqual(d["locked"]["edit_project"], [])
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        fields = {f"{p}::{r}": "on" for p, roles in d["matrix"].items() for r, ok in roles.items() if ok}
+        fields.pop("edit_project_stage::Member")
+        self.assertEqual(c.post("/settings/rbac", data=fields, headers=h).get_json()["messages"], ["Permissions updated"])
+        self.assertFalse(c.get("/api/settings/rbac").get_json()["matrix"]["edit_project_stage"]["Member"])
+        self.assertTrue(c.get("/api/settings/rbac").get_json()["matrix"]["manage_users"]["Admin"])
+        c.post("/settings/contacts/vendors/add", data={"name": "CrowdStrike"}, headers=h)
+        c.post("/settings/contacts/partners/add", data={"name": "Redington"}, headers=h)
+        pid = c.get("/api/settings/contacts").get_json()["partners"][0]["id"]
+        c.post(f"/settings/contacts/partners/{pid}/managers/add", data={"name": "Meera", "email": "meera@redington.example"}, headers=h)
+        x = c.get("/api/settings/contacts").get_json()
+        self.assertEqual([l["key"] for l in x["lists"]], ["account-managers", "vendors", "products", "outsourcers"])
+        self.assertEqual(next(l for l in x["lists"] if l["key"] == "vendors")["items"][0]["name"], "CrowdStrike")
+        self.assertEqual(x["partners"][0]["managers"][0]["email"], "meera@redington.example")
+        r = c.post(f"/settings/contacts/partners/{pid}/delete", data={}, headers=h).get_json()
+        self.assertEqual(r["undo"], f"/undo/partner/{pid}")
+        self.assertEqual(c.get("/api/settings/contacts").get_json()["partners"], [])
+        c.post(r["undo"], data={}, headers=h)
+        self.assertEqual(c.get("/api/settings/contacts").get_json()["partners"][0]["managers"][0]["name"], "Meera")
+
     # ---- users and audit as JSON (React port) --------------------------------
 
     def test_api_users_and_audit_feed_the_admin_pages(self):
