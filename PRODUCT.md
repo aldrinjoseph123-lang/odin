@@ -12,8 +12,8 @@ web
 - **Delivery / project managers (Member role):** run each rollout day to day — move stages, tick tasks, upload deliverables, write status notes.
 - **Sales / account managers (Contributor role):** create a project from a customer PO, watch progress, comment; never move a delivery stage.
 - **Viewers:** read-only staff.
-- **Customers** via a per-project guest link: see their rollout's progress and history, leave comments.
-- **Vendors / outsourcers** via a second per-project guest link: advance the stage one step, leave notes.
+- **External participants (contractors, resellers, customer contacts):** invited to a project by email, sign in with a one-time link (no password), see only the projects they are on, read and comment, tick tasks tagged to them. A customer contact may also approve or decline each stage change when the project asks for it.
+- **Customers / vendors via the older per-project guest links** (view-and-comment, or advance one step): still live until invited accounts replace them.
 
 ## Product Purpose
 
@@ -37,7 +37,11 @@ One shared pipeline for internal team, customer and vendor, with **stage SLAs me
 ## Capabilities and Constraints
 
 - Stack: Flask + SQLite JSON API; React + TypeScript + shadcn/ui front end (Vite, Tailwind 4) migrating page by page from Jinja (strangler). Login and Board are React today; projects list, project detail, settings, users, audit log, guest pages are still Jinja.
-- Roles/permissions matrix (Admin, Member, Contributor, Viewer) enforced server-side; the UI must reflect them (Viewers see, never move).
+- Roles/permissions matrix (Admin, Member, Contributor, Viewer, External) enforced server-side; the UI must reflect them (Viewers and Externals see, never move). Per project, every participant also has a project role (Project manager = owner, Sales, Coordinator, Contractor, Reseller, Customer).
+- Every project owns its stage list: copied from a template in Settings at creation, then editable per project (add, rename, reorder, delete, SLAs). There is no shared stage header; each row carries its stage by name.
+- Tasks belong to a stage of their project and are worked from the flow screen: add with an assignee from the project team, tick, delete. The person a task is tagged to may tick it whatever their role.
+- Reports: a draft is built from the stage timeline, tasks, notes and documents; the project manager edits it as plain text and saves numbered versions. Partners and customers see saved versions only.
+- Notifications: a stage change emails every participant with an address (actor excluded), plus the owner and Teams. Optional per project: the customer contact is asked to approve each stage change; the stage still moves, the decision is recorded, noted and audited.
 - Guest pages are public-internet surfaces: no internal navigation, no internal notes, no PO number on the vendor link, author name required on every write.
 - Drag-and-drop stage changes exist and are audited; vendor may advance one step only, never to terminal.
 - All stored timestamps are UTC; rendered in the reader's zone.
