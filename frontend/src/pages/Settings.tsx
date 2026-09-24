@@ -61,7 +61,9 @@ export default function Settings(_props: { user: User }) {
         </div>
       )}
 
-      <div className="mt-3 grid gap-4 lg:grid-cols-2">
+      {/* min-w-0 on every grid item: a wide table scrolls inside its panel
+          instead of stretching the page on a phone */}
+      <div className="mt-3 grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <Panel title="Stage templates" hint="a new project copies one, then owns its list" id="templates">
           <div className="grid gap-5">
             {data.templates.map((t) => <Template key={t.id} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
@@ -70,7 +72,7 @@ export default function Settings(_props: { user: User }) {
           <p className="mt-2 text-[11.5px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
         </Panel>
 
-        <div className="grid content-start gap-4">
+        <div className="grid content-start gap-4 [&>*]:min-w-0">
           <Panel title="Document categories">
             <ul className="grid gap-1.5 text-[13px]">
               {data.doc_categories.map((c) => (
@@ -95,8 +97,8 @@ export default function Settings(_props: { user: User }) {
 function AddForm({ placeholder, label, button, busy, onSubmit }: { placeholder: string; label: string; button: string; busy: boolean; onSubmit: (name: string) => Promise<unknown> }) {
   const [name, setName] = useState("")
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void onSubmit(name.trim()).then(() => setName("")) }} className="mt-3 flex items-center gap-2 border-t border-border pt-3">
-      <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} aria-label={label} maxLength={80} className="h-8 w-72 text-[13px]" />
+    <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void onSubmit(name.trim()).then(() => setName("")) }} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+      <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} aria-label={label} maxLength={80} className="h-8 w-full text-[13px] sm:w-72" />
       <Button type="submit" size="sm" variant="outline" disabled={busy || !name.trim()}>{button}</Button>
     </form>
   )
@@ -146,7 +148,7 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
   return (
     <Panel title="Alert types" hint="In-app is the master switch; email and Teams also need their toggle under Integrations">
       <form onSubmit={submit}>
-        <table className="w-full text-[13px]">
+        <div className="overflow-x-auto"><table className="w-full text-[13px]">
           <thead><tr className="text-left text-[11.5px] font-normal text-muted-foreground">{["Alert", "Threshold (days)", "Severity", "Email", "Teams", "In-app"].map((h) => <th key={h} className="pb-1.5 pr-2 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {rows.map((a) => (
@@ -164,7 +166,7 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
         <Button type="submit" size="sm" variant="outline" className="mt-3" disabled={busy}>Save alert settings</Button>
       </form>
     </Panel>

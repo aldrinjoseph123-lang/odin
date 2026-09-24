@@ -90,9 +90,9 @@ export default function Project(_props: { user: User }) {
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
       <Detail d={d} reload={reload} onMoved={(m) => setNotice({ text: m })} standalone />
 
-      <div className="grid gap-4 px-5 pb-6 lg:grid-cols-2">
+      <div className="grid gap-4 px-5 pb-6 lg:grid-cols-2 [&>*]:min-w-0">
         <Panel title="Details">
-          <dl className="grid grid-cols-[minmax(120px,auto)_1fr] gap-x-4 gap-y-1.5 text-[13px]">
+          <dl className="grid grid-cols-[minmax(96px,auto)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">
             {Object.entries(LABELS).filter(([k]) => {
               const via = x.details.via
               if (k === "partner_name" || k === "partner_account_manager_name") return via === "Partner"

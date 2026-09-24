@@ -1202,6 +1202,32 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                              ["add_project_note", "add_project_note", "delete_document", "delete_project"])
             self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='upload_document'").fetchone()[0], 1)   # final.pdf; the PO rides on create_project
 
+    def test_every_ported_page_serves_the_react_bundle_when_built(self):
+        """The strangler contract: each endpoint in SPA_PAGES answers a signed-in
+        GET with the bundle shell, and its JSON twin still answers beside it."""
+        import spa
+        self.new_project(name="P", client="C")
+        dist = tempfile.mkdtemp(); os.makedirs(os.path.join(dist, "assets"))
+        open(os.path.join(dist, "index.html"), "w").write("<title>Odin</title><div id=root></div>")
+        paths = {
+            "login": "/login", "board": "/board", "projects_list": "/projects", "project_detail": "/projects/1",
+            "project_new": "/projects/new", "project_edit": "/projects/1/edit", "users": "/users", "audit_logs_view": "/audit-logs",
+            "settings": "/settings", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
+            "account": "/account", "my_work": "/my-work", "analytics": "/analytics", "alerts_log_view": "/alerts",
+            "report_all": "/reports/all", "report_single": "/projects/1/report",
+        }
+        self.assertEqual(set(paths), spa.SPA_PAGES)          # a new port must be listed here too
+        c, _ = self._api_client()
+        with patch.dict(app_module.app.config, {"SERVE_SPA": True, "SPA_DIST": dist}):
+            for endpoint, path in paths.items():
+                r = c.get(path)
+                self.assertEqual(r.status_code, 200, path); self.assertIn(b"id=root", r.data, path)
+            # form POSTs are not intercepted: the Jinja route still answers them
+            self.assertEqual(c.post("/projects/1/note", data={"note": "x"}).status_code, 302)
+            # and a Viewer hitting an admin page is refused before any bundle is served
+            v, _ = self._api_client(self._make_user("vw", "Viewer") and "vw", STRONG_PASSWORD)
+            self.assertEqual(v.get("/settings").status_code, 403); self.assertEqual(v.get("/users").status_code, 403)
+
     # ---- reports as JSON (React port) ------------------------------------------
 
     def test_api_reports_feed_the_pages_and_save_through_the_bridge(self):
