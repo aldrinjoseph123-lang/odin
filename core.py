@@ -18,7 +18,7 @@ from constants import (
     PERMISSIONS,
     VIA_OPTIONS,
 )
-from db import get_db, get_doc_category_names, get_stage_names, project_role_of
+from db import get_db, get_doc_category_names, get_setting, get_stage_names, project_role_of
 from security import ABSOLUTE_SESSION_HOURS, csrf_token, init_security
 
 DEV_SECRET = "dev-secret-change-me"
@@ -289,5 +289,6 @@ def inject_globals():
         "is_viewer": session.get("role") == "Viewer" or session.get("kind") == "external",
         "is_external": session.get("kind") == "external",
         "can_note": role_has_permission(session.get("role"), "add_project_note"),
+        "guest_links_enabled": get_setting("guest_links_enabled", "1") == "1",
         "session_user_id": session.get("user_id"),
     }

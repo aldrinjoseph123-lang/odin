@@ -119,6 +119,7 @@ def settings_integrations():
         "1" if request.form.get("onedrive_mirror_uploads_enabled") == "on" else "0",
     )
     set_setting("onedrive_backup_enabled", "1" if request.form.get("onedrive_backup_enabled") == "on" else "0")
+    set_setting("guest_links_enabled", "1" if request.form.get("guest_links_enabled") == "on" else "0")
     audit_log("update_integration_settings")
     flash("Integration settings saved")
     return redirect(url_for("settings"))

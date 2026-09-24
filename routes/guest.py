@@ -13,7 +13,7 @@ from flask import abort, flash, make_response, redirect, render_template, reques
 from markupsafe import escape
 
 from core import app
-from db import get_db, get_stage_names
+from db import get_db, get_setting, get_stage_names
 from security import rate_limited
 from services.audit import audit_log
 from services.notifications import notify_event
@@ -22,7 +22,11 @@ GUEST_WRITES_PER_MINUTE = 10
 
 
 def get_project_by_token(token):
-    """Return (project, party) for a live token, else 404."""
+    """Return (project, party) for a live token, else 404. When the admin has
+    switched the anonymous links off (invited accounts replaced them), every
+    token is dead: the old links must not keep working quietly."""
+    if get_setting("guest_links_enabled", "1") != "1":
+        abort(404)
     db = get_db()
     project = db.execute(
         "SELECT * FROM projects WHERE (access_token = ? OR customer_token = ?) AND deleted_at IS NULL",

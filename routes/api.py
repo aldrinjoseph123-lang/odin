@@ -154,7 +154,8 @@ def api_settings():
             "channel_id": connection["channel_id"] if connected else None,
             "teams": teams, "channels": channels, "team_id": team_id, "teams_error": teams_error,
         },
-        "toggles": {k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled", "onedrive_backup_enabled")},
+        "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled", "onedrive_backup_enabled")},
+                    "guest_links_enabled": get_setting("guest_links_enabled", "1") == "1"},
     })
 
 
@@ -412,15 +413,18 @@ def api_project(project_id):
               "account_manager_name", "account_manager_email", "po_number", "po_date", "start_date", "target_end_date",
               "delivery_mode", "outsourcer_name", "outsourcer_email", "vendor_name", "product_name"]
     can_manage = project_allows(project_id, "manage_project")
+    from db import get_setting
+    guest_on = get_setting("guest_links_enabled", "1") == "1"
     return jsonify({
         "id": project["id"], "name": project["name"], "owner_id": project["owner_id"],
+        "guest_links_enabled": guest_on,
         "details": {f: project[f] for f in fields},
         "customer_approval": bool(project["customer_approval"]),
         "guest_links": {
             "customer": url_for("guest_view", token=project["customer_token"], _external=True) if project["customer_token"] else None,
             "vendor": url_for("guest_view", token=project["access_token"], _external=True)
             if project["delivery_mode"] == "Outsourced" and project["access_token"] else None,
-        } if can_manage or role != "External" else {"customer": None, "vendor": None},
+        } if guest_on and (can_manage or role != "External") else {"customer": None, "vendor": None},
         "stage_rows": [{"id": r["id"], "name": r["name"], "sla_days": r["sla_days"]} for r in stage_rows(project_id)],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"], "email": r["email"], "active": bool(r["active"])}
                          for r in participants_for(project_id)],

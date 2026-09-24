@@ -1090,7 +1090,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual([t["name"] for t in c.get("/api/settings").get_json()["templates"]][-1], "SIEM")
         r = c.post("/settings/integrations", data={"notify_email_enabled": "on"}, headers=h).get_json()
         self.assertEqual(r["messages"], ["Integration settings saved"])
-        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "onedrive_mirror_uploads_enabled": False, "onedrive_backup_enabled": False})
+        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "onedrive_mirror_uploads_enabled": False, "onedrive_backup_enabled": False, "guest_links_enabled": False})
         m, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
         self.assertEqual(m.get("/api/settings").status_code, 403)
 
@@ -1227,6 +1227,26 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             # and a Viewer hitting an admin page is refused before any bundle is served
             v, _ = self._api_client(self._make_user("vw", "Viewer") and "vw", STRONG_PASSWORD)
             self.assertEqual(v.get("/settings").status_code, 403); self.assertEqual(v.get("/users").status_code, 403)
+
+    def test_guest_links_can_be_switched_off_for_good(self):
+        self.new_project(name="P", client="C")
+        with self.raw_db() as db:
+            tok = db.execute("SELECT customer_token FROM projects WHERE id=1").fetchone()[0]
+        anon = app_module.app.test_client()
+        self.assertEqual(anon.get(f"/guest/{tok}").status_code, 200)
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        self.assertTrue(c.get("/api/settings").get_json()["toggles"]["guest_links_enabled"])
+        self.assertIsNotNone(c.get("/api/projects/1").get_json()["guest_links"]["customer"])
+        c.post("/settings/integrations", data={"notify_email_enabled": "on"}, headers=h)     # guest switch absent = off
+        self.assertFalse(c.get("/api/settings").get_json()["toggles"]["guest_links_enabled"])
+        self.assertEqual(anon.get(f"/guest/{tok}").status_code, 404)
+        self.assertEqual(anon.post(f"/guest/{tok}/note", data={"author": "x", "note": "y"}).status_code, 404)
+        x = c.get("/api/projects/1").get_json()
+        self.assertEqual((x["guest_links_enabled"], x["guest_links"]), (False, {"customer": None, "vendor": None}))
+        self.assertNotIn(b"Customer link", self.client.get("/projects/1").data)
+        c.post("/settings/integrations", data={"guest_links_enabled": "on"}, headers=h)
+        self.assertEqual(anon.get(f"/guest/{tok}").status_code, 200)
 
     # ---- reports as JSON (React port) ------------------------------------------
 

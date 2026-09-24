@@ -236,6 +236,7 @@ function Integrations({ data, busy, send }: { data: SettingsData; busy: boolean;
     { key: "notify_teams_enabled", label: "Teams channel notifications for the same events, plus the daily alert digest" },
     { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
     { key: "onedrive_backup_enabled", label: "Allow scheduled full backups to OneDrive (needs the cron entry from AZURE_SETUP.md)" },
+    { key: "guest_links_enabled", label: "Keep the legacy anonymous guest links working (turn off once invited partner and customer accounts have replaced them; every old link then stops)" },
   ]
   function submit(e: FormEvent) {
     e.preventDefault()

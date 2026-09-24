@@ -138,7 +138,7 @@ export type ProjectExtras = {
   id: number; name: string; owner_id: number
   details: Record<string, string | null>
   customer_approval: boolean
-  guest_links: { customer: string | null; vendor: string | null }
+  guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean
   stage_rows: { id: number; name: string; sla_days: number | null }[]
   participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean }[]
   notes: { id: number; author: string; note: string; stage: string; created_at: string }[]
@@ -172,7 +172,7 @@ export type SettingsData = {
     connected: boolean; connected_email: string | null; team_name: string | null; channel_name: string | null; channel_id: string | null
     teams: { id: string; name: string }[]; channels: { id: string; name: string }[]; team_id: string; teams_error: string | null
   }
-  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "onedrive_backup_enabled", boolean>
+  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "onedrive_backup_enabled" | "guest_links_enabled", boolean>
 }
 export const settingsData = (teamId = "") => getJson<SettingsData>(`/api/settings${teamId ? `?team_id=${encodeURIComponent(teamId)}` : ""}`)
 

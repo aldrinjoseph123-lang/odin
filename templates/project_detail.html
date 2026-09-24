@@ -14,6 +14,7 @@
 {% endif %}
 {#- Two links, two parties. The customer's is view-and-comment; the vendor's
     may also advance the stage one step. Rotating replaces both. -#}
+{% if guest_links_enabled %}
 {% set customer_url = url_for('guest_view', token=project.customer_token, _external=True) %}
 <p class="muted">Customer link (view &amp; comment, no login):
   <a href="{{ customer_url }}">{{ customer_url }}</a>
@@ -31,6 +32,7 @@
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <button type="submit" class="link-btn">Rotate guest links</button>
 </form>
+{% endif %}
 {% endif %}
 {% if schedule %}
 <p style="margin:0 0 1rem;">Schedule:

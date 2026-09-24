@@ -170,9 +170,10 @@ export default function Project(_props: { user: User }) {
           <Panel title="Sharing">
             {x.guest_links.customer && <LinkRow label="Customer link (view and comment, no sign-in)" url={x.guest_links.customer} />}
             {x.guest_links.vendor && <LinkRow label="Vendor link (may advance the stage)" url={x.guest_links.vendor} />}
+            {!x.guest_links_enabled && <p className="text-[12.5px] text-muted-foreground">Anonymous guest links are switched off in Settings. Partners and customers are invited from the Team panel instead.</p>}
             {can.manage && (
               <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => send(`/projects/${id}/rotate-token`, {}, "Rotate both guest links? The current links stop working immediately.")}>Rotate guest links</Button>
+                {x.guest_links_enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => send(`/projects/${id}/rotate-token`, {}, "Rotate both guest links? The current links stop working immediately.")}>Rotate guest links</Button>}
                 <Button size="sm" variant="outline" disabled={busy} className="text-bad hover:text-bad" onClick={() => send(`/projects/${id}/delete`, {}, "Delete this project? You have five minutes to undo.")}>Delete project</Button>
               </div>
             )}

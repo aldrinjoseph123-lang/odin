@@ -2,8 +2,9 @@
 
 Re-runnable sign-off script. One row per scenario; tester initials + date in the last column.
 Run against a **clean instance** (`python reset_data.py` or a fresh `ODIN_DATA_DIR`), never production.
-Setup: admin password rotated; users `pm1` (Member), `sales1` (Contributor), `vw1` (Viewer) created;
-Settings → Contacts: one vendor, one product, one outsourcer with email, one partner with an account manager.
+Setup: `ODIN_DATA_DIR=/tmp/odin-uat python scripts/seed_uat.py` stages all of it — admin password rotated,
+users `pm1` (Member), `sales1` (Contributor), `vw1` (Viewer), contacts, two templates, fifteen projects, two
+invited externals — or do the same by hand from a clean instance.
 Microsoft 365 connected if you want the email rows to pass; otherwise mark them N/A.
 
 Result key: **P** pass · **F** fail · **B** blocked · **N/A**
