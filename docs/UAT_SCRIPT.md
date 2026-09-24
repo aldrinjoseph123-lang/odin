@@ -64,7 +64,7 @@ Result key: **P** pass · **F** fail · **B** blocked · **N/A**
 | D4 | Sign-in page → "Partner or customer?" → request a link for an unknown address and for Ann's | Same neutral message both times; a fourth request for one address inside 15 minutes is throttled | | |
 | D5 | Try `ann@customer.example` on the staff login form with any password | "Bad username or password"; audit says sign-in links only | | |
 | D6 | Ann → project page → Report | Sees saved versions only, never the draft or an editor; can add a note; no edit controls anywhere | | |
-| D7 | Admin advances the stage (approval on) → Ann → Flow | "Your approval" card; Approve with a comment | Chip turns Approved on row and detail; note "Approved <stage>: …" is customer-visible; owner notified; audit row | | |
+| D7 | Admin advances the stage (approval on) → Ann → Flow → "Your approval" card → Approve with a comment | Chip turns Approved on row and detail; note "Approved <stage>: …" is customer-visible; owner notified; audit row | | |
 | D8 | Raj (Contractor) tries to approve | 403 | | |
 | D9 | Admin tags a task to Raj → Raj ticks it; Raj tries another task | Own task ticks; other task 403 | | |
 | D10 | Users → Ann's row | External badge, no Reset password, role locked to External; Deactivate ends her session and her next link is refused | | |
