@@ -619,8 +619,10 @@ def decide_approval(project_id, approval_id, decision, comment):
     )
     db.commit()
     audit_log("approval_decision", "project", project_id, project["name"], f"{row['stage']} {decision}")
-    notify_event(project, f"{project['name']}: {row['stage']} {decision} by the customer",
-                 f"{escape(session['user_name'])} {decision} <b>{escape(row['stage'])}</b>." + (f"<br>{escape(comment)}" if comment else ""))
+    subject = f"{project['name']}: {row['stage']} {decision} by the customer"
+    body = f"{escape(session['user_name'])} {decision} <b>{escape(row['stage'])}</b>." + (f"<br>{escape(comment)}" if comment else "")
+    notify_event(project, subject, body)
+    notify_participants(project_id, subject, body, exclude_user_id=session["user_id"])
     return None
 
 
@@ -693,6 +695,9 @@ def document_upload(project_id):
         return redirect(url_for("project_detail", project_id=project_id))
     original_name = save_document(project_id, file, category, session["user_name"])
     audit_log("upload_document", "project", project_id, None, f"{category}: {original_name}")
+    project = load_project(project_id)
+    _tell_pm(project, f"Document added to {escape(project['name'])}",
+             f"{escape(session['user_name'])} uploaded <b>{escape(original_name)}</b> ({escape(category)}).")
 
     flash(f"Uploaded {original_name}")
     return redirect(url_for("project_detail", project_id=project_id))
@@ -995,7 +1000,17 @@ def project_note(project_id):
     )
     db.commit()
     audit_log("add_project_note", "project", project_id, project["name"], note_text)
+    _tell_pm(project, f"New note on {escape(project['name'])}",
+             f"{escape(session['user_name'])} wrote:<br>{escape(note_text)}")
     return redirect(url_for("project_detail", project_id=project_id))
+
+
+def _tell_pm(project, subject, html):
+    """The project manager hears about work done on their project by anyone
+    else — a note, a finished task, a document. Email only: the Teams
+    channel carries stage changes and alerts, not every note."""
+    if project["owner_id"] != session.get("user_id"):
+        notify_event(project, subject, html, channels={"email": True, "teams": False})
 
 
 def _notify_assignee(assignee_id, project_id, title):
@@ -1066,9 +1081,9 @@ def task_add(project_id):
 def task_toggle(project_id, task_id):
     """Anyone who can edit the project, or the person the task is tagged to —
     a contractor ticks off their own work without gaining anything else."""
-    load_project(project_id)   # visibility decided in one place
+    project = load_project(project_id)   # visibility decided in one place
     db = get_db()
-    task = db.execute("SELECT done, assignee_id FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
+    task = db.execute("SELECT title, done, assignee_id FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
     if not (project_allows(project_id, "manage_tasks") or task["assignee_id"] == session["user_id"]):
@@ -1080,6 +1095,9 @@ def task_toggle(project_id, task_id):
     )
     db.commit()
     audit_log("toggle_task", "project", project_id, None, f"task_id={task_id}")
+    if new_done:
+        _tell_pm(project, f"Task done on {escape(project['name'])}",
+                 f"{escape(session['user_name'])} completed <b>{escape(task['title'])}</b>.")
     return _task_reply(project_id, done=bool(new_done))
 
 

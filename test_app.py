@@ -1268,6 +1268,45 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             self.assertEqual([r[0] for r in db.execute("SELECT role FROM project_participants WHERE project_id=1")], ["Project manager"])
 
+    @patch("graph.send_mail", return_value=(True, None))
+    @patch("graph.send_teams_message", return_value=(True, None))
+    def test_pm_hears_about_notes_tasks_and_documents_and_everyone_hears_a_decision(self, _teams, mail):
+        with app_module.app.test_request_context():
+            app_module.set_setting("notify_email_enabled", "1")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email='admin@odin.example' WHERE id=1"); db.commit()
+        pm1 = self._make_user("pm1", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email='pm1@odin.example' WHERE id=?", (pm1,)); db.commit()
+        self.new_project(name="Loud", client="Acme", customer_approval="1")
+        self.client.post("/projects/1/participants/add", data={"user_id": pm1, "role": "Coordinator"})
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        self.client.post("/projects/1/tasks", data={"title": "Rack it", "assignee_id": pm1})
+        mail.reset_mock()
+        # the PM's own note is silent
+        self.client.post("/projects/1/note", data={"note": "mine"})
+        mail.assert_not_called()
+        # the coordinator's note, finished task and upload each reach the PM once, and nobody else
+        coord, csrf = self._api_client("pm1", STRONG_PASSWORD)
+        h = {"X-CSRF-Token": csrf}
+        coord.post("/projects/1/note", data={"note": "cabling done"}, headers=h)
+        coord.post("/projects/1/tasks/1/toggle", json={}, headers=h)
+        coord.post("/projects/1/tasks/1/toggle", json={}, headers=h)       # reopening is silent
+        coord.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"%PDF-1.4 x"), "asbuilt.pdf")}, headers=h)
+        subjects = [(c.args[0], c.args[1]) for c in mail.call_args_list]
+        self.assertEqual(subjects, [("admin@odin.example", "New note on Loud"), ("admin@odin.example", "Task done on Loud"), ("admin@odin.example", "Document added to Loud")])
+        self.assertIn("cabling done", mail.call_args_list[0].args[2]); self.assertIn("http://localhost/projects/1", mail.call_args_list[0].args[2])
+        # an approval decision reaches every participant with an address except the one deciding
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        mail.reset_mock()
+        ann = self._external_client("ann@acme.example")
+        ann.post("/projects/1/approvals/1/decide", data={"decision": "approved", "comment": "Go"})
+        to = sorted(c.args[0] for c in mail.call_args_list)
+        self.assertEqual(to, ["admin@odin.example", "admin@odin.example", "pm1@odin.example"])   # owner mail + participant mails
+        self.assertTrue(all("approved" in c.args[1] for c in mail.call_args_list))
+
     # ---- reports as JSON (React port) ------------------------------------------
 
     def test_api_reports_feed_the_pages_and_save_through_the_bridge(self):
