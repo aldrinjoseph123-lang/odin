@@ -23,10 +23,10 @@
     {% set ep = request.endpoint or '' %}
     <a href="{{ url_for('board') }}" class="brand">Odin</a>
     <a href="{{ url_for('board') }}" class="{{ 'active' if ep == 'board' }}">Board</a>
-    <a href="{{ url_for('my_work') }}" class="{{ 'active' if ep == 'my_work' }}">My Work{% if my_open_task_count %} ({{ my_open_task_count }}){% endif %}</a>
+    {% if not is_external %}<a href="{{ url_for('my_work') }}" class="{{ 'active' if ep == 'my_work' }}">My Work{% if my_open_task_count %} ({{ my_open_task_count }}){% endif %}</a>{% endif %}
     <a href="{{ projects_nav_url }}" class="{{ 'active' if ep in ('projects_list', 'project_detail', 'project_edit') }}">All Projects</a>
-    <a href="{{ url_for('analytics') }}" class="{{ 'active' if ep == 'analytics' }}">Cycle Time</a>
-    <a href="{{ url_for('alerts_log_view') }}" class="{{ 'active' if ep == 'alerts_log_view' }}">Alerts{% if active_alert_count %} ({{ active_alert_count }}){% endif %}</a>
+    {% if not is_external %}<a href="{{ url_for('analytics') }}" class="{{ 'active' if ep == 'analytics' }}">Cycle Time</a>{% endif %}
+    {% if not is_external %}<a href="{{ url_for('alerts_log_view') }}" class="{{ 'active' if ep == 'alerts_log_view' }}">Alerts{% if active_alert_count %} ({{ active_alert_count }}){% endif %}</a>{% endif %}
     {% if not is_viewer and not is_external %}<a href="{{ url_for('project_new') }}" class="{{ 'active' if ep == 'project_new' }}">+ New Project</a>{% endif %}
     {% if is_admin %}<a href="{{ url_for('settings') }}" class="{{ 'active' if ep.startswith('settings') or ep == 'audit_logs_view' }}">Settings</a>{% endif %}
     <span class="spacer"></span>

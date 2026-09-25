@@ -1732,6 +1732,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIn("/auth/link", again.get(f"/auth/link/{raw}").headers["Location"])      # used once
         self.assertIsNone(again.get("/api/session").get_json()["user"])
         self.assertIn("/auth/link", again.get("/auth/link/not-a-token").headers["Location"])
+        self.assertEqual(c.get("/auth/link").headers["Location"].rstrip("/").endswith("/board"), True)   # signed in: the request page just goes home
         expired = self._link_for("jane@vendor.example")
         with self.raw_db() as db:
             db.execute("UPDATE login_links SET expires_at='2020-01-01T00:00:00' WHERE used_at IS NULL"); db.commit()
@@ -2142,6 +2143,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(d["stage"], stages[1]); self.assertEqual(d["next_stage"], stages[2])
         self.assertEqual([s["status"] for s in d["stages"]][:3], ["done", "current", "next"])
         self.assertIsNotNone(d["stages"][0]["days"]); self.assertIsNotNone(d["stages"][1]["entered_at"])
+        # the current stage's days follow the SLA clock, not the note history
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET stage_entered_at = datetime('now', '-9 days') WHERE id = 1"); db.commit()
+        d = c.get("/api/projects/1/flow").get_json()
+        self.assertGreaterEqual(d["stages"][1]["days"], 8.9)
         self.assertEqual([t["done"] for t in d["tasks"]], [False, True])
         self.assertGreater(d["days_left"], 20000)
         self.assertEqual(c.get("/api/projects/999/flow").status_code, 404)

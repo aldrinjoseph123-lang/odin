@@ -62,5 +62,6 @@ CSRF on every mutation · session regenerated on login, 60 min idle / 12 h absol
 | [RBAC.md](RBAC.md) | Roles and permissions |
 | [AZURE_SETUP.md](AZURE_SETUP.md) | Microsoft 365 app registration |
 | [docs/UAT_SCRIPT.md](docs/UAT_SCRIPT.md) | Re-runnable acceptance script (93 steps) |
-| [docs/UAT_RESULTS_2026-09-08.md](docs/UAT_RESULTS_2026-09-08.md) | Latest executed results |
+| [docs/UAT_RESULTS_2026-09-25.md](docs/UAT_RESULTS_2026-09-25.md) | Latest executed results (v2 dry run) |
+| [docs/UAT_RESULTS_2026-09-08.md](docs/UAT_RESULTS_2026-09-08.md) | v1 results |
 | [CLAUDE.md](CLAUDE.md) | Theme and token architecture for UI work |

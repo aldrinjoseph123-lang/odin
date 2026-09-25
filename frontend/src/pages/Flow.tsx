@@ -144,7 +144,7 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
       </div>
       {/* No shared stage header: every project owns its own stage list, so the
           row carries its stage by name and the stepper draws that project's stages. */}
-      <div className="hidden grid-cols-[minmax(200px,1.2fr)_2fr_170px_76px] gap-4 px-5 pb-1.5 text-[11.5px] text-muted-foreground md:grid">
+      <div className="hidden grid-cols-[minmax(200px,1.2fr)_2fr_210px_76px] gap-4 px-5 pb-1.5 text-[11.5px] text-muted-foreground md:grid">
         <span>Rollout</span><span>Progress</span><span>Stage</span><span>Team</span>
       </div>
       <ScrollArea className="min-h-0 flex-1">
@@ -154,7 +154,7 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
             return (
               <li key={r.id}>
                 <button type="button" onClick={() => onSelect(r.id)} aria-current={selected || undefined}
-                  className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors md:grid-cols-[minmax(200px,1.2fr)_2fr_170px_76px] md:gap-4",
+                  className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors md:grid-cols-[minmax(200px,1.2fr)_2fr_210px_76px] md:gap-4",
                     selected ? "border-primary bg-accent" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
                   <span className="flex min-w-0 items-center gap-2">
                     <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
@@ -162,7 +162,7 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
                     <span className="hidden truncate text-[12px] text-muted-foreground sm:inline">{r.client}</span>
                   </span>
                   <span className="col-span-2 md:col-span-1"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} /></span>
-                  <span className="flex min-w-0 items-center gap-1.5 justify-self-end md:justify-self-start">
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 justify-self-end md:justify-self-start">
                     <span className="truncate text-[12.5px] font-medium">{r.stage}</span>
                     <ApprovalChip status={r.approval} />
                     <span className={cn("whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>

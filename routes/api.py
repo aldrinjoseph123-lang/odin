@@ -568,6 +568,11 @@ def api_project_flow(project_id):
         left = timeline[i + 1][1] if i + 1 < len(timeline) else now
         visits[stage] = {"entered_at": entered.isoformat(), "days": round((left - entered).total_seconds() / 86400, 1)}
     current = stages.index(project["stage"]) if project["stage"] in stages else 0
+    # The current stage's clock is stage_entered_at (what change_stage sets and
+    # the SLA measures); the note history can lag it, e.g. after a backdate.
+    entered_now = _parse(project["stage_entered_at"]) if project["stage_entered_at"] else None
+    if entered_now and project["stage"] in stages:
+        visits[project["stage"]] = {"entered_at": entered_now.isoformat(), "days": round((now - entered_now).total_seconds() / 86400, 1)}
     stage_rows = []
     for i, name in enumerate(stages):
         status = "done" if i < current else "current" if i == current else "next"

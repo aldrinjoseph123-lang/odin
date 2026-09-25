@@ -96,6 +96,8 @@ def auth_link_request():
     """External accounts ask for a sign-in link here. The reply is the same
     whether or not the address is known — no enumeration — and requests are
     rate limited per address and IP."""
+    if session.get("user_id") and request.method == "GET":
+        return redirect(url_for("board"))     # already in; a stale link just lands them home
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         if not valid_email(email):
