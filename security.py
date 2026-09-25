@@ -150,6 +150,9 @@ def issue_login_link(user_id, created_by=None):
     import hashlib
     raw = secrets.token_urlsafe(32)
     now = datetime.utcnow()
+    # housekeeping on the way in: a link a week past expiry has no evidential
+    # value the audit trail does not already hold
+    get_db().execute("DELETE FROM login_links WHERE expires_at < ?", ((now - timedelta(days=7)).isoformat(),))
     get_db().execute(
         "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address) VALUES (?, ?, ?, ?, ?, ?)",
         (user_id, hashlib.sha256(raw.encode()).hexdigest(), now.isoformat(),

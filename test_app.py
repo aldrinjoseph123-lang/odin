@@ -1248,6 +1248,26 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c.post("/settings/integrations", data={"guest_links_enabled": "on"}, headers=h)
         self.assertEqual(anon.get(f"/guest/{tok}").status_code, 200)
 
+    def test_reset_data_wipes_every_project_table_so_ids_start_clean(self):
+        import reset_data
+        self.new_project(name="Demo", client="C", customer_approval="1")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        self.client.post("/projects/1/report/save", data={"body": "# r"})
+        with patch("sys.argv", ["reset_data.py", "--yes"]):
+            self.assertEqual(reset_data.main(), 0)
+        with self.raw_db() as db:
+            for t in ["projects", "project_stages", "project_participants", "stage_approvals", "project_reports", "login_links", "tasks", "status_notes", "documents"]:
+                self.assertEqual(db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0], 0, t)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM users").fetchone()[0], 2)      # admin + Ann kept
+            self.assertGreater(db.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0], 0)
+        # the next project starts with a clean team, not the demo's
+        self.new_project(name="Real", client="C")
+        with self.raw_db() as db:
+            self.assertEqual([r[0] for r in db.execute("SELECT role FROM project_participants WHERE project_id=1")], ["Project manager"])
+
     # ---- reports as JSON (React port) ------------------------------------------
 
     def test_api_reports_feed_the_pages_and_save_through_the_bridge(self):
@@ -1442,9 +1462,22 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         to = sorted(c.args[0] for c in mail.call_args_list)
         # owner (notify_event) + the two others; admin is the actor so not a second time
         self.assertEqual(to, ["admin@odin.example", "ann@acme.example", "pm1@odin.example"])
-        ann_mail = next(c for c in mail.call_args_list if c.args[0] == "ann@acme.example")
-        self.assertIn("kicked off", ann_mail.args[2]); self.assertIn("partner page", ann_mail.args[2])
-        self.assertNotIn("approve", ann_mail.args[2])                       # approval switch is off
+        by = {c.args[0]: c.args[2] for c in mail.call_args_list}
+        self.assertIn("kicked off", by["ann@acme.example"]); self.assertNotIn("approve", by["ann@acme.example"])   # approval switch is off
+        # every mail carries a way in: staff get the project page, an external a one-time link that lands on it
+        self.assertIn("http://localhost/projects/1", by["pm1@odin.example"]); self.assertIn("/projects/1", by["admin@odin.example"])
+        import re
+        link = re.search(r'href="([^"]+/auth/link/[^"]+)"', by["ann@acme.example"]).group(1)
+        self.assertIn("next=/projects/1", link)
+        anon = app_module.app.test_client()
+        r = anon.get(link.replace("http://localhost", ""))
+        self.assertEqual(r.headers["Location"], "/projects/1")
+        self.assertEqual(anon.get("/api/session").get_json()["user"]["name"], "Ann")
+        with self.raw_db() as db:   # a week-old expired link is swept when the next one is minted
+            db.execute("INSERT INTO login_links (user_id, token_hash, created_at, expires_at) VALUES (1, 'stale', '2020-01-01', '2020-01-01')"); db.commit()
+        self.client.post("/projects/1/stage", data={"stage": stages[2]})
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM login_links WHERE token_hash='stale'").fetchone())
 
     def test_customer_approval_is_optional_per_project_and_only_the_customer_decides(self):
         self.new_project(name="Plain", client="Acme")
@@ -2935,7 +2968,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
         self.client.get("/board")
-        mock_send_mail.assert_any_call("admin@example.com", "Project inactive", "Project: Proj (C)")
+        sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Project inactive")]
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(sent[0].args[2].startswith("Project: Proj (C)"))
+        self.assertIn("http://localhost/projects/1", sent[0].args[2])     # the alert mail links to the project too
 
     def test_audit_logs_filter_by_user_action_and_project(self):
         # admin creates one project, priya creates another

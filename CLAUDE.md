@@ -16,6 +16,16 @@ and `-line`), Inter, `--radius: 0.5rem`, hairline `--border`. No dark mode.
 That stylesheet is frozen: fix defects only, no new components, no re-theming —
 the port replaces it page by page.
 
+# Adding a table
+
+A table keyed by `project_id` (or holding per-user secrets) must be wired into
+every place that walks the schema, or the next reset leaves rows that attach
+themselves to the next project created:
+`reset_data.WIPE_TABLES` (children before parents) · the purge cascade in
+`db.py` (`purge_deleted`) · `services/reports.draft_report` if it is
+project history · `scripts/seed_uat.py` if UAT needs rows · a purge for
+anything that only grows (`login_links` is trimmed as links are minted).
+
 # Front end migration — React + shadcn/ui (in progress)
 
 Decision (8 Sep 2026): the UI moves to **Vite + React + TypeScript + shadcn/ui**

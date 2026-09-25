@@ -856,7 +856,7 @@ def participant_invite(project_id):
             flash(f"{user['name']} added as {role}" + ("" if user["active"] else " (account is deactivated)"))
         else:
             raw = issue_login_link(user["id"], session["user_id"])
-            ok, error = send_login_link(user, raw, session["user_name"], project["name"])
+            ok, error = send_login_link(user, raw, session["user_name"], project["name"], project_id)
             if ok:
                 flash(f"{user['name']} added as {role} — sign-in link emailed to {email}")
             else:

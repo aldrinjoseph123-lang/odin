@@ -256,7 +256,9 @@ export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDeta
       <div className="min-w-0">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate text-[17px] font-semibold tracking-tight">{d.name}</h2>
+            {standalone
+              ? <h1 className="truncate text-[17px] font-semibold tracking-tight">{d.name}</h1>
+              : <h2 className="truncate text-[17px] font-semibold tracking-tight">{d.name}</h2>}
             <p className="text-[12.5px] text-muted-foreground">
               {d.client}{d.vendor_name ? ` · ${d.vendor_name}` : ""}{d.product_name ? ` · ${d.product_name}` : ""}{d.outsourcer_name ? ` · via ${d.outsourcer_name}` : ""} · owner {d.owner_name}
             </p>

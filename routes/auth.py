@@ -74,10 +74,11 @@ def start_session(user):
     get_db().commit()
 
 
-def send_login_link(user, raw_token, invited_by=None, project_name=None):
+def send_login_link(user, raw_token, invited_by=None, project_name=None, project_id=None):
     """Email the link; returns (ok, error). Never raises."""
     import graph
-    link = url_for("auth_link_consume", token=raw_token, _external=True)
+    link = url_for("auth_link_consume", token=raw_token, _external=True,
+                   **({"next": url_for("project_detail", project_id=project_id)} if project_id else {}))
     # Names come from the users table and the project form: escape them, this
     # is HTML going into a mail client.
     intro = (f"{escape(invited_by)} added you to the project <b>{escape(project_name)}</b> in Odin." if project_name
@@ -122,7 +123,8 @@ def auth_link_consume(token):
         return redirect(url_for("auth_link_request"))
     start_session(user)
     audit_log("login_success", "user", user["id"], user["username"], "sign-in link", actor=user["username"])
-    return redirect(url_for("board"))
+    # a link minted for a notification lands on the project it was about
+    return redirect(safe_next_url() or url_for("board"))
 
 
 def safe_next_url():

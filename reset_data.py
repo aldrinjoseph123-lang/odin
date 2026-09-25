@@ -10,7 +10,11 @@ Kept:    users, roles/permissions, stages (and their SLAs), doc categories,
          contacts/partners/vendors/products/outsourcers, settings, the M365
          connection, and the audit log.
 Removed: projects and everything hanging off them — status notes, tasks,
-         document rows, alerts — plus the uploaded files on disk.
+         document rows, alerts, each project's own stage list, its team,
+         approval requests and saved reports — plus the uploaded files on
+         disk, and every outstanding sign-in link (they belong to demo
+         invitations). External accounts created by demo invites are kept
+         like any other user; deactivate them from Users if unwanted.
 
 The audit log is deliberately kept: it is the record of who did what, and
 deleting it to tidy up demo data is exactly the kind of thing an audit trail
@@ -24,7 +28,11 @@ import sys
 
 from db import DB_PATH, UPLOAD_DIR
 
-WIPE_TABLES = ["status_notes", "tasks", "documents", "alerts", "projects"]
+# Children before parents. Any new table keyed by project_id belongs here —
+# the id counter is reset below, so a survivor would attach itself to the
+# next project created (see the "new table" checklist in CLAUDE.md).
+WIPE_TABLES = ["status_notes", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
+               "project_participants", "project_stages", "login_links", "projects"]
 
 
 def counts(db):
