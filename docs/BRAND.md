@@ -37,7 +37,8 @@ version of that promise.
 | Token | Hex | Role |
 |---|---|---|
 | `--brand-ink` | `#0A0A0A` | Brand panels, mark tile, email band |
-| `--brand-red` | `#E11D2E` | Logo slash, raven eye, tagline second line, eyebrow numbers, live dot |
+| `--brand-red` | `#E11D2E` | Logo slash, raven eye, tagline second line, live dot |
+| `--brand-red-text` | `#E11D2E` on white, `#F23D4D` on black | Small red text: eyebrow numbers, the byline's "24x7". The parent red is too dim for small text on black (4.2:1). |
 | `--brand-paper` | `#FFFFFF` | Text and raven on brand ink |
 | `--brand-muted` | `#B8B8B4` | Secondary text on brand ink |
 

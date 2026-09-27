@@ -19,6 +19,7 @@
     --color-primary-text: var(--primary-text);
     --color-nav-fg: var(--nav-fg);
     --color-brand-red: var(--brand-red);
+    --color-brand-red-text: var(--brand-red-text);
     --color-brand-ink: var(--brand-ink);
     --color-brand-paper: var(--brand-paper);
     --color-brand-muted: var(--brand-muted);
@@ -116,6 +117,7 @@
        the logo and brand surfaces only (sign-in panel, print header, emails);
        in the app it would read as "blocked", so the UI never uses it. */
     --brand-red: #E11D2E;
+    --brand-red-text: #E11D2E;     /* red as small text: 4.75:1 on white */
     --brand-ink: #0A0A0A;
     --brand-paper: #FFFFFF;
     --brand-muted: #B8B8B4;
@@ -203,6 +205,7 @@ main { counter-reset: panel; }
 h3[data-n]::before {
   counter-increment: panel;
   content: counter(panel, decimal-leading-zero) " / ";
+  content: counter(panel, decimal-leading-zero) " / " / "";   /* decorative: not read aloud */
   font-family: var(--font-display);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -215,6 +218,7 @@ h3[data-n]::before {
   background-color: var(--brand-ink);
   background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.035) 0 1px, transparent 1px 14px);
   color: var(--brand-paper);
+  --brand-red-text: #F23D4D;     /* lifted for small text on ink: 5.2:1 (the parent red is 4.2:1) */
 }
 
 /* Respect the OS "reduce motion" setting: no transitions, no animations. */

@@ -25,6 +25,7 @@ colors:
   bad-soft: "#FDECEB"
   bad-line: "#E0463D"
   brand-red: "#E11D2E"
+  brand-red-text-on-ink: "#F23D4D"
   brand-ink: "#0A0A0A"
   brand-muted: "#B8B8B4"
 typography:
@@ -259,7 +260,9 @@ The build rejected, by the user's explicit choice, the dark/industrial look, kan
 
 ## Brand surfaces
 
-Built in `frontend/src/components/Brand.tsx`; tokens `--brand-red`, `--brand-ink`, `--brand-paper`, `--brand-muted`, `--brand-edge` (all themes; the edge only shows in dark).
+Built in `frontend/src/components/Brand.tsx`; tokens `--brand-red`, `--brand-red-text`, `--brand-ink`, `--brand-paper`, `--brand-muted`, `--brand-edge` (all themes; the edge only shows in dark).
+
+**The Red-Text Rule.** The parent red (`#E11D2E`) is 4.2:1 on brand ink: fine for the logo, the eye, the dot and the 30 px+ tagline, not for small text. Small red text (eyebrow numbers, the byline's "24x7") uses `--brand-red-text`, which is the parent red on white (4.75:1) and lifts to `#F23D4D` inside `.brand-panel` (5.2:1).
 
 - **Logo** = the raven mark (a perched white raven with a red eye on a black tile, corners at 16% of its size) + the ODIN wordmark (chamfered letters drawn as SVG, the O struck through in red: Ø), then, where the byline is shown, a thin rule and "by Protect24x7" on the same line. Header: 28 px mark, 15 px wordmark, letters in `currentColor`.
 - **Brand panel** (`AuthLayout`): `.brand-panel`, always black with the parent's faint 135° rule, whatever the theme. Byline "by Protect24x7", eyebrow "01 / Project lifecycle", the tagline in Chakra Petch 700 uppercase (30 → 40 → 52 px by breakpoint, the only sizes above 24 px), second line red, live clock "19:02 GMT+4 · On watch" with a pulsing red dot. Left half from `lg`; a top band on phones. The form side follows the user's theme.

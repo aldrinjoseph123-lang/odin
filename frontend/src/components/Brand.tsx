@@ -46,7 +46,7 @@ export function Wordmark({ className }: { className?: string }) {
 }
 
 export function Byline({ className }: { className?: string }) {
-  return <span className={cn("font-display text-[10.5px] font-semibold uppercase tracking-[.16em]", className)}>by Protect<span className="text-brand-red">24x7</span></span>
+  return <span className={cn("font-display text-[10.5px] font-semibold uppercase tracking-[.16em]", className)}>by Protect<span className="text-brand-red-text">24x7</span></span>
 }
 
 export function Logo({ byline, className, markClass, wordClass }: { byline?: boolean; className?: string; markClass?: string; wordClass?: string }) {
@@ -61,7 +61,7 @@ export function Logo({ byline, className, markClass, wordClass }: { byline?: boo
 
 // "01 / Section" — the numbered eyebrow borrowed from protect24x7.com.
 export function Eyebrow({ n, children, className }: { n: number; children: ReactNode; className?: string }) {
-  return <p className={cn("font-display text-[11px] font-semibold uppercase tracking-[.16em]", className)}><span className="text-brand-red">{String(n).padStart(2, "0")} /</span> {children}</p>
+  return <p className={cn("font-display text-[11px] font-semibold uppercase tracking-[.16em]", className)}><span className="text-brand-red-text">{String(n).padStart(2, "0")} /</span> {children}</p>
 }
 
 function useClock() {

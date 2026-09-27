@@ -381,6 +381,22 @@
           "#EFEFEC"
         ],
         "note": "Secondary text on brand ink."
+      },
+      "brand-red-text-on-ink": {
+        "role": "brand",
+        "displayName": "Watch Red (text on ink)",
+        "canonical": "#F23D4D",
+        "tonalRamp": [
+          "#50080F",
+          "#7A0D17",
+          "#A81322",
+          "#D41C2E",
+          "#F23D4D",
+          "#F56B77",
+          "#F9A1A8",
+          "#FDE2E4"
+        ],
+        "note": "Small red text on brand ink, 5.2:1."
       }
     },
     "typographyMeta": {
@@ -666,6 +682,11 @@
         "name": "The Flat Rule",
         "body": "Surfaces are flat at rest and under interaction. Do not add `shadow-*` to a panel, popover or button; use a border, a ring, or a fill step.",
         "section": "elevation"
+      },
+      {
+        "name": "The Red-Text Rule",
+        "body": "The parent red (`#E11D2E`) is 4.2:1 on brand ink: fine for the logo, the eye, the dot and the 30 px+ tagline, not for small text. Small red text (eyebrow numbers, the byline's \"24x7\") uses `--brand-red-text`, which is the parent red on white (4.75:1) and lifts to `#F23D4D` inside `.brand-panel` (5.2:1).",
+        "section": "colors"
       }
     ],
     "dos": [
