@@ -1,8 +1,8 @@
 ---
 version: 1
-slug: "frontend-src-pages-board-tsx"
-primary_target: "frontend/src/pages/Board.tsx"
-related_targets: ["frontend/src/pages/Flow.tsx","routes/api.py"]
+slug: "frontend-src-pages-flow-tsx"
+primary_target: "frontend/src/pages/Flow.tsx"
+related_targets: ["frontend/src/pages/Project.tsx","routes/api.py"]
 ---
 
 # Surface: Flow (first screen, /board)

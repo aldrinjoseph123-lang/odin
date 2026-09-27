@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-08T10:53:54Z",
+  "generatedAt": "2026-09-27T15:39:15Z",
   "title": "Design System: Odin",
   "extensions": {
     "colorMeta": {
@@ -333,6 +333,54 @@
           "oklch(87% 0.192 28)",
           "oklch(95% 0.192 28)"
         ]
+      },
+      "brand-red": {
+        "role": "brand",
+        "displayName": "Protect Red",
+        "canonical": "#E11D2E",
+        "tonalRamp": [
+          "#4A080E",
+          "#720C16",
+          "#9E1320",
+          "#C9192A",
+          "#E11D2E",
+          "#EA5563",
+          "#F29AA2",
+          "#FBE1E4"
+        ],
+        "note": "Logo slash, raven eye, tagline second line, eyebrow numbers, live dot. Brand surfaces only; never UI."
+      },
+      "brand-ink": {
+        "role": "brand",
+        "displayName": "Watch Black",
+        "canonical": "#0A0A0A",
+        "tonalRamp": [
+          "#0A0A0A",
+          "#141414",
+          "#1F1F1F",
+          "#2E2E2E",
+          "#454545",
+          "#6B6B6B",
+          "#999999",
+          "#D6D6D6"
+        ],
+        "note": "Brand panel, mark tile, email band."
+      },
+      "brand-muted": {
+        "role": "brand",
+        "displayName": "Night Grey",
+        "canonical": "#B8B8B4",
+        "tonalRamp": [
+          "#3A3A38",
+          "#55554F",
+          "#73736D",
+          "#94948F",
+          "#B8B8B4",
+          "#CBCBC7",
+          "#DDDDDA",
+          "#EFEFEC"
+        ],
+        "note": "Secondary text on brand ink."
       }
     },
     "typographyMeta": {
@@ -342,11 +390,7 @@
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Pane titles: 'Active rollouts', the selected rollout's name."
-      },
-      "wordmark": {
-        "displayName": "Wordmark",
-        "purpose": "'Odin' in the top bar."
+        "purpose": "Page and pane titles in Chakra Petch — the one brand mark inside the app besides the logo."
       },
       "body": {
         "displayName": "Body",
@@ -371,6 +415,22 @@
       "micro": {
         "displayName": "Micro",
         "purpose": "Time-strip ticks, nav count badges, avatar initials. The floor."
+      },
+      "brand-display-sm": {
+        "displayName": "Brand display (phone)",
+        "purpose": "Tagline on the sign-in panel below 640 px."
+      },
+      "brand-display-md": {
+        "displayName": "Brand display (tablet)",
+        "purpose": "Tagline on the sign-in panel from 640 px."
+      },
+      "brand-display": {
+        "displayName": "Brand display",
+        "purpose": "Tagline on the sign-in panel from 1024 px and the link preview."
+      },
+      "byline": {
+        "displayName": "Byline",
+        "purpose": "\"by Protect24x7\" beside the wordmark on brand surfaces."
       }
     },
     "shadows": [],
@@ -459,6 +519,22 @@
   },
   "components": [
     {
+      "name": "Brand Logo",
+      "kind": "custom",
+      "refersTo": "logo",
+      "description": "Raven mark + ODIN wordmark + byline, one line. Header shows mark and wordmark only.",
+      "html": "<span class=\"ds-logo\"><svg class=\"ds-logo-mark\" viewBox=\"0 0 64 64\"><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"10\" fill=\"#0A0A0A\"/><path d=\"M61 24 C56 19 52 16 47 15 C44 11.5 37 11.5 34.5 15.5 C30.5 22 24 28 19 36 L5 57 L13 58.5 L26 48.5 C31 49.5 37 47.5 41 43 C45 39 47 34.5 47.5 30.5 L50 29.5 L48.5 27.5 L50.5 25.5 Q55 25.5 61 24 Z\" fill=\"#fff\"/><path d=\"M31 48.5 L30 57.5 M36.5 46.5 L36.5 56.5\" stroke=\"#fff\" stroke-width=\"2.4\"/><path d=\"M37 21 C35 31 30 40 20 47\" stroke=\"#0A0A0A\" stroke-width=\"2\" fill=\"none\"/><path d=\"M50.5 25.5 L59 24.2\" stroke=\"#0A0A0A\" stroke-width=\"1.2\"/><path d=\"M43.5 15.5 L45.5 17.5 L43.5 19.5 L41.5 17.5 Z\" fill=\"#E11D2E\"/></svg><svg class=\"ds-logo-word\" viewBox=\"0 -3 71 30\"><path fill=\"currentColor\" d=\"M22 0 H35 L40 5 V19 L35 24 H22 Z M26.5 4.5 H33 L35.5 7 V17 L33 19.5 H26.5 Z M44 0 H48.5 V24 H44 Z M52.5 24 V0 H57 L66 15 V0 H70.5 V24 H66 L57 9 V24 Z\" fill-rule=\"evenodd\"/><path fill=\"currentColor\" fill-rule=\"evenodd\" d=\"M5 0 H13 L18 5 V19 L13 24 H5 L0 19 V5 Z M6.5 4.5 H11.5 L13.5 6.5 V17.5 L11.5 19.5 H6.5 L4.5 17.5 V6.5 Z\"/><path fill=\"#E11D2E\" d=\"M1.4 26 L4.4 26 L16.4 -2 L13.4 -2 Z\"/></svg><span class=\"ds-logo-rule\"></span><span class=\"ds-logo-by\">by Protect<b>24x7</b></span></span>",
+      "css": ".ds-logo{display:inline-flex;align-items:center;gap:10px;color:var(--foreground,#101114)} .ds-logo-mark{width:28px;height:28px} .ds-logo-word{height:15px;width:auto} .ds-logo-rule{width:1px;height:12px;background:currentColor;opacity:.3} .ds-logo-by{font:600 10.5px/1 'Chakra Petch',Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;opacity:.7} .ds-logo-by b{color:#E11D2E;font-weight:600}"
+    },
+    {
+      "name": "Brand Panel",
+      "kind": "card",
+      "refersTo": "brand-panel",
+      "description": "The black sign-in panel: eyebrow, tagline with red second line, live on-watch clock.",
+      "html": "<aside class=\"ds-brand-panel\"><p class=\"ds-eyebrow\"><span>01 /</span> Project lifecycle</p><p class=\"ds-tagline\">Every project.<br><span>On watch.</span></p><p class=\"ds-clock\"><i></i>19:02 GMT+4 · On watch</p></aside>",
+      "css": ".ds-brand-panel{background:#0A0A0A repeating-linear-gradient(135deg,rgb(255 255 255/.035) 0 1px,transparent 1px 14px);color:#fff;padding:32px;display:grid;gap:16px} .ds-eyebrow,.ds-clock{font:600 11px/1 'Chakra Petch',Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#B8B8B4;margin:0} .ds-eyebrow span{color:#E11D2E} .ds-tagline{margin:0;font:700 40px/1.02 'Chakra Petch',Inter,sans-serif;text-transform:uppercase;letter-spacing:-.025em} .ds-tagline span{color:#E11D2E} .ds-clock{display:flex;align-items:center;gap:8px} .ds-clock i{width:6px;height:6px;border-radius:50%;background:#E11D2E}"
+    },
+    {
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
@@ -541,10 +617,10 @@
   ],
   "narrative": {
     "northStar": "The Whiteboard Flowchart",
-    "overview": "Odin answers one question before anything is read: where is every rollout, and what is stuck. The built world is convention played straight, benchmarked against Linear and FigJam: a white ground, ink text, hairline borders, and stage nodes with arrows drawn between them. It has no metaphor and no atmosphere; the interface is the diagram. There is exactly one accent, a saturated blue, and it is spent only on selection, the primary action, focus and the \"today\" marker. Every other colour on the screen is a state (done, on track, due soon / over SLA, overdue) and means nothing else.\n\nDensity is high but scannable. The first screen is a resizable vertical split: a list of rollout rows above (stuck rows first, each carrying a 7-dot stepper), and the selected rollout below drawn as a left-to-right flowchart with its open tasks hung under the current node, a right rail for next-up / ETA / advance, and a time strip along the bottom. Type is small (13 px body) but never below 11 px, and nothing is uppercased. Surfaces are flat: no shadows anywhere, depth comes from hairlines and tonal fills.\n\nThe build rejected, by the user's explicit choice, the dark/industrial look, kanban-style SaaS boards and number-dense grids. Where the direction contract and the build differ, this file records the build.",
+    "overview": "**Creative North Star: \"The Whiteboard Flowchart\"**\n\nOdin answers one question before anything is read: where is every rollout, and what is stuck. The built world is convention played straight, benchmarked against Linear and FigJam: a white ground, ink text, hairline borders, and stage nodes with arrows drawn between them. It has no metaphor and no atmosphere; the interface is the diagram. There is exactly one accent, a saturated blue, and it is spent only on selection, the primary action, focus and the \"today\" marker. Every other colour on the screen is a state (done, on track, due soon / over SLA, overdue) and means nothing else.\n\nDensity is high but scannable. The first screen is a resizable vertical split: a list of rollout rows above (stuck rows first, each carrying a 7-dot stepper), and the selected rollout below drawn as a left-to-right flowchart with its open tasks hung under the current node, a right rail for next-up / ETA / advance, and a time strip along the bottom. Type is small (13 px body) but never below 11 px, and nothing is uppercased. Surfaces are flat: no shadows anywhere, depth comes from hairlines and tonal fills.\n\nThe build rejected, by the user's explicit choice, the dark/industrial look, kanban-style SaaS boards and number-dense grids. Where the direction contract and the build differ, this file records the build.",
     "keyCharacteristics": [
       "White ground, ink text, one blue accent; state colours in matched text / soft-fill / line triplets",
-      "Inter throughout with `cv11` + `ss01` features; sentence case, no tracked uppercase labels",
+      "Inter for everything read or typed, with `cv11` + `ss01`; Chakra Petch for page titles and brand surfaces only; sentence case in the UI, tracked caps only on brand surfaces",
       "8 px base radius (`--radius: 0.5rem`) scaled by shadcn's ratios; pills and dots are fully round",
       "Hairline 1 px borders (`#E4E6EB`); 1.5 px strokes only for flow geometry (nodes, dots, connectors)",
       "No box-shadows; focus and selection are 3 px translucent rings",
@@ -573,12 +649,12 @@
       },
       {
         "name": "The Sentence-Case Rule",
-        "body": "No uppercase, no letter-spaced labels. A label is 12 px, weight 600, chrome text. The tracked-caps device belongs to the retired identity.",
+        "body": "No uppercase, no letter-spaced labels in the UI. A label is 12 px, weight 600, chrome text. Tracked caps belong to the brand surfaces only (panel, byline, eyebrows, print header, email).",
         "section": "typography"
       },
       {
         "name": "The Thirteen Rule",
-        "body": "13 px is body. Sizes step by half-pixels (13.5 / 12.5 / 11.5) to separate levels without visibly changing scale; do not add sizes above 17 px outside the login display.",
+        "body": "13 px is body. Sizes step by half-pixels (13.5 / 12.5 / 11.5) to separate levels without visibly changing scale; do not add sizes above 17 px outside the sign-in card titles and the brand tagline.",
         "section": "typography"
       },
       {
@@ -593,22 +669,22 @@
       }
     ],
     "dos": [
-      "Do keep Accent Blue to selection, the single primary action, focus and the today marker (The One Accent Rule).",
-      "Do map rollout state to its triplet exactly: `overdue` → `bad`, `due_soon` and `over_sla` → `warn`, done stages → `ok`; `on_track` gets no colour.",
-      "Do pair every state colour with a second channel — the chip text, a visually-hidden label, the check glyph, dashed vs solid borders.",
-      "Do use `--primary-text` for accent-coloured text on white.",
-      "Do build on the base-nova components with the `render` prop; apply `buttonVariants()` to anchors that navigate to un-ported Jinja pages.",
-      "Do keep chrome at 12–13 px, sentence case, weight 500–600, in Chrome Text or Muted Text.",
-      "Do use 1 px hairlines for structure and 1.5 px strokes only for flow geometry (nodes, dots, connectors, today marker).",
-      "Do convey depth with borders, rings and fill steps (Paper → Muted Fill → Accent Wash)."
+      "**Do** keep Accent Blue to selection, the single primary action, focus and the today marker (The One Accent Rule).",
+      "**Do** map rollout state to its triplet exactly: `overdue` → `bad`, `due_soon` and `over_sla` → `warn`, done stages → `ok`; `on_track` gets no colour.",
+      "**Do** pair every state colour with a second channel — the chip text, a visually-hidden label, the check glyph, dashed vs solid borders.",
+      "**Do** use `--primary-text` for accent-coloured text on white.",
+      "**Do** build on the base-nova components with the `render` prop; apply `buttonVariants()` to anchors that navigate to un-ported Jinja pages.",
+      "**Do** keep chrome at 12–13 px, sentence case, weight 500–600, in Chrome Text or Muted Text.",
+      "**Do** use 1 px hairlines for structure and 1.5 px strokes only for flow geometry (nodes, dots, connectors, today marker).",
+      "**Do** convey depth with borders, rings and fill steps (Paper → Muted Fill → Accent Wash)."
     ],
     "donts": [
-      "Don't add box-shadows, gradients, or an off-white page tint; the ground is `#FFFFFF` and surfaces are flat.",
-      "Don't uppercase or letter-space labels, or reintroduce the retired identity's dark nav, brand red, Chakra Petch or 2 px corners — those live only in the frozen `static/style.css`.",
-      "Don't use green for \"on track\" rows or amber/red for anything that is not a lateness state; don't use `--destructive` for rollout state.",
-      "Don't put a state's text shade in a fill or its line shade under text.",
-      "Don't invent tokens: use the `:root` block in `frontend/src/index.css` and its `@theme inline` aliases (`ok-*`, `warn-*`, `bad-*`, `primary-text`, `nav-fg`); there is no `.dark` block and none should be added ad hoc.",
-      "Don't render the flow as a kanban board or a numeric table; the stepper and the node row are the read."
+      "**Don't** add box-shadows, gradients, or an off-white page tint; the ground is `#FFFFFF` and surfaces are flat.",
+      "**Don't** uppercase or letter-space UI labels, or bring back the retired dark nav or 2 px corners. Brand red and Chakra Petch are allowed only where \"Brand surfaces\" lists them; red never marks anything in the UI except `--bad` state.",
+      "**Don't** use green for \"on track\" rows or amber/red for anything that is not a lateness state; don't use `--destructive` for rollout state.",
+      "**Don't** put a state's text shade in a fill or its line shade under text.",
+      "**Don't** invent tokens: use the `:root` block in `frontend/src/index.css` and its `@theme inline` aliases (`ok-*`, `warn-*`, `bad-*`, `primary-text`, `nav-fg`). Dark and the accents are whole-token overrides (`:root[data-theme=\"dark\"]`, `:root[data-accent=…]`); a component never branches on the theme.",
+      "**Don't** render the flow as a kanban board or a numeric table; the stepper and the node row are the read."
     ]
   }
 }

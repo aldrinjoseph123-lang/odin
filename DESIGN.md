@@ -48,7 +48,7 @@ typography:
     letterSpacing: "-0.025em"
   display:
     fontFamily: "Inter, system-ui, -apple-system, sans-serif"
-    fontSize: "24px"
+    fontSize: "20px"
     fontWeight: 700
     lineHeight: 1.25
     letterSpacing: "-0.025em"
@@ -58,11 +58,11 @@ typography:
     fontWeight: 600
     lineHeight: 1.5
     letterSpacing: "-0.025em"
-  wordmark:
-    fontFamily: "Inter, system-ui, -apple-system, sans-serif"
-    fontSize: "15px"
-    fontWeight: 700
-    letterSpacing: "-0.025em"
+  byline:
+    fontFamily: "Chakra Petch, Inter, sans-serif"
+    fontSize: "10.5px"
+    fontWeight: 600
+    letterSpacing: "0.16em"
   body:
     fontFamily: "Inter, system-ui, -apple-system, sans-serif"
     fontSize: "13px"
@@ -251,7 +251,7 @@ The build rejected, by the user's explicit choice, the dark/industrial look, kan
 
 **Key Characteristics:**
 - White ground, ink text, one blue accent; state colours in matched text / soft-fill / line triplets
-- Inter throughout with `cv11` + `ss01` features; sentence case, no tracked uppercase labels
+- Inter for everything read or typed, with `cv11` + `ss01`; Chakra Petch for page titles and brand surfaces only; sentence case in the UI, tracked caps only on brand surfaces
 - 8 px base radius (`--radius: 0.5rem`) scaled by shadcn's ratios; pills and dots are fully round
 - Hairline 1 px borders (`#E4E6EB`); 1.5 px strokes only for flow geometry (nodes, dots, connectors)
 - No box-shadows; focus and selection are 3 px translucent rings
@@ -317,12 +317,13 @@ Each rollout state owns three tokens: a **text** shade (AA on white and on its o
 
 Loaded from Google Fonts at 400 / 500 / 600 / 700; `font-feature-settings: "cv11", "ss01"` (single-storey a, open digits) is set on `html`; text is antialiased.
 
-**Character:** one family, a narrow weight range and a tight size ramp. Hierarchy is carried by weight (500 for names, 600 for titles and labels, 700 only for the wordmark and the login title) and by grey level, not by size. Headings are tracked tight (`-0.025em`); everything else is at normal tracking and sentence case.
+**Character:** one family, a narrow weight range and a tight size ramp. Hierarchy is carried by weight (500 for names, 600 for titles and labels, 700 only for card titles on the sign-in pages and the brand tagline) and by grey level, not by size. Headings are tracked tight (`-0.025em`); everything else is at normal tracking and sentence case.
 
 ### Hierarchy
-- **Display** (700, 24 px, tight): the "Odin" title on the login card only.
+- **Display** (700, 20 px, tight): the card title on the sign-in, reset and email-link pages ("Sign in", "Reset your password").
 - **Title** (Chakra Petch 600, 17 px, tracking tight): pane titles — "Active rollouts", the selected rollout's name.
-- **Wordmark**: the SVG ODIN wordmark, 15 px high in the top bar (see Brand surfaces).
+- **Wordmark**: the SVG ODIN wordmark, 15 px high in the top bar (see Brand surfaces); it is drawn, not set in a font.
+- **Byline** (Chakra Petch 600, 10.5 px, tracked 0.16em, uppercase): "by Protect24x7" on brand surfaces only.
 - **Body** (400, 13 px, 1.5): nav links (500), rail copy, empty states, "Open project", search text. `text-sm` (14 px) is the shadcn default on buttons and inputs; the build overrides most inputs to 13 px.
 - **Body strong** (500, 13.5 px): the rollout name in each row.
 - **Secondary** (400, 12.5 px): rollout subtitles (client · vendor · product · owner), stage node names (600, `leading-tight`), task titles, filter chip labels (500), recent-note text.
@@ -333,7 +334,7 @@ Loaded from Google Fonts at 400 / 500 / 600 / 700; `font-feature-settings: "cv11
 ### Named Rules
 **The Sentence-Case Rule.** No uppercase, no letter-spaced labels in the UI. A label is 12 px, weight 600, chrome text. Tracked caps belong to the brand surfaces only (panel, byline, eyebrows, print header, email).
 
-**The Thirteen Rule.** 13 px is body. Sizes step by half-pixels (13.5 / 12.5 / 11.5) to separate levels without visibly changing scale; do not add sizes above 17 px outside the login display.
+**The Thirteen Rule.** 13 px is body. Sizes step by half-pixels (13.5 / 12.5 / 11.5) to separate levels without visibly changing scale; do not add sizes above 17 px outside the sign-in card titles and the brand tagline.
 
 ## Layout
 
@@ -346,7 +347,7 @@ The app shell is a 52 px white top bar (`h-13`, hairline bottom border, 20 px si
 - **Flowchart**: an `<ol>` with one equal column per stage (`repeat(n, minmax(0,1fr))`) at `md`+, nodes 6 px apart with a 16 px arrow slot drawn between them; below `md` a single column with 8 px gaps and no arrows. The open-task list under the current node is allowed to spill to twice its column width (`calc(200% + 0.75rem)`).
 - **Time strip**: 68 px tall, hairline top border, 16 px above; tick labels on two rows (`top-1` / `top-5`) when closer than 12% of the span; 6 px tracks at `top-10`.
 
-Breakpoints are Tailwind defaults as used: `sm` 640 px, `md` 768 px, `lg` 1024 px. Login is a single centred `max-w-sm` (384 px) card with 24 px page padding.
+Breakpoints are Tailwind defaults as used: `sm` 640 px, `md` 768 px, `lg` 1024 px. The sign-in, reset and email-link pages are a two-column grid from `lg` (brand panel left, form right); below `lg` the brand panel is a top band. The form is a centred `max-w-sm` (384 px) card.
 
 **The Stuck-First Rule.** The list is ordered by state severity, and on load it opens at the top; the deep-linked row is scrolled into view only after a click so the stuck rows are never hidden.
 
@@ -412,7 +413,7 @@ Quiet, small, and rarely blue: one primary per view.
 
 ### Cards / Containers
 - **Rail panel** (Next up / ETA / Advance): white, 1 px hairline, 8 px radius, 12 px padding, 13 px body, 12 px semibold chrome-text header with a 14 px icon; panels stack with 16 px gaps.
-- **Card** (login): white, `ring-1` ink/10 instead of a border, 11.2 px radius, 16 px internal spacing, `max-w-sm`.
+- **Card** (sign-in pages): white, `ring-1` ink/10 instead of a border, 11.2 px radius, 16 px internal spacing, `max-w-sm`.
 - **Empty state:** dashed hairline box, 8 px radius, 40 px vertical padding, centred 13 px muted text.
 - **Alert (destructive):** white, hairline, 8 px radius, 10 px / 8 px padding, destructive text.
 
@@ -423,7 +424,7 @@ Quiet, small, and rarely blue: one primary per view.
 - **Label:** 14 px medium, 8 px above the field. Invalid: destructive border + 20% destructive ring. Disabled: 50% opacity, Stroke at 50% fill.
 
 ### Navigation
-White 52 px bar: wordmark left, then "Flow · My work · Projects · Cycle time · Alerts · Settings" as 13 px medium links in Chrome Text, hover to ink. The current section is ink with a 2 px Accent Blue bar sitting on the header's bottom edge (`after:-bottom-[15px]`). Right cluster: search, "New project" (primary `sm`) or a "Read-only" secondary badge for Viewers, a 28 px avatar (Accent Wash fill, accent-text initials), "Log out" as a text button. Below `md` the links collapse behind a 36 px menu icon button and drop down as a full-width white sheet with a hairline bottom border and 12 px gaps. A skip link becomes a primary-blue pill at the top-left on focus.
+52 px bar on the page ground: the logo left (28 px raven mark + 15 px wordmark), then "Flow · My work · Projects · Cycle time · Alerts · Settings" as 13 px medium links in Chrome Text, hover to ink. The current section is ink with a 2 px Accent Blue bar sitting on the header's bottom edge (`after:-bottom-[15px]`). Right cluster: search, "New project" (primary `sm`) or a "Read-only" secondary badge for Viewers, a 28 px avatar (Accent Wash fill, accent-text initials), "Log out" as a text button. Below `lg` (1024 px) the links collapse behind a 36 px menu icon button, while bell, theme button and avatar stay visible, and drop down as a full-width white sheet with a hairline bottom border and 12 px gaps. A skip link becomes a primary-blue pill at the top-left on focus.
 
 ### Stepper (signature)
 Seven 12 px dots joined by 1.5 px lines, one per configured stage, filling the row's middle column. Done: `ok-line` fill and border, green connector. Current: white dot, state-line border, 3 px state-soft ring (ink border + Muted Fill ring when on track); scales to 110% when the row is selected. Upcoming: Stroke-grey border, white fill, grey connector. Each dot is a tooltip trigger ("Scoping · done"); the whole stepper carries an `aria-label` naming the current stage.
@@ -438,7 +439,7 @@ A 6 px Muted Fill track spans start → target; each visited stage lays a 6 px i
 Ink fill, white 12 px text, 6.4 px radius, 12 px / 6 px padding, 10 px rotated-square arrow, 4 px offset, zero delay; enters with fade + 95% zoom.
 
 ### Avatar
-Round initials only (no images in use): 24 px in rows and 20 px under tasks with Paper fill and 10 px / 9 px semibold chrome-text initials; 28 px in the nav with Accent Wash fill and accent-text initials. A hairline ring is drawn inside the circle.
+A round picture when the person uploaded one, otherwise initials: 24 px in rows and 20 px under tasks with Paper fill and 10 px / 9 px semibold chrome-text initials; 28 px in the nav with Accent Wash fill and accent-text initials. A hairline ring is drawn inside the circle.
 
 ## Do's and Don'ts
 

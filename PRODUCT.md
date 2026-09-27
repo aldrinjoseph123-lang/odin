@@ -36,7 +36,7 @@ One shared pipeline for internal team, customer and vendor, with **stage SLAs me
 
 ## Capabilities and Constraints
 
-- Stack: Flask + SQLite JSON API; React + TypeScript + shadcn/ui front end (Vite, Tailwind 4) migrating page by page from Jinja (strangler). Login and Board are React today; projects list, project detail, settings, users, audit log, guest pages are still Jinja.
+- Stack: Flask + SQLite JSON API; React + TypeScript + shadcn/ui front end (Vite, Tailwind 4), ported page by page from Jinja (strangler). Every signed-in page is React; only the public guest pages, the login fallback form and the error page remain Jinja.
 - Roles/permissions matrix (Admin, Member, Contributor, Viewer, External) enforced server-side; the UI must reflect them (Viewers and Externals see, never move). Per project, every participant also has a project role (Project manager = owner, Sales, Coordinator, Contractor, Reseller, Customer), and it binds staff too: only the Project manager moves stages, edits the project, its stage list, team, report and guest links; a Coordinator runs tasks and documents; everyone else on or off the project reads, comments, and ticks tasks tagged to them; a Customer contact approves stage changes. Admins bypass the project role.
 - Every project owns its stage list: copied from a template in Settings at creation, then editable per project (add, rename, reorder, delete, SLAs). There is no shared stage header; each row carries its stage by name.
 - Tasks belong to a stage of their project and are worked from the flow screen: add with an assignee from the project team, tick, delete. The person a task is tagged to may tick it whatever their role.
@@ -50,8 +50,9 @@ One shared pipeline for internal team, customer and vendor, with **stage SLAs me
 
 ## Brand Commitments
 
-- Name: **Odin**. Never rebranded as the company.
-- The user has **released the previous visual identity** (dark nav, brand red #E11D2E, Chakra Petch, 2 px corners) for this rework: the whole look may be replaced. Nothing else is pinned.
+- Name: **Odin**, a sub-brand: **Odin by Protect24x7** (27 Sep 2026). Never rebranded as the company; the byline shows on everything outsiders see (sign-in, emails, printed reports).
+- Tagline: **"Every project. On watch."** Logo: a perched raven (red eye) on a black tile + the ODIN wordmark with a red-struck O (Ø). Guide: `docs/BRAND.md`.
+- **Hybrid identity.** The parent's black, red #E11D2E and Chakra Petch are the brand and live on brand surfaces only (logo, sign-in panel, emails, print header, icons). Inside the app the calm flowchart UI rules; red there means overdue and nothing else. The 8 Sep retirement of the dark/red *UI* still stands.
 - Voice (existing, keep): plain, specific, active; controls say exactly what happens; errors say what went wrong and how to fix it. No hype.
 - **Standing visual preference (8 Sep 2026):** convention played straight — a light, clean, modern, *direct* flowchart UI (boxes, arrows, states; no metaphor, no story). Craft bar: **Linear** and **Whimsical / FigJam**. Explicitly rejected: dark/industrial worlds, metaphorical worlds (trains, plants, courses), Jira/Monday/Asana-style SaaS boards, gamification, and number-dense tables.
 - First screen: **portfolio flow above, the selected rollout's own flowchart below, equal weight.**
@@ -60,7 +61,7 @@ One shared pipeline for internal team, customer and vendor, with **stage SLAs me
 
 - Real data: a production database with 14 rollouts and 5 users; a seeded UAT dataset (32 rollouts) at the scratch path used for testing.
 - `docs/UAT_SCRIPT.md`, `docs/UAT_RESULTS_2026-09-08.md`, the independent audit report (artifact) — real behaviour, real findings.
-- No logo asset exists beyond the wordmark "Odin". No customer testimonials, no screenshots for marketing; none must be invented.
+- Logo assets exist in `docs/brand/` (mark, wordmark, lockups, link preview), built for Odin on 27 Sep 2026; no Protect24x7 vector files were supplied. No customer testimonials, no screenshots for marketing; none must be invented.
 - Real vendor/product names in the data are the company's actual suppliers (e.g. CrowdStrike / Falcon Complete in test data).
 
 ## Product Principles
