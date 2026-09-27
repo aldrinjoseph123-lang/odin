@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, stateText, timeAgo } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, stageColumns, stateText, timeAgo } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -90,5 +90,16 @@ describe("nextUp", () => {
     expect(nextUp(open, "Pilot")?.title).toBe("due soon")
     expect(nextUp([t("a", "Deploy", null), t("b", "Deploy", null)], "Pilot")?.title).toBe("a")
     expect(nextUp([], "Pilot")).toBeUndefined()
+  })
+})
+
+describe("stageColumns", () => {
+  it("lines the same stage up across lists and slots project-only stages where they fall", () => {
+    const generic = ["PO", "Scoping", "Kickoff", "Deploy", "Closed"]
+    const edr = ["PO", "Scoping", "Pilot", "Deploy", "Rollout", "Closed"]
+    expect(stageColumns([generic, edr])).toEqual(["PO", "Scoping", "Pilot", "Kickoff", "Deploy", "Rollout", "Closed"])
+    expect(stageColumns([generic, generic])).toEqual(generic)
+    expect(stageColumns([["A", "B"], ["B", "A"]])).toEqual(["A", "B"])   // first order wins, nothing duplicated
+    expect(stageColumns([])).toEqual([])
   })
 })

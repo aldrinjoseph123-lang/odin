@@ -1778,6 +1778,38 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         a, ah = self._api_client("admin2", STRONG_PASSWORD)
         self.assertEqual(a.post("/api/projects/1/stage", json={"stage": stages[2]}, headers={"X-CSRF-Token": ah}).status_code, 200)
 
+    def test_a_stage_move_can_be_undone_by_its_author_for_five_minutes(self):
+        self.new_project(name="Oops", client="Acme")
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+            db.execute("UPDATE projects SET customer_approval=1, stage_entered_at='2026-01-01T00:00:00' WHERE id=1")
+            db.execute("INSERT INTO stage_approvals (project_id, stage, requested_by, requested_at) VALUES (1, ?, 'admin', '2026-01-01T00:00:00')", (stages[0],))
+            db.commit()
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        undo = c.post("/api/projects/1/stage", json={"stage": stages[1]}, headers={"X-CSRF-Token": csrf}).get_json()["undo"]
+        self.assertTrue(undo.startswith("/undo/stage/1/"))
+        # someone else cannot undo it
+        self._make_user("pm2", "Admin")
+        other, oc = self._api_client("pm2", STRONG_PASSWORD)
+        self.assertIn("can no longer be undone", other.post(undo, headers={"X-CSRF-Token": oc, "Accept": "application/json"}).get_json()["messages"][0])
+        r = c.post(undo, headers=h).get_json()
+        self.assertEqual(r["messages"], [f"Moved back to {stages[0]}"])
+        with self.raw_db() as db:
+            self.assertEqual(tuple(db.execute("SELECT stage, stage_entered_at FROM projects WHERE id=1").fetchone()), (stages[0], "2026-01-01T00:00:00"))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM status_notes WHERE project_id=1 AND stage=?", (stages[1],)).fetchone()[0], 0)
+            self.assertEqual([tuple(r) for r in db.execute("SELECT stage, status FROM stage_approvals WHERE project_id=1")], [(stages[0], "pending")])
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='undo_project_stage'").fetchone()[0], 1)
+        self.assertIn("can no longer be undone", c.post(undo, headers=h).get_json()["messages"][0])   # once only
+        # a later move, or an old one, closes the window
+        first = c.post("/api/projects/1/stage", json={"stage": stages[1]}, headers={"X-CSRF-Token": csrf}).get_json()["undo"]
+        c.post("/api/projects/1/stage", json={"stage": stages[2]}, headers={"X-CSRF-Token": csrf})
+        self.assertIn("can no longer be undone", c.post(first, headers=h).get_json()["messages"][0])
+        last = c.post("/api/projects/1/stage", json={"stage": stages[3]}, headers={"X-CSRF-Token": csrf}).get_json()["undo"]
+        with self.raw_db() as db:
+            db.execute("UPDATE status_notes SET created_at='2020-01-01T00:00:00' WHERE id=?", (int(last.rsplit("/", 1)[1]),)); db.commit()
+        self.assertIn("can no longer be undone", c.post(last, headers=h).get_json()["messages"][0])
+
     # ---- Phase 6: notify everyone on the project; optional customer approval
 
     @patch("graph.send_mail", return_value=(True, None))

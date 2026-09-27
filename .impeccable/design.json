@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-27T15:56:51Z",
+  "generatedAt": "2026-09-27T20:09:07Z",
   "title": "Design System: Odin",
   "extensions": {
     "colorMeta": {
@@ -646,7 +646,7 @@
       {
         "name": "The Red-Text Rule",
         "body": "The parent red (`#E11D2E`) is 4.2:1 on brand ink: fine for the logo, the eye, the dot and the 30 px+ tagline, not for small text. Small red text (eyebrow numbers, the byline's \"24x7\") uses `--brand-red-text`, which is the parent red on white (4.75:1) and lifts to `#F23D4D` inside `.brand-panel` (5.2:1).",
-        "section": "components"
+        "section": "colors"
       },
       {
         "name": "The One Accent Rule",
@@ -691,6 +691,11 @@
       {
         "name": "The No-Alarm-Accent Rule",
         "body": "There is no red or amber accent: those hues mean overdue and warning, and a red selection or primary button reads as trouble. Rose and amber were retired on 27 Sep 2026 (stored choices moved to plum and sky); green stays because selection is always wash + border, never a state chip.",
+        "section": "components"
+      },
+      {
+        "name": "The Same-Column Rule",
+        "body": "Every row places its dots on one shared column order (the union of all rows' stage lists, each list keeping its own order), so a stage sits in the same column on every row and the lead can read down a column; a stage a project doesn't have leaves a gap on its line. Above the stepper column, a sticky strip of 11 px counts shows how many rollouts sit in each stage; clicking a count filters the list to that stage (an ink chip with × clears it, and the URL keeps it). Done: `ok-line` fill and border, green connector. Current: white dot, state-line border, 3 px state-soft ring (ink border + Muted Fill ring when on track); scales to 110% when the row is selected. Upcoming: Stroke-grey border, white fill, grey connector. Each dot is a tooltip trigger (\"Scoping · done\"); the whole stepper carries an `aria-label` naming the current stage.",
         "section": "components"
       }
     ],

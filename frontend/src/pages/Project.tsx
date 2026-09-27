@@ -89,7 +89,7 @@ export default function Project(_props: { user: User }) {
       )}
 
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
-      <Detail d={d} reload={reload} onMoved={(m) => setNotice({ text: m })} standalone />
+      <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
 
       <div className="grid gap-4 px-5 pb-6 lg:grid-cols-2 [&>*]:min-w-0">
         <Panel title="Details">

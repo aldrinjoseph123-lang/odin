@@ -2,7 +2,7 @@
 (sent as X-CSRF-Token), same decorators and audit trail as the HTML routes —
 the API is a second door into the same rooms, not a second house.
 """
-from flask import abort, jsonify, request, session, url_for
+from flask import abort, g, jsonify, request, session, url_for
 
 from datetime import date, datetime
 
@@ -481,7 +481,7 @@ def api_project(project_id):
 # as the action name with underscores dropped, so a new action needs no edit
 # here to appear.
 ACTIVITY_LABELS = {
-    "create_project": "created the project", "update_project": "edited the project", "update_project_stage": "moved the stage",
+    "create_project": "created the project", "update_project": "edited the project", "update_project_stage": "moved the stage", "undo_project_stage": "undid a stage move",
     "add_project_note": "added a note", "add_task": "added a task", "edit_task": "edited a task", "toggle_task": "ticked or reopened a task",
     "delete_task": "removed a task", "upload_document": "uploaded a document", "delete_document": "removed a document",
     "add_participant": "added someone to the team", "invite_participant": "invited a partner", "remove_participant": "removed someone from the team",
@@ -509,7 +509,7 @@ def api_project_activity(project_id):
     return jsonify(rows=[{
         "when": r["timestamp"], "who": r["username"], "action": r["action"],
         "label": ACTIVITY_LABELS.get(r["action"], r["action"].replace("_", " ")),
-        "details": (r["details"] or "").replace("stage=", "to ") if r["action"] == "update_project_stage" else (r["details"] or ""),
+        "details": (r["details"] or "").replace("stage=", "to ") if r["action"] in ("update_project_stage", "undo_project_stage") else (r["details"] or ""),
     } for r in rows])
 
 
@@ -549,7 +549,7 @@ def api_project_stage(project_id):
     error = change_stage(project_id, data.get("stage", ""), (data.get("note") or "").strip()[:5000])
     if error:
         return jsonify({"error": error}), 400
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "undo": g.stage_undo_url})
 
 
 @app.route("/api/alerts/<int:project_id>/dismiss/<alert_type>", methods=["POST"])

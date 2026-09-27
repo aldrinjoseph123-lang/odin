@@ -75,3 +75,20 @@ export function nextUp<T extends { stage: string; due_date: string | null }>(ope
     .sort((a, b) => Number(b.t.stage === stage) - Number(a.t.stage === stage)
       || (a.t.due_date ?? "9999").localeCompare(b.t.due_date ?? "9999") || a.i - b.i)[0]?.t
 }
+
+// One shared column order for many projects' stage lists, so the same stage
+// sits in the same column on every row. Each list keeps its own order; a stage
+// only one project has goes right after the stage it follows there. The first
+// list seen wins a disagreement about order.
+export function stageColumns(lists: string[][]): string[] {
+  const cols: string[] = []
+  for (const list of lists) {
+    let at = -1
+    for (const name of list) {
+      const found = cols.indexOf(name)
+      if (found > at) { at = found; continue }
+      if (found === -1) { cols.splice(at + 1, 0, name); at += 1 }
+    }
+  }
+  return cols
+}

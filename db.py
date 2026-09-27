@@ -260,6 +260,12 @@ def migrate_db(db):
         db.execute("ALTER TABLE status_notes ADD COLUMN author_id INTEGER")
     if "edited_at" not in note_columns:
         db.execute("ALTER TABLE status_notes ADD COLUMN edited_at TEXT")
+    # A stage-change note remembers where the project came from, so its author
+    # can undo the move for a few minutes (routes/projects.undo_stage_change).
+    if "prev_stage" not in note_columns:
+        db.execute("ALTER TABLE status_notes ADD COLUMN prev_stage TEXT")
+    if "prev_entered_at" not in note_columns:
+        db.execute("ALTER TABLE status_notes ADD COLUMN prev_entered_at TEXT")
 
     _migrate_stage_lists(db)
     _migrate_participants(db)

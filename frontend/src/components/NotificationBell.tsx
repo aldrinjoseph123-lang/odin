@@ -49,7 +49,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
         {unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-semibold leading-4 text-primary-foreground">{unread > 99 ? "99+" : unread}</span>}
       </button>
       {open && (
-        <div role="dialog" aria-label="Notifications" className="absolute right-0 top-10 z-50 w-[min(380px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl">
+        <div role="dialog" aria-label="Notifications" className="absolute right-0 top-10 z-50 w-[min(380px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground">
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-[12px] font-semibold text-nav-fg">Notifications</span>
             {unread > 0 && <button type="button" onClick={readAll} className="text-[12px] text-primary-text hover:underline">Mark all read</button>}

@@ -15,6 +15,7 @@ from flask import (
     Response,
     abort,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -28,6 +29,7 @@ from werkzeug.utils import secure_filename
 
 import graph
 from constants import (
+    UNDO_WINDOW_SECS,
     EXTERNAL_PROJECT_ROLES,
     PROJECT_MANAGER,
     PROJECT_ROLES,
@@ -546,6 +548,7 @@ def project_stage(project_id):
     if error:
         flash(error)
         return redirect(url_for("project_detail", project_id=project_id))
+    flash(Markup(f"Moved to {escape(request.form['stage'])}. {undo_button('Undo', 'undo_stage_change', project_id=project_id, note_id=g.stage_note_id)} (5 min window)"))
     if request.form.get("redirect") == "board":
         return redirect(url_for("board"))
     return redirect(url_for("project_detail", project_id=project_id))
@@ -567,8 +570,9 @@ def change_stage(project_id, new_stage, note_text):
         "UPDATE projects SET stage = ?, updated_at = ?, stage_entered_at = ? WHERE id = ?",
         (new_stage, now, now, project_id),
     )
-    db.execute(
-        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id) VALUES (?, ?, ?, ?, ?, 1, ?)",
+    cur = db.execute(
+        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id, prev_stage, prev_entered_at)"
+        " VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
         (
             project_id,
             session["user_name"],
@@ -576,8 +580,12 @@ def change_stage(project_id, new_stage, note_text):
             new_stage,
             now,
             session["user_id"],
+            project["stage"],
+            project["stage_entered_at"],
         ),
     )
+    g.stage_note_id = cur.lastrowid
+    g.stage_undo_url = url_for("undo_stage_change", project_id=project_id, note_id=cur.lastrowid)
     if project["customer_approval"]:
         # A newer change makes an undecided older request moot.
         db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
@@ -593,6 +601,45 @@ def change_stage(project_id, new_stage, note_text):
     notify_event(project, f"Stage changed: {escape(project['name'])}", body, channels={"email": False, "teams": True})
     notify_participants(project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=session["user_id"])
     return None
+
+
+@app.route("/undo/stage/<int:project_id>/<int:note_id>", methods=["POST"])
+@permission_required("edit_project_stage")
+@project_role_required("move_stage")
+def undo_stage_change(project_id, note_id):
+    """Put a stage move back, for its author, within the undo window, and only
+    while it is still the latest move. The move's note is removed so the
+    history and cycle times read as if it never happened; the audit trail keeps
+    both rows, and everyone who was told about the move is told it was undone."""
+    db = get_db()
+    project = load_project(project_id)
+    if project is None:
+        abort(404)
+    note = db.execute("SELECT * FROM status_notes WHERE id = ? AND project_id = ? AND prev_stage IS NOT NULL", (note_id, project_id)).fetchone()
+    cutoff = (datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECS)).isoformat()
+    later_move = note and db.execute(
+        "SELECT 1 FROM status_notes WHERE project_id = ? AND prev_stage IS NOT NULL AND id > ?", (project_id, note_id)).fetchone()
+    if (note is None or note["author_id"] != session["user_id"] or note["created_at"] < cutoff
+            or later_move or project["stage"] != note["stage"] or note["prev_stage"] not in get_stage_names(project_id)):
+        flash("That move can no longer be undone: it is too old, was made by someone else, or the project has moved since")
+        return redirect(url_for("project_detail", project_id=project_id))
+    now = datetime.utcnow().isoformat()
+    db.execute("UPDATE projects SET stage = ?, stage_entered_at = ?, updated_at = ? WHERE id = ?",
+               (note["prev_stage"], note["prev_entered_at"] or now, now, project_id))
+    db.execute("DELETE FROM status_notes WHERE id = ?", (note_id,))
+    # The approval this move asked for goes; the one it superseded comes back.
+    db.execute("DELETE FROM stage_approvals WHERE project_id = ? AND stage = ? AND requested_at = ?", (project_id, note["stage"], note["created_at"]))
+    db.execute(
+        "UPDATE stage_approvals SET status = 'pending' WHERE id = (SELECT id FROM stage_approvals WHERE project_id = ? AND stage = ?"
+        " AND status = 'superseded' AND requested_at < ? ORDER BY requested_at DESC LIMIT 1)",
+        (project_id, note["prev_stage"], note["created_at"]))
+    db.commit()
+    audit_log("undo_project_stage", "project", project_id, project["name"], f"stage={note['prev_stage']} (undid {note['stage']})")
+    body = f"{escape(session['user_name'])} undid the move to <b>{escape(note['stage'])}</b>. The project is back in <b>{escape(note['prev_stage'])}</b>."
+    notify_event(project, f"Stage change undone: {escape(project['name'])}", body, channels={"email": False, "teams": True})
+    notify_participants(project_id, f"{escape(project['name'])}: back in {escape(note['prev_stage'])}", body, exclude_user_id=session["user_id"])
+    flash(f"Moved back to {note['prev_stage']}")
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
 def decide_approval(project_id, approval_id, decision, comment):

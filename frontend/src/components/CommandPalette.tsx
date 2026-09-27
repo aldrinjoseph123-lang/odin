@@ -52,7 +52,7 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
 
   return (
     <dialog ref={ref} onClose={onClose} onClick={(e) => { if (e.target === ref.current) onClose() }} aria-label="Search and jump"
-      className="m-auto mt-[12vh] w-[min(560px,calc(100vw-32px))] rounded-xl border border-border bg-popover p-0 text-popover-foreground shadow-2xl backdrop:bg-black/40">
+      className="m-auto mt-[12vh] w-[min(560px,calc(100vw-32px))] rounded-xl border border-border bg-popover p-0 text-popover-foreground backdrop:bg-black/40">
       <div className="flex items-center gap-2 border-b border-border px-3">
         <Search className="h-4 w-4 text-muted-foreground" />
         <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setActive(0) }} onKeyDown={onKey}

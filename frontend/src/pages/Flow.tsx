@@ -9,10 +9,10 @@ import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ApiError, addTask, changeStage, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowTask, type User } from "@/lib/api"
+import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { days, fmtDate, stateText, lateBy, nextUp } from "@/lib/format"
+import { days, fmtDate, stateText, lateBy, nextUp, stageColumns } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
@@ -50,7 +50,7 @@ function DueDate({ due, today, className }: { due: string; today: string; classN
 }
 
 // ---- tasks under a stage box: tick, add, remove — no page change --------------
-function StageTasks({ d, stage, reload, onError }: { d: FlowDetail; stage: string; reload: () => Promise<void>; onError: (m: string | null) => void }) {
+function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage: string; done: boolean; reload: () => Promise<void>; onError: (m: string | null) => void }) {
   const tasks = d.tasks.filter((t) => t.stage === stage)
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState("")
@@ -91,7 +91,8 @@ function StageTasks({ d, stage, reload, onError }: { d: FlowDetail; stage: strin
           ))}
         </ul>
       )}
-      {d.can_edit && (adding ? (
+      {/* a finished stage keeps its tasks but takes no new ones */}
+      {d.can_edit && !done && (adding ? (
         <form className="mt-1.5 grid gap-1" onSubmit={(e) => { e.preventDefault(); void submit() }}>
           <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task" aria-label={`New task in ${stage}`} maxLength={200} className="h-7 px-2 text-[12.5px]"
             onKeyDown={(e) => { if (e.key === "Escape") { setAdding(false); setTitle("") } }} />
@@ -114,12 +115,20 @@ function StageTasks({ d, stage, reload, onError }: { d: FlowDetail; stage: strin
 }
 
 // ---- top pane: every active rollout, stuck first -------------------------------
-function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
+function RolloutList({ data, selectedId, onSelect, filter, setFilter, stage, setStage }: {
   data: FlowData; selectedId: number | null; onSelect: (id: number) => void
-  filter: "all" | "attention" | "mine"; setFilter: (f: "all" | "attention" | "mine") => void; user?: User
+  filter: "all" | "attention" | "mine"; setFilter: (f: "all" | "attention" | "mine") => void
+  stage: string | null; setStage: (s: string | null) => void
 }) {
   const rows = useMemo(() => data.rows.filter((r) =>
-    filter === "attention" ? r.state !== "on_track" : filter === "mine" ? r.mine : true), [data.rows, filter])
+    (filter === "attention" ? r.state !== "on_track" : filter === "mine" ? r.mine : true) && (!stage || r.stage === stage)), [data.rows, filter, stage])
+  // Every row's stages in one column order, so a stage lines up down the list.
+  const columns = useMemo(() => stageColumns(data.rows.map((r) => r.stages)), [data.rows])
+  const inStage = useMemo(() => {
+    const n = new Map<string, number>()
+    for (const r of data.rows) n.set(r.stage, (n.get(r.stage) ?? 0) + 1)
+    return n
+  }, [data.rows])
   const stuck = data.counts.overdue + data.counts.over_sla + data.counts.due_soon
   const chips: { key: typeof filter; label: string; n: number }[] = [
     { key: "all", label: "All", n: data.rows.length }, { key: "attention", label: "Needs attention", n: stuck }, { key: "mine", label: "Mine", n: data.rows.filter((r) => r.mine).length },
@@ -145,7 +154,13 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
           {data.counts.over_sla ? <> · <span className="font-medium text-warn">{data.counts.over_sla} over SLA</span></> : null}
           {data.counts.due_soon ? <> · {data.counts.due_soon} due soon</> : null}
         </p>
-        <div className="ml-auto flex gap-1.5">
+        <div className="ml-auto flex flex-wrap gap-1.5">
+          {stage && (
+            <button type="button" onClick={() => setStage(null)} aria-label={`Showing ${stage} only. Show every stage`}
+              className="flex h-7 items-center gap-1 rounded-full border border-foreground bg-foreground px-3 text-[12.5px] font-medium text-background">
+              {stage} <X className="h-3 w-3" />
+            </button>
+          )}
           {chips.map((c) => (
             <button key={c.key} type="button" onClick={() => setFilter(c.key)} aria-pressed={filter === c.key} aria-label={`${c.label}, ${c.n}`}
               className={cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", filter === c.key ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>
@@ -154,12 +169,30 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
           ))}
         </div>
       </div>
-      {/* No shared stage header: every project owns its own stage list, so the
-          row carries its stage by name and the stepper draws that project's stages. */}
-      <div className="hidden grid-cols-[minmax(200px,1.2fr)_2fr_210px_76px] gap-4 px-5 pb-1.5 text-[11.5px] text-muted-foreground md:grid">
-        <span>Rollout</span><span>Progress</span><span>Stage</span><span>Team</span>
-      </div>
       <ScrollArea className="min-h-0 flex-1">
+        {/* Column heads live in the list, with the rows' own grid and padding, so
+            the per-stage counts sit exactly over the stepper columns they count. */}
+        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(200px,1.2fr)_2fr_210px_76px] items-end gap-4 border border-transparent bg-background px-3 pb-1.5 text-[11.5px] text-muted-foreground md:grid">
+          <span>Rollout</span>
+          <span className="relative mx-1.5 h-5" aria-label="Rollouts in each stage">
+            {columns.map((c, i) => {
+              const n = inStage.get(c) ?? 0
+              if (!n) return null
+              const on = stage === c
+              return (
+                <Tooltip key={c}>
+                  <TooltipTrigger render={<button type="button" />} onClick={() => setStage(on ? null : c)} aria-pressed={on}
+                    aria-label={`${c}: ${n} rollout${n === 1 ? "" : "s"}. ${on ? "Show every stage" : "Show only these"}`}
+                    style={{ left: `${(columns.length > 1 ? i / (columns.length - 1) : 0) * 100}%` }}
+                    className={cn("absolute bottom-0 min-w-5 -translate-x-1/2 rounded-full px-1 text-center text-[11px] font-medium leading-5",
+                      on ? "bg-foreground text-background" : "text-nav-fg hover:bg-muted")}>{n}</TooltipTrigger>
+                  <TooltipContent>{c} · {n} rollout{n === 1 ? "" : "s"}</TooltipContent>
+                </Tooltip>
+              )
+            })}
+          </span>
+          <span>Stage</span><span>Team</span>
+        </div>
         <ul className="grid gap-0.5 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {rows.map((r) => {
             const selected = r.id === selectedId
@@ -174,7 +207,7 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
                     <span className="truncate text-[13.5px] font-medium">{r.name}</span>
                     <span className="hidden truncate text-[12px] text-muted-foreground sm:inline">{r.client}</span>
                   </span>
-                  <span className="col-span-2 md:col-span-1"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} /></span>
+                  <span className="col-span-2 md:col-span-1"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} columns={columns} /></span>
                   <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 justify-self-end md:justify-self-start">
                     <span className="truncate text-[12.5px] font-medium">{r.stage}</span>
                     <ApprovalChip status={r.approval} />
@@ -188,7 +221,8 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
           })}
           {rows.length === 0 && (
             <li className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-[13px] text-muted-foreground">
-              {data.rows.length === 0 ? "No active rollouts yet. Create one from a client PO and it appears here." : "Nothing needs attention — every rollout is inside its stage SLA and on schedule."}
+              {data.rows.length === 0 ? "No active rollouts yet. Create one from a client PO and it appears here."
+                : stage ? `No rollout in ${stage} matches this filter.` : "Nothing needs attention — every rollout is inside its stage SLA and on schedule."}
             </li>
           )}
         </ul>
@@ -237,7 +271,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   )
 }
 
-export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string) => void; onClose?: () => void; standalone?: boolean }) {
+export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string, undo?: string) => void; onClose?: () => void; standalone?: boolean }) {
   const [note, setNote] = useState("")
   const [confirming, setConfirming] = useState(false)
   const [comment, setComment] = useState("")
@@ -262,9 +296,9 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
     if (!d.next_stage) return
     setBusy(true); setErr(null)
     try {
-      await changeStage(d.id, d.next_stage, note)
+      const r = await changeStage(d.id, d.next_stage, note)
       setNote(""); setConfirming(false)
-      onMoved(`${d.name} moved to ${d.next_stage}`)
+      onMoved(`${d.name} moved to ${d.next_stage}.`, r.undo)
       await reload()
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not move the stage") } finally { setBusy(false) }
   }
@@ -313,7 +347,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                 </div>
               </div>
               {/* every stage carries its own tasks — work happens here, not on the project page */}
-              <StageTasks d={d} stage={s.name} reload={reload} onError={setErr} />
+              <StageTasks d={d} stage={s.name} done={s.status === "done"} reload={reload} onError={setErr} />
               {s.status === "current" && openHere > 0 && <p className="mt-1 text-[11.5px] text-muted-foreground">{openHere} open before moving on</p>}
             </li>
           ))}
@@ -428,11 +462,15 @@ export default function Flow(_props: { user: User }) {
   // The filter lives in the URL too, so a reload keeps it.
   const f = params.get("filter")
   const filter: "all" | "attention" | "mine" = f === "attention" || f === "mine" ? f : "all"
+  const stage = params.get("stage")
+  const setStage = useCallback((v: string | null) => {
+    setParams((prev) => { const next = new URLSearchParams(prev); if (!v) next.delete("stage"); else next.set("stage", v); return next }, { replace: true })
+  }, [setParams])
   const setFilter = useCallback((v: "all" | "attention" | "mine") => {
     setParams((prev) => { const next = new URLSearchParams(prev); if (v === "all") next.delete("filter"); else next.set("filter", v); return next }, { replace: true })
   }, [setParams])
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ text: string; undo?: string; bad?: boolean } | null>(null)
 
   const load = useCallback(async () => {
     try { setData(await flow()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load rollouts") }
@@ -444,7 +482,11 @@ export default function Flow(_props: { user: User }) {
   useEffect(() => { if (selectedId != null) void loadDetail(selectedId) }, [selectedId, loadDetail])
   // Only after a click. On load the list must open at the top, where the
   // stuck rows are — scrolling to a deep-linked row would hide them.
-  useEffect(() => { document.querySelector('main [aria-current="true"]')?.scrollIntoView({ block: "nearest" }) }, [selectedId])
+  useEffect(() => {
+    // after the split opens, so the row lands inside the shrunken list (phones especially)
+    const t = setTimeout(() => document.querySelector('main [aria-current="true"]')?.scrollIntoView({ block: "nearest" }), 60)
+    return () => clearTimeout(t)
+  }, [selectedId])
   // Esc closes the rollout, unless it is cancelling something inside a field or dialog.
   useEffect(() => {
     if (selectedId == null) return
@@ -457,13 +499,22 @@ export default function Flow(_props: { user: User }) {
     return () => window.removeEventListener("keydown", onKey)
   }, [selectedId, setSelectedId])
 
+  async function undoMove(path: string) {
+    try {
+      const r = await postForm(path)
+      const back = r.messages.join(" ")
+      setNotice({ text: back || "Move undone", bad: !back.startsWith("Moved back") })
+      await Promise.all([load(), selectedId != null ? loadDetail(selectedId) : Promise.resolve()])
+    } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "Could not undo the move", bad: true }) }
+  }
+
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!data) return <PageSkeleton />
 
   return (
     <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
       <ResizablePanel defaultSize={selectedId == null ? 100 : 48} minSize={20}>
-        <RolloutList data={data} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} />
+        <RolloutList data={data} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />
       </ResizablePanel>
       {selectedId != null && (
         <>
@@ -471,12 +522,16 @@ export default function Flow(_props: { user: User }) {
           <ResizablePanel defaultSize={52} minSize={25}>
             <ScrollArea className="h-full">
               {notice && (
-                <div className="mx-5 mt-3 flex items-center justify-between rounded-md bg-ok-soft px-3 py-1.5 text-[12.5px] text-ok" role="status">
-                  {notice}<button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
+                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-1.5 text-[12.5px]", notice.bad ? "bg-bad-soft text-bad" : "bg-ok-soft text-ok")} role="status">
+                  <span>{notice.text}
+                    {/* the mover can put it back for five minutes; the server decides */}
+                    {notice.undo && <button type="button" onClick={() => void undoMove(notice.undo!)} className="ml-2 font-semibold underline-offset-2 hover:underline">Undo</button>}
+                  </span>
+                  <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
                 </div>
               )}
               {detail && detail.id === selectedId ? (
-                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={setNotice} onClose={() => setSelectedId(null)} />
+                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={(text, undo) => setNotice({ text, undo })} onClose={() => setSelectedId(null)} />
               ) : <PageSkeleton />}
             </ScrollArea>
           </ResizablePanel>

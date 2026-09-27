@@ -84,7 +84,7 @@ export async function board(): Promise<BoardData> {
 }
 
 export function changeStage(projectId: number, stage: string, note = "") {
-  return post<{ ok: true }>(`/api/projects/${projectId}/stage`, { stage, note })
+  return post<{ ok: true; undo: string }>(`/api/projects/${projectId}/stage`, { stage, note })
 }
 
 export function dismissAlert(projectId: number, alertType: string) {
