@@ -7,7 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Detail } from "@/pages/Flow"
 import { StageListEditor } from "@/components/StageListEditor"
-import { ApiError, flowDetail, postForm, projectExtras, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
+import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 const initials = (name: string) => name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()
@@ -33,14 +33,15 @@ export default function Project(_props: { user: User }) {
   const id = Number(useParams().id)
   const [d, setD] = useState<FlowDetail | null>(null)
   const [x, setX] = useState<ProjectExtras | null>(null)
+  const [activity, setActivity] = useState<ActivityRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ text: string; undo?: string | null } | null>(null)
   const [busy, setBusy] = useState(false)
 
   const reload = useCallback(async () => {
     try {
-      const [fd, ex] = await Promise.all([flowDetail(id), projectExtras(id)])
-      setD(fd); setX(ex); setError(null)
+      const [fd, ex, act] = await Promise.all([flowDetail(id), projectExtras(id), projectActivity(id)])
+      setD(fd); setX(ex); setActivity(act.rows); setError(null)
     } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This project does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the project") }
   }, [id])
   useEffect(() => { void reload() }, [reload])
@@ -166,6 +167,18 @@ export default function Project(_props: { user: User }) {
           </ul>
         </Panel>
 
+        {activity.length > 0 && (
+          <Panel title="Activity" hint="everything recorded on this project, newest first">
+            <ul className="grid gap-1.5 text-[12.5px]">
+              {activity.map((a, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="w-28 shrink-0 whitespace-nowrap text-muted-foreground">{fmtDateTime(a.when)}</span>
+                  <span className="min-w-0 break-words"><span className="font-medium">{a.who}</span> {a.label}{a.details && <span className="text-muted-foreground"> · {a.details}</span>}</span>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
         {(x.guest_links.customer || can.manage) && (
           <Panel title="Sharing">
             {x.guest_links.customer && <LinkRow label="Customer link (view and comment, no sign-in)" url={x.guest_links.customer} />}

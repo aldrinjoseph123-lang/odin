@@ -444,6 +444,42 @@ def api_project(project_id):
     })
 
 
+# How the activity feed words each audit action. Anything not listed shows
+# as the action name with underscores dropped, so a new action needs no edit
+# here to appear.
+ACTIVITY_LABELS = {
+    "create_project": "created the project", "update_project": "edited the project", "update_project_stage": "moved the stage",
+    "add_project_note": "added a note", "add_task": "added a task", "edit_task": "edited a task", "toggle_task": "ticked or reopened a task",
+    "delete_task": "removed a task", "upload_document": "uploaded a document", "delete_document": "removed a document",
+    "add_participant": "added someone to the team", "invite_participant": "invited a partner", "remove_participant": "removed someone from the team",
+    "approval_decision": "recorded the customer's decision", "save_report": "saved a report version",
+    "add_project_stage": "added a stage", "rename_project_stage": "renamed a stage", "move_project_stage": "reordered the stages",
+    "delete_project_stage": "removed a stage", "update_project_slas": "changed the stage SLAs", "rotate_guest_token": "rotated the guest links",
+    "delete_project": "deleted the project", "restore_project": "restored the project",
+}
+
+
+@app.route("/api/projects/<int:project_id>/activity")
+@permission_required("view_project_detail")
+def api_project_activity(project_id):
+    """What happened on this project, newest first, for staff who do not
+    read their email. It is the audit trail's own rows for the project, so
+    nothing is recorded twice. External accounts get the customer-visible
+    notes instead (their view of history), never the trail."""
+    load_project(project_id)
+    if session.get("kind") == "external":
+        return jsonify(rows=[])
+    rows = get_db().execute(
+        "SELECT timestamp, username, action, details FROM audit_logs WHERE resource_type = 'project' AND resource_id = ? "
+        "ORDER BY id DESC LIMIT 60", (project_id,),
+    ).fetchall()
+    return jsonify(rows=[{
+        "when": r["timestamp"], "who": r["username"], "action": r["action"],
+        "label": ACTIVITY_LABELS.get(r["action"], r["action"].replace("_", " ")),
+        "details": (r["details"] or "").replace("stage=", "to ") if r["action"] == "update_project_stage" else (r["details"] or ""),
+    } for r in rows])
+
+
 @app.route("/api/projects/<int:project_id>/stage", methods=["POST"])
 @permission_required("edit_project_stage")
 @project_role_required("move_stage")

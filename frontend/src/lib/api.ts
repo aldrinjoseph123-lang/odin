@@ -229,6 +229,9 @@ export type AnalyticsData = {
 }
 export const analytics = (templateId?: number | null) => getJson<AnalyticsData>(`/api/analytics${templateId ? `?template=${templateId}` : ""}`)
 
+export type ActivityRow = { when: string; who: string; action: string; label: string; details: string }
+export const projectActivity = (id: number) => getJson<{ rows: ActivityRow[] }>(`/api/projects/${id}/activity`)
+
 // ---- the new / duplicate / edit project form ----
 export type ProjectFormData = {
   mode: "new" | "duplicate" | "edit"; id: number | null; me: number

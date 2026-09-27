@@ -1307,6 +1307,20 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(to, ["admin@odin.example", "admin@odin.example", "pm1@odin.example"])   # owner mail + participant mails
         self.assertTrue(all("approved" in c.args[1] for c in mail.call_args_list))
 
+    def test_project_activity_feed_is_the_trail_for_staff_and_nothing_for_externals(self):
+        self.new_project(name="P", client="C")
+        self.client.post("/projects/1/tasks", data={"title": "Order"})
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        c, _ = self._api_client()
+        rows = c.get("/api/projects/1/activity").get_json()["rows"]
+        self.assertEqual([r["label"] for r in rows][:4], ["moved the stage", "invited a partner", "added a task", "created the project"])
+        self.assertEqual(rows[0]["details"], f"to {stages[1]}"); self.assertEqual(rows[0]["who"], "Admin")
+        self.assertEqual(self._external_client("ann@acme.example").get("/api/projects/1/activity").get_json()["rows"], [])
+        self.assertEqual(c.get("/api/projects/9/activity").status_code, 404)
+
     # ---- reports as JSON (React port) ------------------------------------------
 
     def test_api_reports_feed_the_pages_and_save_through_the_bridge(self):
