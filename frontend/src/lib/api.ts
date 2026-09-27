@@ -9,9 +9,12 @@ export type User = {
   must_change_password: boolean
   permissions: string[]
   nav: Nav
+  theme: "system" | "light" | "dark"
+  accent: string
+  avatar_url: string | null
 }
 
-type SessionResponse = { csrf: string; user: User | null }
+type SessionResponse = { csrf: string; user: User | null; messages?: string[] }
 
 let csrfToken: string | null = null
 
@@ -92,7 +95,8 @@ export function dismissAlert(projectId: number, alertType: string) {
 export type FlowState = "overdue" | "over_sla" | "due_soon" | "on_track"
 export type ApprovalStatus = "pending" | "approved" | "declined" | "superseded"
 export type FlowRow = {
-  id: number; name: string; client: string; stage: string; stages: string[]; stage_index: number; owner_name: string; mine: boolean; team: string[]
+  id: number; name: string; client: string; stage: string; stages: string[]; stage_index: number; owner_name: string; mine: boolean
+  team: { id: number; name: string; avatar_url: string | null }[]
   approval: ApprovalStatus | null
   delivery_mode: string; target_end_date: string | null; days_in_stage: number | null; sla_days: number | null
   over_by: number | null; state: FlowState; open_tasks: number; total_tasks: number
@@ -100,14 +104,14 @@ export type FlowRow = {
 }
 export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState, number>; can_move: boolean }
 export type FlowStage = { name: string; status: "done" | "current" | "next"; sla_days: number | null; entered_at: string | null; days: number | null }
-export type FlowTask = { id: number; title: string; done: boolean; due_date: string | null; assignee: string | null; assignee_id: number | null; stage: string }
+export type FlowTask = { id: number; title: string; done: boolean; due_date: string | null; assignee: string | null; assignee_id: number | null; assignee_avatar_url: string | null; stage: string }
 export type FlowDetail = {
   id: number; name: string; client: string; vendor_name: string | null; product_name: string | null; delivery_mode: string
   outsourcer_name: string | null; owner_name: string; stage: string; stage_index: number; next_stage: string | null
   state: FlowState; over_by: number | null; start_date: string; target_end_date: string | null; days_left: number | null; today: string
   stages: FlowStage[]; tasks: FlowTask[]; documents: number
   recent_notes: { author: string; note: string; stage: string; created_at: string }[]; can_move: boolean
-  participants: { id: number; user_id: number; name: string; role: string }[]
+  participants: { id: number; user_id: number; name: string; role: string; avatar_url: string | null }[]
   assignable: { id: number; name: string }[]; can_edit: boolean; me: number
   customer_approval: boolean; can_approve: boolean
   approval: { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null } | null
@@ -140,7 +144,7 @@ export type ProjectExtras = {
   customer_approval: boolean
   guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean
   stage_rows: { id: number; name: string; sla_days: number | null }[]
-  participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean }[]
+  participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean; avatar_url: string | null }[]
   notes: { id: number; author: string; note: string; stage: string; created_at: string }[]
   documents: { id: number; category: string; filename: string; uploaded_by: string; uploaded_at: string }[]
   doc_categories: string[]; users: { id: number; name: string }[]; roles: string[]; external_roles: string[]
@@ -185,7 +189,7 @@ export type ContactsData = {
 export const contacts = () => getJson<ContactsData>("/api/settings/contacts")
 
 // ---- admin: users and the audit log ----
-export type AdminUser = { id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"; last_login_at: string | null; created_at: string | null }
+export type AdminUser = { id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"; last_login_at: string | null; created_at: string | null; avatar_url: string | null }
 export const users = () => getJson<{ users: AdminUser[]; roles: string[]; me: number }>("/api/users")
 export type AuditRow = { id: number; timestamp: string; username: string; action: string; resource_type: string | null; resource_id: number | null; resource_name: string | null; details: string | null; ip_address: string | null }
 export type AuditData = {
@@ -207,7 +211,7 @@ export type ReportData = {
 export const report = (id: number, query: string) => getJson<ReportData>(`/api/projects/${id}/report${query ? `?${query}` : ""}`)
 
 // ---- account, my work, alerts, analytics ----
-export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean }>("/api/account")
+export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null }>("/api/account")
 export type MyWorkData = {
   tasks: { id: number; title: string; project_id: number; project_name: string; due_date: string | null; overdue: boolean; stage: string | null }[]
   projects: { id: number; name: string; client: string; stage: string; schedule: "overdue" | "at_risk" | "on_track" | null; target_end_date: string | null }[]

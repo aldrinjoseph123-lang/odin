@@ -10,7 +10,15 @@ Petch, 2 px corners) anywhere in React.
 Tokens live in `frontend/src/index.css` (`:root`): white ground, ink text, one
 accent `#3D5AFE` for selection and the primary action, `--primary-text` for the
 accent as text, green/amber/red **only** as state (`--ok/--warn/--bad` + `-soft`
-and `-line`), Inter, `--radius: 0.5rem`, hairline `--border`. No dark mode.
+and `-line`), Inter, `--radius: 0.5rem`, hairline `--border`.
+
+**Themes (27 Sep 2026, the user's call):** each user picks light / dark / follow
+the OS and one of eight accents on the Account page (header button cycles the
+theme). Dark is `:root[data-theme="dark"]`, accents are `:root[data-accent=…]`,
+both set before first paint by the script in `frontend/index.html` and kept in
+`localStorage` as `odin.theme` / `odin.accent`; the saved choice lives on the
+user row (`users.theme`, `users.accent`). Never hard-code a colour: every
+component must read tokens so both themes and every accent follow.
 
 **Jinja pages keep `static/style.css` (the legacy look) until each is ported.**
 That stylesheet is frozen: fix defects only, no new components, no re-theming —

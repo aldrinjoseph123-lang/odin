@@ -357,6 +357,12 @@ Quiet, small, and rarely blue: one primary per view.
 ### Project form
 - Two bordered panels side by side at `lg` (Project; Commercial route and delivery), 12 px muted labels over 32 px inputs and native selects, the three dates in a 3-column row, the PO document as a native file input, one primary "Create project" / "Save changes" under the grid. Cascading choices (Via → partner → manager; Delivery mode → vendor/product or outsourcer) swap the fields in place; derived emails are read-only muted inputs. Validation messages from Flask show in an amber `warn-soft` bar above the form.
 
+### Themes and accents (added 27 Sep 2026 at the user's request)
+- **Three themes, per user:** light (the world above), dark, and follow the OS. Dark keeps the world's grammar and inverts the ground: background `#0F1115`, surfaces `#15181E`, hairlines `#262B34`, ink `#E7E8EC`, muted text `#9AA0AB`. State colours keep their meaning with lighter text shades (`ok #4FD08A`, `warn #F2B84B`, `bad #F58C86`) on deep soft fills so chips stay at AA.
+- **Eight accents:** blue (default `#3D5AFE`), indigo, violet, teal, green, amber, rose, ink. Each sets `--primary`, `--primary-text`, `--accent`, `--accent-foreground` and `--ring`; in dark the text shade lifts (e.g. blue text `#9DB0FF`) and the wash deepens. Green and amber accents share hues with the ok/warn states — acceptable because selection is always wash + border, never a state chip, but the default stays blue.
+- **Where it is chosen:** Account → Appearance (theme chips, accent swatches with a hairline ring so ink shows on dark); the header's sun / moon / monitor button cycles the theme in one click. Applied before first paint, so there is no flash.
+- **Avatars:** a picture replaces the initials wherever a person appears (header, rollout team stack, task assignee, team rail and panel, users table); initials remain the fallback. Account → Picture uploads PNG / JPG / GIF / WebP up to 2 MB.
+
 ### Cards / Containers
 - **Rail panel** (Next up / ETA / Advance): white, 1 px hairline, 8 px radius, 12 px padding, 13 px body, 12 px semibold chrome-text header with a 14 px icon; panels stack with 16 px gaps.
 - **Card** (login): white, `ring-1` ink/10 instead of a border, 11.2 px radius, 16 px internal spacing, `max-w-sm`.
@@ -404,5 +410,5 @@ Round initials only (no images in use): 24 px in rows and 20 px under tasks with
 - **Don't** uppercase or letter-space labels, or reintroduce the retired identity's dark nav, brand red, Chakra Petch or 2 px corners — those live only in the frozen `static/style.css`.
 - **Don't** use green for "on track" rows or amber/red for anything that is not a lateness state; don't use `--destructive` for rollout state.
 - **Don't** put a state's text shade in a fill or its line shade under text.
-- **Don't** invent tokens: use the `:root` block in `frontend/src/index.css` and its `@theme inline` aliases (`ok-*`, `warn-*`, `bad-*`, `primary-text`, `nav-fg`); there is no `.dark` block and none should be added ad hoc.
+- **Don't** invent tokens: use the `:root` block in `frontend/src/index.css` and its `@theme inline` aliases (`ok-*`, `warn-*`, `bad-*`, `primary-text`, `nav-fg`). Dark and the accents are whole-token overrides (`:root[data-theme="dark"]`, `:root[data-accent=…]`); a component never branches on the theme.
 - **Don't** render the flow as a kanban board or a numeric table; the stepper and the node row are the read.

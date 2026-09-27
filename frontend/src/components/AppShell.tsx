@@ -1,20 +1,17 @@
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router-dom"
-import { Menu } from "lucide-react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Menu, Monitor, Moon, Sun } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
-import { logout, type User } from "@/lib/api"
+import { logout, postForm, type User } from "@/lib/api"
+import { UserAvatar } from "@/components/UserAvatar"
+import { applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
 // White top bar, ink links, accent underline on the current section. Un-ported
 // pages are plain anchors (full navigation to Flask); React pages use <Link>.
-const REACT_PAGES = new Set(["/board", "/projects", "/users", "/audit-logs", "/settings", "/account", "/my-work", "/alerts", "/analytics"])
+const REACT_PAGES = new Set(["/board", "/projects", "/users", "/audit-logs", "/settings", "/account", "/my-work", "/alerts", "/analytics"])   // header links only
 type Item = { href: string; label: string; count?: number; match: (path: string) => boolean }
-
-function initials(name: string) {
-  return name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()
-}
 
 function NavLink({ item, current, onClick }: { item: Item; current: boolean; onClick?: () => void }) {
   const className = cn(
@@ -34,9 +31,17 @@ function NavLink({ item, current, onClick }: { item: Item; current: boolean; onC
   )
 }
 
-export default function AppShell({ user, children }: { user: User; children: ReactNode }) {
+export default function AppShell({ user, children, messages = [], onDismiss }: { user: User; children: ReactNode; messages?: string[]; onDismiss?: () => void }) {
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
+  const [theme, setTheme] = useState<Theme>(user.theme)
+  // the saved choice wins over whatever this browser last painted
+  useEffect(() => { applyTheme(user.theme, user.accent as Accent) }, [user.theme, user.accent])
+  async function cycleTheme() {
+    const next: Theme = theme === "system" ? "light" : theme === "light" ? "dark" : "system"
+    setTheme(next); applyTheme(next, user.accent as Accent)
+    try { await postForm("/account/appearance", { theme: next, accent: user.accent }) } catch { /* stays local until the next save */ }
+  }
   const all: Item[] = [
     { href: "/board", label: "Flow", match: (p) => p === "/board" },
     { href: "/my-work", label: "My work", count: user.nav.my_open_task_count, match: (p) => p === "/my-work" },
@@ -54,24 +59,35 @@ export default function AppShell({ user, children }: { user: User; children: Rea
   return (
     <div className="flex min-h-svh flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">Skip to content</a>
-      <header className="flex h-13 shrink-0 items-center gap-6 border-b border-border bg-background px-5 print:hidden">
+      <header className="flex h-13 shrink-0 items-center gap-4 border-b border-border bg-background px-5 print:hidden xl:gap-6">
         <Link to="/board" className="text-[15px] font-bold tracking-tight">Odin</Link>
-        <button type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted md:hidden"><Menu className="h-5 w-5" /></button>
-        <nav className={cn("absolute inset-x-0 top-13 z-40 flex-col gap-3 border-b border-border bg-background px-5 py-4 md:static md:flex md:flex-1 md:flex-row md:items-center md:gap-6 md:border-0 md:p-0", open ? "flex" : "hidden")}>
+        <button type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted lg:hidden"><Menu className="h-5 w-5" /></button>
+        {/* The full row needs ~1000 px; below lg it is the burger menu. */}
+        <nav className={cn("absolute inset-x-0 top-13 z-40 flex-col gap-3 border-b border-border bg-background px-5 py-4 lg:static lg:flex lg:flex-1 lg:flex-row lg:items-center lg:gap-4 lg:border-0 lg:p-0 xl:gap-6", open ? "flex" : "hidden")}>
           {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
-          <span className="md:flex-1" />
-          <form method="get" action="/projects" className="md:w-56">
+          <span className="lg:flex-1" />
+          <form method="get" action="/projects" className="lg:w-40 xl:w-56">
             <input type="search" name="q" placeholder="Search projects…" aria-label="Search projects" className="h-8 w-full rounded-md border border-border bg-secondary px-2.5 text-[13px] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30" />
           </form>
           {user.role !== "Viewer" && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
           {user.kind === "external" && <Badge variant="secondary">Partner access</Badge>}
+          <button type="button" onClick={cycleTheme} aria-label={`Theme: ${theme}. Switch`} title={`Theme: ${theme}`}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-nav-fg hover:bg-muted hover:text-foreground">
+            {theme === "dark" ? <Moon className="h-4 w-4" /> : theme === "light" ? <Sun className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+          </button>
           <a href="/account" className="flex items-center gap-2 text-[13px] text-nav-fg hover:text-foreground" title={user.name}>
-            <Avatar className="h-7 w-7"><AvatarFallback className="bg-accent text-[11px] font-semibold text-accent-foreground">{initials(user.name)}</AvatarFallback></Avatar>
+            <UserAvatar name={user.name} url={user.avatar_url} className="h-7 w-7" textClass="text-[11px] bg-accent text-accent-foreground" />
           </a>
           <button type="button" onClick={signOut} className="text-[13px] font-medium text-nav-fg hover:text-foreground">Log out</button>
         </nav>
       </header>
+      {messages.length > 0 && (
+        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px] print:hidden" role="status">
+          <span>{messages.join(" ")}</span>
+          <button type="button" className="font-medium" onClick={onDismiss} aria-label="Dismiss">×</button>
+        </div>
+      )}
       <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">{children}</main>
     </div>
   )

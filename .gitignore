@@ -4,6 +4,7 @@ odin.db-*
 *.bak
 uploads/
 backups/
+avatars/
 uat-data/
 *.log
 

@@ -4,11 +4,15 @@ password change, email update. Imported for route registration side effects.
 from datetime import datetime
 
 from markupsafe import escape
-from flask import flash, redirect, render_template, request, session, url_for
+import os
+import secrets as _secrets
+
+from flask import abort, flash, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from core import app, login_required
-from db import get_db
+from constants import ACCENTS, AVATAR_EXTENSIONS, AVATAR_MAX_BYTES, THEMES
+from db import AVATAR_DIR, get_db
 from security import (
     LOGIN_WINDOW_MINUTES,
     consume_login_link,
@@ -98,6 +102,8 @@ def auth_link_request():
     rate limited per address and IP."""
     if session.get("user_id") and request.method == "GET":
         return redirect(url_for("board"))     # already in; a stale link just lands them home
+    if request.method == "GET" and spa_serves("auth_link_request"):
+        return spa_index()
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         if not valid_email(email):
@@ -122,7 +128,7 @@ def auth_link_consume(token):
     if user is None:
         audit_log("login_link_rejected", details="invalid, expired, used, or account inactive", actor="link")
         flash("That sign-in link is invalid or has expired — request a new one")
-        return redirect(url_for("auth_link_request"))
+        return redirect(url_for("auth_link_request", expired=1))   # the React page reads ?expired
     start_session(user)
     audit_log("login_success", "user", user["id"], user["username"], "sign-in link", actor=user["username"])
     # a link minted for a notification lands on the project it was about
@@ -207,6 +213,101 @@ def account():
         return redirect(url_for("account"))
     user = get_db().execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     return render_template("account.html", user=user)
+
+
+@app.route("/account/appearance", methods=["POST"])
+@login_required
+def account_appearance():
+    theme = request.form.get("theme", "")
+    accent = request.form.get("accent", "")
+    if theme not in THEMES or accent not in ACCENTS:
+        flash("Pick a theme and an accent from the list")
+        return redirect(url_for("account"))
+    db = get_db()
+    db.execute("UPDATE users SET theme = ?, accent = ? WHERE id = ?", (theme, accent, session["user_id"]))
+    db.commit()
+    audit_log("change_own_appearance", "user", session["user_id"], session.get("user_name"), f"{theme}/{accent}")
+    flash("Appearance saved")
+    return redirect(url_for("account"))
+
+
+def _store_avatar(user_id, file):
+    """Validate and store a picture; returns the new filename or an error.
+    Extension allowlist, magic bytes and a 2 MB cap — an avatar is the one
+    upload every signed-in user can make, so it gets the strictest check."""
+    from security import content_matches_extension
+    name = file.filename or ""
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if ext not in AVATAR_EXTENSIONS:
+        return None, "Use a PNG, JPG, GIF or WebP image"
+    if not content_matches_extension(file):
+        return None, "That file's contents don't match its extension"
+    file.stream.seek(0, os.SEEK_END)
+    size = file.stream.tell()
+    file.stream.seek(0)
+    if size > AVATAR_MAX_BYTES:
+        return None, "Keep the picture under 2 MB"
+    os.makedirs(AVATAR_DIR, exist_ok=True)
+    stored = f"{user_id}-{_secrets.token_urlsafe(6)}.{ext}"
+    file.save(os.path.join(AVATAR_DIR, stored))
+    db = get_db()
+    old = db.execute("SELECT avatar FROM users WHERE id = ?", (user_id,)).fetchone()["avatar"]
+    db.execute("UPDATE users SET avatar = ? WHERE id = ?", (stored, user_id))
+    db.commit()
+    if old:
+        try:
+            os.remove(os.path.join(AVATAR_DIR, old))
+        except OSError:
+            pass
+    return stored, None
+
+
+@app.route("/account/avatar", methods=["POST"])
+@login_required
+def account_avatar():
+    file = request.files.get("avatar")
+    if not file or not file.filename:
+        flash("Choose a picture first")
+        return redirect(url_for("account"))
+    stored, error = _store_avatar(session["user_id"], file)
+    if error:
+        flash(error)
+    else:
+        audit_log("change_own_avatar", "user", session["user_id"], session.get("user_name"))
+        flash("Picture updated")
+    return redirect(url_for("account"))
+
+
+@app.route("/account/avatar/remove", methods=["POST"])
+@login_required
+def account_avatar_remove():
+    db = get_db()
+    old = db.execute("SELECT avatar FROM users WHERE id = ?", (session["user_id"],)).fetchone()["avatar"]
+    db.execute("UPDATE users SET avatar = NULL WHERE id = ?", (session["user_id"],))
+    db.commit()
+    if old:
+        try:
+            os.remove(os.path.join(AVATAR_DIR, old))
+        except OSError:
+            pass
+    audit_log("remove_own_avatar", "user", session["user_id"], session.get("user_name"))
+    flash("Picture removed")
+    return redirect(url_for("account"))
+
+
+@app.route("/users/<int:user_id>/avatar/<path:stored>")
+@login_required
+def user_avatar(user_id, stored):
+    """Anyone signed in may see anyone's picture (it appears wherever their
+    name does); the stored name must match the record, so an old URL dies
+    when the picture is replaced. Served inline, cached hard: the URL is
+    unique per upload."""
+    row = get_db().execute("SELECT avatar FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None or not row["avatar"] or row["avatar"] != stored:
+        abort(404)
+    response = send_from_directory(AVATAR_DIR, stored, as_attachment=False, max_age=31536000)
+    response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+    return response
 
 
 @app.route("/account/email", methods=["POST"])

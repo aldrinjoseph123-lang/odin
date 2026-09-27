@@ -68,6 +68,11 @@ PROJECT_ACTIONS = {
     "manage_documents": ("upload_document", {"Project manager", "Coordinator"}),
 }
 
+THEMES = ("system", "light", "dark")
+ACCENTS = ("blue", "indigo", "violet", "teal", "green", "amber", "rose", "ink")
+AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+AVATAR_MAX_BYTES = 2 * 1024 * 1024
+
 # External: contractors, resellers and customer contacts invited by email. No
 # password, no product surface beyond the projects they participate in.
 ROLES = ["Admin", "Member", "Contributor", "Viewer", "External"]
@@ -162,6 +167,12 @@ NEW_USER_COLUMNS = {
     # Set on the seed admin and whenever an admin resets someone's password:
     # the next login is funnelled to the account page until it is changed.
     "must_change_password": "INTEGER NOT NULL DEFAULT 0",
+    # Appearance is the user's, not the deployment's: light / dark / follow the
+    # OS, and which hue the one accent takes. The avatar is a filename under
+    # ODIN_DATA_DIR/avatars, unique per upload so its URL changes on replace.
+    "theme": "TEXT NOT NULL DEFAULT 'system'",
+    "accent": "TEXT NOT NULL DEFAULT 'blue'",
+    "avatar": "TEXT",
     # Bumped on deactivate / admin reset: any session minted under an older
     # epoch is dead on its next request. Cheap "log out everywhere".
     "session_epoch": "INTEGER NOT NULL DEFAULT 0",

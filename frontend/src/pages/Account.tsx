@@ -3,6 +3,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { account, ApiError, postForm, type User } from "@/lib/api"
+import { UserAvatar } from "@/components/UserAvatar"
+import { ACCENTS, THEMES, applyTheme, type Accent, type Theme } from "@/lib/theme"
+import { cn } from "@/lib/utils"
 
 export default function Account(_props: { user: User }) {
   const [me, setMe] = useState<Awaited<ReturnType<typeof account>> | null>(null)
@@ -12,7 +15,7 @@ export default function Account(_props: { user: User }) {
   const [busy, setBusy] = useState(false)
   async function load() { const m = await account(); setMe(m); setEmail(m.email ?? "") }
   useEffect(() => { document.title = "Account · Odin"; void load() }, [])
-  async function send(path: string, fields: Record<string, string>, after?: () => void) {
+  async function send(path: string, fields: Record<string, string> | FormData, after?: () => void) {
     setBusy(true)
     try {
       const r = await postForm(path, fields)
@@ -32,6 +35,39 @@ export default function Account(_props: { user: User }) {
       {me.must_change_password && <Alert className="mt-3"><AlertDescription>Set a new password before continuing. The one you were given is a shared secret.</AlertDescription></Alert>}
       {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
       <div className="mt-3 grid max-w-3xl gap-4 lg:grid-cols-2">
+        <section className="grid content-start gap-3 rounded-lg border border-border p-4">
+          <h3 className="text-[12px] font-semibold text-nav-fg">Appearance <span className="font-normal text-muted-foreground">yours, on every device you sign in on</span></h3>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Theme">
+            {THEMES.map((t) => (
+              <button key={t} type="button" role="radio" aria-checked={me.theme === t} disabled={busy}
+                onClick={() => { applyTheme(t, me.accent as Accent); void send("/account/appearance", { theme: t, accent: me.accent }) }}
+                className={cn("h-7 rounded-full border px-3 text-[12.5px] font-medium capitalize transition-colors", me.theme === t ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{t}</button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Accent colour">
+            {ACCENTS.map((c) => (
+              <button key={c.key} type="button" role="radio" aria-checked={me.accent === c.key} aria-label={c.label} title={c.label} disabled={busy}
+                onClick={() => { applyTheme(me.theme as Theme, c.key); void send("/account/appearance", { theme: me.theme, accent: c.key }) }}
+                className={cn("h-7 w-7 rounded-full border-2 ring-1 ring-border ring-offset-1 ring-offset-background transition-transform", me.accent === c.key ? "scale-110 border-foreground" : "border-transparent hover:scale-105")}
+                style={{ background: c.swatch }} />
+            ))}
+          </div>
+          <p className="text-[11.5px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. Green, amber and red stay reserved for state.</p>
+        </section>
+        <form onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); if ((fd.get("avatar") as File | null)?.name) void send("/account/avatar", fd, () => e.currentTarget?.reset?.()) }} className="grid content-start gap-3 rounded-lg border border-border p-4">
+          <h3 className="text-[12px] font-semibold text-nav-fg">Picture <span className="font-normal text-muted-foreground">shown wherever your name is</span></h3>
+          <div className="flex items-center gap-3">
+            <UserAvatar name={me.name} url={me.avatar_url} className="h-14 w-14" textClass="text-[18px]" />
+            <div className="grid gap-2">
+              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="text-[12.5px] file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-[12.5px] file:font-medium" />
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" variant="outline" disabled={busy}>Upload</Button>
+                {me.avatar_url && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => send("/account/avatar/remove", {})}>Remove</Button>}
+              </div>
+              <p className="text-[11.5px] text-muted-foreground">PNG, JPG, GIF or WebP, up to 2 MB. Square images look best.</p>
+            </div>
+          </div>
+        </form>
         <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email }) }} className="grid content-start gap-2 rounded-lg border border-border p-4">
           <h3 className="text-[12px] font-semibold text-nav-fg">Email <span className="font-normal text-muted-foreground">for notifications</span></h3>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" aria-label="Email address" className="h-8 text-[13px]" />

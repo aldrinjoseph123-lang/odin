@@ -8,7 +8,7 @@ from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
-from db import get_doc_category_names, stage_rows
+from db import avatar_url, get_doc_category_names, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
@@ -32,9 +32,12 @@ def _permissions_for(role):
 def _current_user():
     if "user_id" not in session:
         return None
+    me = get_db().execute("SELECT id, theme, accent, avatar FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     return {
         "id": session["user_id"],
         "name": session.get("user_name"),
+        "theme": me["theme"] if me else "system", "accent": me["accent"] if me else "blue",
+        "avatar_url": avatar_url(me) if me else None,
         "role": session.get("role"),
         "kind": session.get("kind", "internal"),
         "must_change_password": bool(session.get("must_change_password")),
@@ -46,8 +49,17 @@ def _current_user():
 @app.route("/api/session")
 def api_session():
     """Who am I, what may I do, and the CSRF token every mutation must carry.
-    Anonymous callers get the token too — the login form needs it."""
-    return jsonify({"csrf": csrf_token(), "user": _current_user()})
+    Anonymous callers get the token too — the login form needs it.
+
+    `messages` drains Flask's pending flashes. A route that flashes and then
+    redirects to a React page ("Your session has ended", "Set a new password
+    before continuing") would otherwise lose the message, or have it surface
+    later inside an unrelated reply."""
+    from flask import get_flashed_messages
+    from markupsafe import Markup
+    import re
+    messages = [re.sub(r"<[^>]+>", "", str(m)).replace("  ", " ").strip() if isinstance(m, Markup) else m for m in get_flashed_messages()]
+    return jsonify({"csrf": csrf_token(), "user": _current_user(), "messages": messages})
 
 
 @app.route("/api/login", methods=["POST"])
@@ -194,9 +206,10 @@ def api_settings_contacts():
 @permission_required("manage_users")
 def api_users():
     rows = get_db().execute(
-        "SELECT id, username, name, email, role, active, kind, last_login_at, created_at FROM users ORDER BY name"
+        "SELECT id, username, name, email, role, active, kind, last_login_at, created_at, avatar FROM users ORDER BY name"
     ).fetchall()
-    return jsonify(users=[dict(r) | {"active": bool(r["active"])} for r in rows], roles=list(ROLES), me=session["user_id"])
+    return jsonify(users=[{k: r[k] for k in r.keys() if k != "avatar"} | {"active": bool(r["active"]), "avatar_url": avatar_url(r)} for r in rows],
+                   roles=list(ROLES), me=session["user_id"])
 
 
 @app.route("/api/audit")
@@ -247,8 +260,9 @@ def api_report(project_id):
 @app.route("/api/account")
 @login_required
 def api_account():
-    u = get_db().execute("SELECT username, name, email, kind, must_change_password FROM users WHERE id = ?", (session["user_id"],)).fetchone()
-    return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]))
+    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
+                   theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u))
 
 
 @app.route("/api/my-work")
@@ -426,7 +440,8 @@ def api_project(project_id):
             if project["delivery_mode"] == "Outsourced" and project["access_token"] else None,
         } if guest_on and (can_manage or role != "External") else {"customer": None, "vendor": None},
         "stage_rows": [{"id": r["id"], "name": r["name"], "sla_days": r["sla_days"]} for r in stage_rows(project_id)],
-        "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"], "email": r["email"], "active": bool(r["active"])}
+        "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"], "email": r["email"], "active": bool(r["active"]),
+                          "avatar_url": f"/users/{r['user_id']}/avatar/{r['avatar']}" if r["avatar"] else None}
                          for r in participants_for(project_id)],
         "notes": [{"id": n["id"], "author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]}
                   for n in db.execute("SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at DESC", (project_id,))],
@@ -573,10 +588,10 @@ def api_flow():
         approvals[r["project_id"]] = r
     team = {}   # project_id -> participant names, PM first (avatars on the row)
     for r in db.execute(
-        "SELECT pp.project_id, u.name FROM project_participants pp JOIN users u ON u.id = pp.user_id "
+        "SELECT pp.project_id, u.id, u.name, u.avatar FROM project_participants pp JOIN users u ON u.id = pp.user_id "
         "WHERE u.active = 1 ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name"
     ):
-        team.setdefault(r["project_id"], []).append(r["name"])
+        team.setdefault(r["project_id"], []).append({"id": r["id"], "name": r["name"], "avatar_url": avatar_url(r)})
     # Earliest-due open task per project = the next actionable item.
     next_task = {}
     for t in db.execute(
@@ -596,7 +611,7 @@ def api_flow():
         state = _flow_state(p, sla, schedule)
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
-            "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [p["owner_name"]]),
+            "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
             "approval": (approvals[p["id"]]["status"] if p["id"] in approvals and approvals[p["id"]]["stage"] == p["stage"] else None),
             "stage_index": stages.index(p["stage"]) if p["stage"] in stages else 0,
             "owner_name": p["owner_name"], "delivery_mode": p["delivery_mode"],
@@ -641,7 +656,7 @@ def api_project_flow(project_id):
         stage_rows.append({"name": name, "status": status, "sla_days": slas.get(name),
                            **(visits.get(name) or {"entered_at": None, "days": None})})
     tasks = db.execute(
-        "SELECT t.*, u.name AS assignee_name FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
+        "SELECT t.*, u.name AS assignee_name, u.avatar AS assignee_avatar FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
         "WHERE t.project_id = ? ORDER BY t.done, t.due_date IS NULL, t.due_date, t.id", (project_id,),
     ).fetchall()
     sla = stage_sla_state(project, slas, terminal, now)
@@ -662,13 +677,15 @@ def api_project_flow(project_id):
         # a task without a stage belongs to whatever stage the project is in
         "tasks": [{"id": t["id"], "title": t["title"], "done": bool(t["done"]), "due_date": t["due_date"],
                    "assignee": t["assignee_name"], "assignee_id": t["assignee_id"],
+                   "assignee_avatar_url": f"/users/{t['assignee_id']}/avatar/{t['assignee_avatar']}" if t["assignee_avatar"] else None,
                    "stage": t["stage"] if t["stage"] in stages else project["stage"]} for t in tasks],
         "assignable": [{"id": r["user_id"], "name": r["name"]} for r in participants_for(project_id) if r["active"]],
         "can_edit": project_allows(project_id, "manage_tasks"),
         "me": session["user_id"],
         "documents": db.execute("SELECT COUNT(*) AS c FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,)).fetchone()["c"],
         "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]} for n in notes[-4:][::-1]],
-        "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"]} for r in participants_for(project_id)],
+        "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
+                          "avatar_url": f"/users/{r['user_id']}/avatar/{r['avatar']}" if r["avatar"] else None} for r in participants_for(project_id)],
         "can_move": project_allows(project_id, "move_stage"),
         "customer_approval": bool(project["customer_approval"]),
         "approval": ({"id": a["id"], "stage": a["stage"], "status": a["status"], "decided_by": a["decided_by"], "comment": a["comment"]}

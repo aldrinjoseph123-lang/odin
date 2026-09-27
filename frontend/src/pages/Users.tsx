@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { UserAvatar } from "@/components/UserAvatar"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, postForm, users as fetchUsers, type AdminUser, type User } from "@/lib/api"
@@ -74,7 +75,7 @@ function Row({ u, roles, me, busy, send }: { u: AdminUser; roles: string[]; me: 
   const self = u.id === me
   return (
     <tr className={cn("border-b border-border last:border-0", !u.active && "text-muted-foreground")}>
-      <td className="px-3 py-2 font-medium"><span title={u.username}>{u.name}</span>{u.kind === "external" && <Badge variant="secondary" className="ml-1.5">External</Badge>}{self && <span className="ml-1.5 text-[11.5px] font-normal text-muted-foreground">you</span>}</td>
+      <td className="px-3 py-2 font-medium"><span className="inline-flex items-center gap-2"><UserAvatar name={u.name} url={u.avatar_url} className="h-6 w-6" /><span title={u.username}>{u.name}</span></span>{u.kind === "external" && <Badge variant="secondary" className="ml-1.5">External</Badge>}{self && <span className="ml-1.5 text-[11.5px] font-normal text-muted-foreground">you</span>}</td>
       <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{u.username}</td>
       <td className="px-3 py-2">
         <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="flex items-center gap-1">

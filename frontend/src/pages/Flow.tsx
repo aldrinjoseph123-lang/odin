@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
 import { ArrowRight, CalendarDays, Check, ChevronRight, Clock, ExternalLink, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { UserAvatar } from "@/components/UserAvatar"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ApiError, addTask, changeStage, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { days, fmtDate, initials, stateText } from "@/lib/format"
+import { days, fmtDate, stateText } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 
 
@@ -29,14 +29,12 @@ function ApprovalChip({ status, className }: { status: ApprovalStatus | null; cl
 
 
 // Who is on it, at a glance: PM first, then up to two more, then "+n".
-function TeamStack({ names, className }: { names: string[]; className?: string }) {
-  const shown = names.slice(0, 3)
+function TeamStack({ people, className }: { people: { id: number; name: string; avatar_url: string | null }[]; className?: string }) {
+  const shown = people.slice(0, 3)
   return (
-    <span className={cn("items-center -space-x-1.5", className)} title={names.join(", ")}>
-      {shown.map((n, i) => (
-        <Avatar key={i} className="h-6 w-6 ring-2 ring-background"><AvatarFallback className="bg-secondary text-[10px] font-semibold text-nav-fg">{initials(n)}</AvatarFallback></Avatar>
-      ))}
-      {names.length > 3 && <span className="ml-1 pl-1.5 text-[11px] text-muted-foreground">+{names.length - 3}</span>}
+    <span className={cn("items-center -space-x-1.5", className)} title={people.map((p) => p.name).join(", ")}>
+      {shown.map((p) => <UserAvatar key={p.id} name={p.name} url={p.avatar_url} className="ring-2 ring-background" />)}
+      {people.length > 3 && <span className="ml-1 pl-1.5 text-[11px] text-muted-foreground">+{people.length - 3}</span>}
     </span>
   )
 }
@@ -71,7 +69,7 @@ function StageTasks({ d, stage, reload, onError }: { d: FlowDetail; stage: strin
                 {t.done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
               </button>
               <span className={cn("min-w-0 flex-1 break-words line-clamp-2", t.done && "line-through")} title={t.due_date ? `due ${fmtDate(t.due_date)}` : undefined}>{t.title}</span>
-              {t.assignee && <Avatar className="h-5 w-5" title={t.assignee}><AvatarFallback className="bg-secondary text-[9px] font-semibold text-nav-fg">{initials(t.assignee)}</AvatarFallback></Avatar>}
+              {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[9px]" />}
               {d.can_edit && (
                 <button type="button" disabled={busy} onClick={() => run(() => deleteTask(d.id, t.id))} aria-label={`Delete ${t.title}`}
                   className="hidden shrink-0 text-muted-foreground hover:text-bad group-hover:block group-focus-within:block"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -158,7 +156,7 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
                     <span className={cn("whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
                       <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
                   </span>
-                  <TeamStack names={r.team} className="hidden md:flex" />
+                  <TeamStack people={r.team} className="hidden md:flex" />
                 </button>
               </li>
             )
@@ -343,7 +341,7 @@ export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDeta
           <ul className="grid gap-1.5">
             {d.participants.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-[12.5px]">
-                <Avatar className="h-6 w-6"><AvatarFallback className="bg-secondary text-[10px] font-semibold text-nav-fg">{initials(m.name)}</AvatarFallback></Avatar>
+                <UserAvatar name={m.name} url={m.avatar_url} />
                 <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
                 <span className="text-muted-foreground">{m.role}</span>
               </li>

@@ -68,11 +68,11 @@ def run_backup(force=False):
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             if os.path.exists(snapshot):
                 zf.write(snapshot, arcname="odin.db")
-            for root, _dirs, files in os.walk(UPLOAD_DIR):
-                for fname in files:
-                    full = os.path.join(root, fname)
-                    arcname = os.path.join("uploads", os.path.relpath(full, UPLOAD_DIR))
-                    zf.write(full, arcname=arcname)
+            for folder, label in ((UPLOAD_DIR, "uploads"), (_db.AVATAR_DIR, "avatars")):
+                for root, _dirs, files in os.walk(folder):
+                    for fname in files:
+                        full = os.path.join(root, fname)
+                        zf.write(full, arcname=os.path.join(label, os.path.relpath(full, folder)))
 
     # Prune: newest KEEP_LOCAL stay. Names sort chronologically.
     older = sorted(f for f in os.listdir(_backup_dir()) if f.startswith("odin-backup-") and f.endswith(".zip"))

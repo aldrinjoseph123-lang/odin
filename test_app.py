@@ -1214,13 +1214,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "project_new": "/projects/new", "project_edit": "/projects/1/edit", "users": "/users", "audit_logs_view": "/audit-logs",
             "settings": "/settings", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
             "account": "/account", "my_work": "/my-work", "analytics": "/analytics", "alerts_log_view": "/alerts",
-            "report_all": "/reports/all", "report_single": "/projects/1/report",
+            "report_all": "/reports/all", "report_single": "/projects/1/report", "auth_link_request": "/auth/link",
         }
         self.assertEqual(set(paths), spa.SPA_PAGES)          # a new port must be listed here too
         c, _ = self._api_client()
         with patch.dict(app_module.app.config, {"SERVE_SPA": True, "SPA_DIST": dist}):
+            anon = app_module.app.test_client()
             for endpoint, path in paths.items():
-                r = c.get(path)
+                r = (anon if endpoint == "auth_link_request" else c).get(path)   # the partner page is for the signed out
                 self.assertEqual(r.status_code, 200, path); self.assertIn(b"id=root", r.data, path)
             # form POSTs are not intercepted: the Jinja route still answers them
             self.assertEqual(c.post("/projects/1/note", data={"note": "x"}).status_code, 302)
@@ -1329,6 +1330,72 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(ann.get("/projects/1/activity.csv").status_code, 403)
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT details FROM audit_logs WHERE action='export_project_activity'").fetchone()[0], "4 rows")
+
+    def test_flashes_queued_before_a_redirect_to_a_react_page_reach_it_once(self):
+        c, _ = self._api_client()
+        with self.raw_db() as db:   # an admin deactivation or reset ends every live session
+            db.execute("UPDATE users SET session_epoch = session_epoch + 1 WHERE id = 1"); db.commit()
+        self.assertIn("/login", c.get("/projects").headers["Location"])          # the gate flashes, then redirects
+        s = c.get("/api/session").get_json()
+        self.assertEqual((s["user"], s["messages"]), (None, ["Your session has ended — please sign in again"]))
+        self.assertEqual(c.get("/api/session").get_json()["messages"], [])       # drained, never repeated
+        # and nothing stale leaks into the next bridge reply after signing back in
+        c2, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        self.assertEqual(c2.post("/account/appearance", data={"theme": "light", "accent": "blue"}, headers=h).get_json()["messages"], ["Appearance saved"])
+
+    # ---- appearance and profile pictures --------------------------------------
+
+    def test_appearance_is_per_user_and_validated(self):
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        me = c.get("/api/session").get_json()["user"]
+        self.assertEqual((me["theme"], me["accent"], me["avatar_url"]), ("system", "blue", None))
+        self.assertEqual(c.post("/account/appearance", data={"theme": "dark", "accent": "violet"}, headers=h).get_json()["messages"], ["Appearance saved"])
+        self.assertEqual(c.post("/account/appearance", data={"theme": "neon", "accent": "violet"}, headers=h).get_json()["messages"], ["Pick a theme and an accent from the list"])
+        me = c.get("/api/session").get_json()["user"]
+        self.assertEqual((me["theme"], me["accent"]), ("dark", "violet"))
+        self.assertEqual(c.get("/api/account").get_json()["accent"], "violet")
+        # another user is untouched
+        pm1, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
+        self.assertEqual(pm1.get("/api/session").get_json()["user"]["theme"], "system")
+
+    def test_profile_picture_upload_serve_replace_remove_and_refusals(self):
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+        r = c.post("/account/avatar", data={"avatar": (io.BytesIO(png), "me.png")}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Picture updated"])
+        url = c.get("/api/session").get_json()["user"]["avatar_url"]
+        self.assertRegex(url, r"^/users/1/avatar/1-[A-Za-z0-9_-]+\.png$")
+        got = c.get(url)
+        self.assertEqual((got.status_code, got.mimetype, got.data[:4]), (200, "image/png", b"\x89PNG"))
+        self.assertIn("immutable", got.headers["Cache-Control"])
+        # everywhere a person appears, the picture rides along
+        self.new_project(name="P", client="C")
+        self.client.post("/projects/1/tasks", data={"title": "T", "assignee_id": "1"})
+        flow = c.get("/api/flow").get_json()["rows"][0]["team"][0]
+        self.assertEqual((flow["name"], flow["avatar_url"]), ("Admin", url))
+        d = c.get("/api/projects/1/flow").get_json()
+        self.assertEqual(d["participants"][0]["avatar_url"], url); self.assertEqual(d["tasks"][0]["assignee_avatar_url"], url)
+        self.assertEqual(c.get("/api/users").get_json()["users"][0]["avatar_url"], url)
+        # replacing changes the URL and kills the old one; another signed-in user can see it; anonymous cannot
+        c.post("/account/avatar", data={"avatar": (io.BytesIO(b"\xff\xd8\xff" + b"\x00" * 32), "me.jpg")}, headers=h)
+        url2 = c.get("/api/session").get_json()["user"]["avatar_url"]
+        self.assertNotEqual(url, url2); self.assertEqual(c.get(url).status_code, 404); self.assertEqual(c.get(url2).status_code, 200)
+        pm1, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
+        self.assertEqual(pm1.get(url2).status_code, 200)
+        self.assertEqual(app_module.app.test_client().get(url2).status_code, 302)
+        # refusals: wrong type, lying bytes, too big
+        self.assertEqual(c.post("/account/avatar", data={"avatar": (io.BytesIO(b"<svg/>"), "x.svg")}, headers=h).get_json()["messages"], ["Use a PNG, JPG, GIF or WebP image"])
+        self.assertEqual(c.post("/account/avatar", data={"avatar": (io.BytesIO(b"<html>"), "x.png")}, headers=h).get_json()["messages"], ["That file's contents don't match its extension"])
+        self.assertEqual(c.post("/account/avatar", data={"avatar": (io.BytesIO(b"\x89PNG" + b"\x00" * (2 * 1024 * 1024 + 1)), "big.png")}, headers=h).get_json()["messages"], ["Keep the picture under 2 MB"])
+        self.assertEqual(c.get("/api/session").get_json()["user"]["avatar_url"], url2)
+        c.post("/account/avatar/remove", data={}, headers=h)
+        self.assertIsNone(c.get("/api/session").get_json()["user"]["avatar_url"]); self.assertEqual(c.get(url2).status_code, 404)
+        with self.raw_db() as db:
+            self.assertEqual([a[0] for a in db.execute("SELECT action FROM audit_logs WHERE action LIKE '%avatar%' ORDER BY id")],
+                             ["change_own_avatar", "change_own_avatar", "remove_own_avatar"])
 
     # ---- reports as JSON (React port) ------------------------------------------
 
@@ -1672,7 +1739,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.client.post("/projects/1/participants/add", data={"user_id": "2", "role": "Coordinator"})
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf}
-        self.assertEqual(c.get("/api/flow").get_json()["rows"][0]["team"], ["Admin", "pm1"])
+        self.assertEqual([p["name"] for p in c.get("/api/flow").get_json()["rows"][0]["team"]], ["Admin", "pm1"])
         tid = c.post("/projects/1/tasks", json={"title": "T"}, headers=h).get_json()["id"]
         self.assertEqual(c.post(f"/projects/1/tasks/{tid}/toggle", json={}, headers=h).get_json(), {"ok": True, "done": True})
         self.assertEqual(c.post(f"/projects/1/tasks/{tid}/delete", json={}, headers=h).get_json(), {"ok": True})
@@ -2244,7 +2311,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         resp = self.client.get("/no-such-page")
         self.assertEqual(resp.status_code, 404)
         self.assertIn(b"Page not found", resp.data)
-        self.assertIn(b"style.css", resp.data)
+        # standalone: it must render when the app is what failed, and it follows the saved theme
+        self.assertIn(b"<title>Page not found \xc2\xb7 Odin</title>", resp.data); self.assertIn(b"odin.theme", resp.data)
+        self.assertNotIn(b"style.css", resp.data); self.assertIn(b"Back to the flow", resp.data)
         anon = app_module.app.test_client()
         self.assertIn(b"Sign in", anon.get("/nope").data)
 
@@ -2599,7 +2668,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertNotIn(b"Save Changes", page)   # it creates, it doesn't update
 
     def test_duplicate_of_missing_project_falls_back_to_a_blank_form(self):
-        page = self.client.get("/projects/new?from=9999").data
+        resp = self.client.get("/projects/new?from=9999")
+        self.assertEqual(resp.status_code, 200)       # the old 404 hid behind a nav link that said "New Project"
+        page = resp.data
         self.assertIn(b"New Project", page)
         self.assertNotIn(b"Duplicate Project", page)
 

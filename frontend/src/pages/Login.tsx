@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ApiError, login } from "@/lib/api"
+import { ApiError, login, session } from "@/lib/api"
 
 // After a successful login the rest of the app is still Jinja, so this is a
 // full navigation, not a router push. ?next= is honoured only when relative —
@@ -20,6 +20,9 @@ export default function Login() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  // e.g. "Your session has ended — please sign in again", queued before the redirect here
+  useEffect(() => { session().then((s) => { if (s.messages?.length) setNotice(s.messages.join(" ")) }).catch(() => {}) }, [])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -41,6 +44,7 @@ export default function Login() {
           <CardTitle className="text-2xl font-bold tracking-tight">Odin</CardTitle>
         </CardHeader>
         <CardContent>
+          {notice && <Alert className="mb-4" role="status"><AlertDescription>{notice}</AlertDescription></Alert>}
           <form onSubmit={submit} className="grid gap-4" noValidate>
             {error && (
               <Alert variant="destructive" role="alert">

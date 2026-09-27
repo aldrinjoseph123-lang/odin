@@ -17,6 +17,7 @@ import Analytics from "@/pages/Analytics"
 import ReportAll from "@/pages/ReportAll"
 import Report from "@/pages/Report"
 import Login from "@/pages/Login"
+import LinkRequest from "@/pages/LinkRequest"
 import { session, type User } from "@/lib/api"
 
 // Strangler router: only ported pages are listed. Anything else is a Jinja
@@ -30,16 +31,17 @@ function HandOffToFlask() {
 // pending password change → the account page, exactly as the Flask gate does.
 function Protected({ children }: { children: (user: User) => React.ReactNode }) {
   const [user, setUser] = useState<User | null | undefined>(undefined)
+  const [messages, setMessages] = useState<string[]>([])
   const { pathname, search } = useLocation()
   useEffect(() => {
     session().then((s) => {
       if (!s.user) window.location.assign(`/login?next=${encodeURIComponent(pathname + search)}`)
       else if (s.user.must_change_password && pathname !== "/account") window.location.assign("/account")
-      else setUser(s.user)
+      else { setUser(s.user); if (s.messages?.length) setMessages(s.messages) }
     })
   }, [pathname, search])
   if (!user) return null
-  return <AppShell user={user}>{children(user)}</AppShell>
+  return <AppShell user={user} messages={messages} onDismiss={() => setMessages([])}>{children(user)}</AppShell>
 }
 
 export default function App() {
@@ -47,6 +49,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/link" element={<LinkRequest />} />
         <Route path="/board" element={<Protected>{(user) => <Flow user={user} />}</Protected>} />
         <Route path="/projects" element={<Protected>{(user) => <Projects user={user} />}</Protected>} />
         <Route path="/projects/new" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />

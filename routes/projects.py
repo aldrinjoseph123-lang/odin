@@ -400,8 +400,9 @@ def project_new():
     users = db.execute("SELECT * FROM users ORDER BY name").fetchall()
     source = None
     duplicate_of = request.args.get("from", type=int)
-    if duplicate_of:
-        source = load_project(duplicate_of)   # only a project you may see can be duplicated
+    # only a project you may see can be duplicated; a stale link gives a blank form, not a 404
+    if duplicate_of and db.execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (duplicate_of,)).fetchone():
+        source = load_project(duplicate_of)
     return render_template(
         "project_form.html",
         stage_templates=get_db().execute("SELECT id, name FROM stage_templates ORDER BY name").fetchall(), users=users, project=source, duplicating=bool(source),

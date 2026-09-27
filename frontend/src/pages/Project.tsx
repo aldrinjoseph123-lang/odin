@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { useParams } from "react-router-dom"
 import { Copy, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { UserAvatar } from "@/components/UserAvatar"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Detail } from "@/pages/Flow"
@@ -10,7 +10,6 @@ import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-const initials = (name: string) => name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()
 const fmtDateTime = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
 const fmtDate = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
@@ -126,7 +125,7 @@ export default function Project(_props: { user: User }) {
           <ul className="grid gap-1.5">
             {x.participants.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-[13px]">
-                <Avatar className="h-6 w-6"><AvatarFallback className="bg-secondary text-[10px] font-semibold text-nav-fg">{initials(m.name)}</AvatarFallback></Avatar>
+                <UserAvatar name={m.name} url={m.avatar_url} />
                 <span className="min-w-0 flex-1 truncate font-medium">{m.name}{!m.active && <span className="ml-1 font-normal text-muted-foreground">(deactivated)</span>}</span>
                 <span className="text-muted-foreground">{m.role}</span>
                 {m.email && <span className="hidden text-[12px] text-muted-foreground sm:inline">{m.email}</span>}

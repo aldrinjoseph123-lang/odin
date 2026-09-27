@@ -36,6 +36,7 @@ DATA_DIR = os.environ.get("ODIN_DATA_DIR") or os.path.dirname(__file__)
 DB_PATH = os.path.join(DATA_DIR, "odin.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")  # ships with the code
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+AVATAR_DIR = os.path.join(DATA_DIR, "avatars")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -575,7 +576,7 @@ def set_project_manager(db, project_id, user_id, added_by=None):
 
 def participants_for(project_id):
     return get_db().execute(
-        "SELECT pp.*, u.name, u.email, u.active FROM project_participants pp JOIN users u ON u.id = pp.user_id "
+        "SELECT pp.*, u.name, u.email, u.active, u.avatar FROM project_participants pp JOIN users u ON u.id = pp.user_id "
         "WHERE pp.project_id = ? ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name",
         (project_id,),
     ).fetchall()
@@ -586,6 +587,12 @@ def current_approval(project_id):
     return get_db().execute(
         "SELECT * FROM stage_approvals WHERE project_id = ? ORDER BY id DESC LIMIT 1", (project_id,)
     ).fetchone()
+
+
+def avatar_url(row):
+    """The URL a page uses for a user's picture, or None. The filename is part
+    of the path, so a replaced picture gets a new URL and no stale cache."""
+    return f"/users/{row['id']}/avatar/{row['avatar']}" if row["avatar"] else None
 
 
 def project_role_of(project_id, user_id):
