@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type SettingsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
@@ -42,7 +43,7 @@ export default function Settings(_props: { user: User }) {
   }
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!data) return <div className="p-5 text-[13px] text-muted-foreground">Loading settings…</div>
+  if (!data) return <PageSkeleton />
 
   return (
     <div className="px-5 pb-6 pt-4">

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ApiError, myWork, type MyWorkData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 const fmtDate = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "—")
 const SCHEDULE = { overdue: { label: "Overdue", cls: "bg-bad-soft text-bad" }, at_risk: { label: "Due soon", cls: "bg-warn-soft text-warn" }, on_track: { label: "On track", cls: "text-muted-foreground" } } as const
@@ -11,7 +12,7 @@ export default function MyWork(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   useEffect(() => { document.title = "My work · Odin"; myWork().then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [])
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!d) return <div className="p-5 text-[13px] text-muted-foreground">Loading…</div>
+  if (!d) return <PageSkeleton />
   const overdue = d.projects.filter((p) => p.schedule === "overdue").length
   return (
     <div className="px-5 pb-6 pt-4">

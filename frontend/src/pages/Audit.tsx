@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, audit, type AuditData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 const fmt = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
 const selectClass = "h-7 max-w-48 rounded-md border border-border bg-background px-2 text-[12.5px] font-medium text-nav-fg hover:bg-muted"
@@ -29,7 +30,7 @@ export default function Audit(_props: { user: User }) {
   const filtered = ["user", "action", "project_id", "from", "to"].some((k) => params.get(k))
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!data) return <div className="p-5 text-[13px] text-muted-foreground">Loading audit log…</div>
+  if (!data) return <PageSkeleton />
 
   return (
     <div className="flex h-full flex-col px-5 pb-4 pt-4">

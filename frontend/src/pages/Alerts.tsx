@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
 import { alerts, ApiError, type AlertsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 const fmt = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
 const SEV = { critical: "bg-bad-soft text-bad", warning: "bg-warn-soft text-warn", info: "bg-muted text-muted-foreground" }
@@ -22,7 +23,7 @@ export default function Alerts(_props: { user: User }) {
     setParams(next)
   }
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!d) return <div className="p-5 text-[13px] text-muted-foreground">Loading…</div>
+  if (!d) return <PageSkeleton />
   return (
     <div className="flex h-full flex-col px-5 pb-4 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

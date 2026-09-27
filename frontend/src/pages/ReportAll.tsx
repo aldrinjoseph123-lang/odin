@@ -3,6 +3,7 @@ import { Printer } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { ApiError, reportAll, type ReportAllData, type User } from "@/lib/api"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 const fmt = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
 
@@ -11,7 +12,7 @@ export default function ReportAll(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   useEffect(() => { document.title = "All projects report · Odin"; reportAll().then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [])
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!d) return <div className="p-5 text-[13px] text-muted-foreground">Loading…</div>
+  if (!d) return <PageSkeleton />
   return (
     <div className="mx-auto max-w-5xl px-5 pb-8 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

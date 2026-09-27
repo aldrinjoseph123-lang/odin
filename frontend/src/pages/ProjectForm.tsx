@@ -4,6 +4,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, postForm, projectForm, type ProjectFormData, type User } from "@/lib/api"
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
@@ -24,6 +26,9 @@ export default function ProjectForm(_props: { user: User }) {
   const [f, setF] = useState<Record<string, string>>({})
   const [team, setTeam] = useState<string[]>([])
   const [approval, setApproval] = useState(false)
+  const [initial, setInitial] = useState("")
+  const [saved, setSaved] = useState(false)
+  useUnsavedGuard(!saved && initial !== "" && initial !== JSON.stringify(f))
 
   useEffect(() => {
     projectForm(query).then((data) => {
@@ -38,10 +43,12 @@ export default function ProjectForm(_props: { user: User }) {
         stage_template_id: String(p.stage_template_id ?? data.templates[0]?.id ?? ""), owner_id: String(p.owner_id ?? data.me),
       })
       setApproval(!!p.customer_approval)
+      setInitial("pending")   // the snapshot is taken on the next render, once f is set
       document.title = `${data.mode === "edit" ? "Edit" : data.mode === "duplicate" ? "Duplicate" : "New"} project · Odin`
     }).catch((e) => setError(e instanceof ApiError && e.status === 403 ? "You cannot edit this project." : e instanceof ApiError ? e.message : "Could not load the form"))
   }, [query])
 
+  useEffect(() => { if (initial === "pending") setInitial(JSON.stringify(f)) }, [initial, f])
   const set = (k: string) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
   const partner = d?.partners.find((p) => p.name === f.partner_name)
 
@@ -56,13 +63,13 @@ export default function ProjectForm(_props: { user: User }) {
     try {
       const r = await postForm(d.mode === "edit" ? `/projects/${d.id}/edit` : "/projects/new", fd)
       const failed = r.location && (r.location.endsWith("/projects/new") || r.location.endsWith("/edit"))
-      if (r.location && !failed) { window.location.assign(r.location); return }
+      if (r.location && !failed) { setSaved(true); window.setTimeout(() => window.location.assign(r.location!), 0); return }
       setNotice(r.messages.join(" ") || "Not saved")
     } catch (err) { setNotice(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
   }
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!d) return <div className="p-5 text-[13px] text-muted-foreground">Loading…</div>
+  if (!d) return <PageSkeleton />
   const editing = d.mode === "edit"
   const title = editing ? "Edit project" : d.mode === "duplicate" ? "Duplicate project" : "New project"
 

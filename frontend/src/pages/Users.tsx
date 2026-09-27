@@ -7,6 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, postForm, users as fetchUsers, type AdminUser, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 const fmt = (iso: string | null, withTime = false) => (iso ? new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], withTime ? { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short", year: "numeric" }) : "—")
 const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-[12.5px] disabled:opacity-60"
@@ -32,7 +33,7 @@ export default function Users(_props: { user: User }) {
   }
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!data) return <div className="p-5 text-[13px] text-muted-foreground">Loading users…</div>
+  if (!data) return <PageSkeleton />
 
   return (
     <div className="px-5 pb-6 pt-4">

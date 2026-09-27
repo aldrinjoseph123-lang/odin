@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
 import { days, fmtDate, stateText } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 
 // Customer approval of the current stage: amber while open, green/red once decided.
@@ -400,7 +401,7 @@ export default function Flow(_props: { user: User }) {
   useEffect(() => { document.querySelector('main [aria-current="true"]')?.scrollIntoView({ block: "nearest" }) }, [selectedId])
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!data) return <div className="p-5 text-[13px] text-muted-foreground">Loading rollouts…</div>
+  if (!data) return <PageSkeleton />
 
   return (
     <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
@@ -419,7 +420,7 @@ export default function Flow(_props: { user: User }) {
               )}
               {detail && detail.id === selectedId ? (
                 <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={setNotice} />
-              ) : <div className="p-5 text-[13px] text-muted-foreground">Loading…</div>}
+              ) : <PageSkeleton />}
             </ScrollArea>
           </ResizablePanel>
         </>

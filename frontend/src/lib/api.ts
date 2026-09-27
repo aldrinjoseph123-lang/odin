@@ -145,7 +145,7 @@ export type ProjectExtras = {
   guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean
   stage_rows: { id: number; name: string; sla_days: number | null }[]
   participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean; avatar_url: string | null }[]
-  notes: { id: number; author: string; note: string; stage: string; created_at: string }[]
+  notes: { id: number; author: string; note: string; stage: string; created_at: string; mine: boolean; edited: boolean; stage_entry: boolean }[]
   documents: { id: number; category: string; filename: string; uploaded_by: string; uploaded_at: string }[]
   doc_categories: string[]; users: { id: number; name: string }[]; roles: string[]; external_roles: string[]
   can: { manage: boolean; tasks: boolean; docs: boolean; move: boolean; note: boolean; download: boolean; create: boolean }

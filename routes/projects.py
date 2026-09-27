@@ -568,13 +568,14 @@ def change_stage(project_id, new_stage, note_text):
         (new_stage, now, now, project_id),
     )
     db.execute(
-        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (?, ?, ?, ?, ?, 1)",
+        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id) VALUES (?, ?, ?, ?, ?, 1, ?)",
         (
             project_id,
             session["user_name"],
             note_text or f"Stage changed to {new_stage}",
             new_stage,
             now,
+            session["user_id"],
         ),
     )
     if project["customer_approval"]:
@@ -615,8 +616,8 @@ def decide_approval(project_id, approval_id, decision, comment):
         (decision, session["user_name"], now, comment or None, approval_id),
     )
     db.execute(
-        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (?, ?, ?, ?, ?, 1)",
-        (project_id, session["user_name"], f"{decision.capitalize()} {row['stage']}" + (f": {comment}" if comment else ""), project["stage"], now),
+        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id) VALUES (?, ?, ?, ?, ?, 1, ?)",
+        (project_id, session["user_name"], f"{decision.capitalize()} {row['stage']}" + (f": {comment}" if comment else ""), project["stage"], now, session["user_id"]),
     )
     db.commit()
     audit_log("approval_decision", "project", project_id, project["name"], f"{row['stage']} {decision}")
@@ -996,8 +997,8 @@ def project_note(project_id):
     # An external participant's note is theirs to see again — and the
     # project's other outsiders may see it too. Staff notes stay internal.
     db.execute(
-        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (?, ?, ?, ?, ?, ?)",
-        (project_id, session["user_name"], note_text, project["stage"], now, 1 if session.get("kind") == "external" else 0),
+        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (project_id, session["user_name"], note_text, project["stage"], now, 1 if session.get("kind") == "external" else 0, session["user_id"]),
     )
     db.commit()
     audit_log("add_project_note", "project", project_id, project["name"], note_text)
@@ -1008,6 +1009,61 @@ def project_note(project_id):
                      exclude_user_id=session["user_id"])
     if project["owner_id"] not in mentioned:      # a mention already told the PM
         _tell_pm(project, f"New note on {escape(project['name'])}", html)
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+def stage_entry_note_ids(project_id):
+    """Ids of the notes that record a project entering a stage. The stage
+    timeline (days per stage, cycle time, the report) is rebuilt from these,
+    so they may be corrected but never deleted."""
+    names = get_stage_names(project_id)
+    prev = names[0] if names else None
+    ids = set()
+    for n in get_db().execute("SELECT id, stage FROM status_notes WHERE project_id = ? ORDER BY created_at, id", (project_id,)):
+        if n["stage"] != prev:
+            ids.add(n["id"])
+        prev = n["stage"]
+    return ids
+
+
+def _own_note(project_id, note_id):
+    load_project(project_id)   # visibility decided in one place
+    note = get_db().execute("SELECT * FROM status_notes WHERE id = ? AND project_id = ?", (note_id, project_id)).fetchone()
+    if note is None:
+        abort(404)
+    if note["author_id"] is None or note["author_id"] != session["user_id"]:
+        abort(403)   # only the author corrects their words
+    return note
+
+
+@app.route("/projects/<int:project_id>/notes/<int:note_id>/edit", methods=["POST"])
+@login_required
+def note_edit(project_id, note_id):
+    note = _own_note(project_id, note_id)
+    text = request.form.get("note", "").strip()[:5000]
+    if not text:
+        flash("A note needs some text — delete it instead")
+        return redirect(url_for("project_detail", project_id=project_id))
+    db = get_db()
+    db.execute("UPDATE status_notes SET note = ?, edited_at = ? WHERE id = ?", (text, datetime.utcnow().isoformat(), note_id))
+    db.commit()
+    audit_log("edit_project_note", "project", project_id, None, f"note {note_id}: {note['note'][:80]} -> {text[:80]}")
+    flash("Note updated")
+    return redirect(url_for("project_detail", project_id=project_id))
+
+
+@app.route("/projects/<int:project_id>/notes/<int:note_id>/delete", methods=["POST"])
+@login_required
+def note_delete(project_id, note_id):
+    note = _own_note(project_id, note_id)
+    if note_id in stage_entry_note_ids(project_id):
+        flash("This note records a stage change, so it stays in the history — edit its text instead")
+        return redirect(url_for("project_detail", project_id=project_id))
+    db = get_db()
+    db.execute("DELETE FROM status_notes WHERE id = ?", (note_id,))
+    db.commit()
+    audit_log("delete_project_note", "project", project_id, None, f"note {note_id}: {note['note'][:200]}")
+    flash("Note deleted")
     return redirect(url_for("project_detail", project_id=project_id))
 
 

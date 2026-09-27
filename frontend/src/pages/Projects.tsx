@@ -8,6 +8,7 @@ import { Stepper } from "@/components/Stepper"
 import { ApiError, projects, type ProjectsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { activeProjectsView } from "@/lib/format"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 // Every filter lives in the URL: shareable, back-button friendly, and the
 // same query string the CSV export and Flask's nav memory understand.
@@ -55,7 +56,7 @@ export default function Projects({ user }: { user: User }) {
   const filtered = Boolean(params.get("q") || params.get("view") || params.get("stage") || params.get("delivery_mode"))
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!data) return <div className="p-5 text-[13px] text-muted-foreground">Loading projects…</div>
+  if (!data) return <PageSkeleton />
 
   return (
     <div className="flex h-full flex-col px-5 pb-4 pt-4">

@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, contacts, postForm, type ContactsData, type User } from "@/lib/api"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
@@ -48,7 +49,7 @@ export default function Contacts(_props: { user: User }) {
     catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save" }); return null } finally { setBusy(false) }
   }
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!data) return <div className="p-5 text-[13px] text-muted-foreground">Loading contacts…</div>
+  if (!data) return <PageSkeleton />
   return (
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

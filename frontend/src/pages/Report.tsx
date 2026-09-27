@@ -5,6 +5,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ApiError, postForm, report, type ReportData, type User } from "@/lib/api"
 import { groupBlocks } from "@/lib/format"
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 const fmt = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
 
@@ -31,6 +33,7 @@ export default function Report(_props: { user: User }) {
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const query = params.toString()
+  useUnsavedGuard(editing && !!d && text !== d.editor_text)
   const load = useCallback(async () => {
     try {
       const r = await report(id, query)
@@ -49,7 +52,7 @@ export default function Report(_props: { user: User }) {
     } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!d) return <div className="p-5 text-[13px] text-muted-foreground">Loading…</div>
+  if (!d) return <PageSkeleton />
   const next = (d.versions[0]?.version ?? 0) + 1
   return (
     <div className="mx-auto max-w-3xl px-5 pb-8 pt-4">

@@ -6,6 +6,7 @@ import { account, ApiError, postForm, type User } from "@/lib/api"
 import { UserAvatar } from "@/components/UserAvatar"
 import { ACCENTS, THEMES, applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 export default function Account(_props: { user: User }) {
   const [me, setMe] = useState<Awaited<ReturnType<typeof account>> | null>(null)
@@ -26,7 +27,7 @@ export default function Account(_props: { user: User }) {
       if (r.messages.includes("Password updated") && me?.must_change_password) window.location.assign("/board")
     } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
-  if (!me) return <div className="p-5 text-[13px] text-muted-foreground">Loading…</div>
+  if (!me) return <PageSkeleton />
   return (
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

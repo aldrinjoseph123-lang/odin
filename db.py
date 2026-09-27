@@ -251,6 +251,13 @@ def migrate_db(db):
     note_columns = {row[1] for row in db.execute("PRAGMA table_info(status_notes)")}
     if "guest_visible" not in note_columns:
         db.execute("ALTER TABLE status_notes ADD COLUMN guest_visible INTEGER NOT NULL DEFAULT 0")
+    # Who wrote a note, by id (names are editable, so a name cannot prove
+    # authorship), and when it was last corrected. Older notes have no id and
+    # stay read-only.
+    if "author_id" not in note_columns:
+        db.execute("ALTER TABLE status_notes ADD COLUMN author_id INTEGER")
+    if "edited_at" not in note_columns:
+        db.execute("ALTER TABLE status_notes ADD COLUMN edited_at TEXT")
 
     _migrate_stage_lists(db)
     _migrate_participants(db)

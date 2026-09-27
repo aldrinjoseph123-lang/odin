@@ -1344,6 +1344,39 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         self.assertEqual(c2.post("/account/appearance", data={"theme": "light", "accent": "blue"}, headers=h).get_json()["messages"], ["Appearance saved"])
 
+    # ---- notes: correct or remove your own words, never the timeline ----------
+
+    def test_own_notes_can_be_edited_and_plain_ones_deleted(self):
+        self.new_project(name="N", client="C")
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        c.post("/projects/1/note", data={"note": "Kickoff booked for Tuseday"}, headers=h)
+        c.post("/projects/1/stage", data={"stage": stages[1], "note": "Scoping started"}, headers=h)
+        notes = {n["note"]: n for n in c.get("/api/projects/1").get_json()["notes"]}
+        plain, entry = notes["Kickoff booked for Tuseday"], notes["Scoping started"]
+        self.assertEqual((plain["mine"], plain["stage_entry"], entry["stage_entry"]), (True, False, True))
+        r = c.post(f"/projects/1/notes/{plain['id']}/edit", data={"note": "Kickoff booked for Tuesday"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Note updated"])
+        fixed = next(n for n in c.get("/api/projects/1").get_json()["notes"] if n["id"] == plain["id"])
+        self.assertEqual((fixed["note"], fixed["edited"]), ("Kickoff booked for Tuesday", True))
+        # a stage-entry note can be corrected but not deleted: the timeline is built from it
+        self.assertIn("stays in the history", c.post(f"/projects/1/notes/{entry['id']}/delete", data={}, headers=h).get_json()["messages"][0])
+        self.assertEqual(c.post(f"/projects/1/notes/{entry['id']}/edit", data={"note": "Scoping started (SOW v2)"}, headers=h).get_json()["messages"], ["Note updated"])
+        self.assertEqual(c.post(f"/projects/1/notes/{plain['id']}/delete", data={}, headers=h).get_json()["messages"], ["Note deleted"])
+        # someone else's note: refused; a note with no author id (older data): refused
+        pm1, pcsrf = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
+        self.assertEqual(pm1.post(f"/projects/1/notes/{entry['id']}/edit", data={"note": "mine now"}, headers={"X-CSRF-Token": pcsrf}).status_code, 403)
+        with self.raw_db() as db:
+            db.execute("INSERT INTO status_notes (project_id, author, note, stage, created_at) VALUES (1, 'Admin', 'old', ?, '2020-01-01')", (stages[1],)); db.commit()
+            old = db.execute("SELECT id FROM status_notes WHERE note='old'").fetchone()[0]
+        self.assertEqual(c.post(f"/projects/1/notes/{old}/edit", data={"note": "x"}, headers=h).status_code, 403)
+        self.assertEqual(c.post(f"/projects/9/notes/{old}/edit", data={"note": "x"}, headers=h).status_code, 404)
+        with self.raw_db() as db:
+            self.assertEqual([a[0] for a in db.execute("SELECT action FROM audit_logs WHERE action IN ('edit_project_note','delete_project_note') ORDER BY id")],
+                             ["edit_project_note", "edit_project_note", "delete_project_note"])
+
     # ---- notifications: the bell, email preferences, mentions ------------------
 
     @patch("graph.send_mail", return_value=(True, None))
@@ -2056,7 +2089,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             if "<int:project_id>" not in rule.rule:
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
-            if not any(m in src for m in ("load_project(", "_live_project(", "change_stage(", "dismiss_alert(", "decide_approval(", "report_context(")):
+            if not any(m in src for m in ("load_project(", "_live_project(", "change_stage(", "dismiss_alert(", "decide_approval(", "report_context(", "_own_note(")):
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"project routes bypassing load_project: {missing}")
 

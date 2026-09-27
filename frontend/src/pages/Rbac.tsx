@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ApiError, postForm, rbac, type RbacData, type User } from "@/lib/api"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 export default function Rbac(_props: { user: User }) {
   const [data, setData] = useState<RbacData | null>(null)
@@ -27,7 +28,7 @@ export default function Rbac(_props: { user: User }) {
     } catch (err) { setNotice(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
   }
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!data) return <div className="p-5 text-[13px] text-muted-foreground">Loading permissions…</div>
+  if (!data) return <PageSkeleton />
   const dirty = JSON.stringify(matrix) !== JSON.stringify(data.matrix)
   return (
     <div className="px-5 pb-6 pt-4">

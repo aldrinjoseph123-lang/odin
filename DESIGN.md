@@ -371,6 +371,9 @@ Quiet, small, and rarely blue: one primary per view.
 - **Header cluster:** bell, theme button and avatar sit outside the collapsible links, visible at every width; "Log out" moves into the menu below 1024 px.
 - **Bell:** a 32 px icon button with the unread count as an accent pill (99+ cap). Its panel drops from the right edge: popover surface, 380 px, a hairline title row with "Mark all read", then entries with an accent dot for unread, the title (500 weight when unread), two muted lines of detail and "2 min ago · who". Unread rows carry a faint accent wash. Click marks read and opens the rollout; Escape or an outside click closes.
 - **Mentions:** typing "@" plus letters in the note box offers up to six team members in a small popover list; Enter or click writes "@Full Name ".
+- **Own notes:** on hover or focus a note you wrote shows muted "Edit" and "Delete" at the right of its meta line; editing swaps the text for a 3-row textarea with Save / Cancel (Esc cancels). An edited note shows "· edited". A note that records a stage change offers Edit only, with a one-line reason.
+- **Upload zone:** the Documents panel is a dashed drop zone (accent border and wash while dragging): category select, "Choose files" link, "or drop them here", and an outline "Upload N files" button; the chosen names show beneath.
+- **Loading:** pages show a skeleton (a title bar and fading rows in Muted Fill, pulsing unless reduce-motion is on) instead of "Loading…".
 
 ### Cards / Containers
 - **Rail panel** (Next up / ETA / Advance): white, 1 px hairline, 8 px radius, 12 px padding, 13 px body, 12 px semibold chrome-text header with a 14 px icon; panels stack with 16 px gaps.

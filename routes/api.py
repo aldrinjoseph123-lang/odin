@@ -12,7 +12,7 @@ from db import avatar_url, get_doc_category_names, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
-from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context
+from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
 from security import csrf_token
 from services.alerts import schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
@@ -442,6 +442,7 @@ def api_project(project_id):
               "account_manager_name", "account_manager_email", "po_number", "po_date", "start_date", "target_end_date",
               "delivery_mode", "outsourcer_name", "outsourcer_email", "vendor_name", "product_name"]
     can_manage = project_allows(project_id, "manage_project")
+    entries = stage_entry_note_ids(project_id)
     from db import get_setting
     guest_on = get_setting("guest_links_enabled", "1") == "1"
     return jsonify({
@@ -458,7 +459,9 @@ def api_project(project_id):
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"], "email": r["email"], "active": bool(r["active"]),
                           "avatar_url": f"/users/{r['user_id']}/avatar/{r['avatar']}" if r["avatar"] else None}
                          for r in participants_for(project_id)],
-        "notes": [{"id": n["id"], "author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]}
+        "notes": [{"id": n["id"], "author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"],
+                   "mine": n["author_id"] is not None and n["author_id"] == session["user_id"], "edited": n["edited_at"] is not None,
+                   "stage_entry": n["id"] in entries}
                   for n in db.execute("SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at DESC", (project_id,))],
         "documents": [{"id": d["id"], "category": d["category"], "filename": d["filename"], "uploaded_by": d["uploaded_by"], "uploaded_at": d["uploaded_at"]}
                       for d in db.execute("SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", (project_id,))],

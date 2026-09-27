@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { useParams } from "react-router-dom"
 import { Copy, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -10,6 +10,7 @@ import { Detail } from "@/pages/Flow"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 const fmtDate = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
@@ -64,7 +65,7 @@ export default function Project(_props: { user: User }) {
   }
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!d || !x) return <div className="p-5 text-[13px] text-muted-foreground">Loading project…</div>
+  if (!d || !x) return <PageSkeleton />
   const can = x.can
 
   return (
@@ -111,12 +112,9 @@ export default function Project(_props: { user: User }) {
         <Panel title="Notes" hint={`${x.notes.length}`}>
           {can.note && <NoteForm busy={busy} people={x.participants.filter((m) => m.active).map((m) => m.name)} onSubmit={(note) => send(`/projects/${id}/note`, { note })} />}
           <ul className="mt-3 grid gap-2">
-            {x.notes.map((n) => (
-              <li key={n.id} className="border-t border-border pt-2 text-[13px] first:border-0 first:pt-0">
-                <div className="text-[12px] text-muted-foreground"><span className="font-medium text-foreground">{n.author}</span> · {n.stage} · <Ago iso={n.created_at} /></div>
-                <div className="whitespace-pre-wrap">{n.note}</div>
-              </li>
-            ))}
+            {x.notes.map((n) => <NoteRow key={`${n.id}:${n.note}`} n={n} busy={busy}
+              onEdit={(text) => send(`/projects/${id}/notes/${n.id}/edit`, { note: text })}
+              onDelete={() => send(`/projects/${id}/notes/${n.id}/delete`, {}, "Delete this note?")} />)}
             {x.notes.length === 0 && <li className="text-[13px] text-muted-foreground">No notes yet.</li>}
           </ul>
         </Panel>
@@ -213,6 +211,35 @@ function LinkRow({ label, url }: { label: string; url: string }) {
   )
 }
 
+function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][number]; busy: boolean; onEdit: (text: string) => Promise<unknown>; onDelete: () => Promise<unknown> }) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(n.note)
+  return (
+    <li className="group border-t border-border pt-2 text-[13px] first:border-0 first:pt-0">
+      <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+        <span><span className="font-medium text-foreground">{n.author}</span> · {n.stage} · <Ago iso={n.created_at} />{n.edited && " · edited"}</span>
+        {n.mine && !editing && (
+          <span className="ml-auto flex gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <button type="button" onClick={() => setEditing(true)} className="hover:text-foreground">Edit</button>
+            {!n.stage_entry && <button type="button" disabled={busy} onClick={() => void onDelete()} className="hover:text-bad">Delete</button>}
+          </span>
+        )}
+      </div>
+      {editing ? (
+        <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then(() => setEditing(false)) }} className="mt-1 grid gap-1.5">
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={5000} aria-label="Edit note" autoFocus
+            className="w-full rounded-md border border-input bg-background p-2 text-[13px]" onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={busy || !text.trim() || text.trim() === n.note}>Save</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(false); setText(n.note) }}>Cancel</Button>
+            {n.stage_entry && <span className="self-center text-[11.5px] text-muted-foreground">Records a stage change: it can be corrected, not deleted.</span>}
+          </div>
+        </form>
+      ) : <div className="whitespace-pre-wrap">{n.note}</div>}
+    </li>
+  )
+}
+
 function NoteForm({ busy, people, onSubmit }: { busy: boolean; people: string[]; onSubmit: (note: string) => Promise<unknown> }) {
   const [note, setNote] = useState("")
   // "@" + letters at the end of the text offers the team; picking one writes "@Full Name "
@@ -271,21 +298,36 @@ function InviteForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; on
 
 function UploadForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; onSubmit: (fd: FormData) => Promise<unknown> }) {
   const [category, setCategory] = useState("")
-  function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const fd = new FormData(e.currentTarget)
-    if (!category || !(fd.get("file") as File | null)?.name) return
-    void onSubmit(fd).then(() => { e.currentTarget?.reset?.(); setCategory("") })
+  const [files, setFiles] = useState<File[]>([])
+  const [over, setOver] = useState(false)
+  // One POST per file through the same route, so each keeps its own checks and audit row.
+  async function upload() {
+    if (!category || !files.length) return
+    for (const f of files) {
+      const fd = new FormData(); fd.append("category", category); fd.append("file", f)
+      await onSubmit(fd)
+    }
+    setFiles([])
   }
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
-      <select name="category" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Document category" required className={selectClass}>
-        <option value="">Category…</option>
-        {x.doc_categories.map((c) => <option key={c} value={c}>{c}</option>)}
-      </select>
-      <input type="file" name="file" required aria-label="Document to upload" className="text-[12.5px] file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-[12.5px] file:font-medium" />
-      <Button type="submit" size="sm" variant="outline" disabled={busy}>Upload</Button>
-    </form>
+    <div onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); setFiles([...e.dataTransfer.files]) }}
+      className={cn("grid gap-2 rounded-lg border border-dashed p-3 transition-colors", over ? "border-primary bg-accent/40" : "border-border")}>
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Document category" className={selectClass}>
+          <option value="">Category…</option>
+          {x.doc_categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <label className="cursor-pointer text-[12.5px] font-medium text-primary-text hover:underline">
+          Choose files<input type="file" multiple aria-label="Documents to upload" className="sr-only" onChange={(e) => setFiles([...(e.target.files ?? [])])} />
+        </label>
+        <span className="text-[12px] text-muted-foreground">or drop them here</span>
+        <Button type="button" size="sm" variant="outline" className="ml-auto" disabled={busy || !category || !files.length} onClick={() => void upload()}>
+          Upload{files.length > 1 ? ` ${files.length} files` : ""}
+        </Button>
+      </div>
+      {files.length > 0 && <p className="truncate text-[12px] text-muted-foreground">{files.map((f) => f.name).join(", ")}{!category && " — pick a category first"}</p>}
+    </div>
   )
 }
 

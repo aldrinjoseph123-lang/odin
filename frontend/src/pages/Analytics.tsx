@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { analytics, ApiError, type AnalyticsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { PageSkeleton } from "@/components/PageSkeleton"
 
 const d1 = (n: number | null | undefined) => (n == null ? "—" : n.toFixed(1))
 const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
@@ -24,7 +25,7 @@ export default function Analytics(_props: { user: User }) {
   const tid = Number(params.get("template")) || null
   useEffect(() => { document.title = "Cycle time · Odin"; analytics(tid).then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [tid])
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!d) return <div className="p-5 text-[13px] text-muted-foreground">Loading…</div>
+  if (!d) return <PageSkeleton />
   const s = d.stats
   const scale = s ? Math.max(0, ...s.stages.map((r) => r.avg_days ?? 0)) : 0
   const peak = s ? Math.max(0, ...s.throughput.map(([, n]) => n)) : 0
