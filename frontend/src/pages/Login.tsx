@@ -78,6 +78,7 @@ export default function Login() {
             <Button type="submit" disabled={busy || !username || !password}>
               {busy ? "Signing in…" : "Log in"}
             </Button>
+            <a href="/auth/reset" className="text-center text-[12.5px] text-muted-foreground hover:text-foreground hover:underline">Forgot password?</a>
           </form>
           {/* External partners and customers have no password; Flask serves the
               link-request page and the link itself outside Cloudflare Access. */}

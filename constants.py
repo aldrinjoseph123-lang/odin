@@ -75,6 +75,7 @@ NOTIFICATION_KINDS = {
     "activity": "Notes, finished tasks and documents on projects I manage",
     "assigned": "Tasks assigned to me",
     "mention": "When someone mentions me in a note",
+    "due": "A daily reminder of my tasks due today or overdue",
 }
 
 THEMES = ("system", "light", "dark")

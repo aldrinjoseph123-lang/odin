@@ -19,6 +19,7 @@ import ReportAll from "@/pages/ReportAll"
 import Report from "@/pages/Report"
 import Login from "@/pages/Login"
 import LinkRequest from "@/pages/LinkRequest"
+import ForgotPassword from "@/pages/ForgotPassword"
 import { session, type User } from "@/lib/api"
 
 // Strangler router: only ported pages are listed. Anything else is a Jinja
@@ -52,6 +53,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/auth/link" element={<LinkRequest />} />
+        <Route path="/auth/reset" element={<ForgotPassword />} />
+        <Route path="/auth/reset/:token" element={<ForgotPassword />} />
         <Route path="/board" element={<Protected>{(user) => <Flow user={user} />}</Protected>} />
         <Route path="/projects" element={<Protected>{(user) => <Projects user={user} />}</Protected>} />
         <Route path="/projects/new" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />

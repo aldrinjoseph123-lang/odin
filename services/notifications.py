@@ -29,14 +29,14 @@ def _plain(html):
     return unescape(re.sub(r"\s+", " ", re.sub(r"<br\s*/?>", " ", re.sub(r"<(?!br)[^>]+>", "", html or "")))).strip()
 
 
-def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user_id=None):
+def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user_id=None, link=None):
     """The one way a person hears about an event. Every recipient gets an
     in-app notification; those with an address who have not switched this
     kind off by email also get a mail (when mail is on). Recipients are
     de-duplicated and the person who caused the event is never told about
     their own action. Best effort: mail failures never break the request."""
     from datetime import datetime, timedelta
-    from flask import session
+    from flask import has_request_context, session
     ids = []
     for uid in user_ids:
         if uid and uid != exclude_user_id and uid not in ids:
@@ -45,8 +45,8 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
         return
     db = get_db()
     now = datetime.utcnow()
-    actor = session.get("user_name") if session else None
-    link = f"/board?rollout={project_id}" if project_id else None
+    actor = session.get("user_name") if has_request_context() else None   # the daily script has no session
+    link = link or (f"/board?rollout={project_id}" if project_id else None)
     title, body = _plain(subject), _plain(message_html)
     marks = ",".join("?" for _ in ids)
     rows = db.execute(f"SELECT id, email, kind, email_off FROM users WHERE active = 1 AND id IN ({marks})", ids).fetchall()

@@ -1215,13 +1215,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "settings": "/settings", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
             "account": "/account", "my_work": "/my-work", "analytics": "/analytics", "alerts_log_view": "/alerts",
             "report_all": "/reports/all", "report_single": "/projects/1/report", "auth_link_request": "/auth/link",
+            "auth_reset_request": "/auth/reset", "auth_reset_form": "/auth/reset/any-token",
         }
         self.assertEqual(set(paths), spa.SPA_PAGES)          # a new port must be listed here too
         c, _ = self._api_client()
         with patch.dict(app_module.app.config, {"SERVE_SPA": True, "SPA_DIST": dist}):
             anon = app_module.app.test_client()
             for endpoint, path in paths.items():
-                r = (anon if endpoint == "auth_link_request" else c).get(path)   # the partner page is for the signed out
+                r = (anon if endpoint.startswith("auth_") else c).get(path)   # the sign-in helpers are for the signed out
                 self.assertEqual(r.status_code, 200, path); self.assertIn(b"id=root", r.data, path)
             # form POSTs are not intercepted: the Jinja route still answers them
             self.assertEqual(c.post("/projects/1/note", data={"note": "x"}).status_code, 302)
@@ -1344,6 +1345,74 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         self.assertEqual(c2.post("/account/appearance", data={"theme": "light", "accent": "blue"}, headers=h).get_json()["messages"], ["Appearance saved"])
 
+    # ---- forgot password; daily due reminders ------------------------------------
+
+    @patch("graph.send_mail", return_value=(True, None))
+    def test_forgot_password_by_link_is_neutral_single_use_and_ends_sessions(self, mail):
+        pm1 = self._make_user("pm1", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email='pm1@odin.example' WHERE id=?", (pm1,)); db.commit()
+        old_device, _ = self._api_client("pm1", STRONG_PASSWORD)
+        anon = app_module.app.test_client()
+        csrf = anon.get("/api/session").get_json()["csrf"]
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        known = anon.post("/auth/reset", data={"email": "PM1@odin.example"}, headers=h).get_json()["messages"]
+        unknown = anon.post("/auth/reset", data={"email": "nobody@odin.example"}, headers=h).get_json()["messages"]
+        self.assertEqual(known, unknown)                                        # never says which
+        self.assertEqual([c.args[0] for c in mail.call_args_list], ["pm1@odin.example"])
+        import re
+        token = re.search(r"/auth/reset/([A-Za-z0-9_-]+)", mail.call_args.args[2]).group(1)
+        # a reset token is not a sign-in link, and a weak password keeps the token alive
+        self.assertIn("/auth/link", anon.get(f"/auth/link/{token}").headers["Location"])
+        self.assertIn("invalid or has expired", anon.get("/api/session").get_json()["messages"][0])   # what the page it lands on shows
+        self.assertEqual(anon.post(f"/auth/reset/{token}", data={"new_password": "short"}, headers=h).get_json()["messages"], ["Password must be at least 12 characters"])
+        r = anon.post(f"/auth/reset/{token}", data={"new_password": "Granite-Harbour-Lantern-7"}, headers=h).get_json()
+        self.assertEqual((r["location"], r["messages"]), ("/login", ["Password changed — sign in with the new one"]))
+        self.assertIsNone(old_device.get("/api/session").get_json()["user"])     # every old session ended
+        again = anon.post(f"/auth/reset/{token}", data={"new_password": "Another-Harbour-Lantern-8"}, headers=h).get_json()
+        self.assertIn("invalid or has expired", again["messages"][0])
+        c, _ = self._api_client("pm1", "Granite-Harbour-Lantern-7")
+        self.assertEqual(c.get("/api/session").get_json()["user"]["name"], "pm1")
+        # an external's address gets no reset mail; a partner sign-in link cannot reset a password
+        self.new_project(name="P", client="C"); self._invite(1, "ann@acme.example", "Customer", "Ann")
+        mail.reset_mock()
+        anon.post("/auth/reset", data={"email": "ann@acme.example"}, headers=h)
+        mail.assert_not_called()
+        link = self._link_for("ann@acme.example")
+        self.assertIn("invalid or has expired", anon.post(f"/auth/reset/{link}", data={"new_password": "Granite-Harbour-Lantern-9"}, headers=h).get_json()["messages"][0])
+        for _ in range(3):
+            anon.post("/auth/reset", data={"email": "pm1@odin.example"}, headers=h)
+        self.assertIn("Too many requests", anon.post("/auth/reset", data={"email": "pm1@odin.example"}, headers=h).get_json()["messages"][0])
+        with self.raw_db() as db:
+            acts = [r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action LIKE 'password_reset%' ORDER BY id")]
+        self.assertEqual(acts[:4], ["password_reset_requested", "password_reset_requested", "password_reset_by_link", "password_reset_rejected"])
+
+    @patch("graph.send_mail", return_value=(True, None))
+    def test_daily_due_reminders_reach_the_bell_and_respect_the_email_switch(self, mail):
+        import send_daily_alerts
+        from datetime import date, timedelta
+        with app_module.app.test_request_context():
+            app_module.set_setting("notify_email_enabled", "1")
+        pm1 = self._make_user("pm1", "Member"); vw = self._make_user("vw", "Viewer")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = username || '@odin.example'"); db.commit()
+        self.new_project(name="R", client="C")
+        today, yesterday, later = date.today(), date.today() - timedelta(days=2), date.today() + timedelta(days=5)
+        for title, who, due in [("Due today", pm1, today), ("Late", pm1, yesterday), ("Later", pm1, later), ("Viewer's", vw, today)]:
+            self.client.post("/projects/1/tasks", data={"title": title, "assignee_id": who, "due_date": due.isoformat()})
+        self.client.post("/projects/1/tasks", data={"title": "Done late", "assignee_id": pm1, "due_date": yesterday.isoformat()})
+        with self.raw_db() as db:
+            db.execute("UPDATE tasks SET done = 1 WHERE title='Done late'"); db.execute("UPDATE users SET email_off='due' WHERE username='vw'"); db.commit()
+        mail.reset_mock()
+        send_daily_alerts.main()
+        self.assertEqual([c.args[0] for c in mail.call_args_list], ["pm1@odin.example"])   # vw switched reminders off
+        body = mail.call_args.args[2]
+        self.assertIn("Due today", body); self.assertIn("Late", body); self.assertNotIn("Later", body); self.assertNotIn("Done late", body)
+        self.assertEqual(mail.call_args.args[1], "2 tasks need you today")
+        with self.raw_db() as db:
+            rows = db.execute("SELECT u.username, n.kind, n.link FROM notifications n JOIN users u ON u.id = n.user_id WHERE n.kind='due' ORDER BY u.username").fetchall()
+        self.assertEqual([tuple(r) for r in rows], [("pm1", "due", "/my-work"), ("vw", "due", "/my-work")])   # the bell always
+
     # ---- notes: correct or remove your own words, never the timeline ----------
 
     def test_own_notes_can_be_edited_and_plain_ones_deleted(self):
@@ -1394,9 +1463,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         p, pcsrf = self._api_client("pm1", STRONG_PASSWORD)
         ph = {"X-CSRF-Token": pcsrf, "Accept": "application/json"}
         # pm1 switches stage emails off; the bell still gets it
-        p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on"}, headers=ph)
+        p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on", "due": "on"}, headers=ph)
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
-        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True})
+        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True})
         mail.reset_mock()
         self.client.post("/projects/1/stage", data={"stage": stages[1]})
         self.assertEqual([c.args[0] for c in mail.call_args_list], [])                     # pm1 opted out; admin is the actor

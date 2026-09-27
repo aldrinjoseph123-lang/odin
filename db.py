@@ -313,6 +313,10 @@ def migrate_db(db):
         created_by INTEGER,
         ip_address TEXT
     )""")
+    # A link is either a partner sign-in or a staff password reset; each is
+    # only ever accepted by its own route.
+    if "purpose" not in {row[1] for row in db.execute("PRAGMA table_info(login_links)")}:
+        db.execute("ALTER TABLE login_links ADD COLUMN purpose TEXT NOT NULL DEFAULT 'signin'")
 
     if not db.execute("SELECT 1 FROM doc_categories LIMIT 1").fetchone():
         for name in DEFAULT_DOC_CATEGORIES:

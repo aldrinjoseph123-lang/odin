@@ -38,9 +38,37 @@ def _format_alerts_html(alerts):
     return "<br>".join(lines) if lines else None
 
 
+def send_due_reminders(db):
+    """One reminder per person with open tasks due today or overdue, through
+    the normal notification path: the bell always, email unless they turned
+    'due' off. Returns how many people were reminded."""
+    from datetime import date
+    from markupsafe import escape
+    from db import PROJECT_OPEN_SQL as OPEN
+    from services.notifications import notify_users
+    today = date.today().isoformat()
+    rows = db.execute(
+        "SELECT t.title, t.due_date, t.assignee_id, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
+        f"WHERE t.done = 0 AND t.assignee_id IS NOT NULL AND t.due_date IS NOT NULL AND t.due_date <= ? AND p.deleted_at IS NULL AND {OPEN} "
+        "ORDER BY t.assignee_id, t.due_date", (today,),
+    ).fetchall()
+    by_person = {}
+    for r in rows:
+        by_person.setdefault(r["assignee_id"], []).append(r)
+    for uid, tasks in by_person.items():
+        items = "".join(
+            f"<li>{escape(t['title'])} — {escape(t['project_name'])}, {'due today' if t['due_date'] == today else 'overdue since ' + t['due_date']}</li>"
+            for t in tasks)
+        n = len(tasks)
+        notify_users([uid], "due", None, f"{n} task{'s' if n != 1 else ''} need{'' if n != 1 else 's'} you today", f"<ul>{items}</ul>", link="/my-work")
+    return len(by_person)
+
+
 def main():
-    with app.app_context():
+    with app.test_request_context():   # url_for in mails needs a request context
         db = get_db()
+        reminded = send_due_reminders(db)
+        print(f"Due-task reminders: {reminded} person(s).")
         projects = db.execute(
             f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}"
         ).fetchall()

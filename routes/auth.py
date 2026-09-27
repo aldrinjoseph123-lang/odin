@@ -16,6 +16,7 @@ from db import AVATAR_DIR, get_db
 from security import (
     LOGIN_WINDOW_MINUTES,
     consume_login_link,
+    reset_link_row,
     issue_login_link,
     login_is_blocked,
     password_problem,
@@ -120,6 +121,69 @@ def auth_link_request():
             flash("If that address is on a project, a sign-in link is on its way")
         return redirect(url_for("auth_link_request"))
     return render_template("auth_link.html")
+
+
+@app.route("/auth/reset", methods=["GET", "POST"])
+def auth_reset_request():
+    """Staff who forgot their password ask for a reset link. The reply is the
+    same whether or not the address is known, and requests are limited per
+    address. Partner accounts have no password: they use the sign-in link."""
+    if request.method == "GET":
+        return spa_index() if spa_serves("auth_reset_request") else redirect(url_for("login"))
+    email = request.form.get("email", "").strip().lower()
+    if not valid_email(email):
+        flash("Enter the email address on your account")
+    elif rate_limited(f"reset:{email}", 3, 15):
+        flash("Too many requests for that address — wait a few minutes and try again")
+    else:
+        user = get_db().execute(
+            "SELECT * FROM users WHERE lower(email) = ? AND kind = 'internal' AND active = 1", (email,)
+        ).fetchone()
+        if user:
+            import graph
+            raw = issue_login_link(user["id"], purpose="reset")
+            link = url_for("auth_reset_form", token=raw, _external=True)
+            html = (f"<p>Someone asked to reset the password for <b>{escape(user['username'])}</b> in Odin.</p>"
+                    f'<p><a href="{link}">Choose a new password</a></p>'
+                    "<p>The link works once and expires in 30 minutes. If this was not you, ignore this mail: nothing changes.</p>")
+            try:
+                graph.send_mail(user["email"], "Reset your Odin password", html)
+            except Exception as exc:   # delivery failure must not reveal anything
+                print(f"[auth_reset_request] mail failed: {exc}")
+        audit_log("password_reset_requested", "user", user["id"] if user else None, email, actor=email)
+        flash("If that address belongs to an account, a reset link is on its way")
+    return redirect(url_for("auth_reset_request"))
+
+
+@app.route("/auth/reset/<token>", methods=["GET", "POST"])
+def auth_reset_form(token):
+    """Set a new password from a reset link. The link stays usable until a
+    password is actually accepted, then dies; every existing session of the
+    account ends, as after an admin reset."""
+    if request.method == "GET":
+        return spa_index() if spa_serves("auth_reset_form") else redirect(url_for("login"))
+    row = reset_link_row(token)
+    if row is None:
+        audit_log("password_reset_rejected", details="invalid, expired, used or wrong kind of link", actor="link")
+        flash("That reset link is invalid or has expired — request a new one")
+        return redirect(url_for("auth_reset_request"))
+    new_password = request.form.get("new_password", "")
+    problem = password_problem(new_password)
+    if problem:
+        flash(problem)
+        return redirect(url_for("auth_reset_form", token=token))
+    db = get_db()
+    now = datetime.utcnow().isoformat()
+    db.execute(
+        "UPDATE users SET password_hash = ?, must_change_password = 0, session_epoch = session_epoch + 1 WHERE id = ?",
+        (generate_password_hash(new_password, method="pbkdf2:sha256"), row["user_id"]),
+    )
+    db.execute("UPDATE login_links SET used_at = ? WHERE id = ?", (now, row["id"]))
+    db.commit()
+    user = db.execute("SELECT username FROM users WHERE id = ?", (row["user_id"],)).fetchone()
+    audit_log("password_reset_by_link", "user", row["user_id"], user["username"], actor=user["username"])
+    flash("Password changed — sign in with the new one")
+    return redirect(url_for("login"))
 
 
 @app.route("/auth/link/<token>")

@@ -144,7 +144,7 @@ def content_matches_extension(file):
 LINK_TTL_MINUTES = 30
 
 
-def issue_login_link(user_id, created_by=None):
+def issue_login_link(user_id, created_by=None, purpose="signin"):
     """Mint a single-use sign-in link for a user; returns the raw token, which
     exists only in the email (and the inviter's fallback flash)."""
     import hashlib
@@ -154,9 +154,9 @@ def issue_login_link(user_id, created_by=None):
     # value the audit trail does not already hold
     get_db().execute("DELETE FROM login_links WHERE expires_at < ?", ((now - timedelta(days=7)).isoformat(),))
     get_db().execute(
-        "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address, purpose) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (user_id, hashlib.sha256(raw.encode()).hexdigest(), now.isoformat(),
-         (now + timedelta(minutes=LINK_TTL_MINUTES)).isoformat(), created_by, request.remote_addr),
+         (now + timedelta(minutes=LINK_TTL_MINUTES)).isoformat(), created_by, request.remote_addr, purpose),
     )
     get_db().commit()
     return raw
@@ -173,11 +173,26 @@ def consume_login_link(raw):
     ).fetchone()
     if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat():
         return None
-    if not row["active"] or row["kind"] != "external":
+    if not row["active"] or row["kind"] != "external" or row["purpose"] != "signin":
         return None
     db.execute("UPDATE login_links SET used_at = ? WHERE id = ?", (datetime.utcnow().isoformat(), row["id"]))
     db.commit()
     return db.execute("SELECT * FROM users WHERE id = ?", (row["user_id"],)).fetchone()
+
+
+def reset_link_row(raw):
+    """The live password-reset link for this token, or None: unused,
+    unexpired, purpose 'reset', for an active staff account."""
+    import hashlib
+    row = get_db().execute(
+        "SELECT l.*, u.active, u.kind FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
+        (hashlib.sha256((raw or "").encode()).hexdigest(),),
+    ).fetchone()
+    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat():
+        return None
+    if row["purpose"] != "reset" or not row["active"] or row["kind"] != "internal":
+        return None
+    return row
 
 
 # Deliberately loose — one @, a dot in the domain, no whitespace. Enough to

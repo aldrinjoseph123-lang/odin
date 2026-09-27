@@ -201,7 +201,10 @@ def json_for_fetch(response):
     same audit row, same validation."""
     if (request.method == "POST" and request.headers.get("Accept") == "application/json"
             and 300 <= response.status_code < 400
-            and not (response.headers.get("Location") or "").startswith(("/login", "http://localhost/login"))):
+            # the auth gate's redirect (always ?next=) stays a redirect, so the
+            # client can tell "signed out"; a route that finishes on the
+            # sign-in page (a password reset) is an ordinary reply
+            and "/login?next=" not in (response.headers.get("Location") or "")):
         import re
         messages, undo = [], None
         for m in get_flashed_messages():
