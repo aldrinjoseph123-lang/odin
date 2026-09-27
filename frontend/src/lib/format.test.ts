@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { days, fmtDate, initials, localDateTime, stateText } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, localDateTime, stateText } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -38,5 +38,25 @@ describe("localDateTime", () => {
   it("treats a naive stored timestamp as UTC and echoes junk unchanged", () => {
     expect(localDateTime("not a date")).toBe("not a date")
     expect(localDateTime("2026-09-25T03:32:31")).toMatch(/2026/)
+  })
+})
+
+describe("groupBlocks", () => {
+  it("runs consecutive items into one list and keeps the rest in order", () => {
+    expect(groupBlocks([["h", "Timeline"], ["li", "a"], ["li", "b"], ["p", "text"], ["li", "c"]])).toEqual([
+      { kind: "h", text: "Timeline" }, { kind: "ul", items: ["a", "b"] }, { kind: "p", text: "text" }, { kind: "ul", items: ["c"] },
+    ])
+    expect(groupBlocks([])).toEqual([])
+  })
+})
+
+describe("activeProjectsView", () => {
+  const from = (o: Record<string, string>) => (k: string) => o[k] ?? null
+  it("lights the chip the URL means", () => {
+    expect(activeProjectsView(from({}))).toBe("active")
+    expect(activeProjectsView(from({ view: "overdue" }))).toBe("overdue")
+    expect(activeProjectsView(from({ closed: "1" }))).toBe("closed")
+    expect(activeProjectsView(from({ stage: "Scoping" }))).toBe("")
+    expect(activeProjectsView(from({ view: "stale", closed: "1" }))).toBe("stale")
   })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,16 +9,16 @@ import { cn } from "@/lib/utils"
 // (last stage is closed, the current stage cannot go) are the same.
 export type StageRow = { id: number; name: string; sla_days: number | null }
 export type StagePaths = { add: string; rename: (id: number) => string; move: (id: number) => string; remove: (id: number) => string; sla: string }
+// The key a parent should give the editor: any change to the rows remounts it.
+export const stageRowsKey = (rows: StageRow[]) => rows.map((s) => `${s.id}:${s.name}:${s.sla_days ?? ""}`).join("|")
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
 export function StageListEditor({ rows, current, busy, send, paths, label = "this project" }: { rows: StageRow[]; current?: string; busy: boolean; send: Send; paths: StagePaths; label?: string }) {
-  const [names, setNames] = useState<Record<number, string>>({})
-  const [slas, setSlas] = useState<Record<number, string>>({})
+  // Edit state is seeded once; the parent remounts this editor (key) when the
+  // rows change, so a save never fights a half-typed rename.
+  const [names, setNames] = useState<Record<number, string>>(() => Object.fromEntries(rows.map((s) => [s.id, s.name])))
+  const [slas, setSlas] = useState<Record<number, string>>(() => Object.fromEntries(rows.map((s) => [s.id, s.sla_days == null ? "" : String(s.sla_days)])))
   const [newName, setNewName] = useState("")
-  useEffect(() => {
-    setNames(Object.fromEntries(rows.map((s) => [s.id, s.name])))
-    setSlas(Object.fromEntries(rows.map((s) => [s.id, s.sla_days == null ? "" : String(s.sla_days)])))
-  }, [rows])
   function saveSlas(e: FormEvent) {
     e.preventDefault()
     void send(paths.sla, Object.fromEntries(rows.map((s) => [`sla::${s.id}`, slas[s.id] ?? ""])))

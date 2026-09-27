@@ -3,7 +3,7 @@ import { Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { StageListEditor } from "@/components/StageListEditor"
+import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type SettingsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
@@ -66,7 +66,7 @@ export default function Settings(_props: { user: User }) {
       <div className="mt-3 grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <Panel title="Stage templates" hint="a new project copies one, then owns its list" id="templates">
           <div className="grid gap-5">
-            {data.templates.map((t) => <Template key={t.id} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
+            {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
           </div>
           <AddForm placeholder="New template name (e.g. EDR rollout)" label="New template name" button="Add template" busy={busy} onSubmit={(name) => send("/settings/templates/add", { name })} />
           <p className="mt-2 text-[11.5px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
@@ -84,11 +84,11 @@ export default function Settings(_props: { user: User }) {
             </ul>
             <AddForm placeholder="New category name" label="New document category name" button="Add category" busy={busy} onSubmit={(name) => send("/settings/doc-categories/add", { name })} />
           </Panel>
-          <AlertTypes data={data} busy={busy} send={send} />
+          <AlertTypes key={JSON.stringify(data.alerts)} data={data} busy={busy} send={send} />
         </div>
 
-        <Microsoft data={data} busy={busy} send={send} teamId={teamId} onTeam={(id) => { setTeamId(id); void load(id) }} />
-        <Integrations data={data} busy={busy} send={send} />
+        <Microsoft key={`${data.m365.azure_app.client_id ?? ""}|${data.m365.azure_app.tenant_id ?? ""}|${data.m365.oauth_client_configured}`} data={data} busy={busy} send={send} teamId={teamId} onTeam={(id) => { setTeamId(id); void load(id) }} />
+        <Integrations key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} />
       </div>
     </div>
   )
@@ -105,8 +105,7 @@ function AddForm({ placeholder, label, button, busy, onSubmit }: { placeholder: 
 }
 
 function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][number]; onlyOne: boolean; busy: boolean; send: Send }) {
-  const [name, setName] = useState(t.name)
-  useEffect(() => setName(t.name), [t.name])
+  const [name, setName] = useState(t.name)   // remounted by key when the saved name changes
   const base = `/settings/templates/${t.id}`
   return (
     <div className="border-b border-border pb-4 last:border-0 last:pb-0">
@@ -118,7 +117,7 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
         <span className="whitespace-nowrap text-[12px] text-muted-foreground">{t.projects} project{t.projects === 1 ? "" : "s"}</span>
         <button type="button" disabled={busy || onlyOne} onClick={() => send(`${base}/delete`, {}, `Delete template ${t.name}? Projects keep their own copies.`)} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-bad disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
       </div>
-      <StageListEditor rows={t.stages} busy={busy} send={send} label={t.name}
+      <StageListEditor key={stageRowsKey(t.stages)} rows={t.stages} busy={busy} send={send} label={t.name}
         paths={{ add: `${base}/stages/add`, rename: (s) => `${base}/stages/${s}/rename`, move: (s) => `${base}/stages/${s}/move`, remove: (s) => `${base}/stages/${s}/delete`, sla: `${base}/sla` }} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => send(`${base}/sla/from-measured`, {}, "Overwrite this template's SLAs with measured averages?")}>Set SLAs from measured averages</Button>
@@ -129,8 +128,7 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
 }
 
 function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; send: Send }) {
-  const [rows, setRows] = useState(data.alerts)
-  useEffect(() => setRows(data.alerts), [data.alerts])
+  const [rows, setRows] = useState(data.alerts)   // remounted by key when saved values change
   function submit(e: FormEvent) {
     e.preventDefault()
     // the route reads checkboxes as "on" and thresholds by name; absent means off
@@ -177,8 +175,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
   const m = data.m365
   const [editing, setEditing] = useState(!m.oauth_client_configured)
   const [app, setApp] = useState({ client_id: m.azure_app.client_id ?? "", tenant_id: m.azure_app.tenant_id ?? "", client_secret: "" })
-  const [channelId, setChannelId] = useState(m.channel_id ?? "")
-  useEffect(() => { setApp({ client_id: m.azure_app.client_id ?? "", tenant_id: m.azure_app.tenant_id ?? "", client_secret: "" }); setEditing(!m.oauth_client_configured) }, [m.azure_app.client_id, m.azure_app.tenant_id, m.oauth_client_configured])
+  const [channelId, setChannelId] = useState(m.channel_id ?? "")   // remounted by key when the app registration changes
   return (
     <Panel title="Microsoft 365" hint="mail, Teams and OneDrive through one Azure app">
       {m.oauth_client_configured && !editing && (
@@ -229,8 +226,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
 }
 
 function Integrations({ data, busy, send }: { data: SettingsData; busy: boolean; send: Send }) {
-  const [t, setT] = useState(data.toggles)
-  useEffect(() => setT(data.toggles), [data.toggles])
+  const [t, setT] = useState(data.toggles)   // remounted by key when saved values change
   const items: { key: keyof typeof t; label: string }[] = [
     { key: "notify_email_enabled", label: "Email notifications on project events (new project, stage change, task assigned)" },
     { key: "notify_teams_enabled", label: "Teams channel notifications for the same events, plus the daily alert digest" },

@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Detail } from "@/pages/Flow"
-import { StageListEditor } from "@/components/StageListEditor"
+import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
@@ -147,7 +147,7 @@ export default function Project(_props: { user: User }) {
 
         {can.manage && (
           <Panel title="This project's stages" hint="add, rename, reorder, delete, SLAs — only this project changes" id="stages">
-            <StageListEditor rows={x.stage_rows} current={d.stage} busy={busy} send={send}
+            <StageListEditor key={stageRowsKey(x.stage_rows)} rows={x.stage_rows} current={d.stage} busy={busy} send={send}
               paths={{ add: `/projects/${id}/stages/add`, rename: (s) => `/projects/${id}/stages/${s}/rename`, move: (s) => `/projects/${id}/stages/${s}/move`, remove: (s) => `/projects/${id}/stages/${s}/delete`, sla: `/projects/${id}/stages/sla` }} />
           </Panel>
         )}

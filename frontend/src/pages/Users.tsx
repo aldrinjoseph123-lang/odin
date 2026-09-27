@@ -57,7 +57,7 @@ export default function Users(_props: { user: User }) {
               </tr>
             </thead>
             <tbody>
-              {data.users.map((u) => <Row key={u.id} u={u} roles={data.roles} me={data.me} busy={busy} send={send} />)}
+              {data.users.map((u) => <Row key={`${u.id}:${u.email ?? ""}`} u={u} roles={data.roles} me={data.me} busy={busy} send={send} />)}
             </tbody>
           </table>
         </div>
@@ -68,10 +68,9 @@ export default function Users(_props: { user: User }) {
 }
 
 function Row({ u, roles, me, busy, send }: { u: AdminUser; roles: string[]; me: number; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<void> }) {
-  const [email, setEmail] = useState(u.email ?? "")
+  const [email, setEmail] = useState(u.email ?? "")   // the row remounts (key) when the saved email changes
   const [pw, setPw] = useState("")
   const [resetting, setResetting] = useState(false)
-  useEffect(() => setEmail(u.email ?? ""), [u.email])
   const self = u.id === me
   return (
     <tr className={cn("border-b border-border last:border-0", !u.active && "text-muted-foreground")}>

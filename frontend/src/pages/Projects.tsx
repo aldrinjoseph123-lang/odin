@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Stepper } from "@/components/Stepper"
 import { ApiError, projects, type ProjectsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { activeProjectsView } from "@/lib/format"
 
 // Every filter lives in the URL: shareable, back-button friendly, and the
 // same query string the CSV export and Flask's nav memory understand.
@@ -31,12 +32,10 @@ export default function Projects({ user }: { user: User }) {
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<ProjectsData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [q, setQ] = useState(params.get("q") ?? "")
   const query = params.toString()
   useEffect(() => {
     projects(query).then((d) => { setData(d); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load projects"))
   }, [query])
-  useEffect(() => { setQ(params.get("q") ?? "") }, [params])
 
   // change some keys, drop the page (a new filter starts at the top)
   function update(changes: Record<string, string | null>) {
@@ -45,13 +44,14 @@ export default function Projects({ user }: { user: User }) {
     for (const [k, v] of Object.entries(changes)) { if (v) next.set(k, v); else next.delete(k) }
     setParams(next)
   }
-  const activeView = params.get("view") ? params.get("view")! : params.get("closed") === "1" ? "closed" : params.get("stage") || params.get("delivery_mode") ? "" : "active"
+  const activeView = activeProjectsView((k) => params.get(k))
   function pickView(v: typeof VIEWS[number]) { update({ view: null, closed: null, stage: null, delivery_mode: null, ...v.params }) }
   function sortBy(key: string) {
     const flip = data?.sort === key && data.dir === "desc"
     update({ sort: key, dir: flip ? "asc" : "desc" })
   }
-  function search(e: FormEvent) { e.preventDefault(); update({ q: q.trim() || null }) }
+  // the search field is uncontrolled: it remounts with the URL's value (key) and is read on submit
+  function search(e: FormEvent<HTMLFormElement>) { e.preventDefault(); update({ q: String(new FormData(e.currentTarget).get("q") ?? "").trim() || null }) }
   const filtered = Boolean(params.get("q") || params.get("view") || params.get("stage") || params.get("delivery_mode"))
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
@@ -84,7 +84,7 @@ export default function Projects({ user }: { user: User }) {
           {data.delivery_modes.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
         <form onSubmit={search} className="ml-auto flex items-center gap-1.5">
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, client, PO #" aria-label="Search projects" className="h-7 w-52 text-[12.5px]" />
+          <Input key={params.get("q") ?? ""} name="q" defaultValue={params.get("q") ?? ""} placeholder="Name, client, PO #" aria-label="Search projects" className="h-7 w-52 text-[12.5px]" />
           <button type="submit" aria-label="Search" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 px-2")}><Search className="h-3.5 w-3.5" /></button>
           {params.get("q") && <button type="button" onClick={() => update({ q: null })} className="text-[12px] text-muted-foreground hover:text-foreground">Clear</button>}
         </form>

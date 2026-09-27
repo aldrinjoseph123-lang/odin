@@ -20,3 +20,26 @@ export function localDateTime(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })
 }
+
+// A saved report is plain text with "# " headings and "- " items; the server
+// hands it over as [kind, text] pairs. Consecutive items become one list.
+export type ReportBlock = ["h" | "li" | "p", string]
+export type ReportGroup = { kind: "h" | "p"; text: string } | { kind: "ul"; items: string[] }
+export function groupBlocks(blocks: ReportBlock[]): ReportGroup[] {
+  const out: ReportGroup[] = []
+  for (const [kind, text] of blocks) {
+    const last = out[out.length - 1]
+    if (kind === "li") {
+      if (last?.kind === "ul") last.items.push(text); else out.push({ kind: "ul", items: [text] })
+    } else out.push({ kind, text })
+  }
+  return out
+}
+
+// Which filter chip is lit on the projects list, from the URL's parameters.
+export function activeProjectsView(get: (k: string) => string | null): string {
+  if (get("view")) return get("view")!
+  if (get("closed") === "1") return "closed"
+  if (get("stage") || get("delivery_mode")) return ""
+  return "active"
+}

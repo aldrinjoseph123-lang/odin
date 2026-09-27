@@ -1,26 +1,24 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { Printer } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ApiError, postForm, report, type ReportData, type User } from "@/lib/api"
+import { groupBlocks } from "@/lib/format"
 
 const fmt = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
 
 // The saved body is plain text with two conventions: "# " heads a section,
 // "- " is a list item. Rendered here exactly as the Jinja page did.
 function Blocks({ blocks }: { blocks: ReportData["blocks"] }) {
-  const out: ReactNode[] = []
-  let list: string[] = []
-  const flush = () => { if (list.length) { out.push(<ul key={`ul${out.length}`} className="my-1.5 list-disc pl-5">{list.map((t, i) => <li key={i} className="my-0.5 whitespace-pre-wrap">{t}</li>)}</ul>); list = [] } }
-  blocks.forEach(([kind, text], i) => {
-    if (kind === "li") { list.push(text); return }
-    flush()
-    if (kind === "h") out.push(<h2 key={i} className="mt-5 border-b border-border pb-1 text-[13px] font-semibold first:mt-0">{text}</h2>)
-    else out.push(<p key={i} className="my-1.5 whitespace-pre-wrap">{text}</p>)
-  })
-  flush()
-  return <div className="text-[13px] leading-relaxed">{out}</div>
+  return (
+    <div className="text-[13px] leading-relaxed">
+      {groupBlocks(blocks).map((b, i) =>
+        b.kind === "ul" ? <ul key={i} className="my-1.5 list-disc pl-5">{b.items.map((t, j) => <li key={j} className="my-0.5 whitespace-pre-wrap">{t}</li>)}</ul>
+        : b.kind === "h" ? <h2 key={i} className="mt-5 border-b border-border pb-1 text-[13px] font-semibold first:mt-0">{b.text}</h2>
+        : <p key={i} className="my-1.5 whitespace-pre-wrap">{b.text}</p>)}
+    </div>
+  )
 }
 
 export default function Report(_props: { user: User }) {
