@@ -28,6 +28,18 @@ colors:
   brand-ink: "#0A0A0A"
   brand-muted: "#B8B8B4"
 typography:
+  brand-display-sm:
+    fontFamily: "Chakra Petch, Inter, sans-serif"
+    fontSize: "30px"
+    fontWeight: 700
+    lineHeight: 1.02
+    letterSpacing: "-0.025em"
+  brand-display-md:
+    fontFamily: "Chakra Petch, Inter, sans-serif"
+    fontSize: "40px"
+    fontWeight: 700
+    lineHeight: 1.02
+    letterSpacing: "-0.025em"
   brand-display:
     fontFamily: "Chakra Petch, Inter, sans-serif"
     fontSize: "52px"
