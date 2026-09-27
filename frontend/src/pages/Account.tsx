@@ -90,6 +90,19 @@ export default function Account(_props: { user: User }) {
         ) : (
           <p className="rounded-lg border border-border p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
         )}
+        <form key={me.email_kinds.map((k) => `${k.key}:${k.on}`).join("|")}
+          onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); void send("/account/notifications", Object.fromEntries(me.email_kinds.filter((k) => fd.get(k.key)).map((k) => [k.key, "on"]))) }}
+          className="grid content-start gap-2 rounded-lg border border-border p-4">
+          <h3 className="text-[12px] font-semibold text-nav-fg">Email me about <span className="font-normal text-muted-foreground">the bell shows everything either way</span></h3>
+          {me.email_kinds.map((k) => (
+            <label key={k.key} className="flex items-start gap-2 text-[13px]">
+              <input type="checkbox" name={k.key} defaultChecked={k.on} className="mt-1 h-3.5 w-3.5 accent-primary" />
+              <span>{k.label}</span>
+            </label>
+          ))}
+          {!me.mail_enabled && <p className="text-[11.5px] text-muted-foreground">Email is not connected on this installation yet, so for now only the bell is used.</p>}
+          <div><Button type="submit" size="sm" variant="outline" disabled={busy}>Save</Button></div>
+        </form>
         <section className="grid content-start gap-2 rounded-lg border border-border p-4">
           <h3 className="text-[12px] font-semibold text-nav-fg">Sessions</h3>
           <p className="text-[12.5px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>

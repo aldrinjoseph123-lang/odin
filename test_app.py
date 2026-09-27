@@ -388,8 +388,8 @@ class IntegrationNotificationTestCase(unittest.TestCase):
         mock_mail.reset_mock()
         mock_teams.reset_mock()
         self.client.post("/projects/1/stage", data={"stage": "Kickoff"})
-        mock_mail.assert_called_once()
-        mock_teams.assert_called_once()
+        mock_mail.assert_not_called()      # the owner moved it: nobody else is on the project, and no one is told of their own act
+        mock_teams.assert_called_once()    # the channel still hears
 
     @patch("app.graph.send_mail", return_value=(False, "simulated Graph outage"))
     @patch("app.graph.send_teams_message", return_value=(False, "simulated Graph outage"))
@@ -834,7 +834,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertNotIn("evil=1", nav)   # only known filter keys are stored
         self.assertNotIn("page=2", nav)   # returning starts at the first page
 
-    @patch("routes.projects.notify_event")
+    @patch("routes.projects.notify_users")
     def test_assigning_a_task_notifies_that_person_but_not_yourself(self, mock_notify):
         self.new_project(name="P", client="C")
         with self.raw_db() as db:
@@ -849,7 +849,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
         self.client.post("/projects/1/tasks", data={"title": "theirs", "assignee_id": str(dana)})
         mock_notify.assert_called_once()
-        self.assertEqual(mock_notify.call_args[0][0], {"owner_id": dana})
+        self.assertEqual(mock_notify.call_args[0][:2], ([dana], "assigned"))
 
         # editing the title alone must not re-notify
         with self.raw_db() as db:
@@ -1305,7 +1305,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         ann = self._external_client("ann@acme.example")
         ann.post("/projects/1/approvals/1/decide", data={"decision": "approved", "comment": "Go"})
         to = sorted(c.args[0] for c in mail.call_args_list)
-        self.assertEqual(to, ["admin@odin.example", "admin@odin.example", "pm1@odin.example"])   # owner mail + participant mails
+        self.assertEqual(to, ["admin@odin.example", "pm1@odin.example"])   # once each — the owner is a participant, not told twice
         self.assertTrue(all("approved" in c.args[1] for c in mail.call_args_list))
 
     def test_project_activity_feed_is_the_trail_for_staff_and_nothing_for_externals(self):
@@ -1343,6 +1343,53 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c2, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         self.assertEqual(c2.post("/account/appearance", data={"theme": "light", "accent": "blue"}, headers=h).get_json()["messages"], ["Appearance saved"])
+
+    # ---- notifications: the bell, email preferences, mentions ------------------
+
+    @patch("graph.send_mail", return_value=(True, None))
+    @patch("graph.send_teams_message", return_value=(True, None))
+    def test_bell_prefs_and_mentions(self, _teams, mail):
+        with app_module.app.test_request_context():
+            app_module.set_setting("notify_email_enabled", "1")
+        pm1 = self._make_user("pm1", "Member"); sam = self._make_user("sam", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = username || '@odin.example'"); db.execute("UPDATE users SET name='Priya Menon' WHERE username='pm1'"); db.commit()
+        self.new_project(name="Bell", client="C")
+        self.client.post("/projects/1/participants/add", data={"user_id": pm1, "role": "Coordinator"})
+        with self.raw_db() as db:
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        p, pcsrf = self._api_client("pm1", STRONG_PASSWORD)
+        ph = {"X-CSRF-Token": pcsrf, "Accept": "application/json"}
+        # pm1 switches stage emails off; the bell still gets it
+        p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on"}, headers=ph)
+        kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
+        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True})
+        mail.reset_mock()
+        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        self.assertEqual([c.args[0] for c in mail.call_args_list], [])                     # pm1 opted out; admin is the actor
+        bell = p.get("/api/notifications").get_json()
+        self.assertEqual((bell["unread"], bell["rows"][0]["kind"], bell["rows"][0]["link"], bell["rows"][0]["actor"]), (1, "stage", "/board?rollout=1", "Admin"))
+        self.assertEqual(p.get("/api/session").get_json()["user"]["nav"]["unread_notifications"], 1)
+        # mentions: by full name, by unique first name, by username; an outsider is never reached
+        mail.reset_mock()
+        self.client.post("/projects/1/note", data={"note": "@Priya Menon can you check the rack? cc @sam"})
+        self.assertEqual([c.args[0] for c in mail.call_args_list], ["pm1@odin.example"])   # sam is not on the project
+        top = p.get("/api/notifications").get_json()["rows"][0]
+        self.assertEqual((top["kind"], top["title"]), ("mention", "Admin mentioned you on Bell"))
+        # the owner is told about a coordinator's note once, not also as a mention
+        mail.reset_mock()
+        p.post("/projects/1/note", data={"note": "done, @Admin"}, headers=ph)
+        self.assertEqual([(c.args[0], c.args[1]) for c in mail.call_args_list], [("admin@odin.example", "Priya Menon mentioned you on Bell")])
+        admin_rows = self.client.get("/api/notifications").get_json()["rows"]
+        self.assertEqual([r["kind"] for r in admin_rows], ["mention"])
+        # marking read: one, then all; never someone else's
+        rid = p.get("/api/notifications").get_json()["rows"][0]["id"]
+        a, acsrf = self._api_client()
+        self.assertEqual(a.post("/api/notifications/read", json={"id": rid}, headers={"X-CSRF-Token": acsrf}).status_code, 200)
+        self.assertEqual(p.get("/api/notifications").get_json()["unread"], 2)                 # admin could not mark pm1's
+        self.assertEqual(p.post("/api/notifications/read", json={"id": rid}, headers=ph).get_json()["unread"], 1)
+        self.assertEqual(p.post("/api/notifications/read", json={"all": True}, headers=ph).get_json()["unread"], 0)
+        self.assertEqual(p.post("/api/notifications/read", json={}, headers=ph).status_code, 400)
 
     # ---- basics: name, sessions, search, favicon ---------------------------------
 
@@ -1625,12 +1672,12 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         self.client.post("/projects/1/stage", data={"stage": stages[1], "note": "kicked off"})
         to = sorted(c.args[0] for c in mail.call_args_list)
-        # owner (notify_event) + the two others; admin is the actor so not a second time
-        self.assertEqual(to, ["admin@odin.example", "ann@acme.example", "pm1@odin.example"])
+        # everyone on the project except the actor (admin, who is also the owner): no one hears about their own move
+        self.assertEqual(to, ["ann@acme.example", "pm1@odin.example"])
         by = {c.args[0]: c.args[2] for c in mail.call_args_list}
         self.assertIn("kicked off", by["ann@acme.example"]); self.assertNotIn("approve", by["ann@acme.example"])   # approval switch is off
         # every mail carries a way in: staff get the project page, an external a one-time link that lands on it
-        self.assertIn("http://localhost/projects/1", by["pm1@odin.example"]); self.assertIn("/projects/1", by["admin@odin.example"])
+        self.assertIn("http://localhost/projects/1", by["pm1@odin.example"])
         import re
         link = re.search(r'href="([^"]+/auth/link/[^"]+)"', by["ann@acme.example"]).group(1)
         self.assertIn("next=/projects/1", link)
@@ -2525,9 +2572,13 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         """Meta-guard, like the RBAC one: a POST route with no audit_log call
         is a gap an auditor will find before we do."""
         import inspect
+        # The only exemptions, each with its reason. Keep this list short.
+        not_audited = {
+            "/api/notifications/read": "marks the caller's own inbox read: personal UI state, not an act on shared data",
+        }
         missing = []
         for rule in app_module.app.url_map.iter_rules():
-            if "POST" not in rule.methods or rule.endpoint == "static":
+            if "POST" not in rule.methods or rule.endpoint == "static" or rule.rule in not_audited:
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
             # attempt_login audits every outcome itself; both login doors use it.

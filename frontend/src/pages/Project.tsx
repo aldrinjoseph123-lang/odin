@@ -109,7 +109,7 @@ export default function Project(_props: { user: User }) {
         </Panel>
 
         <Panel title="Notes" hint={`${x.notes.length}`}>
-          {can.note && <NoteForm busy={busy} onSubmit={(note) => send(`/projects/${id}/note`, { note })} />}
+          {can.note && <NoteForm busy={busy} people={x.participants.filter((m) => m.active).map((m) => m.name)} onSubmit={(note) => send(`/projects/${id}/note`, { note })} />}
           <ul className="mt-3 grid gap-2">
             {x.notes.map((n) => (
               <li key={n.id} className="border-t border-border pt-2 text-[13px] first:border-0 first:pt-0">
@@ -213,12 +213,24 @@ function LinkRow({ label, url }: { label: string; url: string }) {
   )
 }
 
-function NoteForm({ busy, onSubmit }: { busy: boolean; onSubmit: (note: string) => Promise<unknown> }) {
+function NoteForm({ busy, people, onSubmit }: { busy: boolean; people: string[]; onSubmit: (note: string) => Promise<unknown> }) {
   const [note, setNote] = useState("")
+  // "@" + letters at the end of the text offers the team; picking one writes "@Full Name "
+  const token = /(^|\s)@([^\s@]*)$/.exec(note)
+  const matches = token ? people.filter((n) => n.toLowerCase().includes(token[2].toLowerCase())).slice(0, 6) : []
+  function pick(name: string) { setNote(note.slice(0, note.length - (token?.[2].length ?? 0) - 1) + `@${name} `) }
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (note.trim()) void onSubmit(note.trim()).then(() => setNote("")) }} className="flex gap-2">
-      <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note" aria-label="Add a note" maxLength={5000} className="h-8 text-[13px]" />
-      <Button type="submit" size="sm" disabled={busy || !note.trim()}>Add</Button>
+    <form onSubmit={(e) => { e.preventDefault(); if (note.trim()) void onSubmit(note.trim()).then(() => setNote("")) }} className="relative">
+      <div className="flex gap-2">
+        <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note — type @ to notify someone on the team" aria-label="Add a note" maxLength={5000} className="h-8 text-[13px]"
+          onKeyDown={(e) => { if (e.key === "Enter" && matches.length) { e.preventDefault(); pick(matches[0]) } }} />
+        <Button type="submit" size="sm" disabled={busy || !note.trim()}>Add</Button>
+      </div>
+      {matches.length > 0 && (
+        <ul role="listbox" aria-label="Mention someone" className="absolute left-0 top-9 z-20 w-64 overflow-hidden rounded-lg border border-border bg-popover py-1 text-[13px] shadow-lg">
+          {matches.map((n) => <li key={n} role="option" aria-selected={false}><button type="button" onClick={() => pick(n)} className="w-full px-3 py-1.5 text-left hover:bg-muted">@{n}</button></li>)}
+        </ul>
+      )}
     </form>
   )
 }

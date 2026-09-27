@@ -62,7 +62,7 @@ from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import sla_by_stage, stage_sla_state
 from services import stages as stage_ops
 from services.audit import audit_log
-from services.notifications import notify_event, notify_participants
+from services.notifications import notify_event, notify_participants, notify_users
 
 PROJECTS_PER_PAGE = 25
 
@@ -589,7 +589,7 @@ def change_stage(project_id, new_stage, note_text):
     body = (f"Stage moved to <b>{escape(new_stage)}</b> by {escape(session['user_name'])}."
             + (f"<br>{escape(note_text)}" if note_text else "")
             + ("<br>Please review and approve this step." if project["customer_approval"] else ""))
-    notify_event(project, f"Stage changed: {escape(project['name'])}", body)
+    notify_event(project, f"Stage changed: {escape(project['name'])}", body, channels={"email": False, "teams": True})
     notify_participants(project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=session["user_id"])
     return None
 
@@ -622,8 +622,8 @@ def decide_approval(project_id, approval_id, decision, comment):
     audit_log("approval_decision", "project", project_id, project["name"], f"{row['stage']} {decision}")
     subject = f"{project['name']}: {row['stage']} {decision} by the customer"
     body = f"{escape(session['user_name'])} {decision} <b>{escape(row['stage'])}</b>." + (f"<br>{escape(comment)}" if comment else "")
-    notify_event(project, subject, body)
-    notify_participants(project_id, subject, body, exclude_user_id=session["user_id"])
+    notify_event(project, subject, body, channels={"email": False, "teams": True})
+    notify_participants(project_id, subject, body, exclude_user_id=session["user_id"], kind="approval")
     return None
 
 
@@ -1001,31 +1001,61 @@ def project_note(project_id):
     )
     db.commit()
     audit_log("add_project_note", "project", project_id, project["name"], note_text)
-    _tell_pm(project, f"New note on {escape(project['name'])}",
-             f"{escape(session['user_name'])} wrote:<br>{escape(note_text)}")
+    mentioned = mentions_in(project_id, note_text)
+    html = f"{escape(session['user_name'])} wrote:<br>{escape(note_text)}"
+    if mentioned:
+        notify_users(mentioned, "mention", project_id, f"{escape(session['user_name'])} mentioned you on {escape(project['name'])}", html,
+                     exclude_user_id=session["user_id"])
+    if project["owner_id"] not in mentioned:      # a mention already told the PM
+        _tell_pm(project, f"New note on {escape(project['name'])}", html)
     return redirect(url_for("project_detail", project_id=project_id))
+
+
+def mentions_in(project_id, text):
+    """User ids a note mentions: "@Full Name", "@username", or "@First" when
+    only one person on the team has that first name. Only people on the
+    project can be mentioned — a mention never reaches an outsider."""
+    low = (text or "").lower()
+    if "@" not in low:
+        return []
+    team = get_db().execute(
+        "SELECT u.id, u.name, u.username FROM project_participants pp JOIN users u ON u.id = pp.user_id "
+        "WHERE pp.project_id = ? AND u.active = 1", (project_id,),
+    ).fetchall()
+    firsts = {}
+    for r in team:
+        firsts.setdefault(r["name"].split()[0].lower(), []).append(r["id"])
+    found = []
+    for r in team:
+        first = r["name"].split()[0].lower()
+        handles = [r["name"].lower(), r["username"].lower()] + ([first] if len(firsts[first]) == 1 else [])
+        for h in handles:
+            i = low.find("@" + h)
+            end = i + 1 + len(h)
+            if i >= 0 and (end == len(low) or not low[end].isalnum()):
+                found.append(r["id"])
+                break
+    return found
 
 
 def _tell_pm(project, subject, html):
     """The project manager hears about work done on their project by anyone
     else — a note, a finished task, a document. Email only: the Teams
     channel carries stage changes and alerts, not every note."""
-    if project["owner_id"] != session.get("user_id"):
-        notify_event(project, subject, html, channels={"email": True, "teams": False})
+    notify_users([project["owner_id"]], "activity", project["id"], subject, html, exclude_user_id=session.get("user_id"))
 
 
 def _notify_assignee(assignee_id, project_id, title):
-    """Tell someone a task landed on them. Skipped when you assign to yourself —
-    you already know. notify_event keys off owner_id, so the assignee is passed
-    in that slot deliberately."""
+    """Tell someone a task landed on them (never when you assign yourself)."""
     if not assignee_id or int(assignee_id) == session.get("user_id"):
         return
     project = get_db().execute("SELECT name FROM projects WHERE id = ?", (project_id,)).fetchone()
-    notify_event(
-        {"owner_id": int(assignee_id)},
+    notify_users(
+        [int(assignee_id)], "assigned", project_id,
         f"Task assigned to you: {escape(title)}",
         f"{escape(session.get('user_name', 'Someone'))} assigned you "
         f"\"{escape(title)}\" on project {escape(project['name'] if project else '')}.",
+        exclude_user_id=session.get("user_id"),
     )
 
 

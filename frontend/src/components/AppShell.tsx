@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { logout, postForm, type User } from "@/lib/api"
 import { UserAvatar } from "@/components/UserAvatar"
 import { CommandPalette } from "@/components/CommandPalette"
+import { NotificationBell } from "@/components/NotificationBell"
 import { applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
@@ -74,8 +75,8 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">Skip to content</a>
       <header className="flex h-13 shrink-0 items-center gap-4 border-b border-border bg-background px-5 print:hidden xl:gap-6">
         <Link to="/board" className="text-[15px] font-bold tracking-tight">Odin</Link>
-        <button type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted lg:hidden"><Menu className="h-5 w-5" /></button>
-        {/* The full row needs ~1000 px; below lg it is the burger menu. */}
+        {/* The full row needs ~1000 px; below lg the links fold into the menu,
+            while bell, theme and avatar stay visible at every width. */}
         <nav className={cn("absolute inset-x-0 top-13 z-40 flex-col gap-3 border-b border-border bg-background px-5 py-4 lg:static lg:flex lg:flex-1 lg:flex-row lg:items-center lg:gap-4 lg:border-0 lg:p-0 xl:gap-6", open ? "flex" : "hidden")}>
           {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
           <span className="lg:flex-1" />
@@ -87,15 +88,20 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           {user.role !== "Viewer" && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
           {user.kind === "external" && <Badge variant="secondary">Partner access</Badge>}
+          <button type="button" onClick={signOut} className="text-left text-[13px] font-medium text-nav-fg hover:text-foreground lg:hidden">Log out</button>
+        </nav>
+        <div className="ml-auto flex items-center gap-1.5 lg:ml-0 xl:gap-3">
+          <NotificationBell initialUnread={user.nav.unread_notifications ?? 0} />
           <button type="button" onClick={cycleTheme} aria-label={`Theme: ${theme}. Switch`} title={`Theme: ${theme}`}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-nav-fg hover:bg-muted hover:text-foreground">
             {theme === "dark" ? <Moon className="h-4 w-4" /> : theme === "light" ? <Sun className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
           </button>
-          <a href="/account" className="flex items-center gap-2 text-[13px] text-nav-fg hover:text-foreground" title={user.name}>
+          <a href="/account" className="flex items-center text-[13px] text-nav-fg hover:text-foreground" title={user.name} aria-label="Your account">
             <UserAvatar name={user.name} url={user.avatar_url} className="h-7 w-7" textClass="text-[11px] bg-accent text-accent-foreground" />
           </a>
-          <button type="button" onClick={signOut} className="text-[13px] font-medium text-nav-fg hover:text-foreground">Log out</button>
-        </nav>
+          <button type="button" onClick={signOut} className="hidden text-[13px] font-medium text-nav-fg hover:text-foreground lg:ml-1.5 lg:inline">Log out</button>
+          <button type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted lg:hidden"><Menu className="h-5 w-5" /></button>
+        </div>
       </header>
       {messages.length > 0 && (
         <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px] print:hidden" role="status">

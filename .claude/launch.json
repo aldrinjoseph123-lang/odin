@@ -4,15 +4,34 @@
     {
       "name": "odin",
       "runtimeExecutable": "./venv/bin/python",
-      "runtimeArgs": ["app.py"],
+      "runtimeArgs": [
+        "app.py"
+      ],
       "port": 5050,
       "autoPort": false
     },
     {
       "name": "odin-frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173,
+      "autoPort": false
+    },
+    {
+      "name": "odin-uat",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ODIN_DATA_DIR=uat-data",
+        "PORT=5051",
+        "./venv/bin/python",
+        "app.py"
+      ],
+      "port": 5051,
       "autoPort": false
     }
   ]

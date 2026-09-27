@@ -255,7 +255,7 @@ def nav_counts():
     """Badges on the nav bar — the same three numbers whether Jinja or React
     draws the bar."""
     if not session.get("user_id"):
-        return {"active_alert_count": 0, "my_open_task_count": 0, "projects_nav_url": url_for("projects_list")}
+        return {"active_alert_count": 0, "my_open_task_count": 0, "unread_notifications": 0, "projects_nav_url": url_for("projects_list")}
     db = get_db()
     scope_sql, scope_params = project_scope()
     return {
@@ -263,6 +263,9 @@ def nav_counts():
             f"SELECT COUNT(*) AS count FROM alerts a JOIN projects p ON p.id = a.project_id WHERE a.resolved = 0{scope_sql}",
             scope_params,
         ).fetchone()["count"],
+        "unread_notifications": db.execute(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (session.get("user_id"),)
+        ).fetchone()[0],
         "my_open_task_count": db.execute(
             "SELECT COUNT(*) AS count FROM tasks t JOIN projects p ON p.id = t.project_id "
             f"WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL{scope_sql}",

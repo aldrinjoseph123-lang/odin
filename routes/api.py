@@ -270,9 +270,14 @@ def api_report(project_id):
 @app.route("/api/account")
 @login_required
 def api_account():
-    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    from constants import NOTIFICATION_KINDS
+    from db import get_setting
+    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    off = set((u["email_off"] or "").split(","))
     return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
-                   theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u))
+                   theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u),
+                   email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()],
+                   mail_enabled=get_setting("notify_email_enabled") == "1")
 
 
 @app.route("/api/my-work")
@@ -702,6 +707,38 @@ def api_project_flow(project_id):
                      if (a := current_approval(project_id)) else None),
         "can_approve": is_customer_on(project_id, session["user_id"]),
     })
+
+
+@app.route("/api/notifications")
+@login_required
+def api_notifications():
+    rows = get_db().execute(
+        "SELECT n.*, p.name AS project_name FROM notifications n LEFT JOIN projects p ON p.id = n.project_id "
+        "WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 40", (session["user_id"],),
+    ).fetchall()
+    unread = get_db().execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (session["user_id"],)).fetchone()[0]
+    return jsonify(unread=unread, rows=[{
+        "id": r["id"], "kind": r["kind"], "title": r["title"], "body": r["body"], "link": r["link"], "actor": r["actor"],
+        "project_name": r["project_name"], "created_at": r["created_at"], "read": r["read_at"] is not None,
+    } for r in rows])
+
+
+@app.route("/api/notifications/read", methods=["POST"])
+@login_required
+def api_notifications_read():
+    """Mark one (id) or all of this user's notifications read. Only ever the
+    caller's own rows."""
+    body = request.get_json(silent=True) or {}
+    db = get_db()
+    now = datetime.utcnow().isoformat()
+    if body.get("all"):
+        db.execute("UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL", (now, session["user_id"]))
+    elif isinstance(body.get("id"), int):
+        db.execute("UPDATE notifications SET read_at = ? WHERE id = ? AND user_id = ? AND read_at IS NULL", (now, body["id"], session["user_id"]))
+    else:
+        return jsonify(error="Say which: {id} or {all: true}"), 400
+    db.commit()
+    return jsonify(ok=True, unread=db.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (session["user_id"],)).fetchone()[0])
 
 
 @app.route("/api/search")

@@ -55,7 +55,7 @@ export function logout() {
   return post<{ ok: true; csrf: string }>("/api/logout")
 }
 
-export type Nav = { active_alert_count: number; my_open_task_count: number; projects_nav_url: string }
+export type Nav = { active_alert_count: number; my_open_task_count: number; unread_notifications: number; projects_nav_url: string }
 
 export type Card = {
   id: number; name: string; client: string; stage: string; owner_name: string
@@ -211,7 +211,8 @@ export type ReportData = {
 export const report = (id: number, query: string) => getJson<ReportData>(`/api/projects/${id}/report${query ? `?${query}` : ""}`)
 
 // ---- account, my work, alerts, analytics ----
-export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null }>("/api/account")
+export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
+  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean }>("/api/account")
 export type MyWorkData = {
   tasks: { id: number; title: string; project_id: number; project_name: string; due_date: string | null; overdue: boolean; stage: string | null }[]
   projects: { id: number; name: string; client: string; stage: string; schedule: "overdue" | "at_risk" | "on_track" | null; target_end_date: string | null }[]
@@ -238,6 +239,11 @@ export const projectActivity = (id: number) => getJson<{ rows: ActivityRow[] }>(
 
 export type SearchResults = { projects: { id: number; name: string; client: string; stage: string }[]; tasks: { id: number; title: string; done: boolean; project_id: number; project_name: string }[] }
 export const search = (q: string) => getJson<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`)
+
+// ---- notifications ----
+export type Notification = { id: number; kind: string; title: string; body: string | null; link: string | null; actor: string | null; project_name: string | null; created_at: string; read: boolean }
+export const notifications = () => getJson<{ unread: number; rows: Notification[] }>("/api/notifications")
+export const markRead = (which: { id: number } | { all: true }) => post<{ ok: true; unread: number }>("/api/notifications/read", which)
 
 // ---- the new / duplicate / edit project form ----
 export type ProjectFormData = {

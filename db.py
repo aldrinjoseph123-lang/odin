@@ -114,7 +114,7 @@ def cleanup_soft_deletes(db=None):
         _remove_upload(project_id, stored_name)
 
     if doomed:
-        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals"):
+        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
@@ -139,7 +139,7 @@ def _purge_orphans(db):
     their children. Everything removed here is unreachable by definition: no
     project row means no page can ever display it.
     """
-    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals"):
+    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications"):
         column = "project_id"
         db.execute(
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
@@ -258,6 +258,21 @@ def migrate_db(db):
     # NULL = "whatever stage the project is in" — old tasks and quick adds.
     if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
         db.execute("ALTER TABLE tasks ADD COLUMN stage TEXT")
+    # In-app notifications: one row per recipient per event. Read ones older
+    # than 90 days are trimmed as new ones are written.
+    db.execute("""CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        project_id INTEGER REFERENCES projects(id),
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT,
+        link TEXT,
+        actor TEXT,
+        created_at TEXT NOT NULL,
+        read_at TEXT
+    )""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, read_at, id)")
     # Customer approval of a stage change, when the project asks for it.
     # One row per change; a newer change supersedes an undecided older one.
     db.execute("""CREATE TABLE IF NOT EXISTS stage_approvals (

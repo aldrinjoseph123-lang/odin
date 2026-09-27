@@ -23,25 +23,58 @@ def project_link(project_id, user):
     return f'<p><a href="{url_for("project_detail", project_id=project_id, _external=True)}">Open the project in Odin</a></p>'
 
 
-def notify_participants(project_id, subject, message_html, exclude_user_id=None):
-    """Email every active participant who has an address — internal or
-    external — except the person who caused the event. Same admin toggle as
-    notify_event; best effort, never raises."""
+def _plain(html):
+    import re
+    from html import unescape
+    return unescape(re.sub(r"\s+", " ", re.sub(r"<br\s*/?>", " ", re.sub(r"<(?!br)[^>]+>", "", html or "")))).strip()
+
+
+def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user_id=None):
+    """The one way a person hears about an event. Every recipient gets an
+    in-app notification; those with an address who have not switched this
+    kind off by email also get a mail (when mail is on). Recipients are
+    de-duplicated and the person who caused the event is never told about
+    their own action. Best effort: mail failures never break the request."""
+    from datetime import datetime, timedelta
+    from flask import session
+    ids = []
+    for uid in user_ids:
+        if uid and uid != exclude_user_id and uid not in ids:
+            ids.append(uid)
+    if not ids:
+        return
+    db = get_db()
+    now = datetime.utcnow()
+    actor = session.get("user_name") if session else None
+    link = f"/board?rollout={project_id}" if project_id else None
+    title, body = _plain(subject), _plain(message_html)
+    marks = ",".join("?" for _ in ids)
+    rows = db.execute(f"SELECT id, email, kind, email_off FROM users WHERE active = 1 AND id IN ({marks})", ids).fetchall()
+    for r in rows:
+        db.execute(
+            "INSERT INTO notifications (user_id, project_id, kind, title, body, link, actor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (r["id"], project_id, kind, title[:300], body[:2000], link, actor, now.isoformat()),
+        )
+    db.execute("DELETE FROM notifications WHERE read_at IS NOT NULL AND created_at < ?", ((now - timedelta(days=90)).isoformat(),))
+    db.commit()
     if get_setting("notify_email_enabled") != "1":
         return
-    rows = get_db().execute(
-        "SELECT u.id, u.email, u.kind FROM project_participants pp JOIN users u ON u.id = pp.user_id "
-        "WHERE pp.project_id = ? AND u.active = 1 AND u.email IS NOT NULL AND u.email != ''", (project_id,)
-    ).fetchall()
     for r in rows:
-        if r["id"] == exclude_user_id:
+        if not r["email"] or kind in (r["email_off"] or "").split(","):
             continue
         try:
-            ok, error = graph.send_mail(r["email"], subject, message_html + project_link(project_id, r))
+            extra = project_link(project_id, r) if project_id else ""
+            ok, error = graph.send_mail(r["email"], subject, message_html + extra)
         except Exception as exc:   # never let mail break the request that caused it
             ok, error = False, str(exc)
         if not ok:
-            print(f"[notify_participants] email to {r['email']} failed: {error}")
+            print(f"[notify_users] email to {r['email']} failed: {error}")
+
+
+def notify_participants(project_id, subject, message_html, exclude_user_id=None, kind="stage"):
+    """Everyone on the project (the project manager is always a participant)."""
+    ids = [r[0] for r in get_db().execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,))]
+    notify_users(ids, kind, project_id, subject, message_html, exclude_user_id=exclude_user_id)
 
 
 def notify_event(project, subject, message_html, channels=None):

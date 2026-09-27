@@ -68,6 +68,15 @@ PROJECT_ACTIONS = {
     "manage_documents": ("upload_document", {"Project manager", "Coordinator"}),
 }
 
+# What a notification is about. Each kind can be switched off by email.
+NOTIFICATION_KINDS = {
+    "stage": "Stage changes on projects I am on",
+    "approval": "Customer approval decisions",
+    "activity": "Notes, finished tasks and documents on projects I manage",
+    "assigned": "Tasks assigned to me",
+    "mention": "When someone mentions me in a note",
+}
+
 THEMES = ("system", "light", "dark")
 ACCENTS = ("blue", "indigo", "violet", "teal", "green", "amber", "rose", "ink")
 AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
@@ -173,6 +182,9 @@ NEW_USER_COLUMNS = {
     "theme": "TEXT NOT NULL DEFAULT 'system'",
     "accent": "TEXT NOT NULL DEFAULT 'blue'",
     "avatar": "TEXT",
+    # Notification kinds this user does NOT want by email (comma list); the
+    # in-app notification always arrives.
+    "email_off": "TEXT NOT NULL DEFAULT ''",
     # Bumped on deactivate / admin reset: any session minted under an older
     # epoch is dead on its next request. Cheap "log out everywhere".
     "session_epoch": "INTEGER NOT NULL DEFAULT 0",

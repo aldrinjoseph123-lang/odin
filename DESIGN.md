@@ -368,6 +368,9 @@ Quiet, small, and rarely blue: one primary per view.
 - **Relative time:** notes, activity, the Recent rail and last sign-in read "just now / 20 min ago / 3 h ago / yesterday / 4 d ago", then a date; the exact local time is the `<time>` title. The audit log stays absolute: it is evidence.
 - **Recovery screen:** a render error inside any page shows a centred card with Reload (primary) and Back to the flow, never a blank app. The server's error page is the same card, standalone, following the saved theme.
 - **Reduce motion:** under the OS setting every transition and animation is effectively off.
+- **Header cluster:** bell, theme button and avatar sit outside the collapsible links, visible at every width; "Log out" moves into the menu below 1024 px.
+- **Bell:** a 32 px icon button with the unread count as an accent pill (99+ cap). Its panel drops from the right edge: popover surface, 380 px, a hairline title row with "Mark all read", then entries with an accent dot for unread, the title (500 weight when unread), two muted lines of detail and "2 min ago · who". Unread rows carry a faint accent wash. Click marks read and opens the rollout; Escape or an outside click closes.
+- **Mentions:** typing "@" plus letters in the note box offers up to six team members in a small popover list; Enter or click writes "@Full Name ".
 
 ### Cards / Containers
 - **Rail panel** (Next up / ETA / Advance): white, 1 px hairline, 8 px radius, 12 px padding, 13 px body, 12 px semibold chrome-text header with a 14 px icon; panels stack with 16 px gaps.

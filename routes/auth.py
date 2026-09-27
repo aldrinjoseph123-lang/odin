@@ -11,7 +11,7 @@ from flask import abort, flash, redirect, render_template, request, send_from_di
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from core import app, login_required
-from constants import ACCENTS, AVATAR_EXTENSIONS, AVATAR_MAX_BYTES, THEMES
+from constants import ACCENTS, AVATAR_EXTENSIONS, AVATAR_MAX_BYTES, NOTIFICATION_KINDS, THEMES
 from db import AVATAR_DIR, get_db
 from security import (
     LOGIN_WINDOW_MINUTES,
@@ -245,6 +245,20 @@ def account_sign_out_others():
     session["epoch"] = db.execute("SELECT session_epoch FROM users WHERE id = ?", (session["user_id"],)).fetchone()[0]
     audit_log("sign_out_other_sessions", "user", session["user_id"], session.get("user_name"))
     flash("Signed out of every other device")
+    return redirect(url_for("account"))
+
+
+@app.route("/account/notifications", methods=["POST"])
+@login_required
+def account_notifications():
+    """Which kinds this user wants by email. Ticked = on; the form sends only
+    the ticked ones. In-app notifications always arrive."""
+    off = [k for k in NOTIFICATION_KINDS if request.form.get(k) != "on"]
+    db = get_db()
+    db.execute("UPDATE users SET email_off = ? WHERE id = ?", (",".join(off), session["user_id"]))
+    db.commit()
+    audit_log("change_own_notification_prefs", "user", session["user_id"], session.get("user_name"), f"email off: {','.join(off) or 'none'}")
+    flash("Notification settings saved")
     return redirect(url_for("account"))
 
 
