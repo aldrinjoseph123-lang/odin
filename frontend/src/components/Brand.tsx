@@ -6,16 +6,25 @@ import { cn } from "@/lib/utils"
 
 export const TAGLINE = "Every project. On watch."
 
-// The raven: Huginn and Muninn flew out each morning and told Odin what they saw.
-export const RAVEN = "M3 29 L4.5 17 L8 10.5 L14 6.5 L20 6.5 L24 9 L31 16 L23 15.8 L20 18 L20.5 21 L18 20.6 L18.5 24 L16 23.4 L16.5 26.8 L14 26 L14 29 Z"
-export const RAVEN_EYE = "M16.8 9.6 L20 9.6 L18.4 12.2 Z"
+// The raven, perched: Huginn and Muninn flew out each morning and told Odin
+// what they saw. Heavy beak, flat crown, long wedge tail, red eye. 64-unit grid.
+export const RAVEN = {
+  body: "M61 24 C56 19 52 16 47 15 C44 11.5 37 11.5 34.5 15.5 C30.5 22 24 28 19 36 L5 57 L13 58.5 L26 48.5 C31 49.5 37 47.5 41 43 C45 39 47 34.5 47.5 30.5 L50 29.5 L48.5 27.5 L50.5 25.5 Q55 25.5 61 24 Z",
+  legs: "M31 48.5 L30 57.5 M36.5 46.5 L36.5 56.5",
+  wing: "M37 21 C35 31 30 40 20 47",
+  gape: "M50.5 25.5 L59 24.2",
+  eye: "M43.5 15.5 L45.5 17.5 L43.5 19.5 L41.5 17.5 Z",
+}
 
 export function RavenMark({ className, label }: { className?: string; label?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={cn("h-7 w-7 shrink-0", className)} role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
-      <rect x=".5" y=".5" width="31" height="31" rx="3" fill="var(--brand-ink)" stroke="var(--brand-edge)" />
-      <path d={RAVEN} fill="var(--brand-paper)" />
-      <path d={RAVEN_EYE} fill="var(--brand-red)" />
+    <svg viewBox="0 0 64 64" className={cn("h-7 w-7 shrink-0", className)} role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
+      <rect x="1" y="1" width="62" height="62" rx="10" fill="var(--brand-ink)" stroke="var(--brand-edge)" strokeWidth="1.5" />
+      <path d={RAVEN.body} fill="var(--brand-paper)" />
+      <path d={RAVEN.legs} stroke="var(--brand-paper)" strokeWidth="2.4" />
+      <path d={RAVEN.wing} stroke="var(--brand-ink)" strokeWidth="2" fill="none" />
+      <path d={RAVEN.gape} stroke="var(--brand-ink)" strokeWidth="1.2" />
+      <path d={RAVEN.eye} fill="var(--brand-red)" />
     </svg>
   )
 }
@@ -27,10 +36,10 @@ export function Wordmark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 -4 71 32" className={cn("h-4 w-auto", className)} role="img" aria-label="Odin">
       <defs>
-        <mask id={mask}><rect x="-5" y="-5" width="90" height="40" fill="#fff" /><path d="M-0.8 27 L6.3 27 L18.8 -3 L11.7 -3 Z" fill="#000" /></mask>
+        <mask id={mask}><rect x="-5" y="-5" width="90" height="40" fill="#fff" /><path d="M-0.2 26 L5.8 26 L17.8 -2 L11.8 -2 Z" fill="#000" /></mask>
       </defs>
       <path fill="currentColor" fillRule="evenodd" mask={`url(#${mask})`} d="M5 0 H13 L18 5 V19 L13 24 H5 L0 19 V5 Z M6.5 4.5 H11.5 L13.5 6.5 V17.5 L11.5 19.5 H6.5 L4.5 17.5 V6.5 Z" />
-      <path fill="var(--brand-red)" d="M1 27 L4.5 27 L17 -3 L13.5 -3 Z" />
+      <path fill="var(--brand-red)" d="M1.4 26 L4.4 26 L16.4 -2 L13.4 -2 Z" />
       <path fill="currentColor" fillRule="evenodd" d="M22 0 H35 L40 5 V19 L35 24 H22 Z M26.5 4.5 H33 L35.5 7 V17 L33 19.5 H26.5 Z M44 0 H48.5 V24 H44 Z M52.5 24 V0 H57 L66 15 V0 H70.5 V24 H66 L57 9 V24 Z" />
     </svg>
   )
@@ -44,10 +53,8 @@ export function Logo({ byline, className, markClass, wordClass }: { byline?: boo
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <RavenMark className={markClass} />
-      <span className="grid gap-1">
-        <Wordmark className={wordClass} />
-        {byline && <Byline className="text-current/70" />}
-      </span>
+      <Wordmark className={wordClass} />
+      {byline && <><span className="h-[1.1em] w-px bg-current opacity-30" aria-hidden /><Byline className="text-current/70" /></>}
     </span>
   )
 }

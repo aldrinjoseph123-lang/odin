@@ -26,9 +26,9 @@ version of that promise.
 | `brand/odin-mark.svg` | The raven tile alone: favicon, avatars, small spaces |
 | `brand/odin-social.png` | Link preview, 1200×630 |
 
-- **The mark** is a geometric raven head in white on a black tile, with a red eye. The throat has stepped hackles, which is what makes it read as a raven and not a generic bird.
+- **The mark** is a perched raven in white on a black tile, with a red eye. The heavy beak, flat crown and long wedge tail are what make it read as a raven and not a songbird. A thin ink line marks the folded wing.
 - **The wordmark** is ODIN in chamfered letters that match Chakra Petch, drawn as shapes so it never depends on a font. The O is struck through in red. That gives Ø, a Norse letter, and echoes the red slash in the parent's "24/7".
-- **The byline** reads "by Protect24x7" with "24x7" in red. Use it wherever someone outside the company sees Odin: sign-in, emails and printed reports.
+- **The byline** reads "by Protect24x7" with "24x7" in red. It sits on the same line as the wordmark, after a thin vertical rule. Use it wherever someone outside the company sees Odin: sign-in, emails and printed reports.
 - Keep clear space of at least half the tile's width around the logo. Don't recolour, stretch, outline or add effects. The only red is the slash and the eye.
 - In code, use `RavenMark`, `Wordmark`, `Logo`, `Byline` and `Eyebrow` from `frontend/src/components/Brand.tsx`. Don't copy the paths.
 

@@ -249,7 +249,7 @@ The build rejected, by the user's explicit choice, the dark/industrial look, kan
 
 Built in `frontend/src/components/Brand.tsx`; tokens `--brand-red`, `--brand-ink`, `--brand-paper`, `--brand-muted`, `--brand-edge` (all themes; the edge only shows in dark).
 
-- **Logo** = the raven mark (white raven, red eye, on a black tile with 3 px corners) + the ODIN wordmark (chamfered letters drawn as SVG, the O struck through in red: Ø). Header: 28 px mark, 15 px wordmark, letters in `currentColor`.
+- **Logo** = the raven mark (a perched white raven with a red eye on a black tile, corners at 16% of its size) + the ODIN wordmark (chamfered letters drawn as SVG, the O struck through in red: Ø), then, where the byline is shown, a thin rule and "by Protect24x7" on the same line. Header: 28 px mark, 15 px wordmark, letters in `currentColor`.
 - **Brand panel** (`AuthLayout`): `.brand-panel`, always black with the parent's faint 135° rule, whatever the theme. Byline "by Protect24x7", eyebrow "01 / Project lifecycle", the tagline in Chakra Petch 700 uppercase (30 → 40 → 52 px by breakpoint, the only sizes above 24 px), second line red, live clock "19:02 GMT+4 · On watch" with a pulsing red dot. Left half from `lg`; a top band on phones. The form side follows the user's theme.
 - **Print header** (`PrintBrand`): logo + byline left, tagline right, 2 px ink rule; print only.
 - **Numbered labels**: panel titles with `data-n` get "01 / " from a CSS counter on `main`, Chakra Petch, muted ink (never red in the app). Used on the project page, settings, account and the project form.

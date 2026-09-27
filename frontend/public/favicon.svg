@@ -1,6 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- Odin by Protect24x7: the raven on the parent's ink, red eye. Source: components/Brand.tsx -->
-  <rect width="32" height="32" rx="3" fill="#0A0A0A"/>
-  <path d="M3 29 L4.5 17 L8 10.5 L14 6.5 L20 6.5 L24 9 L31 16 L23 15.8 L20 18 L20.5 21 L18 20.6 L18.5 24 L16 23.4 L16.5 26.8 L14 26 L14 29 Z" fill="#fff"/>
-  <path d="M16.8 9.6 L20 9.6 L18.4 12.2 Z" fill="#E11D2E"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Odin by Protect24x7: the perched raven, red eye. Source: frontend/src/components/Brand.tsx -->
+  <rect x="1" y="1" width="62" height="62" rx="10" fill="#0A0A0A"/><path d="M61 24 C56 19 52 16 47 15 C44 11.5 37 11.5 34.5 15.5 C30.5 22 24 28 19 36 L5 57 L13 58.5 L26 48.5 C31 49.5 37 47.5 41 43 C45 39 47 34.5 47.5 30.5 L50 29.5 L48.5 27.5 L50.5 25.5 Q55 25.5 61 24 Z" fill="#fff"/><path d="M31 48.5 L30 57.5 M36.5 46.5 L36.5 56.5" stroke="#fff" stroke-width="2.4"/><path d="M37 21 C35 31 30 40 20 47" stroke="#0A0A0A" stroke-width="2" fill="none"/><path d="M50.5 25.5 L59 24.2" stroke="#0A0A0A" stroke-width="1.2"/><path d="M43.5 15.5 L45.5 17.5 L43.5 19.5 L41.5 17.5 Z" fill="#E11D2E"/>
 </svg>
