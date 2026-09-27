@@ -1528,6 +1528,19 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_favicon_is_served(self):
         r = app_module.app.test_client().get("/favicon.svg")
         self.assertEqual((r.status_code, r.mimetype), (200, "image/svg+xml")); self.assertIn(b"<svg", r.data)
+        for name in ("og.png", "apple-touch-icon.png"):    # link preview and home-screen icon, signed out
+            r = app_module.app.test_client().get(f"/{name}")
+            self.assertEqual((r.status_code, r.mimetype), (200, "image/png"), name)
+
+    def test_every_email_wears_the_brand(self):
+        import graph
+        with patch("graph.mail_configured", return_value=True), patch("graph._headers", return_value=({}, None)), \
+             patch("graph.requests.post") as post:
+            post.return_value.status_code = 202
+            self.assertEqual(graph.send_mail("a@example.com", "Hi", "<p>Stage moved</p>"), (True, None))
+        body = post.call_args.kwargs["json"]["message"]["body"]["content"]
+        self.assertIn("<p>Stage moved</p>", body)
+        self.assertIn("BY PROTECT", body); self.assertIn("EVERY PROJECT. ON WATCH.", body)
 
     # ---- appearance and profile pictures --------------------------------------
 

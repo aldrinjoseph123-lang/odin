@@ -38,7 +38,7 @@ export default function Account(_props: { user: User }) {
       {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
       <div className="mt-3 grid max-w-3xl gap-4 lg:grid-cols-2">
         <section className="grid content-start gap-3 rounded-lg border border-border p-4">
-          <h3 className="text-[12px] font-semibold text-nav-fg">Appearance <span className="font-normal text-muted-foreground">yours, on every device you sign in on</span></h3>
+          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Appearance <span className="font-normal text-muted-foreground">yours, on every device you sign in on</span></h3>
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Theme">
             {THEMES.map((t) => (
               <button key={t} type="button" role="radio" aria-checked={me.theme === t} disabled={busy}
@@ -57,7 +57,7 @@ export default function Account(_props: { user: User }) {
           <p className="text-[11.5px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. Green, amber and red stay reserved for state.</p>
         </section>
         <form onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); if ((fd.get("avatar") as File | null)?.name) void send("/account/avatar", fd, () => e.currentTarget?.reset?.()) }} className="grid content-start gap-3 rounded-lg border border-border p-4">
-          <h3 className="text-[12px] font-semibold text-nav-fg">Picture <span className="font-normal text-muted-foreground">shown wherever your name is</span></h3>
+          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Picture <span className="font-normal text-muted-foreground">shown wherever your name is</span></h3>
           <div className="flex items-center gap-3">
             <UserAvatar name={me.name} url={me.avatar_url} className="h-14 w-14" textClass="text-[18px]" />
             <div className="grid gap-2">
@@ -71,19 +71,19 @@ export default function Account(_props: { user: User }) {
           </div>
         </form>
         <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (name.trim()) void send("/account/name", { name: name.trim() }, () => window.setTimeout(() => window.location.reload(), 400)) }} className="grid content-start gap-2 rounded-lg border border-border p-4">
-          <h3 className="text-[12px] font-semibold text-nav-fg">Name <span className="font-normal text-muted-foreground">as others see it</span></h3>
+          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Name <span className="font-normal text-muted-foreground">as others see it</span></h3>
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} aria-label="Your name" className="h-8 text-[13px]" />
           <div><Button type="submit" size="sm" variant="outline" disabled={busy || !name.trim() || name.trim() === me.name}>Save name</Button></div>
           <p className="text-[11.5px] text-muted-foreground">Notes you already wrote keep the name they were written under.</p>
         </form>
         <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email }) }} className="grid content-start gap-2 rounded-lg border border-border p-4">
-          <h3 className="text-[12px] font-semibold text-nav-fg">Email <span className="font-normal text-muted-foreground">for notifications</span></h3>
+          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Email <span className="font-normal text-muted-foreground">for notifications</span></h3>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" aria-label="Email address" className="h-8 text-[13px]" />
           <div><Button type="submit" size="sm" variant="outline" disabled={busy || email === (me.email ?? "")}>Save email</Button></div>
         </form>
         {me.kind === "internal" ? (
           <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" })) }} className="grid content-start gap-2 rounded-lg border border-border p-4">
-            <h3 className="text-[12px] font-semibold text-nav-fg">Change password</h3>
+            <h3 data-n className="text-[12px] font-semibold text-nav-fg">Change password</h3>
             <label className="grid gap-1 text-[12px] text-muted-foreground">Current password<Input type="password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required autoComplete="current-password" aria-label="Current password" className="h-8 text-[13px]" /></label>
             <label className="grid gap-1 text-[12px] text-muted-foreground">New password<Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={8} autoComplete="new-password" aria-label="New password" className="h-8 text-[13px]" /></label>
             <div><Button type="submit" size="sm" disabled={busy || !pw.current_password || pw.new_password.length < 8}>Update password</Button></div>
@@ -94,7 +94,7 @@ export default function Account(_props: { user: User }) {
         <form key={me.email_kinds.map((k) => `${k.key}:${k.on}`).join("|")}
           onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); void send("/account/notifications", Object.fromEntries(me.email_kinds.filter((k) => fd.get(k.key)).map((k) => [k.key, "on"]))) }}
           className="grid content-start gap-2 rounded-lg border border-border p-4">
-          <h3 className="text-[12px] font-semibold text-nav-fg">Email me about <span className="font-normal text-muted-foreground">the bell shows everything either way</span></h3>
+          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Email me about <span className="font-normal text-muted-foreground">the bell shows everything either way</span></h3>
           {me.email_kinds.map((k) => (
             <label key={k.key} className="flex items-start gap-2 text-[13px]">
               <input type="checkbox" name={k.key} defaultChecked={k.on} className="mt-1 h-3.5 w-3.5 accent-primary" />
@@ -105,7 +105,7 @@ export default function Account(_props: { user: User }) {
           <div><Button type="submit" size="sm" variant="outline" disabled={busy}>Save</Button></div>
         </form>
         <section className="grid content-start gap-2 rounded-lg border border-border p-4">
-          <h3 className="text-[12px] font-semibold text-nav-fg">Sessions</h3>
+          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Sessions</h3>
           <p className="text-[12.5px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>
           <div><Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { if (window.confirm("Sign out of every other device?")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>
         </section>

@@ -768,15 +768,15 @@ def api_search():
     return jsonify(projects=[dict(r) for r in projects], tasks=[dict(r) | {"done": bool(r["done"])} for r in tasks])
 
 
-@app.route("/favicon.svg")
-def favicon():
+# The brand files at the site root: favicon, home-screen icon, link preview.
+@app.route("/<any('favicon.svg', 'apple-touch-icon.png', 'og.png'):name>")
+def favicon(name):
     from flask import send_from_directory
     from spa import DIST_DIR
     import os
     here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "public")
-    folder = DIST_DIR if os.path.exists(os.path.join(DIST_DIR, "favicon.svg")) else here
-    response = send_from_directory(folder, "favicon.svg", mimetype="image/svg+xml", max_age=86400)
-    return response
+    folder = DIST_DIR if os.path.exists(os.path.join(DIST_DIR, name)) else here
+    return send_from_directory(folder, name, max_age=86400)
 
 
 @app.route("/assets/<path:filename>")

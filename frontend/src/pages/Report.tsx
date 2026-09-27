@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { Printer } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { PrintBrand } from "@/components/Brand"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ApiError, postForm, report, type ReportData, type User } from "@/lib/api"
 import { groupBlocks } from "@/lib/format"
@@ -56,6 +57,7 @@ export default function Report(_props: { user: User }) {
   const next = (d.versions[0]?.version ?? 0) + 1
   return (
     <div className="mx-auto max-w-3xl px-5 pb-8 pt-4">
+      <PrintBrand />
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <a href={`/projects/${id}`} className="text-[12.5px] text-muted-foreground hover:text-foreground">{d.project.name}</a>
         <span className="text-[12.5px] text-muted-foreground">/ Report</span>

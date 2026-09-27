@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }} · Odin</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=raven">
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&display=swap" rel="stylesheet">
   <script>
     (function () {  // same pre-paint rule as the React app
       try {
@@ -27,6 +28,10 @@
            background:var(--bg); color:var(--fg); font:13px/1.5 Inter, system-ui, -apple-system, sans-serif; }
     .card { max-width:28rem; width:100%; border:1px solid var(--border); border-radius:11px; background:var(--card); padding:32px; text-align:center; }
     .code { color:var(--muted); font-size:12px; }
+    .brand { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:20px; }
+    .word { font:700 16px/1 'Chakra Petch', Inter, sans-serif; letter-spacing:.12em; }
+    .o { color:#E11D2E; }   /* brand red: the logo only */
+    h1 { font-family:'Chakra Petch', Inter, sans-serif; }
     h1 { margin:6px 0 10px; font-size:20px; font-weight:600; letter-spacing:-0.025em; }
     p { margin:0 0 20px; color:var(--muted); }
     a.btn { display:inline-block; background:var(--primary); color:var(--on-primary); text-decoration:none; font-weight:500;
@@ -36,6 +41,7 @@
 </head>
 <body>
   <main class="card">
+    <div class="brand"><img src="/favicon.svg?v=raven" alt="" width="28" height="28"><span class="word"><span class="o">&Oslash;</span>DIN</span></div>
     <div class="code">Error {{ code }}</div>
     <h1>{{ title }}</h1>
     <p>{{ hint }}</p>

@@ -23,7 +23,7 @@ const LABELS: Record<string, string> = {
 function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
   return (
     <section id={id} className="rounded-lg border border-border p-4">
-      <h3 className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h3>
+      <h3 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h3>
       {children}
     </section>
   )

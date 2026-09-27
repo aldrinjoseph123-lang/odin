@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { AuthLayout } from "@/components/Brand"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,10 +39,10 @@ export default function Login() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center p-6">
+    <AuthLayout>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold tracking-tight">Odin</CardTitle>
+          <CardTitle className="text-[20px] font-bold tracking-tight">Sign in</CardTitle>
         </CardHeader>
         <CardContent>
           {notice && <Alert className="mb-4" role="status"><AlertDescription>{notice}</AlertDescription></Alert>}
@@ -87,6 +88,6 @@ export default function Login() {
           </p>
         </CardContent>
       </Card>
-    </main>
+    </AuthLayout>
   )
 }

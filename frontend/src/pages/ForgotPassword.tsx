@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react"
 import { useParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { AuthLayout } from "@/components/Brand"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -31,7 +32,7 @@ export default function ForgotPassword() {
     } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not reach the server") } finally { setBusy(false) }
   }
   return (
-    <main className="flex min-h-svh items-center justify-center bg-background px-4">
+    <AuthLayout>
       <Card className="w-full max-w-sm">
         <CardHeader><CardTitle className="text-[20px] font-bold tracking-tight">{token ? "Choose a new password" : "Reset your password"}</CardTitle></CardHeader>
         <CardContent>
@@ -53,6 +54,6 @@ export default function ForgotPassword() {
           <p className="mt-4 text-center text-[12.5px] text-muted-foreground"><a href="/login" className="text-primary-text hover:underline">Back to sign-in</a></p>
         </CardContent>
       </Card>
-    </main>
+    </AuthLayout>
   )
 }

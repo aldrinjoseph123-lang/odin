@@ -4,8 +4,15 @@
 from the built world on 8 Sep 2026 when the user released the previous identity
 and chose a light, direct-flowchart UI (convention played straight; craft bar:
 Linear, Whimsical/FigJam). Product truth lives in PRODUCT.md. Read both before UI
-work; do not reintroduce the retired look (dark nav, brand red #E11D2E, Chakra
-Petch, 2 px corners) anywhere in React.
+work; do not reintroduce the retired look (dark nav, 2 px corners) in the UI.
+
+**Brand (27 Sep 2026, the user's call): "Odin by Protect24x7".** Raven mark +
+ODIN wordmark (red-struck Ø), tagline "Every project. On watch.", all in
+`frontend/src/components/Brand.tsx`; guide in `docs/BRAND.md`. The parent's
+black, red `#E11D2E` and Chakra Petch are for **brand surfaces only** (logo,
+sign-in/reset/link panel, print header, emails via `graph.EMAIL_SHELL`, error
+page, icons). In the app: Chakra Petch page titles and numbered panel labels
+(`<h3 data-n>`), never red — red in the UI means overdue.
 
 Tokens live in `frontend/src/index.css` (`:root`): white ground, ink text, one
 accent `#3D5AFE` for selection and the primary action, `--primary-text` for the

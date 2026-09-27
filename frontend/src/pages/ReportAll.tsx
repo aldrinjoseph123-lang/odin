@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { Printer } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { PrintBrand } from "@/components/Brand"
 import { Button } from "@/components/ui/button"
 import { ApiError, reportAll, type ReportAllData, type User } from "@/lib/api"
 import { PageSkeleton } from "@/components/PageSkeleton"
@@ -15,6 +16,7 @@ export default function ReportAll(_props: { user: User }) {
   if (!d) return <PageSkeleton />
   return (
     <div className="mx-auto max-w-5xl px-5 pb-8 pt-4">
+      <PrintBrand />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">All projects report</h1>
         <p className="text-[13px] text-muted-foreground">active projects · generated {fmt(d.generated_at)}</p>

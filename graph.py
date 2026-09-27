@@ -281,7 +281,24 @@ def list_channels(team_id):
         return [], str(exc)
 
 
+# Every Odin email wears the brand: the parent's black band, the struck-through
+# O in red, the tagline underneath. Text, not an image, so it survives mail
+# clients that block pictures. Inline styles only; mail clients drop <style>.
+EMAIL_SHELL = (
+    '<div style="background:#F3F4F6;padding:24px 12px;font-family:Inter,\'Segoe UI\',Arial,sans-serif;color:#101114">'
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;border-collapse:collapse">'
+    '<tr><td style="background:#0A0A0A;padding:16px 24px">'
+    '<span style="font:700 18px/1 \'Chakra Petch\',Arial,sans-serif;letter-spacing:.12em;color:#FFFFFF"><span style="color:#E11D2E">&Oslash;</span>DIN</span>'
+    '<span style="font:600 10px/1 Arial,sans-serif;letter-spacing:.16em;color:#B8B8B4;margin-left:12px">BY PROTECT<span style="color:#E11D2E">24X7</span></span>'
+    '</td></tr>'
+    '<tr><td style="background:#FFFFFF;padding:24px;font-size:14px;line-height:1.55">{body}</td></tr>'
+    '<tr><td style="padding:12px 24px;font:600 10px/1.4 Arial,sans-serif;letter-spacing:.16em;color:#6B7280">EVERY PROJECT. ON WATCH.</td></tr>'
+    '</table></div>'
+)
+
+
 def send_mail(to_email, subject, html_body):
+    html_body = EMAIL_SHELL.format(body=html_body)
     if not mail_configured():
         return False, "Outlook mail is not connected"
     headers, error = _headers()

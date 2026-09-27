@@ -18,7 +18,12 @@
     --color-bad-line: var(--bad-line);
     --color-primary-text: var(--primary-text);
     --color-nav-fg: var(--nav-fg);
+    --color-brand-red: var(--brand-red);
+    --color-brand-ink: var(--brand-ink);
+    --color-brand-paper: var(--brand-paper);
+    --color-brand-muted: var(--brand-muted);
     --font-heading: var(--font-sans);
+    --font-display: 'Chakra Petch', 'Inter', system-ui, sans-serif;
     --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -107,6 +112,14 @@
     --sidebar-accent-foreground: #2F47D6;
     --sidebar-border: #E4E6EB;
     --sidebar-ring: #3D5AFE;
+    /* Brand (Odin by Protect24x7): the parent's ink and red. Red is spent on
+       the logo and brand surfaces only (sign-in panel, print header, emails);
+       in the app it would read as "blocked", so the UI never uses it. */
+    --brand-red: #E11D2E;
+    --brand-ink: #0A0A0A;
+    --brand-paper: #FFFFFF;
+    --brand-muted: #B8B8B4;
+    --brand-edge: transparent;
 }
 
 /* ---- Dark: same world, inverted ground. Ink becomes the surface, surfaces
@@ -144,6 +157,7 @@
     --sidebar: #15181E;
     --sidebar-foreground: #E7E8EC;
     --sidebar-border: #262B34;
+    --brand-edge: #2E3440;          /* keeps the black tile visible on the dark ground */
     color-scheme: dark;
 }
 
@@ -179,6 +193,28 @@
     @apply font-sans antialiased;
     font-feature-settings: "cv11", "ss01";
     }
+  /* Page titles speak in the brand face; everything else stays Inter. */
+  h1 { font-family: var(--font-display); }
+}
+
+/* Numbered panel labels, "01 / Stages": the parent's section numbering,
+   in the muted ink (red is kept for brand surfaces). Opt in with data-n. */
+main { counter-reset: panel; }
+h3[data-n]::before {
+  counter-increment: panel;
+  content: counter(panel, decimal-leading-zero) " / ";
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+}
+
+/* The black brand surface with the parent's faint diagonal rule. Always
+   dark, whatever the theme: it is the brand, not the UI. */
+.brand-panel {
+  background-color: var(--brand-ink);
+  background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.035) 0 1px, transparent 1px 14px);
+  color: var(--brand-paper);
 }
 
 /* Respect the OS "reduce motion" setting: no transitions, no animations. */

@@ -24,7 +24,16 @@ colors:
   bad: "#B4231C"
   bad-soft: "#FDECEB"
   bad-line: "#E0463D"
+  brand-red: "#E11D2E"
+  brand-ink: "#0A0A0A"
+  brand-muted: "#B8B8B4"
 typography:
+  brand-display:
+    fontFamily: "Chakra Petch, Inter, sans-serif"
+    fontSize: "52px"
+    fontWeight: 700
+    lineHeight: 1.02
+    letterSpacing: "-0.025em"
   display:
     fontFamily: "Inter, system-ui, -apple-system, sans-serif"
     fontSize: "24px"
@@ -32,7 +41,7 @@ typography:
     lineHeight: 1.25
     letterSpacing: "-0.025em"
   title:
-    fontFamily: "Inter, system-ui, -apple-system, sans-serif"
+    fontFamily: "Chakra Petch, Inter, sans-serif"
     fontSize: "17px"
     fontWeight: 600
     lineHeight: 1.5
@@ -214,6 +223,8 @@ components:
 
 # Design System: Odin
 
+> **Brand (27 Sep 2026, the user's call).** Odin is a sub-brand: **Odin by Protect24x7**. The parent's black, red `#E11D2E` and Chakra Petch come back *as the brand*, not as the UI: on the logo, the sign-in/reset/email-link panel, the print header, emails, the favicon and the link preview. Inside the app the light/dark flowchart world below still rules; the only brand marks there are the header logo, Chakra Petch page titles and the numbered panel labels. Red stays off the UI because in the app it means "overdue". Full guide: `docs/BRAND.md`.
+
 > **Scope.** This file describes the React front end in `frontend/` only (`frontend/src/index.css` is the normative token source; components are shadcn/ui **base-nova** on Base UI). The Jinja pages under `templates/` and their stylesheet `static/style.css` still carry the *retired* identity (dark nav, red `#E11D2E`, Chakra Petch, 2 px corners) until each page is ported. That stylesheet is frozen and is **not** part of this system; nothing here applies to it and nothing from it should be carried forward.
 
 ## Overview
@@ -233,6 +244,17 @@ The build rejected, by the user's explicit choice, the dark/industrial look, kan
 - Hairline 1 px borders (`#E4E6EB`); 1.5 px strokes only for flow geometry (nodes, dots, connectors)
 - No box-shadows; focus and selection are 3 px translucent rings
 - Master-detail vertical split; flowchart nodes with drawn arrows at `md` and up, stacked without arrows below
+
+## Brand surfaces
+
+Built in `frontend/src/components/Brand.tsx`; tokens `--brand-red`, `--brand-ink`, `--brand-paper`, `--brand-muted`, `--brand-edge` (all themes; the edge only shows in dark).
+
+- **Logo** = the raven mark (white raven, red eye, on a black tile with 3 px corners) + the ODIN wordmark (chamfered letters drawn as SVG, the O struck through in red: Ø). Header: 28 px mark, 15 px wordmark, letters in `currentColor`.
+- **Brand panel** (`AuthLayout`): `.brand-panel`, always black with the parent's faint 135° rule, whatever the theme. Byline "by Protect24x7", eyebrow "01 / Project lifecycle", the tagline in Chakra Petch 700 uppercase (30 → 40 → 52 px by breakpoint, the only sizes above 24 px), second line red, live clock "19:02 GMT+4 · On watch" with a pulsing red dot. Left half from `lg`; a top band on phones. The form side follows the user's theme.
+- **Print header** (`PrintBrand`): logo + byline left, tagline right, 2 px ink rule; print only.
+- **Numbered labels**: panel titles with `data-n` get "01 / " from a CSS counter on `main`, Chakra Petch, muted ink (never red in the app). Used on the project page, settings, account and the project form.
+- **Emails**: `graph.EMAIL_SHELL` wraps every send: black band with the text wordmark (red Ø) and byline, white body, tagline footer. Text, not images.
+- **Error page** and **loading splash** carry the mark; `og.png` (1200×630) and `apple-touch-icon.png` (180) live in `frontend/public`.
 
 ## Colors
 
@@ -276,6 +298,7 @@ Each rollout state owns three tokens: a **text** shade (AA on white and on its o
 
 ## Typography
 
+**Brand Font:** Chakra Petch 600/700 (Google Fonts): page titles (`h1`), the brand panel, byline, eyebrows and panel numbers. Nothing else.
 **Display Font:** Inter (with system-ui, -apple-system, sans-serif)
 **Body Font:** Inter (same family)
 **Label Font:** Inter (same family, no mono in use)
@@ -286,8 +309,8 @@ Loaded from Google Fonts at 400 / 500 / 600 / 700; `font-feature-settings: "cv11
 
 ### Hierarchy
 - **Display** (700, 24 px, tight): the "Odin" title on the login card only.
-- **Title** (600, 17 px, tracking tight): pane titles — "Active rollouts", the selected rollout's name.
-- **Wordmark** (700, 15 px, tracking tight): "Odin" in the top bar.
+- **Title** (Chakra Petch 600, 17 px, tracking tight): pane titles — "Active rollouts", the selected rollout's name.
+- **Wordmark**: the SVG ODIN wordmark, 15 px high in the top bar (see Brand surfaces).
 - **Body** (400, 13 px, 1.5): nav links (500), rail copy, empty states, "Open project", search text. `text-sm` (14 px) is the shadcn default on buttons and inputs; the build overrides most inputs to 13 px.
 - **Body strong** (500, 13.5 px): the rollout name in each row.
 - **Secondary** (400, 12.5 px): rollout subtitles (client · vendor · product · owner), stage node names (600, `leading-tight`), task titles, filter chip labels (500), recent-note text.
@@ -296,7 +319,7 @@ Loaded from Google Fonts at 400 / 500 / 600 / 700; `font-feature-settings: "cv11
 - **Micro** (400–600, 11 px): time-strip tick labels, nav count badges, nav avatar initials. Row/task avatar initials go to 10 px / 9 px semibold; nothing else does.
 
 ### Named Rules
-**The Sentence-Case Rule.** No uppercase, no letter-spaced labels. A label is 12 px, weight 600, chrome text. The tracked-caps device belongs to the retired identity.
+**The Sentence-Case Rule.** No uppercase, no letter-spaced labels in the UI. A label is 12 px, weight 600, chrome text. Tracked caps belong to the brand surfaces only (panel, byline, eyebrows, print header, email).
 
 **The Thirteen Rule.** 13 px is body. Sizes step by half-pixels (13.5 / 12.5 / 11.5) to separate levels without visibly changing scale; do not add sizes above 17 px outside the login display.
 
@@ -419,7 +442,7 @@ Round initials only (no images in use): 24 px in rows and 20 px under tasks with
 
 ### Don't:
 - **Don't** add box-shadows, gradients, or an off-white page tint; the ground is `#FFFFFF` and surfaces are flat.
-- **Don't** uppercase or letter-space labels, or reintroduce the retired identity's dark nav, brand red, Chakra Petch or 2 px corners — those live only in the frozen `static/style.css`.
+- **Don't** uppercase or letter-space UI labels, or bring back the retired dark nav or 2 px corners. Brand red and Chakra Petch are allowed only where "Brand surfaces" lists them; red never marks anything in the UI except `--bad` state.
 - **Don't** use green for "on track" rows or amber/red for anything that is not a lateness state; don't use `--destructive` for rollout state.
 - **Don't** put a state's text shade in a fill or its line shade under text.
 - **Don't** invent tokens: use the `:root` block in `frontend/src/index.css` and its `@theme inline` aliases (`ok-*`, `warn-*`, `bad-*`, `primary-text`, `nav-fg`). Dark and the accents are whole-token overrides (`:root[data-theme="dark"]`, `:root[data-accent=…]`); a component never branches on the theme.

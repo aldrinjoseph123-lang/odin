@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { AuthLayout } from "@/components/Brand"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -28,9 +29,9 @@ export default function LinkRequest() {
     } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not send the request") } finally { setBusy(false) }
   }
   return (
-    <main className="flex min-h-svh items-center justify-center bg-background px-4">
+    <AuthLayout>
       <Card className="w-full max-w-sm">
-        <CardHeader><CardTitle className="text-[20px] font-bold tracking-tight">Odin</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-[20px] font-bold tracking-tight">Sign in by email</CardTitle></CardHeader>
         <CardContent>
           <p className="mb-4 text-[13px] text-muted-foreground">Partners and customers sign in with a link sent to the email address they were invited with. It works once and expires in 30 minutes.</p>
           {message && <Alert className="mb-4" role="status"><AlertDescription>{message}</AlertDescription></Alert>}
@@ -44,6 +45,6 @@ export default function LinkRequest() {
           <p className="mt-4 text-center text-[12.5px] text-muted-foreground"><a href="/login" className="text-primary-text hover:underline">Staff sign-in</a></p>
         </CardContent>
       </Card>
-    </main>
+    </AuthLayout>
   )
 }
