@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-27T15:39:15Z",
+  "generatedAt": "2026-09-27T15:56:51Z",
   "title": "Design System: Odin",
   "extensions": {
     "colorMeta": {
@@ -644,6 +644,11 @@
     ],
     "rules": [
       {
+        "name": "The Red-Text Rule",
+        "body": "The parent red (`#E11D2E`) is 4.2:1 on brand ink: fine for the logo, the eye, the dot and the 30 px+ tagline, not for small text. Small red text (eyebrow numbers, the byline's \"24x7\") uses `--brand-red-text`, which is the parent red on white (4.75:1) and lifts to `#F23D4D` inside `.brand-panel` (5.2:1).",
+        "section": "components"
+      },
+      {
         "name": "The One Accent Rule",
         "body": "Blue appears only as selection (row border + wash, nav underline), the primary action, the focus ring and the today marker. It never labels a state, never decorates, and never appears as a heading colour.",
         "section": "colors"
@@ -684,9 +689,9 @@
         "section": "elevation"
       },
       {
-        "name": "The Red-Text Rule",
-        "body": "The parent red (`#E11D2E`) is 4.2:1 on brand ink: fine for the logo, the eye, the dot and the 30 px+ tagline, not for small text. Small red text (eyebrow numbers, the byline's \"24x7\") uses `--brand-red-text`, which is the parent red on white (4.75:1) and lifts to `#F23D4D` inside `.brand-panel` (5.2:1).",
-        "section": "colors"
+        "name": "The No-Alarm-Accent Rule",
+        "body": "There is no red or amber accent: those hues mean overdue and warning, and a red selection or primary button reads as trouble. Rose and amber were retired on 27 Sep 2026 (stored choices moved to plum and sky); green stays because selection is always wash + border, never a state chip.",
+        "section": "components"
       }
     ],
     "dos": [

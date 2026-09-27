@@ -79,7 +79,8 @@ NOTIFICATION_KINDS = {
 }
 
 THEMES = ("system", "light", "dark")
-ACCENTS = ("blue", "indigo", "violet", "teal", "green", "amber", "rose", "ink")
+# No red or amber accent: in the UI those mean overdue and warning (27 Sep 2026).
+ACCENTS = ("blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
 AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 AVATAR_MAX_BYTES = 2 * 1024 * 1024
 

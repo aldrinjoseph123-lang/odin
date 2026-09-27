@@ -54,7 +54,7 @@ export default function Account(_props: { user: User }) {
                 style={{ background: c.swatch }} />
             ))}
           </div>
-          <p className="text-[11.5px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. Green, amber and red stay reserved for state.</p>
+          <p className="text-[11.5px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. There is no red or amber accent: those colours mean overdue and warning.</p>
         </section>
         <form onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); if ((fd.get("avatar") as File | null)?.name) void send("/account/avatar", fd, () => e.currentTarget?.reset?.()) }} className="grid content-start gap-3 rounded-lg border border-border p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Picture <span className="font-normal text-muted-foreground">shown wherever your name is</span></h3>

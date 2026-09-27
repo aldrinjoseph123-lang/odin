@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, localDateTime, stateText, timeAgo } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, stateText, timeAgo } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -72,5 +72,23 @@ describe("timeAgo", () => {
     expect(timeAgo("2026-08-01T12:00:00", now)).toMatch(/Aug|1/)
     expect(timeAgo("2025-08-01T12:00:00", now)).toMatch(/2025/)
     expect(timeAgo("junk", now)).toBe("junk")
+  })
+})
+
+describe("lateBy", () => {
+  it("counts whole days past the due date, never negative", () => {
+    expect(lateBy("2026-09-25", "2026-09-27")).toBe(2)
+    expect(lateBy("2026-09-27", "2026-09-27")).toBe(0)
+    expect(lateBy("2026-10-01", "2026-09-27")).toBe(0)
+  })
+})
+
+describe("nextUp", () => {
+  const t = (title: string, stage: string, due_date: string | null) => ({ title, stage, due_date })
+  it("prefers the current stage, then the earliest due date, undated last", () => {
+    const open = [t("later stage", "Deploy", "2026-01-01"), t("undated", "Pilot", null), t("due late", "Pilot", "2026-10-09"), t("due soon", "Pilot", "2026-09-25")]
+    expect(nextUp(open, "Pilot")?.title).toBe("due soon")
+    expect(nextUp([t("a", "Deploy", null), t("b", "Deploy", null)], "Pilot")?.title).toBe("a")
+    expect(nextUp([], "Pilot")).toBeUndefined()
   })
 })

@@ -332,7 +332,7 @@ Loaded from Google Fonts at 400 / 500 / 600 / 700; `font-feature-settings: "cv11
 - **Secondary** (400, 12.5 px): rollout subtitles (client · vendor · product · owner), stage node names (600, `leading-tight`), task titles, filter chip labels (500), recent-note text.
 - **Label** (500–600, 12 px, sentence case): state chips (500), rail section headers (600, chrome text), form error text.
 - **Caption** (400, 11.5 px): column heads over the list, durations and SLA under node names, "2 open before moving on".
-- **Micro** (400–600, 11 px): time-strip tick labels, nav count badges, nav avatar initials. Row/task avatar initials go to 10 px / 9 px semibold; nothing else does.
+- **Micro** (400–600, 11 px): time-strip tick labels, nav count badges, nav avatar initials. Row/task avatar initials are 11 px / 10 px semibold; nothing else goes below 11 px.
 
 ### Named Rules
 **The Sentence-Case Rule.** No uppercase, no letter-spaced labels in the UI. A label is 12 px, weight 600, chrome text. Tracked caps belong to the brand surfaces only (panel, byline, eyebrows, print header, email).
@@ -346,7 +346,10 @@ The app shell is a 52 px white top bar (`h-13`, hairline bottom border, 20 px si
 **First screen (Flow):** a `react-resizable-panels` vertical split. Top pane defaults to 48% (100% until a rollout is selected), minimum 20%; bottom pane 52%, minimum 25%; the handle is a 1 px hairline with a 24 × 4 px grip. Both panes scroll independently in `ScrollArea` (2.5 px-wide bar, hairline thumb).
 
 - **Rollout list** (`md`+): a four-column grid `minmax(200px,1.2fr) 2fr 170px 36px` with 16 px gaps — name, stepper, in-stage chip, owner avatar. Column heads are captions in muted text. Below `md` the row collapses to two columns (name / chip) with the stepper spanning a second line; client name and avatar are hidden below `sm` / `md`.
-- **Detail pane**: `lg`+ is `minmax(0,1fr) 280px` with 20 px gap (flow + time strip left, rail right); below `lg` the rail stacks under the flow.
+- **Detail pane**: `xl`+ is `minmax(0,1fr) 280px` with 20 px gap (flow + time strip left, rail right); below `xl` the rail stacks under the flow in two columns (one below `md`), so a laptop shows every stage node without a sideways scroll.
+- **Keys**: the rollout list is one tab stop; ↑/↓ or j/k move between rows, Home/End jump, Enter opens. Esc closes the selected rollout (a ghost × in the detail header does the same); inside the Advance confirm, Esc cancels first.
+- **Advance**: the rail section lists what the move will do before the button (open tasks left in the stage and a pending customer approval in warn text, then how many people are told), and the button asks once more in place ("Move to Deployment now" / Cancel). No modal.
+- **Due dates** sit under each task title (11 px muted, "2 d late · due 25 Sep" in bad when past). Next up is the current stage's task with the earliest due date.
 - **Flowchart**: an `<ol>` with one equal column per stage (`repeat(n, minmax(0,1fr))`) at `md`+, nodes 6 px apart with a 16 px arrow slot drawn between them; below `md` a single column with 8 px gaps and no arrows. The open-task list under the current node is allowed to spill to twice its column width (`calc(200% + 0.75rem)`).
 - **Time strip**: 68 px tall, hairline top border, 16 px above; tick labels on two rows (`top-1` / `top-5`) when closer than 12% of the span; 6 px tracks at `top-10`.
 
@@ -398,7 +401,7 @@ Quiet, small, and rarely blue: one primary per view.
 
 ### Themes and accents (added 27 Sep 2026 at the user's request)
 - **Three themes, per user:** light (the world above), dark, and follow the OS. Dark keeps the world's grammar and inverts the ground: background `#0F1115`, surfaces `#15181E`, hairlines `#262B34`, ink `#E7E8EC`, muted text `#9AA0AB`. State colours keep their meaning with lighter text shades (`ok #4FD08A`, `warn #F2B84B`, `bad #F58C86`) on deep soft fills so chips stay at AA.
-- **Eight accents:** blue (default `#3D5AFE`), indigo, violet, teal, green, amber, rose, ink. Each sets `--primary`, `--primary-text`, `--accent`, `--accent-foreground` and `--ring`; in dark the text shade lifts (e.g. blue text `#9DB0FF`) and the wash deepens. Green and amber accents share hues with the ok/warn states — acceptable because selection is always wash + border, never a state chip, but the default stays blue.
+- **Eight accents:** blue (default `#3D5AFE`), indigo, violet, teal (`#0F766E`), green (`#15803D`), sky (`#0369A1`), plum (`#A21CAF`), ink. Each sets `--primary`, `--primary-text`, `--accent`, `--accent-foreground` and `--ring`; in dark the text shade lifts (e.g. blue text `#9DB0FF`) and the wash deepens. Every accent carries white button text at 4.5:1 or better. **The No-Alarm-Accent Rule.** There is no red or amber accent: those hues mean overdue and warning, and a red selection or primary button reads as trouble. Rose and amber were retired on 27 Sep 2026 (stored choices moved to plum and sky); green stays because selection is always wash + border, never a state chip.
 - **Where it is chosen:** Account → Appearance (theme chips, accent swatches with a hairline ring so ink shows on dark); the header's sun / moon / monitor button cycles the theme in one click. Applied before first paint, so there is no flash.
 - **Avatars:** a picture replaces the initials wherever a person appears (header, rollout team stack, task assignee, team rail and panel, users table); initials remain the fallback. Account → Picture uploads PNG / JPG / GIF / WebP up to 2 MB.
 
@@ -442,7 +445,7 @@ A 6 px Muted Fill track spans start → target; each visited stage lays a 6 px i
 Ink fill, white 12 px text, 6.4 px radius, 12 px / 6 px padding, 10 px rotated-square arrow, 4 px offset, zero delay; enters with fade + 95% zoom.
 
 ### Avatar
-A round picture when the person uploaded one, otherwise initials: 24 px in rows and 20 px under tasks with Paper fill and 10 px / 9 px semibold chrome-text initials; 28 px in the nav with Accent Wash fill and accent-text initials. A hairline ring is drawn inside the circle.
+A round picture when the person uploaded one, otherwise initials: 24 px in rows and 20 px under tasks with Paper fill and 11 px / 10 px semibold chrome-text initials; 28 px in the nav with Accent Wash fill and accent-text initials. A hairline ring is drawn inside the circle.
 
 ## Do's and Don'ts
 

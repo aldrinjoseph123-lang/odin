@@ -212,6 +212,8 @@ def migrate_db(db):
     for column, coltype in NEW_USER_COLUMNS.items():
         if column not in user_columns:
             db.execute(f"ALTER TABLE users ADD COLUMN {column} {coltype}")
+    # Rose and amber accents were retired: they read as the overdue/warning states.
+    db.execute("UPDATE users SET accent = CASE accent WHEN 'rose' THEN 'plum' ELSE 'sky' END WHERE accent IN ('rose', 'amber')")
     if role_column_is_new:
         # pre-RBAC installs: promote the original (lowest-id) user to Admin once
         db.execute("UPDATE users SET role = 'Admin' WHERE id = (SELECT MIN(id) FROM users)")

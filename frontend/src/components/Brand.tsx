@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils"
 // Odin by Protect24x7 — the brand in one file. See docs/BRAND.md.
 // Red lives here and on brand surfaces only; inside the app red means trouble.
 
-export const TAGLINE = "Every project. On watch."
+const TAGLINE = "Every project. On watch."
 
 // The raven, perched: Huginn and Muninn flew out each morning and told Odin
 // what they saw. Heavy beak, flat crown, long wedge tail, red eye. 64-unit grid.
-export const RAVEN = {
+const RAVEN = {
   body: "M61 24 C56 19 52 16 47 15 C44 11.5 37 11.5 34.5 15.5 C30.5 22 24 28 19 36 L5 57 L13 58.5 L26 48.5 C31 49.5 37 47.5 41 43 C45 39 47 34.5 47.5 30.5 L50 29.5 L48.5 27.5 L50.5 25.5 Q55 25.5 61 24 Z",
   legs: "M31 48.5 L30 57.5 M36.5 46.5 L36.5 56.5",
   wing: "M37 21 C35 31 30 40 20 47",

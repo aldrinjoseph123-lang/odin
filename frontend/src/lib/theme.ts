@@ -1,11 +1,11 @@
 export type Theme = "system" | "light" | "dark"
-export type Accent = "blue" | "indigo" | "violet" | "teal" | "green" | "amber" | "rose" | "ink"
+export type Accent = "blue" | "indigo" | "violet" | "teal" | "green" | "sky" | "plum" | "ink"
 export const THEMES: Theme[] = ["system", "light", "dark"]
 export const ACCENTS: { key: Accent; label: string; swatch: string }[] = [
   { key: "blue", label: "Blue", swatch: "#3D5AFE" }, { key: "indigo", label: "Indigo", swatch: "#4F46E5" },
-  { key: "violet", label: "Violet", swatch: "#7C3AED" }, { key: "teal", label: "Teal", swatch: "#0D9488" },
-  { key: "green", label: "Green", swatch: "#16A34A" }, { key: "amber", label: "Amber", swatch: "#D97706" },
-  { key: "rose", label: "Rose", swatch: "#E11D48" }, { key: "ink", label: "Ink", swatch: "#101114" },
+  { key: "violet", label: "Violet", swatch: "#7C3AED" }, { key: "teal", label: "Teal", swatch: "#0F766E" },
+  { key: "green", label: "Green", swatch: "#15803D" }, { key: "sky", label: "Sky", swatch: "#0369A1" },
+  { key: "plum", label: "Plum", swatch: "#A21CAF" }, { key: "ink", label: "Ink", swatch: "#101114" },
 ]
 
 const media = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null

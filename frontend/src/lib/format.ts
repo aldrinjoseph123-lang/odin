@@ -60,3 +60,18 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
   const sameYear = new Date(t).getFullYear() === new Date(now).getFullYear()
   return new Date(t).toLocaleDateString([], { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) })
 }
+
+// Whole days a YYYY-MM-DD due date is past today (0 when not late).
+export function lateBy(due: string, today: string): number {
+  const d = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 864e5)
+  return Number.isNaN(d) ? 0 : Math.max(0, d)
+}
+
+// "Next up": the current stage's work first, then the earliest due date,
+// undated last; ties keep the list's own order.
+export function nextUp<T extends { stage: string; due_date: string | null }>(open: T[], stage: string): T | undefined {
+  return open
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => Number(b.t.stage === stage) - Number(a.t.stage === stage)
+      || (a.t.due_date ?? "9999").localeCompare(b.t.due_date ?? "9999") || a.i - b.i)[0]?.t
+}

@@ -1558,6 +1558,17 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         pm1, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
         self.assertEqual(pm1.get("/api/session").get_json()["user"]["theme"], "system")
 
+    def test_alarm_coloured_accents_are_retired(self):
+        # red and amber read as overdue/warning: refused now, and old choices move on the next boot
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        self.assertEqual(c.post("/account/appearance", data={"theme": "light", "accent": "rose"}, headers=h).get_json()["messages"], ["Pick a theme and an accent from the list"])
+        con = sqlite3.connect(db_module.DB_PATH)
+        con.execute("UPDATE users SET accent = 'rose' WHERE username = 'admin'"); con.commit(); con.close()
+        app_module.init_db()
+        con = sqlite3.connect(db_module.DB_PATH)
+        self.assertEqual(con.execute("SELECT accent FROM users WHERE username = 'admin'").fetchone()[0], "plum"); con.close()
+
     def test_profile_picture_upload_serve_replace_remove_and_refusals(self):
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}

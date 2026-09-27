@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react"
 import { ArrowRight, CalendarDays, Check, ChevronRight, Clock, ExternalLink, Plus, Trash2, UserRound, X } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ApiError, addTask, changeStage, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { days, fmtDate, stateText } from "@/lib/format"
+import { days, fmtDate, stateText, lateBy, nextUp } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
@@ -42,6 +42,13 @@ function TeamStack({ people, className }: { people: { id: number; name: string; 
   )
 }
 
+// A task's due date, in the bad state once it has passed.
+function DueDate({ due, today, className }: { due: string; today: string; className?: string }) {
+  const late = lateBy(due, today)
+  return <span className={cn("block text-[11px]", late > 0 ? "font-medium text-bad" : "text-muted-foreground", className)}>
+    {late > 0 ? `${late} d late · due ${fmtDate(due)}` : `due ${fmtDate(due)}`}</span>
+}
+
 // ---- tasks under a stage box: tick, add, remove — no page change --------------
 function StageTasks({ d, stage, reload, onError }: { d: FlowDetail; stage: string; reload: () => Promise<void>; onError: (m: string | null) => void }) {
   const tasks = d.tasks.filter((t) => t.stage === stage)
@@ -68,14 +75,17 @@ function StageTasks({ d, stage, reload, onError }: { d: FlowDetail; stage: strin
             <li key={t.id} className={cn("group flex items-center gap-1.5 py-1.5", t.done && "text-muted-foreground")}>
               <button type="button" disabled={!canTick(t) || busy} onClick={() => run(() => toggleTask(d.id, t.id))}
                 aria-label={t.done ? `Reopen ${t.title}` : `Complete ${t.title}`}
-                className={cn("flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border", t.done ? "border-ok-line bg-ok-line text-background" : "border-input bg-background", canTick(t) ? "hover:border-foreground" : "cursor-default opacity-60")}>
+                className={cn("relative flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border before:absolute before:-inset-[5px] before:content-['']", t.done ? "border-ok-line bg-ok-line text-background" : "border-input bg-background", canTick(t) ? "hover:border-foreground" : "cursor-default opacity-60")}>
                 {t.done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
               </button>
-              <span className={cn("min-w-0 flex-1 break-words line-clamp-2", t.done && "line-through")} title={t.due_date ? `due ${fmtDate(t.due_date)}` : undefined}>{t.title}</span>
-              {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[9px]" />}
+              <span className="min-w-0 flex-1">
+                <span className={cn("break-words line-clamp-2", t.done && "line-through")}>{t.title}</span>
+                {t.due_date && !t.done && <DueDate due={t.due_date} today={d.today} />}
+              </span>
+              {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[10px]" />}
               {d.can_edit && (
                 <button type="button" disabled={busy} onClick={() => run(() => deleteTask(d.id, t.id))} aria-label={`Delete ${t.title}`}
-                  className="hidden shrink-0 text-muted-foreground hover:text-bad group-hover:block group-focus-within:block"><Trash2 className="h-3.5 w-3.5" /></button>
+                  className="hidden shrink-0 text-muted-foreground hover:text-bad group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
             </li>
           ))}
@@ -114,6 +124,17 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
   const chips: { key: typeof filter; label: string; n: number }[] = [
     { key: "all", label: "All", n: data.rows.length }, { key: "attention", label: "Needs attention", n: stuck }, { key: "mine", label: "Mine", n: data.rows.filter((r) => r.mine).length },
   ]
+  // One tab stop for the whole list; ↑/↓ or j/k move between rows, Enter opens.
+  function onKeys(e: KeyboardEvent<HTMLUListElement>) {
+    const step = e.key === "ArrowDown" || e.key === "j" ? 1 : e.key === "ArrowUp" || e.key === "k" ? -1 : 0
+    const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-row]")]
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement)
+    const to = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : step && at >= 0 ? at + step : -1
+    if (to < 0 || to >= buttons.length) return
+    e.preventDefault()
+    buttons[to].focus()
+  }
+  const tabStop = rows.some((r) => r.id === selectedId) ? selectedId : rows[0]?.id
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
@@ -126,7 +147,7 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
         </p>
         <div className="ml-auto flex gap-1.5">
           {chips.map((c) => (
-            <button key={c.key} type="button" onClick={() => setFilter(c.key)} aria-pressed={filter === c.key}
+            <button key={c.key} type="button" onClick={() => setFilter(c.key)} aria-pressed={filter === c.key} aria-label={`${c.label}, ${c.n}`}
               className={cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", filter === c.key ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>
               {c.label}{c.n ? <span className={cn("ml-1", filter === c.key ? "text-background/70" : "text-muted-foreground")}>{c.n}</span> : null}
             </button>
@@ -139,13 +160,14 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter }: {
         <span>Rollout</span><span>Progress</span><span>Stage</span><span>Team</span>
       </div>
       <ScrollArea className="min-h-0 flex-1">
-        <ul className="grid gap-0.5 px-3 pb-3">
+        <ul className="grid gap-0.5 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {rows.map((r) => {
             const selected = r.id === selectedId
             return (
               <li key={r.id}>
-                <button type="button" onClick={() => onSelect(r.id)} aria-current={selected || undefined}
-                  className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors md:grid-cols-[minmax(200px,1.2fr)_2fr_210px_76px] md:gap-4",
+                <button type="button" data-row onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={r.id === tabStop ? 0 : -1}
+                  aria-label={`${r.name}, ${r.client}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval && r.approval !== "superseded" ? `. ${r.approval === "pending" ? "Awaiting approval" : r.approval === "approved" ? "Approved" : "Declined"}` : ""}`}
+                  className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 md:grid-cols-[minmax(200px,1.2fr)_2fr_210px_76px] md:gap-4",
                     selected ? "border-primary bg-accent" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
                   <span className="flex min-w-0 items-center gap-2">
                     <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
@@ -182,7 +204,8 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   const end = d.target_end_date ? new Date(`${d.target_end_date}T00:00:00`).getTime() : Math.max(today, start + 14 * 864e5)
   // The domain covers everything worth seeing — a target already in the past
   // sits to the left of today, which is exactly the shape of "overdue".
-  const t0 = Math.min(start, end)
+  const firstEntry = Math.min(...d.stages.filter((s) => s.entered_at).map((s) => new Date(s.entered_at!).getTime()), start)
+  const t0 = Math.min(start, end, firstEntry)
   const t1 = Math.max(today, end, start + 864e5)
   const span = t1 - t0 || 1
   const frac = (t: number) => Math.min(1, Math.max(0, (t - t0) / span))
@@ -214,8 +237,9 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   )
 }
 
-export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string) => void; standalone?: boolean }) {
+export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string) => void; onClose?: () => void; standalone?: boolean }) {
   const [note, setNote] = useState("")
+  const [confirming, setConfirming] = useState(false)
   const [comment, setComment] = useState("")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -230,20 +254,22 @@ export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDeta
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not record the decision") } finally { setBusy(false) }
   }
   const open = d.tasks.filter((t) => !t.done)
-  const next = open[0]
+  const next = nextUp(open, d.stage)
   const openHere = open.filter((t) => t.stage === d.stage).length
+  const approvalPending = d.approval?.stage === d.stage && d.approval.status === "pending"
+  const told = d.participants.filter((p) => p.user_id !== d.me).length
   async function advance() {
     if (!d.next_stage) return
     setBusy(true); setErr(null)
     try {
       await changeStage(d.id, d.next_stage, note)
-      setNote("")
+      setNote(""); setConfirming(false)
       onMoved(`${d.name} moved to ${d.next_stage}`)
       await reload()
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not move the stage") } finally { setBusy(false) }
   }
   return (
-    <div className="grid gap-5 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="grid gap-5 px-5 py-4 xl:grid-cols-[minmax(0,1fr)_280px]">
       <div className="min-w-0">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -259,6 +285,7 @@ export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDeta
             {d.state !== "on_track" && <span className={cn("rounded-md px-2 py-1 text-[12px] font-medium", STATE[d.state].chip)}>{stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })}</span>}
             {!standalone && <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>}
             {!standalone && <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open project <ExternalLink className="h-3.5 w-3.5" /></a>}
+            {onClose && <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close this rollout (Esc)" title="Close (Esc)"><X className="h-4 w-4" /></Button>}
           </div>
         </div>
 
@@ -291,13 +318,14 @@ export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDeta
             </li>
           ))}
         </ol>
-        {err && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
+        {/* one place for errors: the Advance section shows its own when it is on screen */}
+        {err && !(d.can_move && d.next_stage) && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
 
         <TimeStrip d={d} />
       </div>
 
       {/* right rail: what to do next, when it's due, how we got here */}
-      <aside className="grid content-start gap-4 text-[13px]">
+      <aside className="grid content-start gap-4 text-[13px] md:grid-cols-2 xl:grid-cols-1">
         <section className="rounded-lg border border-border p-3">
           <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
           {next ? (
@@ -305,7 +333,7 @@ export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDeta
               <p className="font-medium">{next.title}</p>
               <p className="mt-1 flex items-center gap-3 text-muted-foreground">
                 <span className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5" />{next.assignee ?? "Unassigned"}</span>
-                {next.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{fmtDate(next.due_date)}</span>}
+                {next.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /><DueDate due={next.due_date} today={d.today} className="inline text-[13px]" /></span>}
               </p>
             </>
           ) : <p className="text-muted-foreground">Nothing queued — add a task under a stage.</p>}
@@ -333,9 +361,22 @@ export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDeta
           <p className="text-[12.5px] text-muted-foreground">{d.stage} {d.approval.status} by {d.approval.decided_by}{d.approval.comment ? ` · ${d.approval.comment}` : ""}</p>
         )}
         {d.can_move && d.next_stage && (
-          <section className="rounded-lg border border-border p-3">
+          <section className="rounded-lg border border-border p-3" onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); setConfirming(false) } }}>
+            {/* what the move will do, next to the button that does it */}
+            <ul className="mb-2 grid gap-1 text-[12.5px] text-muted-foreground">
+              {openHere > 0 && <li className="font-medium text-warn">{openHere} open task{openHere === 1 ? "" : "s"} still in {d.stage}</li>}
+              {approvalPending && <li className="font-medium text-warn">The customer has not approved {d.stage} yet</li>}
+              <li>Tells {told} {told === 1 ? "person" : "people"} on the team</li>
+            </ul>
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the history (optional)" aria-label="Stage change note" maxLength={5000} className="h-8 text-[13px]" />
-            <Button className="mt-2 w-full" size="sm" onClick={advance} disabled={busy}>{busy ? "Moving…" : `Advance to ${d.next_stage}`} <ArrowRight className="h-3.5 w-3.5" /></Button>
+            {confirming ? (
+              <div className="mt-2 grid gap-1.5" role="group" aria-label={`Confirm the move to ${d.next_stage}`}>
+                <Button size="sm" onClick={advance} disabled={busy} autoFocus>{busy ? "Moving…" : `Move to ${d.next_stage} now`}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
+              </div>
+            ) : (
+              <Button className="mt-2 w-full" size="sm" onClick={() => setConfirming(true)} disabled={busy}>Advance to {d.next_stage} <ArrowRight className="h-3.5 w-3.5" /></Button>
+            )}
             {err && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
           </section>
         )}
@@ -384,7 +425,12 @@ export default function Flow(_props: { user: User }) {
     }, { replace: true })
   }, [setParams])
   const [detail, setDetail] = useState<FlowDetail | null>(null)
-  const [filter, setFilter] = useState<"all" | "attention" | "mine">("all")
+  // The filter lives in the URL too, so a reload keeps it.
+  const f = params.get("filter")
+  const filter: "all" | "attention" | "mine" = f === "attention" || f === "mine" ? f : "all"
+  const setFilter = useCallback((v: "all" | "attention" | "mine") => {
+    setParams((prev) => { const next = new URLSearchParams(prev); if (v === "all") next.delete("filter"); else next.set("filter", v); return next }, { replace: true })
+  }, [setParams])
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -399,6 +445,17 @@ export default function Flow(_props: { user: User }) {
   // Only after a click. On load the list must open at the top, where the
   // stuck rows are — scrolling to a deep-linked row would hide them.
   useEffect(() => { document.querySelector('main [aria-current="true"]')?.scrollIntoView({ block: "nearest" }) }, [selectedId])
+  // Esc closes the rollout, unless it is cancelling something inside a field or dialog.
+  useEffect(() => {
+    if (selectedId == null) return
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      if (e.key !== "Escape" || e.defaultPrevented || t.closest("input, textarea, select, dialog, [role=dialog]")) return
+      setSelectedId(null)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [selectedId, setSelectedId])
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!data) return <PageSkeleton />
@@ -410,7 +467,7 @@ export default function Flow(_props: { user: User }) {
       </ResizablePanel>
       {selectedId != null && (
         <>
-          <ResizableHandle withHandle />
+          <ResizableHandle withHandle aria-label="Resize the rollout list and the flowchart" />
           <ResizablePanel defaultSize={52} minSize={25}>
             <ScrollArea className="h-full">
               {notice && (
@@ -419,7 +476,7 @@ export default function Flow(_props: { user: User }) {
                 </div>
               )}
               {detail && detail.id === selectedId ? (
-                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={setNotice} />
+                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={setNotice} onClose={() => setSelectedId(null)} />
               ) : <PageSkeleton />}
             </ScrollArea>
           </ResizablePanel>
