@@ -46,7 +46,7 @@ export function Logo({ byline, className, markClass, wordClass }: { byline?: boo
       <RavenMark className={markClass} />
       <span className="grid gap-1">
         <Wordmark className={wordClass} />
-        {byline && <Byline className="opacity-70" />}
+        {byline && <Byline className="text-current/70" />}
       </span>
     </span>
   )
