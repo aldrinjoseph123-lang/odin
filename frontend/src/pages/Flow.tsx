@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ApiError, addTask, changeStage, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowState, type FlowTask, type User } from "@/lib/api"
+import { ApiError, addTask, changeStage, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
+import { days, fmtDate, initials, stateText } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 
 
@@ -25,17 +26,6 @@ function ApprovalChip({ status, className }: { status: ApprovalStatus | null; cl
   return a ? <span className={cn("whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium", a.chip, className)}>{a.label}</span> : null
 }
 
-const initials = (name: string | null | undefined) => (name ?? "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()
-const fmtDate = (iso: string | null | undefined) => (iso ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" }) : "—")
-const days = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n)} d`)
-
-const daysLate = (target: string | null) => (target ? Math.round((Date.now() - new Date(`${target}T00:00:00`).getTime()) / 864e5) : 0)
-function stateText(r: { state: FlowState; days_in_stage: number | null; over_by: number | null; target_end_date: string | null }) {
-  if (r.state === "overdue") return `Overdue ${daysLate(r.target_end_date)} d`
-  if (r.state === "over_sla") return `${days(r.days_in_stage)} · ${Math.round(r.over_by ?? 0)} over SLA`
-  if (r.state === "due_soon") return `Due ${fmtDate(r.target_end_date)}`
-  return days(r.days_in_stage)
-}
 
 
 // Who is on it, at a glance: PM first, then up to two more, then "+n".

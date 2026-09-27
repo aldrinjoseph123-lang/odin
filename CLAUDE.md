@@ -49,6 +49,9 @@ Rules while both UIs exist:
   hook in `core.py` returns the flashes as JSON (`postForm` in
   `frontend/src/lib/api.ts`). One route, one permission, one audit row.
 - `frontend/dist` is built by the Docker stage and CI; never committed.
+- Frontend tests: `npm --prefix frontend test` (vitest, node env). Pure
+  formatting lives in `src/lib/format.ts` so it can be tested without a DOM;
+  keep page files free of logic worth a unit test.
 - Dev: `npm --prefix frontend run dev` (5173, proxies un-ported paths to Flask
   on 5050) or build once and let Flask serve it (`npm --prefix frontend run build`).
 - shadcn CLI: `npx shadcn@latest add <component>` from `frontend/`.

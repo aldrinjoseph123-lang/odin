@@ -1318,8 +1318,17 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         rows = c.get("/api/projects/1/activity").get_json()["rows"]
         self.assertEqual([r["label"] for r in rows][:4], ["moved the stage", "invited a partner", "added a task", "created the project"])
         self.assertEqual(rows[0]["details"], f"to {stages[1]}"); self.assertEqual(rows[0]["who"], "Admin")
-        self.assertEqual(self._external_client("ann@acme.example").get("/api/projects/1/activity").get_json()["rows"], [])
+        ann = self._external_client("ann@acme.example")
+        self.assertEqual(ann.get("/api/projects/1/activity").get_json()["rows"], [])
         self.assertEqual(c.get("/api/projects/9/activity").status_code, 404)
+        # the CSV twin, for an evidence pack: oldest first, audited, staff only
+        csv_resp = c.get("/projects/1/activity.csv")
+        self.assertEqual(csv_resp.status_code, 200); self.assertIn("odin-activity-P.csv", csv_resp.headers["Content-Disposition"])
+        lines = csv_resp.data.decode().splitlines()
+        self.assertEqual(lines[0], "timestamp_utc,who,action,what,details"); self.assertIn("created the project", lines[1])
+        self.assertEqual(ann.get("/projects/1/activity.csv").status_code, 403)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT details FROM audit_logs WHERE action='export_project_activity'").fetchone()[0], "4 rows")
 
     # ---- reports as JSON (React port) ------------------------------------------
 

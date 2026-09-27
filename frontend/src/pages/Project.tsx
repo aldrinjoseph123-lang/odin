@@ -169,6 +169,7 @@ export default function Project(_props: { user: User }) {
 
         {activity.length > 0 && (
           <Panel title="Activity" hint="everything recorded on this project, newest first">
+            <a href={`/projects/${id}/activity.csv`} className="mb-2 inline-block text-[12px] text-primary-text hover:underline">Export CSV</a>
             <ul className="grid gap-1.5 text-[12.5px]">
               {activity.map((a, i) => (
                 <li key={i} className="flex gap-2">

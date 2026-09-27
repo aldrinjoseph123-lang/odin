@@ -480,6 +480,32 @@ def api_project_activity(project_id):
     } for r in rows])
 
 
+@app.route("/projects/<int:project_id>/activity.csv")
+@permission_required("view_project_detail")
+def project_activity_export(project_id):
+    """The same rows as the feed, as a file for an evidence pack. Staff only;
+    the export is itself an audited action, like the other exports."""
+    import csv
+    import io
+    from flask import Response
+    project = load_project(project_id)
+    if session.get("kind") == "external":
+        abort(403)
+    rows = get_db().execute(
+        "SELECT timestamp, username, action, details FROM audit_logs WHERE resource_type = 'project' AND resource_id = ? ORDER BY id",
+        (project_id,),
+    ).fetchall()
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["timestamp_utc", "who", "action", "what", "details"])
+    for r in rows:
+        writer.writerow([r["timestamp"], r["username"], r["action"], ACTIVITY_LABELS.get(r["action"], r["action"].replace("_", " ")), r["details"] or ""])
+    audit_log("export_project_activity", "project", project_id, project["name"], f"{len(rows)} rows")
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in project["name"])[:60] or "project"
+    return Response(out.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=odin-activity-{safe}.csv"})
+
+
 @app.route("/api/projects/<int:project_id>/stage", methods=["POST"])
 @permission_required("edit_project_stage")
 @project_role_required("move_stage")
