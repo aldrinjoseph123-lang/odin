@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router-dom"
-import { Menu, Monitor, Moon, Sun } from "lucide-react"
+import { Menu, Monitor, Moon, Search, Sun } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { logout, postForm, type User } from "@/lib/api"
 import { UserAvatar } from "@/components/UserAvatar"
+import { CommandPalette } from "@/components/CommandPalette"
 import { applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
@@ -35,6 +36,18 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const [theme, setTheme] = useState<Theme>(user.theme)
+  const [palette, setPalette] = useState(false)
+  // Ctrl/⌘ K anywhere; "/" when not typing in a field
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName))
+      if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setPalette(true) }
+      else if (e.key === "/" && !typing) { e.preventDefault(); setPalette(true) }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
   // the saved choice wins over whatever this browser last painted
   useEffect(() => { applyTheme(user.theme, user.accent as Accent) }, [user.theme, user.accent])
   async function cycleTheme() {
@@ -66,9 +79,11 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
         <nav className={cn("absolute inset-x-0 top-13 z-40 flex-col gap-3 border-b border-border bg-background px-5 py-4 lg:static lg:flex lg:flex-1 lg:flex-row lg:items-center lg:gap-4 lg:border-0 lg:p-0 xl:gap-6", open ? "flex" : "hidden")}>
           {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
           <span className="lg:flex-1" />
-          <form method="get" action="/projects" className="lg:w-40 xl:w-56">
-            <input type="search" name="q" placeholder="Search projects…" aria-label="Search projects" className="h-8 w-full rounded-md border border-border bg-secondary px-2.5 text-[13px] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30" />
-          </form>
+          <button type="button" onClick={() => { setOpen(false); setPalette(true) }} aria-label="Search projects and tasks" aria-keyshortcuts="Control+K Meta+K /"
+            className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-secondary px-2.5 text-left text-[13px] text-muted-foreground hover:border-input lg:w-40 xl:w-56">
+            <Search className="h-3.5 w-3.5" /><span className="flex-1 truncate">Search…</span>
+            <kbd className="rounded border border-border px-1 text-[11px]">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+          </button>
           {user.role !== "Viewer" && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
           {user.kind === "external" && <Badge variant="secondary">Partner access</Badge>}
@@ -89,6 +104,9 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
         </div>
       )}
       <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">{children}</main>
+      <CommandPalette open={palette} onClose={() => setPalette(false)}
+        pages={[...items.map((i) => ({ label: i.label, href: i.href })), { label: "Account", href: "/account" },
+          ...(user.role !== "Viewer" && user.kind !== "external" ? [{ label: "New project", href: "/projects/new" }] : [])]} />
     </div>
   )
 }

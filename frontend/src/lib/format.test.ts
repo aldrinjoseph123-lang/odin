@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, localDateTime, stateText } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, localDateTime, stateText, timeAgo } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -58,5 +58,19 @@ describe("activeProjectsView", () => {
     expect(activeProjectsView(from({ closed: "1" }))).toBe("closed")
     expect(activeProjectsView(from({ stage: "Scoping" }))).toBe("")
     expect(activeProjectsView(from({ view: "stale", closed: "1" }))).toBe("stale")
+  })
+})
+
+describe("timeAgo", () => {
+  const now = Date.parse("2026-09-27T12:00:00Z")
+  it("counts up through minutes, hours and days, then gives a date", () => {
+    expect(timeAgo("2026-09-27T11:59:40", now)).toBe("just now")
+    expect(timeAgo("2026-09-27T11:40:00", now)).toBe("20 min ago")
+    expect(timeAgo("2026-09-27T09:00:00", now)).toBe("3 h ago")
+    expect(timeAgo("2026-09-26T09:00:00", now)).toBe("yesterday")
+    expect(timeAgo("2026-09-23T12:00:00", now)).toBe("4 d ago")
+    expect(timeAgo("2026-08-01T12:00:00", now)).toMatch(/Aug|1/)
+    expect(timeAgo("2025-08-01T12:00:00", now)).toMatch(/2025/)
+    expect(timeAgo("junk", now)).toBe("junk")
   })
 })

@@ -363,6 +363,12 @@ Quiet, small, and rarely blue: one primary per view.
 - **Where it is chosen:** Account → Appearance (theme chips, accent swatches with a hairline ring so ink shows on dark); the header's sun / moon / monitor button cycles the theme in one click. Applied before first paint, so there is no flash.
 - **Avatars:** a picture replaces the initials wherever a person appears (header, rollout team stack, task assignee, team rail and panel, users table); initials remain the fallback. Account → Picture uploads PNG / JPG / GIF / WebP up to 2 MB.
 
+### Command palette, relative time, recovery (27 Sep 2026)
+- **Command palette:** Ctrl/⌘ K anywhere, or "/" when not typing, or the header's search button (which shows the shortcut). A native `<dialog>` centred at 12 vh, 560 px wide, popover surface, 11.2 px radius, the only surface with a shadow (it floats over the page by design). One 44 px input, then a listbox: matching projects, then tasks, then pages, then "Search all projects for …". The active row takes the accent wash; arrows move, Enter opens, Esc closes.
+- **Relative time:** notes, activity, the Recent rail and last sign-in read "just now / 20 min ago / 3 h ago / yesterday / 4 d ago", then a date; the exact local time is the `<time>` title. The audit log stays absolute: it is evidence.
+- **Recovery screen:** a render error inside any page shows a centred card with Reload (primary) and Back to the flow, never a blank app. The server's error page is the same card, standalone, following the saved theme.
+- **Reduce motion:** under the OS setting every transition and animation is effectively off.
+
 ### Cards / Containers
 - **Rail panel** (Next up / ETA / Advance): white, 1 px hairline, 8 px radius, 12 px padding, 13 px body, 12 px semibold chrome-text header with a 14 px icon; panels stack with 16 px gaps.
 - **Card** (login): white, `ring-1` ink/10 instead of a border, 11.2 px radius, 16 px internal spacing, `max-w-sm`.

@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom"
 import { Copy, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserAvatar } from "@/components/UserAvatar"
+import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Detail } from "@/pages/Flow"
@@ -10,7 +11,6 @@ import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-const fmtDateTime = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
 const fmtDate = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
 const LABELS: Record<string, string> = {
@@ -113,7 +113,7 @@ export default function Project(_props: { user: User }) {
           <ul className="mt-3 grid gap-2">
             {x.notes.map((n) => (
               <li key={n.id} className="border-t border-border pt-2 text-[13px] first:border-0 first:pt-0">
-                <div className="text-[12px] text-muted-foreground"><span className="font-medium text-foreground">{n.author}</span> · {n.stage} · {fmtDateTime(n.created_at)}</div>
+                <div className="text-[12px] text-muted-foreground"><span className="font-medium text-foreground">{n.author}</span> · {n.stage} · <Ago iso={n.created_at} /></div>
                 <div className="whitespace-pre-wrap">{n.note}</div>
               </li>
             ))}
@@ -172,7 +172,7 @@ export default function Project(_props: { user: User }) {
             <ul className="grid gap-1.5 text-[12.5px]">
               {activity.map((a, i) => (
                 <li key={i} className="flex gap-2">
-                  <span className="w-28 shrink-0 whitespace-nowrap text-muted-foreground">{fmtDateTime(a.when)}</span>
+                  <Ago iso={a.when} className="w-24 shrink-0 whitespace-nowrap text-muted-foreground" />
                   <span className="min-w-0 break-words"><span className="font-medium">{a.who}</span> {a.label}{a.details && <span className="text-muted-foreground"> · {a.details}</span>}</span>
                 </li>
               ))}

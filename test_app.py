@@ -1344,6 +1344,42 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         self.assertEqual(c2.post("/account/appearance", data={"theme": "light", "accent": "blue"}, headers=h).get_json()["messages"], ["Appearance saved"])
 
+    # ---- basics: name, sessions, search, favicon ---------------------------------
+
+    def test_own_name_and_sign_out_of_other_devices(self):
+        c, csrf = self._api_client()
+        other, _ = self._api_client()                           # the same account on a second device
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        self.assertEqual(c.post("/account/name", data={"name": "  "}, headers=h).get_json()["messages"], ["Enter your name"])
+        self.assertEqual(c.post("/account/name", data={"name": "Aldrin J"}, headers=h).get_json()["messages"], ["Name updated"])
+        self.assertEqual(c.get("/api/session").get_json()["user"]["name"], "Aldrin J")
+        self.assertEqual(c.post("/account/sign-out-others", data={}, headers=h).get_json()["messages"], ["Signed out of every other device"])
+        self.assertIsNotNone(c.get("/api/session").get_json()["user"])     # this device stays in
+        self.assertIsNone(other.get("/api/session").get_json()["user"])    # the other is out
+        with self.raw_db() as db:
+            self.assertEqual([r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action IN ('change_own_name','sign_out_other_sessions') ORDER BY id")],
+                             ["change_own_name", "sign_out_other_sessions"])
+
+    def test_search_finds_projects_and_tasks_within_scope(self):
+        self.new_project(name="Firewall Globex", client="Globex", po_number="PO-77")
+        self.new_project(name="SIEM Acme", client="Acme")
+        self.client.post("/projects/2/tasks", data={"title": "Onboard firewall logs"})
+        c, _ = self._api_client()
+        r = c.get("/api/search?q=firewall").get_json()
+        self.assertEqual([p["name"] for p in r["projects"]], ["Firewall Globex"])
+        self.assertEqual([(t["title"], t["project_name"]) for t in r["tasks"]], [("Onboard firewall logs", "SIEM Acme")])
+        self.assertEqual(c.get("/api/search?q=PO-77").get_json()["projects"][0]["client"], "Globex")
+        self.assertEqual(c.get("/api/search?q=f").get_json(), {"projects": [], "tasks": []})
+        self._invite(1, "ann@globex.example", "Customer", "Ann")
+        ann = self._external_client("ann@globex.example")
+        r = ann.get("/api/search?q=firewall").get_json()
+        self.assertEqual(([p["name"] for p in r["projects"]], r["tasks"]), (["Firewall Globex"], []))   # Acme's task is not hers
+        self.assertEqual(app_module.app.test_client().get("/api/search?q=firewall").status_code, 302)
+
+    def test_favicon_is_served(self):
+        r = app_module.app.test_client().get("/favicon.svg")
+        self.assertEqual((r.status_code, r.mimetype), (200, "image/svg+xml")); self.assertIn(b"<svg", r.data)
+
     # ---- appearance and profile pictures --------------------------------------
 
     def test_appearance_is_per_user_and_validated(self):

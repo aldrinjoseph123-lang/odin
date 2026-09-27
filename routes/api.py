@@ -32,6 +32,15 @@ def _permissions_for(role):
 def _current_user():
     if "user_id" not in session:
         return None
+    # Same test every protected route applies: a session ended elsewhere
+    # (deactivation, password reset, "sign out of other devices", age) is
+    # not signed in here either, or the shell would render and then bounce.
+    from core import _session_still_valid
+    from flask import flash
+    if not _session_still_valid():
+        session.clear()
+        flash("Your session has ended — please sign in again")
+        return None
     me = get_db().execute("SELECT id, theme, accent, avatar FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     return {
         "id": session["user_id"],
@@ -58,8 +67,9 @@ def api_session():
     from flask import get_flashed_messages
     from markupsafe import Markup
     import re
+    user = _current_user()
     messages = [re.sub(r"<[^>]+>", "", str(m)).replace("  ", " ").strip() if isinstance(m, Markup) else m for m in get_flashed_messages()]
-    return jsonify({"csrf": csrf_token(), "user": _current_user(), "messages": messages})
+    return jsonify({"csrf": csrf_token(), "user": user, "messages": messages})
 
 
 @app.route("/api/login", methods=["POST"])
@@ -692,6 +702,41 @@ def api_project_flow(project_id):
                      if (a := current_approval(project_id)) else None),
         "can_approve": is_customer_on(project_id, session["user_id"]),
     })
+
+
+@app.route("/api/search")
+@permission_required("view_projects")
+def api_search():
+    """The command palette: projects by name, client or PO, and tasks by
+    title, within what this session may see (externals: their projects)."""
+    q = request.args.get("q", "").strip()[:100]
+    if len(q) < 2:
+        return jsonify(projects=[], tasks=[])
+    db = get_db()
+    like = f"%{q}%"
+    scope_sql, scope_params = project_scope()
+    projects = db.execute(
+        f"SELECT p.id, p.name, p.client, p.stage FROM projects p WHERE p.deleted_at IS NULL{scope_sql} "
+        "AND (p.name LIKE ? OR p.client LIKE ? OR p.po_number LIKE ?) ORDER BY p.updated_at DESC LIMIT 8",
+        (*scope_params, like, like, like),
+    ).fetchall()
+    tasks = db.execute(
+        f"SELECT t.id, t.title, t.done, t.project_id, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
+        f"WHERE p.deleted_at IS NULL{scope_sql} AND t.title LIKE ? ORDER BY t.done, t.id DESC LIMIT 8",
+        (*scope_params, like),
+    ).fetchall()
+    return jsonify(projects=[dict(r) for r in projects], tasks=[dict(r) | {"done": bool(r["done"])} for r in tasks])
+
+
+@app.route("/favicon.svg")
+def favicon():
+    from flask import send_from_directory
+    from spa import DIST_DIR
+    import os
+    here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "public")
+    folder = DIST_DIR if os.path.exists(os.path.join(DIST_DIR, "favicon.svg")) else here
+    response = send_from_directory(folder, "favicon.svg", mimetype="image/svg+xml", max_age=86400)
+    return response
 
 
 @app.route("/assets/<path:filename>")

@@ -215,6 +215,39 @@ def account():
     return render_template("account.html", user=user)
 
 
+@app.route("/account/name", methods=["POST"])
+@login_required
+def account_name():
+    """The name others see. Past notes keep the name they were written
+    under — they are a record, not a live label."""
+    name = request.form.get("name", "").strip()[:80]
+    if not name:
+        flash("Enter your name")
+        return redirect(url_for("account"))
+    db = get_db()
+    db.execute("UPDATE users SET name = ? WHERE id = ?", (name, session["user_id"]))
+    db.commit()
+    audit_log("change_own_name", "user", session["user_id"], session.get("user_name"), f"-> {name}")
+    session["user_name"] = name
+    flash("Name updated")
+    return redirect(url_for("account"))
+
+
+@app.route("/account/sign-out-others", methods=["POST"])
+@login_required
+def account_sign_out_others():
+    """End every other session this account has (a lost laptop, a shared
+    machine). Same mechanism as an admin deactivation: bump the epoch, then
+    carry this session over to the new one."""
+    db = get_db()
+    db.execute("UPDATE users SET session_epoch = session_epoch + 1 WHERE id = ?", (session["user_id"],))
+    db.commit()
+    session["epoch"] = db.execute("SELECT session_epoch FROM users WHERE id = ?", (session["user_id"],)).fetchone()[0]
+    audit_log("sign_out_other_sessions", "user", session["user_id"], session.get("user_name"))
+    flash("Signed out of every other device")
+    return redirect(url_for("account"))
+
+
 @app.route("/account/appearance", methods=["POST"])
 @login_required
 def account_appearance():

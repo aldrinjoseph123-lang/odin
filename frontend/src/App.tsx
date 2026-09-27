@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom"
 import AppShell from "@/components/AppShell"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import Flow from "@/pages/Flow"
 import Projects from "@/pages/Projects"
 import Project from "@/pages/Project"
@@ -47,6 +48,7 @@ function Protected({ children }: { children: (user: User) => React.ReactNode }) 
 export default function App() {
   return (
     <BrowserRouter>
+      <ErrorBoundary>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/auth/link" element={<LinkRequest />} />
@@ -68,6 +70,7 @@ export default function App() {
         <Route path="/settings/contacts" element={<Protected>{(user) => <Contacts user={user} />}</Protected>} />
         <Route path="*" element={<HandOffToFlask />} />
       </Routes>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }

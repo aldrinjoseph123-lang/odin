@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
 import { ArrowRight, CalendarDays, Check, ChevronRight, Clock, ExternalLink, Plus, Trash2, UserRound, X } from "lucide-react"
+import { useSearchParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserAvatar } from "@/components/UserAvatar"
+import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
@@ -355,7 +357,7 @@ export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDeta
             <h3 className="mb-1.5 text-[12px] font-semibold text-nav-fg">Recent</h3>
             <ul className="grid min-w-0 gap-1.5">
               {d.recent_notes.map((n, i) => (
-                <li key={i} className="min-w-0 text-[12.5px]"><span className="font-medium">{n.author}</span> <span className="text-muted-foreground">· {n.stage} · {fmtDate(n.created_at)}</span><div className="truncate text-nav-fg">{n.note}</div></li>
+                <li key={i} className="min-w-0 text-[12.5px]"><span className="font-medium">{n.author}</span> <span className="text-muted-foreground">· {n.stage} · <Ago iso={n.created_at} /></span><div className="truncate text-nav-fg">{n.note}</div></li>
               ))}
             </ul>
           </section>
@@ -368,16 +370,18 @@ export function Detail({ d, reload, onMoved, standalone = false }: { d: FlowDeta
 export default function Flow(_props: { user: User }) {
   const [data, setData] = useState<FlowData | null>(null)
   // ?rollout=<id> deep-links a rollout: shareable, and the URL follows selection.
-  const [selectedId, setSelectedIdState] = useState<number | null>(() => {
-    const q = Number(new URLSearchParams(window.location.search).get("rollout"))
-    return Number.isInteger(q) && q > 0 ? q : null
-  })
+  // The selection is the URL (?rollout=): shareable, and it follows any
+  // navigation to it — a palette jump or a link — even while this page is open.
+  const [params, setParams] = useSearchParams()
+  const q = Number(params.get("rollout"))
+  const selectedId = Number.isInteger(q) && q > 0 ? q : null
   const setSelectedId = useCallback((id: number | null) => {
-    setSelectedIdState(id)
-    const url = new URL(window.location.href)
-    if (id == null) url.searchParams.delete("rollout"); else url.searchParams.set("rollout", String(id))
-    window.history.replaceState(null, "", url)
-  }, [])
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (id == null) next.delete("rollout"); else next.set("rollout", String(id))
+      return next
+    }, { replace: true })
+  }, [setParams])
   const [detail, setDetail] = useState<FlowDetail | null>(null)
   const [filter, setFilter] = useState<"all" | "attention" | "mine">("all")
   const [error, setError] = useState<string | null>(null)

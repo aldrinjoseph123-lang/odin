@@ -10,10 +10,11 @@ import { cn } from "@/lib/utils"
 export default function Account(_props: { user: User }) {
   const [me, setMe] = useState<Awaited<ReturnType<typeof account>> | null>(null)
   const [email, setEmail] = useState("")
+  const [name, setName] = useState("")
   const [pw, setPw] = useState({ current_password: "", new_password: "" })
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  async function load() { const m = await account(); setMe(m); setEmail(m.email ?? "") }
+  async function load() { const m = await account(); setMe(m); setEmail(m.email ?? ""); setName(m.name) }
   useEffect(() => { document.title = "Account · Odin"; void load() }, [])
   async function send(path: string, fields: Record<string, string> | FormData, after?: () => void) {
     setBusy(true)
@@ -68,6 +69,12 @@ export default function Account(_props: { user: User }) {
             </div>
           </div>
         </form>
+        <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (name.trim()) void send("/account/name", { name: name.trim() }, () => window.setTimeout(() => window.location.reload(), 400)) }} className="grid content-start gap-2 rounded-lg border border-border p-4">
+          <h3 className="text-[12px] font-semibold text-nav-fg">Name <span className="font-normal text-muted-foreground">as others see it</span></h3>
+          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} aria-label="Your name" className="h-8 text-[13px]" />
+          <div><Button type="submit" size="sm" variant="outline" disabled={busy || !name.trim() || name.trim() === me.name}>Save name</Button></div>
+          <p className="text-[11.5px] text-muted-foreground">Notes you already wrote keep the name they were written under.</p>
+        </form>
         <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email }) }} className="grid content-start gap-2 rounded-lg border border-border p-4">
           <h3 className="text-[12px] font-semibold text-nav-fg">Email <span className="font-normal text-muted-foreground">for notifications</span></h3>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" aria-label="Email address" className="h-8 text-[13px]" />
@@ -83,6 +90,11 @@ export default function Account(_props: { user: User }) {
         ) : (
           <p className="rounded-lg border border-border p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
         )}
+        <section className="grid content-start gap-2 rounded-lg border border-border p-4">
+          <h3 className="text-[12px] font-semibold text-nav-fg">Sessions</h3>
+          <p className="text-[12.5px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>
+          <div><Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { if (window.confirm("Sign out of every other device?")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>
+        </section>
       </div>
     </div>
   )

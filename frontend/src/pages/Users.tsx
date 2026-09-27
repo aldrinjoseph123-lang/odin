@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { UserAvatar } from "@/components/UserAvatar"
+import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, postForm, users as fetchUsers, type AdminUser, type User } from "@/lib/api"
@@ -91,7 +92,7 @@ function Row({ u, roles, me, busy, send }: { u: AdminUser; roles: string[]; me: 
         </select>
       </td>
       <td className="px-3 py-2">{u.active ? "Active" : <span className="text-bad">Deactivated</span>}</td>
-      <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground xl:table-cell">{fmt(u.last_login_at, true)}</td>
+      <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground xl:table-cell">{u.last_login_at ? <Ago iso={u.last_login_at} /> : "—"}</td>
       <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground xl:table-cell">{fmt(u.created_at)}</td>
       <td className="px-3 py-2">
         <div className="flex flex-wrap items-center gap-1.5">
