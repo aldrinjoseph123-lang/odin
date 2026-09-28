@@ -62,6 +62,34 @@ POLICIES = {
                              label="Partner email domains", help="e.g. partner.com, vendor.ae. Only these can be invited or sent a sign-in link. Blank: any domain."),
     "undo_minutes": dict(area="security", kind="int", default=5, min=1, max=60,
                          label="Undo window (minutes)", help="How long deletes and stage moves can be undone."),
+    # ---- Notifications
+    "digest_time": dict(area="notifications", kind="time", default="08:00",
+                        label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
+    # ---- Backups
+    "backup_time": dict(area="backups", kind="time", default="02:00",
+                        label="Back up at", help="Workspace time zone."),
+    "backup_days": dict(area="backups", kind="multi", default=",".join(WEEKDAYS), choices=WEEKDAYS,
+                        label="On these days", help="Untick days to skip."),
+    "keep_daily": dict(area="backups", kind="int", default=7, min=1, max=60,
+                       label="Keep daily copies", help="The newest backup of each of the last N days."),
+    "keep_weekly": dict(area="backups", kind="int", default=4, min=0, max=52,
+                        label="Keep weekly copies", help="The newest of each of the last N weeks."),
+    "keep_monthly": dict(area="backups", kind="int", default=12, min=0, max=60,
+                         label="Keep monthly copies", help="The newest of each of the last N months. Applied here and at every destination."),
+    "restore_test": dict(area="backups", kind="bool", default=True,
+                         label="Test each backup by restoring it", help="Opens the copy, checks the database is intact and every document is inside; the result is kept below."),
+    "dest_onedrive": dict(area="backups", kind="bool", default=False,
+                          label="Copy to OneDrive", help="The connected Microsoft 365 account's OneDrive, folder Odin-Backups."),
+    "dest_sharepoint": dict(area="backups", kind="bool", default=False,
+                            label="Copy to a SharePoint site", help="Needs the Microsoft 365 connection with SharePoint access (reconnect once after turning this on)."),
+    "sharepoint_site": dict(area="backups", kind="url", default="", max=200,
+                            label="SharePoint site", help="e.g. https://contoso.sharepoint.com/sites/IT"),
+    "sharepoint_folder": dict(area="backups", kind="text", default="Odin-Backups", max=120, optional=True,
+                              label="Folder in its Documents library", help="Created if missing."),
+    "dest_share": dict(area="backups", kind="bool", default=False,
+                       label="Copy to a network share", help="A NAS or file-server folder mounted into the server (SMB/NFS)."),
+    "share_path": dict(area="backups", kind="text", default="", max=200, optional=True,
+                       label="Share folder path", help="The absolute path where the share is mounted, e.g. /mnt/nas/odin."),
     # ---- Projects & workflow
     "default_template": dict(area="workflow", kind="choice", default="", choices="templates",
                              label="Stage template for new projects", help="Pre-selected on the new project form."),
@@ -107,9 +135,13 @@ def _parse(entry, raw):
         if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", p) for p in parts):
             raise ValueError("domains like partner.com, separated by commas")
         return parts
+    if kind == "time":
+        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):
+            raise ValueError("a time like 08:00")
+        return v
     if kind == "text":
-        if not v or len(v) > entry["max"]:
-            raise ValueError(f"1 to {entry['max']} characters")
+        if (not v and not entry.get("optional")) or len(v) > entry["max"]:
+            raise ValueError(f"up to {entry['max']} characters" if entry.get("optional") else f"1 to {entry['max']} characters")
         return v
     if kind == "choice":
         if v not in _choices(entry) and not (entry["choices"] == "templates" and v == ""):   # "" = the first template

@@ -60,15 +60,7 @@ That's it — no `MS_SENDER_UPN`, `MS_TEAM_ID`, or `MS_CHANNEL_ID` env vars anym
 
 ## 7. Schedule the recurring jobs (optional)
 
-Real-time events (new project, stage change, vendor invoice received) fire automatically — no cron needed. Two things do need a scheduler, since this app has no built-in background job runner:
-
-```cron
-# Daily alert digest (overdue/due-soon/stale) at 8am
-0 8 * * * cd /path/to/PMS && ./venv/bin/python send_daily_alerts.py >> alerts.log 2>&1
-
-# Full backup to OneDrive at 2am
-0 2 * * * cd /path/to/PMS && ./venv/bin/python backup.py >> backup.log 2>&1
-```
+Real-time events fire automatically. The daily digest and the backups run from the scheduler (`scheduler` service in docker compose, or `python scheduler.py --once` from cron every few minutes) at the times set in **Settings → Notifications** and **Settings → Backups**. Backups to a SharePoint site need the `Sites.ReadWrite.All` delegated permission added to this registration; after adding it, **Disconnect** and **Connect Microsoft 365** again once so the token carries it.
 
 Both respect the Settings toggles and the stored connection — they use the same refresh token as the interactive app, refreshing it automatically. If the connection is ever disconnected or the refresh token is revoked, both scripts just fail gracefully and log why; reconnect in Settings to fix.
 

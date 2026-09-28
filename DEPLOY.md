@@ -29,7 +29,7 @@ Then, immediately:
 |---|---|
 | `app`   | gunicorn, 2 workers × 4 threads, `--preload` so `init_db()` runs once before forking |
 | `nginx` | TLS termination, serves `/static` directly, proxies everything else |
-| `digest`| Runs `send_daily_alerts.py` then `backup.py` once a day |
+| `scheduler` | Runs the daily digest and backups at the times set in Settings (`scheduler.py`) |
 
 `PMS_TRUST_PROXY=1` is set for `app` because nginx sits in front: without it
 every request appears to come from 127.0.0.1, which would make the audit log
@@ -53,7 +53,7 @@ keyctl workarounds and Proxmox's own guidance is a VM. Sizing for a team of
 | OS | Debian 12 (bookworm) | same |
 
 The whole stack idles under 300 MB RAM: gunicorn ≈ 120 MB, nginx ≈ 10 MB,
-cloudflared ≈ 30 MB, the digest container sleeps between runs.
+cloudflared ≈ 30 MB, the scheduler container sleeps between minutes.
 
 ```bash
 # 1. On the VM, as root — Docker from Docker's own repo (Debian's is stale)
@@ -116,20 +116,24 @@ record goes live:
 
 ### Backups and restore
 
-`backup.py` (run nightly by the `digest` service, or by "Backup Now" in
-Settings) always writes `odin-backup-<timestamp>.zip` into
-`<ODIN_DATA_DIR>/backups/` and keeps the newest 14. If Microsoft 365 is
-connected and the toggle is on, the same archive is also uploaded to OneDrive.
-Copy the `backups/` folder off the host on a schedule — a backup on the disk
-it protects is only half a backup.
+`backup.py` (run by the `scheduler` service at the time set in **Settings →
+Backups**, or by "Back up now") always writes `odin-backup-<timestamp>.zip`
+(database snapshot, documents, profile pictures and a `manifest.json`) into
+`<ODIN_DATA_DIR>/backups/`, restore-tests it (integrity check + every document
+present), copies it to the destinations switched on there — OneDrive, a
+SharePoint site folder, a network share mounted into the `scheduler`
+container — and keeps daily / weekly / monthly copies by the retention set
+there, locally and at each destination. Every run, and its restore-test
+result, is listed in Settings → Backups. Switch on at least one off-host
+destination: a backup on the disk it protects is only half a backup.
 
 **Restore** (tested; rehearse it quarterly):
 
 ```bash
-docker compose stop app digest
+docker compose stop app scheduler
 docker run --rm -v odin-data:/data -v "$PWD:/backup" alpine sh -c \
-  'cd /data && rm -rf odin.db odin.db-wal odin.db-shm uploads && unzip -o /backup/odin-backup-<timestamp>.zip'
-docker compose start app digest
+  'cd /data && rm -rf odin.db odin.db-wal odin.db-shm uploads avatars && unzip -o /backup/odin-backup-<timestamp>.zip -x manifest.json'
+docker compose start app scheduler
 docker compose exec app python preflight.py
 ```
 
@@ -298,13 +302,12 @@ Enable it, then add TLS with certbot (`sudo certbot --nginx -d pms.example.com`)
 
 ## 8. Scheduled jobs (optional)
 
-Two cron scripts reuse the app's own logic. As the service user (`crontab -e`):
+Without Docker, run the scheduler from cron: it checks every few minutes and
+runs whatever is due at the times set in Settings (digest, backups). As the
+service user (`crontab -e`):
 
 ```cron
-# nightly backup of DB + uploads to OneDrive (needs M365 connected in Settings)
-0 2 * * * cd /opt/pms && ./venv/bin/python backup.py >> /opt/pms/backup.log 2>&1
-# daily digest of overdue / due-soon / stale items
-0 8 * * * cd /opt/pms && ./venv/bin/python send_daily_alerts.py >> /opt/pms/alerts.log 2>&1
+*/5 * * * * cd /opt/pms && ./venv/bin/python scheduler.py --once >> /opt/pms/scheduler.log 2>&1
 ```
 
 ## 9. Verify

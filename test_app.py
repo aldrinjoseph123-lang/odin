@@ -1090,7 +1090,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual([t["name"] for t in c.get("/api/settings").get_json()["templates"]][-1], "SIEM")
         r = c.post("/settings/integrations", data={"notify_email_enabled": "on"}, headers=h).get_json()
         self.assertEqual(r["messages"], ["Integration settings saved"])
-        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "onedrive_mirror_uploads_enabled": False, "onedrive_backup_enabled": False, "guest_links_enabled": False})
+        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "onedrive_mirror_uploads_enabled": False, "guest_links_enabled": False})
         m, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
         self.assertEqual(m.get("/api/settings").status_code, 403)
 
@@ -2694,15 +2694,75 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertIsNotNone(db.execute("SELECT last_login_at FROM users WHERE username='admin'").fetchone()[0])
             self.assertIsNotNone(db.execute("SELECT created_at FROM users WHERE username='newbie'").fetchone()[0])
 
-    def test_local_backup_is_written_even_without_onedrive(self):
-        import backup
-        self.new_project(name="B", client="C")
-        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()), patch("backup.graph.onedrive_configured", return_value=False):
-            ok, message = backup.run_backup()
+    def test_backups_restore_test_copy_prune_and_record(self):
+        import backup, zipfile
+        self.new_project(name="B", client="C")     # its PO document must be inside and found by the restore test
+        share = tempfile.mkdtemp()
+        with self.raw_db() as db:
+            for k, v in (("dest_share", "1"), ("share_path", share)):
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (f"policy.{k}", v))
+            db.commit()
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()):
+            ok, message = backup.run_backup(trigger="test")
             self.assertTrue(ok, message)
-            written = [f for f in os.listdir(os.path.join(db_module.DATA_DIR, "backups")) if f.endswith(".zip")]
-        self.assertEqual(len(written), 1)
-        self.assertIn("OneDrive not configured", message)
+            local = [f for f in os.listdir(os.path.join(db_module.DATA_DIR, "backups")) if f.endswith(".zip")]
+            self.assertEqual(len(local), 1)
+            self.assertEqual(os.listdir(share), local)                       # copied to the share
+            archive = os.path.join(db_module.DATA_DIR, "backups", local[0])
+            self.assertIn("manifest.json", zipfile.ZipFile(archive).namelist())
+            # a damaged archive fails its restore test
+            broken = os.path.join(db_module.DATA_DIR, "broken.zip")
+            with open(broken, "wb") as fh:
+                fh.write(b"not a zip")
+            self.assertFalse(backup.restore_test(broken)[0])
+        with self.raw_db() as db:
+            run = db.execute("SELECT ok, restore_ok, restore_detail, destinations, trigger FROM backup_runs").fetchone()
+        self.assertEqual((run[0], run[1], run[4]), (1, 1, "test"))
+        self.assertIn("all 1 documents present", run[2]); self.assertIn("network share", run[3])
+        # an unmounted share fails the run, and says why
+        with self.raw_db() as db:
+            db.execute("UPDATE settings SET value = '/no/such/mount' WHERE key = 'policy.share_path'"); db.commit()
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()):
+            ok, message = backup.run_backup()
+        self.assertFalse(ok); self.assertIn("/no/such/mount is not mounted", message)
+        # the history reaches the Backups page
+        c, _ = self._api_client()
+        runs = c.get("/api/settings?section=backups").get_json()["backups"]["runs"]
+        self.assertEqual([r["ok"] for r in runs], [False, True])
+
+    def test_retention_keeps_daily_weekly_and_monthly_copies(self):
+        import backup
+        from datetime import datetime as _dt
+        names = [f"odin-backup-{(_dt(2026, 9, 28) - timedelta(days=d)).strftime('%Y%m%d')}-020000.zip" for d in range(120)] + ["notes.txt"]
+        keep = backup.retention_keep(names, 7, 4, 3)
+        days = sorted(n[12:20] for n in keep if n.startswith("odin"))
+        self.assertIn("notes.txt", keep)                                     # never touches other files
+        self.assertEqual(days[-7:], [f"202609{d}" for d in range(22, 29)])   # the last 7 days
+        self.assertIn("20260731", days); self.assertIn("20260831", days)     # month-ends kept
+        self.assertEqual(len(keep) - 1, len(set(days)))
+        self.assertLess(len(days), 14)
+        self.assertEqual(backup.retention_keep(names[:1], 1, 0, 0), {names[0]})
+
+    def test_scheduler_runs_each_job_once_a_day_on_its_days_after_its_time(self):
+        import scheduler
+        from datetime import datetime as _dt
+        times = {"digest_time": "08:00", "backup_time": "02:00"}
+        days = {"working_days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "backup_days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
+        mon_0730, sat_0900 = _dt(2026, 9, 28, 7, 30), _dt(2026, 10, 3, 9, 0)
+        self.assertEqual(scheduler.due_jobs(mon_0730, {}, times, days), ["backup"])
+        self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=8), {}, times, days), ["digest", "backup"])
+        self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=8), {"digest": "2026-09-28", "backup": "2026-09-28"}, times, days), [])
+        self.assertEqual(scheduler.due_jobs(sat_0900, {}, times, days), ["backup"])       # no digest on a day off
+        self.assertEqual(scheduler.next_run(mon_0730, "02:00", ["Wed"]).strftime("%a %H:%M"), "Wed 02:00")
+        # one pass: heartbeat written, the job marked done for the day even if it fails
+        with patch("backup.run_backup", return_value=(True, "ok")) as run, patch("send_daily_alerts.main") as digest:
+            with self.raw_db() as db:
+                db.execute("INSERT INTO settings (key, value) VALUES ('policy.backup_time', '00:00')"); db.commit()
+            ran = scheduler.run_due()
+            self.assertIn("backup", ran); self.assertEqual(run.call_count, 1)
+            self.assertNotIn("backup", scheduler.run_due())
+        c, _ = self._api_client()
+        self.assertTrue(c.get("/api/settings?section=backups").get_json()["backups"]["scheduler_alive"])
 
     def test_healthz_and_robots(self):
         anon = app_module.app.test_client()

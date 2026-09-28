@@ -278,6 +278,16 @@ def migrate_db(db):
     # NULL = "whatever stage the project is in" — old tasks and quick adds.
     if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
         db.execute("ALTER TABLE tasks ADD COLUMN stage TEXT")
+    # One row per backup run (backup.py): what was made, where it went, and
+    # whether its restore test passed. Trimmed to the newest 200 by each run.
+    db.execute("""CREATE TABLE IF NOT EXISTS backup_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        started_at TEXT NOT NULL, finished_at TEXT, trigger TEXT, actor TEXT,
+        file TEXT, size_bytes INTEGER, ok INTEGER NOT NULL DEFAULT 0,
+        restore_ok INTEGER, restore_detail TEXT, destinations TEXT)""")
+    # The old "Allow scheduled full backups to OneDrive" switch is now the
+    # OneDrive destination in Settings → Backups.
+    db.execute("INSERT OR IGNORE INTO settings (key, value) SELECT 'policy.dest_onedrive', '1' FROM settings WHERE key = 'onedrive_backup_enabled' AND value = '1'")
     # In-app notifications: one row per recipient per event. Read ones older
     # than 90 days are trimmed as new ones are written.
     db.execute("""CREATE TABLE IF NOT EXISTS notifications (

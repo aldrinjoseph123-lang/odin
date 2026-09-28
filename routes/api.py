@@ -10,7 +10,7 @@ from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
-from db import avatar_url, get_doc_category_names, stage_rows
+from db import avatar_url, get_doc_category_names, get_setting, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
@@ -186,11 +186,30 @@ def api_settings():
             "channel_id": connection["channel_id"] if connected else None,
             "teams": teams, "channels": channels, "team_id": team_id, "teams_error": teams_error,
         },
-        "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled", "onedrive_backup_enabled")},
+        "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled")},
                     "guest_links_enabled": get_setting("guest_links_enabled", "1") == "1"},
         "policies": policy_view(),
         "sso": _sso_view(),
+        "backups": _backups_view() if request.args.get("section") in (None, "backups") else None,
     })
+
+
+def _backups_view():
+    """History, the next scheduled run and whether the scheduler is alive."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from policies import policy
+    from scheduler import HEARTBEAT, next_run
+    db = get_db()
+    beat = get_setting(HEARTBEAT)
+    alive = bool(beat) and datetime.fromisoformat(beat) > datetime.utcnow() - timedelta(minutes=5)
+    upcoming = next_run(datetime.now(ZoneInfo(policy("timezone"))), policy("backup_time"), policy("backup_days"))
+    return {
+        "runs": [dict(r) | {"ok": bool(r["ok"]), "restore_ok": None if r["restore_ok"] is None else bool(r["restore_ok"])}
+                 for r in db.execute("SELECT * FROM backup_runs ORDER BY id DESC LIMIT 20")],
+        "scheduler_seen": beat or None, "scheduler_alive": alive,
+        "next_run": upcoming.strftime("%a %d %b, %H:%M") if upcoming else None,
+    }
 
 
 def _sso_view():

@@ -45,7 +45,7 @@ First sign-in is `admin` / `changeme`; you are forced to set a new password befo
 python3 -m venv venv && . venv/bin/activate && pip install -r requirements.txt
 npm --prefix frontend ci && npm --prefix frontend run build   # React pages → frontend/dist
 python app.py                   # http://localhost:5050 (serves the build for ported pages)
-python -m unittest test_app     # 219 tests
+python -m unittest test_app     # 221 tests
 ```
 
 Front-end iteration: `npm --prefix frontend run dev` on http://localhost:5173 — Vite serves the React pages and proxies everything else to Flask.

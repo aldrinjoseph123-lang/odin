@@ -153,9 +153,40 @@ def settings_test_teams():
 @app.route("/settings/integrations/backup-now", methods=["POST"])
 @permission_required("manage_integrations")
 def settings_backup_now():
-    audit_log("backup_now")
+    """Start a full backup (make, restore-test, copy, prune) now. It runs in
+    the background so a large archive can't time the request out; the run
+    appears in the history on the Backups page when it finishes."""
+    import threading
     import backup as backup_module
+    audit_log("backup_now")
+    actor = session.get("user_name")
+    if app.testing:   # tests want the result, not a thread
+        ok, message = backup_module.run_backup(trigger="manual", actor=actor)
+        flash(("Backup done: " if ok else "Backup finished with problems: ") + message)
+    else:
+        threading.Thread(target=backup_module.run_backup, kwargs={"trigger": "manual", "actor": actor}, daemon=True).start()
+        flash("Backup started — it appears in the history below when it finishes")
+    return redirect(url_for("settings_section", section="backups"))
 
-    ok, error = backup_module.run_backup(force=True)
-    flash("Backup uploaded to OneDrive" if ok else f"Backup failed: {error}")
-    return redirect(url_for("settings"))
+
+@app.route("/settings/backups/test-share", methods=["POST"])
+@permission_required("manage_integrations")
+def settings_backup_test_share():
+    """Is the network-share folder there and writable from the server?"""
+    from policies import policy
+    path = policy("share_path")
+    audit_log("backup_test_share", details=path or "(none)")
+    if not path or not os.path.isabs(path):
+        flash("Set the share folder path (an absolute path) and save first")
+    elif not os.path.isdir(path):
+        flash(f"{path} doesn't exist on the server — is the share mounted into the container?")
+    else:
+        probe = os.path.join(path, f".odin-write-test-{secrets.token_hex(4)}")
+        try:
+            with open(probe, "w") as fh:
+                fh.write("ok")
+            os.remove(probe)
+            flash(f"{path} is reachable and writable")
+        except OSError as exc:
+            flash(f"{path} exists but can't be written: {exc.strerror}")
+    return redirect(url_for("settings_section", section="backups"))

@@ -27,7 +27,8 @@ from markupsafe import escape
 DB_PATH = os.path.join(os.environ.get("ODIN_DATA_DIR") or os.path.dirname(__file__), "odin.db")
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 AUTH_BASE = "https://login.microsoftonline.com"
-SCOPES = "offline_access User.Read Mail.Send Files.ReadWrite ChannelMessage.Send Team.ReadBasic.All Channel.ReadBasic.All"
+# Sites.ReadWrite.All: backups into a SharePoint site the connected admin can reach (Settings → Backups).
+SCOPES = "offline_access User.Read Mail.Send Files.ReadWrite Sites.ReadWrite.All ChannelMessage.Send Team.ReadBasic.All Channel.ReadBasic.All"
 
 
 def _env(key):
@@ -347,8 +348,52 @@ def send_teams_message(text):
         return False, f"Teams message failed: {exc}"
 
 
-def upload_file(local_path, remote_path):
-    """Upload local_path to the connected user's OneDrive at remote_path.
+def sharepoint_drive(site_url):
+    """'/sites/<id>/drive' for a site URL like https://contoso.sharepoint.com/sites/IT,
+    or (None, error)."""
+    from urllib.parse import urlparse
+    parts = urlparse(site_url)
+    headers, error = _headers()
+    if error:
+        return None, error
+    try:
+        resp = requests.get(f"{GRAPH_BASE}/sites/{parts.hostname}:{parts.path or '/'}", headers=headers, timeout=15)
+        if resp.status_code >= 400:
+            return None, f"SharePoint site not found or not allowed ({resp.status_code}) — reconnect Microsoft 365 if SharePoint access was added recently"
+        return f"/sites/{resp.json()['id']}/drive", None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"SharePoint lookup failed: {exc}"
+
+
+def list_folder(folder, drive="/me/drive"):
+    """[(name, item_id)] in a drive folder; [] if it doesn't exist yet."""
+    headers, error = _headers()
+    if error:
+        return [], error
+    try:
+        resp = requests.get(f"{GRAPH_BASE}{drive}/root:/{folder}:/children?$select=name,id&$top=999", headers=headers, timeout=15)
+        if resp.status_code == 404:
+            return [], None
+        resp.raise_for_status()
+        return [(i["name"], i["id"]) for i in resp.json().get("value", [])], None
+    except Exception as exc:  # noqa: BLE001
+        return [], str(exc)
+
+
+def delete_item(item_id, drive="/me/drive"):
+    headers, error = _headers()
+    if error:
+        return False, error
+    try:
+        resp = requests.delete(f"{GRAPH_BASE}{drive}/items/{item_id}", headers=headers, timeout=15)
+        return resp.status_code < 400, None if resp.status_code < 400 else f"delete failed: {resp.status_code}"
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+
+
+def upload_file(local_path, remote_path, drive="/me/drive"):
+    """Upload local_path to a drive (the connected user's OneDrive by default,
+    or a SharePoint site's from sharepoint_drive) at remote_path.
 
     Simple PUT for files <=4MB, chunked upload session above that — Graph
     rejects direct PUT uploads over 4MB.
@@ -363,7 +408,7 @@ def upload_file(local_path, remote_path):
         if size <= 4 * 1024 * 1024:
             with open(local_path, "rb") as f:
                 resp = requests.put(
-                    f"{GRAPH_BASE}/me/drive/root:/{remote_path}:/content",
+                    f"{GRAPH_BASE}{drive}/root:/{remote_path}:/content",
                     headers={**headers, "Content-Type": "application/octet-stream"},
                     data=f.read(),
                     timeout=60,
@@ -373,7 +418,7 @@ def upload_file(local_path, remote_path):
             return True, None
 
         session_resp = requests.post(
-            f"{GRAPH_BASE}/me/drive/root:/{remote_path}:/createUploadSession",
+            f"{GRAPH_BASE}{drive}/root:/{remote_path}:/createUploadSession",
             headers=headers, json={}, timeout=15,
         )
         if session_resp.status_code >= 400:

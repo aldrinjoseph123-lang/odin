@@ -5,7 +5,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
-import { ApiError, postForm, settingsData, type Policy, type SettingsData, type User } from "@/lib/api"
+import { ApiError, postForm, settingsData, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
+import { Ago } from "@/components/Ago"
 import { cn } from "@/lib/utils"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
@@ -30,7 +31,7 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   workflow: { title: "Projects & workflow", lede: "What new projects start with, their stages and the alerts they raise." },
   notifications: { title: "Notifications", lede: "Which channels carry project events. Each person also picks what they get by email on their Account page." },
   integrations: { title: "Integrations", lede: "Microsoft 365: mail, Teams and OneDrive through one Azure app." },
-  backups: { title: "Backups", lede: "Copies of the database, documents and pictures." },
+  backups: { title: "Backups", lede: "Copies of the database, documents and pictures: made on schedule, tested by restoring them, copied off the server, pruned by age." },
 }
 
 export default function Settings(_props: { user: User }) {
@@ -113,6 +114,7 @@ export default function Settings(_props: { user: User }) {
             </div>
           </>
         )}
+        {section === "notifications" && policyForm("notifications", "Schedule")}
         {section === "notifications" && (
           <Toggles data={data} busy={busy} send={send} title="Channels" keys={[
             { key: "notify_email_enabled", label: "Email notifications on project events (stage changes, approvals, assignments, mentions, due tasks)" },
@@ -130,10 +132,12 @@ export default function Settings(_props: { user: User }) {
             ]} />
           </>
         )}
-        {section === "backups" && (
-          <Toggles data={data} busy={busy} send={send} title="OneDrive copy" keys={[
-            { key: "onedrive_backup_enabled", label: "Also upload each scheduled backup to OneDrive (the daily job runs from the server's digest service)" },
-          ]} extra={<Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/backup-now")}>Back up to OneDrive now</Button>} />
+        {section === "backups" && data.backups && (
+          <>
+            <Scheduler view={data.backups} busy={busy} send={send} />
+            {policyForm("backups", "Schedule, retention and destinations", "a local copy is always kept on the server")}
+            <BackupHistory runs={data.backups.runs} />
+          </>
         )}
       </div>
     </div>
@@ -178,8 +182,11 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               {p.kind === "int" && (
                 <Input id={`pol-${p.key}`} type="number" min={p.min} max={p.max} required value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value === "" ? "" : Number(e.target.value) })} className="h-8 w-28 text-[13px]" />
               )}
+              {p.kind === "time" && (
+                <Input id={`pol-${p.key}`} type="time" required value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 w-32 text-[13px]" />
+              )}
               {(p.kind === "url" || p.kind === "domains") && (
-                <Input id={`pol-${p.key}`} type={p.kind === "url" ? "url" : "text"} maxLength={p.max} placeholder={p.kind === "url" ? "https://odin.example.com" : "partner.com, vendor.ae"}
+                <Input id={`pol-${p.key}`} type={p.kind === "url" ? "url" : "text"} maxLength={p.max} placeholder={p.key === "sharepoint_site" ? "https://contoso.sharepoint.com/sites/IT" : p.kind === "url" ? "https://odin.example.com" : "partner.com, vendor.ae"}
                   value={Array.isArray(v[p.key]) ? (v[p.key] as string[]).join(", ") : String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-md text-[13px]" />
               )}
               {p.kind === "text" && (
@@ -211,6 +218,50 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
         </div>
         <div><Button type="submit" size="sm" disabled={busy || !dirty}>Save</Button></div>
       </form>
+    </Panel>
+  )
+}
+
+// Whether the schedule is really being kept: the scheduler process leaves a
+// heartbeat every minute; without it, nothing runs on its own.
+function Scheduler({ view, busy, send }: { view: BackupsView; busy: boolean; send: Send }) {
+  return (
+    <Panel title="Status">
+      {view.scheduler_alive
+        ? <p className="text-[13px]">The scheduler is running. Next backup: <span className="font-medium">{view.next_run ?? "no day selected"}</span>.</p>
+        : <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-[13px] text-warn">
+            {view.scheduler_seen ? <>The scheduler was last seen <Ago iso={view.scheduler_seen} />.</> : "The scheduler has never run."} Backups and the daily digest only happen on their own while it runs:
+            start the <code className="font-mono text-[12px]">scheduler</code> service (docker compose up -d), or have cron run <code className="font-mono text-[12px]">python scheduler.py --once</code> every few minutes.
+          </p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => send("/settings/integrations/backup-now")}>Back up now</Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/backups/test-share")}>Test the network share</Button>
+      </div>
+    </Panel>
+  )
+}
+
+const bytes = (n: number | null) => (n == null ? "—" : n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+function BackupHistory({ runs }: { runs: BackupRun[] }) {
+  return (
+    <Panel title="History" hint="the last 20 runs">
+      {runs.length === 0 ? <p className="text-[13px] text-muted-foreground">No backups yet. Back up now to make the first one.</p> : (
+        <div className="overflow-x-auto"><table className="w-full text-[13px]">
+          <thead><tr className="text-left text-[11.5px] text-muted-foreground">{["When", "Result", "Restore test", "Copies", "Size"].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
+          <tbody>
+            {runs.map((r) => (
+              <tr key={r.id} className="border-t border-border align-top">
+                <td className="whitespace-nowrap py-1.5 pr-3"><Ago iso={r.started_at} /><span className="block text-[11.5px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
+                <td className="py-1.5 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-bad">Problem</span>}</td>
+                <td className="py-1.5 pr-3">{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-bad">Failed</span>}
+                  {r.restore_detail && <span className="block text-[11.5px] text-muted-foreground">{r.restore_detail}</span>}</td>
+                <td className="py-1.5 pr-3 text-[12.5px]">{r.destinations}</td>
+                <td className="whitespace-nowrap py-1.5 pr-3 text-muted-foreground">{bytes(r.size_bytes)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      )}
     </Panel>
   )
 }

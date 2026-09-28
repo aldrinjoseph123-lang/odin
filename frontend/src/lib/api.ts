@@ -171,9 +171,14 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 
 // ---- settings ----
 export type Policy = {
-  key: string; area: "general" | "security" | "workflow"; kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains"
+  key: string; area: "general" | "security" | "workflow" | "notifications" | "backups"; kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "time"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]
 }
+export type BackupRun = {
+  id: number; started_at: string; finished_at: string | null; trigger: string; actor: string | null; file: string | null
+  size_bytes: number | null; ok: boolean; restore_ok: boolean | null; restore_detail: string | null; destinations: string | null
+}
+export type BackupsView = { runs: BackupRun[]; scheduler_seen: string | null; scheduler_alive: boolean; next_run: string | null }
 export type SettingsData = {
   templates: { id: number; name: string; projects: number; stages: { id: number; name: string; sla_days: number | null }[] }[]
   doc_categories: { id: number; name: string }[]
@@ -183,7 +188,8 @@ export type SettingsData = {
     connected: boolean; connected_email: string | null; team_name: string | null; channel_name: string | null; channel_id: string | null
     teams: { id: string; name: string }[]; channels: { id: string; name: string }[]; team_id: string; teams_error: string | null
   }
-  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "onedrive_backup_enabled" | "guest_links_enabled", boolean>
+  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "guest_links_enabled", boolean>
+  backups: BackupsView | null
   policies: Policy[]
   sso: { client_id: string | null; tenant_id: string | null; has_secret: boolean; configured: boolean; enforced: boolean; redirect_uri: string; password_admins: number }
 }

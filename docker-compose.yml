@@ -33,8 +33,10 @@ services:
       - ./static:/srv/odin-static:ro
       - ./deploy/certs:/etc/nginx/certs:ro
 
-  # Daily alert digest. Runs the same script the docs describe for cron.
-  digest:
+  # The clock for recurring jobs (scheduler.py): the daily digest and the
+  # backups, at the times set in Settings (Notifications, Backups), in the
+  # workspace time zone. Settings → Backups shows whether it is running.
+  scheduler:
     build: .
     restart: unless-stopped
     env_file: .env
@@ -42,16 +44,10 @@ services:
       ODIN_DATA_DIR: /data
     volumes:
       - odin-data:/data
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        while true; do
-          # 08:00 daily, container clock
-          target=$$(date -d 'tomorrow 08:00' +%s 2>/dev/null || date -v+1d -v8H -v0M -v0S +%s)
-          sleep $$(( target - $$(date +%s) ))
-          python send_daily_alerts.py || true
-          python backup.py || true
-        done
+      # A NAS / file-server share for backups: mount it here and set
+      # Settings → Backups → Share folder path to /mnt/backup-share.
+      # - /mnt/nas/odin:/mnt/backup-share
+    entrypoint: ["python", "scheduler.py"]
 
 volumes:
   odin-data:
