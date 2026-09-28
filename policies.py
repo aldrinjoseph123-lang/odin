@@ -10,6 +10,7 @@ The settings page is generated from POLICIES, and save_policies() is the one
 validator, so the form, the API and the code can never disagree on a limit.
 """
 
+import re
 from zoneinfo import available_timezones
 
 from flask import g, has_request_context
@@ -28,6 +29,8 @@ POLICIES = {
     # ---- General
     "company_name": dict(area="general", kind="text", default="Protect24x7", max=80,
                          label="Company name", help="Shown in email footers and on printed reports."),
+    "public_url": dict(area="general", kind="url", default="", max=200,
+                       label="Public web address", help="e.g. https://odin.example.com. Sign-in and emailed links are built from it, never from the request. Blank: the address the browser used."),
     "timezone": dict(area="general", kind="choice", default="Asia/Dubai", choices="timezones",
                      label="Time zone", help="Decides \"today\" for due dates and when scheduled jobs run."),
     "date_format": dict(area="general", kind="choice", default="d MMM yyyy", choices=tuple(DATE_FORMATS),
@@ -53,6 +56,10 @@ POLICIES = {
                           label="Largest upload (MB)", help="Per file. The server never accepts more than 100 MB."),
     "upload_types": dict(area="security", kind="multi", default=",".join(UPLOAD_TYPES), choices=UPLOAD_TYPES,
                          label="Allowed file types", help="Untick a type to refuse it. Types the server cannot verify are never offered."),
+    "link_minutes": dict(area="security", kind="int", default=30, min=5, max=1440,
+                         label="Email link lifetime (minutes)", help="Partner sign-in links and password-reset links work once, for this long."),
+    "external_domains": dict(area="security", kind="domains", default="", max=500,
+                             label="Partner email domains", help="e.g. partner.com, vendor.ae. Only these can be invited or sent a sign-in link. Blank: any domain."),
     "undo_minutes": dict(area="security", kind="int", default=5, min=1, max=60,
                          label="Undo window (minutes)", help="How long deletes and stage moves can be undone."),
     # ---- Projects & workflow
@@ -90,6 +97,16 @@ def _parse(entry, raw):
             raise ValueError("pick from the list")
         return [p for p in allowed if p in picked]   # canonical order
     v = str(raw).strip()
+    if kind == "url":
+        v = v.rstrip("/")
+        if v and (len(v) > entry["max"] or not re.fullmatch(r"https?://[A-Za-z0-9.-]+(:\d+)?(/[\w./-]*)?", v)):
+            raise ValueError("a web address like https://odin.example.com")
+        return v
+    if kind == "domains":
+        parts = sorted({p.lower().lstrip("@") for p in re.split(r"[\s,;]+", v) if p})
+        if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", p) for p in parts):
+            raise ValueError("domains like partner.com, separated by commas")
+        return parts
     if kind == "text":
         if not v or len(v) > entry["max"]:
             raise ValueError(f"1 to {entry['max']} characters")
@@ -103,7 +120,7 @@ def _parse(entry, raw):
 
 def _default(entry):
     d = entry["default"]
-    return _parse(entry, d) if entry["kind"] == "multi" else d
+    return _parse(entry, d) if entry["kind"] in ("multi", "domains") else d
 
 
 def _stored(db=None):
@@ -152,7 +169,7 @@ def save_policies(area, form):
     for key, e in POLICIES.items():
         if e["area"] != area:
             continue
-        raw = form.get(key, "" if e["kind"] in ("bool", "multi") else None)
+        raw = form.get(key, "" if e["kind"] in ("bool", "multi", "domains", "url") else None)
         if raw is None:
             continue
         try:
@@ -188,3 +205,10 @@ def local_today(db=None):
 def is_working_day(day=None, db=None):
     day = day or local_today(db)
     return WEEKDAYS[day.weekday()] in policy("working_days", db)
+
+
+def email_domain_allowed(email, db=None):
+    """Partner addresses must be on an allowed domain (Settings → Sign-in &
+    security); an empty list allows any."""
+    allowed = policy("external_domains", db)
+    return not allowed or email.rsplit("@", 1)[-1].lower() in allowed

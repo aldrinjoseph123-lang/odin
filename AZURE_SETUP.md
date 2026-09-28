@@ -72,6 +72,20 @@ Real-time events (new project, stage change, vendor invoice received) fire autom
 
 Both respect the Settings toggles and the stored connection — they use the same refresh token as the interactive app, refreshing it automatically. If the connection is ever disconnected or the refresh token is revoked, both scripts just fail gracefully and log why; reconnect in Settings to fix.
 
+## Sign in with Microsoft (staff) — a second, separate registration
+
+Staff sign-in uses its **own** app registration, so signing in can never touch the mailbox connection above.
+
+1. **App registrations** → **New registration**. Name: `Odin sign-in`. Supported account types: **Accounts in this organizational directory only**.
+2. **Redirect URI**: platform **Web**, the exact address shown in Odin under **Settings → Sign-in & security → Microsoft sign-in** (it is built from **Settings → General → Public web address**, e.g. `https://odin.example.com/auth/microsoft/callback`).
+3. **Certificates & secrets** → **New client secret**; copy the value.
+4. No API permissions are needed beyond the default `User.Read`; Odin asks only for `openid profile email`.
+5. Optional but recommended: **Enterprise applications** → *Odin sign-in* → **Properties** → **Assignment required = Yes**, then assign the staff (or a group) who may use Odin.
+6. In Odin: paste the client ID, tenant ID and secret, **Save**, then **Try Microsoft sign-in**.
+7. When it works, tick **Staff must sign in with Microsoft**. The password form disappears; accounts ticked **Password** on the Users page keep an emergency form at `/login/password` (every use is audited and the admins are notified). Odin refuses the switch until at least one active admin keeps a password.
+
+First sign-ins by colleagues Odin doesn't know yet wait on the **Users** page for an admin to approve them with a role. Existing users are linked by their work email the first time they sign in with Microsoft; after that the Entra object ID is what binds them.
+
 ## Troubleshooting
 
 - **AADSTS900023 "tenant identifier is neither a valid DNS name..."** — `MS_TENANT_ID` is wrong or a placeholder; use the real Directory (tenant) ID from step 2.

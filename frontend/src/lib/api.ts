@@ -16,7 +16,8 @@ export type User = {
   prefs?: { date_format: DateFormat; undo_minutes: number }
 }
 
-type SessionResponse = { csrf: string; user: User | null; messages?: string[] }
+export type SignIn = { microsoft: boolean; microsoft_only: boolean }
+type SessionResponse = { csrf: string; user: User | null; messages?: string[]; signin?: SignIn }
 
 let csrfToken: string | null = null
 
@@ -170,7 +171,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 
 // ---- settings ----
 export type Policy = {
-  key: string; area: "general" | "security" | "workflow"; kind: "int" | "bool" | "choice" | "multi" | "text"
+  key: string; area: "general" | "security" | "workflow"; kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]
 }
 export type SettingsData = {
@@ -184,6 +185,7 @@ export type SettingsData = {
   }
   toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "onedrive_backup_enabled" | "guest_links_enabled", boolean>
   policies: Policy[]
+  sso: { client_id: string | null; tenant_id: string | null; has_secret: boolean; configured: boolean; enforced: boolean; redirect_uri: string; password_admins: number }
 }
 export const settingsData = (section: string, teamId = "") =>
   getJson<SettingsData>(`/api/settings?section=${encodeURIComponent(section)}${teamId ? `&team_id=${encodeURIComponent(teamId)}` : ""}`)
@@ -197,8 +199,12 @@ export type ContactsData = {
 export const contacts = () => getJson<ContactsData>("/api/settings/contacts")
 
 // ---- admin: users and the audit log ----
-export type AdminUser = { id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"; last_login_at: string | null; created_at: string | null; avatar_url: string | null }
-export const users = () => getJson<{ users: AdminUser[]; roles: string[]; me: number }>("/api/users")
+export type AdminUser = {
+  id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"
+  last_login_at: string | null; created_at: string | null; avatar_url: string | null; pending: boolean; password_login: boolean; microsoft: boolean
+}
+export type UsersData = { users: AdminUser[]; roles: string[]; me: number; microsoft_only: boolean }
+export const users = () => getJson<UsersData>("/api/users")
 export type AuditRow = { id: number; timestamp: string; username: string; action: string; resource_type: string | null; resource_id: number | null; resource_name: string | null; details: string | null; ip_address: string | null }
 export type AuditData = {
   rows: AuditRow[]; page: number; total: number; total_pages: number

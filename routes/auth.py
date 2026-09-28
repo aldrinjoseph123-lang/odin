@@ -49,15 +49,31 @@ def attempt_login(username, password):
         record_login_attempt(username, success=False)
         audit_log("login_failure", "user", user["id"], username, "external account: sign-in links only", actor=username)
         return False, "Bad username or password"
-    if not (user and check_password_hash(user["password_hash"], password)):
+    # A Microsoft-created account has no password hash at all ("microsoft:no-password").
+    if not (user and "$" in user["password_hash"] and check_password_hash(user["password_hash"], password)):
         record_login_attempt(username, success=False)
         # Failed attempts are evidence too — login_attempts is purged after
         # a week, the audit trail is not.
         audit_log("login_failure", "user", user["id"] if user else None, username, actor=username)
         return False, "Bad username or password"
+    from routes.sso import sso_enforced
+    if sso_enforced() and not user["password_login"]:
+        # Staff use Microsoft; only accounts an admin flagged keep a password.
+        record_login_attempt(username, success=False)
+        audit_log("login_failure", "user", user["id"], username, "password sign-in not allowed: Microsoft only", actor=username)
+        return False, "Staff sign in with Microsoft — use the Microsoft button"
     record_login_attempt(username, success=True)
     start_session(user)
-    audit_log("login_success", "user", user["id"], username, actor=username)
+    if sso_enforced():
+        # The emergency way in: always on the record, and the admins hear of it.
+        from services.notifications import notify_users
+        audit_log("break_glass_login", "user", user["id"], username, f"password sign-in while Microsoft is required, from {request.remote_addr}", actor=username)
+        admins = [r["id"] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+        notify_users(admins, "access", None, f"{escape(user['name'])} signed in with a password",
+                     f"{escape(user['name'])} used the emergency password sign-in from {escape(request.remote_addr or 'an unknown address')}. If that wasn't expected, deactivate the account on the Users page.",
+                     link="/audit-logs")
+    else:
+        audit_log("login_success", "user", user["id"], username, actor=username)
     return True, None
 
 
@@ -82,14 +98,16 @@ def start_session(user):
 def send_login_link(user, raw_token, invited_by=None, project_name=None, project_id=None):
     """Email the link; returns (ok, error). Never raises."""
     import graph
-    link = url_for("auth_link_consume", token=raw_token, _external=True,
-                   **({"next": url_for("project_detail", project_id=project_id)} if project_id else {}))
+    from core import external_url
+    from policies import policy
+    link = external_url("auth_link_consume", token=raw_token,
+                        **({"next": url_for("project_detail", project_id=project_id)} if project_id else {}))
     # Names come from the users table and the project form: escape them, this
     # is HTML going into a mail client.
     intro = (f"{escape(invited_by)} added you to the project <b>{escape(project_name)}</b> in Odin." if project_name
              else "Here is your Odin sign-in link.")
     html = (f"<p>{intro}</p><p><a href=\"{link}\">Sign in to Odin</a></p>"
-            f"<p>The link works once and expires in 30 minutes. If it has expired, request a new one from the sign-in page.</p>")
+            f"<p>The link works once and expires in {policy('link_minutes')} minutes. If it has expired, request a new one from the sign-in page.</p>")
     try:
         return graph.send_mail(user["email"], "Your Odin sign-in link", html)
     except Exception as exc:  # network / token errors must not break the invite
@@ -112,10 +130,11 @@ def auth_link_request():
         elif rate_limited(f"link:{email}", 3, 15):
             flash("Too many requests for that address — wait a few minutes and try again")
         else:
+            from policies import email_domain_allowed
             user = get_db().execute(
                 "SELECT * FROM users WHERE lower(email) = ? AND kind = 'external' AND active = 1", (email,)
             ).fetchone()
-            if user:
+            if user and email_domain_allowed(email):
                 send_login_link(user, issue_login_link(user["id"]))
             audit_log("login_link_requested", "user", user["id"] if user else None, email, actor=email)
             flash("If that address is on a project, a sign-in link is on its way")
@@ -136,16 +155,21 @@ def auth_reset_request():
     elif rate_limited(f"reset:{email}", 3, 15):
         flash("Too many requests for that address — wait a few minutes and try again")
     else:
+        from routes.sso import sso_enforced
         user = get_db().execute(
             "SELECT * FROM users WHERE lower(email) = ? AND kind = 'internal' AND active = 1", (email,)
         ).fetchone()
+        if user and sso_enforced() and not user["password_login"]:
+            user = None   # no password to reset: they sign in with Microsoft (the reply stays neutral)
         if user:
             import graph
             raw = issue_login_link(user["id"], purpose="reset")
-            link = url_for("auth_reset_form", token=raw, _external=True)
+            from core import external_url
+            from policies import policy
+            link = external_url("auth_reset_form", token=raw)
             html = (f"<p>Someone asked to reset the password for <b>{escape(user['username'])}</b> in Odin.</p>"
                     f'<p><a href="{link}">Choose a new password</a></p>'
-                    "<p>The link works once and expires in 30 minutes. If this was not you, ignore this mail: nothing changes.</p>")
+                    f"<p>The link works once and expires in {policy('link_minutes')} minutes. If this was not you, ignore this mail: nothing changes.</p>")
             try:
                 graph.send_mail(user["email"], "Reset your Odin password", html)
             except Exception as exc:   # delivery failure must not reveal anything
@@ -186,8 +210,18 @@ def auth_reset_form(token):
     return redirect(url_for("login"))
 
 
-@app.route("/auth/link/<token>")
+@app.route("/auth/link/<token>", methods=["GET", "POST"])
 def auth_link_consume(token):
+    """GET only shows a "Continue to Odin" button: mail security scanners open
+    links, and a GET that signed in would burn the one-time link before the
+    person ever clicked it. The button's POST is what signs in."""
+    if request.method == "GET":
+        if spa_serves("auth_link_consume"):
+            return spa_index()
+        from flask import render_template_string
+        return render_template_string(
+            '<!doctype html><title>Sign in · Odin</title><form method="post"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">'
+            '<button type="submit">Continue to Odin</button></form>')
     user = consume_login_link(token)
     if user is None:
         audit_log("login_link_rejected", details="invalid, expired, used, or account inactive", actor="link")
@@ -215,6 +249,15 @@ def login():
         flash(message)
         return render_template("login.html")
     if spa_serves("login"):
+        return spa_index()
+    return render_template("login.html")
+
+
+@app.route("/login/password")
+def login_password():
+    """The emergency password form, for accounts an admin flagged, once staff
+    must use Microsoft. Same POST as /login; this address just shows the form."""
+    if spa_serves("login_password"):
         return spa_index()
     return render_template("login.html")
 
@@ -317,7 +360,7 @@ def account_sign_out_others():
 def account_notifications():
     """Which kinds this user wants by email. Ticked = on; the form sends only
     the ticked ones. In-app notifications always arrive."""
-    off = [k for k in NOTIFICATION_KINDS if request.form.get(k) != "on"]
+    off = [k for k in NOTIFICATION_KINDS if request.form.get(k) != "on" and (k != "access" or session.get("role") == "Admin")]
     db = get_db()
     db.execute("UPDATE users SET email_off = ? WHERE id = ?", (",".join(off), session["user_id"]))
     db.commit()

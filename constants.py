@@ -73,6 +73,7 @@ NOTIFICATION_KINDS = {
     "approval": "Customer approval decisions",
     "activity": "Notes, finished tasks and documents on projects I manage",
     "assigned": "Tasks assigned to me",
+    "access": "Sign-in requests and emergency password sign-ins (admins)",
     "mention": "When someone mentions me in a note",
     "due": "A daily reminder of my tasks due today or overdue",
 }
@@ -194,4 +195,10 @@ NEW_USER_COLUMNS = {
     "last_login_at": "TEXT",
     # internal (password, Cloudflare Access) or external (email sign-in link)
     "kind": "TEXT NOT NULL DEFAULT 'internal'",
+    # Microsoft sign-in (routes/sso.py): the Entra object id this account is
+    # bound to; a first sign-in waits (pending=1, inactive) for an admin; and
+    # which accounts keep a password once staff must use Microsoft.
+    "ms_oid": "TEXT",
+    "pending": "INTEGER NOT NULL DEFAULT 0",
+    "password_login": "INTEGER NOT NULL DEFAULT 0",
 }

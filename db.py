@@ -212,6 +212,11 @@ def migrate_db(db):
     for column, coltype in NEW_USER_COLUMNS.items():
         if column not in user_columns:
             db.execute(f"ALTER TABLE users ADD COLUMN {column} {coltype}")
+    if "password_login" not in user_columns:
+        # Admins who exist before Microsoft sign-in keep their password, so
+        # turning "Microsoft only" on can never lock everyone out.
+        db.execute("UPDATE users SET password_login = 1 WHERE role = 'Admin' AND kind = 'internal'")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ms_oid ON users(ms_oid) WHERE ms_oid IS NOT NULL")
     # Rose and amber accents were retired: they read as the overdue/warning states.
     db.execute("UPDATE users SET accent = CASE accent WHEN 'rose' THEN 'plum' ELSE 'sky' END WHERE accent IN ('rose', 'amber')")
     if role_column_is_new:
@@ -503,7 +508,7 @@ def init_db():
     cleanup_soft_deletes(db)
     if first_run:
         db.execute(
-            "INSERT INTO users (username, password_hash, name, role, active, must_change_password) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (username, password_hash, name, role, active, must_change_password, password_login) VALUES (?, ?, ?, ?, ?, ?, 1)",
             ("admin", generate_password_hash("changeme", method="pbkdf2:sha256"), "Admin", "Admin", 1, 1),
         )
         db.commit()

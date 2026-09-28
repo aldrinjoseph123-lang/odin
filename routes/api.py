@@ -73,7 +73,11 @@ def api_session():
     import re
     user = _current_user()
     messages = [re.sub(r"<[^>]+>", "", str(m)).replace("  ", " ").strip() if isinstance(m, Markup) else m for m in get_flashed_messages()]
-    return jsonify({"csrf": csrf_token(), "user": user, "messages": messages})
+    from routes.sso import sso_configured, sso_enforced
+    # what the sign-in page offers: Microsoft for staff, and whether the
+    # password form is hidden (then only at /login/password, for flagged accounts)
+    signin = {"microsoft": sso_configured(), "microsoft_only": sso_enforced()}
+    return jsonify({"csrf": csrf_token(), "user": user, "messages": messages, "signin": signin})
 
 
 @app.route("/api/login", methods=["POST"])
@@ -185,7 +189,17 @@ def api_settings():
         "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled", "onedrive_backup_enabled")},
                     "guest_links_enabled": get_setting("guest_links_enabled", "1") == "1"},
         "policies": policy_view(),
+        "sso": _sso_view(),
     })
+
+
+def _sso_view():
+    from core import external_url
+    from routes.sso import sso_config, sso_configured, sso_enforced
+    client_id, tenant, secret = sso_config()
+    return {"client_id": client_id or None, "tenant_id": tenant or None, "has_secret": bool(secret), "configured": sso_configured(),
+            "enforced": sso_enforced(), "redirect_uri": external_url("sso_callback"),
+            "password_admins": get_db().execute("SELECT COUNT(*) FROM users WHERE role = 'Admin' AND active = 1 AND password_login = 1").fetchone()[0]}
 
 
 @app.route("/api/settings/rbac")
@@ -223,10 +237,13 @@ def api_settings_contacts():
 @permission_required("manage_users")
 def api_users():
     rows = get_db().execute(
-        "SELECT id, username, name, email, role, active, kind, last_login_at, created_at, avatar FROM users ORDER BY name"
+        "SELECT id, username, name, email, role, active, kind, last_login_at, created_at, avatar, pending, password_login, ms_oid FROM users ORDER BY name"
     ).fetchall()
-    return jsonify(users=[{k: r[k] for k in r.keys() if k != "avatar"} | {"active": bool(r["active"]), "avatar_url": avatar_url(r)} for r in rows],
-                   roles=list(ROLES), me=session["user_id"])
+    from routes.sso import sso_enforced
+    return jsonify(users=[{k: r[k] for k in r.keys() if k not in ("avatar", "ms_oid")}
+                          | {"active": bool(r["active"]), "pending": bool(r["pending"]), "password_login": bool(r["password_login"]),
+                             "microsoft": r["ms_oid"] is not None, "avatar_url": avatar_url(r)} for r in rows],
+                   roles=list(ROLES), me=session["user_id"], microsoft_only=sso_enforced())
 
 
 @app.route("/api/audit")
@@ -283,7 +300,8 @@ def api_account():
     off = set((u["email_off"] or "").split(","))
     return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
                    theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u),
-                   email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()],
+                   email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
+                                if k != "access" or session.get("role") == "Admin"],   # access requests reach admins only
                    mail_enabled=get_setting("notify_email_enabled") == "1")
 
 

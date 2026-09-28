@@ -5,7 +5,7 @@ import { UserAvatar } from "@/components/UserAvatar"
 import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ApiError, postForm, users as fetchUsers, type AdminUser, type User } from "@/lib/api"
+import { ApiError, postForm, users as fetchUsers, type AdminUser, type User, type UsersData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
@@ -13,7 +13,7 @@ const fmt = (iso: string | null, withTime = false) => (iso ? new Date(iso.endsWi
 const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-[12.5px] disabled:opacity-60"
 
 export default function Users(_props: { user: User }) {
-  const [data, setData] = useState<{ users: AdminUser[]; roles: string[]; me: number } | null>(null)
+  const [data, setData] = useState<UsersData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -34,12 +34,14 @@ export default function Users(_props: { user: User }) {
 
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!data) return <PageSkeleton />
+  const pending = data.users.filter((u) => u.pending)
+  const people = data.users.filter((u) => !u.pending)
 
   return (
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">Users</h1>
-        <p className="text-[13px] text-muted-foreground">{data.users.filter((u) => u.active).length} active · {data.users.filter((u) => u.kind === "external").length} external</p>
+        <p className="text-[13px] text-muted-foreground">{people.filter((u) => u.active).length} active · {people.filter((u) => u.kind === "external").length} external{pending.length ? ` · ${pending.length} waiting` : ""}</p>
         <div className="ml-auto flex items-center gap-2">
           <a href="/users/export.csv" className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
         </div>
@@ -50,16 +52,18 @@ export default function Users(_props: { user: User }) {
         </div>
       )}
 
+      {pending.length > 0 && <Pending people={pending} roles={data.roles} busy={busy} send={send} />}
+
       <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 overflow-auto rounded-lg border border-border">
           <table className="w-full border-collapse text-[13px]">
             <thead className="bg-background">
               <tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">
-                {["Name", "Username", "Email", "Role", "Status", "Last sign-in", "Created", ""].map((h, i) => <th key={i} className={cn("px-3 py-2 font-normal", (i === 1 || i >= 5) && i !== 7 && "hidden xl:table-cell")}>{h}</th>)}
+                {["Name", "Username", "Email", "Role", "Status", "Sign-in", "Last sign-in", "Created", ""].map((h, i) => <th key={i} className={cn("px-3 py-2 font-normal", (i === 1 || i >= 6) && i !== 8 && "hidden xl:table-cell")}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
-              {data.users.map((u) => <Row key={`${u.id}:${u.email ?? ""}`} u={u} roles={data.roles} me={data.me} busy={busy} send={send} />)}
+              {people.map((u) => <Row key={`${u.id}:${u.email ?? ""}`} u={u} roles={data.roles} me={data.me} microsoftOnly={data.microsoft_only} busy={busy} send={send} />)}
             </tbody>
           </table>
         </div>
@@ -69,7 +73,30 @@ export default function Users(_props: { user: User }) {
   )
 }
 
-function Row({ u, roles, me, busy, send }: { u: AdminUser; roles: string[]; me: number; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<void> }) {
+// Colleagues who signed in with Microsoft for the first time: an admin lets
+// them in with a role, or declines (the account stays, inactive).
+function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<void> }) {
+  const [role, setRole] = useState<Record<number, string>>({})
+  return (
+    <section className="mt-3 rounded-lg border border-warn-line bg-warn-soft/40 p-4" aria-label="Waiting for approval">
+      <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Waiting for approval <span className="font-normal text-muted-foreground">signed in with Microsoft, not yet allowed in</span></h3>
+      <ul className="grid gap-2">
+        {people.map((u) => (
+          <li key={u.id} className="flex flex-wrap items-center gap-2 text-[13px]">
+            <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.email} · asked {fmt(u.created_at, true)}</span></span>
+            <select value={role[u.id] ?? "Viewer"} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={selectClass}>
+              {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <Button size="sm" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/approve`, { role: role[u.id] ?? "Viewer" })}>Approve</Button>
+            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/decline`, {}, `Decline ${u.name}? They stay unable to sign in.`)}>Decline</Button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles: string[]; me: number; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<void> }) {
   const [email, setEmail] = useState(u.email ?? "")   // the row remounts (key) when the saved email changes
   const [pw, setPw] = useState("")
   const [resetting, setResetting] = useState(false)
@@ -92,12 +119,23 @@ function Row({ u, roles, me, busy, send }: { u: AdminUser; roles: string[]; me: 
         </select>
       </td>
       <td className="px-3 py-2">{u.active ? "Active" : <span className="text-bad">Deactivated</span>}</td>
+      <td className="px-3 py-2 text-[12.5px]">
+        {u.kind === "external" ? <span className="text-muted-foreground">Email link</span> : (
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {u.microsoft && <Badge variant="secondary">Microsoft</Badge>}
+            <label className="flex items-center gap-1.5 whitespace-nowrap" title="Keeps a password when staff must use Microsoft: the emergency way in">
+              <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => send(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-3.5 w-3.5 accent-primary" />
+              Password
+            </label>
+          </span>
+        )}
+      </td>
       <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground xl:table-cell">{u.last_login_at ? <Ago iso={u.last_login_at} /> : "—"}</td>
       <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground xl:table-cell">{fmt(u.created_at)}</td>
       <td className="px-3 py-2">
         <div className="flex flex-wrap items-center gap-1.5">
           {!self && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined)}>{u.active ? "Deactivate" : "Reactivate"}</Button>}
-          {u.kind !== "external" && (resetting ? (
+          {u.kind !== "external" && (!microsoftOnly || u.password_login) && (resetting ? (
             <form onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then(() => { setPw(""); setResetting(false) }) }} className="flex items-center gap-1">
               <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password" aria-label={`New password for ${u.name}`} minLength={8} required className="h-7 w-36 text-[12.5px]" />
               <Button type="submit" size="sm" className="h-7" disabled={busy || pw.length < 8}>Set</Button>

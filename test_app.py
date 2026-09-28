@@ -1215,7 +1215,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "settings": "/settings", "settings_section": "/settings/general", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
             "account": "/account", "my_work": "/my-work", "analytics": "/analytics", "alerts_log_view": "/alerts",
             "report_all": "/reports/all", "report_single": "/projects/1/report", "auth_link_request": "/auth/link",
-            "auth_reset_request": "/auth/reset", "auth_reset_form": "/auth/reset/any-token",
+            "auth_reset_request": "/auth/reset", "auth_reset_form": "/auth/reset/any-token", "auth_link_consume": "/auth/link/any-token", "login_password": "/login/password",
         }
         self.assertEqual(set(paths), spa.SPA_PAGES)          # a new port must be listed here too
         c, _ = self._api_client()
@@ -1363,7 +1363,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         import re
         token = re.search(r"/auth/reset/([A-Za-z0-9_-]+)", mail.call_args.args[2]).group(1)
         # a reset token is not a sign-in link, and a weak password keeps the token alive
-        self.assertIn("/auth/link", anon.get(f"/auth/link/{token}").headers["Location"])
+        self.assertIn("/auth/link", anon.post(f"/auth/link/{token}").headers["Location"])
         self.assertIn("invalid or has expired", anon.get("/api/session").get_json()["messages"][0])   # what the page it lands on shows
         self.assertEqual(anon.post(f"/auth/reset/{token}", data={"new_password": "short"}, headers=h).get_json()["messages"], ["Password must be at least 12 characters"])
         r = anon.post(f"/auth/reset/{token}", data={"new_password": "Granite-Harbour-Lantern-7"}, headers=h).get_json()
@@ -1606,6 +1606,117 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertTrue(c.get("/api/project-form").get_json()["defaults"]["customer_approval"])
         # only admins, and only known areas
         self.assertEqual(c.post("/settings/policies/nope", data={}, headers=h).status_code, 404)
+
+    # ---- Microsoft sign-in ------------------------------------------------------
+
+    TENANT, CLIENT = "11111111-2222-3333-4444-555555555555", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    def _sso_setup(self):
+        with self.raw_db() as db:
+            for k, v in (("sso_client_id", self.CLIENT), ("sso_tenant_id", self.TENANT), ("sso_client_secret", "shh")):
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (k, v))
+            db.commit()
+
+    def _ms_sign_in(self, client, oid, email, name="Sam Staff", **override):
+        """Run /auth/microsoft → Microsoft → /auth/microsoft/callback with a
+        stubbed token endpoint returning an ID token with these claims."""
+        import base64, json, time
+        start = client.get("/auth/microsoft")
+        self.assertIn(f"login.microsoftonline.com/{self.TENANT}/oauth2/v2.0/authorize", start.headers["Location"])
+        self.assertIn("code_challenge_method=S256", start.headers["Location"])
+        with client.session_transaction() as s:
+            state, nonce = s["sso"]["state"], s["sso"]["nonce"]
+        claims = {"tid": self.TENANT, "iss": f"https://login.microsoftonline.com/{self.TENANT}/v2.0", "aud": self.CLIENT,
+                  "nonce": nonce, "exp": time.time() + 600, "oid": oid, "preferred_username": email, "name": name, **override}
+        enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b"=").decode()
+        with patch("routes.sso.requests.post") as post:
+            post.return_value.json.return_value = {"id_token": f"{enc({'alg': 'RS256'})}.{enc(claims)}.sig"}
+            return client.get(f"/auth/microsoft/callback?code=abc&state={override.pop('_state', state)}")
+
+    def test_microsoft_sign_in_binds_by_oid_and_new_staff_wait_for_approval(self):
+        self._sso_setup()
+        pm1 = self._make_user("pm1", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email='pm1@corp.example' WHERE id=?", (pm1,)); db.commit()
+        # an existing colleague is linked by email once, then by oid
+        c = app_module.app.test_client()
+        self.assertEqual(self._ms_sign_in(c, "oid-pm1", "PM1@corp.example").headers["Location"], "/board")
+        self.assertEqual(c.get("/api/session").get_json()["user"]["name"], "pm1")
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT ms_oid FROM users WHERE id=?", (pm1,)).fetchone()[0], "oid-pm1")
+        # a stranger from the tenant: an inactive pending Viewer, admins told, not signed in
+        n = app_module.app.test_client()
+        self._ms_sign_in(n, "oid-new", "new@corp.example", "Nia New")
+        self.assertIsNone(n.get("/api/session").get_json()["user"])
+        with self.raw_db() as db:
+            row = db.execute("SELECT id, active, pending, role FROM users WHERE ms_oid='oid-new'").fetchone()
+            self.assertEqual(tuple(row)[1:], (0, 1, "Viewer"))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notifications WHERE kind='access'").fetchone()[0], 1)
+        self._ms_sign_in(n, "oid-new", "new@corp.example")        # again: still waiting, no second request
+        self.assertIn("waiting for an admin", n.get("/api/session").get_json()["messages"][0])
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM users WHERE ms_oid='oid-new'").fetchone()[0], 1)
+        # a Microsoft-made account has no password: trying one is a plain refusal, not a crash
+        r = app_module.app.test_client().post("/login", data={"username": "new", "password": "anything-at-all-1"})
+        self.assertEqual(r.status_code, 200)
+        # an admin approves with a role; now it works
+        self.client.post(f"/users/{row['id']}/approve", data={"role": "Member"})
+        self.assertEqual(self._ms_sign_in(n, "oid-new", "new@corp.example").headers["Location"], "/board")
+        self.assertEqual(n.get("/api/session").get_json()["user"]["role"], "Member")
+        # refusals: another tenant, a replayed state, a partner's address
+        x = app_module.app.test_client()
+        self._ms_sign_in(x, "oid-x", "x@other.example", tid="99999999-2222-3333-4444-555555555555")
+        self.assertIsNone(x.get("/api/session").get_json()["user"])
+        self._ms_sign_in(x, "oid-y", "y@corp.example", _state="forged")
+        self.assertIsNone(x.get("/api/session").get_json()["user"])
+        self.new_project(name="P", client="C")
+        self._invite(1, "ann@partner.example", "Customer", "Ann")
+        self._ms_sign_in(x, "oid-ann", "ann@partner.example")
+        self.assertIn("email link", x.get("/api/session").get_json()["messages"][0])
+
+    def test_microsoft_only_keeps_a_flagged_password_way_in_and_reports_its_use(self):
+        self._sso_setup()
+        a, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        m = self._make_user("mem", "Member")
+        # the fresh-install admin keeps a password; removing the last one is refused while enforced
+        self.assertEqual(a.post("/settings/sso", data={"enforced": "on"}, headers=h).get_json()["messages"], ["Saved"])
+        self.assertTrue(app_module.app.test_client().get("/api/session").get_json()["signin"]["microsoft_only"])
+        self.assertIn("at least one admin", a.post("/users/1/password-login", data={}, headers=h).get_json()["messages"][0])
+        # a member's password no longer works; the flagged admin's does, audited and announced
+        mc = app_module.app.test_client()
+        self.assertEqual(mc.post("/api/login", json={"username": "mem", "password": STRONG_PASSWORD},
+                                 headers={"X-CSRF-Token": mc.get("/api/session").get_json()["csrf"]}).status_code, 401)
+        self._api_client()
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='break_glass_login'").fetchone()[0], 1)
+            self.assertGreaterEqual(db.execute("SELECT COUNT(*) FROM notifications WHERE kind='access'").fetchone()[0], 1)
+        # with nobody flagged, Microsoft-only can't be switched on
+        a.post("/settings/sso", data={}, headers=h)
+        a.post("/users/1/password-login", data={}, headers=h)
+        self.assertIn("at least one active admin", a.post("/settings/sso", data={"enforced": "on"}, headers=h).get_json()["messages"][0])
+        self.assertEqual(m and a.post("/settings/sso", data={"client_id": "common", "tenant_id": "x"}, headers=h).get_json()["messages"][0][:22], "Client and tenant IDs ")
+        self.assertIn("removed", a.post("/settings/sso", data={"clear": "1"}, headers=h).get_json()["messages"][0])
+        self.assertFalse(app_module.app.test_client().get("/api/session").get_json()["signin"]["microsoft"])
+
+    def test_partner_links_respect_domains_lifetime_and_open_on_a_button(self):
+        self.new_project(name="P", client="C")
+        a, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        r = a.post("/settings/policies/security", data={"external_domains": "partner.com, @Vendor.ae", "link_minutes": "10",
+                                                        "upload_types": "pdf", "session_idle_minutes": "60", "session_max_hours": "12",
+                                                        "password_min_length": "12", "login_max_attempts": "5", "login_window_minutes": "15",
+                                                        "upload_max_mb": "25", "undo_minutes": "5"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Saved"])
+        self.assertIn("only be invited from: partner.com, vendor.ae", a.post("/projects/1/participants/invite", data={"email": "x@gmail.com", "name": "X", "role": "Customer"}, headers=h).get_json()["messages"][0])
+        with patch("routes.auth.send_login_link", return_value=(True, None)):
+            a.post("/projects/1/participants/invite", data={"email": "ok@partner.com", "name": "Ok", "role": "Customer"}, headers=h)
+        with self.raw_db() as db:
+            created, expires = db.execute("SELECT created_at, expires_at FROM login_links ORDER BY id DESC LIMIT 1").fetchone()
+        from datetime import datetime as _d
+        self.assertAlmostEqual((_d.fromisoformat(expires) - _d.fromisoformat(created)).total_seconds(), 600, delta=2)
+        self.assertIn("between 5 and 1440", a.post("/settings/policies/security", data={"link_minutes": "1"}, headers=h).get_json()["messages"][0])
+        self.assertIn("domains like", a.post("/settings/policies/security", data={"external_domains": "not a domain"}, headers=h).get_json()["messages"][0])
 
     def test_alarm_coloured_accents_are_retired(self):
         # red and amber read as overdue/warning: refused now, and old choices move on the next boot
@@ -1889,7 +2000,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         link = re.search(r'href="([^"]+/auth/link/[^"]+)"', by["ann@acme.example"]).group(1)
         self.assertIn("next=/projects/1", link)
         anon = app_module.app.test_client()
-        r = anon.get(link.replace("http://localhost", ""))
+        self.assertIsNone(anon.get(link.replace("http://localhost", "")) and anon.get("/api/session").get_json()["user"])   # opening the link only shows Continue
+        r = anon.post(link.replace("http://localhost", ""))
         self.assertEqual(r.headers["Location"], "/projects/1")
         self.assertEqual(anon.get("/api/session").get_json()["user"]["name"], "Ann")
         with self.raw_db() as db:   # a week-old expired link is swept when the next one is minted
@@ -2074,7 +2186,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def _external_client(self, email):
         c = app_module.app.test_client()
-        c.get(f"/auth/link/{self._link_for(email)}")
+        c.post(f"/auth/link/{self._link_for(email)}")
         return c
 
     def test_invite_creates_external_account_participant_and_hashed_link(self):
@@ -2106,21 +2218,21 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self._invite(1, "jane@vendor.example")
         raw = self._link_for("jane@vendor.example")
         c = app_module.app.test_client()
-        self.assertEqual(c.get(f"/auth/link/{raw}").headers["Location"].endswith("/board"), True)
+        self.assertEqual(c.post(f"/auth/link/{raw}").headers["Location"].endswith("/board"), True)
         self.assertEqual(c.get("/api/session").get_json()["user"]["kind"], "external")
         again = app_module.app.test_client()
-        self.assertIn("/auth/link", again.get(f"/auth/link/{raw}").headers["Location"])      # used once
+        self.assertIn("/auth/link", again.post(f"/auth/link/{raw}").headers["Location"])      # used once
         self.assertIsNone(again.get("/api/session").get_json()["user"])
-        self.assertIn("/auth/link", again.get("/auth/link/not-a-token").headers["Location"])
+        self.assertIn("/auth/link", again.post("/auth/link/not-a-token").headers["Location"])
         self.assertEqual(c.get("/auth/link").headers["Location"].rstrip("/").endswith("/board"), True)   # signed in: the request page just goes home
         expired = self._link_for("jane@vendor.example")
         with self.raw_db() as db:
             db.execute("UPDATE login_links SET expires_at='2020-01-01T00:00:00' WHERE used_at IS NULL"); db.commit()
-        self.assertIsNone(again.get(f"/auth/link/{expired}") and again.get("/api/session").get_json()["user"])
+        self.assertIsNone(again.post(f"/auth/link/{expired}") and again.get("/api/session").get_json()["user"])
         fresh = self._link_for("jane@vendor.example")
         with self.raw_db() as db:
             db.execute("UPDATE users SET active=0 WHERE email='jane@vendor.example'"); db.commit()
-        self.assertIsNone(again.get(f"/auth/link/{fresh}") and again.get("/api/session").get_json()["user"])
+        self.assertIsNone(again.post(f"/auth/link/{fresh}") and again.get("/api/session").get_json()["user"])
         with self.raw_db() as db:
             self.assertGreaterEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='login_link_rejected'").fetchone()[0], 3)
 

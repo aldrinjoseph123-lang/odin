@@ -12,7 +12,7 @@ web
 - **Delivery / project managers (Member role):** run each rollout day to day — move stages, tick tasks, upload deliverables, write status notes.
 - **Sales / account managers (Contributor role):** create a project from a customer PO, watch progress, comment; never move a delivery stage.
 - **Viewers:** read-only staff.
-- **External participants (contractors, resellers, customer contacts):** invited to a project by email, sign in with a one-time link (no password), see only the projects they are on, read and comment, tick tasks tagged to them. A customer contact may also approve or decline each stage change when the project asks for it.
+- **External participants (contractors, resellers, customer contacts):** invited to a project by email (only from allowed partner domains, if the admin set any), sign in with a one-time link (no password; opening it shows a Continue button so mail scanners can't spend it; lifetime set by the admin), see only the projects they are on, read and comment, tick tasks tagged to them. A customer contact may also approve or decline each stage change when the project asks for it.
 - **Customers / vendors via the older per-project guest links** (view-and-comment, or advance one step): still live until invited accounts replace them.
 
 ## Product Purpose
@@ -45,6 +45,7 @@ One shared pipeline for internal team, customer and vendor, with **stage SLAs me
 - Guest pages are public-internet surfaces: no internal navigation, no internal notes, no PO number on the vendor link, author name required on every write.
 - Drag-and-drop stage changes exist and are audited; vendor may advance one step only, never to terminal. The person who moved a stage can undo it for five minutes while it is still the latest move; the undo is audited and the team is told.
 - All stored timestamps are UTC; rendered in the reader's zone.
+- **Staff sign in with Microsoft** (Entra ID, one tenant, its own app registration). Microsoft proves identity; Odin decides the role. A colleague unknown to Odin waits for an admin to approve them with a role. Admins can require Microsoft for all staff; accounts they flag keep an emergency password form at /login/password, every use audited and announced to admins.
 - Admin settings are grouped by area (General, Sign-in & security, People, Projects & workflow, Notifications, Integrations, Backups, Audit). Workspace policy an admin controls: company name, time zone, date format, working week, new-user theme/accent, session idle and maximum length, password minimum, sign-in attempt limit, upload size and types, undo window, default stage template and customer-approval default. Every change is validated against its limits and audited.
 - Terminology: *project* = one rollout; *stage*; *task*; *deliverable*; *guest link* (customer / vendor); *SLA* = expected days in a stage.
 - **Undecided:** whether time-on-axis (Gantt-style planned vs actual) becomes a first-class view or a detail-page section; how "gates" (required task/document before a stage change) are enforced — today they are not.

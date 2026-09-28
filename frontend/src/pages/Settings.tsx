@@ -80,6 +80,7 @@ export default function Settings(_props: { user: User }) {
         {section === "general" && policyForm("general", "Workspace")}
         {section === "security" && (
           <>
+            <Sso key={JSON.stringify(data.sso)} sso={data.sso} busy={busy} send={send} />
             {policyForm("security", "Policies", "applies at everyone's next request")}
             <Toggles data={data} busy={busy} send={send} title="Outside access" keys={[
               { key: "guest_links_enabled", label: "Keep the legacy anonymous guest links working (turn off once invited partner and customer accounts have replaced them; every old link then stops)" },
@@ -177,6 +178,10 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               {p.kind === "int" && (
                 <Input id={`pol-${p.key}`} type="number" min={p.min} max={p.max} required value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value === "" ? "" : Number(e.target.value) })} className="h-8 w-28 text-[13px]" />
               )}
+              {(p.kind === "url" || p.kind === "domains") && (
+                <Input id={`pol-${p.key}`} type={p.kind === "url" ? "url" : "text"} maxLength={p.max} placeholder={p.kind === "url" ? "https://odin.example.com" : "partner.com, vendor.ae"}
+                  value={Array.isArray(v[p.key]) ? (v[p.key] as string[]).join(", ") : String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-md text-[13px]" />
+              )}
               {p.kind === "text" && (
                 <Input id={`pol-${p.key}`} required maxLength={p.max} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-sm text-[13px]" />
               )}
@@ -205,6 +210,42 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
           ))}
         </div>
         <div><Button type="submit" size="sm" disabled={busy || !dirty}>Save</Button></div>
+      </form>
+    </Panel>
+  )
+}
+
+// Microsoft sign-in for staff: its own app registration (not the mail one),
+// and the switch that hides the password form. The server refuses to require
+// Microsoft until at least one admin keeps a password.
+function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; send: Send }) {
+  const [f, setF] = useState({ client_id: sso.client_id ?? "", tenant_id: sso.tenant_id ?? "", client_secret: "" })
+  const [enforced, setEnforced] = useState(sso.enforced)
+  const status = !sso.configured ? "Not set up: staff sign in with a password." : sso.enforced ? "Required: staff sign in with Microsoft only." : "Set up: staff can use Microsoft or a password."
+  return (
+    <Panel title="Microsoft sign-in" hint="staff; partners keep their email link">
+      <form onSubmit={(e) => { e.preventDefault(); void send("/settings/sso", { ...f, ...(enforced ? { enforced: "on" } : {}) }).then(() => setF({ ...f, client_secret: "" })) }} className="grid gap-3">
+        <p className="text-[13px]">{status}</p>
+        <div className="grid gap-1 text-[12.5px]">
+          <span className="text-muted-foreground">Redirect URI to add to the app registration (Authentication → Web)</span>
+          <code className="w-fit max-w-full break-all rounded-md border border-border bg-secondary px-2 py-1 font-mono text-[12px]">{sso.redirect_uri}</code>
+          <span className="text-muted-foreground">In Entra ID: a separate app registration, single tenant, ID tokens only; a client secret under Certificates &amp; secrets.</span>
+        </div>
+        <div className="grid max-w-md gap-2">
+          <label className="grid gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="h-8 font-mono text-[12.5px]" /></label>
+          <label className="grid gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={f.tenant_id} onChange={(e) => setF({ ...f, tenant_id: e.target.value })} className="h-8 font-mono text-[12.5px]" /></label>
+          <label className="grid gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[12.5px]" /></label>
+        </div>
+        <label className="flex items-start gap-2 text-[13px]">
+          <input type="checkbox" checked={enforced} onChange={(e) => setEnforced(e.target.checked)} disabled={!sso.configured} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
+          <span>Staff must sign in with Microsoft <span className="block text-[12px] text-muted-foreground">The password form disappears. Accounts ticked "Password" on the Users page ({sso.password_admins} admin{sso.password_admins === 1 ? "" : "s"} now) keep an emergency form at /login/password; each use is recorded and the admins are told.</span></span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" size="sm" disabled={busy}>Save</Button>
+          {sso.configured && <a href="/auth/microsoft" className={buttonVariants({ size: "sm", variant: "outline" })}>Try Microsoft sign-in</a>}
+          {sso.configured && <Button type="button" size="sm" variant="ghost" className="ml-auto text-bad hover:text-bad" disabled={busy}
+            onClick={() => send("/settings/sso", { clear: "1" }, "Remove Microsoft sign-in? Staff go back to passwords; anyone who only ever used Microsoft will need a password reset.")}>Remove</Button>}
+        </div>
       </form>
     </Panel>
   )

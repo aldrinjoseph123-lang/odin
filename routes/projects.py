@@ -883,8 +883,11 @@ def participant_invite(project_id):
     name = request.form.get("name", "").strip()[:80] or email.split("@")[0]
     role = request.form.get("role", "")
     db = get_db()
+    from policies import email_domain_allowed, policy
     if not valid_email(email):
         flash("Enter a valid email address")
+    elif not db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND kind = 'internal'", (email,)).fetchone() and not email_domain_allowed(email):
+        flash(f"Partners can only be invited from: {', '.join(policy('external_domains'))} (Settings → Sign-in & security)")
     elif role not in EXTERNAL_PROJECT_ROLES:
         flash("Pick a role")
     else:

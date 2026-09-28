@@ -26,6 +26,7 @@ import routes.guest  # noqa: E402,F401
 import routes.integrations  # noqa: E402,F401
 import routes.projects  # noqa: E402,F401
 import routes.settings  # noqa: E402,F401
+import routes.sso  # noqa: E402,F401
 import routes.users  # noqa: E402,F401
 
 

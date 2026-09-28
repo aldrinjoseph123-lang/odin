@@ -159,7 +159,6 @@ def content_matches_extension(file):
 # entropy, only its SHA-256 stored, one use, a short life, and every issue and
 # use lands in the audit trail (done by the routes).
 
-LINK_TTL_MINUTES = 30
 
 
 def issue_login_link(user_id, created_by=None, purpose="signin"):
@@ -167,6 +166,7 @@ def issue_login_link(user_id, created_by=None, purpose="signin"):
     exists only in the email (and the inviter's fallback flash)."""
     import hashlib
     raw = secrets.token_urlsafe(32)
+    from policies import policy
     now = datetime.utcnow()
     # housekeeping on the way in: a link a week past expiry has no evidential
     # value the audit trail does not already hold
@@ -174,7 +174,7 @@ def issue_login_link(user_id, created_by=None, purpose="signin"):
     get_db().execute(
         "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address, purpose) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (user_id, hashlib.sha256(raw.encode()).hexdigest(), now.isoformat(),
-         (now + timedelta(minutes=LINK_TTL_MINUTES)).isoformat(), created_by, request.remote_addr, purpose),
+         (now + timedelta(minutes=policy("link_minutes"))).isoformat(), created_by, request.remote_addr, purpose),
     )
     get_db().commit()
     return raw

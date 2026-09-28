@@ -20,6 +20,7 @@ import ReportAll from "@/pages/ReportAll"
 import Report from "@/pages/Report"
 import Login from "@/pages/Login"
 import LinkRequest from "@/pages/LinkRequest"
+import LinkContinue from "@/pages/LinkContinue"
 import ForgotPassword from "@/pages/ForgotPassword"
 import { session, type User } from "@/lib/api"
 import { setDateFormat } from "@/lib/format"
@@ -54,7 +55,9 @@ export default function App() {
       <ErrorBoundary>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/login/password" element={<Login />} />
         <Route path="/auth/link" element={<LinkRequest />} />
+        <Route path="/auth/link/:token" element={<LinkContinue />} />
         <Route path="/auth/reset" element={<ForgotPassword />} />
         <Route path="/auth/reset/:token" element={<ForgotPassword />} />
         <Route path="/board" element={<Protected>{(user) => <Flow user={user} />}</Protected>} />
