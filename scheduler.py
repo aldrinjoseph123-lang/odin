@@ -103,10 +103,27 @@ def run_due():
     return todo
 
 
+def healthy(max_age_minutes=3):
+    """For the container health check: a heartbeat in the last few minutes."""
+    from datetime import timedelta
+    try:
+        con = sqlite3.connect(_db.DB_PATH)
+        row = con.execute("SELECT value FROM settings WHERE key = ?", (HEARTBEAT,)).fetchone()
+        con.close()
+        return bool(row) and datetime.fromisoformat(row[0]) > datetime.utcnow() - timedelta(minutes=max_age_minutes)
+    except Exception:  # noqa: BLE001 — no database yet is simply "not healthy"
+        return False
+
+
 if __name__ == "__main__":
+    if "--healthcheck" in sys.argv:
+        sys.exit(0 if healthy() else 1)
     if "--once" in sys.argv:
         print(f"[scheduler] ran: {', '.join(run_due()) or 'nothing due'}")
         sys.exit(0)
     while True:
-        run_due()
+        try:
+            run_due()
+        except Exception as exc:  # noqa: BLE001 — a bad pass (e.g. the database mid-migration) must not end the service
+            print(f"[scheduler] pass failed: {exc}", file=sys.stderr)
         time.sleep(60 - datetime.utcnow().second)   # wake on the minute

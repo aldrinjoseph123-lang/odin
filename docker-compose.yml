@@ -42,12 +42,26 @@ services:
     env_file: .env
     environment:
       ODIN_DATA_DIR: /data
+      PYTHONUNBUFFERED: "1"   # job lines reach `docker compose logs scheduler` as they happen
     volumes:
       - odin-data:/data
       # A NAS / file-server share for backups: mount it here and set
       # Settings → Backups → Share folder path to /mnt/backup-share.
       # - /mnt/nas/odin:/mnt/backup-share
-    entrypoint: ["python", "scheduler.py"]
+    # The app creates and migrates the database on start; wait for it.
+    depends_on:
+      app:
+        condition: service_healthy
+    # Same entrypoint as the app (SECRET_KEY and data-dir checks), its own command.
+    command: ["python", "scheduler.py"]
+    # The image's check calls the web port, which this container doesn't
+    # serve; healthy here means a heartbeat in the last 3 minutes.
+    healthcheck:
+      test: ["CMD", "python", "scheduler.py", "--healthcheck"]
+      interval: 60s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
 
 volumes:
   odin-data:

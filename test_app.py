@@ -2850,6 +2850,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertNotIn("backup", scheduler.run_due())
         c, _ = self._api_client()
         self.assertTrue(c.get("/api/settings?section=backups").get_json()["backups"]["scheduler_alive"])
+        self.assertTrue(scheduler.healthy())                      # the container health check
+        with self.raw_db() as db:
+            db.execute("UPDATE settings SET value = '2020-01-01T00:00:00' WHERE key = 'scheduler.heartbeat'"); db.commit()
+        self.assertFalse(scheduler.healthy())
 
     def test_healthz_and_robots(self):
         anon = app_module.app.test_client()

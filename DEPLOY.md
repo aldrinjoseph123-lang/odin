@@ -29,7 +29,7 @@ Then, immediately:
 |---|---|
 | `app`   | gunicorn, 2 workers × 4 threads, `--preload` so `init_db()` runs once before forking |
 | `nginx` | TLS termination, serves `/static` directly, proxies everything else |
-| `scheduler` | Runs the daily digest and backups at the times set in Settings (`scheduler.py`) |
+| `scheduler` | Runs the daily digest, backups, weekly report and nightly audit retention at the times set in Settings (`scheduler.py`). Starts once `app` is healthy; its own health check is a heartbeat in the last 3 minutes. `docker compose logs scheduler` shows each job. |
 
 `PMS_TRUST_PROXY=1` is set for `app` because nginx sits in front: without it
 every request appears to come from 127.0.0.1, which would make the audit log
