@@ -16,7 +16,7 @@ export type User = {
   prefs?: { date_format: DateFormat; undo_minutes: number }
 }
 
-export type SignIn = { microsoft: boolean; microsoft_only: boolean }
+export type SignIn = { microsoft: boolean; microsoft_only: boolean; link_minutes?: number }
 type SessionResponse = { csrf: string; user: User | null; messages?: string[]; signin?: SignIn }
 
 let csrfToken: string | null = null

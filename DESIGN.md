@@ -31,13 +31,13 @@ colors:
 typography:
   brand-display-sm:
     fontFamily: "Chakra Petch, Inter, sans-serif"
-    fontSize: "30px"
+    fontSize: "22px"
     fontWeight: 700
     lineHeight: 1.02
     letterSpacing: "-0.025em"
   brand-display-md:
     fontFamily: "Chakra Petch, Inter, sans-serif"
-    fontSize: "40px"
+    fontSize: "28px"
     fontWeight: 700
     lineHeight: 1.02
     letterSpacing: "-0.025em"
@@ -48,8 +48,8 @@ typography:
     lineHeight: 1.02
     letterSpacing: "-0.025em"
   display:
-    fontFamily: "Inter, system-ui, -apple-system, sans-serif"
-    fontSize: "20px"
+    fontFamily: "Chakra Petch, Inter, sans-serif"
+    fontSize: "24px"
     fontWeight: 700
     lineHeight: 1.25
     letterSpacing: "-0.025em"
@@ -265,7 +265,7 @@ Built in `frontend/src/components/Brand.tsx`; tokens `--brand-red`, `--brand-red
 **The Red-Text Rule.** The parent red (`#E11D2E`) is 4.2:1 on brand ink: fine for the logo, the eye, the dot and the 30 px+ tagline, not for small text. Small red text (eyebrow numbers, the byline's "24x7") uses `--brand-red-text`, which is the parent red on white (4.75:1) and lifts to `#F23D4D` inside `.brand-panel` (5.2:1).
 
 - **Logo** = the raven mark (a perched white raven with a red eye on a black tile, corners at 16% of its size) + the ODIN wordmark (chamfered letters drawn as SVG, the O struck through in red: Ø), then, where the byline is shown, a thin rule and "by Protect24x7" on the same line. Header: 28 px mark, 15 px wordmark, letters in `currentColor`.
-- **Brand panel** (`AuthLayout`): `.brand-panel`, always black with the parent's faint 135° rule, whatever the theme. Byline "by Protect24x7", eyebrow "01 / Project lifecycle", the tagline in Chakra Petch 700 uppercase (30 → 40 → 52 px by breakpoint, the only sizes above 24 px), second line red, live clock "19:02 GMT+4 · On watch" with a pulsing red dot. Left half from `lg`; a top band on phones. The form side follows the user's theme.
+- **Sign-in pages** (`AuthLayout` + `AuthHeading`; sign-in, reset, email link, Continue): from `lg` the black brand panel fills the left half (eyebrow, the tagline in Chakra Petch 700 uppercase at 52 px with the second line red, supporting line, live "· On watch" clock); below `lg` it shrinks to a band (logo + tagline at 22–28 px) so the form is the first screen on a phone, even at 320×568. The form sits on the page ground with no card, in a 400 px column: a 24 px h1 and a one-line muted lede, then 44 px fields (16 px text, so iOS doesn't zoom) with visible labels. Buttons stay enabled; a missing field is named under it and focused. The password has a show/hide toggle and a Caps Lock warning; "Forgot password?" sits beside its label. Staff see "Sign in with Microsoft" first when it's set up; partners get a full-width "Partner or customer?" row to the email link, not a footnote. A muted "Trouble signing in? Ask your Odin admin." closes the column.
 - **Print header** (`PrintBrand`): logo + byline left, tagline right, 2 px ink rule; print only.
 - **Numbered labels**: panel titles with `data-n` get "01 / " from a CSS counter on `main`, Chakra Petch, muted ink (never red in the app). Used on the project page, settings, account and the project form.
 - **Emails**: `graph.EMAIL_SHELL` wraps every send: black band with the text wordmark (red Ø) and byline, white body, tagline footer. Text, not images.
@@ -323,7 +323,7 @@ Loaded from Google Fonts at 400 / 500 / 600 / 700; `font-feature-settings: "cv11
 **Character:** one family, a narrow weight range and a tight size ramp. Hierarchy is carried by weight (500 for names, 600 for titles and labels, 700 only for card titles on the sign-in pages and the brand tagline) and by grey level, not by size. Headings are tracked tight (`-0.025em`); everything else is at normal tracking and sentence case.
 
 ### Hierarchy
-- **Display** (700, 20 px, tight): the card title on the sign-in, reset and email-link pages ("Sign in", "Reset your password").
+- **Display** (Chakra Petch 600, 24 px, tight): the h1 on the sign-in, reset and email-link pages ("Sign in to Odin", "Reset your password").
 - **Title** (Chakra Petch 600, 17 px, tracking tight): pane titles — "Active rollouts", the selected rollout's name.
 - **Wordmark**: the SVG ODIN wordmark, 15 px high in the top bar (see Brand surfaces); it is drawn, not set in a font.
 - **Byline** (Chakra Petch 600, 10.5 px, tracked 0.16em, uppercase): "by Protect24x7" on brand surfaces only.

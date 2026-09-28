@@ -70,28 +70,43 @@ function useClock() {
   return now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "short" })
 }
 
-// Sign-in, reset and email-link pages: the black brand panel beside (or,
-// on a phone, above) the form. The form side follows the user's theme.
+// Sign-in, reset and email-link pages: the black brand panel beside the
+// form from lg, a compact band above it on smaller screens (so on a phone
+// the form, not the tagline, fills the first screen). The form side follows
+// the user's theme and sits on the page itself, no card around it.
 export function AuthLayout({ children }: { children: ReactNode }) {
   const clock = useClock()
   return (
-    <main className="grid min-h-svh bg-background lg:grid-cols-2">
-      <aside className="brand-panel flex flex-col justify-between gap-6 px-5 py-5 sm:px-8 lg:px-12 lg:py-10">
-        <Logo byline markClass="h-9 w-9" wordClass="h-5" />
+    <main className="grid min-h-svh bg-background lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <aside className="brand-panel flex flex-col gap-4 px-5 py-5 sm:px-8 lg:justify-between lg:gap-6 lg:px-12 lg:py-10">
+        <Logo byline markClass="h-8 w-8 lg:h-9 lg:w-9" wordClass="h-[18px] lg:h-5" />
         <div>
-          <Eyebrow n={1} className="text-brand-muted">Project lifecycle</Eyebrow>
-          <p className="mt-3 font-display text-[30px] font-bold uppercase leading-[1.02] tracking-tight sm:text-[40px] lg:text-[52px]">
-            Every project.<br /><span className="text-brand-red">On watch.</span>
+          <Eyebrow n={1} className="hidden text-brand-muted lg:block">Project lifecycle</Eyebrow>
+          <p className="font-display text-[22px] font-bold uppercase leading-[1.02] tracking-tight sm:text-[28px] lg:mt-3 lg:text-[52px]">
+            Every project.<br className="hidden lg:block" /><span className="whitespace-nowrap text-brand-red"> On watch.</span>
           </p>
           <p className="mt-4 hidden max-w-sm text-[14px] leading-relaxed text-brand-muted lg:block">Every rollout, stage and deadline, from kickoff to handover. Nothing stalls unseen.</p>
         </div>
-        <p className="flex items-center gap-2 font-display text-[11.5px] font-semibold uppercase tracking-[.16em] text-brand-muted">
+        <p className="hidden items-center gap-2 font-display text-[11.5px] font-semibold uppercase tracking-[.16em] text-brand-muted lg:flex">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-red" aria-hidden />
           <time>{clock}</time> · On watch
         </p>
       </aside>
-      <div className="flex items-center justify-center px-4 py-10">{children}</div>
+      <div className="flex flex-col px-5 py-8 sm:px-10 lg:px-16">
+        <div className="w-full max-w-[400px] sm:mx-auto lg:my-auto">{children}</div>
+        <p className="mt-10 w-full max-w-[400px] text-[12.5px] text-muted-foreground sm:mx-auto lg:mt-0">Trouble signing in? Ask your Odin admin.</p>
+      </div>
     </main>
+  )
+}
+
+// The title block every sign-in page opens with: the page's one h1.
+export function AuthHeading({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="mb-6">
+      <h1 className="text-2xl font-semibold leading-tight tracking-tight">{title}</h1>
+      {children && <p className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground">{children}</p>}
+    </div>
   )
 }
 

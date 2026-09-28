@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
-import { AuthLayout } from "@/components/Brand"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { AuthHeading, AuthLayout } from "@/components/Brand"
+import { ArrowLeft, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ApiError, postForm, session } from "@/lib/api"
@@ -18,9 +18,10 @@ export default function ForgotPassword() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [minutes, setMinutes] = useState(30)   // the link lifetime from Settings, once the session answers
   useEffect(() => {
     document.title = token ? "Choose a new password · Odin" : "Reset your password · Odin"
-    session().then((s) => { if (s.messages?.length) setMessage(s.messages.join(" ")) }).catch(() => {})
+    session().then((s) => { if (s.signin?.link_minutes) setMinutes(s.signin.link_minutes); if (s.messages?.length) setMessage(s.messages.join(" ")) }).catch(() => {})
   }, [token])
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -33,27 +34,26 @@ export default function ForgotPassword() {
   }
   return (
     <AuthLayout>
-      <Card className="w-full max-w-sm">
-        <CardHeader><CardTitle className="text-[20px] font-bold tracking-tight">{token ? "Choose a new password" : "Reset your password"}</CardTitle></CardHeader>
-        <CardContent>
-          <p className="mb-4 text-[13px] text-muted-foreground">
-            {token ? "At least 12 characters. Every device signed in to this account will be signed out." : "Enter the email on your account and we will send a link that works once for 30 minutes."}
-          </p>
-          {message && <Alert className="mb-4" role="status"><AlertDescription>{message}</AlertDescription></Alert>}
-          {done ? <a href="/login" className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-primary text-[13px] font-medium text-primary-foreground">Sign in</a> :
-          <form onSubmit={submit} className="grid gap-3">
-            {token ? (
-              <div className="grid gap-1.5"><Label htmlFor="pw">New password</Label>
-                <Input id="pw" type="password" autoComplete="new-password" minLength={12} required autoFocus value={pw} onChange={(e) => setPw(e.target.value)} /></div>
-            ) : (
-              <div className="grid gap-1.5"><Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-            )}
-            <Button type="submit" disabled={busy || (token ? pw.length < 12 : !email.trim())}>{busy ? "Working…" : token ? "Set password" : "Email me a reset link"}</Button>
-          </form>}
-          <p className="mt-4 text-center text-[12.5px] text-muted-foreground"><a href="/login" className="text-primary-text hover:underline">Back to sign-in</a></p>
-        </CardContent>
-      </Card>
+      <AuthHeading title={token ? "Choose a new password" : "Reset your password"}>
+        {token ? "At least 12 characters. Every device signed in to this account will be signed out."
+          : `Enter the email on your account. We'll send a link that works once, for ${minutes} minutes.`}
+      </AuthHeading>
+      {message && <Alert className="mb-5" role="status"><AlertDescription>{message}</AlertDescription></Alert>}
+      {done ? <a href="/login" className={buttonVariants({ className: "h-11 w-full text-sm" })}>Sign in</a> : (
+        <form onSubmit={submit} className="grid gap-4" aria-busy={busy}>
+          {token ? (
+            <div className="grid gap-1.5"><Label htmlFor="pw" className="text-[13.5px]">New password</Label>
+              <Input id="pw" type="password" autoComplete="new-password" minLength={12} required autoFocus value={pw} onChange={(e) => setPw(e.target.value)} className="h-11 text-base" /></div>
+          ) : (
+            <div className="grid gap-1.5"><Label htmlFor="email" className="text-[13.5px]">Email</Label>
+              <Input id="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 text-base" /></div>
+          )}
+          <Button type="submit" className="mt-1 h-11 text-sm" disabled={busy}>
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Working…</> : token ? "Set password" : "Email me a reset link"}
+          </Button>
+        </form>
+      )}
+      <a href="/login" className="mt-6 inline-flex min-h-11 items-center gap-1.5 text-[13.5px] text-primary-text hover:underline"><ArrowLeft className="h-4 w-4" aria-hidden /> Back to sign-in</a>
     </AuthLayout>
   )
 }

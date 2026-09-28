@@ -76,7 +76,7 @@ def api_session():
     from routes.sso import sso_configured, sso_enforced
     # what the sign-in page offers: Microsoft for staff, and whether the
     # password form is hidden (then only at /login/password, for flagged accounts)
-    signin = {"microsoft": sso_configured(), "microsoft_only": sso_enforced()}
+    signin = {"microsoft": sso_configured(), "microsoft_only": sso_enforced(), "link_minutes": policy("link_minutes")}
     return jsonify({"csrf": csrf_token(), "user": user, "messages": messages, "signin": signin})
 
 

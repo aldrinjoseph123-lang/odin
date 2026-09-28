@@ -2,8 +2,8 @@ import { useEffect, useState, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { AuthLayout } from "@/components/Brand"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { AuthHeading, AuthLayout } from "@/components/Brand"
+import { ArrowLeft, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ApiError, postForm, session } from "@/lib/api"
@@ -14,11 +14,12 @@ export default function LinkRequest() {
   const [params] = useSearchParams()
   const [email, setEmail] = useState("")
   const [busy, setBusy] = useState(false)
+  const [minutes, setMinutes] = useState(30)
   const [message, setMessage] = useState<string | null>(params.get("expired") ? "That sign-in link is invalid or has expired — request a new one." : null)
   useEffect(() => {
     document.title = "Sign in by email · Odin"
     // the expired-link flash arrives here; ?expired already covers the wording
-    session().then((s) => { if (s.messages?.length && !params.get("expired")) setMessage(s.messages.join(" ")) }).catch(() => {})
+    session().then((s) => { if (s.signin?.link_minutes) setMinutes(s.signin.link_minutes); if (s.messages?.length && !params.get("expired")) setMessage(s.messages.join(" ")) }).catch(() => {})
   }, [params])
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -30,21 +31,20 @@ export default function LinkRequest() {
   }
   return (
     <AuthLayout>
-      <Card className="w-full max-w-sm">
-        <CardHeader><CardTitle className="text-[20px] font-bold tracking-tight">Sign in by email</CardTitle></CardHeader>
-        <CardContent>
-          <p className="mb-4 text-[13px] text-muted-foreground">Partners and customers sign in with a link sent to the email address they were invited with. It works once and expires in 30 minutes.</p>
-          {message && <Alert className="mb-4" role="status"><AlertDescription>{message}</AlertDescription></Alert>}
-          <form onSubmit={submit} className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
-            </div>
-            <Button type="submit" disabled={busy || !email.trim()}>{busy ? "Sending…" : "Email me a sign-in link"}</Button>
-          </form>
-          <p className="mt-4 text-center text-[12.5px] text-muted-foreground"><a href="/login" className="text-primary-text hover:underline">Staff sign-in</a></p>
-        </CardContent>
-      </Card>
+      <AuthHeading title="Sign in by email">
+        Partners and customers get a link at the address they were invited with. It works once, for {minutes} minutes.
+      </AuthHeading>
+      {message && <Alert className="mb-5" role="status"><AlertDescription>{message}</AlertDescription></Alert>}
+      <form onSubmit={submit} className="grid gap-4" aria-busy={busy}>
+        <div className="grid gap-1.5">
+          <Label htmlFor="email" className="text-[13.5px]">Email</Label>
+          <Input id="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 text-base" />
+        </div>
+        <Button type="submit" className="mt-1 h-11 text-sm" disabled={busy}>
+          {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Sending…</> : "Email me a sign-in link"}
+        </Button>
+      </form>
+      <a href="/login" className="mt-6 inline-flex min-h-11 items-center gap-1.5 text-[13.5px] text-primary-text hover:underline"><ArrowLeft className="h-4 w-4" aria-hidden /> Staff sign-in</a>
     </AuthLayout>
   )
 }
