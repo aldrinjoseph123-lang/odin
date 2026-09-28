@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, stageColumns, stateText, timeAgo } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, stageColumns, stateText, timeAgo } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -101,5 +101,23 @@ describe("stageColumns", () => {
     expect(stageColumns([generic, generic])).toEqual(generic)
     expect(stageColumns([["A", "B"], ["B", "A"]])).toEqual(["A", "B"])   // first order wins, nothing duplicated
     expect(stageColumns([])).toEqual([])
+  })
+})
+
+describe("fitStages", () => {
+  const edr = ["done", "done", "current", "next", "next", "next", "next", "next"] as const
+  const kinds = (items: ReturnType<typeof fitStages>) => items.map((i) => i.kind === "stage" ? i.index : `${i.kind}:${i.from}-${i.to}`)
+  it("keeps every stage while they fit", () => {
+    expect(kinds(fitStages([...edr], 8))).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+  })
+  it("folds finished stages first", () => {
+    expect(kinds(fitStages([...edr], 7))).toEqual(["done:0-1", 2, 3, 4, 5, 6, 7])
+  })
+  it("then folds far-off stages, always ending on the last stage", () => {
+    expect(kinds(fitStages([...edr], 5))).toEqual(["done:0-1", 2, 3, "later:4-6", 7])
+    expect(kinds(fitStages(["current", "next", "next", "next", "next", "next", "next"], 5))).toEqual([0, 1, 2, "later:3-5", 6])
+  })
+  it("never folds a single finished stage into a node of one", () => {
+    expect(kinds(fitStages(["done", "current", "next", "next", "next"], 4))).toEqual([0, 1, "later:2-3", 4])
   })
 })

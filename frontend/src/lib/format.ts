@@ -92,3 +92,27 @@ export function stageColumns(lists: string[][]): string[] {
   }
   return cols
 }
+
+// Fitting a flowchart into `capacity` columns: stages stay one per column while
+// they fit. Past that, the finished stages fold into one "done" node; if that
+// is still too many, stages after the current one's next few fold into one
+// "later" node, and the last stage always keeps its own column so the flow
+// visibly ends. Indexes are into the stage list.
+export type FlowItem = { kind: "stage"; index: number } | { kind: "done" | "later"; from: number; to: number }
+export function fitStages(statuses: ("done" | "current" | "next")[], capacity: number): FlowItem[] {
+  const n = statuses.length
+  const all: FlowItem[] = statuses.map((_, index) => ({ kind: "stage", index }))
+  if (n <= capacity) return all
+  const current = Math.max(0, statuses.indexOf("current"))
+  const lastDone = statuses.lastIndexOf("done")
+  const head: FlowItem[] = lastDone >= 1 ? [{ kind: "done", from: 0, to: lastDone }] : statuses.slice(0, lastDone + 1).map((_, index) => ({ kind: "stage", index }))
+  const rest = all.slice(lastDone + 1)
+  if (head.length + rest.length <= capacity) return [...head, ...rest]
+  // keep: head, current, as many next stages as fit, a "later" node, the last stage
+  const room = Math.max(0, capacity - head.length - 3)
+  const keepTo = Math.min(n - 2, current + room)
+  const kept: FlowItem[] = []
+  for (let i = current; i <= keepTo; i++) kept.push({ kind: "stage", index: i })
+  const later: FlowItem[] = keepTo + 1 <= n - 2 ? [{ kind: "later", from: keepTo + 1, to: n - 2 }] : []
+  return [...head, ...kept, ...later, { kind: "stage", index: n - 1 }]
+}

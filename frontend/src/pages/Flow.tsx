@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { days, fmtDate, stateText, lateBy, nextUp, stageColumns } from "@/lib/format"
+import { days, fitStages, fmtDate, stateText, lateBy, nextUp, stageColumns } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
@@ -274,6 +274,17 @@ function TimeStrip({ d }: { d: FlowDetail }) {
 export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string, undo?: string) => void; onClose?: () => void; standalone?: boolean }) {
   const [note, setNote] = useState("")
   const [confirming, setConfirming] = useState(false)
+  // The flowchart fits its width: measure it, and fold stages that don't fit
+  // (finished ones first) until someone asks to see them all.
+  const [flowWidth, setFlowWidth] = useState(0)
+  const [showAll, setShowAll] = useState(false)
+  useEffect(() => { setShowAll(false) }, [d.id])
+  const measure = useCallback((el: HTMLOListElement | null) => {
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => setFlowWidth(e.contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const [comment, setComment] = useState("")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -323,35 +334,70 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           </div>
         </div>
 
-        {/* the flowchart */}
-        {/* Each stage column keeps a readable width; a long list scrolls sideways
-            rather than breaking stage names mid-word. */}
-        <ol className="mt-4 grid grid-cols-1 items-start gap-2 md:gap-0 md:overflow-x-auto md:pb-2 md:[grid-template-columns:var(--cols)]" style={{ "--cols": `repeat(${d.stages.length}, minmax(124px, 1fr))` } as CSSProperties} aria-label="Stages">
-          {d.stages.map((s, i) => (
-            <li key={s.name} className="relative min-w-0 md:px-1.5 md:first:pl-0 md:last:pr-0">
-              {i > 0 && (
-                <span className="absolute -left-2 top-[26px] hidden w-4 items-center md:flex" aria-hidden>
-                  <span className={cn("h-[1.5px] flex-1", d.stages[i - 1].status === "done" ? "bg-ok-line" : "bg-input")} />
-                  <ArrowRight className={cn("-ml-1.5 h-3 w-3", d.stages[i - 1].status === "done" ? "text-ok-line" : "text-input")} />
-                </span>
-              )}
-              <div className={cn("min-h-[58px] rounded-lg border-[1.5px] bg-card px-2.5 py-2",
-                s.status === "done" && "border-ok-line bg-ok-soft",
-                s.status === "current" && cn("ring-[3px]", STATE[d.state].ring),
-                s.status === "next" && "border-dashed border-input")}>
-                <div className={cn("flex items-start gap-1 text-[12.5px] font-semibold leading-tight", s.status === "next" && "text-nav-fg")}>
-                  {s.status === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}<span className="line-clamp-2">{s.name}</span>
-                </div>
-                <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
-                  {s.status === "next" ? (s.sla_days ? `SLA ${s.sla_days} d` : "—") : s.status === "done" ? days(s.days) : `${days(s.days)}${s.sla_days ? ` · SLA ${s.sla_days}` : ""}`}
-                </div>
-              </div>
-              {/* every stage carries its own tasks — work happens here, not on the project page */}
-              <StageTasks d={d} stage={s.name} done={s.status === "done"} reload={reload} onError={setErr} />
-              {s.status === "current" && openHere > 0 && <p className="mt-1 text-[11.5px] text-muted-foreground">{openHere} open before moving on</p>}
-            </li>
-          ))}
-        </ol>
+        {/* the flowchart: one column per stage while they fit (112 px each);
+            below md it is a plain stacked list and nothing folds */}
+        {(() => {
+          const stacked = typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches
+          const capacity = showAll || stacked || !flowWidth ? Infinity : Math.max(4, Math.floor((flowWidth + 12) / 112))
+          const items = fitStages(d.stages.map((st) => st.status), capacity)
+          const itemDone = (it: (typeof items)[number]) => it.kind === "done" || (it.kind === "stage" && d.stages[it.index].status === "done")
+          return (
+            <ol ref={measure} className="mt-4 grid grid-cols-1 items-start gap-2 md:gap-0 md:overflow-x-auto md:pb-2 md:[grid-template-columns:var(--cols)]" style={{ "--cols": `repeat(${items.length}, minmax(100px, 1fr))` } as CSSProperties} aria-label="Stages">
+              {items.map((it, k) => {
+                const arrow = k > 0 && (
+                  <span className="absolute -left-2 top-[26px] hidden w-4 items-center md:flex" aria-hidden>
+                    <span className={cn("h-[1.5px] flex-1", itemDone(items[k - 1]) ? "bg-ok-line" : "bg-input")} />
+                    <ArrowRight className={cn("-ml-1.5 h-3 w-3", itemDone(items[k - 1]) ? "text-ok-line" : "text-input")} />
+                  </span>
+                )
+                if (it.kind !== "stage") {
+                  const names = d.stages.slice(it.from, it.to + 1).map((st) => st.name)
+                  const open = d.tasks.filter((t) => !t.done && names.includes(t.stage)).length
+                  return (
+                    <li key={`${it.kind}-${it.from}`} className="relative min-w-0 md:px-1.5 md:first:pl-0 md:last:pr-0">
+                      {arrow}
+                      <button type="button" onClick={() => setShowAll(true)} aria-expanded={false}
+                        aria-label={`${it.kind === "done" ? "Finished" : "Later"} stages: ${names.join(", ")}. Show every stage`}
+                        title={names.join(" → ")}
+                        className={cn("block min-h-[58px] w-full rounded-lg border-[1.5px] px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                          it.kind === "done" ? "border-ok-line bg-ok-soft hover:bg-ok-soft/70" : "border-dashed border-input bg-card hover:bg-muted")}>
+                        <span className={cn("flex items-start gap-1 text-[12.5px] font-semibold leading-tight", it.kind === "later" && "text-nav-fg")}>
+                          {it.kind === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}
+                          {it.kind === "done" ? `${names.length} done` : `+${names.length} later`}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">{names.join(", ")}</span>
+                      </button>
+                      {it.kind === "later" && open > 0 && <p className="mt-2 text-[11.5px] text-muted-foreground">{open} open task{open === 1 ? "" : "s"}</p>}
+                    </li>
+                  )
+                }
+                const i = it.index, st = d.stages[i]
+                return (
+                  <li key={st.name} className="relative min-w-0 md:px-1.5 md:first:pl-0 md:last:pr-0">
+                    {arrow}
+                    <div className={cn("min-h-[58px] rounded-lg border-[1.5px] bg-card px-2.5 py-2",
+                      st.status === "done" && "border-ok-line bg-ok-soft",
+                      st.status === "current" && cn("ring-[3px]", STATE[d.state].ring),
+                      st.status === "next" && "border-dashed border-input")}>
+                      <div className={cn("flex items-start gap-1 text-[12.5px] font-semibold leading-tight", st.status === "next" && "text-nav-fg")}>
+                        {st.status === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}<span className="line-clamp-2">{st.name}</span>
+                      </div>
+                      <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
+                        {st.status === "next" ? (st.sla_days ? `SLA ${st.sla_days} d` : "—") : st.status === "done" ? days(st.days) : `${days(st.days)}${st.sla_days ? ` · SLA ${st.sla_days}` : ""}`}
+                      </div>
+                    </div>
+                    {/* every stage carries its own tasks — work happens here, not on the project page */}
+                    <StageTasks d={d} stage={st.name} done={st.status === "done"} reload={reload} onError={setErr} />
+                    {st.status === "current" && openHere > 0 && <p className="mt-1 text-[11.5px] text-muted-foreground">{openHere} open before moving on</p>}
+                  </li>
+                )
+              })}
+            </ol>
+          )
+        })()}
+        {showAll && flowWidth > 0 && d.stages.length * 112 > flowWidth + 12 && (
+          <button type="button" onClick={() => setShowAll(false)} className="mt-1 text-[12px] text-muted-foreground hover:text-foreground">Fold stages to fit</button>
+        )}
         {/* one place for errors: the Advance section shows its own when it is on screen */}
         {err && !(d.can_move && d.next_stage) && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
 
