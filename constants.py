@@ -5,7 +5,6 @@ codebase may import from here; this module imports from nothing internal, so it
 can never be part of an import cycle.
 """
 
-UNDO_WINDOW_SECS = 300  # 5 minutes
 
 # Tables the soft-delete/restore helpers may touch. SQLite cannot parameterise
 # an identifier, so those helpers interpolate the table name — this allowlist

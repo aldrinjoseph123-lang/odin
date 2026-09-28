@@ -19,7 +19,7 @@ from constants import (
     VIA_OPTIONS,
 )
 from db import get_db, get_doc_category_names, get_setting, get_stage_names, project_role_of
-from security import ABSOLUTE_SESSION_HOURS, csrf_token, init_security
+from security import csrf_token, init_security
 
 DEV_SECRET = "dev-secret-change-me"
 
@@ -31,6 +31,15 @@ app.config["USING_DEV_SECRET"] = app.secret_key == DEV_SECRET
 
 # cookie hardening + CSRF + security response headers (see security.py)
 init_security(app)
+
+
+@app.before_request
+def _idle_lifetime_from_policy():
+    """The idle cap is admin policy; the signed cookie's max age follows it."""
+    if request.endpoint in ("static", "spa_assets", "favicon"):
+        return
+    from policies import policy
+    app.permanent_session_lifetime = timedelta(minutes=policy("session_idle_minutes"))
 
 
 @app.template_filter("localdt")
@@ -50,6 +59,12 @@ def localdt(value, mode="datetime"):
         f'<time class="localdt" data-mode="{mode}" datetime="{escape(iso)}" '
         f'title="{escape(fallback)} UTC">{escape(fallback)}</time>'
     )
+
+
+def undo_note():
+    """The "(5 min window)" that follows an Undo button, from policy."""
+    from policies import policy
+    return f"({policy('undo_minutes')} min window)"
 
 
 def undo_button(label, endpoint, **values):
@@ -116,7 +131,8 @@ def _session_still_valid():
     resetting its password ends every live session it has, not just the next
     login. One indexed primary-key lookup per request."""
     login_at = session.get("login_at")
-    if not login_at or datetime.fromisoformat(login_at) < datetime.utcnow() - timedelta(hours=ABSOLUTE_SESSION_HOURS):
+    from policies import policy
+    if not login_at or datetime.fromisoformat(login_at) < datetime.utcnow() - timedelta(hours=policy("session_max_hours")):
         return False
     row = get_db().execute(
         "SELECT active, session_epoch FROM users WHERE id = ?", (session["user_id"],)

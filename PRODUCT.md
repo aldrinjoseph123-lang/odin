@@ -45,6 +45,7 @@ One shared pipeline for internal team, customer and vendor, with **stage SLAs me
 - Guest pages are public-internet surfaces: no internal navigation, no internal notes, no PO number on the vendor link, author name required on every write.
 - Drag-and-drop stage changes exist and are audited; vendor may advance one step only, never to terminal. The person who moved a stage can undo it for five minutes while it is still the latest move; the undo is audited and the team is told.
 - All stored timestamps are UTC; rendered in the reader's zone.
+- Admin settings are grouped by area (General, Sign-in & security, People, Projects & workflow, Notifications, Integrations, Backups, Audit). Workspace policy an admin controls: company name, time zone, date format, working week, new-user theme/accent, session idle and maximum length, password minimum, sign-in attempt limit, upload size and types, undo window, default stage template and customer-approval default. Every change is validated against its limits and audited.
 - Terminology: *project* = one rollout; *stage*; *task*; *deliverable*; *guest link* (customer / vendor); *SLA* = expected days in a stage.
 - **Undecided:** whether time-on-axis (Gantt-style planned vs actual) becomes a first-class view or a detail-page section; how "gates" (required task/document before a stage change) are enforced — today they are not.
 

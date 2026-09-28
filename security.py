@@ -22,12 +22,11 @@ from db import get_db
 
 # --- authentication: brute-force lockout -----------------------------------
 
-IDLE_SESSION_MINUTES = 60   # no request for this long → sign in again
-ABSOLUTE_SESSION_HOURS = 12 # sign in again after this, however active
-
-MAX_LOGIN_FAILURES = 5      # failures per username+IP within the window
-LOGIN_WINDOW_MINUTES = 15   # rolling window
-LOGIN_LOCKOUT_MINUTES = 15  # how long the block lasts once tripped
+# Session lengths, the failure limit and its window are admin policy now
+# (policies.py: session_idle_minutes, session_max_hours, login_max_attempts,
+# login_window_minutes). The failure window is also the pause: failures
+# older than it stop counting.
+UPLOAD_CEILING_MB = 100     # the server never reads more, whatever the policy
 
 # --- files: upload allowlist ------------------------------------------------
 # Business documents only. Deliberately excludes anything the browser will
@@ -51,11 +50,29 @@ def allowed_upload(filename):
     return filename.rsplit(".", 1)[1].lower() in ALLOWED_UPLOAD_EXTENSIONS
 
 
+def upload_problem(file):
+    """Why this upload is refused under the admin's policy (type, then size),
+    or None. The fixed allowlist above still applies underneath."""
+    from policies import policy
+    allowed = policy("upload_types")
+    ext = file.filename.rsplit(".", 1)[1].lower() if file.filename and "." in file.filename else ""
+    if not allowed_upload(file.filename) or ext not in allowed:
+        return f"That file type isn't allowed. Accepted: {', '.join(allowed)}"
+    file.stream.seek(0, 2)
+    size = file.stream.tell()
+    file.stream.seek(0)
+    limit = policy("upload_max_mb")
+    if size > limit * 1024 * 1024:
+        return f"That file is larger than {limit} MB"
+    return None
+
+
 # --- authentication ---------------------------------------------------------
 
 
 def _login_window_start():
-    return (datetime.utcnow() - timedelta(minutes=LOGIN_WINDOW_MINUTES)).isoformat()
+    from policies import policy
+    return (datetime.utcnow() - timedelta(minutes=policy("login_window_minutes"))).isoformat()
 
 
 def login_is_blocked(username):
@@ -66,7 +83,8 @@ def login_is_blocked(username):
         "WHERE username = ? AND ip_address IS ? AND success = 0 AND attempted_at > ?",
         (username, request.remote_addr, _login_window_start()),
     ).fetchone()
-    return row["failures"] >= MAX_LOGIN_FAILURES
+    from policies import policy
+    return row["failures"] >= policy("login_max_attempts")
 
 
 def record_login_attempt(username, success):
@@ -211,8 +229,13 @@ WEAK_PASSWORD_TERMS = ("password", "changeme", "letmein", "qwerty", "odin", "pro
 
 def password_problem(password):
     """Return a human-readable reason the password is unacceptable, else None."""
-    if len(password) < 12:
-        return "Password must be at least 12 characters"
+    from flask import has_app_context
+    minimum = 12
+    if has_app_context():
+        from policies import policy
+        minimum = policy("password_min_length")
+    if len(password) < minimum:
+        return f"Password must be at least {minimum} characters"
     if password.isdigit() or password.isalpha():
         return "Password must mix letters with numbers or symbols"
     # Substring, not equality: the exact-match version happily accepted
@@ -310,10 +333,10 @@ def init_security(app):
         # Set PMS_HTTPS=1 in production (behind TLS) so the cookie is never
         # sent over plaintext. Left off by default so local HTTP dev works.
         SESSION_COOKIE_SECURE=os.environ.get("PMS_HTTPS") == "1",
-        # Idle cap. The absolute cap (ABSOLUTE_SESSION_HOURS) is enforced in
-        # core._auth_gate, since Flask only refreshes the idle one.
-        PERMANENT_SESSION_LIFETIME=timedelta(minutes=IDLE_SESSION_MINUTES),
-        MAX_CONTENT_LENGTH=25 * 1024 * 1024,  # 25 MB per upload
+        # Idle cap: set from policy on every request (core._auth_gate); the
+        # absolute cap is checked there too, since Flask only refreshes this one.
+        PERMANENT_SESSION_LIFETIME=timedelta(minutes=60),
+        MAX_CONTENT_LENGTH=UPLOAD_CEILING_MB * 1024 * 1024,  # the per-file policy is checked by upload_problem
     )
     app.before_request(_validate_csrf)
     app.after_request(_security_headers)

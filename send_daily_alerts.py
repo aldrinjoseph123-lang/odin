@@ -46,7 +46,8 @@ def send_due_reminders(db):
     from markupsafe import escape
     from db import PROJECT_OPEN_SQL as OPEN
     from services.notifications import notify_users
-    today = date.today().isoformat()
+    from policies import local_today
+    today = local_today(db).isoformat()
     rows = db.execute(
         "SELECT t.title, t.due_date, t.assignee_id, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
         f"WHERE t.done = 0 AND t.assignee_id IS NOT NULL AND t.due_date IS NOT NULL AND t.due_date <= ? AND p.deleted_at IS NULL AND {OPEN} "
@@ -67,6 +68,10 @@ def send_due_reminders(db):
 def main():
     with app.test_request_context():   # url_for in mails needs a request context
         db = get_db()
+        from policies import is_working_day
+        if not is_working_day(db=db):   # Settings → General → Working week
+            print("Not a working day — no reminders or digest.")
+            return 0
         reminded = send_due_reminders(db)
         print(f"Due-task reminders: {reminded} person(s).")
         projects = db.execute(

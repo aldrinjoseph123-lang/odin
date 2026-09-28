@@ -193,7 +193,9 @@
     }
   html {
     @apply font-sans antialiased;
-    font-feature-settings: "cv11", "ss01";
+    /* calt off: Inter turns "24x7" into "24×7", which corrupts addresses
+       and codes (aldrin@protect24x7.com must read exactly as typed). */
+    font-feature-settings: "cv11", "ss01", "calt" 0;
     }
   /* Page titles speak in the brand face; everything else stays Inter. */
   h1 { font-family: var(--font-display); }

@@ -41,7 +41,6 @@ export default function Users(_props: { user: User }) {
         <h1 className="text-[17px] font-semibold tracking-tight">Users</h1>
         <p className="text-[13px] text-muted-foreground">{data.users.filter((u) => u.active).length} active · {data.users.filter((u) => u.kind === "external").length} external</p>
         <div className="ml-auto flex items-center gap-2">
-          <a href="/settings" className={buttonVariants({ variant: "ghost", size: "sm" })}>Settings</a>
           <a href="/users/export.csv" className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
         </div>
       </div>

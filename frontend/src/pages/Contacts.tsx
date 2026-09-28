@@ -53,7 +53,6 @@ export default function Contacts(_props: { user: User }) {
   return (
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <a href="/settings" className="text-[12.5px] text-muted-foreground hover:text-foreground">Settings</a><span className="text-[12.5px] text-muted-foreground">/</span>
         <h1 className="text-[17px] font-semibold tracking-tight">Contacts & partners</h1>
         <p className="text-[13px] text-muted-foreground">the pick-lists the project form offers</p>
       </div>

@@ -20,6 +20,7 @@ import time
 from urllib.parse import urlencode
 
 import requests
+from markupsafe import escape
 
 # Same data location as db.DATA_DIR — graph.py is imported by the cron scripts
 # outside a Flask context, so it resolves the path itself rather than importing db.
@@ -292,13 +293,18 @@ EMAIL_SHELL = (
     '<span style="font:600 10px/1 Arial,sans-serif;letter-spacing:.16em;color:#B8B8B4;margin-left:12px">BY PROTECT<span style="color:#F23D4D">24X7</span></span>'
     '</td></tr>'
     '<tr><td style="background:#FFFFFF;padding:24px;font-size:14px;line-height:1.55">{body}</td></tr>'
-    '<tr><td style="padding:12px 24px;font:600 10px/1.4 Arial,sans-serif;letter-spacing:.16em;color:#4B5563">EVERY PROJECT. ON WATCH.</td></tr>'
+    '<tr><td style="padding:12px 24px;font:600 10px/1.4 Arial,sans-serif;letter-spacing:.16em;color:#4B5563">EVERY PROJECT. ON WATCH. · {company}</td></tr>'
     '</table></div>'
 )
 
 
 def send_mail(to_email, subject, html_body):
-    html_body = EMAIL_SHELL.format(body=html_body)
+    try:   # the footer names the company from Settings → General; a script without the app still sends
+        from policies import policy
+        company = policy("company_name").upper()
+    except Exception:  # noqa: BLE001
+        company = "PROTECT24X7"
+    html_body = EMAIL_SHELL.format(body=html_body, company=escape(company))
     if not mail_configured():
         return False, "Outlook mail is not connected"
     headers, error = _headers()

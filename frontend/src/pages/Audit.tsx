@@ -38,7 +38,6 @@ export default function Audit(_props: { user: User }) {
         <h1 className="text-[17px] font-semibold tracking-tight">Audit log</h1>
         <p className="text-[13px] text-muted-foreground">{data.total} {filtered ? "matching" : ""} entr{data.total === 1 ? "y" : "ies"} · append-only</p>
         <div className="ml-auto flex items-center gap-2">
-          <a href="/settings" className={buttonVariants({ variant: "ghost", size: "sm" })}>Settings</a>
           <a href={`/audit-logs/export.csv${query ? `?${query}` : ""}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
         </div>
       </div>

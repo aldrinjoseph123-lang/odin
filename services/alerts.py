@@ -17,6 +17,7 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
+from policies import local_today
 from db import get_db, get_stage_names, get_terminal_stage, stages_for_projects
 from services.analytics import sla_by_stage, stage_sla_state
 from services.notifications import notify_event
@@ -138,7 +139,7 @@ def schedule_status(project, today=None, soon_days=None, terminal_stage=None):
         return None
     if (terminal_stage or get_terminal_stage(project["id"])) == project["stage"]:
         return None
-    today = today or date.today()
+    today = today or local_today()
     if soon_days is None:
         soon_days = get_alert_type_settings().get(
             "project_due_soon", DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"]
@@ -170,7 +171,7 @@ def build_alerts(projects, dismissed=None):
     thresholds = get_alert_type_settings()
     stale_cutoff = datetime.utcnow() - timedelta(days=thresholds.get("stale", DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"])
     soon_days = thresholds.get("project_due_soon", DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
-    today = date.today()
+    today = local_today()
     stage_lists = stages_for_projects([p["id"] for p in projects])
     alerts = {"project_overdue": [], "project_due_soon": [], "stage_sla_breach": [], "stale": []}
     for p in projects:

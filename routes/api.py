@@ -4,6 +4,8 @@ the API is a second door into the same rooms, not a second house.
 """
 from flask import abort, g, jsonify, request, session, url_for
 
+from policies import local_today, policy, policy_view
+
 from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
@@ -52,6 +54,8 @@ def _current_user():
         "must_change_password": bool(session.get("must_change_password")),
         "permissions": _permissions_for(session.get("role")),
         "nav": nav_counts(),
+        # workspace-wide display choices from Settings → General
+        "prefs": {"date_format": policy("date_format"), "undo_minutes": policy("undo_minutes")},
     }
 
 
@@ -158,7 +162,9 @@ def api_settings():
     connected = bool(connection and connection["refresh_token"])
     teams, channels, teams_error = [], [], None
     team_id = request.args.get("team_id", "")
-    if connected:
+    # Teams are fetched from Microsoft only for the Integrations area; every
+    # other settings area loads without a network round trip.
+    if connected and request.args.get("section") in (None, "integrations"):
         teams, teams_error = graph.list_joined_teams()
         if team_id:
             channels, teams_error = graph.list_channels(team_id)
@@ -178,6 +184,7 @@ def api_settings():
         },
         "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled", "onedrive_backup_enabled")},
                     "guest_links_enabled": get_setting("guest_links_enabled", "1") == "1"},
+        "policies": policy_view(),
     })
 
 
@@ -285,7 +292,7 @@ def api_account():
 def api_my_work():
     db = get_db()
     uid = session["user_id"]
-    today = date.today().isoformat()
+    today = local_today().isoformat()
     owned = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
         f"WHERE p.owner_id = ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{project_scope()[0]} ORDER BY p.updated_at DESC",
@@ -386,6 +393,9 @@ def api_project_form():
         "vendors": [r["name"] for r in lists["vendors"]], "products": [r["name"] for r in lists["products"]],
         "outsourcers": [{"name": r["name"], "email": r["email"]} for r in lists["outsourcers"]],
         "templates": [{"id": t["id"], "name": t["name"]} for t in db.execute("SELECT id, name FROM stage_templates ORDER BY name")],
+        # Settings → Projects & workflow: what a new project starts with
+        "defaults": {"stage_template_id": int(policy("default_template")) if policy("default_template") else None,
+                     "customer_approval": policy("default_customer_approval")},
         "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")],
     })
 
@@ -689,8 +699,8 @@ def api_project_flow(project_id):
         "next_stage": stages[current + 1] if current + 1 < len(stages) else None,
         "state": _flow_state(project, sla, schedule), "over_by": round(sla["over_by"], 1) if sla else None,
         "start_date": start, "target_end_date": project["target_end_date"],
-        "days_left": (target - date.today()).days if target else None,
-        "today": date.today().isoformat(),
+        "days_left": (target - local_today()).days if target else None,
+        "today": local_today().isoformat(),
         "stages": stage_rows,
         # a task without a stage belongs to whatever stage the project is in
         "tasks": [{"id": t["id"], "title": t["title"], "done": bool(t["done"]), "due_date": t["due_date"],

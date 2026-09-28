@@ -7,6 +7,7 @@ from flask import flash, redirect, render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 from constants import ROLES
+from policies import policy
 from core import app, permission_required
 from spa import spa_index, spa_serves
 from db import get_db
@@ -38,9 +39,9 @@ def users():
             flash(problem)
         else:
             cursor = db.execute(
-                "INSERT INTO users (username, password_hash, name, role, active, email, created_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+                "INSERT INTO users (username, password_hash, name, role, active, email, created_at, theme, accent) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)",
                 (username, generate_password_hash(password, method="pbkdf2:sha256"), name, role, email or None,
-                 datetime.utcnow().isoformat()),
+                 datetime.utcnow().isoformat(), policy("default_theme"), policy("default_accent")),
             )
             db.commit()
             audit_log("create_user", "user", cursor.lastrowid, username, f"role={role}")

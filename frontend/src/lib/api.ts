@@ -1,3 +1,4 @@
+import type { DateFormat } from "@/lib/format"
 // One thin client for Flask's JSON API. Same session cookie as the Jinja
 // pages; every mutation carries the CSRF token from /api/session as a header.
 
@@ -12,6 +13,7 @@ export type User = {
   theme: "system" | "light" | "dark"
   accent: string
   avatar_url: string | null
+  prefs?: { date_format: DateFormat; undo_minutes: number }
 }
 
 type SessionResponse = { csrf: string; user: User | null; messages?: string[] }
@@ -167,6 +169,10 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 }
 
 // ---- settings ----
+export type Policy = {
+  key: string; area: "general" | "security" | "workflow"; kind: "int" | "bool" | "choice" | "multi" | "text"
+  label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]
+}
 export type SettingsData = {
   templates: { id: number; name: string; projects: number; stages: { id: number; name: string; sla_days: number | null }[] }[]
   doc_categories: { id: number; name: string }[]
@@ -177,8 +183,10 @@ export type SettingsData = {
     teams: { id: string; name: string }[]; channels: { id: string; name: string }[]; team_id: string; teams_error: string | null
   }
   toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "onedrive_backup_enabled" | "guest_links_enabled", boolean>
+  policies: Policy[]
 }
-export const settingsData = (teamId = "") => getJson<SettingsData>(`/api/settings${teamId ? `?team_id=${encodeURIComponent(teamId)}` : ""}`)
+export const settingsData = (section: string, teamId = "") =>
+  getJson<SettingsData>(`/api/settings?section=${encodeURIComponent(section)}${teamId ? `&team_id=${encodeURIComponent(teamId)}` : ""}`)
 
 export type RbacData = { roles: string[]; permissions: string[]; matrix: Record<string, Record<string, boolean>>; locked: Record<string, string[]> }
 export const rbac = () => getJson<RbacData>("/api/settings/rbac")

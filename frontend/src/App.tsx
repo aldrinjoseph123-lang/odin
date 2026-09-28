@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom"
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import AppShell from "@/components/AppShell"
+import { SettingsLayout } from "@/components/SettingsLayout"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import Flow from "@/pages/Flow"
 import Projects from "@/pages/Projects"
@@ -21,6 +22,7 @@ import Login from "@/pages/Login"
 import LinkRequest from "@/pages/LinkRequest"
 import ForgotPassword from "@/pages/ForgotPassword"
 import { session, type User } from "@/lib/api"
+import { setDateFormat } from "@/lib/format"
 
 // Strangler router: only ported pages are listed. Anything else is a Jinja
 // page, so hand the URL back to Flask with a real navigation.
@@ -39,7 +41,7 @@ function Protected({ children }: { children: (user: User) => React.ReactNode }) 
     session().then((s) => {
       if (!s.user) window.location.assign(`/login?next=${encodeURIComponent(pathname + search)}`)
       else if (s.user.must_change_password && pathname !== "/account") window.location.assign("/account")
-      else { setUser(s.user); if (s.messages?.length) setMessages(s.messages) }
+      else { setDateFormat(s.user.prefs?.date_format); setUser(s.user); if (s.messages?.length) setMessages(s.messages) }
     })
   }, [pathname, search])
   if (!user) return null
@@ -62,15 +64,16 @@ export default function App() {
         <Route path="/projects/:id/report" element={<Protected>{(user) => <Report user={user} />}</Protected>} />
         <Route path="/reports/all" element={<Protected>{(user) => <ReportAll user={user} />}</Protected>} />
         <Route path="/projects/:id" element={<Protected>{(user) => <Project user={user} />}</Protected>} />
-        <Route path="/users" element={<Protected>{(user) => <Users user={user} />}</Protected>} />
-        <Route path="/audit-logs" element={<Protected>{(user) => <Audit user={user} />}</Protected>} />
+        <Route path="/users" element={<Protected>{(user) => <SettingsLayout user={user}><Users user={user} /></SettingsLayout>}</Protected>} />
+        <Route path="/audit-logs" element={<Protected>{(user) => <SettingsLayout user={user}><Audit user={user} /></SettingsLayout>}</Protected>} />
         <Route path="/account" element={<Protected>{(user) => <Account user={user} />}</Protected>} />
         <Route path="/my-work" element={<Protected>{(user) => <MyWork user={user} />}</Protected>} />
         <Route path="/alerts" element={<Protected>{(user) => <Alerts user={user} />}</Protected>} />
         <Route path="/analytics" element={<Protected>{(user) => <Analytics user={user} />}</Protected>} />
-        <Route path="/settings" element={<Protected>{(user) => <Settings user={user} />}</Protected>} />
-        <Route path="/settings/rbac" element={<Protected>{(user) => <Rbac user={user} />}</Protected>} />
-        <Route path="/settings/contacts" element={<Protected>{(user) => <Contacts user={user} />}</Protected>} />
+        <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
+        <Route path="/settings/rbac" element={<Protected>{(user) => <SettingsLayout user={user}><Rbac user={user} /></SettingsLayout>}</Protected>} />
+        <Route path="/settings/contacts" element={<Protected>{(user) => <SettingsLayout user={user}><Contacts user={user} /></SettingsLayout>}</Protected>} />
+        <Route path="/settings/:section" element={<Protected>{(user) => <SettingsLayout user={user}><Settings user={user} /></SettingsLayout>}</Protected>} />
         <Route path="*" element={<HandOffToFlask />} />
       </Routes>
       </ErrorBoundary>

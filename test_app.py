@@ -1212,7 +1212,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         paths = {
             "login": "/login", "board": "/board", "projects_list": "/projects", "project_detail": "/projects/1",
             "project_new": "/projects/new", "project_edit": "/projects/1/edit", "users": "/users", "audit_logs_view": "/audit-logs",
-            "settings": "/settings", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
+            "settings": "/settings", "settings_section": "/settings/general", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
             "account": "/account", "my_work": "/my-work", "analytics": "/analytics", "alerts_log_view": "/alerts",
             "report_all": "/reports/all", "report_single": "/projects/1/report", "auth_link_request": "/auth/link",
             "auth_reset_request": "/auth/reset", "auth_reset_form": "/auth/reset/any-token",
@@ -1397,7 +1397,12 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("UPDATE users SET email = username || '@odin.example'"); db.commit()
         self.new_project(name="R", client="C")
-        today, yesterday, later = date.today(), date.today() - timedelta(days=2), date.today() + timedelta(days=5)
+        from policies import WEEKDAYS, local_today
+        with self.raw_db() as db:   # every day a working day, so the run is independent of today's weekday
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.working_days', ?)", (",".join(WEEKDAYS),)); db.commit()
+        with app_module.app.app_context():
+            base = local_today()
+        today, yesterday, later = base, base - timedelta(days=2), base + timedelta(days=5)
         for title, who, due in [("Due today", pm1, today), ("Late", pm1, yesterday), ("Later", pm1, later), ("Viewer's", vw, today)]:
             self.client.post("/projects/1/tasks", data={"title": title, "assignee_id": who, "due_date": due.isoformat()})
         self.client.post("/projects/1/tasks", data={"title": "Done late", "assignee_id": pm1, "due_date": yesterday.isoformat()})
@@ -1412,6 +1417,12 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             rows = db.execute("SELECT u.username, n.kind, n.link FROM notifications n JOIN users u ON u.id = n.user_id WHERE n.kind='due' ORDER BY u.username").fetchall()
         self.assertEqual([tuple(r) for r in rows], [("pm1", "due", "/my-work"), ("vw", "due", "/my-work")])   # the bell always
+        # a day off the working week sends nothing at all
+        with self.raw_db() as db:
+            db.execute("UPDATE settings SET value = ? WHERE key = 'policy.working_days'", ([d for d in WEEKDAYS if d != WEEKDAYS[base.weekday()]][0],)); db.commit()
+        mail.reset_mock()
+        send_daily_alerts.main()
+        self.assertEqual(mail.call_count, 0)
 
     # ---- notes: correct or remove your own words, never the timeline ----------
 
@@ -1557,6 +1568,44 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # another user is untouched
         pm1, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
         self.assertEqual(pm1.get("/api/session").get_json()["user"]["theme"], "system")
+
+    def test_admin_policies_validate_save_audit_and_take_effect(self):
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        view = {p["key"]: p for p in c.get("/api/settings?section=general").get_json()["policies"]}
+        self.assertEqual((view["undo_minutes"]["value"], view["undo_minutes"]["min"], view["upload_max_mb"]["max"]), (5, 1, 100))
+        self.assertIn("Asia/Dubai", view["timezone"]["choices"])
+        # out of range: nothing stored, the reason named
+        r = c.post("/settings/policies/security", data={"session_idle_minutes": "2", "undo_minutes": "10"}, headers=h).get_json()
+        self.assertIn("between 5 and 1440", r["messages"][0])
+        self.assertEqual(c.get("/api/session").get_json()["user"]["prefs"]["undo_minutes"], 5)
+        # a valid save is audited once and read back typed
+        r = c.post("/settings/policies/security", data={"undo_minutes": "10", "upload_types": "pdf,docx", "upload_max_mb": "1"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Saved"])
+        self.assertEqual(c.get("/api/session").get_json()["user"]["prefs"]["undo_minutes"], 10)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='update_policies'").fetchone()[0], 1)
+        # the upload policy is enforced: a type now refused, and anything over 1 MB
+        self.new_project(name="Pol", client="C")
+        import io
+        r = c.post("/projects/1/documents", data={"category": "Other", "file": (io.BytesIO(b"a,b\n"), "x.csv")}, headers=h, content_type="multipart/form-data").get_json()
+        self.assertIn("isn't allowed. Accepted: pdf, docx", r["messages"][0])
+        r = c.post("/projects/1/documents", data={"category": "Other", "file": (io.BytesIO(b"%PDF-1.4" + b"0" * (1024 * 1024 + 1)), "big.pdf")}, headers=h, content_type="multipart/form-data").get_json()
+        self.assertIn("larger than 1 MB", r["messages"][0])
+        # every allowed type unticked is refused
+        self.assertIn("keep at least one", c.post("/settings/policies/security", data={"upload_types": ""}, headers=h).get_json()["messages"][0])
+        # general: a new person starts with the workspace theme and accent
+        c.post("/settings/policies/general", data={"company_name": "Acme Sec", "timezone": "Asia/Dubai", "date_format": "yyyy-MM-dd",
+                                                   "working_days": "Mon,Tue,Wed,Thu,Fri", "default_theme": "dark", "default_accent": "teal"}, headers=h)
+        c.post("/users", data={"username": "newbie", "name": "New Bie", "role": "Viewer", "password": STRONG_PASSWORD}, headers=h)
+        with self.raw_db() as db:
+            self.assertEqual(tuple(db.execute("SELECT theme, accent FROM users WHERE username='newbie'").fetchone()), ("dark", "teal"))
+        self.assertEqual(c.get("/api/session").get_json()["user"]["prefs"]["date_format"], "yyyy-MM-dd")
+        # workflow defaults reach the new-project form
+        c.post("/settings/policies/workflow", data={"default_template": "", "default_customer_approval": "on"}, headers=h)
+        self.assertTrue(c.get("/api/project-form").get_json()["defaults"]["customer_approval"])
+        # only admins, and only known areas
+        self.assertEqual(c.post("/settings/policies/nope", data={}, headers=h).status_code, 404)
 
     def test_alarm_coloured_accents_are_retired(self):
         # red and amber read as overdue/warning: refused now, and old choices move on the next boot
@@ -3499,7 +3548,7 @@ class SecurityTestCase(unittest.TestCase):
     # --- auth layer ---------------------------------------------------------
 
     def test_login_locks_out_after_repeated_failures(self):
-        for _ in range(app_module_security.MAX_LOGIN_FAILURES):
+        for _ in range(5):   # the policy default (login_max_attempts)
             self.client.post("/login", data={"username": "admin", "password": "wrong"})
         # even the *correct* password is now refused for this username+IP
         self.client.post("/login", data={"username": "admin", "password": "changeme"})

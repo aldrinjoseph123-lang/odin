@@ -26,7 +26,6 @@ from constants import (
     NEW_USER_COLUMNS,
     PERMISSIONS,
     ROLES,
-    UNDO_WINDOW_SECS,
 )
 
 # Where mutable state lives. Defaults to the source directory so local dev is
@@ -69,7 +68,7 @@ def get_db():
 
 
 def soft_delete(table, item_id):
-    """Mark row as deleted; recoverable for UNDO_WINDOW_SECS."""
+    """Mark row as deleted; recoverable for the undo window (policy undo_minutes)."""
     assert_safe_table(table)  # identifiers can't be parameterised — allowlist instead
     db = get_db()
     now = datetime.utcnow().isoformat()
@@ -86,7 +85,7 @@ def restore_deleted(table, item_id):
 
 
 def cleanup_soft_deletes(db=None):
-    """Permanently remove rows older than UNDO_WINDOW_SECS, and everything that
+    """Permanently remove rows older than the undo window, and everything that
     hangs off them.
 
     Purging a project used to delete only the projects row, leaving its status
@@ -96,7 +95,8 @@ def cleanup_soft_deletes(db=None):
     """
     if db is None:
         db = get_db()
-    cutoff = (datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECS)).isoformat()
+    from policies import policy
+    cutoff = (datetime.utcnow() - timedelta(minutes=policy("undo_minutes", db))).isoformat()
 
     doomed = [row[0] for row in db.execute(
         "SELECT id FROM projects WHERE deleted_at IS NOT NULL AND deleted_at < ?", (cutoff,)

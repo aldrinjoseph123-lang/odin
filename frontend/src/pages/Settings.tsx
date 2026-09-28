@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { Navigate, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
-import { ApiError, postForm, settingsData, type SettingsData, type User } from "@/lib/api"
+import { ApiError, postForm, settingsData, type Policy, type SettingsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
@@ -20,16 +21,29 @@ function Panel({ title, hint, children, id }: { title: string; hint?: string; ch
   )
 }
 
+// Settings → one area per address (/settings/<section>); the side menu is
+// SettingsLayout. Each area draws only its own panels and loads without
+// asking Microsoft for anything unless it is Integrations.
+const TITLES: Record<string, { title: string; lede: string }> = {
+  general: { title: "General", lede: "How the workspace reads for everyone." },
+  security: { title: "Sign-in & security", lede: "Sessions, passwords, uploads and outside access." },
+  workflow: { title: "Projects & workflow", lede: "What new projects start with, their stages and the alerts they raise." },
+  notifications: { title: "Notifications", lede: "Which channels carry project events. Each person also picks what they get by email on their Account page." },
+  integrations: { title: "Integrations", lede: "Microsoft 365: mail, Teams and OneDrive through one Azure app." },
+  backups: { title: "Backups", lede: "Copies of the database, documents and pictures." },
+}
+
 export default function Settings(_props: { user: User }) {
+  const section = useParams().section ?? ""
   const [data, setData] = useState<SettingsData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [teamId, setTeamId] = useState("")
   const load = useCallback(async (team = teamId) => {
-    try { setData(await settingsData(team)); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load settings") }
-  }, [teamId])
-  useEffect(() => { document.title = "Settings · Odin"; void load() }, [load])
+    try { setData(await settingsData(section, team)); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load settings") }
+  }, [teamId, section])
+  useEffect(() => { if (TITLES[section]) { document.title = `${TITLES[section].title} · Settings · Odin`; setNotice(null); void load() } }, [load, section])
 
   const send: Send = async (path, fields = {}, confirmText) => {
     if (confirmText && !window.confirm(confirmText)) return null
@@ -42,20 +56,18 @@ export default function Settings(_props: { user: User }) {
     } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save"); return null } finally { setBusy(false) }
   }
 
+  if (!TITLES[section]) return <Navigate to="/settings/general" replace />
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!data) return <PageSkeleton />
+  const policyForm = (area: Policy["area"], title: string, hint?: string) => (
+    <PolicyForm key={`${area}:${JSON.stringify(data.policies.filter((p) => p.area === area).map((p) => p.value))}`} title={title} hint={hint}
+      area={area} policies={data.policies.filter((p) => p.area === area)} templates={data.templates} busy={busy} send={send} />
+  )
 
   return (
     <div className="px-5 pb-6 pt-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-[17px] font-semibold tracking-tight">Settings</h1>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <a href="/users" className={buttonVariants({ variant: "outline", size: "sm" })}>Users</a>
-          <a href="/settings/rbac" className={buttonVariants({ variant: "outline", size: "sm" })}>Role permissions</a>
-          <a href="/settings/contacts" className={buttonVariants({ variant: "outline", size: "sm" })}>Contacts & partners</a>
-          <a href="/audit-logs" className={buttonVariants({ variant: "outline", size: "sm" })}>Audit log</a>
-        </div>
-      </div>
+      <h1 className="text-[17px] font-semibold tracking-tight">{TITLES[section].title}</h1>
+      <p className="mt-0.5 text-[13px] text-muted-foreground">{TITLES[section].lede}</p>
       {notice && (
         <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status">
           <span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
@@ -64,34 +76,164 @@ export default function Settings(_props: { user: User }) {
 
       {/* min-w-0 on every grid item: a wide table scrolls inside its panel
           instead of stretching the page on a phone */}
-      <div className="mt-3 grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
-        <Panel title="Stage templates" hint="a new project copies one, then owns its list" id="templates">
-          <div className="grid gap-5">
-            {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
-          </div>
-          <AddForm placeholder="New template name (e.g. EDR rollout)" label="New template name" button="Add template" busy={busy} onSubmit={(name) => send("/settings/templates/add", { name })} />
-          <p className="mt-2 text-[11.5px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
-        </Panel>
-
-        <div className="grid content-start gap-4 [&>*]:min-w-0">
-          <Panel title="Document categories">
-            <ul className="grid gap-1.5 text-[13px]">
-              {data.doc_categories.map((c) => (
-                <li key={c.id} className="flex items-center gap-2">
-                  <span className="flex-1">{c.name}</span>
-                  <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>
-                </li>
-              ))}
-            </ul>
-            <AddForm placeholder="New category name" label="New document category name" button="Add category" busy={busy} onSubmit={(name) => send("/settings/doc-categories/add", { name })} />
-          </Panel>
-          <AlertTypes key={JSON.stringify(data.alerts)} data={data} busy={busy} send={send} />
-        </div>
-
-        <Microsoft key={`${data.m365.azure_app.client_id ?? ""}|${data.m365.azure_app.tenant_id ?? ""}|${data.m365.oauth_client_configured}`} data={data} busy={busy} send={send} teamId={teamId} onTeam={(id) => { setTeamId(id); void load(id) }} />
-        <Integrations key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} />
+      <div className="mt-4 grid max-w-5xl gap-4 [&>*]:min-w-0">
+        {section === "general" && policyForm("general", "Workspace")}
+        {section === "security" && (
+          <>
+            {policyForm("security", "Policies", "applies at everyone's next request")}
+            <Toggles data={data} busy={busy} send={send} title="Outside access" keys={[
+              { key: "guest_links_enabled", label: "Keep the legacy anonymous guest links working (turn off once invited partner and customer accounts have replaced them; every old link then stops)" },
+            ]} />
+          </>
+        )}
+        {section === "workflow" && (
+          <>
+            {policyForm("workflow", "New projects")}
+            <Panel title="Stage templates" hint="a new project copies one, then owns its list" id="templates">
+              <div className="grid gap-5">
+                {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
+              </div>
+              <AddForm placeholder="New template name (e.g. EDR rollout)" label="New template name" button="Add template" busy={busy} onSubmit={(name) => send("/settings/templates/add", { name })} />
+              <p className="mt-2 text-[11.5px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
+            </Panel>
+            <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+              <Panel title="Document categories">
+                <ul className="grid gap-1.5 text-[13px]">
+                  {data.doc_categories.map((c) => (
+                    <li key={c.id} className="flex items-center gap-2">
+                      <span className="flex-1">{c.name}</span>
+                      <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </li>
+                  ))}
+                </ul>
+                <AddForm placeholder="New category name" label="New document category name" button="Add category" busy={busy} onSubmit={(name) => send("/settings/doc-categories/add", { name })} />
+              </Panel>
+              <AlertTypes key={JSON.stringify(data.alerts)} data={data} busy={busy} send={send} />
+            </div>
+          </>
+        )}
+        {section === "notifications" && (
+          <Toggles data={data} busy={busy} send={send} title="Channels" keys={[
+            { key: "notify_email_enabled", label: "Email notifications on project events (stage changes, approvals, assignments, mentions, due tasks)" },
+            { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
+          ]} extra={<>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-email")}>Send test email</Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send test Teams message</Button>
+          </>} />
+        )}
+        {section === "integrations" && (
+          <>
+            <Microsoft key={`${data.m365.azure_app.client_id ?? ""}|${data.m365.azure_app.tenant_id ?? ""}|${data.m365.oauth_client_configured}`} data={data} busy={busy} send={send} teamId={teamId} onTeam={(id) => { setTeamId(id); void load(id) }} />
+            <Toggles data={data} busy={busy} send={send} title="OneDrive" keys={[
+              { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
+            ]} />
+          </>
+        )}
+        {section === "backups" && (
+          <Toggles data={data} busy={busy} send={send} title="OneDrive copy" keys={[
+            { key: "onedrive_backup_enabled", label: "Also upload each scheduled backup to OneDrive (the daily job runs from the server's digest service)" },
+          ]} extra={<Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/backup-now")}>Back up to OneDrive now</Button>} />
+        )}
       </div>
     </div>
+  )
+}
+
+// One admin policy area, drawn from the server's own list (policies.py), so a
+// limit or a choice is defined once. Numbers carry their range; ticks post "on".
+const DATE_EXAMPLES: Record<string, string> = { "d MMM yyyy": "27 Sep", "yyyy-MM-dd": "2026-09-27", "dd/MM/yyyy": "27/09/2026", "MM/dd/yyyy": "09/27/2026" }
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
+  area: Policy["area"]; title: string; hint?: string; policies: Policy[]; templates: SettingsData["templates"]; busy: boolean; send: Send
+}) {
+  const [v, setV] = useState<Record<string, Policy["value"]>>(() => Object.fromEntries(policies.map((p) => [p.key, p.value])))
+  const dirty = policies.some((p) => JSON.stringify(p.value) !== JSON.stringify(v[p.key]))
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    const fields: Record<string, string> = {}
+    for (const p of policies) {
+      const x = v[p.key]
+      if (p.kind === "bool") { if (x) fields[p.key] = "on" } else fields[p.key] = Array.isArray(x) ? x.join(",") : String(x)
+    }
+    void send(`/settings/policies/${area}`, fields)
+  }
+  const optionLabel = (p: Policy, c: string) =>
+    p.key === "default_template" ? templates.find((t) => String(t.id) === c)?.name ?? c
+      : p.key === "date_format" ? DATE_EXAMPLES[c] ?? c
+        : p.key === "default_theme" ? (c === "system" ? "Follow the device" : cap(c)) : p.key === "default_accent" ? cap(c) : c
+  return (
+    <Panel title={title} hint={hint}>
+      <form onSubmit={submit} className="grid gap-4">
+        <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
+          {policies.map((p) => (
+            <div key={p.key} className={cn("grid content-start gap-1", p.kind === "multi" && "md:col-span-2")}>
+              {p.kind === "bool" ? (
+                <label className="flex items-start gap-2 text-[13px] font-medium">
+                  <input type="checkbox" checked={!!v[p.key]} onChange={(e) => setV({ ...v, [p.key]: e.target.checked })} className="mt-0.5 h-3.5 w-3.5 accent-primary" />{p.label}
+                </label>
+              ) : (
+                <label htmlFor={`pol-${p.key}`} className="text-[13px] font-medium">{p.label}</label>
+              )}
+              {p.kind === "int" && (
+                <Input id={`pol-${p.key}`} type="number" min={p.min} max={p.max} required value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value === "" ? "" : Number(e.target.value) })} className="h-8 w-28 text-[13px]" />
+              )}
+              {p.kind === "text" && (
+                <Input id={`pol-${p.key}`} required maxLength={p.max} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-sm text-[13px]" />
+              )}
+              {p.kind === "choice" && (
+                <select id={`pol-${p.key}`} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className={cn(selectClass, "max-w-sm")}>
+                  {p.key === "default_template" && <option value="">First template ({templates[0]?.name ?? "none"})</option>}
+                  {(p.choices ?? []).map((c) => <option key={c} value={c}>{optionLabel(p, c)}</option>)}
+                </select>
+              )}
+              {p.kind === "multi" && (
+                <fieldset className="flex flex-wrap gap-1.5" aria-label={p.label}>
+                  {(p.choices ?? []).map((c) => {
+                    const list = (v[p.key] as string[]) ?? []
+                    const on = list.includes(c)
+                    return (
+                      <label key={c} className={cn("flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[12.5px] has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50",
+                        on ? "border-primary bg-accent text-accent-foreground" : "border-border text-nav-fg hover:bg-muted")}>
+                        <input type="checkbox" className="sr-only" checked={on} onChange={() => setV({ ...v, [p.key]: on ? list.filter((x) => x !== c) : [...list, c] })} />{c}
+                      </label>
+                    )
+                  })}
+                </fieldset>
+              )}
+              {p.help && <p className="text-[12px] text-muted-foreground">{p.help}{p.kind === "int" && p.min != null ? ` ${p.min}–${p.max}.` : ""}</p>}
+            </div>
+          ))}
+        </div>
+        <div><Button type="submit" size="sm" disabled={busy || !dirty}>Save</Button></div>
+      </form>
+    </Panel>
+  )
+}
+
+// The on/off integration switches live in one route that saves all five at
+// once, so each area posts its own boxes plus everyone else's saved values.
+type ToggleKey = keyof SettingsData["toggles"]
+function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData; busy: boolean; send: Send; title: string; keys: { key: ToggleKey; label: string }[]; extra?: ReactNode }) {
+  const [t, setT] = useState(data.toggles)
+  useEffect(() => { setT(data.toggles) }, [data.toggles])
+  const dirty = keys.some((k) => t[k.key] !== data.toggles[k.key])
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    void send("/settings/integrations", Object.fromEntries((Object.keys(t) as ToggleKey[]).filter((k) => t[k]).map((k) => [k, "on"])))
+  }
+  return (
+    <Panel title={title}>
+      <form onSubmit={submit} className="grid gap-2 text-[13px]">
+        {keys.map((i) => (
+          <label key={i.key} className="flex items-start gap-2">
+            <input type="checkbox" checked={t[i.key]} onChange={(e) => setT({ ...t, [i.key]: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />
+            <span>{i.label}</span>
+          </label>
+        ))}
+        <div><Button type="submit" size="sm" variant="outline" disabled={busy || !dirty}>Save</Button></div>
+      </form>
+      {extra && <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">{extra}</div>}
+    </Panel>
   )
 }
 
@@ -222,39 +364,6 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
           </div>
         </div>
       )}
-    </Panel>
-  )
-}
-
-function Integrations({ data, busy, send }: { data: SettingsData; busy: boolean; send: Send }) {
-  const [t, setT] = useState(data.toggles)   // remounted by key when saved values change
-  const items: { key: keyof typeof t; label: string }[] = [
-    { key: "notify_email_enabled", label: "Email notifications on project events (new project, stage change, task assigned)" },
-    { key: "notify_teams_enabled", label: "Teams channel notifications for the same events, plus the daily alert digest" },
-    { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
-    { key: "onedrive_backup_enabled", label: "Allow scheduled full backups to OneDrive (needs the cron entry from AZURE_SETUP.md)" },
-    { key: "guest_links_enabled", label: "Keep the legacy anonymous guest links working (turn off once invited partner and customer accounts have replaced them; every old link then stops)" },
-  ]
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    void send("/settings/integrations", Object.fromEntries(items.filter((i) => t[i.key]).map((i) => [i.key, "on"])))
-  }
-  return (
-    <Panel title="Integrations">
-      <form onSubmit={submit} className="grid gap-2 text-[13px]">
-        {items.map((i) => (
-          <label key={i.key} className="flex items-start gap-2">
-            <input type="checkbox" checked={t[i.key]} onChange={(e) => setT({ ...t, [i.key]: e.target.checked })} aria-label={i.label} className="mt-1 h-3.5 w-3.5 accent-primary" />
-            <span>{i.label}</span>
-          </label>
-        ))}
-        <div><Button type="submit" size="sm" variant="outline" disabled={busy}>Save integration settings</Button></div>
-      </form>
-      <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-email")}>Send test email</Button>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send test Teams message</Button>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/backup-now")}>Back up to OneDrive now</Button>
-      </div>
     </Panel>
   )
 }

@@ -13,7 +13,7 @@ from markupsafe import Markup
 
 import graph
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, PERMISSIONS, ROLES
-from core import admin_required, app, permission_required, undo_button, write_required
+from core import admin_required, app, permission_required, undo_button, undo_note, write_required
 from db import get_db, get_setting, restore_deleted, soft_delete
 from services.alerts import get_alert_type_settings
 from services import stages as stage_ops
@@ -171,6 +171,38 @@ def settings():
         onedrive_mirror_uploads_enabled=get_setting("onedrive_mirror_uploads_enabled") == "1",
         onedrive_backup_enabled=get_setting("onedrive_backup_enabled") == "1",
     )
+
+
+# Settings is one page with a side menu; each area has its own address.
+SETTINGS_SECTIONS = ("general", "security", "workflow", "notifications", "integrations", "backups")
+
+
+@app.route("/settings/<section>")
+@permission_required("manage_settings")
+def settings_section(section):
+    if section not in SETTINGS_SECTIONS:
+        abort(404)
+    if spa_serves("settings_section"):
+        return spa_index()
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/policies/<area>", methods=["POST"])
+@permission_required("manage_settings")
+def settings_policies(area):
+    """The one save path for every admin policy (policies.POLICIES)."""
+    from policies import POLICIES, save_policies
+    if area not in {e["area"] for e in POLICIES.values()}:
+        abort(404)
+    changed, errors = save_policies(area, request.form)
+    if errors:
+        flash("Not saved. " + "; ".join(errors))
+    elif changed:
+        audit_log("update_policies", "settings", None, area, ", ".join(changed))
+        flash("Saved")
+    else:
+        flash("Nothing changed")
+    return redirect(url_for("settings_section", section=area))
 
 
 @app.route("/settings/rbac")
@@ -450,7 +482,7 @@ def settings_contacts_delete(list_key, item_id):
         abort(404)
     meta = CONTACT_LISTS[list_key]
     soft_delete(meta['table'], item_id)
-    flash(Markup(f"{meta['label']} entry deleted. {undo_button('Undo', 'undo_contact', list_key=list_key, item_id=item_id)} (5 min window)"))
+    flash(Markup(f"{meta['label']} entry deleted. {undo_button('Undo', 'undo_contact', list_key=list_key, item_id=item_id)} {undo_note()}"))
     audit_log("delete_contact", list_key, item_id)
     return redirect(url_for("settings_contacts"))
 
@@ -482,7 +514,7 @@ def settings_partner_delete(partner_id):
     db.execute("UPDATE partner_account_managers SET deleted_at = ? WHERE partner_id = ?", (now, partner_id))
     db.commit()
     audit_log("delete_partner", "partner", partner_id)
-    flash(Markup(f"Partner deleted (its account managers were removed too). {undo_button('Undo', 'undo_partner', partner_id=partner_id)} (5 min window)"))
+    flash(Markup(f"Partner deleted (its account managers were removed too). {undo_button('Undo', 'undo_partner', partner_id=partner_id)} {undo_note()}"))
     return redirect(url_for("settings_contacts"))
 
 
@@ -511,7 +543,7 @@ def settings_partner_manager_add(partner_id):
 @permission_required("manage_contacts")
 def settings_partner_manager_delete(manager_id):
     soft_delete("partner_account_managers", manager_id)
-    flash(Markup(f"Account manager deleted. {undo_button('Undo', 'undo_partner_manager', manager_id=manager_id)} (5 min window)"))
+    flash(Markup(f"Account manager deleted. {undo_button('Undo', 'undo_partner_manager', manager_id=manager_id)} {undo_note()}"))
     audit_log("delete_partner_manager", "partner_manager", manager_id)
     return redirect(url_for("settings_contacts"))
 

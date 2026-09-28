@@ -37,7 +37,8 @@ def my_work():
     db = get_db()
     uid = session["user_id"]
     from datetime import datetime as _dt
-    today = _dt.utcnow().date().isoformat()
+    from policies import local_today
+    today = local_today().isoformat()
 
     owned = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "

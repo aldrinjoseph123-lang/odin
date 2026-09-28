@@ -3,7 +3,20 @@ import type { FlowState } from "@/lib/api"
 // Pure formatting shared by the flow screen and the projects list; tested in
 // src/lib/format.test.ts, which is why nothing here touches the DOM.
 export const initials = (name: string | null | undefined) => (name ?? "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()
-export const fmtDate = (iso: string | null | undefined) => (iso ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" }) : "—")
+// The workspace date format (Settings → General), set once the session loads.
+export type DateFormat = "d MMM yyyy" | "yyyy-MM-dd" | "dd/MM/yyyy" | "MM/dd/yyyy"
+let dateFormat: DateFormat = "d MMM yyyy"
+export const setDateFormat = (f: DateFormat | undefined) => { if (f) dateFormat = f }
+// A calendar date (YYYY-MM-DD). The default reads "27 Sep" — compact, the
+// year is obvious in context; the numeric formats always carry it.
+export function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "—"
+  const [y, m, d] = iso.slice(0, 10).split("-")
+  if (dateFormat === "yyyy-MM-dd") return `${y}-${m}-${d}`
+  if (dateFormat === "dd/MM/yyyy") return `${d}/${m}/${y}`
+  if (dateFormat === "MM/dd/yyyy") return `${m}/${d}/${y}`
+  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" })
+}
 export const days = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n)} d`)
 
 export const daysLate = (target: string | null) => (target ? Math.round((Date.now() - new Date(`${target}T00:00:00`).getTime()) / 864e5) : 0)

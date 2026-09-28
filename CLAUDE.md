@@ -31,6 +31,17 @@ component must read tokens so both themes and every accent follow.
 That stylesheet is frozen: fix defects only, no new components, no re-theming —
 the port replaces it page by page.
 
+# Admin settings
+
+Settings is one side-menu page (`components/SettingsLayout.tsx`), one address
+per area: `/settings/general|security|workflow|notifications|integrations|backups`
+plus Users, Role permissions, Contacts and the Audit log in the same menu.
+**Any value an admin may change is a policy:** add it to `policies.POLICIES`
+(area, kind, default, limits, label, help), read it with `policy("key")`
+(pass `db` outside an app context), and the settings page draws, validates
+(`save_policies`, one audited route `/settings/policies/<area>`) and
+explains it. Never hard-code a number an admin could reasonably want to change.
+
 # Adding a table
 
 A table keyed by `project_id` (or holding per-user secrets) must be wired into

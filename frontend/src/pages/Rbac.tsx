@@ -33,7 +33,6 @@ export default function Rbac(_props: { user: User }) {
   return (
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <a href="/settings" className="text-[12.5px] text-muted-foreground hover:text-foreground">Settings</a><span className="text-[12.5px] text-muted-foreground">/</span>
         <h1 className="text-[17px] font-semibold tracking-tight">Role permissions</h1>
         <p className="text-[13px] text-muted-foreground">which global role may do what; project roles narrow it further</p>
         <a href="/users" className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Users</a>

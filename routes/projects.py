@@ -29,7 +29,6 @@ from werkzeug.utils import secure_filename
 
 import graph
 from constants import (
-    UNDO_WINDOW_SECS,
     EXTERNAL_PROJECT_ROLES,
     PROJECT_MANAGER,
     PROJECT_ROLES,
@@ -37,8 +36,9 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, login_required, permission_required, project_allows, project_role_required, undo_button, write_required, project_scope
-from security import ALLOWED_UPLOAD_EXTENSIONS, allowed_upload, content_matches_extension, valid_email
+from core import app, login_required, permission_required, project_allows, project_role_required, undo_button, undo_note, write_required, project_scope
+from security import content_matches_extension, upload_problem, valid_email
+from policies import local_today, policy
 from spa import spa_index, spa_serves
 from db import (
     UPLOAD_DIR,
@@ -172,13 +172,13 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
             query += f" AND {PROJECT_OPEN_SQL}"
     elif view == "overdue":
         # past target end date, not yet in the terminal stage
-        today = datetime.utcnow().date().isoformat()
+        today = local_today().isoformat()
         query += f" AND p.target_end_date IS NOT NULL AND p.target_end_date < ? AND {PROJECT_OPEN_SQL}"
         params.append(today)
     elif view == "at_risk":
         # target end date within the due-soon window (and not already overdue/terminal)
         soon_days = get_alert_type_settings().get("project_due_soon", DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
-        today = datetime.utcnow().date()
+        today = local_today()
         soon = (today + timedelta(days=soon_days)).isoformat()
         query += f" AND p.target_end_date IS NOT NULL AND p.target_end_date >= ? AND p.target_end_date <= ? AND {PROJECT_OPEN_SQL}"
         params.extend([today.isoformat(), soon])
@@ -321,8 +321,8 @@ def project_new():
         if not po_document or not po_document.filename:
             flash(f"Upload a '{CLIENT_PO_DOC_CATEGORY}' document to create the project")
             return redirect(url_for("project_new"))
-        if not allowed_upload(po_document.filename):
-            flash(f"That file type isn't allowed. Accepted: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}")
+        if problem := upload_problem(po_document):
+            flash(problem)
             return redirect(url_for("project_new"))
         if not content_matches_extension(po_document):
             flash("That file's contents don't match its extension")
@@ -453,7 +453,7 @@ def project_detail(project_id):
         stages=stage_rows(project_id),
         schedule=schedule_status(project),
         sla=stage_sla_state(project, sla_for_project(project_id), get_terminal_stage(project_id)),
-        today=datetime.utcnow().date().isoformat(),
+        today=local_today().isoformat(),
         has_client_po_doc=has_required_document(project_id, CLIENT_PO_DOC_CATEGORY),
         approval=current_approval(project_id),
         can_approve=is_customer_on(project_id, session["user_id"]),
@@ -548,7 +548,7 @@ def project_stage(project_id):
     if error:
         flash(error)
         return redirect(url_for("project_detail", project_id=project_id))
-    flash(Markup(f"Moved to {escape(request.form['stage'])}. {undo_button('Undo', 'undo_stage_change', project_id=project_id, note_id=g.stage_note_id)} (5 min window)"))
+    flash(Markup(f"Moved to {escape(request.form['stage'])}. {undo_button('Undo', 'undo_stage_change', project_id=project_id, note_id=g.stage_note_id)} {undo_note()}"))
     if request.form.get("redirect") == "board":
         return redirect(url_for("board"))
     return redirect(url_for("project_detail", project_id=project_id))
@@ -616,7 +616,7 @@ def undo_stage_change(project_id, note_id):
     if project is None:
         abort(404)
     note = db.execute("SELECT * FROM status_notes WHERE id = ? AND project_id = ? AND prev_stage IS NOT NULL", (note_id, project_id)).fetchone()
-    cutoff = (datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECS)).isoformat()
+    cutoff = (datetime.utcnow() - timedelta(minutes=policy("undo_minutes"))).isoformat()
     later_move = note and db.execute(
         "SELECT 1 FROM status_notes WHERE project_id = ? AND prev_stage IS NOT NULL AND id > ?", (project_id, note_id)).fetchone()
     if (note is None or note["author_id"] != session["user_id"] or note["created_at"] < cutoff
@@ -733,8 +733,8 @@ def document_upload(project_id):
     if not file or not file.filename:
         flash("No file selected")
         return redirect(url_for("project_detail", project_id=project_id))
-    if not allowed_upload(file.filename):
-        flash(f"That file type isn't allowed. Accepted: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}")
+    if problem := upload_problem(file):
+        flash(problem)
         return redirect(url_for("project_detail", project_id=project_id))
     if not content_matches_extension(file):
         flash("That file's contents don't match its extension")
@@ -785,7 +785,7 @@ def document_delete(project_id, doc_id):
     if doc is not None:
         soft_delete("documents", doc_id)
         audit_log("delete_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
-        flash(Markup(f"Deleted {escape(doc['filename'])}. {undo_button('Undo', 'undo_document', doc_id=doc_id)} (5 min window)"))
+        flash(Markup(f"Deleted {escape(doc['filename'])}. {undo_button('Undo', 'undo_document', doc_id=doc_id)} {undo_note()}"))
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -804,7 +804,7 @@ def project_delete(project_id):
     db.execute(soft_delete_query, (datetime.utcnow().isoformat(), project_id))
     db.commit()
     audit_log("delete_project", "project", project_id, project["name"])
-    flash(Markup(f"Project deleted. {undo_button('Undo', 'undo_project', project_id=project_id)} (5 min window)"))
+    flash(Markup(f"Project deleted. {undo_button('Undo', 'undo_project', project_id=project_id)} {undo_note()}"))
     return redirect(url_for("board"))
 
 
@@ -834,7 +834,9 @@ def _chosen_template(db, raw_id):
         row = db.execute("SELECT id, name FROM stage_templates WHERE id = ?", (raw_id,)).fetchone()
         if row:
             return row
-    return db.execute("SELECT id, name FROM stage_templates ORDER BY id LIMIT 1").fetchone()
+    chosen = policy("default_template")
+    return (chosen and db.execute("SELECT id, name FROM stage_templates WHERE id = ?", (chosen,)).fetchone()) \
+        or db.execute("SELECT id, name FROM stage_templates ORDER BY id LIMIT 1").fetchone()
 
 
 # ---- participants: who is on the project, and as what ------------------------
@@ -890,9 +892,9 @@ def participant_invite(project_id):
         now = datetime.utcnow().isoformat()
         if user is None:
             db.execute(
-                "INSERT INTO users (username, password_hash, name, role, active, email, created_at, kind) "
-                "VALUES (?, 'external:no-password', ?, 'External', 1, ?, ?, 'external')",
-                (email, name, email, now),
+                "INSERT INTO users (username, password_hash, name, role, active, email, created_at, kind, theme, accent) "
+                "VALUES (?, 'external:no-password', ?, 'External', 1, ?, ?, 'external', ?, ?)",
+                (email, name, email, now, policy("default_theme"), policy("default_accent")),
             )
             user = db.execute("SELECT * FROM users WHERE lower(email) = ?", (email,)).fetchone()
             audit_log("create_user", "user", user["id"], email, "external, invited")

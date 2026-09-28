@@ -14,7 +14,6 @@ from core import app, login_required
 from constants import ACCENTS, AVATAR_EXTENSIONS, AVATAR_MAX_BYTES, NOTIFICATION_KINDS, THEMES
 from db import AVATAR_DIR, get_db
 from security import (
-    LOGIN_WINDOW_MINUTES,
     consume_login_link,
     reset_link_row,
     issue_login_link,
@@ -37,7 +36,8 @@ def attempt_login(username, password):
     the account exists.
     """
     if login_is_blocked(username):
-        return False, f"Too many failed attempts. Try again in {LOGIN_WINDOW_MINUTES} minutes."
+        from policies import policy
+        return False, f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
     user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
     if user and not user["active"]:
         record_login_attempt(username, success=False)
