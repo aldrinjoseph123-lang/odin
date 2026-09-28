@@ -77,7 +77,7 @@ function useClock() {
 export function AuthLayout({ children }: { children: ReactNode }) {
   const clock = useClock()
   return (
-    <main className="grid min-h-svh bg-background lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <main className="grid min-h-svh grid-rows-[auto_1fr] bg-background lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-1">
       <aside className="brand-panel flex flex-col gap-4 px-5 py-5 sm:px-8 lg:justify-between lg:gap-6 lg:px-12 lg:py-10">
         <Logo byline markClass="h-8 w-8 lg:h-9 lg:w-9" wordClass="h-[18px] lg:h-5" />
         <div>
