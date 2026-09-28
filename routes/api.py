@@ -442,7 +442,8 @@ def api_project_form():
         "outsourcers": [{"name": r["name"], "email": r["email"]} for r in lists["outsourcers"]],
         "templates": [{"id": t["id"], "name": t["name"]} for t in db.execute("SELECT id, name FROM stage_templates ORDER BY name")],
         # Settings → Projects & workflow: what a new project starts with
-        "defaults": {"stage_template_id": int(policy("default_template")) if policy("default_template") else None,
+        "defaults": {"stage_template_id": int(policy("default_template")) if policy("default_template")
+                      else (db.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone() or [None])[0],
                      "customer_approval": policy("default_customer_approval")},
         "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")],
     })

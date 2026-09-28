@@ -5,9 +5,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
 import { alerts, ApiError, type AlertsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { fmtWhen } from "@/lib/format"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
-const fmt = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+const fmt = (iso: string) => fmtWhen(iso, true)
 const SEV = { critical: "bg-bad-soft text-bad", warning: "bg-warn-soft text-warn", info: "bg-muted text-muted-foreground" }
 const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
 

@@ -10,9 +10,10 @@ import { Detail } from "@/pages/Flow"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { fmtWhen } from "@/lib/format"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
-const fmtDate = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })
+const fmtDate = (iso: string) => fmtWhen(iso)
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
 const LABELS: Record<string, string> = {
   client: "Client", via: "Via", partner_name: "Partner", partner_account_manager_name: "Account manager (partner)", account_manager_name: "Account manager",

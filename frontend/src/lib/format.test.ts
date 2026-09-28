@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, stageColumns, stateText, timeAgo } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, setDateFormat, stageColumns, stateText, timeAgo } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -119,5 +119,18 @@ describe("fitStages", () => {
   })
   it("never folds a single finished stage into a node of one", () => {
     expect(kinds(fitStages(["done", "current", "next", "next", "next"], 4))).toEqual([0, 1, "later:2-3", 4])
+  })
+})
+
+describe("fmtWhen", () => {
+  it("follows the workspace date format, for dates and stored UTC timestamps", () => {
+    setDateFormat("yyyy-MM-dd")
+    expect(fmtWhen("2026-09-27")).toBe("2026-09-27")
+    setDateFormat("dd/MM/yyyy")
+    expect(fmtWhen("2026-09-27")).toBe("27/09/2026")
+    expect(fmtWhen("2026-09-27T12:00:00").startsWith("27/09/2026")).toBe(true)
+    expect(fmtWhen("2026-09-27T12:00:00", true)).toMatch(/^27\/09\/2026, \d/)
+    expect(fmtWhen(null)).toBe("—")
+    setDateFormat("d MMM yyyy")
   })
 })

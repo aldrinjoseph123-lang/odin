@@ -273,6 +273,7 @@ export const markRead = (which: { id: number } | { all: true }) => post<{ ok: tr
 export type ProjectFormData = {
   mode: "new" | "duplicate" | "edit"; id: number | null; me: number
   project: Partial<Record<string, string | null>> & { customer_approval?: boolean; stage_template_id?: number | null; owner_id?: number }
+  defaults: { stage_template_id: number | null; customer_approval: boolean }
   via_options: string[]; delivery_modes: string[]
   account_managers: { name: string; email: string | null }[]
   partners: { id: number; name: string; managers: { name: string; email: string }[] }[]

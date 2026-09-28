@@ -5,8 +5,9 @@ import { PrintBrand } from "@/components/Brand"
 import { Button } from "@/components/ui/button"
 import { ApiError, reportAll, type ReportAllData, type User } from "@/lib/api"
 import { PageSkeleton } from "@/components/PageSkeleton"
+import { fmtWhen } from "@/lib/format"
 
-const fmt = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+const fmt = (iso: string) => fmtWhen(iso, true)
 
 export default function ReportAll(_props: { user: User }) {
   const [d, setD] = useState<ReportAllData | null>(null)

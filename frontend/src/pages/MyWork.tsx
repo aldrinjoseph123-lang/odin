@@ -2,9 +2,10 @@ import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ApiError, myWork, type MyWorkData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { fmtWhen } from "@/lib/format"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
-const fmtDate = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "—")
+const fmtDate = (iso: string | null) => fmtWhen(iso)
 const SCHEDULE = { overdue: { label: "Overdue", cls: "bg-bad-soft text-bad" }, at_risk: { label: "Due soon", cls: "bg-warn-soft text-warn" }, on_track: { label: "On track", cls: "text-muted-foreground" } } as const
 
 export default function MyWork(_props: { user: User }) {

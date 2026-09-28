@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Stepper } from "@/components/Stepper"
 import { ApiError, projects, type ProjectsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { activeProjectsView } from "@/lib/format"
+import { activeProjectsView, fmtWhen } from "@/lib/format"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
 // Every filter lives in the URL: shareable, back-button friendly, and the
@@ -26,7 +26,7 @@ const COLUMNS: { key: string; label: string; className?: string }[] = [
   { key: "vendor", label: "Vendor", className: "hidden xl:table-cell" }, { key: "product", label: "Product", className: "hidden xl:table-cell" },
   { key: "updated", label: "Updated", className: "hidden md:table-cell" },
 ]
-const fmtDate = (iso: string | null) => (iso ? new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "—")
+const fmtDate = (iso: string | null) => fmtWhen(iso)
 const selectClass = "h-7 rounded-md border border-border bg-background px-2 text-[12.5px] font-medium text-nav-fg hover:bg-muted"
 
 export default function Projects({ user }: { user: User }) {

@@ -40,9 +40,10 @@ export default function ProjectForm(_props: { user: User }) {
         partner_account_manager_email: p.partner_account_manager_email ?? "", po_number: p.po_number ?? "", po_date: p.po_date ?? "", start_date: p.start_date ?? "",
         target_end_date: p.target_end_date ?? "", delivery_mode: p.delivery_mode ?? data.delivery_modes[0], vendor_name: p.vendor_name ?? "", product_name: p.product_name ?? "",
         outsourcer_name: p.outsourcer_name ?? "", outsourcer_email: p.outsourcer_email ?? "",
-        stage_template_id: String(p.stage_template_id ?? data.templates[0]?.id ?? ""), owner_id: String(p.owner_id ?? data.me),
+        // a new project starts from Settings → Projects & workflow; a copy or an edit keeps its own
+        stage_template_id: String(p.stage_template_id ?? data.defaults.stage_template_id ?? data.templates[0]?.id ?? ""), owner_id: String(p.owner_id ?? data.me),
       })
-      setApproval(!!p.customer_approval)
+      setApproval(data.mode === "new" ? data.defaults.customer_approval : !!p.customer_approval)
       setInitial("pending")   // the snapshot is taken on the next render, once f is set
       document.title = `${data.mode === "edit" ? "Edit" : data.mode === "duplicate" ? "Duplicate" : "New"} project · Odin`
     }).catch((e) => setError(e instanceof ApiError && e.status === 403 ? "You cannot edit this project." : e instanceof ApiError ? e.message : "Could not load the form"))

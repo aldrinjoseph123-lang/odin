@@ -28,7 +28,7 @@ ACCENT_CHOICES = ("blue", "indigo", "violet", "teal", "green", "sky", "plum", "i
 POLICIES = {
     # ---- General
     "company_name": dict(area="general", kind="text", default="Protect24x7", max=80,
-                         label="Company name", help="Shown in email footers and on printed reports."),
+                         label="Company name", help="Shown in email footers and on the PDFs attached to the weekly report."),
     "public_url": dict(area="general", kind="url", default="", max=200,
                        label="Public web address", help="e.g. https://odin.example.com. Sign-in and emailed links are built from it, never from the request. Blank: the address the browser used."),
     "timezone": dict(area="general", kind="choice", default="Asia/Dubai", choices="timezones",

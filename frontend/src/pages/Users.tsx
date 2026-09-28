@@ -7,9 +7,10 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, postForm, users as fetchUsers, type AdminUser, type User, type UsersData } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { fmtWhen } from "@/lib/format"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
-const fmt = (iso: string | null, withTime = false) => (iso ? new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], withTime ? { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short", year: "numeric" }) : "—")
+const fmt = (iso: string | null, withTime = false) => fmtWhen(iso, withTime)
 const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-[12.5px] disabled:opacity-60"
 
 export default function Users(_props: { user: User }) {

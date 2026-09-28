@@ -5,11 +5,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { PrintBrand } from "@/components/Brand"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ApiError, postForm, report, type ReportData, type User } from "@/lib/api"
-import { groupBlocks } from "@/lib/format"
+import { groupBlocks, fmtWhen } from "@/lib/format"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
-const fmt = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+const fmt = (iso: string) => fmtWhen(iso, true)
 
 // The saved body is plain text with two conventions: "# " heads a section,
 // "- " is a list item. Rendered here exactly as the Jinja page did.

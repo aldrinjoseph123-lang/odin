@@ -6,9 +6,10 @@ import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, audit, type AuditData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { fmtWhen } from "@/lib/format"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
-const fmt = (iso: string) => new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+const fmt = (iso: string) => fmtWhen(iso, true)
 const selectClass = "h-7 max-w-48 rounded-md border border-border bg-background px-2 text-[12.5px] font-medium text-nav-fg hover:bg-muted"
 
 export default function Audit(_props: { user: User }) {

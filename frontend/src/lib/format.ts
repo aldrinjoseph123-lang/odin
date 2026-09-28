@@ -7,6 +7,18 @@ export const initials = (name: string | null | undefined) => (name ?? "?").split
 export type DateFormat = "d MMM yyyy" | "yyyy-MM-dd" | "dd/MM/yyyy" | "MM/dd/yyyy"
 let dateFormat: DateFormat = "d MMM yyyy"
 export const setDateFormat = (f: DateFormat | undefined) => { if (f) dateFormat = f }
+// A stored UTC timestamp or a YYYY-MM-DD date, with the year, in the
+// workspace format and the reader's zone; withTime adds the local hh:mm.
+export function fmtWhen(iso: string | null | undefined, withTime = false): string {
+  if (!iso) return "—"
+  const d = iso.length <= 10 ? new Date(`${iso}T00:00:00`) : new Date(/Z$|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`)
+  if (Number.isNaN(d.getTime())) return iso
+  const y = String(d.getFullYear()), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0")
+  const date = dateFormat === "yyyy-MM-dd" ? `${y}-${m}-${day}` : dateFormat === "dd/MM/yyyy" ? `${day}/${m}/${y}`
+    : dateFormat === "MM/dd/yyyy" ? `${m}/${day}/${y}` : d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })
+  return withTime ? `${date}, ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : date
+}
+
 // A calendar date (YYYY-MM-DD). The default reads "27 Sep" — compact, the
 // year is obvious in context; the numeric formats always carry it.
 export function fmtDate(iso: string | null | undefined): string {
