@@ -2730,6 +2730,91 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         runs = c.get("/api/settings?section=backups").get_json()["backups"]["runs"]
         self.assertEqual([r["ok"] for r in runs], [False, True])
 
+    def test_weekly_report_goes_to_chosen_roles_with_pdfs_and_a_teams_summary(self):
+        from services import weekly_report
+        self.new_project(name="Late one", client="Acme", target_end_date="2020-01-01")
+        pm1 = self._make_user("pm1", "Member"); self._make_user("vw", "Viewer")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = username || '@corp.example'")
+            db.execute("INSERT INTO project_reports (project_id, version, body, created_by, created_at) VALUES (1, 2, '# Summary\n- all good', 'admin', '2026-09-20T10:00:00')")
+            for k, v in (("report_roles", "Admin,Member"), ("report_emails", "ceo@corp.example"), ("report_attach", "1"),
+                         ("report_teams", "1"), ("teams_webhook_url", "https://hook.example/x")):
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (f"policy.{k}", v))
+            db.commit()
+        with app_module.app.test_request_context():
+            self.assertEqual(weekly_report.recipients(), ["admin@corp.example", "ceo@corp.example", "pm1@corp.example"])
+            with patch("graph.send_mail", return_value=(True, None)) as mail, patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
+                sent, failed, message = weekly_report.send()
+        self.assertEqual((sent, failed), (3, []))
+        subject, body = mail.call_args.args[1], mail.call_args.args[2]
+        self.assertTrue(subject.startswith("Odin weekly report"))
+        self.assertIn("Late one", body); self.assertIn("past its target date", body)
+        (name, pdf, ctype), = mail.call_args.kwargs["attachments"]
+        self.assertEqual((name, ctype), ("Late-one-report-v2.pdf", "application/pdf"))
+        self.assertTrue(pdf.startswith(b"%PDF-1.4") and pdf.rstrip().endswith(b"%%EOF"))
+        self.assertIn("1 overdue", hook.call_args.args[2][0])
+        self.assertIn("Teams webhook", message)
+        # the admin's own test copy: only to them, no Teams
+        c, csrf = self._api_client()
+        with patch("graph.send_mail", return_value=(True, None)) as mail, patch("graph.post_teams_webhook") as hook:
+            r = c.post("/settings/reports/send-test", headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()
+        self.assertEqual([x.args[0] for x in mail.call_args_list], ["admin@corp.example"]); self.assertFalse(hook.called)
+        self.assertIn("Test report sent", r["messages"][0])
+
+    def test_audit_retention_archives_then_removes_and_stays_append_only(self):
+        from services import retention
+        import csv as _csv, sqlite3 as _sq
+        with self.raw_db() as db:
+            db.execute("INSERT INTO audit_logs (username, action, timestamp) VALUES ('old', 'ancient_thing', '2019-01-01T00:00:00')")
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.audit_keep', '1')"); db.commit()
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()):
+            removed, path = retention.run_audit_retention()
+            self.assertEqual(removed, 1)
+            with open(path) as fh:
+                self.assertEqual([r["action"] for r in _csv.DictReader(fh)], ["ancient_thing"])
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='ancient_thing'").fetchone()[0], 0)
+            self.assertIn("1 rows older than", db.execute("SELECT details FROM audit_logs WHERE action='audit_retention'").fetchone()[0])
+        with self.assertRaises(_sq.DatabaseError):          # still append-only afterwards
+            with self.raw_db() as db:
+                db.execute("DELETE FROM audit_logs"); db.commit()
+        with self.raw_db() as db:
+            db.execute("UPDATE settings SET value='forever' WHERE key='policy.audit_keep'"); db.commit()
+        self.assertEqual(retention.run_audit_retention(), (0, None))
+
+    def test_api_tokens_read_only_shown_once_revocable(self):
+        self.new_project(name="Tok", client="C")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        msg = c.post("/settings/api-tokens", data={"name": "Power BI", "days": "30"}, headers=h).get_json()["messages"][0]
+        raw = msg.rsplit(": ", 1)[1]
+        self.assertTrue(raw.startswith("odin_"))
+        anon = app_module.app.test_client()
+        auth = {"Authorization": f"Bearer {raw}"}
+        self.assertEqual([p["name"] for p in anon.get("/api/v1/projects", headers=auth).get_json()["projects"]], ["Tok"])
+        self.assertEqual(anon.get("/api/v1/projects/1", headers=auth).get_json()["project"]["stages"][0], "PO Received")
+        self.assertEqual(anon.get("/api/v1/projects/1/report", headers=auth).status_code, 404)
+        self.assertEqual(anon.get("/api/v1/projects", headers={"Authorization": "Bearer nope"}).status_code, 401)
+        self.assertEqual(anon.get("/api/v1/projects").status_code, 401)
+        self.assertEqual(anon.post("/api/v1/projects", headers=auth).status_code, 405)          # read only
+        listed = c.get("/api/settings?section=api").get_json()["api_tokens"]
+        self.assertEqual((listed[0]["name"], listed[0]["last_used_at"] is not None), ("Power BI", True))
+        self.assertNotIn("token_hash", listed[0])
+        c.post(f"/settings/api-tokens/{listed[0]['id']}/revoke", headers=h)
+        self.assertEqual(anon.get("/api/v1/projects", headers=auth).status_code, 401)
+        m, mcsrf = self._api_client(self._make_user("mem", "Member") and "mem", STRONG_PASSWORD)
+        self.assertEqual(m.post("/settings/api-tokens", data={"name": "x", "days": "30"}, headers={"X-CSRF-Token": mcsrf}).status_code, 403)
+
+    def test_teams_webhook_carries_project_events(self):
+        c, csrf = self._api_client()
+        self.new_project(name="Hooked", client="C")
+        with self.raw_db() as db:
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.teams_webhook_url', 'https://hook.example/x')")
+            db.execute("UPDATE settings SET value='1' WHERE key='notify_teams_enabled'"); db.commit()
+        with patch("graph.send_teams_message", return_value=(True, None)), patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
+            c.post("/api/projects/1/stage", json={"stage": "Scoping"}, headers={"X-CSRF-Token": csrf})
+        self.assertIn("Stage changed", hook.call_args.args[1]); self.assertTrue(hook.call_args.args[3].endswith("/projects/1"))
+
     def test_retention_keeps_daily_weekly_and_monthly_copies(self):
         import backup
         from datetime import datetime as _dt
@@ -2746,16 +2831,18 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_scheduler_runs_each_job_once_a_day_on_its_days_after_its_time(self):
         import scheduler
         from datetime import datetime as _dt
-        times = {"digest_time": "08:00", "backup_time": "02:00"}
-        days = {"working_days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "backup_days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
+        times = {"digest_time": "08:00", "backup_time": "02:00", "report_time": "09:00"}
+        days = {"working_days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "backup_days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], "report_days": ["Mon"]}
         mon_0730, sat_0900 = _dt(2026, 9, 28, 7, 30), _dt(2026, 10, 3, 9, 0)
-        self.assertEqual(scheduler.due_jobs(mon_0730, {}, times, days), ["backup"])
-        self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=8), {}, times, days), ["digest", "backup"])
-        self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=8), {"digest": "2026-09-28", "backup": "2026-09-28"}, times, days), [])
-        self.assertEqual(scheduler.due_jobs(sat_0900, {}, times, days), ["backup"])       # no digest on a day off
+        self.assertEqual(scheduler.due_jobs(mon_0730, {}, times, days), ["backup", "housekeeping"])      # housekeeping: nightly 03:30
+        self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=9), {}, times, days), ["digest", "backup", "report", "housekeeping"])
+        done = {j: "2026-09-28" for j in ("digest", "backup", "housekeeping")}
+        self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=9), done, times, days), ["report"])
+        self.assertEqual(scheduler.due_jobs(sat_0900, {}, times, days), ["backup", "housekeeping"])       # no digest or report on a Saturday
         self.assertEqual(scheduler.next_run(mon_0730, "02:00", ["Wed"]).strftime("%a %H:%M"), "Wed 02:00")
         # one pass: heartbeat written, the job marked done for the day even if it fails
-        with patch("backup.run_backup", return_value=(True, "ok")) as run, patch("send_daily_alerts.main") as digest:
+        with patch("backup.run_backup", return_value=(True, "ok")) as run, patch("send_daily_alerts.main"), \
+             patch("services.retention.run_audit_retention", return_value=(0, None)):
             with self.raw_db() as db:
                 db.execute("INSERT INTO settings (key, value) VALUES ('policy.backup_time', '00:00')"); db.commit()
             ran = scheduler.run_due()

@@ -65,6 +65,26 @@ POLICIES = {
     # ---- Notifications
     "digest_time": dict(area="notifications", kind="time", default="08:00",
                         label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
+    "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500,
+                              label="Teams Workflows webhook", help="From a Teams channel: Workflows → \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
+    # ---- Reports
+    "report_enabled": dict(area="reports", kind="bool", default=False,
+                           label="Send the weekly report", help="Stuck and overdue rollouts first, stages moved this week, due next week, counts per stage."),
+    "report_days": dict(area="reports", kind="multi", default="Mon", choices=WEEKDAYS,
+                        label="On these days", help="Usually one day a week."),
+    "report_time": dict(area="reports", kind="time", default="09:00",
+                        label="At", help="Workspace time zone."),
+    "report_roles": dict(area="reports", kind="multi", default="Admin", choices=("Admin", "Member", "Contributor", "Viewer"),
+                         label="To everyone with these roles", help="Active staff with an email address. Partners never receive it."),
+    "report_emails": dict(area="reports", kind="emails", default="", max=1000,
+                          label="And these addresses", help="e.g. ceo@company.com, delivery@company.com"),
+    "report_attach": dict(area="reports", kind="bool", default=False,
+                          label="Attach each active project's latest saved report as a PDF", help="Only projects with a saved report version."),
+    "report_teams": dict(area="reports", kind="bool", default=False,
+                         label="Also post a summary to Teams", help="The channel chosen under Integrations and/or the Workflows webhook under Notifications."),
+    # ---- Audit & compliance
+    "audit_keep": dict(area="audit", kind="choice", default="3", choices=("1", "2", "3", "5", "7", "forever"),
+                       label="Keep audit log rows for (years)", help="Older rows are written to a CSV archive (kept with the backups) and then removed, nightly. At least a year: SOC 2 asks for 12 months."),
     # ---- Backups
     "backup_time": dict(area="backups", kind="time", default="02:00",
                         label="Back up at", help="Workspace time zone."),
@@ -130,6 +150,11 @@ def _parse(entry, raw):
         if v and (len(v) > entry["max"] or not re.fullmatch(r"https?://[A-Za-z0-9.-]+(:\d+)?(/[\w./-]*)?", v)):
             raise ValueError("a web address like https://odin.example.com")
         return v
+    if kind == "emails":
+        parts = sorted({p.lower() for p in re.split(r"[\s,;]+", v) if p})
+        if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(r"[^@\s]+@[a-z0-9-]+(\.[a-z0-9-]+)+", p) for p in parts):
+            raise ValueError("email addresses separated by commas")
+        return parts
     if kind == "domains":
         parts = sorted({p.lower().lstrip("@") for p in re.split(r"[\s,;]+", v) if p})
         if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", p) for p in parts):
@@ -152,7 +177,7 @@ def _parse(entry, raw):
 
 def _default(entry):
     d = entry["default"]
-    return _parse(entry, d) if entry["kind"] in ("multi", "domains") else d
+    return _parse(entry, d) if entry["kind"] in ("multi", "domains", "emails") else d
 
 
 def _stored(db=None):
@@ -201,7 +226,7 @@ def save_policies(area, form):
     for key, e in POLICIES.items():
         if e["area"] != area:
             continue
-        raw = form.get(key, "" if e["kind"] in ("bool", "multi", "domains", "url") else None)
+        raw = form.get(key, "" if e["kind"] in ("bool", "multi", "domains", "emails", "url") else None)
         if raw is None:
             continue
         try:

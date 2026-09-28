@@ -278,6 +278,13 @@ def migrate_db(db):
     # NULL = "whatever stage the project is in" — old tasks and quick adds.
     if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
         db.execute("ALTER TABLE tasks ADD COLUMN stage TEXT")
+    # Read-only API tokens (routes/tokens.py): only a hash is stored; the
+    # token itself is shown once. Revoked/expired ones are trimmed after 90 days.
+    db.execute("""CREATE TABLE IF NOT EXISTS api_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+        created_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+        last_used_at TEXT, revoked_at TEXT)""")
     # One row per backup run (backup.py): what was made, where it went, and
     # whether its restore test passed. Trimmed to the newest 200 by each run.
     db.execute("""CREATE TABLE IF NOT EXISTS backup_runs (

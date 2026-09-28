@@ -169,6 +169,36 @@ def settings_backup_now():
     return redirect(url_for("settings_section", section="backups"))
 
 
+@app.route("/settings/reports/send-test", methods=["POST"])
+@permission_required("manage_settings")
+def settings_report_send_test():
+    """This week's report, now, to the admin who asked (no Teams post)."""
+    from services import weekly_report
+    me = get_db().execute("SELECT email FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    if not me or not me["email"]:
+        flash("Add your email address on the Account page first")
+    else:
+        sent, failed, message = weekly_report.send(to=[me["email"]], teams=False)
+        audit_log("report_send_test", details=message)
+        flash(f"Test report sent to {me['email']}" if sent else f"Not sent: {message}")
+    return redirect(url_for("settings_section", section="reports"))
+
+
+@app.route("/settings/notifications/test-webhook", methods=["POST"])
+@permission_required("manage_settings")
+def settings_test_webhook():
+    from core import external_url
+    from policies import policy
+    url = policy("teams_webhook_url")
+    audit_log("test_teams_webhook", details="set" if url else "(none)")
+    if not url:
+        flash("Save a Teams Workflows webhook address first")
+    else:
+        ok, error = graph.post_teams_webhook(url, "Odin test message", ["If you can read this, Odin can post to this channel."], external_url("board"))
+        flash("Posted to the Teams webhook" if ok else f"The webhook refused it: {error}")
+    return redirect(url_for("settings_section", section="notifications"))
+
+
 @app.route("/settings/backups/test-share", methods=["POST"])
 @permission_required("manage_integrations")
 def settings_backup_test_share():

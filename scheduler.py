@@ -21,11 +21,15 @@ import db as _db
 
 HEARTBEAT = "scheduler.heartbeat"
 
-# (job, the policy holding its time, the policy holding the days it runs on)
+# (job, the policy holding its time, the policy holding the days it runs on);
+# None = fixed: housekeeping runs nightly at 03:30 every day.
 JOBS = (
     ("digest", "digest_time", "working_days"),
     ("backup", "backup_time", "backup_days"),
+    ("report", "report_time", "report_days"),
+    ("housekeeping", None, None),
 )
+FIXED_TIME, EVERY_DAY = "03:30", ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
 def due_jobs(now_local, last_runs, times, days):
@@ -34,7 +38,8 @@ def due_jobs(now_local, last_runs, times, days):
     from policies import WEEKDAYS
     today, weekday, clock = now_local.date().isoformat(), WEEKDAYS[now_local.weekday()], now_local.strftime("%H:%M")
     return [job for job, time_key, days_key in JOBS
-            if weekday in days[days_key] and clock >= times[time_key] and last_runs.get(job) != today]
+            if weekday in (days[days_key] if days_key else EVERY_DAY) and clock >= (times[time_key] if time_key else FIXED_TIME)
+            and last_runs.get(job) != today]
 
 
 def next_run(now_local, at, days):
@@ -65,8 +70,9 @@ def run_due():
         now_local = datetime.now(ZoneInfo(policy("timezone", con)))
         _set(con, HEARTBEAT, datetime.utcnow().isoformat())
         last = {r["key"].split(".")[1]: r["value"] for r in con.execute("SELECT key, value FROM settings WHERE key LIKE 'job.%.last_run'")}
-        times = {k: policy(k, con) for _, k, _ in JOBS}
-        days = {k: policy(k, con) for _, _, k in JOBS}
+        times = {k: policy(k, con) for _, k, _ in JOBS if k}
+        days = {k: policy(k, con) for _, _, k in JOBS if k}
+        report_on = policy("report_enabled", con)
         todo = due_jobs(now_local, last, times, days)
         for job in todo:
             # Marked first: a job that crashes is not retried every minute all day.
@@ -82,6 +88,16 @@ def run_due():
                 import backup
                 ok, message = backup.run_backup(trigger="schedule")
                 print(f"[scheduler] backup: {message}")
+            elif job == "report" and report_on:
+                from app import app
+                from services import weekly_report
+                with app.test_request_context():
+                    print(f"[scheduler] weekly report: {weekly_report.send()[2]}")
+            elif job == "housekeeping":
+                from services.retention import run_audit_retention
+                removed, path = run_audit_retention()
+                if removed:
+                    print(f"[scheduler] audit retention: {removed} rows archived to {path}")
         except Exception as exc:  # noqa: BLE001 — one failed job must not stop the clock
             print(f"[scheduler] {job} failed: {exc}", file=sys.stderr)
     return todo

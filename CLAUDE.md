@@ -34,8 +34,11 @@ the port replaces it page by page.
 # Admin settings
 
 Settings is one side-menu page (`components/SettingsLayout.tsx`), one address
-per area: `/settings/general|security|workflow|notifications|integrations|backups`
+per area: `/settings/general|security|workflow|notifications|integrations|reports|backups|api|audit`
 plus Users, Role permissions, Contacts and the Audit log in the same menu.
+Recurring work (digest, backups, weekly report, audit retention) runs only in
+`scheduler.py` (its own service), at policy times in the workspace time
+zone — never in a web worker.
 **Any value an admin may change is a policy:** add it to `policies.POLICIES`
 (area, kind, default, limits, label, help), read it with `policy("key")`
 (pass `db` outside an app context), and the settings page draws, validates

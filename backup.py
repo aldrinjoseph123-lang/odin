@@ -181,7 +181,9 @@ def run_backup(trigger="manual", actor=None):
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.write(snapshot, arcname="odin.db")
                 zf.writestr("manifest.json", json.dumps(manifest, indent=1))
-                for folder, label in ((_db.UPLOAD_DIR, "uploads"), (_db.AVATAR_DIR, "avatars")):
+                from services.retention import ARCHIVE_DIR_NAME
+                for folder, label in ((_db.UPLOAD_DIR, "uploads"), (_db.AVATAR_DIR, "avatars"),
+                                      (os.path.join(_db.DATA_DIR, ARCHIVE_DIR_NAME), ARCHIVE_DIR_NAME)):
                     for root, _dirs, files in os.walk(folder):
                         for fname in files:
                             full = os.path.join(root, fname)

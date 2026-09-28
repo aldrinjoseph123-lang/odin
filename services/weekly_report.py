@@ -1,0 +1,110 @@
+"""The weekly portfolio report (Settings → Reports).
+
+One email: what needs attention first (overdue, over their stage SLA, due
+soon), stages moved in the last 7 days, what falls due in the next 7, and
+how many rollouts sit in each stage, with a link into Odin. Optionally each
+active project's latest saved report rides along as a PDF, and a short
+summary goes to Teams (the connected channel and/or a Workflows webhook).
+
+Staff only: recipients are active internal users in the chosen roles plus
+the extra addresses an admin typed. Needs a request context (links).
+"""
+from collections import Counter
+from datetime import datetime, timedelta
+
+from markupsafe import escape
+
+import graph
+from core import external_url
+from db import PROJECT_OPEN_SQL, get_db, get_setting
+from policies import local_today, policy
+from services.alerts import build_alerts
+from services.pdf import report_pdf
+
+
+def build():
+    """(subject, html, summary_lines, attachments) for this week."""
+    db = get_db()
+    today = local_today()
+    projects = db.execute(f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.name").fetchall()
+    alerts = build_alerts(projects)
+    week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    moves = db.execute(
+        "SELECT p.name, n.prev_stage, n.stage, n.author FROM status_notes n JOIN projects p ON p.id = n.project_id "
+        "WHERE n.prev_stage IS NOT NULL AND n.created_at >= ? AND p.deleted_at IS NULL ORDER BY n.created_at", (week_ago,)).fetchall()
+    soon = (today + timedelta(days=7)).isoformat()
+    due_tasks = db.execute(
+        f"SELECT t.title, t.due_date, p.name AS project, u.name AS who FROM tasks t JOIN projects p ON p.id = t.project_id "
+        f"LEFT JOIN users u ON u.id = t.assignee_id WHERE t.done = 0 AND t.due_date IS NOT NULL AND t.due_date <= ? "
+        f"AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY t.due_date LIMIT 40", (soon,)).fetchall()
+    per_stage = Counter(p["stage"] for p in projects)
+
+    late = "<b style='color:#B4231C'>late</b>"
+
+    def due_row(t):
+        who = f" · {escape(t['who'])}" if t["who"] else ""
+        return f"<li>{escape(t['due_date'])} · {escape(t['title'])} — {escape(t['project'])}{who}{' ' + late if t['due_date'] < today.isoformat() else ''}</li>"
+
+    def row(p, note):
+        return f"<li><b>{escape(p['name'])}</b> · {escape(p['client'] or '')} · {escape(p['stage'])} — {note}</li>"
+    attention = ([row(p, "past its target date") for p in alerts["project_overdue"]]
+                 + [row(p, "over its stage SLA") for p in alerts["stage_sla_breach"] if p not in alerts["project_overdue"]]
+                 + [row(p, f"due {p['target_end_date']}") for p in alerts["project_due_soon"]])
+    sections = [
+        ("Needs attention", attention, "Nothing is overdue, over SLA or due soon."),
+        ("Stages moved this week", [f"<li><b>{escape(m['name'])}</b>: {escape(m['prev_stage'])} → {escape(m['stage'])} <span style='color:#6B7280'>({escape(m['author'])})</span></li>" for m in moves], "No stage moved this week."),
+        ("Due in the next 7 days", [due_row(t) for t in due_tasks], "Nothing falls due."),
+        ("Rollouts per stage", [f"<li>{escape(stage)}: {n}</li>" for stage, n in per_stage.most_common()], "No active rollouts."),
+    ]
+    html = (f"<p><b>{len(projects)}</b> active rollouts · <b>{len(alerts['project_overdue'])}</b> overdue · "
+            f"<b>{len(alerts['stage_sla_breach'])}</b> over SLA · <b>{len(alerts['project_due_soon'])}</b> due soon</p>")
+    for title, items, empty in sections:
+        html += f"<h3 style='margin:18px 0 6px;font-size:14px'>{title}</h3>" + (f"<ul style='margin:0;padding-left:18px'>{''.join(items)}</ul>" if items else f"<p style='color:#6B7280;margin:0'>{empty}</p>")
+    html += f"<p style='margin-top:18px'><a href=\"{external_url('board')}\">Open the flow in Odin</a></p>"
+    summary = [f"{len(projects)} active · {len(alerts['project_overdue'])} overdue · {len(alerts['stage_sla_breach'])} over SLA · {len(alerts['project_due_soon'])} due soon",
+               f"{len(moves)} stage move{'s' if len(moves) != 1 else ''} this week, {len(due_tasks)} task{'s' if len(due_tasks) != 1 else ''} due in the next 7 days"]
+
+    attachments = []
+    if policy("report_attach"):
+        company = policy("company_name")
+        for p in projects:
+            latest = db.execute("SELECT version, body, created_at FROM project_reports WHERE project_id = ? ORDER BY version DESC LIMIT 1", (p["id"],)).fetchone()
+            if latest:
+                safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in p["name"])[:60]
+                attachments.append((f"{safe}-report-v{latest['version']}.pdf",
+                                    report_pdf(f"{p['name']} · report v{latest['version']}", latest["body"].splitlines(),
+                                               f"Odin · {company} · saved {latest['created_at'][:10]}"), "application/pdf"))
+    return f"Odin weekly report · {today.strftime('%d %b %Y')}", html, summary, attachments
+
+
+def recipients():
+    db = get_db()
+    roles = policy("report_roles")
+    staff = [r["email"].lower() for r in db.execute(
+        f"SELECT email FROM users WHERE active = 1 AND kind = 'internal' AND email IS NOT NULL AND email != '' "
+        f"AND role IN ({','.join('?' * len(roles)) or 'NULL'})", roles)] if roles else []
+    return sorted(set(staff) | set(policy("report_emails")))
+
+
+def send(to=None, teams=True):
+    """Send the report to `to` (default: the configured recipients) and,
+    when asked and allowed, a summary to Teams. Returns (sent, failed, message)."""
+    subject, html, summary, attachments = build()
+    targets = to if to is not None else recipients()
+    sent, failed = 0, []
+    for address in targets:
+        ok, error = graph.send_mail(address, subject, html, attachments=attachments)
+        sent += ok
+        if not ok:
+            failed.append(f"{address}: {error}")
+    posted = []
+    if teams and policy("report_teams"):
+        if get_setting("notify_teams_enabled") == "1":
+            ok, _ = graph.send_teams_message(f"<b>{escape(subject)}</b><br>" + "<br>".join(escape(s) for s in summary))
+            posted.append("Teams channel" if ok else "Teams channel failed")
+        if policy("teams_webhook_url"):
+            ok, _ = graph.post_teams_webhook(policy("teams_webhook_url"), subject, summary, external_url("board"))
+            posted.append("Teams webhook" if ok else "Teams webhook failed")
+    message = f"Sent to {sent} of {len(targets)}" + (f" with {len(attachments)} PDF{'s' if len(attachments) != 1 else ''}" if attachments else "") \
+        + (f"; {', '.join(posted)}" if posted else "") + (f"; failed: {'; '.join(failed)[:300]}" if failed else "")
+    return sent, failed, message

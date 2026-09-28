@@ -27,6 +27,7 @@ def _format_alerts_html(alerts):
     labels = {
         "project_overdue": "Projects overdue",
         "project_due_soon": "Projects due soon",
+        "stage_sla_breach": "Projects over their stage SLA",
         "stale": "Projects untouched for a while",
     }
     for key, label in labels.items():

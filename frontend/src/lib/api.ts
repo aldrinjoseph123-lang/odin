@@ -171,7 +171,8 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 
 // ---- settings ----
 export type Policy = {
-  key: string; area: "general" | "security" | "workflow" | "notifications" | "backups"; kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "time"
+  key: string; area: "general" | "security" | "workflow" | "notifications" | "backups" | "reports" | "audit"
+  kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]
 }
 export type BackupRun = {
@@ -190,6 +191,9 @@ export type SettingsData = {
   }
   toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "guest_links_enabled", boolean>
   backups: BackupsView | null
+  api_tokens: { id: number; name: string; created_by: string; created_at: string; expires_at: string; last_used_at: string | null; revoked_at: string | null }[]
+  audit_archives: { name: string; size: number }[]
+  public_url_set: boolean
   policies: Policy[]
   sso: { client_id: string | null; tenant_id: string | null; has_secret: boolean; configured: boolean; enforced: boolean; redirect_uri: string; password_admins: number }
 }

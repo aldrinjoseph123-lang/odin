@@ -14,6 +14,7 @@ Every public function is best-effort: none of them raise. Send/upload
 functions return (ok: bool, error: str | None) so callers can flash a warning
 and continue — a Graph outage must never break a project update.
 """
+import base64
 import os
 import sqlite3
 import time
@@ -299,7 +300,9 @@ EMAIL_SHELL = (
 )
 
 
-def send_mail(to_email, subject, html_body):
+def send_mail(to_email, subject, html_body, attachments=None):
+    """attachments: [(filename, bytes, content_type)] — small files only
+    (Graph's sendMail takes the whole message in one ~4 MB request)."""
     try:   # the footer names the company from Settings → General; a script without the app still sends
         from policies import policy
         company = policy("company_name").upper()
@@ -316,6 +319,9 @@ def send_mail(to_email, subject, html_body):
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
             "toRecipients": [{"emailAddress": {"address": to_email}}],
+            **({"attachments": [{"@odata.type": "#microsoft.graph.fileAttachment", "name": name, "contentType": ctype,
+                                 "contentBytes": base64.b64encode(data).decode()} for name, data, ctype in attachments]}
+               if attachments else {}),
         },
         "saveToSentItems": "true",
     }
@@ -326,6 +332,22 @@ def send_mail(to_email, subject, html_body):
         return True, None
     except Exception as exc:  # noqa: BLE001
         return False, f"sendMail failed: {exc}"
+
+
+def post_teams_webhook(url, title, lines, link=None):
+    """Post an Adaptive Card to a Teams Workflows webhook ("Post to a channel
+    when a webhook request is received"). The old Office 365 connector
+    webhooks were retired in 2026; Workflows accepts this message shape.
+    Returns (ok, error); never raises."""
+    body = [{"type": "TextBlock", "text": title, "weight": "Bolder", "size": "Medium", "wrap": True}]
+    body += [{"type": "TextBlock", "text": line, "wrap": True, "spacing": "Small"} for line in lines]
+    card = {"type": "AdaptiveCard", "$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "version": "1.4", "body": body,
+            **({"actions": [{"type": "Action.OpenUrl", "title": "Open in Odin", "url": link}]} if link else {})}
+    try:
+        resp = requests.post(url, json={"type": "message", "attachments": [{"contentType": "application/vnd.microsoft.card.adaptive", "content": card}]}, timeout=15)
+        return (resp.status_code < 400), (None if resp.status_code < 400 else f"webhook answered {resp.status_code}")
+    except Exception as exc:  # noqa: BLE001
+        return False, f"webhook failed: {exc}"
 
 
 def send_teams_message(text):

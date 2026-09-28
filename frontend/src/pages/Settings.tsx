@@ -31,6 +31,9 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   workflow: { title: "Projects & workflow", lede: "What new projects start with, their stages and the alerts they raise." },
   notifications: { title: "Notifications", lede: "Which channels carry project events. Each person also picks what they get by email on their Account page." },
   integrations: { title: "Integrations", lede: "Microsoft 365: mail, Teams and OneDrive through one Azure app." },
+  reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
+  api: { title: "API tokens", lede: "Read-only access for scripts and other tools: projects, their stages and tasks, and saved reports." },
+  audit: { title: "Audit retention", lede: "How long the audit trail is kept, and where older rows go." },
   backups: { title: "Backups", lede: "Copies of the database, documents and pictures: made on schedule, tested by restoring them, copied off the server, pruned by age." },
 }
 
@@ -114,7 +117,10 @@ export default function Settings(_props: { user: User }) {
             </div>
           </>
         )}
-        {section === "notifications" && policyForm("notifications", "Schedule")}
+        {section === "notifications" && policyForm("notifications", "Schedule and Teams webhook")}
+        {section === "notifications" && (
+          <div><Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/notifications/test-webhook")}>Send a test to the Teams webhook</Button></div>
+        )}
         {section === "notifications" && (
           <Toggles data={data} busy={busy} send={send} title="Channels" keys={[
             { key: "notify_email_enabled", label: "Email notifications on project events (stage changes, approvals, assignments, mentions, due tasks)" },
@@ -130,6 +136,25 @@ export default function Settings(_props: { user: User }) {
             <Toggles data={data} busy={busy} send={send} title="OneDrive" keys={[
               { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
             ]} />
+          </>
+        )}
+        {section === "reports" && (
+          <>
+            {!data.public_url_set && <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-[13px] text-warn">Set the public web address under General, so the links in scheduled mail point at Odin and not at the server's own name.</p>}
+            {policyForm("reports", "Weekly report")}
+            <div><Button size="sm" variant="outline" disabled={busy} onClick={() => send("/settings/reports/send-test")}>Send this week's report to me now</Button></div>
+          </>
+        )}
+        {section === "api" && <ApiTokens tokens={data.api_tokens} busy={busy} send={send} />}
+        {section === "audit" && (
+          <>
+            {policyForm("audit", "Retention")}
+            <Panel title="Archives" hint="written nightly before rows are removed; included in every backup">
+              {data.audit_archives.length === 0 ? <p className="text-[13px] text-muted-foreground">Nothing archived yet: no row is older than the retention period.</p> : (
+                <ul className="grid gap-1 text-[13px]">{data.audit_archives.map((a) => <li key={a.name} className="flex justify-between gap-3"><span className="font-mono text-[12px]">{a.name}</span><span className="text-muted-foreground">{bytes(a.size)}</span></li>)}</ul>
+              )}
+              <p className="mt-3 text-[12px] text-muted-foreground">The full trail is on the <a href="/audit-logs" className="text-primary-text hover:underline">Audit log</a> page, with a CSV export.</p>
+            </Panel>
           </>
         )}
         {section === "backups" && data.backups && (
@@ -185,8 +210,8 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               {p.kind === "time" && (
                 <Input id={`pol-${p.key}`} type="time" required value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 w-32 text-[13px]" />
               )}
-              {(p.kind === "url" || p.kind === "domains") && (
-                <Input id={`pol-${p.key}`} type={p.kind === "url" ? "url" : "text"} maxLength={p.max} placeholder={p.key === "sharepoint_site" ? "https://contoso.sharepoint.com/sites/IT" : p.kind === "url" ? "https://odin.example.com" : "partner.com, vendor.ae"}
+              {(p.kind === "url" || p.kind === "domains" || p.kind === "emails") && (
+                <Input id={`pol-${p.key}`} type={p.kind === "url" ? "url" : "text"} maxLength={p.max} placeholder={p.key === "sharepoint_site" ? "https://contoso.sharepoint.com/sites/IT" : p.key === "teams_webhook_url" ? "https://…logic.azure.com/workflows/…" : p.kind === "url" ? "https://odin.example.com" : p.kind === "emails" ? "ceo@company.com, delivery@company.com" : "partner.com, vendor.ae"}
                   value={Array.isArray(v[p.key]) ? (v[p.key] as string[]).join(", ") : String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-md text-[13px]" />
               )}
               {p.kind === "text" && (
@@ -219,6 +244,51 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
         <div><Button type="submit" size="sm" disabled={busy || !dirty}>Save</Button></div>
       </form>
     </Panel>
+  )
+}
+
+// Read-only API tokens: shown once when made (in the notice above), then
+// only their name, age, last use and expiry; revoking is immediate.
+function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"]; busy: boolean; send: Send }) {
+  const [name, setName] = useState("")
+  const [days, setDays] = useState("90")
+  const now = new Date().toISOString()
+  return (
+    <>
+      <Panel title="New token">
+        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then(() => setName("")) }} className="flex flex-wrap items-end gap-2">
+          <label className="grid gap-1 text-[12px] text-muted-foreground">What uses it<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></label>
+          <label className="grid gap-1 text-[12px] text-muted-foreground">Valid for
+            <select value={days} onChange={(e) => setDays(e.target.value)} className={selectClass}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
+          </label>
+          <Button type="submit" size="sm" disabled={busy || !name.trim()}>Create token</Button>
+        </form>
+        <p className="mt-3 text-[12px] text-muted-foreground">
+          Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code> to <code className="font-mono">/api/v1/projects</code>, <code className="font-mono">/api/v1/projects/&lt;id&gt;</code> and <code className="font-mono">/api/v1/projects/&lt;id&gt;/report</code>. It can read every project and change nothing. Behind Cloudflare Access, /api/v1 needs its own Access policy (a service token).
+        </p>
+      </Panel>
+      <Panel title="Tokens">
+        {tokens.length === 0 ? <p className="text-[13px] text-muted-foreground">No tokens yet.</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-[13px]">
+            <thead><tr className="text-left text-[11.5px] text-muted-foreground">{["Name", "Made", "Last used", "Expires", ""].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
+            <tbody>
+              {tokens.map((t) => {
+                const dead = !!t.revoked_at || t.expires_at < now
+                return (
+                  <tr key={t.id} className={cn("border-t border-border", dead && "text-muted-foreground")}>
+                    <td className="py-1.5 pr-3 font-medium">{t.name}</td>
+                    <td className="whitespace-nowrap py-1.5 pr-3"><Ago iso={t.created_at} /> · {t.created_by}</td>
+                    <td className="whitespace-nowrap py-1.5 pr-3">{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
+                    <td className="whitespace-nowrap py-1.5 pr-3">{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : t.expires_at.slice(0, 10)}</td>
+                    <td className="py-1.5 text-right">{!dead && <Button size="sm" variant="ghost" className="h-7 text-bad hover:text-bad" disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table></div>
+        )}
+      </Panel>
+    </>
   )
 }
 

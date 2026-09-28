@@ -191,7 +191,18 @@ def api_settings():
         "policies": policy_view(),
         "sso": _sso_view(),
         "backups": _backups_view() if request.args.get("section") in (None, "backups") else None,
+        "api_tokens": [dict(r) for r in db.execute(
+            "SELECT id, name, created_by, created_at, expires_at, last_used_at, revoked_at FROM api_tokens ORDER BY id DESC LIMIT 100")],
+        "audit_archives": _audit_archives(),
+        "public_url_set": bool(policy("public_url")),
     })
+
+
+def _audit_archives():
+    import os
+    from services.retention import archive_dir
+    folder = archive_dir()
+    return [{"name": n, "size": os.path.getsize(os.path.join(folder, n))} for n in sorted(os.listdir(folder), reverse=True) if n.endswith(".csv")][:50]
 
 
 def _backups_view():

@@ -109,3 +109,11 @@ def notify_event(project, subject, message_html, channels=None):
         ok, error = graph.send_teams_message(f"<b>{subject}</b><br>{message_html}")
         if not ok:
             print(f"[notify_event] teams failed: {error}")
+        # the same event to a Teams Workflows webhook, when one is set (Settings → Notifications)
+        from policies import policy
+        if policy("teams_webhook_url"):
+            from core import external_url
+            link = external_url("project_detail", project_id=project["id"]) if "id" in project.keys() else None
+            ok, error = graph.post_teams_webhook(policy("teams_webhook_url"), _plain(subject), [_plain(message_html)], link)
+            if not ok:
+                print(f"[notify_event] webhook failed: {error}")
