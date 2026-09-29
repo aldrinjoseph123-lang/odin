@@ -1,5 +1,6 @@
 import path from "node:path"
-import { defineConfig } from "vite"
+
+import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 
@@ -17,4 +18,11 @@ export default defineConfig({
     },
   },
   build: { outDir: "dist", emptyOutDir: true },
+  // vitest: pure helpers run in node; page tests (*.test.tsx) render in jsdom
+  test: {
+    projects: [
+      { extends: true, test: { name: "unit", include: ["src/**/*.test.ts"], environment: "node" } },
+      { extends: true, test: { name: "ui", include: ["src/**/*.test.tsx"], environment: "jsdom", setupFiles: ["./src/test-setup.ts"], css: false } },
+    ],
+  },
 })

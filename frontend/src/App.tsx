@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react"
+import { Suspense, lazy, useEffect, useState } from "react"
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import AppShell from "@/components/AppShell"
 import { SettingsLayout } from "@/components/SettingsLayout"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import Flow from "@/pages/Flow"
-import Dashboard from "@/pages/Dashboard"
+// the dashboard carries the chart library: its own chunk, fetched on first visit
+const Dashboard = lazy(() => import("@/pages/Dashboard"))
+import { PageSkeleton } from "@/components/PageSkeleton"
 import Projects from "@/pages/Projects"
 import Project from "@/pages/Project"
 import Users from "@/pages/Users"
@@ -62,7 +64,7 @@ export default function App() {
         <Route path="/auth/reset" element={<ForgotPassword />} />
         <Route path="/auth/reset/:token" element={<ForgotPassword />} />
         <Route path="/board" element={<Protected>{(user) => <Flow user={user} />}</Protected>} />
-        <Route path="/dashboard" element={<Protected>{(user) => <Dashboard user={user} />}</Protected>} />
+        <Route path="/dashboard" element={<Protected>{(user) => <Suspense fallback={<PageSkeleton />}><Dashboard user={user} /></Suspense>}</Protected>} />
         <Route path="/projects" element={<Protected>{(user) => <Projects user={user} />}</Protected>} />
         <Route path="/projects/new" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
         <Route path="/projects/:id/edit" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />

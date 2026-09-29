@@ -1,0 +1,76 @@
+import { expect, test } from "@playwright/test"
+import { signIn } from "./helpers"
+
+// @keys: the journeys without a mouse.
+
+test("@keys flow: j/k move, Enter opens, Esc closes, Home/End jump", async ({ page }) => {
+  await signIn(page, "admin", "/board")
+  await page.getByRole("button", { name: /Show \d+ on-track rollouts/ }).click()
+  const rows = page.locator("button[data-row]")
+  await rows.first().focus()
+  await page.keyboard.press("j")
+  await expect(rows.nth(1)).toBeFocused()
+  await page.keyboard.press("k")
+  await expect(rows.first()).toBeFocused()
+  await page.keyboard.press("End")
+  await expect(rows.last()).toBeFocused()
+  await page.keyboard.press("Home")
+  await expect(rows.first()).toBeFocused()
+  await page.keyboard.press("Enter")
+  await expect(page).toHaveURL(/rollout=\d+/)
+  await expect(page.getByRole("list", { name: "Stages" })).toBeVisible()   // the rollout is open before Esc is asked to close it
+  await page.keyboard.press("Escape")
+  await expect(page).not.toHaveURL(/rollout=/)
+  // the whole list is one tab stop: Tab from a row leaves the list
+  await rows.first().focus()
+  await page.keyboard.press("Tab")
+  await expect(rows.first()).not.toBeFocused()
+})
+
+test("@keys dashboard: customise entirely from the keyboard", async ({ page }) => {
+  await signIn(page, "admin", "/dashboard")
+  await page.getByRole("button", { name: "Customise" }).focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByText("No changes yet")).toBeVisible()
+  await page.getByRole("button", { name: "Move Portfolio progress up" }).focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByText("Unsaved changes")).toBeVisible()
+  await page.getByRole("button", { name: "Settings for Timeline" }).focus()
+  await page.keyboard.press("Space")
+  await expect(page.locator("#timeline-show")).toBeVisible()
+  await page.getByRole("button", { name: "Cancel" }).focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("button", { name: "Customise" })).toBeVisible()
+  // every control in the toolbar has a name
+  await page.getByRole("button", { name: "Customise" }).click()
+  const nameless = await page.locator("main button").evaluateAll((els) => els.filter((b) => !b.textContent?.trim() && !b.getAttribute("aria-label")).length)
+  expect(nameless).toBe(0)
+})
+
+test("@keys calendar: months, toggles and a day, by Tab and Enter", async ({ page }) => {
+  await signIn(page, "admin", "/board?view=calendar")
+  const title = page.locator("h2")
+  const start = await title.textContent()
+  await page.getByRole("button", { name: "Next month" }).focus()
+  await page.keyboard.press("Enter")
+  await expect(title).not.toHaveText(start!)
+  await page.getByRole("button", { name: "Today" }).focus()
+  await page.keyboard.press("Enter")
+  await expect(title).toHaveText(start!)
+  const day = page.getByRole("button", { name: /\d+ items?$/ }).nth(8)
+  await day.focus()
+  await page.keyboard.press("Enter")
+  await expect(page).toHaveURL(/day=/)
+  // focus is visible on the pills and the chips
+  await page.getByRole("button", { name: "Tasks", exact: true }).focus()
+  const ring = await page.getByRole("button", { name: "Tasks", exact: true }).evaluate((el) => getComputedStyle(el).outlineStyle !== "none" || getComputedStyle(el).boxShadow !== "none")
+  expect(ring).toBe(true)
+})
+
+test("@keys the skip link reaches the content", async ({ page }) => {
+  await signIn(page, "admin", "/dashboard")
+  await page.keyboard.press("Tab")
+  await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused()
+  await page.keyboard.press("Enter")
+  await expect(page.locator("#main")).toBeFocused()
+})

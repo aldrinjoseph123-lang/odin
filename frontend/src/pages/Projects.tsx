@@ -156,9 +156,8 @@ export default function Projects({ user }: { user: User }) {
             <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">
                 {COLUMNS.map((c) => (
-                  <th key={c.key} className={cn("px-3 py-2 font-normal", c.className)}>
-                    <button type="button" onClick={() => sortBy(c.key)} className={cn("inline-flex items-center gap-1 hover:text-foreground", data.sort === c.key && "font-medium text-foreground")}
-                      aria-sort={data.sort === c.key ? (data.dir === "asc" ? "ascending" : "descending") : undefined}>
+                  <th key={c.key} className={cn("px-3 py-2 font-normal", c.className)} aria-sort={data.sort === c.key ? (data.dir === "asc" ? "ascending" : "descending") : undefined}>
+                    <button type="button" onClick={() => sortBy(c.key)} className={cn("inline-flex items-center gap-1 hover:text-foreground", data.sort === c.key && "font-medium text-foreground")}>
                       {c.label}{data.sort === c.key && (data.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
                     </button>
                   </th>

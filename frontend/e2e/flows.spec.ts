@@ -1,0 +1,222 @@
+import { expect, test } from "@playwright/test"
+import { expectClean, signIn, watch } from "./helpers"
+
+// @flow: the journeys, end to end, on the seeded portfolio. Each test leaves
+// the data as it found it where it can (undo, reset, restore), so the order
+// does not matter.
+
+test("@flow dashboard: customise, save, reload, reset, and the workspace default", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/dashboard")
+  await page.getByRole("button", { name: "Customise" }).click()
+  await expect(page.getByText("No changes yet")).toBeVisible()
+  await page.getByRole("button", { name: "Move Portfolio progress up" }).click()
+  await page.getByRole("group", { name: "Width of Timeline" }).getByRole("button", { name: "Full" }).click()
+  await page.getByRole("button", { name: "Remove Open alerts" }).click()
+  await page.getByRole("button", { name: "Open alerts" }).click()          // the picker puts it back at the end
+  await page.getByRole("button", { name: "Settings for Timeline" }).click()
+  await page.locator("#timeline-show").selectOption("attention")
+  await expect(page.getByText("Unsaved changes")).toBeVisible()
+  await page.getByRole("button", { name: "Save my dashboard" }).click()
+  await expect(page.getByRole("status")).toHaveText(/Your dashboard is saved/)
+  await page.reload()
+  await expect(page.locator("main section[aria-label]").first()).toBeVisible()   // the dashboard chunk is lazy
+  const titles = page.locator("main section[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))
+  expect((await titles).slice(0, 2)).toEqual(["Portfolio progress", "Timeline"])
+  expect(await titles).toContain("Open alerts")
+  await expect(page.getByText("your arrangement")).toBeVisible()
+  // reset returns to the workspace default
+  await page.getByRole("button", { name: "Customise" }).click()
+  await page.getByRole("button", { name: "Reset to default" }).click()
+  await expect(page.getByRole("status")).toHaveText(/Back to the workspace default/)
+  expect((await page.locator("main section[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).slice(0, 2)).toEqual(["Timeline", "Portfolio progress"])
+  // an admin sets the default; a member without their own arrangement sees it
+  await page.getByRole("button", { name: "Customise" }).click()
+  await page.getByRole("button", { name: "Remove Cycle time" }).click()
+  await page.getByRole("button", { name: "Save as workspace default" }).click()
+  await expect(page.getByRole("status")).toHaveText(/Saved as the workspace default/)
+  await signIn(page, "member", "/dashboard")
+  await expect(page.locator("main section[aria-label='Cycle time']")).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Save as workspace default" })).toHaveCount(0)
+  // put it back
+  await signIn(page, "admin", "/dashboard")
+  await page.getByRole("button", { name: "Customise" }).click()
+  await page.getByRole("button", { name: "Cycle time" }).click()
+  await page.getByRole("button", { name: "Save as workspace default" }).click()
+  await expect(page.getByRole("status")).toHaveText(/Saved as the workspace default/)
+  expectClean(errors)
+})
+
+test("@flow dashboard: every widget's link goes where it says", async ({ page }) => {
+  await signIn(page, "admin", "/dashboard")
+  for (const [widget, link, url] of [["Timeline", "Open the flow", /\/board$/], ["Schedule", "My work", /\/my-work/], ["Team", "People", /\/users/], ["Open alerts", "All alerts", /\/alerts/], ["My work", "Open", /\/my-work/], ["Cycle time", "Detail", /\/analytics/]] as const) {
+    await page.goto("/dashboard")
+    await page.locator(`main section[aria-label='${widget}']`).getByRole("link", { name: link, exact: true }).click()
+    await expect(page, `${widget} → ${link}`).toHaveURL(url)
+  }
+  await page.goto("/dashboard")
+  await page.locator("main section[aria-label='Timeline'] a[href^='/board?rollout=']").first().click()
+  await expect(page).toHaveURL(/\/board\?rollout=\d+/)
+})
+
+test("@flow flow list: filters, stage pills, grouping, the fold, opening a rollout", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board")
+  const rows = page.locator("button[data-row]")
+  const total = Number((await page.getByRole("button", { name: /^All, / }).getAttribute("aria-label"))!.match(/\d+/)![0])
+  // on-track rows are folded behind one line; showing them lists everything
+  await expect(page.getByRole("button", { name: /Show \d+ on-track rollouts/ })).toBeVisible()
+  await page.getByRole("button", { name: /Show \d+ on-track rollouts/ }).click()
+  await expect(rows).toHaveCount(total)
+  await page.getByRole("button", { name: "Hide the on-track rollouts" }).click()
+  // needs attention = the count on its chip
+  const attention = page.getByRole("button", { name: /^Needs attention, / })
+  const n = Number((await attention.getAttribute("aria-label"))!.match(/\d+/)![0])
+  await attention.click()
+  await expect(rows).toHaveCount(n)
+  await expect(page).toHaveURL(/filter=attention/)
+  // a stage pill narrows further and shows in the URL
+  const pills = page.getByRole("navigation", { name: "Rollouts in each stage" })
+  await pills.getByRole("button").first().click()
+  const pill = pills.getByRole("button", { pressed: true })   // read the stage and count from the pill that is now lit
+  const [, stage, count] = (await pill.getAttribute("aria-label"))!.match(/^(.+): (\d+)\./)!
+  await expect(page).toHaveURL(/stage=/)
+  await expect(rows).toHaveCount(Number(count))
+  for (const r of await rows.all()) expect(await r.getAttribute("aria-label")).toContain(`. ${stage}, stage`)
+  await pill.click()
+  await page.getByRole("button", { name: /^All, / }).click()
+  // grouping draws headers
+  await page.getByRole("combobox", { name: "Group rollouts by" }).selectOption("client")
+  await expect(page.locator("ul[aria-label] > li > p").first()).toBeVisible()
+  await page.getByRole("combobox", { name: "Group rollouts by" }).selectOption("")
+  // opening a rollout shows its flowchart; Esc closes it
+  await rows.first().click()
+  await expect(page).toHaveURL(/rollout=\d+/)
+  await expect(page.getByRole("list", { name: "Stages" })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(page).not.toHaveURL(/rollout=/)
+  expectClean(errors)
+})
+
+test("@flow flow detail: advance with the confirm step, then undo", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?rollout=1")
+  const advance = page.getByRole("button", { name: /^Advance to / })
+  const next = (await advance.textContent())!.replace("Advance to", "").trim()
+  await advance.click()
+  await page.getByRole("button", { name: `Move to ${next} now` }).click()
+  await expect(page.getByRole("status")).toHaveText(new RegExp(`moved to ${next}`))
+  await expect(page.locator("button[data-row][aria-current='true']")).toHaveAttribute("aria-label", new RegExp(next))
+  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.getByRole("status")).toHaveText(/Moved back/)
+  await expect(page.locator("button[data-row][aria-current='true']")).not.toHaveAttribute("aria-label", new RegExp(`\\. ${next},`))
+  // a task can be added, ticked and removed from the flowchart
+  await page.getByRole("button", { name: /^Add a task to / }).first().click()
+  await page.getByRole("textbox", { name: /^New task in / }).fill("E2E task")
+  await page.getByRole("button", { name: "Add task" }).click()
+  await page.getByRole("button", { name: "Complete E2E task" }).click()
+  await expect(page.getByRole("button", { name: "Reopen E2E task" })).toBeVisible()
+  await page.getByRole("button", { name: "Reopen E2E task" }).hover()   // the bin shows when the row is hovered
+  await page.getByRole("button", { name: "Delete E2E task" }).click()
+  await expect(page.getByRole("button", { name: /E2E task/ })).toHaveCount(0)
+  expectClean(errors)
+})
+
+test("@flow calendar: months, toggles, a day, and a chip into the flow", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?view=calendar")
+  const title = page.locator("h2")
+  const start = await title.textContent()
+  await page.getByRole("button", { name: "Next month" }).click()
+  await expect(title).not.toHaveText(start!)
+  await expect(page).toHaveURL(/month=\d{4}-\d{2}/)
+  await page.getByRole("button", { name: "Today" }).click()
+  await expect(title).toHaveText(start!)
+  // hiding tasks removes their chips
+  const chips = page.locator(".grid-cols-7 a[title]")
+  const before = await chips.count()
+  await page.getByRole("button", { name: "Tasks", exact: true }).click()
+  expect(await chips.count()).toBeLessThan(before)
+  await page.getByRole("button", { name: "Tasks", exact: true }).click()
+  // a day with more than three items opens as a list
+  await page.getByRole("button", { name: /\+\d+ more/ }).first().click()
+  await expect(page.locator("h3", { hasText: /item/ })).toBeVisible()
+  await expect(page).toHaveURL(/day=\d{4}-\d{2}-\d{2}/)
+  await page.getByRole("button", { name: "Close" }).click()
+  // a chip opens the rollout
+  await chips.first().click()
+  await expect(page).toHaveURL(/\/board\?rollout=\d+/)
+  expectClean(errors)
+})
+
+test("@flow projects: table or cards, remembered; sort and search", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects")
+  await expect(page.getByRole("table")).toBeVisible()
+  await page.getByRole("button", { name: "Cards" }).click()
+  await expect(page.getByRole("list", { name: "Projects" })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole("list", { name: "Projects" })).toBeVisible()
+  await page.getByRole("combobox", { name: "Sort by" }).selectOption("name")
+  await expect(page).toHaveURL(/sort=name/)
+  await page.getByRole("button", { name: "Table" }).click()
+  await page.getByRole("textbox", { name: "Search projects" }).fill("Globex")
+  await page.getByRole("button", { name: "Search", exact: true }).click()
+  await expect(page).toHaveURL(/q=Globex/)
+  await expect(page.getByText(/\d+ matching/)).toBeVisible()
+  await expect.poll(async () => (await page.locator("tbody tr").allTextContents()).every((t) => /Globex/.test(t))).toBe(true)
+  expectClean(errors)
+})
+
+test("@flow settings: a policy saves and takes effect; Kibana dashboards appear as tabs", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/general")
+  const name = page.locator("#pol-company_name")
+  const original = await name.inputValue()
+  await name.fill("E2E Co")
+  await page.getByRole("button", { name: "Save" }).first().click()
+  await expect(page.getByText("Saved").first()).toBeVisible()
+  await page.reload()
+  await expect(page.locator("#pol-company_name")).toHaveValue("E2E Co")
+  await page.locator("#pol-company_name").fill(original)
+  await page.getByRole("button", { name: "Save" }).first().click()
+  await expect(page.getByText("Saved").first()).toBeVisible()
+  // Kibana: a bad line is refused with the reason; good lines become tabs on the Flow page
+  await page.goto("/settings/integrations")
+  const lines = page.locator("#pol-kibana_dashboards")
+  await lines.fill("SOC | not-a-url")
+  await lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
+  await expect(page.getByText(/each line as/)).toBeVisible()
+  await lines.fill("SOC overview | https://kibana.example.com/app/dashboards#/view/soc?embed=true\nThreats | https://kibana.example.com/app/dashboards#/view/threats?embed=true")
+  await lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
+  await expect(page.getByText("Saved").first()).toBeVisible()
+  await page.goto("/board?view=kibana")
+  await expect(page.getByRole("tab", { name: "SOC overview" })).toHaveAttribute("aria-selected", "true")
+  await page.getByRole("tab", { name: "Threats" }).click()
+  await expect(page.locator("iframe")).toHaveAttribute("src", /threats/)
+  await expect(page.getByRole("link", { name: /Open in Kibana/ })).toHaveAttribute("href", /threats/)
+  await page.goto("/settings/integrations")
+  await page.locator("#pol-kibana_dashboards").fill("")
+  await page.locator("#pol-kibana_dashboards").locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
+  await expect(page.getByText("Saved").first()).toBeVisible()
+  await page.goto("/board?view=kibana")
+  await expect(page.getByText("No Kibana dashboards yet")).toBeVisible()
+  await page.getByRole("link", { name: "Open Integrations" }).click()
+  await expect(page).toHaveURL(/\/settings\/integrations/)
+  // the frame is blocked for the Kibana test host: expected, not an error
+  expectClean(errors.filter((e) => !/kibana\.example\.com/.test(e)))
+})
+
+test("@flow account: the home page is a choice", async ({ page }) => {
+  await signIn(page, "member", "/account")
+  const group = page.getByRole("radiogroup", { name: "Home page" })
+  await group.getByRole("radio", { name: "Flow" }).click()
+  await expect(group.getByRole("radio", { name: "Flow" })).toHaveAttribute("aria-checked", "true")
+  await page.goto("/")
+  await expect(page).toHaveURL(/\/board$/)
+  await page.goto("/account")
+  await group.getByRole("radio", { name: "Dashboard" }).click()
+  await expect(group.getByRole("radio", { name: "Dashboard" })).toHaveAttribute("aria-checked", "true")
+  await page.goto("/")
+  await expect(page).toHaveURL(/\/dashboard$/)
+})

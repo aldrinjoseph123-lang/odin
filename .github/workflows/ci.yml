@@ -7,6 +7,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      update_snapshots:
+        description: "Re-render the UI suite's golden screenshots (download the ui-suite artifact and commit them)"
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -43,10 +49,54 @@ jobs:
       - run: npm run build
         working-directory: frontend
 
+  ui:
+    name: UI suite (Playwright: smoke, journeys, axe, keyboard, screenshots, Lighthouse)
+    runs-on: ubuntu-latest
+    needs: [frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - name: Playwright (all tiers; screenshots compared against the Linux goldens)
+        run: npx playwright test ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots && '--update-snapshots' || '' }}
+        working-directory: frontend
+        env:
+          E2E_PYTHON: python
+      - name: Lighthouse budget and bundle ceiling
+        run: |
+          E2E_PYTHON=python ODIN_DATA_DIR=/tmp/odin-e2e SECRET_KEY=e2e-not-secret PORT=5099 python -c "from app import app; app.run(host='127.0.0.1', port=5099)" &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:5099/healthz >/dev/null 2>&1 && break; sleep 1; done
+          node e2e/perf.mjs
+        working-directory: frontend
+      - name: Report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-suite
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+            frontend/e2e/**/*-snapshots
+          retention-days: 14
+
   docker:
     name: Docker image builds and boots
     runs-on: ubuntu-latest
-    needs: [test, frontend]
+    needs: [test, frontend, ui]
     steps:
       - uses: actions/checkout@v4
       - name: Build

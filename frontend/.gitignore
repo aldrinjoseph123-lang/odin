@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# the UI suite's output (goldens under e2e/**/*-snapshots are committed)
+playwright-report
+test-results

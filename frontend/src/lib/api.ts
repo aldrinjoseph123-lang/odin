@@ -216,7 +216,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 
 // ---- settings ----
 export type Policy = {
-  key: string; area: "general" | "security" | "workflow" | "notifications" | "backups" | "reports" | "audit"
+  key: string; area: "general" | "security" | "workflow" | "notifications" | "integrations" | "backups" | "reports" | "audit"
   kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]
 }

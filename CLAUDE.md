@@ -87,9 +87,22 @@ Rules while both UIs exist:
   hook in `core.py` returns the flashes as JSON (`postForm` in
   `frontend/src/lib/api.ts`). One route, one permission, one audit row.
 - `frontend/dist` is built by the Docker stage and CI; never committed.
-- Frontend tests: `npm --prefix frontend test` (vitest, node env). Pure
-  formatting lives in `src/lib/format.ts` so it can be tested without a DOM;
+- Frontend tests: `npm --prefix frontend test` runs both vitest projects —
+  `unit` (pure helpers in `src/lib/*.test.ts`, node) and `ui` (page tests in
+  `src/pages/*.test.tsx`, jsdom + Testing Library, API mocked, fixtures in
+  `src/pages/fixtures.ts`). Pure formatting lives in `src/lib/format.ts`;
   keep page files free of logic worth a unit test.
+- UI suite (Playwright, `frontend/e2e/`): `npm --prefix frontend run e2e`
+  builds, seeds a throw-away database with `scripts/seed_uat.py` and drives
+  Chromium against Flask on 5099. Tiers by tag: `@smoke` (every page for
+  admin / member / viewer, every header control), `@flow` (the journeys),
+  `@a11y` (axe, WCAG 2.1 AA, light and dark — serious/critical fail),
+  `@keys` (keyboard-only), `@visual` (golden screenshots, Linux only;
+  refresh with the CI workflow's `update_snapshots` input and commit the
+  artifact), and `node e2e/perf.mjs` (Lighthouse thresholds and a gzipped
+  main-bundle ceiling). CI's `ui` job runs all of it and blocks the merge.
+  A new page or control needs a line in `smoke.spec.ts` and, if it is a
+  journey, a test in `flows.spec.ts`.
 - Dev: `npm --prefix frontend run dev` (5173, proxies un-ported paths to Flask
   on 5050) or build once and let Flask serve it (`npm --prefix frontend run build`).
 - shadcn CLI: `npx shadcn@latest add <component>` from `frontend/`.

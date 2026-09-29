@@ -75,7 +75,7 @@ function Kpis({ k, s }: { k: D["kpis"]; s: S }) {
             {series.length > 1 && (
               <div className="mt-2 h-9" aria-hidden>
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                  <AreaChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} accessibilityLayer={false}>
                     <Area type="monotone" dataKey="v" stroke="var(--primary)" strokeWidth={1.5} fill="var(--primary)" fillOpacity={0.12} isAnimationActive={false} />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -125,7 +125,7 @@ function Timeline({ rows, today, s }: { rows: D["timeline"]; today: string; s: S
                 <div className="relative py-1.5">
                   <span className="absolute inset-y-0 w-[1.5px] bg-primary/60" style={{ left: pct(now) }} aria-hidden />
                   <Tooltip>
-                    <TooltipTrigger render={<span />} tabIndex={0}
+                    <TooltipTrigger render={<span />} tabIndex={0} role="img"
                       aria-label={`${r.name}: ${fmtDate(r.start_date)} to ${r.target_end_date ? fmtDate(r.target_end_date) : "no target"}, ${Math.round(r.progress * 100)} percent of stages done, ${STATE[r.state].label}`}
                       className="absolute top-1/2 block h-2.5 min-w-2 -translate-y-1/2 overflow-hidden rounded-full bg-muted"
                       style={{ left: pct(from), width: `calc(${pct(to)} - ${pct(from)})` }}>

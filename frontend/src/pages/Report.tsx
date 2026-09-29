@@ -60,7 +60,8 @@ export default function Report(_props: { user: User }) {
       <PrintBrand />
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <a href={`/projects/${id}`} className="text-[12.5px] text-muted-foreground hover:text-foreground">{d.project.name}</a>
-        <span className="text-[12.5px] text-muted-foreground">/ Report</span>
+        <span className="text-[12.5px] text-muted-foreground">/</span>
+        <h1 className="text-[17px] font-semibold tracking-tight">Report</h1>
         {d.versions.length > 0 && (
           <select value={d.current?.version ?? ""} onChange={(e) => setParams({ v: e.target.value })} aria-label="Report version" className="ml-2 h-7 rounded-md border border-border bg-background px-2 text-[12.5px]">
             {d.versions.map((v) => <option key={v.version} value={v.version}>v{v.version} · {v.created_by} · {fmt(v.created_at)}</option>)}

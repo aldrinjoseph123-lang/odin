@@ -30,7 +30,7 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   security: { title: "Sign-in & security", lede: "Sessions, passwords, uploads and outside access." },
   workflow: { title: "Projects & workflow", lede: "What new projects start with, their stages and the alerts they raise." },
   notifications: { title: "Notifications", lede: "Which channels carry project events. Each person also picks what they get by email on their Account page." },
-  integrations: { title: "Integrations", lede: "Microsoft 365: mail, Teams and OneDrive through one Azure app." },
+  integrations: { title: "Integrations", lede: "Microsoft 365 (mail, Teams and OneDrive through one Azure app) and the Kibana dashboards shown on the Flow page." },
   reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
   api: { title: "API tokens", lede: "Read-only access for scripts and other tools: projects, their stages and tasks, and saved reports." },
   audit: { title: "Audit retention", lede: "How long the audit trail is kept, and where older rows go." },
@@ -136,6 +136,7 @@ export default function Settings(_props: { user: User }) {
             <Toggles data={data} busy={busy} send={send} title="OneDrive" keys={[
               { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
             ]} />
+            {policyForm("integrations", "Kibana")}
           </>
         )}
         {section === "reports" && (

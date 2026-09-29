@@ -85,7 +85,7 @@
     --secondary: #F7F7F8;
     --secondary-foreground: #101114;
     --muted: #F3F4F6;
-    --muted-foreground: #6B7280;    /* 4.8:1 on white */
+    --muted-foreground: #5B6270;    /* 4.9:1 on the darkest tinted ground and every soft fill (#6B7280 fell to 3.9 there) */
     --accent: #EEF1FF;
     --accent-foreground: #2F47D6;
     --destructive: #D6372F;
