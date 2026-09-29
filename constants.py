@@ -187,6 +187,10 @@ NEW_USER_COLUMNS = {
     # Notification kinds this user does NOT want by email (comma list); the
     # in-app notification always arrives.
     "email_off": "TEXT NOT NULL DEFAULT ''",
+    # The dashboard as this user arranged it (JSON layout; NULL = the
+    # workspace default), and which page sign-in lands on.
+    "dashboard_layout": "TEXT",
+    "home": "TEXT NOT NULL DEFAULT 'dashboard'",
     # Bumped on deactivate / admin reset: any session minted under an older
     # epoch is dead on its next request. Cheap "log out everywhere".
     "session_epoch": "INTEGER NOT NULL DEFAULT 0",

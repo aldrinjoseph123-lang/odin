@@ -2651,7 +2651,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(rows["Quiet"]["next_task"]["title"], "Old task")
 
     def test_api_dashboard_gathers_the_portfolio_and_keeps_a_daily_snapshot(self):
-        from services.dashboard import record_snapshot
+        from services.dashboard import DEFAULT_LAYOUT, normalize_layout, record_snapshot
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
         self.new_project(name="Fine", client="C", target_end_date="2099-01-01")
         self.new_project(name="Quiet", client="C", target_end_date="2099-01-01")
@@ -2665,16 +2665,35 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.client.post("/projects/2/tasks", data={"title": "Was due", "assignee_id": uid, "due_date": "2020-01-01"})
         self.client.post("/projects/2/tasks", data={"title": "Nobody's"})
         self.client.post("/projects/2/tasks/1/toggle")
-        c, _ = self._api_client()
-        d = c.get("/api/dashboard").get_json()
-        self.assertEqual(d["counts"], {"active": 3, "overdue": 1, "over_sla": 0, "due_soon": 0, "awaiting": 0, "idle": 1})
-        self.assertEqual(d["before"]["active"], 1); self.assertIsNotNone(d["since"])
-        self.assertEqual([r["name"] for r in d["timeline"]], ["Late", "Fine", "Quiet"])
+        self.client.post("/projects/2/note", data={"note": "Kick-off held"})
+        c, csrf = self._api_client()
+        r = c.get("/api/dashboard").get_json()
+        d = r["data"]
+        self.assertEqual(d["kpis"]["counts"], {"active": 3, "overdue": 1, "over_sla": 0, "due_soon": 0, "awaiting": 0, "idle": 1})
+        self.assertEqual(d["kpis"]["before"]["active"], 1); self.assertEqual(len(d["kpis"]["series"]["active"]), 2)
+        self.assertEqual([x["name"] for x in d["timeline"]], ["Late", "Fine", "Quiet"])
         self.assertEqual(d["timeline"][0]["state"], "overdue"); self.assertTrue(d["timeline"][0]["start_date"])
+        self.assertEqual(d["progress"]["current"], 3); self.assertEqual(d["progress"]["pct"], 0)
         self.assertEqual(sum(s["count"] for s in d["stages"]), 3)
-        self.assertEqual(sum(x["count"] for x in d["done_per_day"]), 1); self.assertEqual(len(d["done_per_day"]), 7)
-        self.assertEqual([t["title"] for t in d["due"]], ["Was due"])         # the ticked one is gone; "Soon" is within 7 days
-        self.assertEqual(d["load"][0]["name"], "Admin"); self.assertEqual(d["load"][0]["late"], 1); self.assertEqual(d["unassigned"], 1)
+        self.assertEqual(sum(x["count"] for x in d["completion"]), 1); self.assertEqual(len(d["completion"]), 56)
+        self.assertEqual([t["title"] for t in d["schedule"]["due"]], ["Was due"])   # "Soon" (task 1) was ticked above
+        self.assertEqual(d["team"]["people"][0]["name"], "Admin"); self.assertEqual(d["team"]["people"][0]["late"], 1); self.assertEqual(d["team"]["unassigned"], 1)
+        self.assertEqual([a["kind"] for a in d["activity"]][:2], ["note", "task"])
+        self.assertEqual(d["mywork"]["owned"], 3); self.assertEqual(d["mywork"]["tasks"][0]["title"], "Was due")
+        self.assertIsNotNone(d["cycle"])
+        # the layout: the workspace default until this user saves their own
+        self.assertEqual([w["id"] for w in r["layout"]], [w["id"] for w in DEFAULT_LAYOUT]); self.assertFalse(r["is_custom"])
+        self.assertEqual({w["id"] for w in r["catalogue"]}, {w["id"] for w in DEFAULT_LAYOUT})
+        h = {"X-CSRF-Token": csrf}
+        mine = [{"id": "alerts", "w": 9, "settings": {"limit": 999}}, {"id": "bogus"}, {"id": "alerts"}, {"id": "completion", "settings": {"days": "99"}}]
+        saved = c.put("/api/dashboard/layout", json={"layout": mine}, headers=h).get_json()["layout"]
+        self.assertEqual(saved, [{"id": "alerts", "w": 3, "settings": {"limit": 30}}, {"id": "completion", "w": 1, "settings": {"days": "7"}}])
+        self.assertTrue(c.get("/api/dashboard").get_json()["is_custom"])
+        self.assertEqual(c.put("/api/dashboard/layout", json={"layout": "no"}, headers=h).status_code, 400)
+        self.assertFalse(c.delete("/api/dashboard/layout", headers=h).get_json()["is_custom"])
+        self.assertEqual(c.put("/api/dashboard/layout/default", json={"layout": [{"id": "kpis"}]}, headers=h).status_code, 200)
+        self.assertEqual([w["id"] for w in c.get("/api/dashboard").get_json()["layout"]], ["kpis"])
+        self.assertIsNone(normalize_layout({"id": "kpis"}))
         # opening the page recorded today; the nightly job's write replaces it
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM portfolio_snapshots").fetchone()[0], 2)
@@ -2683,6 +2702,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM portfolio_snapshots").fetchone()[0], 2)
         self.assertEqual(app_module.app.test_client().get("/api/dashboard").status_code, 302)
+        # a non-admin may arrange their own but not the workspace default
+        m, mcsrf = self._api_client(self._make_user("mm", "Member") and "mm", STRONG_PASSWORD)
+        self.assertEqual(m.put("/api/dashboard/layout", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 200)
+        self.assertEqual(m.put("/api/dashboard/layout/default", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 403)
 
     def test_api_project_flow_gives_stage_timeline_tasks_and_eta(self):
         self.new_project(name="F", client="C", target_end_date="2099-01-01")

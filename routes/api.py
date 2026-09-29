@@ -363,7 +363,43 @@ def api_my_work():
 @permission_required("view_board")
 def api_dashboard():
     from services import dashboard
-    return jsonify(dashboard.build(project_scope()))
+    return jsonify(dashboard.build(project_scope(), session["user_id"]))
+
+
+@app.route("/api/dashboard/layout", methods=["PUT", "DELETE"])
+@permission_required("view_board")
+def api_dashboard_layout():
+    """This user's own arrangement: PUT saves it, DELETE goes back to the workspace default."""
+    import json
+    from services import dashboard
+    db = get_db()
+    if request.method == "DELETE":
+        db.execute("UPDATE users SET dashboard_layout = NULL WHERE id = ?", (session["user_id"],))
+        db.commit()
+        audit_log("dashboard_layout_reset", "user", session["user_id"], session.get("user_name"))
+        return jsonify(ok=True, layout=dashboard.default_layout(), is_custom=False)
+    layout = dashboard.normalize_layout((request.get_json(silent=True) or {}).get("layout"))
+    if layout is None:
+        abort(400)
+    db.execute("UPDATE users SET dashboard_layout = ? WHERE id = ?", (json.dumps(layout), session["user_id"]))
+    db.commit()
+    audit_log("dashboard_layout_saved", "user", session["user_id"], session.get("user_name"), f"{len(layout)} widgets")
+    return jsonify(ok=True, layout=layout, is_custom=True)
+
+
+@app.route("/api/dashboard/layout/default", methods=["PUT"])
+@permission_required("manage_settings")
+def api_dashboard_default_layout():
+    """The workspace default, set by an admin from the page; users without their own arrangement follow it."""
+    import json
+    from db import set_setting
+    from services import dashboard
+    layout = dashboard.normalize_layout((request.get_json(silent=True) or {}).get("layout"))
+    if layout is None:
+        abort(400)
+    set_setting(dashboard.LAYOUT_KEY, json.dumps(layout))
+    audit_log("dashboard_default_layout", "settings", None, "dashboard", f"{len(layout)} widgets: {', '.join(w['id'] for w in layout)}")
+    return jsonify(ok=True, layout=layout)
 
 
 @app.route("/api/alerts")

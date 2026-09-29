@@ -36,10 +36,11 @@ export class ApiError extends Error {
   }
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+// One JSON request with the CSRF token; every mutation goes through here.
+async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
   if (!csrfToken) await session()
   const res = await fetch(path, {
-    method: "POST",
+    method,
     credentials: "same-origin",
     headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken ?? "" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -49,6 +50,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`)
   return data
 }
+const post = <T,>(path: string, body?: unknown) => send<T>(path, "POST", body)
 
 export function login(username: string, password: string) {
   return post<{ user: User; csrf: string }>("/api/login", { username, password })
@@ -132,14 +134,30 @@ export const flowDetail = (id: number) => getJson<FlowDetail>(`/api/projects/${i
 
 // ---- dashboard ----
 export type DashKey = "active" | "overdue" | "over_sla" | "due_soon" | "awaiting" | "idle"
+export type Person = { id: number; name: string; avatar_url: string | null }
+export type WidgetSetting = { key: string; label: string; kind: "int" | "choice" | "multi"; default: unknown; choices?: string[]; min?: number; max?: number }
+export type WidgetInfo = { id: string; title: string; blurb: string; w: 1 | 2 | 3; settings: WidgetSetting[] }
 export type DashboardData = {
-  today: string; counts: Record<DashKey, number>; before: Record<DashKey, number> | null; since: string | null; moved_this_week: number
-  timeline: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState }[]
-  stages: { stage: string; count: number }[]; done_per_day: { day: string; count: number }[]
-  due: { id: number; project_id: number; title: string; due_date: string; project: string; who: string | null; avatar_url: string | null }[]
-  load: { id: number; name: string; avatar_url: string | null; open: number; late: number }[]; unassigned: number
+  today: string; layout: { id: string; w: 1 | 2 | 3; settings: Record<string, unknown> }[]; is_custom: boolean; catalogue: WidgetInfo[]; scope_full: boolean
+  data: {
+    kpis: { counts: Record<DashKey, number>; before: Record<DashKey, number> | null; since: string | null; moved_this_week: number; series: Record<DashKey, { day: string; v: number }[]> }
+    timeline: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState; progress: number; team: Person[] }[]
+    progress: { done: number; current: number; pending: number; pct: number }
+    stages: { stage: string; count: number }[]
+    completion: { day: string; count: number }[]
+    schedule: { due: { id: number; project_id: number; title: string; due_date: string; project: string; stage: string; who: string | null; avatar_url: string | null }[]
+                approvals: { project_id: number; project: string; stage: string; requested_at: string }[] }
+    team: { people: { id: number; name: string; avatar_url: string | null; role: string; projects: number; open: number; late: number }[]; unassigned: number }
+    activity: { kind: "move" | "note" | "approval" | "task" | "document"; at: string; who: string | null; project_id: number; project: string; text: string }[]
+    alerts: { id: number; project_id: number; project: string; type: string; title: string; severity: string; created_at: string }[]
+    mywork: { tasks: { id: number; title: string; project_id: number; project: string; due_date: string | null; stage: string }[]; owned: number }
+    cycle: { template: string; lead_avg: number | null; lead_median: number | null; completed_count: number; throughput: [string, number][]; slowest: { stage: string; avg_days: number } | null; measured_projects: number } | null
+  }
 }
 export const dashboard = () => getJson<DashboardData>("/api/dashboard")
+export const saveLayout = (layout: DashboardData["layout"], scope: "mine" | "default" = "mine") =>
+  send<{ ok: true; layout: DashboardData["layout"]; is_custom?: boolean }>(scope === "default" ? "/api/dashboard/layout/default" : "/api/dashboard/layout", "PUT", { layout })
+export const resetLayout = () => send<{ ok: true; layout: DashboardData["layout"]; is_custom: false }>("/api/dashboard/layout", "DELETE")
 
 // ---- projects list ----
 export type ProjectRow = {

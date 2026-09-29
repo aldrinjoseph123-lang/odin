@@ -39,6 +39,12 @@ plus Users, Role permissions, Contacts and the Audit log in the same menu.
 Recurring work (digest, backups, weekly report, audit retention) runs only in
 `scheduler.py` (its own service), at policy times in the workspace time
 zone — never in a web worker.
+**The dashboard layout is the one admin-set value that is not a policy:**
+it is a JSON list of widgets, edited on the dashboard itself (`PUT
+/api/dashboard/layout/default`, audited) and kept in the settings table under
+`dashboard.layout`; a user's own arrangement lives on their row
+(`users.dashboard_layout`). The widget catalogue, defaults and validation are
+`services/dashboard.WIDGETS` / `normalize_layout`.
 **Any value an admin may change is a policy:** add it to `policies.POLICIES`
 (area, kind, default, limits, label, help), read it with `policy("key")`
 (pass `db` outside an app context), and the settings page draws, validates
