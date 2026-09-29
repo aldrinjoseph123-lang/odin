@@ -295,8 +295,20 @@ CSP = (
 )
 
 
+def _csp():
+    """The policy above; the Flow page (which draws the Kibana view) may
+    additionally frame the origins of the configured Kibana dashboards."""
+    from flask import request
+    if request.endpoint != "board":
+        return CSP
+    from urllib.parse import urlsplit
+    from policies import kibana_dashboards
+    origins = sorted({f"{urlsplit(d['url']).scheme}://{urlsplit(d['url']).netloc}" for d in kibana_dashboards()})
+    return CSP + (f"; frame-src 'self' {' '.join(origins)}" if origins else "")
+
+
 def _security_headers(response):
-    response.headers.setdefault("Content-Security-Policy", CSP)
+    response.headers.setdefault("Content-Security-Policy", _csp())
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")          # legacy clickjacking guard
     response.headers.setdefault("Referrer-Policy", "same-origin")

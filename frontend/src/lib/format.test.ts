@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, setDateFormat, stageColumns, stateText, timeAgo } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, stageColumns, stateText, timeAgo } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -168,5 +168,24 @@ describe("deltaText", () => {
     expect(deltaText(3, 5)).toBe("−2")
     expect(deltaText(3, 3)).toBe("no change")
     expect(deltaText(3, null)).toBe("")
+  })
+})
+
+describe("calendar grid", () => {
+  it("shifts months across a year end", () => {
+    expect(addMonths("2026-12", 1)).toBe("2027-01")
+    expect(addMonths("2026-01", -1)).toBe("2025-12")
+  })
+  it("lays six Monday-first weeks over the month", () => {
+    const weeks = monthGrid("2026-09")   // 1 Sep 2026 is a Tuesday
+    expect(weeks).toHaveLength(6); expect(weeks[0]).toHaveLength(7)
+    expect(weeks[0][0]).toBe("2026-08-31"); expect(weeks[0][1]).toBe("2026-09-01"); expect(weeks[5][6]).toBe("2026-10-11")
+  })
+  it("gives each span a lane and counts what no longer fits", () => {
+    const week = monthGrid("2026-09")[1]   // 7–13 Sep
+    const span = (id: number, from: string, to: string | null) => ({ id, name: `s${id}`, client: "c", stage: "x", start_date: from, target_end_date: to, state: "on_track" as const })
+    const { segments, overflow } = laneSpans([span(1, "2026-09-01", "2026-09-30"), span(2, "2026-09-09", "2026-09-10"), span(3, "2026-09-09", null), span(4, "2026-09-20", "2026-09-25")], week, 2)
+    expect(segments.map((s) => [s.id, s.startCol, s.cols, s.lane, s.startsHere, s.endsHere])).toEqual([[1, 0, 7, 0, false, false], [3, 2, 5, 1, true, false]])
+    expect([...overflow]).toEqual([["2026-09-09", 1], ["2026-09-10", 1]])   // span 2 had no lane left
   })
 })

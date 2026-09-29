@@ -48,7 +48,8 @@ it is a JSON list of widgets, edited on the dashboard itself (`PUT
 (`users.dashboard_layout`). The widget catalogue, defaults and validation are
 `services/dashboard.WIDGETS` / `normalize_layout`.
 **Any value an admin may change is a policy:** add it to `policies.POLICIES`
-(area, kind, default, limits, label, help), read it with `policy("key")`
+(area, kind, default, limits, label, help; kinds int, bool, choice, multi, text,
+url, domains, emails, time, lines), read it with `policy("key")`
 (pass `db` outside an app context), and the settings page draws, validates
 (`save_policies`, one audited route `/settings/policies/<area>`) and
 explains it. Never hard-code a number an admin could reasonably want to change.

@@ -368,6 +368,23 @@ def api_dashboard():
     return jsonify(dashboard.build(project_scope(), session["user_id"]))
 
 
+@app.route("/api/calendar")
+@permission_required("view_board")
+def api_calendar():
+    from services import calendar
+    return jsonify(calendar.build(request.args.get("month", ""), project_scope()))
+
+
+@app.route("/api/kibana")
+@permission_required("view_board")
+def api_kibana():
+    """The Kibana view's dashboards (Settings → Integrations); staff only."""
+    from policies import kibana_dashboards
+    if session.get("kind") == "external":
+        abort(403)
+    return jsonify(dashboards=kibana_dashboards(), can_manage=role_has_permission(session.get("role"), "manage_settings"))
+
+
 @app.route("/api/dashboard/layout", methods=["PUT", "DELETE"])
 @permission_required("view_board")
 def api_dashboard_layout():

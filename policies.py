@@ -68,6 +68,10 @@ POLICIES = {
     "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500,
                               label="Teams Workflows webhook", help="From a Teams channel: Workflows → \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
     # ---- Reports
+    "kibana_dashboards": dict(area="integrations", kind="lines", default="", max=4000, optional=True, label="Kibana dashboards",
+                              help="One per line, \"Name | address\", e.g. SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true. "
+                                   "They appear as the Kibana view on the Flow page. Use the dashboard's share link with embed=true, and let Kibana be framed by this site "
+                                   "(kibana.yml: server.customResponseHeaders with a Content-Security-Policy frame-ancestors that names the Odin address)."),
     "report_enabled": dict(area="reports", kind="bool", default=False,
                            label="Send the weekly report", help="Stuck and overdue rollouts first, stages moved this week, due next week, counts per stage."),
     "report_days": dict(area="reports", kind="multi", default="Mon", choices=WEEKDAYS,
@@ -164,6 +168,23 @@ def _parse(entry, raw):
         if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):
             raise ValueError("a time like 08:00")
         return v
+    if kind == "lines":
+        # "Name | https://…" per line; blank lines dropped, each address checked loosely (Kibana links carry #, ?, ( and ')
+        from urllib.parse import urlsplit
+        out = []
+        for line in v.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            name, sep, url = (x.strip() for x in line.partition("|"))
+            parts = urlsplit(url) if sep else None
+            if not sep or not name or parts.scheme not in ("http", "https") or not parts.netloc:
+                raise ValueError('each line as "Name | https://address"')
+            out.append(f"{name} | {url}")
+        text = "\n".join(out)
+        if len(text) > entry["max"]:
+            raise ValueError(f"up to {entry['max']} characters")
+        return text
     if kind == "text":
         if (not v and not entry.get("optional")) or len(v) > entry["max"]:
             raise ValueError(f"up to {entry['max']} characters" if entry.get("optional") else f"1 to {entry['max']} characters")
@@ -226,7 +247,7 @@ def save_policies(area, form):
     for key, e in POLICIES.items():
         if e["area"] != area:
             continue
-        raw = form.get(key, "" if e["kind"] in ("bool", "multi", "domains", "emails", "url") else None)
+        raw = form.get(key, "" if e["kind"] in ("bool", "multi", "domains", "emails", "url", "lines") else None)
         if raw is None:
             continue
         try:
@@ -269,3 +290,13 @@ def email_domain_allowed(email, db=None):
     security); an empty list allows any."""
     allowed = policy("external_domains", db)
     return not allowed or email.rsplit("@", 1)[-1].lower() in allowed
+
+
+def kibana_dashboards():
+    """The configured Kibana dashboards as [{name, url}], in the order typed."""
+    out = []
+    for line in policy("kibana_dashboards").splitlines():
+        name, _, url = (x.strip() for x in line.partition("|"))
+        if name and url:
+            out.append({"name": name, "url": url})
+    return out

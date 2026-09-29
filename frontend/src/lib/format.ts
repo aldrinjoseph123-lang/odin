@@ -186,3 +186,58 @@ export function groupRows<T extends { stage: string; client: string; owner_name:
   }
   return [...groups].map(([key, rows]) => ({ key, rows }))
 }
+
+// ---- the calendar view --------------------------------------------------------
+// "YYYY-MM" shifted by n months.
+export function addMonths(month: string, n: number): string {
+  const [y, m] = month.split("-").map(Number)
+  const d = new Date(Date.UTC(y, m - 1 + n, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
+}
+export const monthTitle = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString([], { month: "long", year: "numeric", timeZone: "UTC" })
+
+// Six Monday-first weeks covering the month, as ISO days.
+export function monthGrid(month: string): string[][] {
+  const first = new Date(`${month}-01T00:00:00Z`)
+  const start = new Date(first); start.setUTCDate(1 - ((first.getUTCDay() + 6) % 7))
+  const weeks: string[][] = []
+  for (let w = 0; w < 6; w++) {
+    weeks.push(Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setUTCDate(start.getUTCDate() + w * 7 + i); return d.toISOString().slice(0, 10) }))
+  }
+  return weeks
+}
+
+// Rollout spans laid over one week: each span that touches the week becomes
+// a segment with a column range and a lane (first free lane wins, longest
+// spans first); past `lanes` the rest are counted per day in `overflow`.
+export type Span = { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState }
+export type Segment = Span & { startCol: number; cols: number; lane: number; startsHere: boolean; endsHere: boolean }
+export function laneSpans(spans: Span[], week: string[], lanes: number): { segments: Segment[]; overflow: Map<string, number> } {
+  const first = week[0], last = week[6]
+  const touching = spans
+    .filter((s) => s.start_date <= last && (s.target_end_date ?? "9999") >= first)
+    .map((s) => {
+      const from = s.start_date < first ? first : s.start_date
+      const end = s.target_end_date ?? last
+      const to = end > last ? last : end
+      const startCol = week.indexOf(from), endCol = week.indexOf(to)
+      return { ...s, startCol, cols: endCol - startCol + 1, lane: -1, startsHere: s.start_date >= first, endsHere: s.target_end_date != null && end <= last }
+    })
+    .filter((s) => s.startCol >= 0 && s.cols > 0)
+    .sort((a, b) => b.cols - a.cols || a.startCol - b.startCol || a.name.localeCompare(b.name))
+  const taken: boolean[][] = []
+  const segments: Segment[] = []
+  const overflow = new Map<string, number>()
+  for (const s of touching) {
+    let lane = 0
+    while (lane < lanes && week.slice(s.startCol, s.startCol + s.cols).some((_, i) => taken[lane]?.[s.startCol + i])) lane++
+    if (lane >= lanes) {
+      for (let c = s.startCol; c < s.startCol + s.cols; c++) overflow.set(week[c], (overflow.get(week[c]) ?? 0) + 1)
+      continue
+    }
+    taken[lane] ??= []
+    for (let c = s.startCol; c < s.startCol + s.cols; c++) taken[lane][c] = true
+    segments.push({ ...s, lane })
+  }
+  return { segments, overflow }
+}

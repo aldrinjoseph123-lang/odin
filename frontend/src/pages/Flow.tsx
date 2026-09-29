@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react"
-import { ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, Plus, Trash2, UserRound, X } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, Plus, Trash2, UserRound, X } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
 import { days, fitStages, fmtDate, groupRows, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
+import { Calendar } from "@/pages/Calendar"
+import { Kibana } from "@/pages/Kibana"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
 
@@ -173,8 +175,8 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
   )
 }
 
-function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage, setStage, group, setGroup }: {
-  data: FlowData; me: number; selectedId: number | null; onSelect: (id: number) => void
+function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage, setStage, group, setGroup, tools }: {
+  data: FlowData; me: number; selectedId: number | null; onSelect: (id: number) => void; tools?: ReactNode
   filter: Filter; setFilter: (f: Filter) => void
   stage: string | null; setStage: (s: string | null) => void
   group: FlowGroupBy | null; setGroup: (g: FlowGroupBy | null) => void
@@ -220,6 +222,7 @@ function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage,
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
         <h1 className="text-[17px] font-semibold tracking-tight">Active rollouts</h1>
+        {tools}
         <p className="text-[13px] text-muted-foreground">
           {data.rows.length} active
           {data.counts.overdue ? <> · <span className="font-medium text-bad">{data.counts.overdue} overdue</span></> : null}
@@ -585,6 +588,12 @@ export default function Flow({ user }: { user: User }) {
     }, { replace: selectedId != null || id == null })
   }, [setParams, selectedId])
   const [detail, setDetail] = useState<FlowDetail | null>(null)
+  // Three ways to look at the portfolio, kept in the URL: the list, a month, or Kibana.
+  const vw = params.get("view")
+  const view: "list" | "calendar" | "kibana" = vw === "calendar" || (vw === "kibana" && user.kind !== "external") ? vw : "list"
+  const setView = useCallback((v: "list" | "calendar" | "kibana") => {
+    setParams((prev) => { const next = new URLSearchParams(prev); if (v === "list") next.delete("view"); else next.set("view", v); next.delete("month"); next.delete("day"); return next }, { replace: true })
+  }, [setParams])
   // The filter lives in the URL too, so a reload keeps it.
   const f = params.get("filter")
   const filter: Filter = f === "attention" || f === "mine" || f === "customer" ? f : "all"
@@ -642,7 +651,26 @@ export default function Flow({ user }: { user: User }) {
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!data) return <PageSkeleton />
 
-  const list = <RolloutList data={data} me={user.id} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} />
+  const views = (
+    <span className="flex rounded-full bg-muted p-0.5" role="group" aria-label="View">
+      {([["list", LayoutList, "Rollouts"], ["calendar", CalendarDays, "Calendar"], ...(user.kind === "external" ? [] : [["kibana", BarChart3, "Kibana"] as const])] as const).map(([v, Icon, label]) => (
+        <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v}
+          className={cn("flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium", view === v ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground")}>
+          <Icon className="h-3.5 w-3.5" aria-hidden />{label}
+        </button>
+      ))}
+    </span>
+  )
+  if (view !== "list") return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
+        <h1 className="text-[17px] font-semibold tracking-tight">{view === "calendar" ? "Calendar" : "Kibana"}</h1>
+        {views}
+      </div>
+      <div className="panel mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden">{view === "calendar" ? <Calendar wide={wide} /> : <Kibana />}</div>
+    </div>
+  )
+  const list = <RolloutList data={data} me={user.id} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} tools={views} />
   const pane = selectedId != null && (
     <>
               {!wide && (

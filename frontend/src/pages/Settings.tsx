@@ -217,6 +217,10 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               {p.kind === "text" && (
                 <Input id={`pol-${p.key}`} required maxLength={p.max} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-sm text-[13px]" />
               )}
+              {p.kind === "lines" && (
+                <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
+                  placeholder={"SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[12.5px]" />
+              )}
               {p.kind === "choice" && (
                 <select id={`pol-${p.key}`} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className={cn(selectClass, "max-w-sm")}>
                   {p.key === "default_template" && <option value="">First template ({templates[0]?.name ?? "none"})</option>}

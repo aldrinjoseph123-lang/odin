@@ -133,6 +133,19 @@ async function getJson<T>(path: string): Promise<T> {
 export const flow = () => getJson<FlowData>("/api/flow")
 export const flowDetail = (id: number) => getJson<FlowDetail>(`/api/projects/${id}/flow`)
 
+// ---- calendar and kibana (views on the Flow page) ----
+export type CalendarData = {
+  month: string; today: string; from: string; to: string
+  spans: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState }[]
+  targets: { id: number; name: string; client: string; day: string; state: FlowState }[]
+  tasks: { id: number; project_id: number; title: string; day: string; done: number; project: string; who: string | null }[]
+  moves: { project_id: number; project: string; day: string; prev_stage: string; stage: string; who: string }[]
+  approvals: { project_id: number; project: string; stage: string; day: string; kind: "asked" | "decided"; status: ApprovalStatus; who: string | null }[]
+}
+export const calendar = (month: string) => getJson<CalendarData>(`/api/calendar?month=${encodeURIComponent(month)}`)
+export type KibanaData = { dashboards: { name: string; url: string }[]; can_manage: boolean }
+export const kibana = () => getJson<KibanaData>("/api/kibana")
+
 // ---- dashboard ----
 export type DashKey = "active" | "overdue" | "over_sla" | "due_soon" | "awaiting" | "idle"
 export type Person = { id: number; name: string; avatar_url: string | null }
@@ -204,7 +217,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 // ---- settings ----
 export type Policy = {
   key: string; area: "general" | "security" | "workflow" | "notifications" | "backups" | "reports" | "audit"
-  kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time"
+  kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]
 }
 export type BackupRun = {

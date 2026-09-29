@@ -2707,6 +2707,37 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(m.put("/api/dashboard/layout", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 200)
         self.assertEqual(m.put("/api/dashboard/layout/default", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 403)
 
+    def test_calendar_and_kibana_views(self):
+        from datetime import date as _date
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        self.new_project(name="Soon", client="C", target_end_date=(_date.today() + timedelta(days=3)).isoformat())
+        with self.raw_db() as db:
+            uid = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()["id"]
+            stages = [r["name"] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 2 ORDER BY position")]
+            db.commit()
+        self.client.post("/projects/2/tasks", data={"title": "Call", "assignee_id": uid, "due_date": _date.today().isoformat()})
+        self.client.post("/projects/2/stage", data={"stage": stages[1], "note": "go"})
+        c, csrf = self._api_client()
+        month = _date.today().strftime("%Y-%m")
+        d = c.get(f"/api/calendar?month={month}").get_json()
+        self.assertEqual(d["month"], month); self.assertLess(d["from"], _date.today().isoformat()); self.assertGreater(d["to"], _date.today().isoformat())
+        self.assertEqual([t["title"] for t in d["tasks"]], ["Call"])
+        self.assertEqual([t["name"] for t in d["targets"]], ["Soon"])          # the 2020 target is outside the range
+        self.assertEqual({s["name"] for s in d["spans"]}, {"Soon"})           # Late's span ended in 2020
+        self.assertEqual((d["moves"][0]["project"], d["moves"][0]["stage"]), ("Soon", stages[1]))
+        self.assertEqual(c.get("/api/calendar?month=junk").get_json()["month"], month)
+        # Kibana: nothing until an admin lists dashboards; then the Flow page may frame their origins
+        self.assertEqual(c.get("/api/kibana").get_json(), {"dashboards": [], "can_manage": True})
+        self.assertNotIn("frame-src", c.get("/board").headers["Content-Security-Policy"])
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        r = c.post("/settings/policies/integrations", data={"kibana_dashboards": "SOC | not-a-url"}, headers=h).get_json()
+        self.assertIn('each line as "Name | https://address"', r["messages"][0])
+        r = c.post("/settings/policies/integrations", data={"kibana_dashboards": "SOC overview | https://kibana.example.com/app/dashboards#/view/abc?embed=true&_g=(time:(from:now-7d))\n\n Threats | https://kibana.example.com/app/dashboards#/view/def "}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Saved"])
+        self.assertEqual([x["name"] for x in c.get("/api/kibana").get_json()["dashboards"]], ["SOC overview", "Threats"])
+        self.assertIn("frame-src 'self' https://kibana.example.com", c.get("/board").headers["Content-Security-Policy"])
+        self.assertNotIn("frame-src", c.get("/projects").headers["Content-Security-Policy"])
+
     def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))
         c, _ = self._api_client()
