@@ -50,7 +50,7 @@ jobs:
         working-directory: frontend
 
   ui:
-    name: UI suite (Playwright: smoke, journeys, axe, keyboard, screenshots, Lighthouse)
+    name: "UI suite (Playwright: smoke, journeys, axe, keyboard, screenshots, Lighthouse)"
     runs-on: ubuntu-latest
     needs: [frontend]
     steps:
