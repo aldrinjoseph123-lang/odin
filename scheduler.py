@@ -98,6 +98,10 @@ def run_due():
                 removed, path = run_audit_retention()
                 if removed:
                     print(f"[scheduler] audit retention: {removed} rows archived to {path}")
+                from app import app
+                from services.dashboard import record_snapshot
+                with app.app_context():   # the day's portfolio counts, for the Dashboard's deltas
+                    record_snapshot()
         except Exception as exc:  # noqa: BLE001 — one failed job must not stop the clock
             print(f"[scheduler] {job} failed: {exc}", file=sys.stderr)
     return todo

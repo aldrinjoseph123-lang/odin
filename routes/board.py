@@ -29,6 +29,15 @@ BANNER_NAMES = 5
 COLUMN_CARDS = 20
 
 
+@app.route("/dashboard")
+@permission_required("view_board")
+def dashboard():
+    """The portfolio this week — a React page only; without a build, the flow stands in."""
+    if spa_serves("dashboard"):
+        return spa_index()
+    return redirect(url_for("board"))
+
+
 @app.route("/my-work")
 @login_required
 def my_work():

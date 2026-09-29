@@ -3,6 +3,7 @@ import { ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Exte
 import { useSearchParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserAvatar } from "@/components/UserAvatar"
+import { TeamStack } from "@/components/TeamStack"
 import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,17 +31,6 @@ function ApprovalChip({ status, className }: { status: ApprovalStatus | null; cl
 }
 
 
-
-// Who is on it, at a glance: PM first, then up to two more, then "+n".
-function TeamStack({ people, className }: { people: { id: number; name: string; avatar_url: string | null }[]; className?: string }) {
-  const shown = people.slice(0, 3)
-  return (
-    <span className={cn("items-center -space-x-1.5", className)} title={people.map((p) => p.name).join(", ")}>
-      {shown.map((p) => <UserAvatar key={p.id} name={p.name} url={p.avatar_url} className="ring-2 ring-background" />)}
-      {people.length > 3 && <span className="ml-1 pl-1.5 text-[11px] text-muted-foreground">+{people.length - 3}</span>}
-    </span>
-  )
-}
 
 // A task's due date, in the bad state once it has passed.
 function DueDate({ due, today, className }: { due: string; today: string; className?: string }) {

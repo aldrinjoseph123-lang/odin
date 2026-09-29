@@ -130,10 +130,22 @@ async function getJson<T>(path: string): Promise<T> {
 export const flow = () => getJson<FlowData>("/api/flow")
 export const flowDetail = (id: number) => getJson<FlowDetail>(`/api/projects/${id}/flow`)
 
+// ---- dashboard ----
+export type DashKey = "active" | "overdue" | "over_sla" | "due_soon" | "awaiting" | "idle"
+export type DashboardData = {
+  today: string; counts: Record<DashKey, number>; before: Record<DashKey, number> | null; since: string | null; moved_this_week: number
+  timeline: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState }[]
+  stages: { stage: string; count: number }[]; done_per_day: { day: string; count: number }[]
+  due: { id: number; project_id: number; title: string; due_date: string; project: string; who: string | null; avatar_url: string | null }[]
+  load: { id: number; name: string; avatar_url: string | null; open: number; late: number }[]; unassigned: number
+}
+export const dashboard = () => getJson<DashboardData>("/api/dashboard")
+
 // ---- projects list ----
 export type ProjectRow = {
   id: number; name: string; client: string; po_number: string | null; stage: string; stages: string[]; stage_index: number; closed: boolean
   owner_name: string; delivery_mode: string; vendor_name: string | null; product_name: string | null; target_end_date: string | null; updated_at: string
+  total_tasks: number; open_tasks: number; team: { id: number; name: string; avatar_url: string | null }[]
 }
 export type ProjectsData = {
   rows: ProjectRow[]; total: number; page: number; total_pages: number; sort: string; dir: "asc" | "desc"

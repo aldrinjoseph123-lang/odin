@@ -63,7 +63,7 @@ stays live until its React replacement has passed tests and UAT; then its
 endpoint name is added to `SPA_PAGES` in `spa.py` and Flask serves the built
 bundle for it. Order: login ✅ → board ✅ → projects ✅ → project detail ✅ → users ✅ /
 audit ✅ → settings ✅ → RBAC ✅ / contacts ✅ → new/edit project form ✅ →
-account ✅ / my-work ✅ / analytics ✅ / alerts ✅ / reports ✅. Still Jinja: the guest
+account ✅ / my-work ✅ / analytics ✅ / alerts ✅ / reports ✅ / dashboard ✅ (new page, no Jinja twin: without a build it redirects to the flow). Still Jinja: the guest
 pages (public, token-based, to retire), the login fallback form, error page.
 
 Rules while both UIs exist:

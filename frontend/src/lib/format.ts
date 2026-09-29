@@ -142,6 +142,39 @@ export function fitStages(statuses: ("done" | "current" | "next")[], capacity: n
   return [...head, ...kept, ...later, { kind: "stage", index: n - 1 }]
 }
 
+// ---- the dashboard's timeline and deltas ------------------------------------
+export const dayOf = (iso: string) => Date.parse(`${iso.slice(0, 10)}T00:00:00Z`)
+
+// One axis for every rollout: the earliest to the latest of every start and
+// target (an overdue target sits before its start), and at least a week either
+// side of today so the marker never sits on an edge.
+export function timelineDomain(rows: { start_date: string; target_end_date: string | null }[], today: string): { t0: number; t1: number } {
+  const now = dayOf(today)
+  const starts = rows.map((r) => dayOf(r.start_date)).filter((t) => !Number.isNaN(t))
+  const ends = rows.map((r) => (r.target_end_date ? dayOf(r.target_end_date) : NaN)).filter((t) => !Number.isNaN(t))
+  return { t0: Math.min(now - 7 * 864e5, ...starts, ...ends), t1: Math.max(now + 7 * 864e5, ...starts, ...ends) }
+}
+
+// The first of each month inside the domain, thinned to at most `max` ticks.
+export function monthTicks(t0: number, t1: number, max = 8): { t: number; label: string }[] {
+  const out: { t: number; label: string }[] = []
+  const d = new Date(t0)
+  d.setUTCHours(0, 0, 0, 0); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + 1)
+  while (d.getTime() < t1) {
+    out.push({ t: d.getTime(), label: d.toLocaleDateString([], { month: "short", timeZone: "UTC", ...(d.getUTCMonth() === 0 ? { year: "numeric" } : {}) }) })
+    d.setUTCMonth(d.getUTCMonth() + 1)
+  }
+  const step = Math.ceil(out.length / Math.max(1, max))
+  return out.filter((_, i) => i % step === 0)
+}
+
+// "+2", "−1" or "no change" against an older count; "" when there is no history.
+export function deltaText(now: number, before: number | null | undefined): string {
+  if (before == null) return ""
+  const d = now - before
+  return d === 0 ? "no change" : d > 0 ? `+${d}` : `−${-d}`
+}
+
 // The flow list, grouped by stage, client or owner. Rows arrive worst first,
 // so a group's place is its worst row's place and each group keeps that order.
 export type FlowGroupBy = "stage" | "client" | "owner"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, setDateFormat, stageColumns, stateText, timeAgo } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, setDateFormat, stageColumns, stateText, timeAgo } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -142,5 +142,31 @@ describe("groupRows", () => {
     expect(groupRows(rows, "stage").map((g) => [g.key, g.rows.map((x) => x.name)])).toEqual([["Pilot", ["a", "c"]], ["PO", ["b"]]])
     expect(groupRows(rows, "client").map((g) => g.key)).toEqual(["X", "Y"])
     expect(groupRows(rows, "owner")).toHaveLength(1)
+  })
+})
+
+describe("dashboard timeline", () => {
+  it("spans the earliest start to the latest target, a week past today at least", () => {
+    const rows = [{ start_date: "2026-09-01", target_end_date: "2026-12-01" }, { start_date: "2026-09-20", target_end_date: "2026-01-15" }]
+    const { t0, t1 } = timelineDomain(rows, "2026-09-29")
+    expect(new Date(t0).toISOString().slice(0, 10)).toBe("2026-01-15")   // an overdue target sits before its start
+    expect(new Date(t1).toISOString().slice(0, 10)).toBe("2026-12-01")
+    const empty = timelineDomain([], "2026-09-29")
+    expect(new Date(empty.t0).toISOString().slice(0, 10)).toBe("2026-09-22")
+    expect(new Date(empty.t1).toISOString().slice(0, 10)).toBe("2026-10-06")
+  })
+  it("ticks the first of each month inside the domain", () => {
+    const ticks = monthTicks(Date.UTC(2026, 8, 15), Date.UTC(2026, 11, 1))
+    expect(ticks.map((t) => new Date(t.t).toISOString().slice(0, 10))).toEqual(["2026-10-01", "2026-11-01"])
+    expect(monthTicks(Date.UTC(2024, 0, 1), Date.UTC(2027, 0, 1)).length).toBeLessThanOrEqual(8)
+  })
+})
+
+describe("deltaText", () => {
+  it("signs the change and says when there is none, or no history", () => {
+    expect(deltaText(5, 3)).toBe("+2")
+    expect(deltaText(3, 5)).toBe("−2")
+    expect(deltaText(3, 3)).toBe("no change")
+    expect(deltaText(3, null)).toBe("")
   })
 })

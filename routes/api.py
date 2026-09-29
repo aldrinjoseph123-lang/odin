@@ -359,6 +359,13 @@ def api_my_work():
     )
 
 
+@app.route("/api/dashboard")
+@permission_required("view_board")
+def api_dashboard():
+    from services import dashboard
+    return jsonify(dashboard.build(project_scope()))
+
+
 @app.route("/api/alerts")
 @login_required
 def api_alerts():
@@ -473,10 +480,23 @@ def api_projects():
     scope_sql, scope_params = project_scope()
     stage_names = [r[0] for r in db.execute(
         f"SELECT DISTINCT p.stage FROM projects p WHERE p.deleted_at IS NULL{scope_sql} ORDER BY p.stage", scope_params)]
+    # the cards view: how much of the work is done, and who is on it (PM first)
+    ids = [r["id"] for r in rows]
+    marks = ",".join("?" * len(ids)) or "NULL"
+    tally = {t["project_id"]: t for t in db.execute(
+        f"SELECT project_id, COUNT(*) AS total, SUM(done = 0) AS open FROM tasks WHERE project_id IN ({marks}) GROUP BY project_id", ids)}
+    team = {}
+    for t in db.execute(
+        "SELECT pp.project_id, u.id, u.name, u.avatar FROM project_participants pp JOIN users u ON u.id = pp.user_id "
+        f"WHERE u.active = 1 AND pp.project_id IN ({marks}) ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name", ids):
+        team.setdefault(t["project_id"], []).append({"id": t["id"], "name": t["name"], "avatar_url": avatar_url(t)})
     out = []
     for r in rows:
         names = [s["name"] for s in (lists.get(r["id"]) or [])]
+        t = tally.get(r["id"])
         out.append({
+            "total_tasks": t["total"] if t else 0, "open_tasks": t["open"] if t else 0,
+            "team": team.get(r["id"], [{"id": r["owner_id"], "name": r["owner_name"], "avatar_url": None}]),
             "id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"], "stage": r["stage"],
             "stages": names, "stage_index": names.index(r["stage"]) if r["stage"] in names else 0,
             "closed": bool(names) and r["stage"] == names[-1],

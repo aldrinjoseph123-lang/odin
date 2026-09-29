@@ -1210,7 +1210,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         dist = tempfile.mkdtemp(); os.makedirs(os.path.join(dist, "assets"))
         open(os.path.join(dist, "index.html"), "w").write("<title>Odin</title><div id=root></div>")
         paths = {
-            "login": "/login", "board": "/board", "projects_list": "/projects", "project_detail": "/projects/1",
+            "login": "/login", "board": "/board", "dashboard": "/dashboard", "projects_list": "/projects", "project_detail": "/projects/1",
             "project_new": "/projects/new", "project_edit": "/projects/1/edit", "users": "/users", "audit_logs_view": "/audit-logs",
             "settings": "/settings", "settings_section": "/settings/general", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
             "account": "/account", "my_work": "/my-work", "analytics": "/analytics", "alerts_log_view": "/alerts",
@@ -1856,6 +1856,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.client.post("/projects/1/stage", data={"stage": stages[-1]})          # closed
         c, _ = self._api_client()
         d = c.get("/api/projects").get_json()
+        first = d["rows"][0]   # the cards view's tallies and team ride on every row
+        self.assertGreaterEqual(first["total_tasks"], first["open_tasks"]); self.assertEqual(first["team"][0]["name"], "Admin")
         self.assertEqual((d["total"], d["page"], d["total_pages"], len(d["rows"])), (26, 1, 2, 25))
         self.assertEqual(d["sort"], "updated"); self.assertTrue(d["can_create"])
         self.assertEqual(d["rows"][0]["stages"], stages)
@@ -2647,6 +2649,40 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.commit()
         rows = {r["name"]: r for r in self._api_client()[0].get("/api/flow").get_json()["rows"]}
         self.assertEqual(rows["Quiet"]["next_task"]["title"], "Old task")
+
+    def test_api_dashboard_gathers_the_portfolio_and_keeps_a_daily_snapshot(self):
+        from services.dashboard import record_snapshot
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        self.new_project(name="Fine", client="C", target_end_date="2099-01-01")
+        self.new_project(name="Quiet", client="C", target_end_date="2099-01-01")
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET updated_at = datetime('now','-40 days') WHERE name='Quiet'")
+            uid = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()["id"]
+            # a week-old snapshot to measure against
+            db.execute("INSERT INTO portfolio_snapshots (day, active, overdue, over_sla, due_soon, awaiting, idle) VALUES (date('now','-8 days'), 1, 0, 0, 0, 0, 0)")
+            db.commit()
+        self.client.post("/projects/2/tasks", data={"title": "Soon", "assignee_id": uid, "due_date": (date.today() + timedelta(days=3)).isoformat()})
+        self.client.post("/projects/2/tasks", data={"title": "Was due", "assignee_id": uid, "due_date": "2020-01-01"})
+        self.client.post("/projects/2/tasks", data={"title": "Nobody's"})
+        self.client.post("/projects/2/tasks/1/toggle")
+        c, _ = self._api_client()
+        d = c.get("/api/dashboard").get_json()
+        self.assertEqual(d["counts"], {"active": 3, "overdue": 1, "over_sla": 0, "due_soon": 0, "awaiting": 0, "idle": 1})
+        self.assertEqual(d["before"]["active"], 1); self.assertIsNotNone(d["since"])
+        self.assertEqual([r["name"] for r in d["timeline"]], ["Late", "Fine", "Quiet"])
+        self.assertEqual(d["timeline"][0]["state"], "overdue"); self.assertTrue(d["timeline"][0]["start_date"])
+        self.assertEqual(sum(s["count"] for s in d["stages"]), 3)
+        self.assertEqual(sum(x["count"] for x in d["done_per_day"]), 1); self.assertEqual(len(d["done_per_day"]), 7)
+        self.assertEqual([t["title"] for t in d["due"]], ["Was due"])         # the ticked one is gone; "Soon" is within 7 days
+        self.assertEqual(d["load"][0]["name"], "Admin"); self.assertEqual(d["load"][0]["late"], 1); self.assertEqual(d["unassigned"], 1)
+        # opening the page recorded today; the nightly job's write replaces it
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM portfolio_snapshots").fetchone()[0], 2)
+        with app_module.app.app_context():
+            self.assertEqual(record_snapshot()["active"], 3)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM portfolio_snapshots").fetchone()[0], 2)
+        self.assertEqual(app_module.app.test_client().get("/api/dashboard").status_code, 302)
 
     def test_api_project_flow_gives_stage_timeline_tasks_and_eta(self):
         self.new_project(name="F", client="C", target_end_date="2099-01-01")

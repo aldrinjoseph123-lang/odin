@@ -19,6 +19,7 @@ from core import external_url
 from db import PROJECT_OPEN_SQL, get_db, get_setting
 from policies import local_today, policy
 from services.alerts import build_alerts
+from services.dashboard import tasks_due_by
 from services.pdf import report_pdf
 
 
@@ -33,10 +34,7 @@ def build():
         "SELECT p.name, n.prev_stage, n.stage, n.author FROM status_notes n JOIN projects p ON p.id = n.project_id "
         "WHERE n.prev_stage IS NOT NULL AND n.created_at >= ? AND p.deleted_at IS NULL ORDER BY n.created_at", (week_ago,)).fetchall()
     soon = (today + timedelta(days=7)).isoformat()
-    due_tasks = db.execute(
-        f"SELECT t.title, t.due_date, p.name AS project, u.name AS who FROM tasks t JOIN projects p ON p.id = t.project_id "
-        f"LEFT JOIN users u ON u.id = t.assignee_id WHERE t.done = 0 AND t.due_date IS NOT NULL AND t.due_date <= ? "
-        f"AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY t.due_date LIMIT 40", (soon,)).fetchall()
+    due_tasks = tasks_due_by(db, soon)
     per_stage = Counter(p["stage"] for p in projects)
 
     late = "<b style='color:#B4231C'>late</b>"

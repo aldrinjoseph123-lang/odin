@@ -13,7 +13,7 @@ from flask import current_app, send_from_directory
 DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
 
 # Endpoint names whose GET is answered by the React app.
-SPA_PAGES = {"login", "board", "projects_list", "project_detail", "users", "audit_logs_view", "settings", "settings_section", "settings_rbac", "settings_contacts", "project_new", "project_edit", "account", "my_work", "analytics", "alerts_log_view", "report_all", "report_single", "auth_link_request", "auth_reset_request", "auth_reset_form", "auth_link_consume", "login_password"}
+SPA_PAGES = {"login", "board", "dashboard", "projects_list", "project_detail", "users", "audit_logs_view", "settings", "settings_section", "settings_rbac", "settings_contacts", "project_new", "project_edit", "account", "my_work", "analytics", "alerts_log_view", "report_all", "report_single", "auth_link_request", "auth_reset_request", "auth_reset_form", "auth_link_consume", "login_password"}
 
 
 def spa_available():

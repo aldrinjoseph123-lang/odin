@@ -4,6 +4,7 @@ import AppShell from "@/components/AppShell"
 import { SettingsLayout } from "@/components/SettingsLayout"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import Flow from "@/pages/Flow"
+import Dashboard from "@/pages/Dashboard"
 import Projects from "@/pages/Projects"
 import Project from "@/pages/Project"
 import Users from "@/pages/Users"
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="/auth/reset" element={<ForgotPassword />} />
         <Route path="/auth/reset/:token" element={<ForgotPassword />} />
         <Route path="/board" element={<Protected>{(user) => <Flow user={user} />}</Protected>} />
+        <Route path="/dashboard" element={<Protected>{(user) => <Dashboard user={user} />}</Protected>} />
         <Route path="/projects" element={<Protected>{(user) => <Projects user={user} />}</Protected>} />
         <Route path="/projects/new" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
         <Route path="/projects/:id/edit" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />

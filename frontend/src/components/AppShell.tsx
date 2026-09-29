@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
 
 // White top bar, ink links, accent underline on the current section. Un-ported
 // pages are plain anchors (full navigation to Flask); React pages use <Link>.
-const REACT_PAGES = new Set(["/board", "/projects", "/users", "/audit-logs", "/settings", "/account", "/my-work", "/alerts", "/analytics"])   // header links only
+const REACT_PAGES = new Set(["/board", "/dashboard", "/projects", "/users", "/audit-logs", "/settings", "/account", "/my-work", "/alerts", "/analytics"])   // header links only
 type Item = { href: string; label: string; count?: number; match: (path: string) => boolean }
 
 function NavLink({ item, current, onClick }: { item: Item; current: boolean; onClick?: () => void }) {
@@ -59,6 +59,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   }
   const all: Item[] = [
     { href: "/board", label: "Flow", match: (p) => p === "/board" },
+    { href: "/dashboard", label: "Dashboard", match: (p) => p === "/dashboard" },
     { href: "/my-work", label: "My work", count: user.nav.my_open_task_count, match: (p) => p === "/my-work" },
     { href: user.nav.projects_nav_url, label: "Projects", match: (p) => p.startsWith("/projects") },
     { href: "/analytics", label: "Cycle time", match: (p) => p === "/analytics" },

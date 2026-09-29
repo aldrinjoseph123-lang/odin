@@ -4,19 +4,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { analytics, ApiError, type AnalyticsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { PageSkeleton } from "@/components/PageSkeleton"
+import { StatTile } from "@/components/StatTile"
 
 const d1 = (n: number | null | undefined) => (n == null ? "—" : n.toFixed(1))
 const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
-
-function Tile({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "warn" | "bad" }) {
-  return (
-    <div className="rounded-lg border border-border p-3">
-      <div className="text-[11.5px] text-muted-foreground">{label}</div>
-      <div className={cn("mt-0.5 text-[20px] font-semibold tracking-tight", tone === "warn" && "text-warn", tone === "bad" && "text-bad")}>{value}</div>
-      {sub && <div className="text-[12px] text-muted-foreground">{sub}</div>}
-    </div>
-  )
-}
 
 export default function Analytics(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
@@ -44,10 +35,10 @@ export default function Analytics(_props: { user: User }) {
         <>
           <p className="mt-3 max-w-3xl text-[12.5px] text-muted-foreground">Timings compare only projects that share a stage list, so this is <span className="font-medium text-foreground">{tname}</span> across {s.measured_projects} project{s.measured_projects === 1 ? "" : "s"}. Averages count stages a project has already left; the stage it sits in now is under Aging.</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Tile label="Slowest stage" value={s.slowest?.stage ?? "—"} sub={s.slowest ? `${d1(s.slowest.avg_days)} days avg` : undefined} tone="warn" />
-            <Tile label="Lead time (avg)" value={d1(s.lead_avg)} sub={`${s.completed_count} completed project${s.completed_count === 1 ? "" : "s"}`} />
-            <Tile label="Lead time (median)" value={d1(s.lead_median)} sub="days, start to closed" />
-            <Tile label="Oldest open stage" value={s.aging[0] ? String(Math.round(s.aging[0].days)) : "—"} sub={s.aging[0]?.project_name ?? "nothing ageing"} tone="bad" />
+            <StatTile label="Slowest stage" value={s.slowest?.stage ?? "—"} sub={s.slowest ? `${d1(s.slowest.avg_days)} days avg` : undefined} tone="warn" />
+            <StatTile label="Lead time (avg)" value={d1(s.lead_avg)} sub={`${s.completed_count} completed project${s.completed_count === 1 ? "" : "s"}`} />
+            <StatTile label="Lead time (median)" value={d1(s.lead_median)} sub="days, start to closed" />
+            <StatTile label="Oldest open stage" value={s.aging[0] ? String(Math.round(s.aging[0].days)) : "—"} sub={s.aging[0]?.project_name ?? "nothing ageing"} tone="bad" />
           </div>
           <div className="mt-4 overflow-auto rounded-lg border border-border">
             <table className="w-full border-collapse text-[13px]">

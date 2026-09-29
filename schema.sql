@@ -24,6 +24,18 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+-- One row a day of the portfolio's headline counts (services/dashboard.py):
+-- the history behind the Dashboard's week-over-week deltas.
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    day TEXT PRIMARY KEY,
+    active INTEGER NOT NULL,
+    overdue INTEGER NOT NULL,
+    over_sla INTEGER NOT NULL,
+    due_soon INTEGER NOT NULL,
+    awaiting INTEGER NOT NULL,
+    idle INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS account_managers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
