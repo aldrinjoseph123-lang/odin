@@ -104,8 +104,9 @@ export type FlowRow = {
   delivery_mode: string; target_end_date: string | null; days_in_stage: number | null; sla_days: number | null
   over_by: number | null; state: FlowState; open_tasks: number; total_tasks: number
   next_task: { title: string; due_date: string | null; assignee: string | null } | null; updated_at: string
+  idle_days: number | null; stale: boolean
 }
-export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState, number>; can_move: boolean }
+export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState, number>; can_move: boolean; today: string }
 export type FlowStage = { name: string; status: "done" | "current" | "next"; sla_days: number | null; entered_at: string | null; days: number | null }
 export type FlowTask = { id: number; title: string; done: boolean; due_date: string | null; assignee: string | null; assignee_id: number | null; assignee_avatar_url: string | null; stage: string }
 export type FlowDetail = {

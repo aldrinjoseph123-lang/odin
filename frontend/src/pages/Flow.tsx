@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react"
-import { ArrowRight, CalendarDays, Check, ChevronRight, Clock, ExternalLink, Plus, Trash2, UserRound, X } from "lucide-react"
+import { ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, Plus, Trash2, UserRound, X } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -9,10 +9,10 @@ import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowTask, type User } from "@/lib/api"
+import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { days, fitStages, fmtDate, stateText, lateBy, nextUp, stageColumns } from "@/lib/format"
+import { days, fitStages, fmtDate, groupRows, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
@@ -106,7 +106,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
           </div>
         </form>
       ) : (
-        <button type="button" onClick={() => setAdding(true)} className="mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text">
+        <button type="button" onClick={() => setAdding(true)} aria-label={`Add a task to ${stage}`} className="mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text">
           <Plus className="h-3 w-3" /> Task
         </button>
       ))}
@@ -115,24 +115,104 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
 }
 
 // ---- top pane: every active rollout, stuck first -------------------------------
-function RolloutList({ data, selectedId, onSelect, filter, setFilter, stage, setStage }: {
-  data: FlowData; selectedId: number | null; onSelect: (id: number) => void
-  filter: "all" | "attention" | "mine"; setFilter: (f: "all" | "attention" | "mine") => void
-  stage: string | null; setStage: (s: string | null) => void
+type Filter = "all" | "attention" | "customer" | "mine"
+// Pills share one size: 32 px, 40 px under a finger.
+const pill = "flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 text-[12.5px] font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 pointer-coarse:h-10"
+const pillOn = "border-foreground bg-foreground text-background"
+const pillOff = "border-border text-nav-fg hover:bg-muted"
+
+// What happens next on this rollout, in one quiet line.
+function NextLine({ r, today }: { r: FlowRow; today: string }) {
+  const t = r.next_task
+  const late = t?.due_date ? lateBy(t.due_date, today) : 0
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+      {t ? (
+        <>
+          <span className="min-w-0 truncate"><span className="text-nav-fg">Next:</span> {t.title}</span>
+          {t.assignee && <span className="shrink-0">· {t.assignee}</span>}
+          {t.due_date && <span className={cn("shrink-0", late > 0 && "font-medium text-bad")}>· {late > 0 ? `${late} d late` : `due ${fmtDate(t.due_date)}`}</span>}
+        </>
+      ) : <span className="truncate">No open task</span>}
+      {r.total_tasks > 0 && <span className="shrink-0 tabular-nums">· {r.total_tasks - r.open_tasks} of {r.total_tasks} done</span>}
+      {r.stale && <span className="shrink-0">· idle {Math.round(r.idle_days ?? 0)} d</span>}
+    </span>
+  )
+}
+
+function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
+  r: FlowRow; selected: boolean; tabStop: boolean; onSelect: (id: number) => void; columns: string[]; today: string; me: number
 }) {
-  const rows = useMemo(() => data.rows.filter((r) =>
-    (filter === "attention" ? r.state !== "on_track" : filter === "mine" ? r.mine : true) && (!stage || r.stage === stage)), [data.rows, filter, stage])
+  const chip = <span className={cn("whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
+    <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
+  // The viewer is on most of their own rows: show who else is.
+  const others = r.team.filter((p) => p.id !== me)
+  const t = r.next_task
+  return (
+    <li>
+      <button type="button" data-row onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={tabStop ? 0 : -1}
+        aria-label={`${r.name}, ${r.client}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
+        className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
+          "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] md:gap-x-4 md:gap-y-0.5",
+          selected ? "border-primary bg-accent" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
+        <span className="flex min-w-0 items-center gap-2 md:col-start-1 md:row-start-1">
+          <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
+          <span className="truncate text-[13.5px] font-medium">{r.name}</span>
+          <span className="hidden truncate text-[12px] text-muted-foreground sm:inline">{r.client}</span>
+        </span>
+        <span className="justify-self-end md:hidden">{chip}</span>
+        <span className="hidden md:col-start-2 md:row-span-2 md:row-start-1 md:block">
+          <Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} columns={columns} />
+        </span>
+        {/* phones: the stage and a progress bar in place of the dots */}
+        <span className="col-span-2 flex min-w-0 items-center gap-2 pl-4 md:col-span-1 md:col-start-3 md:row-span-2 md:row-start-1 md:grid md:gap-0.5 md:pl-0">
+          <span className="truncate text-[12.5px] font-medium">{r.stage}</span>
+          <span className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted md:hidden" aria-hidden>
+            <span className="block h-full bg-ok-line" style={{ width: `${((r.stage_index + 1) / Math.max(1, r.stages.length)) * 100}%` }} />
+          </span>
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5 gap-y-1">
+            <span className="hidden md:inline">{chip}</span>
+            <ApprovalChip status={r.approval} />
+          </span>
+        </span>
+        <TeamStack people={others} className="hidden md:col-start-4 md:row-span-2 md:row-start-1 md:flex" />
+        <span className="col-span-2 min-w-0 pl-4 md:col-span-1 md:col-start-1 md:row-start-2"><NextLine r={r} today={today} /></span>
+      </button>
+    </li>
+  )
+}
+
+function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage, setStage, group, setGroup }: {
+  data: FlowData; me: number; selectedId: number | null; onSelect: (id: number) => void
+  filter: Filter; setFilter: (f: Filter) => void
+  stage: string | null; setStage: (s: string | null) => void
+  group: FlowGroupBy | null; setGroup: (g: FlowGroupBy | null) => void
+}) {
+  const match = useCallback((r: FlowRow, f: Filter) =>
+    f === "attention" ? r.state !== "on_track" : f === "customer" ? r.approval === "pending" : f === "mine" ? r.mine : true, [])
+  const rows = useMemo(() => data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage)), [data.rows, filter, stage, match])
   // Every row's stages in one column order, so a stage lines up down the list.
   const columns = useMemo(() => stageColumns(data.rows.map((r) => r.stages)), [data.rows])
   const inStage = useMemo(() => {
     const n = new Map<string, number>()
-    for (const r of data.rows) n.set(r.stage, (n.get(r.stage) ?? 0) + 1)
+    for (const r of data.rows) if (match(r, filter)) n.set(r.stage, (n.get(r.stage) ?? 0) + 1)
     return n
-  }, [data.rows])
+  }, [data.rows, filter, match])
   const stuck = data.counts.overdue + data.counts.over_sla + data.counts.due_soon
-  const chips: { key: typeof filter; label: string; n: number }[] = [
-    { key: "all", label: "All", n: data.rows.length }, { key: "attention", label: "Needs attention", n: stuck }, { key: "mine", label: "Mine", n: data.rows.filter((r) => r.mine).length },
-  ]
+  const count = (f: Filter) => data.rows.filter((r) => match(r, f)).length
+  const chips = ([
+    { key: "all", label: "All", n: data.rows.length },
+    { key: "attention", label: "Needs attention", n: stuck },
+    { key: "customer", label: "Waiting on customer", n: count("customer") },
+    { key: "mine", label: "Mine", n: count("mine") },
+  ] as { key: Filter; label: string; n: number }[])
+    // a filter that changes nothing is noise: "Mine" for someone on every rollout, "Waiting" with none waiting
+    .filter((c) => c.key === filter || c.key === "all" || (c.n > 0 && c.n < data.rows.length) || (c.key === "attention" && c.n > 0))
+  // On track needs no attention: folded into one line while anything else does.
+  const calm = group ? [] : rows.filter((r) => r.state === "on_track")
+  const [showCalm, setShowCalm] = useState(false)
+  const fold = calm.length > 0 && calm.length < rows.length && !showCalm && !calm.some((r) => r.id === selectedId)
+  const shown = fold ? rows.filter((r) => r.state !== "on_track") : rows
   // One tab stop for the whole list; ↑/↓ or j/k move between rows, Enter opens.
   function onKeys(e: KeyboardEvent<HTMLUListElement>) {
     const step = e.key === "ArrowDown" || e.key === "j" ? 1 : e.key === "ArrowUp" || e.key === "k" ? -1 : 0
@@ -143,7 +223,8 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter, stage, set
     e.preventDefault()
     buttons[to].focus()
   }
-  const tabStop = rows.some((r) => r.id === selectedId) ? selectedId : rows[0]?.id
+  const tabStop = shown.some((r) => r.id === selectedId) ? selectedId : shown[0]?.id
+  const row = (r: FlowRow) => <RolloutRow key={r.id} r={r} selected={r.id === selectedId} tabStop={r.id === tabStop} onSelect={onSelect} columns={columns} today={data.today} me={me} />
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
@@ -152,77 +233,67 @@ function RolloutList({ data, selectedId, onSelect, filter, setFilter, stage, set
           {data.rows.length} active
           {data.counts.overdue ? <> · <span className="font-medium text-bad">{data.counts.overdue} overdue</span></> : null}
           {data.counts.over_sla ? <> · <span className="font-medium text-warn">{data.counts.over_sla} over SLA</span></> : null}
-          {data.counts.due_soon ? <> · {data.counts.due_soon} due soon</> : null}
+          {data.counts.due_soon ? <> · <span className="font-medium text-warn">{data.counts.due_soon} due soon</span></> : null}
         </p>
-        <div className="ml-auto flex flex-wrap gap-1.5">
-          {stage && (
-            <button type="button" onClick={() => setStage(null)} aria-label={`Showing ${stage} only. Show every stage`}
-              className="flex h-7 items-center gap-1 rounded-full border border-foreground bg-foreground px-3 text-[12.5px] font-medium text-background">
-              {stage} <X className="h-3 w-3" />
-            </button>
-          )}
+        <div className="flex flex-wrap items-center gap-1.5 md:ml-auto">
           {chips.map((c) => (
             <button key={c.key} type="button" onClick={() => setFilter(c.key)} aria-pressed={filter === c.key} aria-label={`${c.label}, ${c.n}`}
-              className={cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", filter === c.key ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>
-              {c.label}{c.n ? <span className={cn("ml-1", filter === c.key ? "text-background/70" : "text-muted-foreground")}>{c.n}</span> : null}
+              className={cn(pill, filter === c.key ? pillOn : pillOff)}>
+              {c.label}{c.n ? <span className={filter === c.key ? "text-background/70" : "text-muted-foreground"}>{c.n}</span> : null}
             </button>
           ))}
+          <label className="flex items-center gap-1.5 pl-1 text-[12.5px] text-muted-foreground">
+            Group
+            <select aria-label="Group rollouts by" value={group ?? ""} onChange={(e) => setGroup((e.target.value || null) as FlowGroupBy | null)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-[12.5px] text-foreground pointer-coarse:h-10">
+              <option value="">None</option><option value="stage">Stage</option><option value="client">Client</option><option value="owner">Owner</option>
+            </select>
+          </label>
         </div>
       </div>
+      {/* how many sit in each stage, named; a tap shows only that stage */}
+      <nav aria-label="Rollouts in each stage" className="flex gap-1.5 overflow-x-auto px-5 pb-2 [scrollbar-width:none]">
+        {columns.filter((c) => inStage.get(c) || stage === c).map((c) => {
+          const on = stage === c
+          return (
+            <button key={c} type="button" onClick={() => setStage(on ? null : c)} aria-pressed={on}
+              aria-label={`${c}: ${inStage.get(c) ?? 0}. ${on ? "Show every stage" : "Show only this stage"}`}
+              className={cn(pill, "font-normal", on ? pillOn : pillOff)}>
+              {c} <span className={cn("font-medium tabular-nums", on ? "text-background" : "text-foreground")}>{inStage.get(c) ?? 0}</span>
+              {on && <X className="h-3 w-3" aria-hidden />}
+            </button>
+          )
+        })}
+      </nav>
       <ScrollArea className="min-h-0 flex-1">
-        {/* Column heads live in the list, with the rows' own grid and padding, so
-            the per-stage counts sit exactly over the stepper columns they count. */}
-        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(200px,1.2fr)_2fr_210px_76px] items-end gap-4 border border-transparent bg-background px-3 pb-1.5 text-[11.5px] text-muted-foreground md:grid">
-          <span>Rollout</span>
-          <span className="relative mx-1.5 h-5" aria-label="Rollouts in each stage">
-            {columns.map((c, i) => {
-              const n = inStage.get(c) ?? 0
-              if (!n) return null
-              const on = stage === c
-              return (
-                <Tooltip key={c}>
-                  <TooltipTrigger render={<button type="button" />} onClick={() => setStage(on ? null : c)} aria-pressed={on}
-                    aria-label={`${c}: ${n} rollout${n === 1 ? "" : "s"}. ${on ? "Show every stage" : "Show only these"}`}
-                    style={{ left: `${(columns.length > 1 ? i / (columns.length - 1) : 0) * 100}%` }}
-                    className={cn("absolute bottom-0 min-w-5 -translate-x-1/2 rounded-full px-1 text-center text-[11px] font-medium leading-5",
-                      on ? "bg-foreground text-background" : "text-nav-fg hover:bg-muted")}>{n}</TooltipTrigger>
-                  <TooltipContent>{c} · {n} rollout{n === 1 ? "" : "s"}</TooltipContent>
-                </Tooltip>
-              )
-            })}
-          </span>
-          <span>Stage</span><span>Team</span>
+        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-background px-3 py-1.5 text-[11.5px] text-muted-foreground md:grid">
+          <span>Rollout · next step</span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid gap-0.5 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
-          {rows.map((r) => {
-            const selected = r.id === selectedId
-            return (
-              <li key={r.id}>
-                <button type="button" data-row onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={r.id === tabStop ? 0 : -1}
-                  aria-label={`${r.name}, ${r.client}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval && r.approval !== "superseded" ? `. ${r.approval === "pending" ? "Awaiting approval" : r.approval === "approved" ? "Approved" : "Declined"}` : ""}`}
-                  className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 md:grid-cols-[minmax(200px,1.2fr)_2fr_210px_76px] md:gap-4",
-                    selected ? "border-primary bg-accent" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
-                    <span className="truncate text-[13.5px] font-medium">{r.name}</span>
-                    <span className="hidden truncate text-[12px] text-muted-foreground sm:inline">{r.client}</span>
-                  </span>
-                  <span className="col-span-2 md:col-span-1"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} columns={columns} /></span>
-                  <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 justify-self-end md:justify-self-start">
-                    <span className="truncate text-[12.5px] font-medium">{r.stage}</span>
-                    <ApprovalChip status={r.approval} />
-                    <span className={cn("whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
-                      <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
-                  </span>
-                  <TeamStack people={r.team} className="hidden md:flex" />
-                </button>
-              </li>
-            )
-          })}
+          {group ? groupRows(shown, group).map((g) => (
+            <li key={g.key} className="mt-2 first:mt-0">
+              <p className="flex items-baseline gap-2 border-b border-border px-3 pb-1 text-[12.5px] font-semibold">
+                {g.key}<span className="font-normal text-muted-foreground">{g.rows.length}
+                  {(() => { const bad = g.rows.filter((r) => r.state !== "on_track").length; return bad ? ` · ${bad} ${bad === 1 ? "needs" : "need"} attention` : "" })()}</span>
+              </p>
+              <ul className="mt-0.5 grid gap-0.5">{g.rows.map(row)}</ul>
+            </li>
+          )) : shown.map(row)}
+          {(fold || (showCalm && calm.length > 0 && calm.length < rows.length)) && (
+            <li>
+              <button type="button" onClick={() => setShowCalm(fold)} aria-expanded={!fold} aria-label={fold ? `Show ${calm.length} on-track rollouts` : "Hide the on-track rollouts"}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[13px] text-muted-foreground outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", !fold && "rotate-90")} aria-hidden />
+                {fold ? <><span className="font-medium text-foreground">{calm.length} on track</span> · show</> : "Hide the on-track rollouts"}
+              </button>
+            </li>
+          )}
           {rows.length === 0 && (
             <li className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-[13px] text-muted-foreground">
               {data.rows.length === 0 ? "No active rollouts yet. Create one from a client PO and it appears here."
-                : stage ? `No rollout in ${stage} matches this filter.` : "Nothing needs attention — every rollout is inside its stage SLA and on schedule."}
+                : stage ? `No rollout in ${stage} matches this filter.`
+                : filter === "customer" ? "No rollout is waiting on a customer's approval."
+                : "Nothing needs attention — every rollout is inside its stage SLA and on schedule."}
             </li>
           )}
         </ul>
@@ -315,7 +386,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
   }
   return (
     <div className="grid gap-5 px-5 py-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-      <div className="min-w-0">
+      <div className="min-w-0 xl:col-start-1 xl:row-start-1">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             {standalone
@@ -405,7 +476,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
       </div>
 
       {/* right rail: what to do next, when it's due, how we got here */}
-      <aside className="grid content-start gap-4 text-[13px] md:grid-cols-2 xl:grid-cols-1">
+      <aside className="grid content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:grid-cols-1">
         <section className="rounded-lg border border-border p-3">
           <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
           {next ? (
@@ -460,6 +531,10 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             {err && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
           </section>
         )}
+      </aside>
+
+      {/* who and what happened: under the flowchart on wide screens, after the rail otherwise */}
+      <div className="grid content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-1 xl:row-start-2">
         <section>
           <h3 className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><UserRound className="h-3.5 w-3.5" /> Team</h3>
           <ul className="grid gap-1.5">
@@ -475,7 +550,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         </section>
         {d.recent_notes.length > 0 && (
           <section className="min-w-0">
-            {/* min-w-0 all the way down: a truncated note must not widen the rail */}
+            {/* min-w-0 all the way down: a truncated note must not widen the column */}
             <h3 className="mb-1.5 text-[12px] font-semibold text-nav-fg">Recent</h3>
             <ul className="grid min-w-0 gap-1.5">
               {d.recent_notes.map((n, i) => (
@@ -484,14 +559,27 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             </ul>
           </section>
         )}
-      </aside>
+      </div>
     </div>
   )
 }
 
-export default function Flow(_props: { user: User }) {
+// Phones get the rollout as its own screen with a back button, not a split.
+function useWide() {
+  const q = "(min-width: 768px)"
+  const [wide, setWide] = useState(() => typeof window === "undefined" || window.matchMedia(q).matches)
+  useEffect(() => {
+    const m = window.matchMedia(q)
+    const on = () => setWide(m.matches)
+    m.addEventListener("change", on)
+    return () => m.removeEventListener("change", on)
+  }, [])
+  return wide
+}
+
+export default function Flow({ user }: { user: User }) {
+  const wide = useWide()
   const [data, setData] = useState<FlowData | null>(null)
-  // ?rollout=<id> deep-links a rollout: shareable, and the URL follows selection.
   // The selection is the URL (?rollout=): shareable, and it follows any
   // navigation to it — a palette jump or a link — even while this page is open.
   const [params, setParams] = useSearchParams()
@@ -502,17 +590,23 @@ export default function Flow(_props: { user: User }) {
       const next = new URLSearchParams(prev)
       if (id == null) next.delete("rollout"); else next.set("rollout", String(id))
       return next
-    }, { replace: true })
-  }, [setParams])
+    // opening a rollout is a step Back can undo (a phone's back gesture returns to the list); moving between rollouts is not
+    }, { replace: selectedId != null || id == null })
+  }, [setParams, selectedId])
   const [detail, setDetail] = useState<FlowDetail | null>(null)
   // The filter lives in the URL too, so a reload keeps it.
   const f = params.get("filter")
-  const filter: "all" | "attention" | "mine" = f === "attention" || f === "mine" ? f : "all"
+  const filter: Filter = f === "attention" || f === "mine" || f === "customer" ? f : "all"
   const stage = params.get("stage")
+  const g = params.get("group")
+  const group: FlowGroupBy | null = g === "stage" || g === "client" || g === "owner" ? g : null
+  const setGroup = useCallback((v: FlowGroupBy | null) => {
+    setParams((prev) => { const next = new URLSearchParams(prev); if (!v) next.delete("group"); else next.set("group", v); return next }, { replace: true })
+  }, [setParams])
   const setStage = useCallback((v: string | null) => {
     setParams((prev) => { const next = new URLSearchParams(prev); if (!v) next.delete("stage"); else next.set("stage", v); return next }, { replace: true })
   }, [setParams])
-  const setFilter = useCallback((v: "all" | "attention" | "mine") => {
+  const setFilter = useCallback((v: Filter) => {
     setParams((prev) => { const next = new URLSearchParams(prev); if (v === "all") next.delete("filter"); else next.set("filter", v); return next }, { replace: true })
   }, [setParams])
   const [error, setError] = useState<string | null>(null)
@@ -557,16 +651,14 @@ export default function Flow(_props: { user: User }) {
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!data) return <PageSkeleton />
 
-  return (
-    <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
-      <ResizablePanel defaultSize={selectedId == null ? 100 : 48} minSize={20}>
-        <RolloutList data={data} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />
-      </ResizablePanel>
-      {selectedId != null && (
-        <>
-          <ResizableHandle withHandle aria-label="Resize the rollout list and the flowchart" />
-          <ResizablePanel defaultSize={52} minSize={25}>
-            <ScrollArea className="h-full">
+  const list = <RolloutList data={data} me={user.id} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} />
+  const pane = selectedId != null && (
+    <>
+              {!wide && (
+                <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 items-center gap-1 px-4 text-[13.5px] font-medium text-primary-text">
+                  <ChevronLeft className="h-4 w-4" aria-hidden /> All rollouts
+                </button>
+              )}
               {notice && (
                 <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-1.5 text-[12.5px]", notice.bad ? "bg-bad-soft text-bad" : "bg-ok-soft text-ok")} role="status">
                   <span>{notice.text}
@@ -577,9 +669,20 @@ export default function Flow(_props: { user: User }) {
                 </div>
               )}
               {detail && detail.id === selectedId ? (
-                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={(text, undo) => setNotice({ text, undo })} onClose={() => setSelectedId(null)} />
+                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={(text, undo) => setNotice({ text, undo })} onClose={wide ? () => setSelectedId(null) : undefined} />
               ) : <PageSkeleton />}
-            </ScrollArea>
+    </>
+  )
+  if (!wide) return selectedId != null ? <ScrollArea className="min-h-0 flex-1">{pane}</ScrollArea> : <div className="flex min-h-0 flex-1 flex-col">{list}</div>
+
+  return (
+    <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
+      <ResizablePanel defaultSize={selectedId == null ? 100 : 48} minSize={20}>{list}</ResizablePanel>
+      {selectedId != null && (
+        <>
+          <ResizableHandle withHandle aria-label="Resize the rollout list and the flowchart" />
+          <ResizablePanel defaultSize={52} minSize={25}>
+            <ScrollArea className="h-full">{pane}</ScrollArea>
           </ResizablePanel>
         </>
       )}

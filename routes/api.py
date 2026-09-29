@@ -8,7 +8,7 @@ from policies import local_today, policy, policy_view
 
 from datetime import date, datetime
 
-from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
+from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
@@ -16,7 +16,7 @@ from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
 from security import csrf_token
-from services.alerts import schedule_status
+from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
 from services.audit import audit_log
 from spa import spa_asset
@@ -641,6 +641,17 @@ def _days_since(iso, now):
     return round((now - parsed).total_seconds() / 86400, 1) if parsed else None
 
 
+def _flow_urgency(r, now):
+    """Order inside a state: the worst case first. Overdue and due soon by
+    target date (the most late first), over SLA by days over, on track by the
+    most recently touched."""
+    if r["state"] in ("overdue", "due_soon"):
+        return (r["target_end_date"] or "9999", r["name"])
+    if r["state"] == "over_sla":
+        return (-(r["over_by"] or 0), r["name"])
+    return (-(_parse(r["updated_at"]) or now).timestamp(), r["name"])
+
+
 @app.route("/api/flow")
 @permission_required("view_board")
 def api_flow():
@@ -669,14 +680,23 @@ def api_flow():
         "WHERE u.active = 1 ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name"
     ):
         team.setdefault(r["project_id"], []).append({"id": r["id"], "name": r["name"], "avatar_url": avatar_url(r)})
-    # Earliest-due open task per project = the next actionable item.
+    # The next actionable item, as the detail pane's "Next up" picks it: the
+    # current stage's work first, then the earliest due date, undated last.
+    # (a task whose stage is gone, or never had one, belongs to the current stage)
+    stage_of = {p["id"]: p["stage"] for p in projects}
+    names_of = {pid: {r["name"] for r in rows} for pid, rows in stage_lists.items()}
     next_task = {}
     for t in db.execute(
-        "SELECT t.project_id, t.title, t.due_date, u.name AS assignee_name FROM tasks t "
+        "SELECT t.project_id, t.stage, t.title, t.due_date, u.name AS assignee_name FROM tasks t "
         "LEFT JOIN users u ON u.id = t.assignee_id WHERE t.done = 0 "
         "ORDER BY t.due_date IS NULL, t.due_date, t.id"
     ):
-        next_task.setdefault(t["project_id"], {"title": t["title"], "due_date": t["due_date"], "assignee": t["assignee_name"]})
+        here = t["stage"] == stage_of.get(t["project_id"]) or t["stage"] not in names_of.get(t["project_id"], ())
+        if t["project_id"] not in next_task or (here and not next_task[t["project_id"]]["here"]):
+            next_task[t["project_id"]] = {"title": t["title"], "due_date": t["due_date"], "assignee": t["assignee_name"], "here": here}
+    for v in next_task.values():
+        del v["here"]
+    stale_days = (get_alert_type_settings().get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
     rows = []
     for p in projects:
         own = stage_lists.get(p["id"]) or []
@@ -686,6 +706,7 @@ def api_flow():
         sla = stage_sla_state(p, slas, terminal, now)
         schedule = schedule_status(p, terminal_stage=terminal)
         state = _flow_state(p, sla, schedule)
+        idle = _days_since(p["updated_at"], now)
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
@@ -696,12 +717,11 @@ def api_flow():
             "sla_days": slas.get(p["stage"]), "over_by": round(sla["over_by"], 1) if sla else None,
             "state": state, "open_tasks": p["open_tasks"], "total_tasks": p["total_tasks"],
             "next_task": next_task.get(p["id"]), "updated_at": p["updated_at"],
+            "idle_days": idle, "stale": idle is not None and idle >= stale_days,
         })
-    rows.sort(key=lambda r: (STATE_RANK[r["state"]], r["updated_at"] or ""), reverse=False)
-    # inside each state, most recently touched first
-    rows.sort(key=lambda r: (STATE_RANK[r["state"]], -(_parse(r["updated_at"]) or now).timestamp()))
+    rows.sort(key=lambda r: (STATE_RANK[r["state"]], _flow_urgency(r, now)))
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}
-    return jsonify({"stages": get_stage_names(), "rows": rows, "counts": counts,
+    return jsonify({"stages": get_stage_names(), "rows": rows, "counts": counts, "today": local_today().isoformat(),
                     "can_move": role_has_permission(session.get("role"), "edit_project_stage")})
 
 

@@ -141,3 +141,15 @@ export function fitStages(statuses: ("done" | "current" | "next")[], capacity: n
   const later: FlowItem[] = keepTo + 1 <= n - 2 ? [{ kind: "later", from: keepTo + 1, to: n - 2 }] : []
   return [...head, ...kept, ...later, { kind: "stage", index: n - 1 }]
 }
+
+// The flow list, grouped by stage, client or owner. Rows arrive worst first,
+// so a group's place is its worst row's place and each group keeps that order.
+export type FlowGroupBy = "stage" | "client" | "owner"
+export function groupRows<T extends { stage: string; client: string; owner_name: string; state: FlowState }>(rows: T[], by: FlowGroupBy): { key: string; rows: T[] }[] {
+  const groups = new Map<string, T[]>()
+  for (const r of rows) {
+    const key = (by === "stage" ? r.stage : by === "client" ? r.client : r.owner_name) || "—"
+    groups.set(key, [...(groups.get(key) ?? []), r])
+  }
+  return [...groups].map(([key, rows]) => ({ key, rows }))
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, setDateFormat, stageColumns, stateText, timeAgo } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, setDateFormat, stageColumns, stateText, timeAgo } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -132,5 +132,15 @@ describe("fmtWhen", () => {
     expect(fmtWhen("2026-09-27T12:00:00", true)).toMatch(/^27\/09\/2026, \d/)
     expect(fmtWhen(null)).toBe("—")
     setDateFormat("d MMM yyyy")
+  })
+})
+
+describe("groupRows", () => {
+  const r = (name: string, stage: string, client: string, state: "overdue" | "on_track") => ({ name, stage, client, owner_name: "Ann", state })
+  it("keeps the worst-first order: a group sits where its first row sat", () => {
+    const rows = [r("a", "Pilot", "X", "overdue"), r("b", "PO", "Y", "overdue"), r("c", "Pilot", "Y", "on_track")]
+    expect(groupRows(rows, "stage").map((g) => [g.key, g.rows.map((x) => x.name)])).toEqual([["Pilot", ["a", "c"]], ["PO", ["b"]]])
+    expect(groupRows(rows, "client").map((g) => g.key)).toEqual(["X", "Y"])
+    expect(groupRows(rows, "owner")).toHaveLength(1)
   })
 })

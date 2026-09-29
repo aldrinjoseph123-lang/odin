@@ -2622,6 +2622,32 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(data["counts"]["overdue"], 1)
         self.assertEqual(app_module.app.test_client().get("/api/flow").status_code, 302)
 
+    def test_api_flow_orders_the_worst_first_inside_a_state_and_flags_idle(self):
+        self.new_project(name="A little late", client="C", target_end_date="2025-06-01")
+        self.new_project(name="Very late", client="C", target_end_date="2020-01-01")
+        self.new_project(name="Quiet", client="C", target_end_date="2099-01-01")
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET updated_at = datetime('now','-40 days') WHERE name='Quiet'")
+            stages = [r["name"] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 3 ORDER BY position")]
+            db.commit()
+        # a later stage's task is due sooner, but "next" is the current stage's work
+        self.client.post("/projects/3/tasks", data={"title": "Later work", "stage": stages[2], "due_date": "2026-01-01"})
+        self.client.post("/projects/3/tasks", data={"title": "Work here", "stage": stages[0], "due_date": "2026-12-01"})
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET updated_at = datetime('now','-40 days') WHERE name='Quiet'")
+            db.commit()
+        rows = {r["name"]: r for r in self._api_client()[0].get("/api/flow").get_json()["rows"]}
+        self.assertEqual(list(rows)[:2], ["Very late", "A little late"])
+        self.assertTrue(rows["Quiet"]["stale"]); self.assertGreaterEqual(rows["Quiet"]["idle_days"], 39)
+        self.assertFalse(rows["Very late"]["stale"])
+        self.assertEqual(rows["Quiet"]["next_task"]["title"], "Work here")
+        # a task with no stage belongs to the current one, as on the detail pane
+        with self.raw_db() as db:
+            db.execute("INSERT INTO tasks (project_id, title, due_date, created_at, created_by, stage) VALUES (3, 'Old task', '2026-02-01', datetime('now'), 'admin', '')")
+            db.commit()
+        rows = {r["name"]: r for r in self._api_client()[0].get("/api/flow").get_json()["rows"]}
+        self.assertEqual(rows["Quiet"]["next_task"]["title"], "Old task")
+
     def test_api_project_flow_gives_stage_timeline_tasks_and_eta(self):
         self.new_project(name="F", client="C", target_end_date="2099-01-01")
         with self.raw_db() as db:
