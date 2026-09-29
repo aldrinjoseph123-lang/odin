@@ -134,7 +134,8 @@ function NextLine({ r, today }: { r: FlowRow; today: string }) {
           {t.due_date && <span className={cn("shrink-0", late > 0 && "font-medium text-bad")}>· {late > 0 ? `${late} d late` : `due ${fmtDate(t.due_date)}`}</span>}
         </>
       ) : <span className="truncate">No open task</span>}
-      {r.total_tasks > 0 && <span className="shrink-0 tabular-nums">· {r.total_tasks - r.open_tasks} of {r.total_tasks} done</span>}
+      {/* the task name comes first: the tally only where there is room for both */}
+      {r.total_tasks > 0 && <span className="hidden shrink-0 tabular-nums lg:inline">· {r.total_tasks - r.open_tasks} of {r.total_tasks} done</span>}
       {r.stale && <span className="shrink-0">· idle {Math.round(r.idle_days ?? 0)} d</span>}
     </span>
   )
