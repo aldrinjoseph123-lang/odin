@@ -13,6 +13,7 @@ export type User = {
   theme: "system" | "light" | "dark"
   accent: string
   avatar_url: string | null
+  home: "dashboard" | "board"
   prefs?: { date_format: DateFormat; undo_minutes: number }
 }
 
@@ -267,7 +268,7 @@ export const report = (id: number, query: string) => getJson<ReportData>(`/api/p
 
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
-  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean }>("/api/account")
+  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board" }>("/api/account")
 export type MyWorkData = {
   tasks: { id: number; title: string; project_id: number; project_name: string; due_date: string | null; overdue: boolean; stage: string | null }[]
   projects: { id: number; name: string; client: string; stage: string; schedule: "overdue" | "at_risk" | "on_track" | null; target_end_date: string | null }[]

@@ -55,6 +55,18 @@ export default function Account(_props: { user: User }) {
             ))}
           </div>
           <p className="text-[11.5px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. There is no red or amber accent: those colours mean overdue and warning.</p>
+          {me.kind !== "external" && (
+            <>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Home page">
+                <span className="mr-1 text-[12.5px] text-muted-foreground">Home page</span>
+                {([["dashboard", "Dashboard"], ["board", "Flow"]] as const).map(([k, label]) => (
+                  <button key={k} type="button" role="radio" aria-checked={me.home === k} disabled={busy} onClick={() => void send("/account/home", { home: k }, load)}
+                    className={cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", me.home === k ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{label}</button>
+                ))}
+              </div>
+              <p className="text-[11.5px] text-muted-foreground">Where sign-in and the Odin logo land.</p>
+            </>
+          )}
         </section>
         <form onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); if ((fd.get("avatar") as File | null)?.name) void send("/account/avatar", fd, () => e.currentTarget?.reset?.()) }} className="grid content-start gap-3 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Picture <span className="font-normal text-muted-foreground">shown wherever your name is</span></h3>

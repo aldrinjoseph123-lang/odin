@@ -1,19 +1,19 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
-import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, FileText, Layers, MessageSquare, PauseCircle, ShieldCheck, Timer, UserCheck } from "lucide-react"
+import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripVertical, Layers, MessageSquare, PauseCircle, Plus, Settings2, ShieldCheck, SlidersHorizontal, Timer, UserCheck, X } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as ChartTip, XAxis } from "recharts"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { buttonVariants } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
 import { Ago } from "@/components/Ago"
 import { PageSkeleton } from "@/components/PageSkeleton"
-import { ApiError, dashboard, type DashboardData, type DashKey, type User } from "@/lib/api"
+import { ApiError, dashboard, resetLayout, saveLayout, type DashboardData, type DashKey, type User, type WidgetInfo } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
 import { dayOf, deltaText, fmtDate, lateBy, monthTicks, timelineDomain } from "@/lib/format"
-import { pctChange, splitWindow, WIDTH_CLASS, type LayoutItem } from "@/lib/dashboard"
+import { configure, move, pctChange, remove, reorder, resize, same, splitWindow, WIDTH_CLASS, type LayoutItem, type Width } from "@/lib/dashboard"
 
 // The dashboard: widgets on a three-column grid, in the order and widths of
 // the layout the server hands over (the workspace default, or this user's
@@ -133,7 +133,7 @@ function Timeline({ rows, today, s }: { rows: D["timeline"]; today: string; s: S
                     </TooltipTrigger>
                     <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} → {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
                   </Tooltip>
-                  {r.team.length > 0 && <TeamStack people={r.team} className="absolute top-1/2 flex -translate-y-1/2 pl-1.5 [&_span]:h-5 [&_span]:w-5 [&_span]:text-[9px]" style={{ left: pct(to) }} />}
+                  {r.team.length > 0 && <TeamStack people={r.team} className="absolute top-1/2 flex -translate-y-1/2 pl-1.5 [&_span]:h-[22px] [&_span]:w-[22px] [&_span]:text-[11px]" style={{ left: pct(to) }} />}
                 </div>
               </Fragment>
             )
@@ -191,7 +191,7 @@ function Schedule({ sch, today, s }: { sch: D["schedule"]; today: string; s: S }
           const late = lateBy(t.due_date, today)
           return (
             <li key={t.id} className="flex items-center gap-3 py-2">
-              <span className={cn("w-14 shrink-0 whitespace-nowrap rounded-lg px-1 py-1 text-center text-[10.5px] leading-tight", late > 0 ? "bg-bad-soft text-bad" : "bg-muted text-muted-foreground")}>
+              <span className={cn("w-14 shrink-0 whitespace-nowrap rounded-lg px-1 py-1 text-center text-[11px] leading-tight", late > 0 ? "bg-bad-soft text-bad" : "bg-muted text-muted-foreground")}>
                 <span className="block text-[13px] font-semibold text-foreground">{t.due_date.slice(8, 10)}</span>{late > 0 ? `${late} d late` : dayLabel(t.due_date)}
               </span>
               <span className="min-w-0 flex-1">
@@ -297,7 +297,7 @@ function Stages({ rows }: { rows: D["stages"] }) {
               </PieChart>
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[22px] font-semibold leading-none">{total}</span><span className="text-[10.5px] text-muted-foreground">active</span>
+              <span className="text-[22px] font-semibold leading-none">{total}</span><span className="text-[11px] text-muted-foreground">active</span>
             </div>
           </div>
           <ul className="min-w-0 flex-1 text-[12.5px]">
@@ -328,7 +328,7 @@ function ActivityFeed({ rows, s }: { rows: D["activity"]; s: S }) {
             <li key={i} className="flex gap-2.5">
               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><k.icon className="h-3.5 w-3.5" aria-hidden /></span>
               <span className="min-w-0">
-                <span className="block leading-snug"><span className="font-medium">{a.who ?? "Someone"}</span> {k.verb} <Link to={`/board?rollout=${a.project_id}`} className="font-medium hover:underline">{a.project}</Link></span>
+                <span className="block leading-snug">{a.who ? <><span className="font-medium">{a.who}</span> {k.verb} </> : a.kind === "task" ? "Task done on " : "On "}<Link to={`/board?rollout=${a.project_id}`} className="font-medium hover:underline">{a.project}</Link></span>
                 <span className="block truncate text-muted-foreground">{a.text}</span>
                 <span className="block text-[11px] text-muted-foreground"><Ago iso={a.at} /></span>
               </span>
@@ -398,7 +398,7 @@ function Cycle({ c }: { c: D["cycle"] }) {
             <div className="mt-2 h-20">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={c.throughput.map(([m, n]) => ({ m: m.slice(5), n }))} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-                  <XAxis dataKey="m" tickLine={false} axisLine={false} tick={{ fontSize: 10.5, fill: "var(--muted-foreground)" }} />
+                  <XAxis dataKey="m" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
                   <ChartTip {...tip} formatter={(v) => [`${v} closed`, ""]} />
                   <Bar dataKey="n" fill="var(--primary)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                 </BarChart>
@@ -429,25 +429,136 @@ function renderWidget(item: LayoutItem, d: D, today: string) {
   }
 }
 
+// ---- customising: the toolbar over each widget while editing -------------------
+const WIDTHS: { w: Width; label: string }[] = [{ w: 1, label: "⅓" }, { w: 2, label: "⅔" }, { w: 3, label: "Full" }]
+const tool = "inline-flex h-7 w-7 items-center justify-center rounded-full text-nav-fg hover:bg-muted hover:text-foreground disabled:opacity-40"
+function WidgetTools({ item, info, first, last, open, onMove, onResize, onRemove, onToggle, onSettings }: {
+  item: LayoutItem; info: WidgetInfo; first: boolean; last: boolean; open: boolean
+  onMove: (by: -1 | 1) => void; onResize: (w: Width) => void; onRemove: () => void; onToggle: () => void; onSettings: (s: Record<string, unknown>) => void
+}) {
+  return (
+    <div className="mb-2 rounded-2xl bg-card p-1.5 shadow-card">
+      <div className="flex items-center gap-1 text-[12.5px]">
+        <GripVertical className="h-4 w-4 cursor-grab text-muted-foreground" aria-hidden />
+        <span className="min-w-0 flex-1 truncate font-medium">{info.title}</span>
+        <button type="button" onClick={() => onMove(-1)} disabled={first} className={tool} aria-label={`Move ${info.title} up`}><ChevronUp className="h-4 w-4" /></button>
+        <button type="button" onClick={() => onMove(1)} disabled={last} className={tool} aria-label={`Move ${info.title} down`}><ChevronDown className="h-4 w-4" /></button>
+        <span className="mx-1 flex rounded-full bg-muted p-0.5" role="group" aria-label={`Width of ${info.title}`}>
+          {WIDTHS.map((x) => (
+            <button key={x.w} type="button" onClick={() => onResize(x.w)} aria-pressed={item.w === x.w}
+              className={cn("h-6 rounded-full px-2 text-[11.5px] font-medium", item.w === x.w ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground")}>{x.label}</button>
+          ))}
+        </span>
+        {info.settings.length > 0 && <button type="button" onClick={onToggle} aria-expanded={open} className={cn(tool, open && "bg-muted text-foreground")} aria-label={`Settings for ${info.title}`}><Settings2 className="h-4 w-4" /></button>}
+        <button type="button" onClick={onRemove} className={cn(tool, "hover:text-bad")} aria-label={`Remove ${info.title}`}><X className="h-4 w-4" /></button>
+      </div>
+      {open && (
+        <div className="mt-1.5 grid gap-2 border-t border-border px-1.5 pb-1 pt-2 text-[12.5px] sm:grid-cols-2">
+          {info.settings.map((s) => {
+            const v = item.settings[s.key] ?? s.default
+            const id = `${item.id}-${s.key}`
+            if (s.kind === "multi") return (
+              <fieldset key={s.key} className="sm:col-span-2"><legend className="mb-1 text-muted-foreground">{s.label}</legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {s.choices?.map((c) => {
+                    const on = (v as string[]).includes(c)
+                    return <button key={c} type="button" aria-pressed={on} onClick={() => onSettings({ [s.key]: on ? (v as string[]).filter((x) => x !== c) : [...(v as string[]), c] })}
+                      className={cn("h-7 rounded-full border px-2.5 text-[12px]", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{TILES.find((t) => t.key === c)?.label ?? c}</button>
+                  })}
+                </div>
+              </fieldset>
+            )
+            return (
+              <label key={s.key} htmlFor={id} className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{s.label}</span>
+                {s.kind === "choice" ? (
+                  <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 rounded-md border border-input bg-background px-2 text-[12.5px]">
+                    {s.choices?.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                ) : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[12.5px]" />}
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Dashboard({ user }: { user: User }) {
   const [d, setD] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // customising: edits go to a draft until Save; Cancel drops it
+  const [draft, setDraft] = useState<LayoutItem[] | null>(null)
+  const [openTools, setOpenTools] = useState<string | null>(null)
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   useEffect(() => { document.title = "Dashboard · Odin"; dashboard().then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [])
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!d) return <PageSkeleton />
   const hour = new Date().getHours()
+  const editing = draft !== null
+  const layout = (draft ?? d.layout) as LayoutItem[]
+  const info = (id: string) => d.catalogue.find((w) => w.id === id)!
+  const hidden = d.catalogue.filter((w) => !layout.some((x) => x.id === w.id))
+  const admin = user.permissions.includes("manage_settings")
+  const edit = (fn: (l: LayoutItem[]) => LayoutItem[]) => setDraft((cur) => fn(cur ?? (d.layout as LayoutItem[])))
+  async function run(label: string, fn: () => Promise<{ layout: DashboardData["layout"]; is_custom?: boolean }>, after: (r: { layout: DashboardData["layout"]; is_custom?: boolean }) => void) {
+    setBusy(true); setNotice(null)
+    try { const r = await fn(); after(r); setNotice(label) } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+  }
+  const save = () => run("Your dashboard is saved.", () => saveLayout(draft!), (r) => { setD({ ...d, layout: r.layout, is_custom: true }); setDraft(null) })
+  const saveDefault = () => run("Saved as the workspace default.", () => saveLayout(draft!, "default"), (r) => { setD({ ...d, layout: d.is_custom ? d.layout : r.layout }); if (!d.is_custom) setDraft(null) })
+  const reset = () => run("Back to the workspace default.", () => resetLayout(), (r) => { setD({ ...d, layout: r.layout, is_custom: false }); setDraft(null) })
   return (
-    <div className="px-5 pb-6 pt-2">
+    <div className="px-5 pb-24 pt-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, {user.name.split(" ")[0]}</h1>
-        <p className="text-[13px] text-muted-foreground">the portfolio this week · {fmtDate(d.today)}</p>
+        <p className="text-[13px] text-muted-foreground">the portfolio this week · {fmtDate(d.today)}{d.is_custom && " · your arrangement"}</p>
+        {!editing && <button type="button" onClick={() => { setDraft(d.layout as LayoutItem[]); setNotice(null) }} className={cn(pill, "ml-auto")}><SlidersHorizontal className="h-3.5 w-3.5" /> Customise</button>}
       </div>
+      {notice && <p className="mt-2 text-[12.5px] text-muted-foreground" role="status">{notice}</p>}
+
+      {editing && (
+        <div className="panel mt-3 flex flex-wrap items-center gap-2 p-3 text-[12.5px]">
+          <span className="font-medium">Add a widget</span>
+          {hidden.map((w) => (
+            <button key={w.id} type="button" title={w.blurb} onClick={() => edit((l) => [...l, { id: w.id, w: w.w, settings: Object.fromEntries(w.settings.map((s) => [s.key, s.default])) }])} className={pill}>
+              <Plus className="h-3.5 w-3.5" /> {w.title}
+            </button>
+          ))}
+          {hidden.length === 0 && <span className="text-muted-foreground">every widget is on the board — drag, resize or remove them below</span>}
+        </div>
+      )}
+
       <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {(d.layout as LayoutItem[]).map((item) => (
-          <div key={item.id} className={cn("min-w-0", WIDTH_CLASS[item.w])}>{renderWidget(item, d.data, d.today)}</div>
+        {layout.map((item, i) => (
+          <div key={item.id} className={cn("min-w-0", WIDTH_CLASS[item.w], editing && "rounded-[20px] ring-2 ring-primary/25 ring-offset-2 ring-offset-background", dragging === item.id && "opacity-50")}
+            draggable={editing} onDragStart={() => setDragging(item.id)} onDragEnd={() => setDragging(null)}
+            onDragOver={(e) => { if (dragging) e.preventDefault() }} onDrop={(e) => { e.preventDefault(); if (dragging) { edit((l) => reorder(l, dragging, item.id)); setDragging(null) } }}>
+            {editing && (
+              <WidgetTools item={item} info={info(item.id)} first={i === 0} last={i === layout.length - 1} open={openTools === item.id}
+                onMove={(by) => edit((l) => move(l, item.id, by))} onResize={(w) => edit((l) => resize(l, item.id, w))}
+                onRemove={() => edit((l) => remove(l, item.id))} onToggle={() => setOpenTools(openTools === item.id ? null : item.id)}
+                onSettings={(s) => edit((l) => configure(l, item.id, s))} />
+            )}
+            <div className={cn(editing && "pointer-events-none select-none")}>{renderWidget(item, d.data, d.today)}</div>
+          </div>
         ))}
-        {d.layout.length === 0 && <p className="text-[13px] text-muted-foreground md:col-span-2 xl:col-span-3">Every widget is hidden.</p>}
+        {layout.length === 0 && <p className="text-[13px] text-muted-foreground md:col-span-2 xl:col-span-3">Every widget is hidden{editing ? " — add one above" : ""}.</p>}
       </div>
+
+      {editing && (
+        <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-4">
+          <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-card p-2 pl-4 shadow-pop">
+            <span className="text-[12.5px] text-muted-foreground">{same(draft!, d.layout as LayoutItem[]) ? "No changes yet" : "Unsaved changes"}</span>
+            <Button size="sm" className="rounded-full" onClick={save} disabled={busy || same(draft!, d.layout as LayoutItem[])}>Save my dashboard</Button>
+            {admin && <Button size="sm" variant="outline" className="rounded-full" onClick={saveDefault} disabled={busy}>Save as workspace default</Button>}
+            {d.is_custom && <Button size="sm" variant="ghost" className="rounded-full" onClick={reset} disabled={busy}>Reset to default</Button>}
+            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => { setDraft(null); setOpenTools(null) }} disabled={busy}>Cancel</Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

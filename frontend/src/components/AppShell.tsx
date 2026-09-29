@@ -58,8 +58,8 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
     try { await postForm("/account/appearance", { theme: next, accent: user.accent }) } catch { /* stays local until the next save */ }
   }
   const all: Item[] = [
-    { href: "/board", label: "Flow", match: (p) => p === "/board" },
     { href: "/dashboard", label: "Dashboard", match: (p) => p === "/dashboard" },
+    { href: "/board", label: "Flow", match: (p) => p === "/board" },
     { href: "/my-work", label: "My work", count: user.nav.my_open_task_count, match: (p) => p === "/my-work" },
     { href: user.nav.projects_nav_url, label: "Projects", match: (p) => p.startsWith("/projects") },
     { href: "/analytics", label: "Cycle time", match: (p) => p === "/analytics" },
@@ -76,7 +76,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
     <div className="flex min-h-svh flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">Skip to content</a>
       <header className="flex h-14 shrink-0 items-center gap-4 px-5 print:hidden xl:gap-6">
-        <Link to="/board" aria-label="Odin, back to the flow" className="shrink-0"><Logo markClass="h-7 w-7" wordClass="h-[15px]" /></Link>
+        <Link to={user.home === "board" ? "/board" : "/dashboard"} aria-label="Odin, home" className="shrink-0"><Logo markClass="h-7 w-7" wordClass="h-[15px]" /></Link>
         {/* The full row needs ~1000 px; below lg the links fold into the menu,
             while bell, theme and avatar stay visible at every width. */}
         <nav className={cn("absolute inset-x-0 top-14 z-40 mx-3 flex-col gap-3 rounded-2xl bg-card p-4 shadow-pop lg:static lg:mx-0 lg:flex lg:flex-1 lg:flex-row lg:items-center lg:gap-4 lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none xl:gap-6", open ? "flex" : "hidden")}>

@@ -43,7 +43,7 @@ def _current_user():
         session.clear()
         flash("Your session has ended — please sign in again")
         return None
-    me = get_db().execute("SELECT id, theme, accent, avatar FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    me = get_db().execute("SELECT id, theme, accent, avatar, home FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     return {
         "id": session["user_id"],
         "name": session.get("user_name"),
@@ -51,6 +51,8 @@ def _current_user():
         "avatar_url": avatar_url(me) if me else None,
         "role": session.get("role"),
         "kind": session.get("kind", "internal"),
+        # where sign-in and the logo land; partners always get the flow
+        "home": "board" if session.get("kind") == "external" or not me or me["home"] == "board" else "dashboard",
         "must_change_password": bool(session.get("must_change_password")),
         "permissions": _permissions_for(session.get("role")),
         "nav": nav_counts(),
@@ -326,10 +328,10 @@ def api_report(project_id):
 def api_account():
     from constants import NOTIFICATION_KINDS
     from db import get_setting
-    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
     return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
-                   theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u),
+                   theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u), home=u["home"],
                    email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
                                 if k != "access" or session.get("role") == "Admin"],   # access requests reach admins only
                    mail_enabled=get_setting("notify_email_enabled") == "1")

@@ -2707,6 +2707,18 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(m.put("/api/dashboard/layout", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 200)
         self.assertEqual(m.put("/api/dashboard/layout/default", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 403)
 
+    def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
+        self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))
+        c, _ = self._api_client()
+        self.assertEqual(c.get("/api/session").get_json()["user"]["home"], "dashboard")
+        self.assertIn(b"Pick a home page", self.client.post("/account/home", data={"home": "elsewhere"}, follow_redirects=True).data)
+        self.client.post("/account/home", data={"home": "board"})
+        self.assertTrue(self.client.get("/").headers["Location"].endswith("/board"))
+        self.assertEqual(c.get("/api/session").get_json()["user"]["home"], "board")
+        self.assertEqual(c.get("/api/account").get_json()["home"], "board")
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'change_own_home'").fetchone()[0], 1)
+
     def test_api_project_flow_gives_stage_timeline_tasks_and_eta(self):
         self.new_project(name="F", client="C", target_end_date="2099-01-01")
         with self.raw_db() as db:

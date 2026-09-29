@@ -147,7 +147,7 @@ for p in projects:
         con.execute(
             "INSERT INTO tasks (project_id, title, done, assignee_id, due_date, created_at, created_by, stage, done_at) VALUES (?, ?, ?, ?, ?, ?, 'admin', ?, ?)",
             (p["id"], random.choice(TASKS), int(done), random.choice(staff_ids + [None]), due.isoformat(), created.isoformat(), stage,
-             (created + timedelta(days=random.randint(1, 20), hours=random.randint(8, 18))).isoformat() if done else None))
+             min(created + timedelta(days=random.randint(1, 20), hours=random.randint(8, 18)), now - timedelta(hours=random.randint(1, 30))).isoformat() if done else None))
     # notes over the past three weeks
     for k in range(random.randint(0, 3)):
         when = now - timedelta(days=random.randint(0, 21), hours=random.randint(0, 9))
@@ -173,6 +173,10 @@ with app.test_request_context():
     from services.alerts import build_alerts, sync_alerts_to_db
     rows = get_db().execute("SELECT p.* FROM projects p WHERE p.deleted_at IS NULL").fetchall()
     sync_alerts_to_db(build_alerts(rows))
+    # the check ran nightly all along: age each alert a little
+    for a in get_db().execute("SELECT id FROM alerts").fetchall():
+        get_db().execute("UPDATE alerts SET created_at = ? WHERE id = ?", ((now - timedelta(days=random.randint(0, 9), hours=random.randint(1, 20))).isoformat(), a["id"]))
+    get_db().commit()
 
 con = sqlite3.connect(DB_PATH)
 for row in con.execute("SELECT id, name, stage FROM projects ORDER BY id LIMIT 3"):

@@ -120,7 +120,7 @@ def auth_link_request():
     whether or not the address is known — no enumeration — and requests are
     rate limited per address and IP."""
     if session.get("user_id") and request.method == "GET":
-        return redirect(url_for("board"))     # already in; a stale link just lands them home
+        return redirect(home_url())     # already in; a stale link just lands them home
     if request.method == "GET" and spa_serves("auth_link_request"):
         return spa_index()
     if request.method == "POST":
@@ -230,7 +230,7 @@ def auth_link_consume(token):
     start_session(user)
     audit_log("login_success", "user", user["id"], user["username"], "sign-in link", actor=user["username"])
     # a link minted for a notification lands on the project it was about
-    return redirect(safe_next_url() or url_for("board"))
+    return redirect(safe_next_url() or home_url())
 
 
 def safe_next_url():
@@ -245,7 +245,7 @@ def login():
     if request.method == "POST":
         ok, message = attempt_login(request.form["username"].strip(), request.form["password"])
         if ok:
-            return redirect(safe_next_url() or url_for("board"))
+            return redirect(safe_next_url() or home_url())
         flash(message)
         return render_template("login.html")
     if spa_serves("login"):
@@ -285,10 +285,38 @@ def logout():
     return redirect(url_for("login"))
 
 
+HOME_PAGES = {"dashboard": "dashboard", "board": "board"}   # the user's choice -> endpoint
+
+
+def home_url():
+    """Where sign-in and the logo land: the dashboard, or the flow when the
+    user chose it on their Account page. Partners always get the flow — the
+    dashboard is a staff view."""
+    if session.get("kind") == "external":
+        return url_for("board")
+    row = get_db().execute("SELECT home FROM users WHERE id = ?", (session["user_id"],)).fetchone() if session.get("user_id") else None
+    return url_for(HOME_PAGES.get(row["home"] if row else "", "dashboard"))
+
+
 @app.route("/")
 @login_required
 def index():
-    return redirect(url_for("board"))
+    return redirect(home_url())
+
+
+@app.route("/account/home", methods=["POST"])
+@login_required
+def account_home():
+    home = request.form.get("home", "")
+    if home not in HOME_PAGES:
+        flash("Pick a home page from the list")
+        return redirect(url_for("account"))
+    db = get_db()
+    db.execute("UPDATE users SET home = ? WHERE id = ?", (home, session["user_id"]))
+    db.commit()
+    audit_log("change_own_home", "user", session["user_id"], session.get("user_name"), home)
+    flash("Home page saved")
+    return redirect(url_for("account"))
 
 
 @app.route("/account", methods=["GET", "POST"])

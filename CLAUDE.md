@@ -33,7 +33,9 @@ the port replaces it page by page.
 
 # Admin settings
 
-Settings is one side-menu page (`components/SettingsLayout.tsx`), one address
+The home page is `/dashboard` (`home_url()` in `routes/auth.py`: sign-in, `/`
+and the logo land there; a user may pick the flow on their Account page,
+`users.home`; partners always get the flow). Settings is one side-menu page (`components/SettingsLayout.tsx`), one address
 per area: `/settings/general|security|workflow|notifications|integrations|reports|backups|api|audit`
 plus Users, Role permissions, Contacts and the Audit log in the same menu.
 Recurring work (digest, backups, weekly report, audit retention) runs only in

@@ -8,10 +8,10 @@ import { Label } from "@/components/ui/label"
 import { ApiError, login, session, type SignIn } from "@/lib/api"
 
 // ?next= is honoured only when relative — the same open-redirect rule Flask applies.
-function destinationAfterLogin(mustChangePassword: boolean): string {
-  if (mustChangePassword) return "/account"
+function destinationAfterLogin(user: { must_change_password: boolean; home: "dashboard" | "board" }): string {
+  if (user.must_change_password) return "/account"
   const next = new URLSearchParams(window.location.search).get("next") ?? ""
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/board"
+  return next.startsWith("/") && !next.startsWith("//") ? next : user.home === "board" ? "/board" : "/dashboard"
 }
 
 const field = "h-11 text-base"   // 44 px: a comfortable target on a phone; 16 px stops iOS zooming in on focus
@@ -51,7 +51,7 @@ export default function Login() {
     setError(null)
     try {
       const { user } = await login(username.trim(), password)
-      window.location.assign(destinationAfterLogin(user.must_change_password))
+      window.location.assign(destinationAfterLogin(user))
     } catch (err) {
       setError({ field: err instanceof ApiError ? "password" : "form", text: err instanceof ApiError ? err.message : "Could not reach Odin — check your connection and try again" })
       setBusy(false)
