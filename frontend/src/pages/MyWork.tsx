@@ -22,7 +22,7 @@ export default function MyWork(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">{d.tasks.length} open task{d.tasks.length === 1 ? "" : "s"} · {d.projects.length} active project{d.projects.length === 1 ? "" : "s"}{overdue ? <> · <span className="font-medium text-bad">{overdue} overdue</span></> : null}</p>
       </div>
       <div className="mt-3 grid gap-4 lg:grid-cols-2">
-        <section className="rounded-lg border border-border p-4">
+        <section className="panel p-4">
           <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">My tasks <span className="font-normal text-muted-foreground">assigned to me, open</span></h3>
           <ul className="divide-y divide-border text-[13px]">
             {d.tasks.map((t) => (
@@ -35,7 +35,7 @@ export default function MyWork(_props: { user: User }) {
             {d.tasks.length === 0 && <li className="py-2 text-muted-foreground">No open tasks assigned to you.</li>}
           </ul>
         </section>
-        <section className="rounded-lg border border-border p-4">
+        <section className="panel p-4">
           <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">My projects <span className="font-normal text-muted-foreground">owned by me, active</span></h3>
           <ul className="divide-y divide-border text-[13px]">
             {d.projects.map((p) => (

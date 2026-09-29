@@ -21,7 +21,7 @@ export function SettingsLayout({ user, children }: { user: User; children: React
   if (!user.permissions.includes("manage_settings")) return <>{children}</>
   return (
     <div className="flex min-w-0 flex-1 flex-col md:flex-row">
-      <nav aria-label="Settings" className="shrink-0 border-b border-border md:w-52 md:border-b-0 md:border-r">
+      <nav aria-label="Settings" className="shrink-0 md:w-52">
         {/* phones: one scrolling row of areas; md+: a grouped column */}
         <div className="flex gap-1 overflow-x-auto px-3 py-2 md:sticky md:top-0 md:grid md:gap-4 md:overflow-visible md:px-3 md:py-4">
           {SETTINGS_GROUPS.map((g) => (
@@ -39,7 +39,7 @@ export function SettingsLayout({ user, children }: { user: User; children: React
           ))}
         </div>
       </nav>
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1 px-4 pb-4 md:pl-0 md:pt-3"><div className="panel min-h-full">{children}</div></div>
     </div>
   )
 }

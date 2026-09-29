@@ -16,7 +16,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
           <p className="mt-2 text-[13px] text-muted-foreground">Nothing you saved was lost. Reload to try again; if it keeps happening, tell an admin what you were doing.</p>
           <div className="mt-5 flex justify-center gap-2">
             <button type="button" onClick={() => window.location.reload()} className="h-8 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-foreground">Reload</button>
-            <a href="/board" className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-[13px] font-medium hover:bg-muted">Back to the flow</a>
+            <a href="/board" className="inline-flex h-8 items-center panel px-3 text-[13px] font-medium hover:bg-muted">Back to the flow</a>
           </div>
         </div>
       </main>

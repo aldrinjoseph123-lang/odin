@@ -242,20 +242,20 @@ components:
 
 ## Overview
 
-**Creative North Star: "The Whiteboard Flowchart"**
+**Creative North Star: "Cards on a tinted ground" (29 Sep 2026, the user's call, from a TaskFlux reference)**
 
-Odin answers one question before anything is read: where is every rollout, and what is stuck. The built world is convention played straight, benchmarked against Linear and FigJam: a white ground, ink text, hairline borders, and stage nodes with arrows drawn between them. It has no metaphor and no atmosphere; the interface is the diagram. There is exactly one accent, a saturated blue, and it is spent only on selection, the primary action, focus and the "today" marker. Every other colour on the screen is a state (done, on track, due soon / over SLA, overdue) and means nothing else.
+Odin answers one question before anything is read: where is every rollout, and what is stuck. The built world is the soft card dashboard: a ground faintly tinted with the user's accent (`color-mix(in srgb, var(--primary) 7%, #F6F6F9)`), white cards with 16 px corners lifted by a quiet two-layer shadow, pill navigation with the current tab filled in the accent, and inside the cards the same ink text, hairlines and drawn flowchart as before. There is exactly one accent per user (eight to choose from), spent on selection, the primary action, focus, the current nav pill and the "today" marker. Every other colour on the screen is a state (done, on track, due soon / over SLA, overdue) and means nothing else. This replaces the 8 Sep "whiteboard flowchart" world (white ground, no shadows, 8 px corners); what follows records the build.
 
-Density is high but scannable. The first screen is a resizable vertical split: a list of rollout rows above (stuck rows first, each carrying a 7-dot stepper), and the selected rollout below drawn as a left-to-right flowchart with its open tasks hung under the current node, a right rail for next-up / ETA / advance, a time strip along the bottom, and the team and recent notes under it (after the rail below `xl`). Type is small (13 px body) but never below 11 px, and nothing is uppercased. Surfaces are flat: no shadows anywhere, depth comes from hairlines and tonal fills.
+Density is high but scannable. The first screen is a resizable vertical split: a list of rollout rows above (stuck rows first, each carrying a 7-dot stepper), and the selected rollout below drawn as a left-to-right flowchart with its open tasks hung under the current node, a right rail for next-up / ETA / advance, a time strip along the bottom, and the team and recent notes under it (after the rail below `xl`). Type is small (13 px body) but never below 11 px, and nothing is uppercased. Every piece of content sits on a card (`panel`): the two flow panes, each settings section, every table, tile and widget.
 
 The build rejected, by the user's explicit choice, the dark/industrial look, kanban-style SaaS boards and number-dense grids. Where the direction contract and the build differ, this file records the build.
 
 **Key Characteristics:**
-- White ground, ink text, one blue accent; state colours in matched text / soft-fill / line triplets
+- Accent-tinted ground, white cards, ink text, one accent per user; state colours in matched text / soft-fill / line triplets
 - Inter for everything read or typed, with `cv11` + `ss01`; Chakra Petch for page titles and brand surfaces only; sentence case in the UI, tracked caps only on brand surfaces
-- 8 px base radius (`--radius: 0.5rem`) scaled by shadcn's ratios; pills and dots are fully round
-- Hairline 1 px borders (`#E4E6EB`); 1.5 px strokes only for flow geometry (nodes, dots, connectors)
-- No box-shadows; focus and selection are 3 px translucent rings
+- 16 px base radius (`--radius: 1rem`) scaled by shadcn's ratios; pills and dots are fully round
+- Hairline 1 px borders (`#E9EAF0`); 1.5 px strokes only for flow geometry (nodes, dots, connectors)
+- Two shadow tokens, `shadow-card` (cards at rest) and `shadow-pop` (menus, the phone nav); focus and selection are 3 px translucent rings
 - Master-detail vertical split; flowchart nodes with drawn arrows at `md` and up, stacked without arrows below
 
 ## Brand surfaces
@@ -361,9 +361,9 @@ Breakpoints are Tailwind defaults as used: `sm` 640 px, `md` 768 px, `lg` 1024 p
 
 ## Elevation & Depth
 
-No box-shadows anywhere in the built app. Depth is conveyed by hairlines and tonal layering: panels are white bounded by a 1 px `#E4E6EB` border; cards use a 1 px ring of ink at 10% instead of a border; hover raises a surface to Muted Fill; selection raises it to Accent Wash with an accent border. The one "floating" surface, the tooltip, is inverted (ink on white) rather than lifted, and animates in with a 95% zoom + fade. Focus is a 3 px ring of the accent at 50% (`ring-ring/50`) with the border switched to the accent; the search field uses the same at 30%.
+Three levels. The **ground** is the tinted page (`--background`). A **card** (`panel` utility: `bg-card`, 1 px `--border`, `rounded-lg`, `shadow-card` = `0 1px 2px ink/4% + 0 10px 28px -14px ink/14%`) is where content lives; cards may nest (a stage node inside the flow card) and the inner card keeps the same shadow. A **popover** (menus, the phone nav sheet, dialogs) uses `shadow-pop` (`0 2px 6px ink/6% + 0 16px 40px -12px ink/22%`). In dark both shadows become a 1 px white-at-3–5% ring plus a deep black drop, since a shadow alone vanishes on ink. Hover raises a surface to Muted Fill; selection raises it to Accent Wash with an accent border. Tooltips stay inverted (ink on white). Focus is a 3 px ring of the accent at 50% (`ring-ring/50`) with the border switched to the accent.
 
-**The Flat Rule.** Surfaces are flat at rest and under interaction. Do not add `shadow-*` to a panel, popover or button; use a border, a ring, or a fill step.
+**The Card Rule.** Nothing sits bare on the ground: a page's content is one or more `panel`s. Never hand-roll `border border-border rounded-lg`; use `panel`. Never invent a shadow value; the two tokens are the scale.
 
 ## Shapes
 
@@ -442,7 +442,7 @@ A two-button group (`List` / `LayoutGrid` icons, `aria-pressed`) in the header s
 - **Label:** 14 px medium, 8 px above the field. Invalid: destructive border + 20% destructive ring. Disabled: 50% opacity, Stroke at 50% fill.
 
 ### Navigation
-52 px bar on the page ground: the logo left (28 px raven mark + 15 px wordmark), then "Flow · My work · Projects · Cycle time · Alerts · Settings" as 13 px medium links in Chrome Text, hover to ink. The current section is ink with a 2 px Accent Blue bar sitting on the header's bottom edge (`after:-bottom-[15px]`). Right cluster: search, "New project" (primary `sm`) or a "Read-only" secondary badge for Viewers, a 28 px avatar (Accent Wash fill, accent-text initials), "Log out" as a text button. Below `lg` (1024 px) the links collapse behind a 36 px menu icon button, while bell, theme button and avatar stay visible, and drop down as a full-width white sheet with a hairline bottom border and 12 px gaps. A skip link becomes a primary-blue pill at the top-left on focus.
+56 px bar on the page ground, no border: the logo left (28 px raven mark + 15 px wordmark), then the section links as a white pill bar (`rounded-full bg-card p-1 shadow-card`) of 32 px pills — "Flow · Dashboard · My work · Projects · Cycle time · Alerts · Settings" in 13 px medium Chrome Text, hover to Muted Fill, the current one filled in the accent with white text. Right cluster: the search as a 36 px white pill with `shadow-card`, "New project" (primary `sm`) or a "Read-only" secondary badge for Viewers, bell, theme button, a 28 px avatar (Accent Wash fill, accent-text initials), "Log out" as a text button. Below `lg` (1024 px) the links collapse behind a 36 px menu icon button, while bell, theme button and avatar stay visible, and drop down as a white `rounded-2xl` sheet with `shadow-pop`, 12 px inset from the edges, links stacked as pills. A skip link becomes a primary pill at the top-left on focus.
 
 ### Stepper (signature)
 12 px dots joined by 1.5 px lines, one per stage of that project. **The Same-Column Rule.** Every row places its dots on one shared column order (the union of all rows' stage lists, each list keeping its own order), so a stage sits in the same column on every row and the lead can read down a column; a stage a project doesn't have leaves a gap on its line. Above the list, on every width, a scrolling strip of named stage pills ("PO Received 13") counts the rollouts in each stage under the current filter; a pill filters the list to that stage (lit ink with ×, kept in the URL). Pills and filter chips are 32 px, 40 px under a coarse pointer; a filter that would change nothing ("Mine" when you are on every rollout) is not offered. Done: `ok-line` fill and border, green connector. Current: white dot, state-line border, 3 px state-soft ring (ink border + Muted Fill ring when on track); scales to 110% when the row is selected. Upcoming: Stroke-grey border, white fill, grey connector. Each dot is a tooltip trigger ("Scoping · done"); the whole stepper carries an `aria-label` naming the current stage.
@@ -469,11 +469,11 @@ A round picture when the person uploaded one, otherwise initials: 24 px in rows 
 - **Do** build on the base-nova components with the `render` prop; apply `buttonVariants()` to anchors that navigate to un-ported Jinja pages.
 - **Do** keep chrome at 12–13 px, sentence case, weight 500–600, in Chrome Text or Muted Text.
 - **Do** use 1 px hairlines for structure and 1.5 px strokes only for flow geometry (nodes, dots, connectors, today marker).
-- **Do** convey depth with borders, rings and fill steps (Paper → Muted Fill → Accent Wash).
+- **Do** put every piece of content on a `panel`; convey depth inside a card with fill steps (Card → Muted Fill → Accent Wash).
 
 ### Don't:
-- **Don't** add box-shadows, gradients, or an off-white page tint; the ground is `#FFFFFF` and surfaces are flat.
-- **Don't** uppercase or letter-space UI labels, or bring back the retired dark nav or 2 px corners. Brand red and Chakra Petch are allowed only where "Brand surfaces" lists them; red never marks anything in the UI except `--bad` state.
+- **Don't** add a third shadow value or a gradient; the ground tint is the accent at 7% and never a second hue.
+- **Don't** uppercase or letter-space UI labels, or bring back the retired dark nav, 2 px corners, or the 8 Sep flat white ground. Brand red and Chakra Petch are allowed only where "Brand surfaces" lists them; red never marks anything in the UI except `--bad` state.
 - **Don't** use green for "on track" rows or amber/red for anything that is not a lateness state; don't use `--destructive` for rollout state.
 - **Don't** put a state's text shade in a fill or its line shade under text.
 - **Don't** invent tokens: use the `:root` block in `frontend/src/index.css` and its `@theme inline` aliases (`ok-*`, `warn-*`, `bad-*`, `primary-text`, `nav-fg`). Dark and the accents are whole-token overrides (`:root[data-theme="dark"]`, `:root[data-accent=…]`); a component never branches on the theme.

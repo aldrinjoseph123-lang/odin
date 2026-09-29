@@ -9,7 +9,7 @@ import { PageSkeleton } from "@/components/PageSkeleton"
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="rounded-lg border border-border p-4"><h3 className="mb-3 text-[12px] font-semibold text-nav-fg">{title}</h3>{children}</section>
+  return <section className="panel p-4"><h3 className="mb-3 text-[12px] font-semibold text-nav-fg">{title}</h3>{children}</section>
 }
 
 function AddRow({ withEmail, placeholder, button, busy, onSubmit }: { withEmail: boolean; placeholder: string; button: string; busy: boolean; onSubmit: (f: Record<string, string>) => Promise<unknown> }) {

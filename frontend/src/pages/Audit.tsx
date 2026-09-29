@@ -57,9 +57,9 @@ export default function Audit(_props: { user: User }) {
         {filtered && <button type="button" onClick={() => setParams({})} className="text-[12px] text-muted-foreground hover:text-foreground">Clear</button>}
       </div>
 
-      <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-lg border border-border">
+      <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
         <table className="w-full border-collapse text-[13px]">
-          <thead className="sticky top-0 bg-background">
+          <thead className="sticky top-0 bg-card">
             <tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">
               {["When", "User", "Action", "Resource", "Details", "IP"].map((h, i) => <th key={h} className={cn("px-3 py-2 font-normal", i === 5 && "hidden lg:table-cell")}>{h}</th>)}
             </tr>

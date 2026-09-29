@@ -38,9 +38,9 @@ export default function Alerts(_props: { user: User }) {
         <button type="button" onClick={() => update({ type: null })} aria-pressed={!d.alert_type} className={chip(!d.alert_type)}>All types</button>
         {Object.entries(d.types).map(([k, title]) => <button key={k} type="button" onClick={() => update({ type: k })} aria-pressed={d.alert_type === k} className={chip(d.alert_type === k)}>{title}</button>)}
       </div>
-      <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-lg border border-border">
+      <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
         <table className="w-full border-collapse text-[13px]">
-          <thead className="sticky top-0 bg-background"><tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">{["Severity", "Alert", "Project", "Raised", "Status"].map((h) => <th key={h} className="px-3 py-2 font-normal">{h}</th>)}</tr></thead>
+          <thead className="sticky top-0 bg-card"><tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">{["Severity", "Alert", "Project", "Raised", "Status"].map((h) => <th key={h} className="px-3 py-2 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {d.rows.map((a) => (
               <tr key={a.id} className={cn("border-b border-border last:border-0 hover:bg-muted", a.resolved && "text-muted-foreground")}>

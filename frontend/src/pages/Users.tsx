@@ -56,9 +56,9 @@ export default function Users(_props: { user: User }) {
       {pending.length > 0 && <Pending people={pending} roles={data.roles} busy={busy} send={send} />}
 
       <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0 overflow-auto rounded-lg border border-border">
+        <div className="min-w-0 overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
-            <thead className="bg-background">
+            <thead className="bg-card">
               <tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">
                 {["Name", "Username", "Email", "Role", "Status", "Sign-in", "Last sign-in", "Created", ""].map((h, i) => <th key={i} className={cn("px-3 py-2 font-normal", (i === 1 || i >= 6) && i !== 8 && "hidden xl:table-cell")}>{h}</th>)}
               </tr>
@@ -157,7 +157,7 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
     void send("/users", f).then(() => setF({ name: "", username: "", email: "", password: "", role: "Member" }))
   }
   return (
-    <form onSubmit={submit} className="grid content-start gap-2 rounded-lg border border-border p-4">
+    <form onSubmit={submit} className="grid content-start gap-2 panel p-4">
       <h3 className="text-[12px] font-semibold text-nav-fg">Add a team member</h3>
       <label className="grid gap-1 text-[12px] text-muted-foreground">Full name<Input value={f.name} onChange={set("name")} required aria-label="Full name" className="h-8 text-[13px]" /></label>
       <label className="grid gap-1 text-[12px] text-muted-foreground">Username<Input value={f.username} onChange={set("username")} required aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>

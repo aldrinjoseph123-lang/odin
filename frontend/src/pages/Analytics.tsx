@@ -40,7 +40,7 @@ export default function Analytics(_props: { user: User }) {
             <StatTile label="Lead time (median)" value={d1(s.lead_median)} sub="days, start to closed" />
             <StatTile label="Oldest open stage" value={s.aging[0] ? String(Math.round(s.aging[0].days)) : "—"} sub={s.aging[0]?.project_name ?? "nothing ageing"} tone="bad" />
           </div>
-          <div className="mt-4 overflow-auto rounded-lg border border-border">
+          <div className="mt-4 overflow-auto panel">
             <table className="w-full border-collapse text-[13px]">
               <thead><tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">{["Stage", "SLA", "Completed visits", "Avg days", "Median", "Longest", "In stage now"].map((h) => <th key={h} className="px-3 py-2 font-normal">{h}</th>)}</tr></thead>
               <tbody>
@@ -64,7 +64,7 @@ export default function Analytics(_props: { user: User }) {
             </table>
           </div>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <section className="rounded-lg border border-border p-4">
+            <section className="panel p-4">
               <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Aging <span className="font-normal text-muted-foreground">days in current stage</span></h3>
               <ul className="divide-y divide-border text-[13px]">
                 {s.aging.map((a) => (
@@ -77,7 +77,7 @@ export default function Analytics(_props: { user: User }) {
                 {s.aging.length === 0 && <li className="py-2 text-muted-foreground">Nothing in progress.</li>}
               </ul>
             </section>
-            <section className="rounded-lg border border-border p-4">
+            <section className="panel p-4">
               <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Throughput <span className="font-normal text-muted-foreground">projects closed per month</span></h3>
               <ul className="grid gap-1.5 text-[13px]">
                 {s.throughput.map(([month, n]) => (

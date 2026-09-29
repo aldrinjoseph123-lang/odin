@@ -121,7 +121,7 @@ export default function Projects({ user }: { user: User }) {
             {data.rows.map((r) => {
               const done = r.total_tasks - r.open_tasks
               return (
-                <li key={r.id} className="grid content-start gap-2.5 rounded-lg border border-border p-4">
+                <li key={r.id} className="grid content-start gap-2.5 panel p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <a href={`/projects/${r.id}`} className="block truncate text-[13.5px] font-medium hover:underline">{r.name}</a>
@@ -151,9 +151,9 @@ export default function Projects({ user }: { user: User }) {
           </ul>
         </div>
       ) : (
-        <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-lg border border-border">
+        <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
-            <thead className="sticky top-0 bg-background">
+            <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">
                 {COLUMNS.map((c) => (
                   <th key={c.key} className={cn("px-3 py-2 font-normal", c.className)}>

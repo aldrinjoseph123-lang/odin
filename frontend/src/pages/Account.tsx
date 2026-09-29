@@ -37,7 +37,7 @@ export default function Account(_props: { user: User }) {
       {me.must_change_password && <Alert className="mt-3"><AlertDescription>Set a new password before continuing. The one you were given is a shared secret.</AlertDescription></Alert>}
       {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
       <div className="mt-3 grid max-w-3xl gap-4 lg:grid-cols-2">
-        <section className="grid content-start gap-3 rounded-lg border border-border p-4">
+        <section className="grid content-start gap-3 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Appearance <span className="font-normal text-muted-foreground">yours, on every device you sign in on</span></h3>
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Theme">
             {THEMES.map((t) => (
@@ -56,7 +56,7 @@ export default function Account(_props: { user: User }) {
           </div>
           <p className="text-[11.5px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. There is no red or amber accent: those colours mean overdue and warning.</p>
         </section>
-        <form onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); if ((fd.get("avatar") as File | null)?.name) void send("/account/avatar", fd, () => e.currentTarget?.reset?.()) }} className="grid content-start gap-3 rounded-lg border border-border p-4">
+        <form onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); if ((fd.get("avatar") as File | null)?.name) void send("/account/avatar", fd, () => e.currentTarget?.reset?.()) }} className="grid content-start gap-3 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Picture <span className="font-normal text-muted-foreground">shown wherever your name is</span></h3>
           <div className="flex items-center gap-3">
             <UserAvatar name={me.name} url={me.avatar_url} className="h-14 w-14" textClass="text-[18px]" />
@@ -70,30 +70,30 @@ export default function Account(_props: { user: User }) {
             </div>
           </div>
         </form>
-        <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (name.trim()) void send("/account/name", { name: name.trim() }, () => window.setTimeout(() => window.location.reload(), 400)) }} className="grid content-start gap-2 rounded-lg border border-border p-4">
+        <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (name.trim()) void send("/account/name", { name: name.trim() }, () => window.setTimeout(() => window.location.reload(), 400)) }} className="grid content-start gap-2 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Name <span className="font-normal text-muted-foreground">as others see it</span></h3>
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} aria-label="Your name" className="h-8 text-[13px]" />
           <div><Button type="submit" size="sm" variant="outline" disabled={busy || !name.trim() || name.trim() === me.name}>Save name</Button></div>
           <p className="text-[11.5px] text-muted-foreground">Notes you already wrote keep the name they were written under.</p>
         </form>
-        <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email }) }} className="grid content-start gap-2 rounded-lg border border-border p-4">
+        <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email }) }} className="grid content-start gap-2 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Email <span className="font-normal text-muted-foreground">for notifications</span></h3>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" aria-label="Email address" className="h-8 text-[13px]" />
           <div><Button type="submit" size="sm" variant="outline" disabled={busy || email === (me.email ?? "")}>Save email</Button></div>
         </form>
         {me.kind === "internal" ? (
-          <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" })) }} className="grid content-start gap-2 rounded-lg border border-border p-4">
+          <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" })) }} className="grid content-start gap-2 panel p-4">
             <h3 data-n className="text-[12px] font-semibold text-nav-fg">Change password</h3>
             <label className="grid gap-1 text-[12px] text-muted-foreground">Current password<Input type="password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required autoComplete="current-password" aria-label="Current password" className="h-8 text-[13px]" /></label>
             <label className="grid gap-1 text-[12px] text-muted-foreground">New password<Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={8} autoComplete="new-password" aria-label="New password" className="h-8 text-[13px]" /></label>
             <div><Button type="submit" size="sm" disabled={busy || !pw.current_password || pw.new_password.length < 8}>Update password</Button></div>
           </form>
         ) : (
-          <p className="rounded-lg border border-border p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
+          <p className="panel p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
         )}
         <form key={me.email_kinds.map((k) => `${k.key}:${k.on}`).join("|")}
           onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); void send("/account/notifications", Object.fromEntries(me.email_kinds.filter((k) => fd.get(k.key)).map((k) => [k.key, "on"]))) }}
-          className="grid content-start gap-2 rounded-lg border border-border p-4">
+          className="grid content-start gap-2 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Email me about <span className="font-normal text-muted-foreground">the bell shows everything either way</span></h3>
           {me.email_kinds.map((k) => (
             <label key={k.key} className="flex items-start gap-2 text-[13px]">
@@ -104,7 +104,7 @@ export default function Account(_props: { user: User }) {
           {!me.mail_enabled && <p className="text-[11.5px] text-muted-foreground">Email is not connected on this installation yet, so for now only the bell is used.</p>}
           <div><Button type="submit" size="sm" variant="outline" disabled={busy}>Save</Button></div>
         </form>
-        <section className="grid content-start gap-2 rounded-lg border border-border p-4">
+        <section className="grid content-start gap-2 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Sessions</h3>
           <p className="text-[12.5px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>
           <div><Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { if (window.confirm("Sign out of every other device?")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>

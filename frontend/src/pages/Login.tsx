@@ -116,7 +116,7 @@ export default function Login() {
 
       {/* Partners and customers have no password: their way in is the email link. */}
       {!emergency && (
-        <a href="/auth/link" className="mt-8 flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 text-[13.5px] outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <a href="/auth/link" className="mt-8 flex min-h-11 items-center justify-between gap-3 panel px-4 py-3 text-[13.5px] outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
           <span><span className="block font-medium">Partner or customer?</span><span className="text-muted-foreground">Get a one-time sign-in link by email</span></span>
           <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         </a>

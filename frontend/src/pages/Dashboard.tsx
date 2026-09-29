@@ -20,7 +20,7 @@ const TILES: { key: DashKey; label: string; tone?: "warn" | "bad" }[] = [
   { key: "awaiting", label: "Waiting on customer" },
   { key: "idle", label: "Idle" },
 ]
-const panel = "rounded-lg border border-border p-4"
+const panel = "panel p-4"
 const heading = "mb-2 text-[12px] font-semibold text-nav-fg"
 const sub = "font-normal text-muted-foreground"
 const more = "mt-2 text-[12px] text-muted-foreground hover:text-foreground"
@@ -49,7 +49,7 @@ function Timeline({ d }: { d: DashboardData }) {
   }, [])
   const months = monthTicks(t0, t1, width ? Math.max(2, Math.floor(width / 64)) : 8)
   // month ticks and "today" on one row, unless they would touch: then today drops a row
-  const crowded = months.some((tk) => Math.abs(tk.t - today) / (t1 - t0) < 0.05)
+  const crowded = months.some((tk) => Math.abs(tk.t - today) / (t1 - t0) * (width || 800) < 44)   // closer than a label's width
   return (
     <section className={panel} aria-label="Timeline">
       <h3 className={heading}>Timeline <span className={sub}>every active rollout, start to target</span></h3>

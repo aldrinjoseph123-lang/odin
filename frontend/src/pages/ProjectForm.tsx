@@ -84,7 +84,7 @@ export default function ProjectForm(_props: { user: User }) {
       {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-1.5 text-[12.5px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
 
       <form onSubmit={submit} className="mt-4 grid max-w-3xl gap-4 lg:grid-cols-2">
-        <section className="grid content-start gap-3 rounded-lg border border-border p-4">
+        <section className="grid content-start gap-3 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Project</h3>
           <Field label="Project name *"><Input value={f.name} onChange={set("name")} required maxLength={200} aria-label="Project name" className="h-8 text-[13px]" /></Field>
           <Field label="Client *"><Input value={f.client} onChange={set("client")} required maxLength={200} aria-label="Client" className="h-8 text-[13px]" /></Field>
@@ -118,7 +118,7 @@ export default function ProjectForm(_props: { user: User }) {
           )}
         </section>
 
-        <section className="grid content-start gap-3 rounded-lg border border-border p-4">
+        <section className="grid content-start gap-3 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Commercial route and delivery</h3>
           <Field label="Via *"><select value={f.via} onChange={set("via")} aria-label="Via" className={selectClass}>{d.via_options.map((v) => <option key={v}>{v}</option>)}</select></Field>
           {f.via === "Partner" ? (

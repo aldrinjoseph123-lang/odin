@@ -22,7 +22,7 @@ export function Stepper({ stages, index, state, selected, columns }: { stages: s
             style={{ left: pos(i) }}
             className={cn(
               "absolute top-0 block h-3 w-3 -translate-x-1/2 rounded-full border-[1.5px]",
-              selected ? "bg-accent" : "bg-background",   // opaque, so the line stops at the ring
+              selected ? "bg-accent" : "bg-card",   // opaque, so the line stops at the ring
               i < index && "border-ok-line bg-ok-line",
               i === index && cn("ring-[3px]", STATE[state].ring, selected && "scale-110"),
               i > index && "border-input",

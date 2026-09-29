@@ -18,8 +18,8 @@ type Item = { href: string; label: string; count?: number; match: (path: string)
 
 function NavLink({ item, current, onClick }: { item: Item; current: boolean; onClick?: () => void }) {
   const className = cn(
-    "relative inline-flex min-h-8 items-center gap-1.5 whitespace-nowrap text-[13px] font-medium text-nav-fg transition-colors hover:text-foreground",
-    current && "text-foreground after:absolute after:inset-x-0 after:-bottom-[15px] after:h-0.5 after:bg-primary",
+    "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-medium transition-colors",
+    current ? "bg-primary text-primary-foreground" : "text-nav-fg hover:bg-muted hover:text-foreground",
   )
   const text = (
     <>
@@ -75,17 +75,19 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   return (
     <div className="flex min-h-svh flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">Skip to content</a>
-      <header className="flex h-13 shrink-0 items-center gap-4 border-b border-border bg-background px-5 print:hidden xl:gap-6">
+      <header className="flex h-14 shrink-0 items-center gap-4 px-5 print:hidden xl:gap-6">
         <Link to="/board" aria-label="Odin, back to the flow" className="shrink-0"><Logo markClass="h-7 w-7" wordClass="h-[15px]" /></Link>
         {/* The full row needs ~1000 px; below lg the links fold into the menu,
             while bell, theme and avatar stay visible at every width. */}
-        <nav className={cn("absolute inset-x-0 top-13 z-40 flex-col gap-3 border-b border-border bg-background px-5 py-4 lg:static lg:flex lg:flex-1 lg:flex-row lg:items-center lg:gap-4 lg:border-0 lg:p-0 xl:gap-6", open ? "flex" : "hidden")}>
-          {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
+        <nav className={cn("absolute inset-x-0 top-14 z-40 mx-3 flex-col gap-3 rounded-2xl bg-card p-4 shadow-pop lg:static lg:mx-0 lg:flex lg:flex-1 lg:flex-row lg:items-center lg:gap-4 lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none xl:gap-6", open ? "flex" : "hidden")}>
+          <span className="flex flex-col gap-1 lg:flex-row lg:rounded-full lg:bg-card lg:p-1 lg:shadow-card">
+            {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
+          </span>
           <span className="lg:flex-1" />
           <button type="button" onClick={() => { setOpen(false); setPalette(true) }} aria-label="Search projects and tasks" aria-keyshortcuts="Control+K Meta+K /"
-            className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-secondary px-2.5 text-left text-[13px] text-muted-foreground hover:border-input lg:w-40 xl:w-56">
+            className="flex h-9 w-full items-center gap-2 rounded-full bg-card px-3 text-left text-[13px] text-muted-foreground shadow-card hover:text-foreground lg:w-40 xl:w-56">
             <Search className="h-3.5 w-3.5" /><span className="flex-1 truncate">Search…</span>
-            <kbd className="rounded border border-border px-1 text-[11px]">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+            <kbd className="rounded-md border border-border px-1 text-[11px]">{isMac ? "⌘K" : "Ctrl K"}</kbd>
           </button>
           {user.role !== "Viewer" && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
@@ -106,7 +108,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
         </div>
       </header>
       {messages.length > 0 && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px] print:hidden" role="status">
+        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-full bg-card px-4 py-2 text-[12.5px] shadow-card print:hidden" role="status">
           <span>{messages.join(" ")}</span>
           <button type="button" className="font-medium" onClick={onDismiss} aria-label="Dismiss">×</button>
         </div>

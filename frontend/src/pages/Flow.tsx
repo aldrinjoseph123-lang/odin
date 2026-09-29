@@ -257,7 +257,7 @@ function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage,
         })}
       </nav>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-background px-3 py-1.5 text-[11.5px] text-muted-foreground md:grid">
+        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-1.5 text-[11.5px] text-muted-foreground md:grid">
           <span>Rollout · next step</span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid gap-0.5 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
@@ -468,7 +468,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
 
       {/* right rail: what to do next, when it's due, how we got here */}
       <aside className="grid content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:grid-cols-1">
-        <section className="rounded-lg border border-border p-3">
+        <section className="panel p-3">
           <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
           {next ? (
             <>
@@ -480,7 +480,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             </>
           ) : <p className="text-muted-foreground">Nothing queued — add a task under a stage.</p>}
         </section>
-        <section className="rounded-lg border border-border p-3">
+        <section className="panel p-3">
           <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> ETA</h3>
           {d.target_end_date ? (
             <p><span className="font-medium">{fmtDate(d.target_end_date)}</span>
@@ -503,7 +503,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           <p className="text-[12.5px] text-muted-foreground">{d.stage} {d.approval.status} by {d.approval.decided_by}{d.approval.comment ? ` · ${d.approval.comment}` : ""}</p>
         )}
         {d.can_move && d.next_stage && (
-          <section className="rounded-lg border border-border p-3" onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); setConfirming(false) } }}>
+          <section className="panel p-3" onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); setConfirming(false) } }}>
             {/* what the move will do, next to the button that does it */}
             <ul className="mb-2 grid gap-1 text-[12.5px] text-muted-foreground">
               {openHere > 0 && <li className="font-medium text-warn">{openHere} open task{openHere === 1 ? "" : "s"} still in {d.stage}</li>}
@@ -664,16 +664,17 @@ export default function Flow({ user }: { user: User }) {
               ) : <PageSkeleton />}
     </>
   )
-  if (!wide) return selectedId != null ? <ScrollArea className="min-h-0 flex-1">{pane}</ScrollArea> : <div className="flex min-h-0 flex-1 flex-col">{list}</div>
+  // each pane is a card on the ground
+  if (!wide) return selectedId != null ? <ScrollArea className="panel mx-3 mb-3 min-h-0 flex-1">{pane}</ScrollArea> : <div className="panel mx-3 mb-3 flex min-h-0 flex-1 flex-col overflow-hidden">{list}</div>
 
   return (
-    <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
-      <ResizablePanel defaultSize={selectedId == null ? 100 : 48} minSize={20}>{list}</ResizablePanel>
+    <ResizablePanelGroup orientation="vertical" className="mx-4 mb-4 min-h-0 flex-1">
+      <ResizablePanel defaultSize={selectedId == null ? 100 : 48} minSize={20}><div className="panel flex h-full min-h-0 flex-col overflow-hidden">{list}</div></ResizablePanel>
       {selectedId != null && (
         <>
           <ResizableHandle withHandle aria-label="Resize the rollout list and the flowchart" />
           <ResizablePanel defaultSize={52} minSize={25}>
-            <ScrollArea className="h-full">{pane}</ScrollArea>
+            <ScrollArea className="panel h-full">{pane}</ScrollArea>
           </ResizablePanel>
         </>
       )}
