@@ -138,8 +138,8 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           {!self && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined)}>{u.active ? "Deactivate" : "Reactivate"}</Button>}
           {u.kind !== "external" && (!microsoftOnly || u.password_login) && (resetting ? (
             <form onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then(() => { setPw(""); setResetting(false) }) }} className="flex items-center gap-1">
-              <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password" aria-label={`New password for ${u.name}`} minLength={8} required className="h-7 w-36 text-[12.5px]" />
-              <Button type="submit" size="sm" className="h-7" disabled={busy || pw.length < 8}>Set</Button>
+              <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password" aria-label={`New password for ${u.name}`} minLength={12} required className="h-7 w-36 text-[12.5px]" />
+              <Button type="submit" size="sm" className="h-7" disabled={busy || pw.length < 12}>Set</Button>
               <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setResetting(false)}>Cancel</Button>
             </form>
           ) : <Button size="sm" variant="ghost" className="h-7" onClick={() => setResetting(true)}>Reset password</Button>)}
@@ -162,13 +162,13 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
       <label className="grid gap-1 text-[12px] text-muted-foreground">Full name<Input value={f.name} onChange={set("name")} required aria-label="Full name" className="h-8 text-[13px]" /></label>
       <label className="grid gap-1 text-[12px] text-muted-foreground">Username<Input value={f.username} onChange={set("username")} required aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
       <label className="grid gap-1 text-[12px] text-muted-foreground">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" aria-label="Email" className="h-8 text-[13px]" /></label>
-      <label className="grid gap-1 text-[12px] text-muted-foreground">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={8} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
+      <label className="grid gap-1 text-[12px] text-muted-foreground">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
       <label className="grid gap-1 text-[12px] text-muted-foreground">Role
         <select value={f.role} onChange={set("role")} aria-label="Role" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]">
           {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </label>
-      <Button type="submit" size="sm" className="mt-1" disabled={busy || !f.name || !f.username || f.password.length < 8}>Create user</Button>
+      <Button type="submit" size="sm" className="mt-1" disabled={busy || !f.name || !f.username || f.password.length < 12}>Create user</Button>
       <p className="text-[11.5px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
     </form>
   )

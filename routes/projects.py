@@ -36,8 +36,8 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, login_required, permission_required, project_allows, project_role_required, undo_button, undo_note, write_required, project_scope
-from security import content_matches_extension, upload_problem, valid_email
+from core import app, login_required, permission_required, project_allows, project_role_required, role_has_permission, undo_button, undo_note, write_required, project_scope
+from security import content_matches_extension, upload_problem, valid_email, safe_csv_writer
 from policies import local_today, policy
 from spa import spa_index, spa_serves
 from db import (
@@ -217,7 +217,7 @@ def projects_export_csv():
     projects = db.execute(query, params).fetchall()
 
     output = io.StringIO()
-    writer = csv.writer(output)
+    writer = safe_csv_writer(output)
     writer.writerow(
         [
             "Project Name", "Client", "PO Number", "PO Date", "Stage", "Owner",
@@ -340,6 +340,9 @@ def project_new():
             flash(f"Template '{template['name']}' has no stages yet")
             return redirect(url_for("project_new"))
 
+        if problem := _date_problem(request.form):
+            flash(problem)
+            return redirect(url_for("project_new"))
         now = datetime.utcnow().isoformat()
         name = request.form["name"].strip()[:200]
         cursor = db.execute(
@@ -483,6 +486,9 @@ def project_edit(project_id):
         if not name or not client:
             flash("Project name and client are required")
             return redirect(url_for("project_edit", project_id=project_id))
+        if problem := _date_problem(request.form):
+            flash(problem)
+            return redirect(url_for("project_edit", project_id=project_id))
 
         # Owner reassignment — fall back to the current owner if the submitted
         # id is missing or not a real user (never leave a project ownerless).
@@ -490,7 +496,11 @@ def project_edit(project_id):
             owner_id = int(request.form.get("owner_id", project["owner_id"]))
         except (TypeError, ValueError):
             owner_id = project["owner_id"]
-        if not db.execute("SELECT 1 FROM users WHERE id = ?", (owner_id,)).fetchone():
+        # the owner is the project manager: an active staff account that may move stages
+        owner = db.execute("SELECT role, active, kind FROM users WHERE id = ?", (owner_id,)).fetchone()
+        if not owner or not owner["active"] or owner["kind"] == "external" or not role_has_permission(owner["role"], "edit_project_stage"):
+            if owner_id != project["owner_id"]:
+                flash("The project manager must be an active Admin or Member; the owner was not changed")
             owner_id = project["owner_id"]
 
         delivery_mode = request.form.get("delivery_mode", project["delivery_mode"])
@@ -696,6 +706,20 @@ def has_required_document(project_id, category):
     )
 
 
+def _date_problem(form):
+    """Dates arrive as YYYY-MM-DD from the date pickers; anything else would
+    break every page that does arithmetic on them."""
+    from datetime import date as _date
+    for key, label in (("po_date", "PO date"), ("start_date", "Start date"), ("target_end_date", "Target end date")):
+        value = (form.get(key) or "").strip()
+        if value:
+            try:
+                _date.fromisoformat(value)
+            except ValueError:
+                return f"{label} must be a date (YYYY-MM-DD)"
+    return None
+
+
 def save_document(project_id, file, category, uploaded_by):
     """Save an uploaded file to disk + documents table (+ OneDrive mirror if
     enabled). Assumes the caller already validated file/category — shared by
@@ -785,6 +809,9 @@ def document_delete(project_id, doc_id):
     doc = db.execute(
         "SELECT * FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL", (doc_id, project_id)
     ).fetchone()
+    if doc is not None and db.execute("SELECT 1 FROM signoffs WHERE document_id = ?", (doc_id,)).fetchone():
+        flash("That is the signed sign-off copy — it is the record of acceptance and cannot be deleted")
+        return redirect(url_for("project_detail", project_id=project_id))
     if doc is not None:
         soft_delete("documents", doc_id)
         audit_log("delete_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
@@ -924,7 +951,8 @@ def participant_invite(project_id):
             else:
                 # No mail yet (Microsoft 365 not connected) — the inviter carries
                 # the link by hand. It still works once and expires in 30 minutes.
-                link = url_for("auth_link_consume", token=raw, _external=True)
+                from core import external_url
+                link = external_url("auth_link_consume", token=raw, next=url_for("project_detail", project_id=project_id))
                 flash(Markup(f"{escape(user['name'])} added as {escape(role)}. Email could not be sent "
                              f"({escape(error or 'not configured')}) — send them this link yourself: "
                              f"<code>{escape(link)}</code>"))
@@ -1014,10 +1042,13 @@ def project_stage_sla(project_id):
 
 
 @app.route("/undo/project/<int:project_id>", methods=["POST"])
-@write_required
+@permission_required("delete_project")
+@project_role_required("manage_project")
 def undo_project(project_id):
     load_project(project_id, include_deleted=True)   # the row is deleted by definition
-    restore_deleted("projects", project_id)
+    if not restore_deleted("projects", project_id):
+        flash("Too late to undo — the undo window has passed")
+        return redirect(url_for("projects_list"))
     db = get_db()
     db.execute("UPDATE documents SET deleted_at = NULL WHERE project_id = ?", (project_id,))
     db.commit()
@@ -1028,10 +1059,18 @@ def undo_project(project_id):
 
 
 @app.route("/undo/document/<int:doc_id>", methods=["POST"])
-@write_required
+@permission_required("delete_document")
 def undo_document(doc_id):
-    restore_deleted("documents", doc_id)
     db = get_db()
+    row = db.execute("SELECT project_id FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    if row is None:
+        abort(404)
+    load_project(row["project_id"])   # visible to this session, and theirs to manage
+    if not project_allows(row["project_id"], "manage_documents"):
+        abort(403)
+    if not restore_deleted("documents", doc_id):
+        flash("Too late to undo — the undo window has passed")
+        return redirect(url_for("project_detail", project_id=row["project_id"]))
     doc = db.execute("SELECT project_id, filename FROM documents WHERE id = ? AND deleted_at IS NULL", (doc_id,)).fetchone()
     audit_log("restore_document", "document", doc_id, doc["filename"], f"project_id={doc['project_id']}")
     flash(f"Document '{doc['filename']}' restored")

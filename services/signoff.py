@@ -20,7 +20,7 @@ from datetime import datetime
 
 from constants import SIGNOFF_STAGE
 from db import get_db, get_stage_names, get_terminal_stage, participants_for
-from policies import local_today, policy
+from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
 
@@ -105,7 +105,7 @@ def candidates(project_id):
             continue
         who = {"id": p["user_id"], "name": p["name"], "role": p["role"], "email": p["email"]}
         kind = get_db().execute("SELECT kind FROM users WHERE id = ?", (p["user_id"],)).fetchone()[0]
-        if p["role"] in SIGNER_ROLES and p["email"]:
+        if p["role"] in SIGNER_ROLES and p["email"] and kind == "external":   # the customer's side is never a staff account
             signers.append(who)
         elif kind == "internal":
             counters.append(who)
@@ -171,7 +171,7 @@ def intact(row):
 
 def _meta(project):
     return {"id": project["id"], "name": project["name"], "client": project["client"], "po_number": project["po_number"], "po_date": project["po_date"],
-            "start_date": project["start_date"] or (project["created_at"] or "")[:10] or None, "target_end_date": project["target_end_date"], "finished": local_today().isoformat(),
+            "start_date": project["start_date"] or (local_date(project["created_at"]).isoformat() if local_date(project["created_at"]) else None), "target_end_date": project["target_end_date"], "finished": local_today().isoformat(),
             "owner_name": project["owner_name"], "partner_name": project["partner_name"] if project["via"] == "Partner" else None,
             "vendor_name": project["vendor_name"], "product_name": project["product_name"], "delivery_mode": project["delivery_mode"],
             "company": policy("company_name")}
@@ -296,7 +296,7 @@ def sign(row, body, ip, agent):
     name, title = _who(body)
     signature = clean_signature(body)
     db = get_db()
-    db.execute("UPDATE signoffs SET status = 'signed', signer_name = ?, signer_title = ?, signed_at = ?, signed_ip = ?, signed_agent = ?, signature = ? WHERE id = ?",
+    db.execute("UPDATE signoffs SET status = 'signed', signer_name = ?, signer_title = ?, signed_at = ?, signed_ip = ?, signed_agent = ?, signature = ? WHERE id = ? AND status = 'sent'",
                (name, title, _now(), ip, (agent or "")[:300], signature, row["id"]))
     db.commit()
 
@@ -311,7 +311,7 @@ def countersign(row, body, ip, agent):
     now = _now()
     db = get_db()
     db.execute("UPDATE signoffs SET status = 'countersigned', counter_name = ?, counter_title = ?, counter_signed_at = ?, counter_ip = ?, counter_agent = ?, "
-               "counter_signature = ?, completed_at = ? WHERE id = ?", (name, title, now, ip, (agent or "")[:300], signature, now, row["id"]))
+               "counter_signature = ?, completed_at = ? WHERE id = ? AND status = 'signed'", (name, title, now, ip, (agent or "")[:300], signature, now, row["id"]))
     db.commit()
 
 
@@ -335,7 +335,7 @@ def withdraw(row):
     if row["status"] not in OPEN:
         raise ValueError("Only a version waiting for signatures can be withdrawn")
     db = get_db()
-    db.execute("UPDATE signoffs SET status = 'withdrawn' WHERE id = ?", (row["id"],))
+    db.execute("UPDATE signoffs SET status = 'withdrawn' WHERE id = ? AND status IN ('sent', 'signed')", (row["id"],))
     db.commit()
 
 
@@ -346,7 +346,7 @@ def record_upload(row, document_id, name, title, signed_on):
     now = _now()
     db = get_db()
     db.execute("UPDATE signoffs SET status = 'uploaded', document_id = ?, signer_name = COALESCE(signer_name, ?), signer_title = COALESCE(signer_title, ?), "
-               "signed_at = COALESCE(signed_at, ?), completed_at = ? WHERE id = ?", (document_id, name, title, signed_on, now, row["id"]))
+               "signed_at = COALESCE(signed_at, ?), completed_at = ? WHERE id = ? AND status IN ('sent', 'signed')", (document_id, name, title, signed_on, now, row["id"]))
     db.commit()
 
 
@@ -375,7 +375,7 @@ def view(row, staff):
     """A version as the page shows it. The signing record (IP, browser) is for staff."""
     d = {k: row[k] for k in ("version", "status", "content_hash", "created_by", "created_at", "signer_name", "signer_title", "signer_email", "signed_at",
                              "counter_name", "counter_title", "counter_signed_at", "reject_comment", "rejected_at", "document_id", "waiver_reason",
-                             "waived_by", "completed_at", "signer_id", "counter_id")}
+                             "waived_by", "completed_at", "signer_id", "counter_id", "link_issued_by", "link_issued_at")}
     d["content"] = json.loads(row["content"])
     d["signature"] = json.loads(row["signature"]) if row["signature"] else None
     d["counter_signature"] = json.loads(row["counter_signature"]) if row["counter_signature"] else None

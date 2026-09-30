@@ -60,6 +60,10 @@ with app.test_client() as c:
 
     for u, name, r in STAFF:
         post("/users", username=u, name=name, password=STAFF_PASSWORD, role=r)
+    con = sqlite3.connect(DB_PATH)   # UAT staff keep the documented test password (production asks for a new one)
+    con.execute("UPDATE users SET must_change_password = 0 WHERE username != 'admin'")
+    con.commit()
+    con.close()
     for v in ["CrowdStrike", "Palo Alto", "Microsoft", "Fortinet"]:
         post("/settings/contacts/vendors/add", name=v)
     for p in ["Falcon Complete", "Sentinel", "Defender XDR", "FortiGate"]:

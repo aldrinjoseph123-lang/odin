@@ -62,7 +62,7 @@ A table keyed by `project_id` (or holding per-user secrets) must be wired into
 every place that walks the schema, or the next reset leaves rows that attach
 themselves to the next project created:
 `reset_data.WIPE_TABLES` (children before parents) · the purge cascade in
-`db.py` (`purge_deleted`) · `services/reports.draft_report` if it is
+`db.py` (`cleanup_soft_deletes`, run at boot and nightly by the scheduler) · `services/reports.draft_report` if it is
 project history · `scripts/seed_uat.py` if UAT needs rows · a purge for
 anything that only grows (`login_links` is trimmed as links are minted).
 `plan_changes` and `raid_items` (30 Sep 2026) are wired this way; plan dates live

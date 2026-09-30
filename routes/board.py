@@ -117,9 +117,12 @@ def board_data():
     sync_alerts_to_db(real_alerts)
     alerts = build_alerts(projects, get_dismissed_alerts())
     dashboard = build_dashboard(projects)
+    outside = session.get("kind") == "external"   # partners: their projects, customer-visible notes only
     recent_notes = db.execute(
         "SELECT sn.*, p.name AS project_name, p.id AS project_id FROM status_notes sn "
-        "JOIN projects p ON p.id = sn.project_id ORDER BY sn.created_at DESC LIMIT 8"
+        "JOIN projects p ON p.id = sn.project_id WHERE p.deleted_at IS NULL"
+        + (" AND sn.guest_visible = 1" if outside else "") + project_scope()[0] + " ORDER BY sn.created_at DESC LIMIT 8",
+        project_scope()[1],
     ).fetchall()
     return {
         "columns": columns, "alerts": alerts, "real_alerts": real_alerts,
@@ -210,6 +213,9 @@ def alerts_page_data():
     if alert_type:
         where.append("a.alert_type = ?")
         params.append(alert_type)
+    if session.get("kind") == "external":   # a partner sees alerts on their own projects only
+        where.append("a.project_id IN (SELECT project_id FROM project_participants WHERE user_id = ?)")
+        params.append(session["user_id"])
     clause = (" WHERE " + " AND ".join(where)) if where else ""
     order = ("a.resolved ASC, " if show_resolved else "") + \
             "CASE a.severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, a.created_at DESC"

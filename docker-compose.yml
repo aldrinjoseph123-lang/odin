@@ -6,8 +6,16 @@
 #
 # odin-data holds odin.db and every uploaded document. Back it up; losing it
 # loses the product. Nothing else in the stack is stateful.
+# Container logs rotate (json-file keeps growing otherwise): 3 x 10 MB each.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   app:
+    logging: *logging
     build: .
     restart: unless-stopped
     env_file: .env
@@ -21,6 +29,7 @@ services:
       - "8000"
 
   nginx:
+    logging: *logging
     image: nginx:1.27-alpine
     restart: unless-stopped
     depends_on:
@@ -37,6 +46,7 @@ services:
   # backups, at the times set in Settings (Notifications, Backups), in the
   # workspace time zone. Settings → Backups shows whether it is running.
   scheduler:
+    logging: *logging
     build: .
     restart: unless-stopped
     env_file: .env

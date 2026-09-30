@@ -258,3 +258,9 @@ export function signoffText(status: string | null | undefined): string {
 
 // A textarea's lines as a list: trimmed, blanks dropped.
 export const toLines = (text: string): string[] => text.split("\n").map((x) => x.trim()).filter(Boolean)
+
+// Today as YYYY-MM-DD on this device's calendar (toISOString is UTC: 01:30 in Dubai would still be yesterday).
+export function localToday(now: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
+}

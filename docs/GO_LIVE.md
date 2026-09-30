@@ -144,7 +144,7 @@ With a throw-away project named `GO-LIVE TEST`:
    not connected yet, so use **Get a sign-in link** on the sign-off page and
    open that link on the phone; sign as the customer, countersign as admin,
    open the PDF, move to Closed.
-3. Delete the project (Settings keeps it recoverable for the retention window).
+3. Delete the project (Undo works for the undo window, 5 minutes by default; the nightly housekeeping then purges it with its files).
 4. Settings → Backups → **Back up now**; the run shows the restore test passed.
 5. `docker compose ps` — scheduler **healthy**.
 6. Snapshot the VM: the known-good point.

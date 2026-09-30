@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 
 from db import PROJECT_OPEN_SQL, avatar_url, get_db, stages_for_projects
-from policies import local_today
+from policies import local_today, local_date
 from services.alerts import build_alerts
 
 STATE_LABEL = {"overdue": "Overdue", "over_sla": "Over SLA", "due_soon": "Due soon", "on_track": "On track"}
@@ -56,8 +56,8 @@ def my_work(uid, scope):
     scope_sql, scope_params = scope
     tasks = _task_rows(db, f"t.assignee_id = ? AND t.done = 0{scope_sql}", (uid, *scope_params))
     since = (today - timedelta(days=13)).isoformat()
-    done = Counter(r[0] for r in db.execute(
-        "SELECT substr(t.done_at, 1, 10) FROM tasks t JOIN projects p ON p.id = t.project_id "
+    done = Counter(local_date(r[0]).isoformat() for r in db.execute(
+        "SELECT t.done_at FROM tasks t JOIN projects p ON p.id = t.project_id "
         f"WHERE t.assignee_id = ? AND t.done = 1 AND t.done_at >= ? AND p.deleted_at IS NULL{scope_sql}", (uid, since, *scope_params)))
     days = [(today - timedelta(days=13 - i)).isoformat() for i in range(14)]
     projects = _projects_of(db, uid, scope)
@@ -111,13 +111,13 @@ def person(uid, scope):
     month_ago = (today - timedelta(days=30)).isoformat()
     done = _task_rows(db, f"t.assignee_id = ? AND t.done = 1 AND t.done_at >= ?{scope_sql}", (uid, (today - timedelta(days=56)).isoformat(), *scope_params))
     dated = [t for t in done if t["due_date"] and t["done_at"] >= month_ago]
-    on_time = sum(1 for t in dated if t["done_at"][:10] <= t["due_date"])
+    on_time = sum(1 for t in dated if local_date(t["done_at"]).isoformat() <= t["due_date"])
     # contribution by week, the last eight
     weeks = []
     for i in range(7, -1, -1):
         start = today - timedelta(days=today.weekday() + 7 * i)
         end = start + timedelta(days=7)
-        weeks.append({"week": start.isoformat(), "done": sum(1 for t in done if start.isoformat() <= t["done_at"][:10] < end.isoformat())})
+        weeks.append({"week": start.isoformat(), "done": sum(1 for t in done if start <= local_date(t["done_at"]) < end)})
     notes = db.execute(f"SELECT COUNT(*) FROM status_notes n JOIN projects p ON p.id = n.project_id WHERE n.author_id = ? AND n.prev_stage IS NULL AND n.created_at >= ? AND p.deleted_at IS NULL{scope_sql}",
                        (uid, month_ago, *scope_params)).fetchone()[0]
     moves = db.execute(f"SELECT COUNT(*) FROM status_notes n JOIN projects p ON p.id = n.project_id WHERE n.author = ? AND n.prev_stage IS NOT NULL AND n.created_at >= ? AND p.deleted_at IS NULL{scope_sql}",

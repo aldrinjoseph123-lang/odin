@@ -15,9 +15,14 @@ the schedule is really being kept.
 import sqlite3
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import db as _db
+
+
+def _utcnow():
+    """Naive UTC, as every stored timestamp is (_utcnow() warns on 3.12)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 HEARTBEAT = "scheduler.heartbeat"
 
@@ -68,7 +73,7 @@ def run_due():
     con.row_factory = sqlite3.Row
     try:
         now_local = datetime.now(ZoneInfo(policy("timezone", con)))
-        _set(con, HEARTBEAT, datetime.utcnow().isoformat())
+        _set(con, HEARTBEAT, _utcnow().isoformat())
         last = {r["key"].split(".")[1]: r["value"] for r in con.execute("SELECT key, value FROM settings WHERE key LIKE 'job.%.last_run'")}
         times = {k: policy(k, con) for _, k, _ in JOBS if k}
         days = {k: policy(k, con) for _, _, k in JOBS if k}
@@ -99,9 +104,11 @@ def run_due():
                 if removed:
                     print(f"[scheduler] audit retention: {removed} rows archived to {path}")
                 from app import app
+                from db import cleanup_soft_deletes
                 from services.dashboard import record_snapshot
-                with app.app_context():   # the day's portfolio counts, for the Dashboard's deltas
-                    record_snapshot()
+                with app.app_context():
+                    cleanup_soft_deletes()   # deleted projects and files past the undo window
+                    record_snapshot()        # the day's portfolio counts, for the Dashboard's deltas
         except Exception as exc:  # noqa: BLE001 — one failed job must not stop the clock
             print(f"[scheduler] {job} failed: {exc}", file=sys.stderr)
     return todo
@@ -114,9 +121,21 @@ def healthy(max_age_minutes=3):
         con = sqlite3.connect(_db.DB_PATH)
         row = con.execute("SELECT value FROM settings WHERE key = ?", (HEARTBEAT,)).fetchone()
         con.close()
-        return bool(row) and datetime.fromisoformat(row[0]) > datetime.utcnow() - timedelta(minutes=max_age_minutes)
+        return bool(row) and datetime.fromisoformat(row[0]) > _utcnow() - timedelta(minutes=max_age_minutes)
     except Exception:  # noqa: BLE001 — no database yet is simply "not healthy"
         return False
+
+
+def sync_alerts():
+    """Record the alert conditions (overdue, over SLA, due soon, stale...) every
+    quarter hour: the Alerts page, the nav badge, the dashboard and the alert
+    notifications all read the stored rows, which nothing else keeps current."""
+    from app import app
+    from db import PROJECT_OPEN_SQL, get_db
+    from services.alerts import build_alerts, sync_alerts_to_db
+    with app.test_request_context():   # notifications build links
+        rows = get_db().execute(f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}").fetchall()
+        sync_alerts_to_db(build_alerts(rows))
 
 
 if __name__ == "__main__":
@@ -125,9 +144,13 @@ if __name__ == "__main__":
     if "--once" in sys.argv:
         print(f"[scheduler] ran: {', '.join(run_due()) or 'nothing due'}")
         sys.exit(0)
+    first = True
     while True:
         try:
             run_due()
+            if first or _utcnow().minute % 15 == 0:
+                sync_alerts()
+            first = False
         except Exception as exc:  # noqa: BLE001 — a bad pass (e.g. the database mid-migration) must not end the service
             print(f"[scheduler] pass failed: {exc}", file=sys.stderr)
-        time.sleep(60 - datetime.utcnow().second)   # wake on the minute
+        time.sleep(60 - _utcnow().second)   # wake on the minute

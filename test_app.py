@@ -47,7 +47,14 @@ class CSRFTestClient(FlaskClient):
                     sess["_csrf_token"] = token
             data["_csrf"] = token
             kwargs["data"] = data
-        return super().post(*args, **kwargs)
+        resp = super().post(*args, **kwargs)
+        # New staff must set their own password at first sign-in — right for
+        # production, noise for tests that create a user only to act as them.
+        # The forced change itself is tested with the flag set explicitly.
+        if args and args[0] == "/users" and isinstance(data, dict) and data.get("username"):
+            with sqlite3.connect(db_module.DB_PATH) as con:
+                con.execute("UPDATE users SET must_change_password = 0 WHERE username = ?", (data["username"],))
+        return resp
 
 
 app_module.app.test_client_class = CSRFTestClient
@@ -565,7 +572,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def new_project(self, **fields):
         data = {"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Proj", "client": "C"}
-        data.update(fields)
+        data.update({k: v for k, v in fields.items() if v is not None})   # None would post the text "None"
         return self.client.post("/projects/new", data=data)
 
     def raw_db(self):
@@ -1160,7 +1167,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual([p["role"] for p in d["participants"]], ["Project manager"])
         self.assertEqual([n["note"] for n in d["notes"]], ["first"])
         self.assertEqual([x["filename"] for x in d["documents"]], ["po.pdf"]); self.assertIn("Client PO", d["doc_categories"])
-        self.assertEqual(d["can"], {"manage": True, "tasks": True, "docs": True, "move": True, "note": True, "download": True, "create": True})
+        self.assertEqual(d["can"], {"manage": True, "tasks": True, "docs": True, "move": True, "note": True, "download": True, "create": True,
+                                    "delete_doc": True, "delete_project": True})
         self.assertNotIn("Project manager", d["roles"]); self.assertEqual(d["external_roles"], ["Contractor", "Reseller", "Customer"])
         self.assertEqual(c.get("/api/projects/9").status_code, 404)
         # an external customer: their project only, no guest links, no users list, read + note
@@ -1168,7 +1176,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         ann = self._external_client("ann@acme.example")
         e = ann.get("/api/projects/1").get_json()
         self.assertEqual(e["guest_links"], {"customer": None, "vendor": None}); self.assertEqual(e["users"], [])
-        self.assertEqual(e["can"], {"manage": False, "tasks": False, "docs": False, "move": False, "note": True, "download": True, "create": False})
+        self.assertEqual(e["can"], {"manage": False, "tasks": False, "docs": False, "move": False, "note": True, "download": True, "create": False, "delete_doc": False, "delete_project": False})
         self.new_project(name="Other", client="Globex")
         self.assertEqual(ann.get("/api/projects/2").status_code, 404)
 
@@ -1349,6 +1357,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     @patch("graph.send_mail", return_value=(True, None))
     def test_forgot_password_by_link_is_neutral_single_use_and_ends_sessions(self, mail):
+        self._mail_on()
         pm1 = self._make_user("pm1", "Member")
         with self.raw_db() as db:
             db.execute("UPDATE users SET email='pm1@odin.example' WHERE id=?", (pm1,)); db.commit()
@@ -2292,6 +2301,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIn(b"nothing to reset", resp.data)
 
     def test_link_request_never_confirms_an_address_and_is_rate_limited(self):
+        anon = app_module.app.test_client()
+        # mail off: an honest answer, the same for every address, and nothing is minted
+        self.assertIn(b"does not send email yet", anon.post("/auth/link", data={"email": "who@ever.example"}, follow_redirects=True).data)
+        self._mail_on()
         self.new_project(name="P", client="C")
         self._invite(1, "jane@vendor.example")
         anon = app_module.app.test_client()
@@ -2974,6 +2987,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual([r["title"] for r in e["risks"]], ["Shown"]); self.assertIsNone(e["summary"]["avg_slip"])
         self.assertEqual(ann.get("/reports/all.pdf").status_code, 404)
 
+    def _mail_on(self):
+        with self.raw_db() as db:
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('notify_email_enabled', '1')"); db.commit()
+
     def _no_signoff(self):
         with self.raw_db() as db:
             db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('policy.signoff_required', '0')"); db.commit()
@@ -3114,6 +3131,138 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("INSERT INTO settings (key, value) VALUES ('policy.signoff_required', '0')"); db.commit()
         self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[-1]}, headers=h).status_code, 200)
+
+    # ---- production review, 30 Sep 2026 ---------------------------------------
+
+    def test_partners_see_only_their_projects_and_only_what_is_meant_for_them(self):
+        self.new_project(name="Mine", client="Globex")
+        self.new_project(name="Theirs", client="Initech", target_end_date="2020-01-01")
+        self.client.post("/projects/1/note", data={"note": "internal: margin is thin"})
+        self.client.post("/projects/2/note", data={"note": "other customer's secret"})
+        self._invite(1, "ann@globex.example", "Customer", "Ann")
+        ann = self._external_client("ann@globex.example")
+        board = ann.get("/api/board").get_json()
+        self.assertNotIn("secret", str(board)); self.assertNotIn("margin", str(board))
+        self.assertTrue(all(a["project_id"] == 1 for a in ann.get("/api/alerts").get_json()["rows"]))
+        self.assertNotIn("margin", str(ann.get("/api/projects/1").get_json()["notes"]))
+        self.assertNotIn("margin", str(ann.get("/api/projects/1/flow").get_json()["recent_notes"]))
+        plan = ann.get("/api/projects/1/plan").get_json()
+        self.assertEqual((plan["health"]["reasons"], plan["changes"], plan["baseline_at"]), ([], [], None)); self.assertNotIn("slip_days", plan["stages"][0])
+        self.assertEqual(ann.get("/api/dashboard").status_code, 403)
+        c, _ = self._api_client()
+        self.assertIn("margin", str(c.get("/api/projects/1").get_json()["notes"]))   # staff still see everything
+
+    def test_sign_in_redirects_stay_on_this_site(self):
+        from routes.auth import is_local_path
+        for bad in ("//evil.com", "/\\evil.com", "/\t/evil.com", "https://evil.com", "/ok\\x", ""):
+            self.assertFalse(is_local_path(bad), bad)
+        self.assertTrue(is_local_path("/projects/1/signoff?v=2"))
+
+    def test_undo_honours_the_window_and_the_permission(self):
+        self.new_project(name="P", client="C")
+        self.client.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"%PDF-1.4 d"), "d.pdf")}, content_type="multipart/form-data")
+        with self.raw_db() as db:
+            doc = db.execute("SELECT id FROM documents WHERE filename='d.pdf'").fetchone()[0]
+        self.client.post(f"/projects/1/documents/{doc}/delete")
+        self._make_user("mem", "Member")
+        m, mcsrf = self._api_client("mem", STRONG_PASSWORD)
+        self.assertEqual(m.post(f"/undo/document/{doc}", headers={"X-CSRF-Token": mcsrf}).status_code, 403)   # not theirs to manage
+        with self.raw_db() as db:
+            db.execute("UPDATE documents SET deleted_at = '2000-01-01T00:00:00' WHERE id = ?", (doc,)); db.commit()
+        self.client.post(f"/undo/document/{doc}")
+        with self.raw_db() as db:
+            self.assertIsNotNone(db.execute("SELECT deleted_at FROM documents WHERE id = ?", (doc,)).fetchone()[0])   # too late
+
+    def test_role_change_takes_effect_at_once(self):
+        uid = self._make_user("dem", "Member")
+        c, csrf = self._api_client("dem", STRONG_PASSWORD)
+        self.assertEqual(c.get("/api/session").get_json()["user"]["role"], "Member")
+        self.client.post(f"/users/{uid}/role", data={"role": "Viewer"})
+        self.assertIsNone(c.get("/api/session").get_json()["user"])   # signed out; next sign-in carries the new role
+
+    def test_only_external_accounts_sign_and_addresses_cannot_be_claimed(self):
+        self.new_project(name="P", client="C")
+        colleague = self._make_user("col", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'col@corp.example' WHERE id = ?", (colleague,)); db.commit()
+        self.client.post("/projects/1/participants/invite", data={"email": "col@corp.example", "name": "Col", "role": "Customer"})
+        c, _ = self._api_client()
+        self.assertEqual(c.get("/api/projects/1/signoff").get_json()["candidates"]["signers"], [])   # a staff "Customer" cannot sign
+        self._invite(1, "ann@globex.example", "Customer", "Ann")
+        c2, csrf = self._api_client("col", STRONG_PASSWORD)
+        r = c2.post("/account/email", data={"email": "ANN@globex.example"}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()
+        self.assertIn("another account", " ".join(r["messages"]))
+        ann = self._external_client("ann@globex.example")
+        acsrf = ann.get("/api/session").get_json()["csrf"]
+        r = ann.post("/account/email", data={"email": "new@globex.example"}, headers={"X-CSRF-Token": acsrf, "Accept": "application/json"}).get_json()
+        self.assertIn("how you sign in", " ".join(r["messages"]))
+
+    def test_csv_exports_defuse_formulas(self):
+        from security import safe_csv_writer
+        out = io.StringIO()
+        safe_csv_writer(out).writerow(["=HYPERLINK(1)", "+1", "-2", "@x", "fine", 3])
+        self.assertEqual(out.getvalue().strip(), "'=HYPERLINK(1),'+1,'-2,'@x,fine,3")
+
+    def test_an_empty_database_never_takes_the_uploads_with_it(self):
+        folder = os.path.join(db_module.UPLOAD_DIR, "7")
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "contract.pdf"), "wb") as fh:
+            fh.write(b"%PDF-1.4 keep me")
+        app_module.init_db()
+        self.assertTrue(os.path.exists(os.path.join(folder, "contract.pdf")))
+
+    def test_the_signed_paper_copy_cannot_be_deleted(self):
+        c, h, ann, _ = self._signoff_setup()
+        c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["All"]}, headers=h)
+        c.post("/api/projects/1/signoff/1/upload", data={"signer_name": "Ann", "signed_on": "2026-09-30", "file": (io.BytesIO(b"%PDF-1.4 s"), "signed.pdf")},
+               headers=h, content_type="multipart/form-data")
+        with self.raw_db() as db:
+            doc = db.execute("SELECT document_id FROM signoffs").fetchone()[0]
+        self.client.post(f"/projects/1/documents/{doc}/delete")
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT deleted_at FROM documents WHERE id = ?", (doc,)).fetchone()[0])
+        self.assertEqual(c.post("/api/projects/1/signoff/1/upload", data={"signer_name": "Ann", "signed_on": "2026-02-30", "file": (io.BytesIO(b"%PDF-1.4 s"), "s.pdf")},
+                                headers=h, content_type="multipart/form-data").status_code, 400)
+
+    def test_new_staff_set_their_own_password_and_the_forced_screen_loads(self):
+        uid = self._make_user("newbie", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET must_change_password = 1 WHERE id = ?", (uid,)); db.commit()   # as the Users page leaves it
+        c, _ = self._api_client("newbie", STRONG_PASSWORD)
+        self.assertEqual(c.get("/api/account").status_code, 200)          # the Account page's data
+        self.assertEqual(c.get("/api/notifications").status_code, 200)    # the header bell
+        self.assertEqual(c.get("/api/projects").status_code, 302)         # everything else waits for the new password
+
+    def test_admin_created_users_must_change_their_password(self):
+        with patch.object(CSRFTestClient, "post", lambda self, *a, **k: FlaskClient.post(self, *a, **k)):   # no convenience clearing here
+            csrf = self.client.get("/api/session").get_json()["csrf"]
+            self.client.post("/users", data={"username": "fresh", "name": "Fresh", "password": STRONG_PASSWORD, "role": "Member", "_csrf": csrf})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT must_change_password FROM users WHERE username = 'fresh'").fetchone()[0], 1)
+
+    def test_bad_dates_are_refused(self):
+        r = self.new_project(name="Bad", client="C", target_end_date="30/09/2026")
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM projects WHERE name='Bad'").fetchone())
+
+    def test_guessing_one_account_from_many_addresses_is_paused(self):
+        self._make_user("target", "Member")
+        with self.raw_db() as db:
+            for i in range(20):
+                db.execute("INSERT INTO login_attempts (username, ip_address, attempted_at, success) VALUES ('target', ?, ?, 0)",
+                           (f"10.0.0.{i}", datetime.utcnow().isoformat()))
+            db.commit()
+        c = app_module.app.test_client()
+        csrf = c.get("/api/session").get_json()["csrf"]
+        r = c.post("/api/login", json={"username": "target", "password": STRONG_PASSWORD}, headers={"X-CSRF-Token": csrf})
+        self.assertNotEqual(r.status_code, 200)   # right password, but the account is paused
+
+    def test_alerts_are_recorded_by_the_scheduler(self):
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        import scheduler
+        scheduler.sync_alerts()
+        with self.raw_db() as db:
+            self.assertTrue(db.execute("SELECT 1 FROM alerts WHERE project_id = 1 AND resolved = 0").fetchone())
 
     def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))

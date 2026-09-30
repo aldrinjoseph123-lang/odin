@@ -17,12 +17,13 @@ from core import admin_required, app, permission_required, undo_button, undo_not
 from db import get_db, get_setting, restore_deleted, soft_delete
 from services.alerts import get_alert_type_settings
 from services import stages as stage_ops
+from security import safe_csv_writer
 from services.audit import audit_log
 from spa import spa_index, spa_serves
 
 
 @app.route("/undo/contact/<list_key>/<int:item_id>", methods=["POST"])
-@write_required
+@permission_required("manage_contacts")
 def undo_contact(list_key, item_id):
     if list_key not in CONTACT_LISTS:
         abort(404)
@@ -34,7 +35,7 @@ def undo_contact(list_key, item_id):
 
 
 @app.route("/undo/partner/<int:partner_id>", methods=["POST"])
-@write_required
+@permission_required("manage_contacts")
 def undo_partner(partner_id):
     db = get_db()
     restore_deleted("partners", partner_id)
@@ -46,7 +47,7 @@ def undo_partner(partner_id):
 
 
 @app.route("/undo/partner-manager/<int:manager_id>", methods=["POST"])
-@write_required
+@permission_required("manage_contacts")
 def undo_partner_manager(manager_id):
     restore_deleted("partner_account_managers", manager_id)
     flash("Account manager restored")
@@ -89,7 +90,7 @@ def audit_logs_export():
     where, params, _ = _audit_filter()
     rows = get_db().execute(f"SELECT * FROM audit_logs{where} ORDER BY timestamp DESC", params).fetchall()
     out = io.StringIO()
-    writer = csv.writer(out)
+    writer = safe_csv_writer(out)
     writer.writerow(["timestamp", "username", "action", "resource_type", "resource_id", "resource_name", "details", "ip_address"])
     for r in rows:
         writer.writerow([r["timestamp"], r["username"], r["action"], r["resource_type"], r["resource_id"], r["resource_name"], r["details"], r["ip_address"]])

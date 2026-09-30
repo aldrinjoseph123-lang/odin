@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS signoffs (
     reject_comment TEXT, rejected_at TEXT,
     document_id INTEGER REFERENCES documents(id),
     waiver_reason TEXT, waived_by TEXT,
+    link_issued_by TEXT, link_issued_at TEXT,
     completed_at TEXT,
     UNIQUE (project_id, version)
 );

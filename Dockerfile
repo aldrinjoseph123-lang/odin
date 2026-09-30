@@ -31,7 +31,7 @@ COPY --from=frontend /frontend/dist ./frontend/dist
 # at container start by the entrypoint rather than baked in here.
 RUN useradd --create-home --uid 10001 odin \
  && mkdir -p /data/uploads \
- && chown -R odin:odin /app /data
+ && chown -R odin:odin /data   # code stays root-owned: the app cannot rewrite itself
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

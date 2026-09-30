@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ApiError, deleteRaid, raid, saveRaid, type RaidData, type RaidItem, type RaidKind } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { fmtDate, lateBy } from "@/lib/format"
+import { fmtDate, lateBy, localToday } from "@/lib/format"
 
 // The rollout's risks, issues, decisions and blockers: a filterable list, and
 // one dialog to add or edit an item. Open blockers and high-impact risks
@@ -26,7 +26,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
   const load = useCallback(() => raid(projectId).then(setD), [projectId])
   useEffect(() => { void load() }, [load])
   if (!d) return <p className="text-[13px] text-muted-foreground">Loading…</p>
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localToday()
   const list = d.items.filter((i) => show === "all" || i.open)
   const counts = (["blocker", "issue", "risk", "decision"] as RaidKind[]).map((k) => [k, d.items.filter((i) => i.kind === k && i.open).length] as const)
 

@@ -50,6 +50,8 @@ POLICIES = {
                                 label="Minimum password length", help="For accounts allowed to sign in with a password."),
     "login_max_attempts": dict(area="security", kind="int", default=5, min=3, max=20,
                                label="Failed sign-ins before a pause", help="Per username and network address."),
+    "login_account_max": dict(area="security", kind="int", default=20, min=10, max=200,
+                              label="Failed sign-ins per account before a pause", help="From all addresses together: stops a password being guessed from many machines. The account pauses for the same length."),
     "login_window_minutes": dict(area="security", kind="int", default=15, min=5, max=120,
                                  label="Pause length (minutes)", help="Failures older than this stop counting."),
     "upload_max_mb": dict(area="security", kind="int", default=25, min=1, max=100,
@@ -288,6 +290,24 @@ def save_policies(area, form):
     if has_request_context():
         g.pop("policy_rows", None)
     return changed, []
+
+
+def local_date(value, db=None):
+    """The workspace-local calendar date of a stored value: a stored UTC
+    timestamp ('YYYY-MM-DDTHH:MM…') is converted — 01:30 in Dubai is still the
+    previous day in UTC — while a plain 'YYYY-MM-DD' date is taken as it is.
+    None for empty or malformed values."""
+    from datetime import date, datetime, timezone
+    from zoneinfo import ZoneInfo
+    if not value:
+        return None
+    s = str(value)
+    try:
+        if len(s) > 10 and s[10] in "T ":
+            return datetime.fromisoformat(s[:19]).replace(tzinfo=timezone.utc).astimezone(ZoneInfo(policy("timezone", db))).date()
+        return date.fromisoformat(s[:10])
+    except ValueError:
+        return None
 
 
 def local_today(db=None):

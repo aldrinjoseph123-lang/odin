@@ -114,6 +114,13 @@ def send_login_link(user, raw_token, invited_by=None, project_name=None, project
         return False, str(exc)
 
 
+def _mail_off():
+    """Mail is not connected: say so honestly instead of promising a link (the
+    reply is the same for every address, so nothing is revealed)."""
+    from db import get_setting
+    return get_setting("notify_email_enabled") != "1"
+
+
 @app.route("/auth/link", methods=["GET", "POST"])
 def auth_link_request():
     """External accounts ask for a sign-in link here. The reply is the same
@@ -127,6 +134,8 @@ def auth_link_request():
         email = request.form.get("email", "").strip().lower()
         if not valid_email(email):
             flash("Enter the email address you were invited with")
+        elif _mail_off():
+            flash("This workspace does not send email yet — ask your project manager for a sign-in link")
         elif rate_limited(f"link:{email}", 3, 15):
             flash("Too many requests for that address — wait a few minutes and try again")
         else:
@@ -152,6 +161,8 @@ def auth_reset_request():
     email = request.form.get("email", "").strip().lower()
     if not valid_email(email):
         flash("Enter the email address on your account")
+    elif _mail_off():
+        flash("This workspace does not send email yet — ask an admin to reset your password")
     elif rate_limited(f"reset:{email}", 3, 15):
         flash("Too many requests for that address — wait a few minutes and try again")
     else:
@@ -237,7 +248,18 @@ def safe_next_url():
     """Only relative redirects — an absolute ?next= would be an open redirect
     straight off the login page."""
     next_url = request.args.get("next", "")
-    return next_url if next_url.startswith("/") and not next_url.startswith("//") else None
+    return next_url if is_local_path(next_url) else None
+
+
+def is_local_path(url):
+    """A path on this site: one leading slash, then no second slash or backslash
+    (browsers read "/\\evil.com" as "//evil.com"), no scheme or host, no control
+    characters (a tab or newline inside "/\t/evil.com" is dropped by browsers)."""
+    from urllib.parse import urlsplit
+    if not url.startswith("/") or url[1:2] in ("/", "\\") or "\\" in url or any(ord(ch) < 32 or ord(ch) == 127 for ch in url):
+        return False
+    parts = urlsplit(url)
+    return not parts.scheme and not parts.netloc
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -338,10 +360,12 @@ def account():
             flash(problem)
         else:
             db.execute(
-                "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+                "UPDATE users SET password_hash = ?, must_change_password = 0, session_epoch = session_epoch + 1 WHERE id = ?",
                 (generate_password_hash(new_password, method="pbkdf2:sha256"), session["user_id"]),
             )
             db.commit()
+            # every other device is signed out; this one carries on
+            session["epoch"] = db.execute("SELECT session_epoch FROM users WHERE id = ?", (session["user_id"],)).fetchone()[0]
             session["must_change_password"] = False
             audit_log("change_own_password", "user", session["user_id"], session.get("user_name"))
             flash("Password updated")
@@ -500,6 +524,12 @@ def account_email():
         flash("Enter a valid email address")
         return redirect(url_for("account"))
     db = get_db()
+    if session.get("kind") == "external":
+        flash("Your email address is how you sign in; ask the project manager to change it")
+        return redirect(url_for("account"))
+    if email and db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND id != ?", (email.lower(), session["user_id"])).fetchone():
+        flash("That address belongs to another account")
+        return redirect(url_for("account"))
     db.execute("UPDATE users SET email = ? WHERE id = ?", (email or None, session["user_id"]))
     db.commit()
     audit_log("change_own_email", "user", session["user_id"], session.get("user_name"))

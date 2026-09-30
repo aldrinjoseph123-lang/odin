@@ -113,6 +113,8 @@ def render(v):
     if v["signed_at"] and v["status"] != "uploaded":
         rows.append(["Customer", f"{v['signer_name']} <{v['signer_email']}> signed {_when(v['signed_at'])} in Odin, after a one-time sign-in link sent to that address"
                      + (f"; from {v['signed_ip']}" if v.get("signed_ip") else "")])
+    if v.get("link_issued_by"):
+        rows.append(["Sign-in link", f"The signatory's one-time sign-in link was issued by {v['link_issued_by']} on {_when(v['link_issued_at'])} and passed on by hand"])
     if v["counter_signed_at"]:
         rows.append(["Countersigned", f"{v['counter_name']} signed {_when(v['counter_signed_at'])} in Odin" + (f"; from {v['counter_ip']}" if v.get("counter_ip") else "")])
     if v["status"] == "uploaded":

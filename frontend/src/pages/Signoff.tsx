@@ -106,6 +106,7 @@ function Document({ v }: { v: SignoffVersion }) {
           <dt className="text-muted-foreground">Integrity</dt>
           <dd className={cn("flex items-center gap-1.5", v.intact ? "text-ok" : "font-medium text-bad")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{v.intact ? "The content matches its fingerprint." : "The content no longer matches its fingerprint."}</dd>
           {v.signed_at && v.status !== "uploaded" && <><dt className="text-muted-foreground">Customer</dt><dd>{v.signer_name} ({v.signer_email}) signed {fmtWhen(v.signed_at, true)} in Odin, after a one-time sign-in link sent to that address{v.signed_ip ? `; from ${v.signed_ip}` : ""}</dd></>}
+          {v.link_issued_by && <><dt className="text-muted-foreground">Sign-in link</dt><dd>Issued by {v.link_issued_by}, {fmtWhen(v.link_issued_at, true)}, and passed on by hand</dd></>}
           {v.counter_signed_at && <><dt className="text-muted-foreground">Countersigned</dt><dd>{v.counter_name}, {fmtWhen(v.counter_signed_at, true)}{v.counter_ip ? `; from ${v.counter_ip}` : ""}</dd></>}
           {v.status === "uploaded" && <><dt className="text-muted-foreground">Paper copy</dt><dd>Signed by {v.signer_name} on {fmtDate(v.signed_at)}; the scan is in the project's documents</dd></>}
           {v.status === "rejected" && <><dt className="text-muted-foreground">Not accepted</dt><dd>{fmtWhen(v.rejected_at, true)}: {v.reject_comment}</dd></>}

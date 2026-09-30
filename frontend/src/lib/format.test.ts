@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, signoffText, stageColumns, stateText, timeAgo, toLines } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, localToday, signoffText, stageColumns, stateText, timeAgo, toLines } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -198,5 +198,11 @@ describe("sign-off words", () => {
   })
   it("turns a textarea into lines", () => {
     expect(toLines("  a \n\n b\n")).toEqual(["a", "b"])
+  })
+})
+
+describe("localToday", () => {
+  it("is the device's calendar day, not the UTC one", () => {
+    expect(localToday(new Date(2026, 8, 30, 1, 30))).toBe("2026-09-30")
   })
 })

@@ -216,6 +216,7 @@ export type SignoffVersion = {
   counter_id: number | null; counter_name: string | null; counter_title: string | null; counter_signed_at: string | null; counter_signature: Signature | null
   reject_comment: string | null; rejected_at: string | null; document_id: number | null; waiver_reason: string | null; waived_by: string | null; completed_at: string | null
   signed_ip?: string | null; signed_agent?: string | null; counter_ip?: string | null; counter_agent?: string | null
+  link_issued_by?: string | null; link_issued_at?: string | null
 }
 export type SignoffDraft = { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; scope: ScopeItem[]; statement: string }
 export type SignoffData = {
@@ -312,7 +313,7 @@ export type ProjectExtras = {
   notes: { id: number; author: string; note: string; stage: string; created_at: string; mine: boolean; edited: boolean; stage_entry: boolean }[]
   documents: { id: number; category: string; filename: string; uploaded_by: string; uploaded_at: string }[]
   doc_categories: string[]; users: { id: number; name: string }[]; roles: string[]; external_roles: string[]
-  can: { manage: boolean; tasks: boolean; docs: boolean; move: boolean; note: boolean; download: boolean; create: boolean }
+  can: { manage: boolean; tasks: boolean; docs: boolean; move: boolean; note: boolean; download: boolean; create: boolean; delete_doc?: boolean; delete_project?: boolean }
 }
 export const projectExtras = (id: number) => getJson<ProjectExtras>(`/api/projects/${id}`)
 

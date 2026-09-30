@@ -11,7 +11,8 @@ import { ApiError, login, session, type SignIn } from "@/lib/api"
 function destinationAfterLogin(user: { must_change_password: boolean; home: "dashboard" | "board" }): string {
   if (user.must_change_password) return "/account"
   const next = new URLSearchParams(window.location.search).get("next") ?? ""
-  return next.startsWith("/") && !next.startsWith("//") ? next : user.home === "board" ? "/board" : "/dashboard"
+  // one leading slash, no second slash or backslash, no control characters ("/\\evil.com" and "/\t/evil.com" leave the site)
+  return /^\/(?![\/\\])[^\\\x00-\x1f\x7f]*$/.test(next) ? next : user.home === "board" ? "/board" : "/dashboard"
 }
 
 const field = "h-11 text-base"   // 44 px: a comfortable target on a phone; 16 px stops iOS zooming in on focus

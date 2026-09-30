@@ -2,6 +2,8 @@
 page, its JSON, the signatures, the scanned-copy fallback, the admin's
 waiver and the PDF. Every route goes through load_project; mutations are
 audited; signing is decided by who the version names, not by role."""
+from datetime import datetime
+
 from flask import Response, abort, jsonify, redirect, request, session, url_for
 from markupsafe import escape
 
@@ -246,6 +248,9 @@ def api_signoff_link(project_id, version):
     if row["status"] != "sent":
         return _bad("Only a version waiting for the customer's signature needs their link")
     link = external_url("auth_link_consume", token=issue_login_link(row["signer_id"], session["user_id"]), next=_link(project_id))
+    db = get_db()   # disclosed on the signing record: the signatory's sign-in came by hand from this person
+    db.execute("UPDATE signoffs SET link_issued_by = ?, link_issued_at = ? WHERE id = ?", (session["user_name"], datetime.utcnow().isoformat(), row["id"]))
+    db.commit()
     audit_log("signoff_link", "project", project_id, project["name"], f"v{version} sign-in link for {row['signer_email']}")
     return jsonify(ok=True, link=link, minutes=policy("link_minutes"), email=row["signer_email"])
 
@@ -277,6 +282,10 @@ def api_signoff_upload(project_id, version):
         return _bad("Choose the signed copy")
     if not name or len(signed_on) != 10:
         return _bad("Who signed it, and on what date")
+    try:
+        datetime.strptime(signed_on, "%Y-%m-%d")
+    except ValueError:
+        return _bad("The signing date must be a date (YYYY-MM-DD)")
     if problem := upload_problem(file):
         return _bad(problem)
     if not content_matches_extension(file):

@@ -135,7 +135,7 @@ destination: a backup on the disk it protects is only half a backup.
 ```bash
 docker compose stop app scheduler
 docker run --rm -v odin-data:/data -v "$PWD:/backup" alpine sh -c \
-  'cd /data && rm -rf odin.db odin.db-wal odin.db-shm uploads avatars && unzip -o /backup/odin-backup-<timestamp>.zip -x manifest.json'
+  'cd /data && rm -rf odin.db odin.db-wal odin.db-shm uploads avatars && unzip -o /backup/odin-backup-<timestamp>.zip -x manifest.json && chown -R 10001:10001 /data'
 docker compose start app scheduler
 docker compose exec app python preflight.py
 ```

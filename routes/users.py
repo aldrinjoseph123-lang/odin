@@ -3,7 +3,7 @@ All gated on manage_users. Imported for route registration side effects.
 """
 from datetime import datetime
 
-from flask import flash, redirect, render_template, request, session, url_for
+from flask import abort, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 from constants import ROLES
@@ -11,7 +11,7 @@ from policies import policy
 from core import app, permission_required
 from spa import spa_index, spa_serves
 from db import get_db
-from security import password_problem, valid_email
+from security import password_problem, valid_email, safe_csv_writer
 from services.audit import audit_log
 
 
@@ -39,7 +39,8 @@ def users():
             flash(problem)
         else:
             cursor = db.execute(
-                "INSERT INTO users (username, password_hash, name, role, active, email, created_at, theme, accent) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)",
+                # an admin-set password is temporary: the person sets their own at first sign-in
+                "INSERT INTO users (username, password_hash, name, role, active, email, created_at, theme, accent, must_change_password) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, 1)",
                 (username, generate_password_hash(password, method="pbkdf2:sha256"), name, role, email or None,
                  datetime.utcnow().isoformat(), policy("default_theme"), policy("default_accent")),
             )
@@ -63,7 +64,7 @@ def users_export():
         "SELECT username, name, email, role, active, created_at, last_login_at FROM users ORDER BY username"
     ).fetchall()
     out = io.StringIO()
-    writer = csv.writer(out)
+    writer = safe_csv_writer(out)
     writer.writerow(["username", "name", "email", "role", "active", "created_at", "last_login_at"])
     for r in rows:
         writer.writerow([r["username"], r["name"], r["email"], r["role"], r["active"], r["created_at"], r["last_login_at"]])
@@ -84,7 +85,10 @@ def user_set_role(user_id):
         return redirect(url_for("users"))
     db = get_db()
     user = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
-    db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+    if user is None:
+        abort(404)
+    # the role rides in the session cookie: end their sessions so it takes effect now, not at their next sign-in
+    db.execute("UPDATE users SET role = ?, session_epoch = session_epoch + 1 WHERE id = ?", (role, user_id))
     db.commit()
     audit_log("update_user_role", "user", user_id, user["username"], f"new_role={role}")
     flash("Role updated")

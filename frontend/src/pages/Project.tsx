@@ -164,7 +164,7 @@ export default function Project(_props: { user: User }) {
                 <span className="w-28 shrink-0 truncate text-[12px] text-muted-foreground">{doc.category}</span>
                 {can.download ? <a href={`/projects/${id}/documents/${doc.id}/download`} className="min-w-0 flex-1 truncate font-medium hover:underline">{doc.filename}</a> : <span className="min-w-0 flex-1 truncate font-medium">{doc.filename}</span>}
                 <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtDate(doc.uploaded_at)}</span>
-                {can.docs && <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}?`)} aria-label={`Delete ${doc.filename}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>}
+                {can.delete_doc && <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}?`)} aria-label={`Delete ${doc.filename}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>}
               </li>
             ))}
             {x.documents.length === 0 && <li className="text-[13px] text-muted-foreground">No documents uploaded yet.</li>}
@@ -192,7 +192,7 @@ export default function Project(_props: { user: User }) {
             {can.manage && (
               <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
                 {x.guest_links_enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => send(`/projects/${id}/rotate-token`, {}, "Rotate both guest links? The current links stop working immediately.")}>Rotate guest links</Button>}
-                <Button size="sm" variant="outline" disabled={busy} className="text-bad hover:text-bad" onClick={() => send(`/projects/${id}/delete`, {}, "Delete this project? You have five minutes to undo.")}>Delete project</Button>
+                {can.delete_project && <Button size="sm" variant="outline" disabled={busy} className="text-bad hover:text-bad" onClick={() => send(`/projects/${id}/delete`, {}, "Delete this project? You have five minutes to undo.")}>Delete project</Button>}
               </div>
             )}
           </Panel>

@@ -67,6 +67,29 @@ def upload_problem(file):
     return None
 
 
+# --- exports ------------------------------------------------------------------
+
+
+class _SafeCSV:
+    """csv.writer that defuses spreadsheet formulas: a cell a user can influence
+    (a name, a failed-login username, a note) starting with = + - @ tab or CR is
+    prefixed with ' so Excel shows it as text instead of running it."""
+    def __init__(self, stream):
+        import csv
+        self._w = csv.writer(stream)
+
+    def writerow(self, row):
+        return self._w.writerow([("'" + c) if isinstance(c, str) and c[:1] in ("=", "+", "-", "@", "\t", "\r") else c for c in row])
+
+    def writerows(self, rows):
+        for row in rows:
+            self.writerow(row)
+
+
+def safe_csv_writer(stream):
+    return _SafeCSV(stream)
+
+
 # --- authentication ---------------------------------------------------------
 
 
@@ -76,15 +99,20 @@ def _login_window_start():
 
 
 def login_is_blocked(username):
-    """True when this username+IP pair has burned through its attempts."""
+    """True when this username+IP pair has burned through its attempts, or the
+    account has, counted across every address (guessing from many machines)."""
     db = get_db()
+    since = _login_window_start()
     row = db.execute(
         "SELECT COUNT(*) AS failures FROM login_attempts "
         "WHERE username = ? AND ip_address IS ? AND success = 0 AND attempted_at > ?",
-        (username, request.remote_addr, _login_window_start()),
+        (username, request.remote_addr, since),
     ).fetchone()
     from policies import policy
-    return row["failures"] >= policy("login_max_attempts")
+    if row["failures"] >= policy("login_max_attempts"):
+        return True
+    total = db.execute("SELECT COUNT(*) FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?", (username, since)).fetchone()[0]
+    return total >= policy("login_account_max")
 
 
 def record_login_attempt(username, success):
@@ -337,7 +365,10 @@ def init_security(app):
     if os.environ.get("PMS_TRUST_PROXY") == "1":
         from werkzeug.middleware.proxy_fix import ProxyFix
 
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+        # x_host=0: the host comes from the Host header nginx passes on, never
+        # from a client-supplied X-Forwarded-Host (links in mail are built from it
+        # when no public address is set).
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=0)
 
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,   # JS cannot read the session cookie

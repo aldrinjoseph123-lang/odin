@@ -22,20 +22,15 @@ import json
 from datetime import date, datetime, timedelta
 
 from db import get_db
-from policies import local_today, policy
+from policies import local_today, policy, local_date
 from services.analytics import _parse, stage_timeline
 
 ISO = "%Y-%m-%d"
 
 
 def _d(value):
-    """A date from 'YYYY-MM-DD…', or None."""
-    if not value:
-        return None
-    try:
-        return date.fromisoformat(str(value)[:10])
-    except ValueError:
-        return None
+    """A workspace-local date from a stored date or UTC timestamp, or None."""
+    return local_date(value)
 
 
 def _iso(d):

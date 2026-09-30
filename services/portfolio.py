@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 from db import get_db
-from policies import local_today, policy
+from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
 
@@ -36,7 +36,7 @@ def build(projects, customer=False):
             **{k: p[k] for k in ("id", "name", "client", "stage", "owner_name", "delivery_mode", "vendor_name", "product_name", "target_end_date")},
             "rag": pl["health"]["rag"], "reasons": pl["health"]["reasons"], "confidence": pl["health"]["confidence"],
             "pct_complete": pl["pct_complete"], "stage_number": cur + 1, "stage_count": len(pl["stages"]),
-            "start": first.get("actual_start") or first.get("plan_start") or (p["start_date"] or p["created_at"] or today.isoformat())[:10],
+            "start": first.get("actual_start") or first.get("plan_start") or (p["start_date"] or (local_date(p["created_at"]) or today).isoformat())[:10],
             "forecast": f["forecast"], "planned": f["planned"], "baseline": f["baseline"],
             "vs_target_days": f["vs_target_days"], "vs_baseline_days": f["vs_baseline_days"], "has_plan": pl["has_plan"],
             "open": {k: sum(1 for r in open_items if r["kind"] == k) for k in ("blocker", "issue", "risk")},

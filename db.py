@@ -79,11 +79,15 @@ def soft_delete(table, item_id):
 
 
 def restore_deleted(table, item_id):
-    """Restore a soft-deleted row (undo)."""
+    """Restore a soft-deleted row (undo) — only within the undo window, the
+    promise the Undo button makes. Returns True when a row came back."""
     assert_safe_table(table)
     db = get_db()
-    db.execute(f"UPDATE {table} SET deleted_at = NULL WHERE id = ?", (item_id,))
+    from policies import policy
+    cutoff = (datetime.utcnow() - timedelta(minutes=policy("undo_minutes", db))).isoformat()
+    done = db.execute(f"UPDATE {table} SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at >= ?", (item_id, cutoff)).rowcount
     db.commit()
+    return bool(done)
 
 
 def cleanup_soft_deletes(db=None):
@@ -147,14 +151,10 @@ def _purge_orphans(db):
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
             f"AND {column} NOT IN (SELECT id FROM projects)"
         )
-
-    if not os.path.isdir(UPLOAD_DIR):
-        return
-    live = {str(row[0]) for row in db.execute("SELECT id FROM projects")}
-    for entry in os.listdir(UPLOAD_DIR):
-        path = os.path.join(UPLOAD_DIR, entry)
-        if os.path.isdir(path) and entry not in live:
-            shutil.rmtree(path, ignore_errors=True)
+    # Files are never swept here. A folder "not in the database" is also what
+    # every upload looks like to an empty, missing or older database (a restore,
+    # a volume mix-up), and deleting them then would destroy the documents.
+    # Purged projects' files are removed with their rows in cleanup_soft_deletes.
 
 
 
@@ -282,6 +282,11 @@ def migrate_db(db):
     for column, coltype in (("kind", "TEXT NOT NULL DEFAULT 'text'"), ("data", "TEXT"), ("summary", "TEXT"), ("next_steps", "TEXT"), ("asks", "TEXT")):
         if report_columns and column not in report_columns:   # a fresh database creates the table, with them, further on
             db.execute(f"ALTER TABLE project_reports ADD COLUMN {column} {coltype}")
+    # A sign-off version remembers who handed its signatory a sign-in link by hand (the signing record shows it).
+    signoff_columns = {row[1] for row in db.execute("PRAGMA table_info(signoffs)")}
+    for column in ("link_issued_by", "link_issued_at"):
+        if signoff_columns and column not in signoff_columns:
+            db.execute(f"ALTER TABLE signoffs ADD COLUMN {column} TEXT")
     # A rollout's plan: dates per stage and the baseline they are measured against (services/plan.py).
     plan_columns = {row[1] for row in db.execute("PRAGMA table_info(project_stages)")}
     for column in ("plan_start", "plan_end", "base_start", "base_end"):

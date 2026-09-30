@@ -53,6 +53,7 @@ def run_audit_retention(now=None):
             digest = hashlib.sha256(fh.read()).hexdigest()
         last_id = rows[-1][0]
         with con:   # one transaction: the trigger is never missing outside it
+            con.execute("BEGIN IMMEDIATE")   # DDL does not open one by itself: without this the DROP commits alone
             con.execute("DROP TRIGGER IF EXISTS audit_logs_no_delete")
             con.execute("DELETE FROM audit_logs WHERE timestamp < ? AND id <= ?", (cutoff, last_id))
             con.execute(NO_DELETE)

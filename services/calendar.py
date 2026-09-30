@@ -9,7 +9,7 @@ grey days at its edges without a second request.
 from datetime import date, timedelta
 
 from db import PROJECT_OPEN_SQL, get_db
-from policies import local_today
+from policies import local_date, local_today
 from services.alerts import build_alerts
 
 
@@ -47,16 +47,26 @@ def build(month, scope):
         "SELECT t.id, t.project_id, t.title, t.due_date AS day, t.done, p.name AS project, u.name AS who FROM tasks t "
         "JOIN projects p ON p.id = t.project_id LEFT JOIN users u ON u.id = t.assignee_id "
         f"WHERE t.due_date BETWEEN ? AND ? AND p.deleted_at IS NULL{scope_sql} ORDER BY t.due_date, t.done, t.id", (s, e, *scope_params))]
+    sw = (date.fromisoformat(s) - timedelta(days=1)).isoformat()   # a UTC day earlier: local mornings sit on the previous UTC date
     moves = [dict(r) for r in db.execute(
-        "SELECT n.project_id, p.name AS project, substr(n.created_at, 1, 10) AS day, n.prev_stage, n.stage, n.author AS who FROM status_notes n "
+        "SELECT n.project_id, p.name AS project, n.created_at AS day, n.prev_stage, n.stage, n.author AS who FROM status_notes n "
         f"JOIN projects p ON p.id = n.project_id WHERE n.prev_stage IS NOT NULL AND substr(n.created_at, 1, 10) BETWEEN ? AND ? AND p.deleted_at IS NULL{scope_sql} "
-        "ORDER BY n.created_at", (s, e, *scope_params))]
+        "ORDER BY n.created_at", (sw, e, *scope_params))]
     approvals = [dict(r) for r in db.execute(
-        "SELECT a.project_id, p.name AS project, a.stage, substr(a.requested_at, 1, 10) AS day, 'asked' AS kind, a.status, a.requested_by AS who FROM stage_approvals a "
+        "SELECT a.project_id, p.name AS project, a.stage, a.requested_at AS day, 'asked' AS kind, a.status, a.requested_by AS who FROM stage_approvals a "
         f"JOIN projects p ON p.id = a.project_id WHERE substr(a.requested_at, 1, 10) BETWEEN ? AND ? AND p.deleted_at IS NULL{scope_sql} "
         "UNION ALL "
-        "SELECT a.project_id, p.name, a.stage, substr(a.decided_at, 1, 10), 'decided', a.status, a.decided_by FROM stage_approvals a "
+        "SELECT a.project_id, p.name, a.stage, a.decided_at, 'decided', a.status, a.decided_by FROM stage_approvals a "
         f"JOIN projects p ON p.id = a.project_id WHERE a.decided_at IS NOT NULL AND substr(a.decided_at, 1, 10) BETWEEN ? AND ? AND p.deleted_at IS NULL{scope_sql} "
-        "ORDER BY 4", (s, e, *scope_params, s, e, *scope_params))]
+        "ORDER BY 4", (sw, e, *scope_params, sw, e, *scope_params))]
+    # stored times are UTC: place each on its workspace-local day (01:30 in Dubai is the previous UTC day)
+    def local_days(rows):
+        out = []
+        for r in rows:
+            r["day"] = local_date(r["day"]).isoformat()
+            if s <= r["day"] <= e:
+                out.append(r)
+        return out
+    moves, approvals = local_days(moves), local_days(approvals)
     return {"month": first.strftime("%Y-%m"), "today": today.isoformat(), "from": s, "to": e,
             "spans": spans, "targets": targets, "tasks": tasks, "moves": moves, "approvals": approvals}

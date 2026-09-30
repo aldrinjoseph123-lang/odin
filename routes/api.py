@@ -15,7 +15,7 @@ from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_
 from routes.auth import attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
-from security import csrf_token
+from security import csrf_token, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
 from services.audit import audit_log
@@ -494,6 +494,8 @@ def api_person_notify(user_id):
 @app.route("/api/dashboard")
 @permission_required("view_board")
 def api_dashboard():
+    if session.get("kind") == "external":   # staff workloads and internal activity: partners get the flow instead
+        abort(403)
     from services import dashboard
     return jsonify(dashboard.build(project_scope(), session["user_id"]))
 
@@ -748,7 +750,8 @@ def api_project(project_id):
         "notes": [{"id": n["id"], "author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"],
                    "mine": n["author_id"] is not None and n["author_id"] == session["user_id"], "edited": n["edited_at"] is not None,
                    "stage_entry": n["id"] in entries}
-                  for n in db.execute("SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at DESC", (project_id,))],
+                  for n in db.execute("SELECT * FROM status_notes WHERE project_id = ?" + (" AND guest_visible = 1" if session.get("kind") == "external" else "")
+                                      + " ORDER BY created_at DESC", (project_id,))],
         "documents": [{"id": d["id"], "category": d["category"], "filename": d["filename"], "uploaded_by": d["uploaded_by"], "uploaded_at": d["uploaded_at"]}
                       for d in db.execute("SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", (project_id,))],
         "doc_categories": get_doc_category_names(),
@@ -759,6 +762,9 @@ def api_project(project_id):
             "docs": project_allows(project_id, "manage_documents"), "move": project_allows(project_id, "move_stage"),
             "note": role_has_permission(role, "add_project_note"), "download": role_has_permission(role, "download_document"),
             "create": role_has_permission(role, "create_project"),
+            # the delete routes check the global permission too (Admin by default): offer only what will succeed
+            "delete_doc": project_allows(project_id, "manage_documents") and role_has_permission(role, "delete_document"),
+            "delete_project": can_manage and role_has_permission(role, "delete_project"),
         },
     })
 
@@ -819,7 +825,7 @@ def project_activity_export(project_id):
         (project_id,),
     ).fetchall()
     out = io.StringIO()
-    writer = csv.writer(out)
+    writer = safe_csv_writer(out)
     writer.writerow(["timestamp_utc", "who", "action", "what", "details"])
     for r in rows:
         writer.writerow([r["timestamp"], r["username"], r["action"], ACTIVITY_LABELS.get(r["action"], r["action"].replace("_", " ")), r["details"] or ""])
@@ -965,6 +971,13 @@ def api_plan(project_id):
     d = plan.build(project)
     d["changes"] = plan.changes(project_id)
     d["can_edit"] = project_allows(project_id, "manage_project")
+    if session.get("kind") == "external":   # the customer's cut, as in their report: no baseline, slip, reasons or change log
+        for s in d["stages"]:
+            for k in ("base_start", "base_end", "slip_days"):
+                s.pop(k, None)
+        d["health"] = {"rag": d["health"]["rag"], "reasons": [], "confidence": d["health"]["confidence"]}
+        d["finish"] = {k: v for k, v in d["finish"].items() if k in ("forecast", "planned", "target", "vs_target_days", "days_to_target")}
+        d["changes"], d["baseline_at"] = [], None
     d["project"] = {"id": project["id"], "name": project["name"], "start_date": project["start_date"], "target_end_date": project["target_end_date"]}
     return jsonify(d)
 
@@ -1122,7 +1135,8 @@ def api_project_flow(project_id):
         "can_edit": project_allows(project_id, "manage_tasks"),
         "me": session["user_id"],
         "documents": db.execute("SELECT COUNT(*) AS c FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,)).fetchone()["c"],
-        "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]} for n in notes[-4:][::-1]],
+        "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]}
+                         for n in [n for n in notes if session.get("kind") != "external" or n["guest_visible"]][-4:][::-1]],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
                           "avatar_url": f"/users/{r['user_id']}/avatar/{r['avatar']}" if r["avatar"] else None} for r in participants_for(project_id)],
         "can_move": project_allows(project_id, "move_stage"),

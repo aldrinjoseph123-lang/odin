@@ -174,6 +174,7 @@ def run_backup(trigger="manual", actor=None):
     zip_name = f"{NAME_PREFIX}{started.strftime('%Y%m%d-%H%M%S')}{NAME_SUFFIX}"
     zip_path = os.path.join(_backup_dir(), zip_name)
     results, ok, restore_ok, restore_detail = [], True, None, None
+    written = False   # the zip is complete: only an unfinished one is removed on failure
     try:
         with tempfile.TemporaryDirectory() as tmp:
             snapshot = _snapshot(tmp)
@@ -188,6 +189,7 @@ def run_backup(trigger="manual", actor=None):
                         for fname in files:
                             full = os.path.join(root, fname)
                             zf.write(full, arcname=os.path.join(label, os.path.relpath(full, folder)))
+            written = True
         if p["restore_test"]:
             restore_ok, restore_detail = restore_test(zip_path)
             ok = restore_ok
@@ -199,7 +201,8 @@ def run_backup(trigger="manual", actor=None):
             destinations.append(("SharePoint", *(_copy_graph(zip_path, p["sharepoint_folder"] or "Odin-Backups", drive, keep_args) if drive else (False, error))))
         if p["dest_share"]:
             destinations.append(("network share", *_copy_share(zip_path, p["share_path"], keep_args)))
-        _prune_local(keep_args)
+        if restore_ok is not False:   # a failed restore test must never push out older good copies
+            _prune_local(keep_args)
         for name, done, error in destinations:
             results.append(name if done else f"{name} failed: {error}")
             ok = ok and done
@@ -207,6 +210,11 @@ def run_backup(trigger="manual", actor=None):
         message = ("; ".join(results)) + ("" if restore_ok in (None, True) else f"; restore test failed: {restore_detail}")
     except Exception as exc:  # noqa: BLE001 — the run is recorded as failed, never lost
         ok, size, message = False, None, f"backup failed: {exc}"
+        if not written:
+            try:   # a half-written zip must not pass for that day's copy
+                os.remove(zip_path)
+            except OSError:
+                pass
     con.execute(
         "INSERT INTO backup_runs (started_at, finished_at, trigger, actor, file, size_bytes, ok, restore_ok, restore_detail, destinations)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
