@@ -36,7 +36,9 @@ POLICIES = {
     "date_format": dict(area="general", kind="choice", default="d MMM yyyy", choices=tuple(DATE_FORMATS),
                         label="Date format", help="How dates read across the app."),
     "working_days": dict(area="general", kind="multi", default="Mon,Tue,Wed,Thu,Fri", choices=WEEKDAYS,
-                         label="Working week", help="Reminders and digests go out on these days only."),
+                         label="Working week", help="Stage lengths and SLAs count these days (Settings → Projects & workflow); reminders and digests go out on them only."),
+    "holidays": dict(area="general", kind="dates", default="", max=4000, optional=True, label="Public holidays",
+                     help="One per line: \"2026-12-02 National Day\", or a span \"2027-03-20 to 2027-03-22 Eid al-Fitr\" (dates as announced). Not counted as working days; no digest or reminders on them."),
     "default_theme": dict(area="general", kind="choice", default="system", choices=THEME_CHOICES,
                           label="Theme for new people", help="Each person can change their own on the Account page."),
     "default_accent": dict(area="general", kind="choice", default="blue", choices=ACCENT_CHOICES,
@@ -134,6 +136,8 @@ POLICIES = {
                              label="Stage template for new projects", help="Pre-selected on the new project form."),
     "default_stage_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Default stage length (days)",
                                help="How long a stage is assumed to take when neither the plan nor its SLA says — for the forecast and the suggested plan."),
+    "count_working_days": dict(area="workflow", kind="bool", default=True, label="Count stage lengths and SLAs in working days",
+                               help="Weekends outside the working week and public holidays (Settings → General) do not count. Off: calendar days. Gaps between dates, such as days late, are always calendar days."),
     "rag_amber_days": dict(area="workflow", kind="int", default=1, min=0, max=90, label="Amber after (days late)",
                            help="A rollout turns amber when it is forecast to finish more than this many days after its target date."),
     "rag_red_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Red after (days late)",
@@ -218,6 +222,13 @@ def _parse(entry, raw):
         if len(text) > entry["max"]:
             raise ValueError(f"up to {entry['max']} characters")
         return text
+    if kind == "dates":
+        from services.workdays import parse_holidays
+        parse_holidays(v)
+        text = "\n".join(line.strip() for line in v.splitlines() if line.strip())
+        if len(text) > entry["max"]:
+            raise ValueError(f"up to {entry['max']} characters")
+        return text
     if kind == "text":
         if (not v and not entry.get("optional")) or len(v) > entry["max"]:
             raise ValueError(f"up to {entry['max']} characters" if entry.get("optional") else f"1 to {entry['max']} characters")
@@ -280,7 +291,7 @@ def save_policies(area, form):
     for key, e in POLICIES.items():
         if e["area"] != area:
             continue
-        raw = form.get(key, "" if e["kind"] in ("bool", "multi", "domains", "emails", "url", "lines") else None)
+        raw = form.get(key, "" if e["kind"] in ("bool", "multi", "domains", "emails", "url", "lines", "dates") else None)
         if raw is None:
             continue
         try:
@@ -332,8 +343,10 @@ def local_today(db=None):
 
 
 def is_working_day(day=None, db=None):
+    """A day in the working week that is not a public holiday."""
+    from services.workdays import _calendar
     day = day or local_today(db)
-    return WEEKDAYS[day.weekday()] in policy("working_days", db)
+    return WEEKDAYS[day.weekday()] in policy("working_days", db) and day not in _calendar((), policy("holidays", db))[1]
 
 
 def email_domain_allowed(email, db=None):

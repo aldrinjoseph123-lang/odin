@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { PlanGantt, RagPill } from "@/components/PlanGantt"
 import { Ago } from "@/components/Ago"
 import { ApiError, plan as loadPlan, rebaseline, savePlan, type PlanData } from "@/lib/api"
-import { fillSuggested, setDate, type PlanRow } from "@/lib/plan"
+import { fillSuggested, setDate, workDays, type PlanRow } from "@/lib/plan"
 import { cn } from "@/lib/utils"
 import { fmtDate } from "@/lib/format"
 
@@ -70,12 +70,12 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
           <thead><tr className="border-b border-border text-left text-[11.5px] text-muted-foreground">
-            {["Stage", "Planned start", "Planned end", "Days", "SLA", "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className="px-2 py-1.5 font-normal">{h}</th>)}
+            {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", "SLA", "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className="px-2 py-1.5 font-normal">{h}</th>)}
           </tr></thead>
           <tbody>
             {d.stages.map((s, i) => {
               const r = rows[i]
-              const days = r.plan_start && r.plan_end ? Math.round((Date.parse(r.plan_end) - Date.parse(r.plan_start)) / 864e5) : null
+              const days = r.plan_start && r.plan_end ? workDays(r.plan_start, r.plan_end, d.calendar) : null
               return (
                 <tr key={s.id} className={cn("border-b border-border last:border-0", s.status === "current" && "bg-accent/40")}>
                   <td className="px-2 py-1.5 font-medium">{s.name}{s.status === "current" && <span className="ml-1.5 text-[11px] font-normal text-primary-text">now</span>}</td>

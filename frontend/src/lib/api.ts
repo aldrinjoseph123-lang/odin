@@ -136,6 +136,8 @@ export const flowDetail = (id: number) => getJson<FlowDetail>(`/api/projects/${i
 
 // ---- the plan and the RAID register (services/plan.py, services/raid.py) ----
 export type Rag = "green" | "amber" | "red" | "done"
+// working: stage lengths count working days; week: Python weekday numbers (Mon = 0); off: holidays
+export type WorkCalendar = { working: boolean; week: number[]; off: string[] }
 export type PlanStage = {
   id: number; name: string; position: number; sla_days: number | null; status: "done" | "skipped" | "current" | "next"
   plan_start: string | null; plan_end: string | null; base_start: string | null; base_end: string | null
@@ -143,7 +145,7 @@ export type PlanStage = {
   planned_days: number; actual_days: number | null; slip_days: number | null; suggested_start: string; suggested_end: string
 }
 export type PlanData = {
-  stages: PlanStage[]; has_plan: boolean; baseline_at: string | null; today: string; closed: boolean; default_days: number; pct_complete: number
+  stages: PlanStage[]; has_plan: boolean; baseline_at: string | null; today: string; closed: boolean; default_days: number; pct_complete: number; calendar?: WorkCalendar
   finish: { forecast: string | null; planned: string | null; baseline: string | null; target: string | null; vs_target_days: number | null; vs_baseline_days: number | null; days_to_target: number | null }
   health: { rag: Rag; reasons: string[]; confidence: "high" | "medium" | "low" }
   changes: { stage: string | null; field: string; old: string | null; new: string | null; reason: string | null; author: string; created_at: string }[]
@@ -337,7 +339,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 // ---- settings ----
 export type Policy = {
   key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "backups" | "reports" | "audit"
-  kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines"
+  kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines" | "dates"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
 }
 export type BackupRun = {

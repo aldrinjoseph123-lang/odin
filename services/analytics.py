@@ -132,16 +132,28 @@ def stage_sla_state(project, sla_by_stage, terminal_stage, now=None):
     sla_days = sla_by_stage.get(project["stage"])
     if not sla_days or project["stage"] == terminal_stage:
         return None
-    entered = _parse(project["stage_entered_at"]) if project["stage_entered_at"] else None
-    if entered is None:
+    days = days_in_stage(project["stage_entered_at"], now)
+    if days is None:
         return None
-    days = ((now or datetime.utcnow()) - entered).total_seconds() / 86400
     return {
         "days": days,
         "sla_days": sla_days,
         "over_by": days - sla_days,
         "breached": days > sla_days,
     }
+
+
+def days_in_stage(entered_at, now=None):
+    """Days since `entered_at` (fractional), leaving out non-working days
+    when the workspace counts working days (services/workdays.py)."""
+    from policies import local_date
+    from services import workdays
+    entered = _parse(entered_at) if entered_at else None
+    if entered is None:
+        return None
+    now = now or datetime.utcnow()
+    off = workdays.off_between(local_date(entered.isoformat()), local_date(now.isoformat()), workdays.calendar())
+    return max(0.0, (now - entered).total_seconds() / 86400 - off)
 
 
 def sla_by_stage(stage_rows):

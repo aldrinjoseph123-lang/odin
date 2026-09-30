@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { addDays, daysBetween, fillSuggested, setDate, type PlanRow } from "./plan"
+import { addDays, daysBetween, fillSuggested, setDate, workDays, type PlanRow } from "./plan"
 
 const rows: PlanRow[] = [
   { id: 1, plan_start: "2026-10-01", plan_end: "2026-10-06", suggested_start: "2026-10-01", suggested_end: "2026-10-08" },
@@ -8,6 +8,12 @@ const rows: PlanRow[] = [
 ]
 
 describe("plan editing", () => {
+  it("counts working days without weekends and holidays", () => {
+    const cal = { working: true, week: [0, 1, 2, 3, 4], off: ["2026-12-02"] }
+    expect(workDays("2026-11-27", "2026-12-04", cal)).toBe(4)          // Fri to Fri: Mon, Tue, Thu, Fri
+    expect(workDays("2026-11-27", "2026-12-04", { ...cal, working: false })).toBe(7)
+    expect(workDays("2026-11-27", "2026-12-04")).toBe(7)
+  })
   it("counts and adds days across a month end", () => {
     expect(addDays("2026-10-30", 3)).toBe("2026-11-02")
     expect(daysBetween("2026-10-30", "2026-11-02")).toBe(3)

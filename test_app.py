@@ -2633,6 +2633,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("UPDATE project_stages SET sla_days = 2 WHERE project_id = 3 AND position = 0")
             db.execute("UPDATE projects SET stage_entered_at = datetime('now','-5 days') WHERE name='Stuck'")
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.count_working_days', '0')")   # calendar days: today's weekday must not matter
             uid = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()["id"]
             db.commit()
         self.client.post("/projects/3/tasks", data={"title": "Call vendor", "assignee_id": uid, "due_date": "2026-10-01"})
@@ -4111,11 +4112,35 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     # ---- stage SLAs ------------------------------------------------------
 
+    def test_working_days_and_holidays_drive_plans_and_the_digest(self):
+        from datetime import date
+        from policies import is_working_day
+        from services import plan, workdays
+        r = self.client.post("/settings/policies/general", data={"working_days": "Mon,Tue,Wed,Thu,Fri", "holidays": "02/12/2026 National Day"}, headers={"Accept": "application/json"})
+        self.assertIn("Public holidays", str(r.get_json()))   # refused, and nothing stored
+        self.client.post("/settings/policies/general", data={"working_days": "Mon,Tue,Wed,Thu,Fri", "holidays": "2026-12-02 to 2026-12-03 National Day"})
+        with app_module.app.app_context():
+            cal = workdays.calendar()
+            self.assertFalse(is_working_day(date(2026, 12, 3)))                         # no digest on a holiday
+            rows = [{"id": 1, "sla_days": 3}, {"id": 2, "sla_days": None}]
+            first = plan.suggested_plan(rows, date(2026, 11, 30), 7, cal)[0]            # Mon + 3 working days, Wed and Thu off
+            self.assertEqual(first["plan_end"], "2026-12-07")
+        self._set_policy(count_working_days="0")
+        with app_module.app.app_context():
+            self.assertEqual(plan.suggested_plan(rows, date(2026, 11, 30), 7)[0]["plan_end"], "2026-12-03")
+
     def test_stage_sla_state_flags_only_real_breaches(self):
         from services.analytics import stage_sla_state
         from datetime import datetime
         now = datetime(2026, 1, 20)
         base = {"stage": "Kickoff", "stage_entered_at": "2026-01-01T00:00:00"}
+        ctx = app_module.app.app_context(); ctx.push(); self.addCleanup(ctx.pop)
+        # working days (the default): Thu 1 Jan to Tue 20 Jan less six weekend days and a holiday
+        self._set_policy(holidays="2026-01-06 A holiday")
+        self.assertAlmostEqual(stage_sla_state(base, {"Kickoff": 7}, "Closed", now=now)["days"], 12.0, places=3)
+        self._set_policy(count_working_days="0")
+        from flask import g
+        g.pop("policy_rows", None)
 
         breached = stage_sla_state(base, {"Kickoff": 7}, "Closed", now=now)
         self.assertTrue(breached["breached"])

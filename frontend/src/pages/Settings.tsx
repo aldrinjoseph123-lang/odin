@@ -202,7 +202,7 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
       <form onSubmit={submit} className="grid gap-4">
         <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
           {policies.map((p) => (
-            <div key={p.key} className={cn("grid content-start gap-1", p.kind === "multi" && "md:col-span-2")}>
+            <div key={p.key} className={cn("grid content-start gap-1", (p.kind === "multi" || p.kind === "dates") && "md:col-span-2")}>
               {p.kind === "bool" ? (
                 <label className="flex items-start gap-2 text-[13px] font-medium">
                   <input type="checkbox" checked={!!v[p.key]} onChange={(e) => setV({ ...v, [p.key]: e.target.checked })} className="mt-0.5 h-3.5 w-3.5 accent-primary" />{p.label}
@@ -226,6 +226,10 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               {p.kind === "text" && p.multiline && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })}
                   className="w-full max-w-2xl rounded-md border border-input bg-background p-2 text-[13px] leading-relaxed" />
+              )}
+              {p.kind === "dates" && (
+                <textarea id={`pol-${p.key}`} rows={5} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
+                  placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[12.5px]" />
               )}
               {p.kind === "lines" && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}

@@ -7,6 +7,19 @@ const toDay = (iso: string) => Date.parse(`${iso}T00:00:00Z`)
 export const addDays = (iso: string, n: number) => new Date(toDay(iso) + n * DAY).toISOString().slice(0, 10)
 export const daysBetween = (a: string, b: string) => Math.round((toDay(b) - toDay(a)) / DAY)
 
+// A stage's length as the server counts it: working days in (a, b] when the
+// workspace counts them (services/workdays.py), else calendar days.
+export function workDays(a: string, b: string, cal?: { working: boolean; week: number[]; off: string[] }) {
+  if (!cal?.working || !cal.week.length) return daysBetween(a, b)
+  const off = new Set(cal.off)
+  let n = 0
+  for (let i = 1; i <= daysBetween(a, b); i++) {
+    const d = addDays(a, i)
+    if (cal.week.includes((new Date(toDay(d)).getUTCDay() + 6) % 7) && !off.has(d)) n++
+  }
+  return n
+}
+
 // Set one date. Moving a start keeps the stage's length; moving an end
 // changes it. With `cascade`, every later stage moves by the same number of
 // days the end did, so the plan stays back to back.

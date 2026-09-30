@@ -14,15 +14,17 @@ The forecast answers "when will this really finish?":
 * each stage after it starts when the one before ends and lasts its planned
   length — the plan's, else the stage's SLA, else the workspace default.
 
-The last stage of a list is the finish line (Closed and the like): it takes
-no time. Health is judged against the target date and the baseline with the
+Lengths count working days when the workspace does (services/workdays.py);
+gaps between dates (slip, days after target) are calendar days. The last
+stage of a list is the finish line (Closed and the like): it takes no time. Health is judged against the target date and the baseline with the
 thresholds in Settings → Workflow.
 """
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from db import get_db
 from policies import local_today, policy, local_date
+from services import workdays
 from services.analytics import _parse, stage_timeline
 
 ISO = "%Y-%m-%d"
@@ -52,14 +54,17 @@ def _visits(project, notes, stage_names):
     return out
 
 
-def suggested_plan(rows, start, default_days):
+def suggested_plan(rows, start, default_days, cal=None):
     """A plan from nothing: stages back to back from `start`, each lasting
-    its SLA or the default; the last stage is a zero-length finish line."""
+    its SLA or the default (working days, when the workspace counts them);
+    the last stage is a zero-length finish line."""
+    cal = cal or workdays.calendar()
     out, at = [], start
     for i, r in enumerate(rows):
         length = 0 if i == len(rows) - 1 else (r["sla_days"] or default_days)
-        out.append({"id": r["id"], "plan_start": _iso(at), "plan_end": _iso(at + timedelta(days=length))})
-        at = at + timedelta(days=length)
+        end = workdays.add(at, length, cal)
+        out.append({"id": r["id"], "plan_start": _iso(at), "plan_end": _iso(end)})
+        at = end
     return out
 
 
@@ -81,14 +86,16 @@ def build(project, rows=None, notes=None, risks=None):
     cur = names.index(project["stage"]) if project["stage"] in names else 0
     visits = _visits(project, notes, names)
     start = _d(project["start_date"]) or _d(project["created_at"]) or today
-    suggested = {s["id"]: s for s in suggested_plan(rows, start, default_days)}
+    cal = workdays.calendar()
+    wd = lambda a, b: workdays.between(a, b, cal)   # noqa: E731   durations: working days; gaps between dates stay _days
+    suggested = {s["id"]: s for s in suggested_plan(rows, start, default_days, cal)}
     has_plan = any(r["plan_start"] for r in rows)
     last = len(rows) - 1
 
     stages, prev_end = [], None
     for i, r in enumerate(rows):
         p_start, p_end = _d(r["plan_start"]), _d(r["plan_end"])
-        length = _days(p_start, p_end) if p_start and p_end else (0 if i == last else (r["sla_days"] or default_days))
+        length = wd(p_start, p_end) if p_start and p_end else (0 if i == last else (r["sla_days"] or default_days))
         a_start, a_end = visits.get(r["name"], (None, None))
         if i < cur:
             status = "done" if a_start else "skipped"
@@ -96,12 +103,12 @@ def build(project, rows=None, notes=None, risks=None):
         elif i == cur:
             status = "current"
             f_start = a_start or _d(project["stage_entered_at"]) or today
-            f_end = f_start if i == last else max(f_start + timedelta(days=length), today)
+            f_end = f_start if i == last else max(workdays.add(f_start, length, cal), today)
             a_end = None
         else:
             status = "next"
             f_start = prev_end or today
-            f_end = f_start + timedelta(days=length)
+            f_end = workdays.add(f_start, length, cal)
             a_start = a_end = None
         prev_end = f_end
         compare = _d(r["base_end"]) or p_end
@@ -109,7 +116,7 @@ def build(project, rows=None, notes=None, risks=None):
             "id": r["id"], "name": r["name"], "position": r["position"], "sla_days": r["sla_days"], "status": status,
             "plan_start": _iso(p_start), "plan_end": _iso(p_end), "base_start": r["base_start"], "base_end": r["base_end"],
             "actual_start": _iso(a_start), "actual_end": _iso(a_end), "forecast_start": _iso(f_start), "forecast_end": _iso(f_end),
-            "planned_days": length, "actual_days": _days(a_start, a_end or (today if status == "current" else None)),
+            "planned_days": length, "actual_days": wd(a_start, a_end or (today if status == "current" else None)),
             "slip_days": _days(compare, f_end) if compare else None,
             "suggested_start": suggested[r["id"]]["plan_start"], "suggested_end": suggested[r["id"]]["plan_end"],
         })
@@ -130,13 +137,15 @@ def build(project, rows=None, notes=None, risks=None):
     done = sum(max(s["planned_days"], 0) for s in stages if s["status"] in ("done", "skipped"))
     c = stages[cur] if stages else None
     if c and c["planned_days"]:
-        done += min(c["planned_days"], max(0, _days(_d(c["forecast_start"]), today) or 0))
+        done += min(c["planned_days"], max(0, wd(_d(c["forecast_start"]), today) or 0))
     closed = bool(stages) and cur == last
     pct = 100 if closed else round(100 * done / total)
 
     health = _health(project, stages, cur, finish, risks, today, closed, has_plan)
     return {"stages": stages, "finish": finish, "health": health, "pct_complete": pct, "has_plan": has_plan,
-            "baseline_at": project["baseline_at"], "today": today.isoformat(), "closed": closed, "default_days": default_days}
+            "baseline_at": project["baseline_at"], "today": today.isoformat(), "closed": closed, "default_days": default_days,
+            # for the editor's live day counts: Python weekday numbers (Mon = 0) and the holidays
+            "calendar": {"working": policy("count_working_days"), "week": sorted(cal[0]), "off": sorted(d.isoformat() for d in cal[1])}}
 
 
 def _health(project, stages, cur, finish, risks, today, closed, has_plan):

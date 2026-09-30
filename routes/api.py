@@ -17,7 +17,7 @@ from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_dat
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
 from security import csrf_token, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
-from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
+from services.analytics import _parse, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline
 from services.audit import audit_log
 from services import signoff as signoff_service
 from services.activity import enabled as activity_enabled, summary as activity_summary
@@ -969,13 +969,14 @@ def api_flow():
         schedule = schedule_status(p, terminal_stage=terminal)
         state = _flow_state(p, sla, schedule)
         idle = _days_since(p["updated_at"], now)
+        in_stage = days_in_stage(p["stage_entered_at"], now)
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
             "approval": (approvals[p["id"]]["status"] if p["id"] in approvals and approvals[p["id"]]["stage"] == p["stage"] else None),
             "stage_index": stages.index(p["stage"]) if p["stage"] in stages else 0,
             "owner_name": p["owner_name"], "delivery_mode": p["delivery_mode"],
-            "target_end_date": p["target_end_date"], "days_in_stage": _days_since(p["stage_entered_at"], now),
+            "target_end_date": p["target_end_date"], "days_in_stage": None if in_stage is None else round(in_stage, 1),
             "sla_days": slas.get(p["stage"]), "over_by": round(sla["over_by"], 1) if sla else None,
             "state": state, "open_tasks": p["open_tasks"], "total_tasks": p["total_tasks"],
             "next_task": next_task.get(p["id"]), "updated_at": p["updated_at"],
