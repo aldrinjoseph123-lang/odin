@@ -424,7 +424,7 @@ details.change .also { margin: 6px 0 0 14px; display: flex; gap: 6px; flex-wrap:
 
   <!-- DEPLOY -->
   <section class="view" id="deploy" role="tabpanel" aria-labelledby="t-deploy" hidden>
-    <p class="lede">From a change on the Mac to production. Nothing reaches the server by itself: a release is a git tag, and the server moves to it only when someone runs the update.</p>
+    <p class="lede">From a change to production. Everything is built on the dev branch; a pull request brings it to main once you have tested it and approved; CI then tags the release, and the server updates itself to that tag within five minutes.</p>
     <div class="diagram" id="deploy-diagram"></div>
     <div class="twocol">
       <div class="panel">
@@ -432,7 +432,7 @@ details.change .also { margin: 6px 0 0 14px; display: flex; gap: 6px; flex-wrap:
         <ul class="plain" id="fetch-facts"></ul>
       </div>
       <div class="panel">
-        <h3>The update, as it is run</h3>
+        <h3>What the server runs, on its own</h3>
         <pre class="cmd" id="update-cmds"></pre>
         <h3 style="margin-top:14px">Going back</h3>
         <pre class="cmd" id="rollback-cmds"></pre>
@@ -1150,14 +1150,14 @@ let pickFolder = () => {};
   const jobs = (REPO.ci && REPO.ci.jobs.length) || 4;
   $("#deploy-diagram").innerHTML = `<svg viewBox="0 0 1120 410" xmlns="${NS}" role="img" aria-label="From a change to production">
     ${arrowDefs("dp")}
-    <text x="20" y="26" class="t-display">THE MAC</text><text x="330" y="26" class="t-display">GITHUB</text><text x="760" y="26" class="t-display">THE SERVER · /OPT/ODIN</text>
-    ${box(20, 40, 250, 84, "Change and local checks", ["code with Claude Code", "unit tests, UI suite, UAT on :5051"])}
-    ${box(20, 150, 250, 64, "git push to main", ["aldrinjoseph123-lang/odin"])}
+    <text x="20" y="26" class="t-display">DEV BRANCH</text><text x="330" y="26" class="t-display">MAIN BRANCH</text><text x="760" y="26" class="t-display">THE SERVER · EVERY 5 MINUTES</text>
+    ${box(20, 40, 250, 84, "Build on dev", ["every change committed to dev;", "CI on each push; UAT on :5051"])}
+    ${box(20, 150, 250, 64, "Pull request dev → main", ["VERSION raised; you merge it"])}
     ${box(330, 40, 190, 84, `CI (${jobs} jobs)`, ["Python · front end", "UI suite · Docker boot"])}
     ${box(330, 150, 190, 64, "Golden screenshots", ["refreshed by a manual run"], "off")}
-    ${box(560, 40, 160, 84, "Release", ["VERSION set, map", "regenerated, then tag"])}
-    ${box(760, 40, 340, 64, "1 · Back up", ["docker compose exec -T app python backup.py"])}
-    ${box(760, 118, 340, 64, "2 · Fetch the tag", ["git fetch --tags && git checkout vX.Y.Z", "read-only deploy key, SSH alias github-odin"])}
+    ${box(560, 40, 160, 84, "Release tag", ["CI green on main:", "tagged v<VERSION>"])}
+    ${box(760, 40, 340, 64, "1 · New tag on main? Back up", ["git fetch (read-only deploy key) · backup.py"])}
+    ${box(760, 118, 340, 64, "2 · Check out the tag", ["git checkout vX.Y.Z", "forward only; a failed tag is not retried"])}
     ${box(760, 196, 340, 64, "3 · Rebuild and restart", ["docker compose up -d --build", "Node builds the bundle, Python runs it"])}
     ${box(760, 274, 340, 50, "4 · Preflight", ["docker compose exec -T app python preflight.py"])}
     ${box(760, 338, 340, 56, "Live: odin.protect24x7.com", ["through the Cloudflare tunnel"])}
@@ -1165,25 +1165,28 @@ let pickFolder = () => {};
     ${e("M425 150 V126", "dash")} ${lab(436, 142, "commit the images")}
     ${e("M720 72 H758", "accent", "aa")}
     ${e("M930 104 V116")} ${e("M930 182 V194")} ${e("M930 260 V272")} ${e("M930 324 V336")}
-    ${lab(560, 150, "The server pulls over SSH")} ${lab(560, 166, "when someone runs the update;")} ${lab(560, 182, "GitHub never pushes to it.")}
+    ${lab(560, 150, "The server pulls over SSH (cron,")} ${lab(560, 166, "deploy/odin-update.sh); GitHub")} ${lab(560, 182, "never pushes to it. Preflight")} ${lab(560, 198, "fails? Back to the previous tag.")}
     ${lab(20, 250, "Data never moves: the database, documents and")} ${lab(20, 266, "backups live on the server's /data volume, which")} ${lab(20, 282, "survives every rebuild. .env (SECRET_KEY) stays")} ${lab(20, 298, "on the server and is never in git.")}
   </svg>`;
   $("#fetch-facts").innerHTML = [
     "The server holds a git clone in /opt/odin, checked out at a release tag, never at main.",
     "It reaches GitHub with its own read-only deploy key (odin-server) through the SSH alias github-odin. It can read the repository and nothing else.",
-    "Nothing is automatic: no webhook, no scheduled pull. An update happens only when someone runs the steps, and production changes wait for your go-ahead.",
+    "Every five minutes a cron job (deploy/odin-update.sh, installed as ~/odin-update.sh) fetches main and its tags. When a newer release tag exists it backs up, checks the tag out, rebuilds and runs preflight; if any step fails it returns to the previous tag and does not retry the failed one. It logs to ~/odin-update.log.",
+    "Only tags reach production, and a tag exists only after the dev → main pull request was merged and CI passed on main (the Release workflow creates it). Merging the pull request is the go-ahead.",
     "The image is built on the server from the checked-out code: stage 1 (Node) builds the React bundle, stage 2 (Python) installs the pinned requirements and runs gunicorn as an unprivileged user.",
     "Secrets are not in the repository: SECRET_KEY and the compose overlay choice live in /opt/odin/.env.",
     "The app applies schema changes itself when it starts (new tables and columns only), so an update needs no separate migration step.",
   ].map((x) => `<li>${esc(x)}</li>`).join("");
-  $("#update-cmds").textContent = ["ssh aldrn@192.168.1.237", "cd /opt/odin", "docker compose exec -T app python backup.py", "git fetch --tags && git checkout vX.Y.Z", "docker compose up -d --build", "docker compose exec -T app python preflight.py"].join("\n");
-  $("#rollback-cmds").textContent = ["git checkout vPREVIOUS && docker compose up -d --build", "# the database only ever gains tables and columns, so an", "# older release runs on it; restore the pre-update backup", "# only if the release changed data that must be undone"].join("\n");
+  $("#update-cmds").textContent = ["# cron: */5 * * * * $HOME/odin-update.sh >> $HOME/odin-update.log 2>&1", "cd /opt/odin && git fetch --tags origin main", "docker compose exec -T app python backup.py", "git checkout vX.Y.Z", "docker compose up -d --build", "docker compose exec -T app python preflight.py", "# see what it did: tail ~/odin-update.log"].join("\n");
+  $("#rollback-cmds").textContent = ["# preferred: fix on dev, raise VERSION, merge again", "# by hand, holding the bad release back from the updater:", "echo vBAD > ~/.odin-update/failed", "git checkout vPREVIOUS && docker compose up -d --build", "# the database only gains tables and columns, so an older", "# release runs on it; restore the pre-update backup only", "# if the release changed data that must be undone"].join("\n");
   $("#env-table").innerHTML = `<thead><tr><th>Where</th><th>What for</th><th>Data</th></tr></thead><tbody>${[
+    ["dev branch", "where every change lands; CI runs on each push", "—"],
+    ["main branch", "released code only, through a pull request from dev", "—"],
     ["Mac · port 5050", "your own local Odin, for development", "your own database; never used for tests"],
-    ["Mac · port 5051 (UAT)", "trying a change before production", "uat-data/, seeded by scripts/seed_uat.py"],
+    ["Mac · port 5051 (UAT)", "where you test dev before approving the pull request", "uat-data/, seeded by scripts/seed_uat.py"],
     ["Mac and CI · port 5099", "the Playwright UI suite", "a throw-away database, seeded fresh each run"],
     ["GitHub runners", "CI on every push", "throw-away"],
-    ["VM odin · 192.168.1.237", "production, at a release tag", "the /data volume: the real database, documents, backups"],
+    ["VM odin · 192.168.1.237", "production: follows the newest release tag on main", "the /data volume: the real database, documents, backups"],
   ].map((r) => `<tr><td><b style="font-weight:600">${r[0]}</b></td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</tbody>`;
   const D = REPO.docker;
   if (D) $("#docker-facts").innerHTML = [
@@ -1208,7 +1211,8 @@ let pickFolder = () => {};
     `This copy describes Odin ${CL.version ? "v" + CL.version : "(no version set)"}. Generated from git; a change appears here when it is committed and the map is regenerated.`;
   let area = "all", pick = (CL.releases.find((r) => r.current) || CL.releases[0]).version;
   $("#area-chips").innerHTML = ["all", ...ORDER].map((a) => `<button class="chip" aria-pressed="${a === "all"}" data-area="${a}">${a === "all" ? "Every area" : `<i class="sw" style="background:${AREA[a]};border:0"></i>${a}`}</button>`).join("");
-  const badge = (r) => (r.current ? `<span class="badge now">this version</span>` : "") + (r.untagged ? `<span class="badge draft">not yet released</span>` : "");
+  // the section named by VERSION is "this version" (on a server, the one it runs); other untagged work is still on dev
+  const badge = (r) => (r.current ? `<span class="badge now">this version</span>` : r.untagged ? `<span class="badge draft">not yet released</span>` : "");
   $("#versions").innerHTML = CL.releases.map((r) => `<button data-v="${esc(r.version)}"><b>${esc(r.version)}${badge(r)}</b><small>${esc(r.date)} · ${r.commits.length} change${r.commits.length === 1 ? "" : "s"}</small></button>`).join("");
   const item = (c) => `<details class="change"><summary><span>${esc(c.subject)}</span><span class="meta">${esc(c.date)} · ${esc(c.id)} · ${c.files} file${c.files === 1 ? "" : "s"}</span></summary>
     ${c.body ? `<div class="body">${esc(c.body)}</div>` : ""}${c.areas.length > 1 ? `<div class="also">${c.areas.map((a) => `<span class="tag">${esc(a)}</span>`).join("")}</div>` : ""}</details>`;

@@ -1,3 +1,17 @@
+# Branches and releases (30 Sep 2026, the user's call)
+
+All work goes on the **`dev`** branch; never commit to `main` directly. When the
+user has tested dev (UAT on port 5051) and approves, open a pull request
+**dev → main** that raises `VERSION`; the user merges it (or tells you to).
+CI then runs on main and the **Release** workflow (`.github/workflows/release.yml`)
+tags that commit `v<VERSION>`. The production server's cron job
+(`deploy/odin-update.sh`, installed as `~/odin-update.sh`, log `~/odin-update.log`)
+fetches main every 5 minutes and moves to the newest tag: backup, checkout,
+rebuild, preflight, and back to the previous tag if any step fails. Merging the
+pull request is the go-ahead for production; nothing else deploys. GitHub's free
+plan has no branch protection on this private repository, so the rule is kept by
+process. Use merge commits (not squash) so the change log keeps each commit.
+
 # Visual authority
 
 **DESIGN.md is the visual authority for the React front end** (`frontend/`), written

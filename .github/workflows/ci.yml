@@ -1,11 +1,11 @@
-# Runs on every push and pull request: the unit suite on the Python the image
+# Runs on every push to dev and main and on every pull request: the unit suite on the Python the image
 # uses, then a real Docker build with a boot + health check — the image was
 # never built on the development machine, so this is where it is proven.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
   workflow_dispatch:
     inputs:
