@@ -254,8 +254,8 @@ def front_tests():
 
 def self_checks():
     out = []
-    for path in tracked("services/") + tracked("scripts/"):
-        if path.endswith(".py") and '__name__ == "__main__"' in HEAD[path] and path != "scripts/build_system_map.py":
+    for path in tracked("services/"):
+        if path.endswith(".py") and '__name__ == "__main__"' in HEAD[path]:
             out.append(path)
     return sorted(out)
 
