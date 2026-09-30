@@ -21,6 +21,8 @@ if ! python3 scripts/build_system_map.py --check >/dev/null 2>&1; then
 JSON
   exit 0
 fi
+# golden screenshots change nothing the map describes
+CODE="$CODE :(exclude)frontend/e2e/visual.spec.ts-snapshots"
 code_at=$(git log -1 --format=%ct -- $CODE 2>/dev/null)
 map_at=$(git log -1 --format=%ct -- docs/system-map.html 2>/dev/null)
 [ -n "$code_at" ] || exit 0
