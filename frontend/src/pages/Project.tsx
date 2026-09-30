@@ -255,7 +255,7 @@ function NoteForm({ busy, people, onSubmit }: { busy: boolean; people: string[];
         <Button type="submit" size="sm" disabled={busy || !note.trim()}>Add</Button>
       </div>
       {matches.length > 0 && (
-        <ul role="listbox" aria-label="Mention someone" className="absolute left-0 top-9 z-20 w-64 overflow-hidden panel bg-popover py-1 text-[13px] shadow-lg">
+        <ul role="listbox" aria-label="Mention someone" className="absolute left-0 top-9 z-20 w-64 overflow-hidden panel bg-popover py-1 text-[13px] shadow-pop">
           {matches.map((n) => <li key={n} role="option" aria-selected={false}><button type="button" onClick={() => pick(n)} className="w-full px-3 py-1.5 text-left hover:bg-muted">@{n}</button></li>)}
         </ul>
       )}

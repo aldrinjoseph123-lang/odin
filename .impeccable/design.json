@@ -1,12 +1,28 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-28T07:51:30Z",
+  "generatedAt": "2026-09-30T12:00:00Z",
   "title": "Design System: Odin",
   "extensions": {
     "colorMeta": {
       "ground": {
         "role": "neutral",
         "displayName": "Ground",
+        "canonical": "#F6F6F9",
+        "tonalRamp": [
+          "oklch(15% 0.004 286)",
+          "oklch(25% 0.004 286)",
+          "oklch(38% 0.004 286)",
+          "oklch(50% 0.004 286)",
+          "oklch(62% 0.004 286)",
+          "oklch(75% 0.004 286)",
+          "oklch(87% 0.004 286)",
+          "oklch(97% 0.004 286)"
+        ],
+        "note": "`--background` is `color-mix(in srgb, var(--primary) 7%, #F6F6F9)`: the page ground carries the user's accent at 7%, so it changes with the accent and is never a second hue. Dark: #0E1014."
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card",
         "canonical": "#FFFFFF",
         "tonalRamp": [
           "oklch(15% 0.000 90)",
@@ -16,8 +32,9 @@
           "oklch(62% 0.000 90)",
           "oklch(75% 0.000 90)",
           "oklch(87% 0.000 90)",
-          "oklch(95% 0.000 90)"
-        ]
+          "oklch(100% 0.000 90)"
+        ],
+        "note": "`--card` / `--popover`: the white surface every piece of content sits on (the `panel` utility). Dark: card #171A21, popover #1B1F27."
       },
       "ink": {
         "role": "neutral",
@@ -47,7 +64,8 @@
           "oklch(75% 0.243 269)",
           "oklch(87% 0.243 269)",
           "oklch(95% 0.243 269)"
-        ]
+        ],
+        "note": "Default of eight accents (`data-accent`): indigo #4F46E5, violet #7C3AED, teal #0F766E, green #15803D, sky #0369A1, plum #A21CAF, ink #101114. Each sets --primary, --primary-text, --accent, --accent-foreground, --ring."
       },
       "accent-blue-text": {
         "role": "primary",
@@ -127,17 +145,18 @@
       "muted-text": {
         "role": "neutral",
         "displayName": "Muted Text",
-        "canonical": "#6B7280",
+        "canonical": "#5B6270",
         "tonalRamp": [
-          "oklch(15% 0.023 264)",
-          "oklch(25% 0.023 264)",
-          "oklch(38% 0.023 264)",
-          "oklch(50% 0.023 264)",
-          "oklch(62% 0.023 264)",
-          "oklch(75% 0.023 264)",
-          "oklch(87% 0.023 264)",
-          "oklch(95% 0.023 264)"
-        ]
+          "oklch(15% 0.024 264)",
+          "oklch(25% 0.024 264)",
+          "oklch(38% 0.024 264)",
+          "oklch(50% 0.024 264)",
+          "oklch(62% 0.024 264)",
+          "oklch(75% 0.024 264)",
+          "oklch(87% 0.024 264)",
+          "oklch(95% 0.024 264)"
+        ],
+        "note": "30 Sep 2026: darkened from #6B7280 so it holds 4.9:1 on the darkest tinted ground (ink accent at 7%) and every soft fill. Dark: #9AA0AB."
       },
       "chrome-text": {
         "role": "neutral",
@@ -157,17 +176,18 @@
       "hairline": {
         "role": "neutral",
         "displayName": "Hairline",
-        "canonical": "#E4E6EB",
+        "canonical": "#E9EAF0",
         "tonalRamp": [
-          "oklch(15% 0.007 269)",
-          "oklch(25% 0.007 269)",
-          "oklch(38% 0.007 269)",
-          "oklch(50% 0.007 269)",
-          "oklch(62% 0.007 269)",
-          "oklch(75% 0.007 269)",
-          "oklch(87% 0.007 269)",
-          "oklch(95% 0.007 269)"
-        ]
+          "oklch(15% 0.008 277)",
+          "oklch(25% 0.008 277)",
+          "oklch(38% 0.008 277)",
+          "oklch(50% 0.008 277)",
+          "oklch(62% 0.008 277)",
+          "oklch(75% 0.008 277)",
+          "oklch(87% 0.008 277)",
+          "oklch(95% 0.008 277)"
+        ],
+        "note": "`--border`; the card border. Dark: #262B34."
       },
       "stroke": {
         "role": "neutral",
@@ -402,54 +422,89 @@
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Login card title only."
+        "purpose": "Sign-in, reset and email-link h1 (Chakra Petch 600, 24 px)."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Page and pane titles in Chakra Petch — the one brand mark inside the app besides the logo."
+        "purpose": "Page and pane titles in Chakra Petch, 17 px — the one brand mark inside the app besides the logo and the numbered panel labels."
+      },
+      "figure-hero": {
+        "displayName": "Figure — hero",
+        "purpose": "34 px, Inter 600, leading-none, tracking-tight. The one hero number on a page: the portfolio progress percentage, the tasks-completed total, a custom metric's number. Top of the dashboard figure ramp (29 Sep 2026)."
+      },
+      "figure-tile": {
+        "displayName": "Figure — tile",
+        "purpose": "26 px, Inter 600, leading-none, tracking-tight. A tile's headline count (the six headline tiles, My work and People tiles); coloured in the state's text shade only while in that state."
+      },
+      "figure-donut": {
+        "displayName": "Figure — donut",
+        "purpose": "22 px, Inter 600, leading-none. The total inside a donut."
+      },
+      "figure-tonal": {
+        "displayName": "Figure — tonal tile",
+        "purpose": "18 px, Inter 600, leading-none. Small tonal tiles (done / in progress / pending, cycle time, People card figures)."
+      },
+      "figure-legend": {
+        "displayName": "Figure — legend",
+        "purpose": "15 px, Inter 600, leading-none. Counts beside a chart legend. Bottom of the figure ramp."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Nav links, rail copy, empty states, inputs."
+        "purpose": "Nav pills (500), rail copy, empty states, inputs, table cells. 13 px."
       },
       "body-strong": {
         "displayName": "Body Strong",
-        "purpose": "Rollout name in a list row."
+        "purpose": "Rollout name in a list row (13.5 px / 500); dashboard widget titles and the calendar month (13.5 px / 600)."
       },
       "secondary": {
         "displayName": "Secondary",
-        "purpose": "Subtitles, stage node names (600), tasks, filter chips, notes."
+        "purpose": "Subtitles, stage node names (600), tasks, filter chips, notes, success notice. 12.5 px."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "State chips (500) and rail section headers (600, chrome text). Sentence case, never tracked caps."
+        "purpose": "State chips (500), rail / panel section headers and My work group heads (600, chrome text), policy help. Sentence case, never tracked caps. 12 px."
       },
       "caption": {
         "displayName": "Caption",
-        "purpose": "Column heads, durations and SLA under node names."
+        "purpose": "Column heads, durations and SLA under node names, settings group labels, calendar day chips, pop-up table heads. 11.5 px."
       },
       "micro": {
         "displayName": "Micro",
-        "purpose": "Time-strip ticks, nav count badges, avatar initials. The floor."
+        "purpose": "Time-strip ticks, chart axis ticks, count badges, avatar initials (22–24 px avatars), due dates under tasks, figure labels. 11 px: the floor. The only sizes under it are the 10 px initials in a 20 px task avatar and the bell's 10 px unread pill, both glyph-sized, and the 10.5 px brand byline."
       },
       "brand-display-sm": {
         "displayName": "Brand display (phone)",
-        "purpose": "Tagline on the sign-in panel below 640 px."
+        "purpose": "Tagline on the sign-in panel below 640 px (22 px)."
       },
       "brand-display-md": {
         "displayName": "Brand display (tablet)",
-        "purpose": "Tagline on the sign-in panel from 640 px."
+        "purpose": "Tagline on the sign-in panel from 640 px (28 px)."
       },
       "brand-display": {
         "displayName": "Brand display",
-        "purpose": "Tagline on the sign-in panel from 1024 px and the link preview."
+        "purpose": "Tagline on the sign-in panel from 1024 px and the link preview (52 px)."
       },
       "byline": {
         "displayName": "Byline",
-        "purpose": "\"by Protect24x7\" beside the wordmark on brand surfaces."
+        "purpose": "\"by Protect24x7\" beside the wordmark on brand surfaces (Chakra Petch 10.5 px, tracked 0.16em, uppercase)."
       }
     },
-    "shadows": [],
+    "shadows": [
+      {
+        "name": "elevation-card",
+        "value": "0 1px 2px rgb(16 17 20 / 0.04), 0 10px 28px -14px rgb(16 17 20 / 0.14)",
+        "dark": "0 0 0 1px rgb(255 255 255 / 0.03), 0 10px 28px -14px rgb(0 0 0 / 0.6)",
+        "utility": "shadow-card",
+        "purpose": "Every card at rest (`panel`), the nav pill bar, the search pill, the dashboard customise bar, the lifted segment of a segmented control. In dark the first layer is a 1 px white-at-3% ring because a drop shadow alone vanishes on ink."
+      },
+      {
+        "name": "elevation-pop",
+        "value": "0 2px 6px rgb(16 17 20 / 0.06), 0 16px 40px -12px rgb(16 17 20 / 0.22)",
+        "dark": "0 0 0 1px rgb(255 255 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.7)",
+        "utility": "shadow-pop",
+        "purpose": "Floating surfaces: the phone nav sheet, chart tooltips, menus and dialogs. Never on a card at rest."
+      }
+    ],
     "focusRings": [
       {
         "name": "ring-focus",
@@ -459,24 +514,24 @@
       {
         "name": "ring-focus-quiet",
         "value": "0 0 0 2px color-mix(in srgb, var(--ring) 30%, transparent)",
-        "purpose": "Nav search field."
+        "purpose": "Nav search pill."
       },
       {
         "name": "ring-state",
         "value": "0 0 0 3px var(--<state>-soft)",
-        "purpose": "Current stepper dot and current stage node; --muted when on track."
+        "purpose": "Current stepper dot and current stage node; --muted when on track. Also the ring around a stuck rollout bar on the calendar (state-line)."
       },
       {
         "name": "ring-selected",
         "value": "1px solid var(--primary) + background var(--accent)",
-        "purpose": "Selected rollout row."
+        "purpose": "Selected rollout row; active command-palette row and current settings menu item take the wash alone."
       }
     ],
     "motion": [
       {
         "name": "transition-colors",
         "value": "color, background-color, border-color 150ms cubic-bezier(0.4, 0, 0.2, 1)",
-        "purpose": "Hover/selection on rows, chips, nav links, buttons (Tailwind default)."
+        "purpose": "Hover/selection on rows, chips, nav pills, buttons (Tailwind default)."
       },
       {
         "name": "tooltip-enter",
@@ -487,6 +542,16 @@
         "name": "press",
         "value": "translateY(1px) on :active",
         "purpose": "Buttons."
+      },
+      {
+        "name": "skeleton-pulse",
+        "value": "animate-pulse on Muted Fill bars",
+        "purpose": "Page loading skeletons."
+      },
+      {
+        "name": "reduce-motion",
+        "value": "@media (prefers-reduced-motion: reduce): transition/animation duration 0.01ms",
+        "purpose": "Every transition and animation is effectively off under the OS setting; Recharts animations are off unconditionally."
       }
     ],
     "breakpoints": [
@@ -501,6 +566,10 @@
       {
         "name": "lg",
         "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
       }
     ],
     "stateVocabulary": {
@@ -508,7 +577,7 @@
         "text": null,
         "soft": null,
         "line": "--ok-line",
-        "note": "No chip, no row dot; current dot/node ringed ink over --muted."
+        "note": "No chip, no row dot; current dot/node ringed ink over --muted. On the calendar and timeline an on-track rollout bar is the accent, not green."
       },
       "due_soon": {
         "text": "--warn",
@@ -551,10 +620,26 @@
       "css": ".ds-brand-panel{background:#0A0A0A repeating-linear-gradient(135deg,rgb(255 255 255/.035) 0 1px,transparent 1px 14px);color:#fff;padding:32px;display:grid;gap:16px} .ds-eyebrow,.ds-clock{font:600 11px/1 'Chakra Petch',Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#B8B8B4;margin:0} .ds-eyebrow span{color:#E11D2E} .ds-tagline{margin:0;font:700 40px/1.02 'Chakra Petch',Inter,sans-serif;text-transform:uppercase;letter-spacing:-.025em} .ds-tagline span{color:#E11D2E} .ds-clock{display:flex;align-items:center;gap:8px} .ds-clock i{width:6px;height:6px;border-radius:50%;background:#E11D2E}"
     },
     {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The `panel` utility: the one surface content sits on. White card, hairline, 16 px corners (`--radius`), `shadow-card`, on the accent-tinted ground. Widget title 13.5 px semibold, muted subtitle, a pill link at the right.",
+      "html": "<section class=\"ds-panel\"><div class=\"ds-panel__hd\"><div><h3 class=\"ds-panel__h\">Timeline</h3><p class=\"ds-panel__s\">Every active rollout, start to target</p></div><a class=\"ds-pill\" href=\"#\">Open flow</a></div><p class=\"ds-panel__t\">Collect asset inventory</p><p class=\"ds-panel__m\">SALES1 · Sep 15</p></section>",
+      "css": ".ds-panel { font-family: Inter, system-ui, -apple-system, sans-serif; width:360px; padding:16px; border:1px solid var(--border); border-radius:var(--radius); background:var(--card); color:var(--card-foreground); box-shadow:var(--elevation-card); font-size:13px; } .ds-panel__hd { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px; } .ds-panel__h { margin:0; font-size:13.5px; font-weight:600; } .ds-panel__s { margin:2px 0 0; font-size:12px; color:var(--muted-foreground); } .ds-pill { display:inline-flex; align-items:center; height:28px; padding:0 10px; border:1px solid var(--border); border-radius:9999px; background:var(--card); color:var(--foreground); font-size:12.8px; font-weight:500; text-decoration:none; } .ds-pill:hover { background:var(--muted); } .ds-panel__t { margin:0; font-weight:500; } .ds-panel__m { margin:4px 0 0; color:var(--muted-foreground); }"
+    },
+    {
+      "name": "Figure Tile",
+      "kind": "card",
+      "refersTo": "figure-tile",
+      "description": "A headline number: icon + 12 px muted label, a 26 px semibold figure (state text shade only while in that state), a delta pill. Tonal tiles inside a card use 18 px on Muted Fill.",
+      "html": "<div style=\"display:flex;gap:12px\"><button class=\"ds-tile\"><span class=\"ds-tile__l\">Overdue</span><span class=\"ds-tile__n ds-tile__n--bad\">3</span><span class=\"ds-tile__d ds-tile__d--bad\">+1 since 22 Sep</span></button><div class=\"ds-tile ds-tile--tonal\"><span class=\"ds-tile__l\">In progress</span><span class=\"ds-tile__n ds-tile__n--sm\">12</span></div></div>",
+      "css": ".ds-tile { font-family: Inter, system-ui, -apple-system, sans-serif; display:flex; flex-direction:column; align-items:flex-start; gap:6px; width:150px; padding:14px 16px; border:1px solid var(--border); border-radius:var(--radius); background:var(--card); color:var(--foreground); box-shadow:var(--elevation-card); text-align:left; cursor:pointer; } .ds-tile--tonal { background:var(--muted); border-color:transparent; box-shadow:none; border-radius:calc(var(--radius) * 0.8); cursor:default; } .ds-tile__l { font-size:12px; color:var(--muted-foreground); } .ds-tile__n { font-size:26px; font-weight:600; line-height:1; letter-spacing:-0.025em; font-variant-numeric:tabular-nums; } .ds-tile__n--sm { font-size:18px; } .ds-tile__n--bad { color:var(--bad); } .ds-tile__d { display:inline-block; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:500; background:var(--muted); color:var(--muted-foreground); } .ds-tile__d--bad { background:var(--bad-soft); color:var(--bad); }"
+    },
+    {
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The one blue action per view: New project, Advance to {stage}, Log in.",
+      "description": "The one accent action per view: New project, Advance to {stage}, Log in, Notify. Default size 32 px at `--radius`; `sm` 28 px with the radius capped at 12 px.",
       "html": "<button class=\"ds-btn-primary\">Advance to Tuning &amp; UAT <svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></button>",
       "css": ".ds-btn-primary { font-family: Inter, system-ui, -apple-system, sans-serif; display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 10px; border:1px solid transparent; border-radius:var(--radius); background:var(--primary); color:var(--primary-foreground); font-size:14px; font-weight:500; cursor:pointer; transition:background .15s, box-shadow .15s; } .ds-btn-primary:hover { background:color-mix(in srgb, var(--primary) 80%, transparent); } .ds-btn-primary:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); } .ds-btn-primary:active { transform:translateY(1px); } .ds-btn-primary:disabled { opacity:.5; pointer-events:none; }"
     },
@@ -562,17 +647,17 @@
       "name": "Outline Button",
       "kind": "button",
       "refersTo": "button-outline",
-      "description": "Secondary navigation action, e.g. Open project.",
+      "description": "Secondary action, e.g. Open project, Edit, Duplicate. As a `rounded-full` pill it is the widget link and the calendar toolbar.",
       "html": "<button class=\"ds-btn-outline\">Open project</button>",
-      "css": ".ds-btn-outline { font-family: Inter, system-ui, -apple-system, sans-serif; display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border:1px solid var(--border); border-radius:calc(var(--radius) * 0.8); background:var(--background); color:var(--foreground); font-size:12.8px; font-weight:500; cursor:pointer; transition:background .15s; } .ds-btn-outline:hover { background:var(--muted); } .ds-btn-outline:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); }"
+      "css": ".ds-btn-outline { font-family: Inter, system-ui, -apple-system, sans-serif; display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border:1px solid var(--border); border-radius:min(calc(var(--radius) * 0.8), 12px); background:var(--card); color:var(--foreground); font-size:12.8px; font-weight:500; cursor:pointer; transition:background .15s; } .ds-btn-outline:hover { background:var(--muted); } .ds-btn-outline:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); }"
     },
     {
       "name": "Filter Chip",
       "kind": "chip",
       "refersTo": "filter-chip",
-      "description": "List filters: All / Needs attention / Mine. Selected chip inverts to ink.",
+      "description": "List filters and stage-count pills: All / Needs attention / Mine. Selected chip inverts to ink. 32 px (40 px under a coarse pointer).",
       "html": "<div style=\"display:flex;gap:6px\"><button class=\"ds-chip ds-chip--on\">All <span>32</span></button><button class=\"ds-chip\">Needs attention <span>7</span></button></div>",
-      "css": ".ds-chip { font-family: Inter, system-ui, -apple-system, sans-serif; height:28px; padding:0 12px; border:1px solid var(--border); border-radius:9999px; background:transparent; color:var(--nav-fg); font-size:12.5px; font-weight:500; cursor:pointer; transition:background .15s; } .ds-chip span { margin-left:4px; color:var(--muted-foreground); } .ds-chip:hover { background:var(--muted); } .ds-chip--on { border-color:var(--foreground); background:var(--foreground); color:var(--background); } .ds-chip--on span { color:color-mix(in srgb, var(--background) 70%, transparent); } .ds-chip:focus-visible { outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); }"
+      "css": ".ds-chip { font-family: Inter, system-ui, -apple-system, sans-serif; height:32px; padding:0 12px; border:1px solid var(--border); border-radius:9999px; background:transparent; color:var(--nav-fg); font-size:12.5px; font-weight:500; cursor:pointer; transition:background .15s; } .ds-chip span { margin-left:4px; color:var(--muted-foreground); } .ds-chip:hover { background:var(--muted); } .ds-chip--on { border-color:var(--foreground); background:var(--foreground); color:var(--background); } .ds-chip--on span { color:color-mix(in srgb, var(--background) 70%, transparent); } .ds-chip:focus-visible { outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); }"
     },
     {
       "name": "State Chip",
@@ -586,7 +671,7 @@
       "name": "Input",
       "kind": "input",
       "refersTo": "input",
-      "description": "Text field: stroke border, transparent fill, accent ring on focus.",
+      "description": "Text field: stroke border, transparent fill, accent ring on focus, `--radius` corners.",
       "html": "<input class=\"ds-input\" placeholder=\"Note for the history (optional)\" />",
       "css": ".ds-input { font-family: Inter, system-ui, -apple-system, sans-serif; height:32px; width:100%; min-width:0; padding:4px 10px; border:1px solid var(--input); border-radius:var(--radius); background:transparent; color:var(--foreground); font-size:13px; outline:none; transition:border-color .15s, box-shadow .15s; } .ds-input::placeholder { color:var(--muted-foreground); } .ds-input:focus-visible { border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent); } .ds-input:disabled { opacity:.5; background:color-mix(in srgb, var(--input) 50%, transparent); cursor:not-allowed; }"
     },
@@ -594,53 +679,54 @@
       "name": "Top Navigation",
       "kind": "nav",
       "refersTo": "nav-link",
-      "description": "White 52px bar; chrome-text links, current section in ink with a 2px accent underline; count badge in bad-soft.",
-      "html": "<header class=\"ds-nav\"><a class=\"ds-nav__brand\" href=\"#\">Odin</a><a class=\"ds-nav__link ds-nav__link--current\" href=\"#\">Flow</a><a class=\"ds-nav__link\" href=\"#\">My work</a><a class=\"ds-nav__link\" href=\"#\">Projects</a><a class=\"ds-nav__link\" href=\"#\">Alerts <span class=\"ds-nav__count\">7</span></a><span style=\"flex:1\"></span><input class=\"ds-nav__search\" placeholder=\"Search projects…\" /><button class=\"ds-nav__new\">New project</button><span class=\"ds-nav__avatar\">A</span></header>",
-      "css": ".ds-nav { font-family: Inter, system-ui, -apple-system, sans-serif; display:flex; align-items:center; gap:24px; height:52px; padding:0 20px; background:var(--background); border-bottom:1px solid var(--border); font-size:13px; } .ds-nav__brand { font-size:15px; font-weight:700; letter-spacing:-0.025em; color:var(--foreground); text-decoration:none; } .ds-nav__link { position:relative; display:inline-flex; align-items:center; gap:6px; min-height:32px; color:var(--nav-fg); font-weight:500; text-decoration:none; white-space:nowrap; transition:color .15s; } .ds-nav__link:hover { color:var(--foreground); } .ds-nav__link--current { color:var(--foreground); } .ds-nav__link--current::after { content:''; position:absolute; left:0; right:0; bottom:-10px; height:2px; background:var(--primary); } .ds-nav__count { display:inline-flex; align-items:center; justify-content:center; height:20px; min-width:20px; padding:0 6px; border-radius:9999px; background:var(--bad-soft); color:var(--bad); font-size:11px; font-weight:500; } .ds-nav__search { font-family: Inter, system-ui, -apple-system, sans-serif; height:32px; width:224px; padding:0 10px; border:1px solid var(--border); border-radius:calc(var(--radius) * 0.8); background:var(--secondary); font-size:13px; outline:none; } .ds-nav__search:focus-visible { border-color:var(--ring); box-shadow:0 0 0 2px color-mix(in srgb, var(--ring) 30%, transparent); } .ds-nav__new { font-family: Inter, system-ui, -apple-system, sans-serif; height:28px; padding:0 10px; border:0; border-radius:calc(var(--radius) * 0.8); background:var(--primary); color:var(--primary-foreground); font-size:12.8px; font-weight:500; cursor:pointer; } .ds-nav__new:hover { background:color-mix(in srgb, var(--primary) 80%, transparent); } .ds-nav__avatar { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:9999px; background:var(--accent); color:var(--accent-foreground); font-size:11px; font-weight:600; box-shadow:inset 0 0 0 1px var(--border); }"
+      "description": "56 px bar on the tinted ground, no border: logo, then the section links as a white pill bar (`rounded-full bg-card p-1 shadow-card`) of 32 px pills, the current one filled in the accent; search as a 36 px white pill; count badge in bad-soft.",
+      "html": "<header class=\"ds-nav\"><a class=\"ds-nav__brand\" href=\"#\">Odin</a><nav class=\"ds-nav__pills\"><a class=\"ds-nav__link ds-nav__link--current\" href=\"#\">Dashboard</a><a class=\"ds-nav__link\" href=\"#\">Flow</a><a class=\"ds-nav__link\" href=\"#\">My work</a><a class=\"ds-nav__link\" href=\"#\">Projects</a><a class=\"ds-nav__link\" href=\"#\">Alerts <span class=\"ds-nav__count\">7</span></a></nav><span style=\"flex:1\"></span><input class=\"ds-nav__search\" placeholder=\"Search…  ⌘K\" /><button class=\"ds-nav__new\">New project</button><span class=\"ds-nav__avatar\">A</span></header>",
+      "css": ".ds-nav { font-family: Inter, system-ui, -apple-system, sans-serif; display:flex; align-items:center; gap:20px; height:56px; padding:0 20px; background:var(--background); font-size:13px; } .ds-nav__brand { font-size:15px; font-weight:700; letter-spacing:-0.025em; color:var(--foreground); text-decoration:none; } .ds-nav__pills { display:flex; gap:2px; padding:4px; border-radius:9999px; background:var(--card); box-shadow:var(--elevation-card); } .ds-nav__link { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border-radius:9999px; color:var(--nav-fg); font-weight:500; text-decoration:none; white-space:nowrap; transition:color .15s, background .15s; } .ds-nav__link:hover { background:var(--muted); color:var(--foreground); } .ds-nav__link--current { background:var(--primary); color:var(--primary-foreground); } .ds-nav__link--current:hover { background:var(--primary); color:var(--primary-foreground); } .ds-nav__count { display:inline-flex; align-items:center; justify-content:center; height:20px; min-width:20px; padding:0 6px; border-radius:9999px; background:var(--bad-soft); color:var(--bad); font-size:11px; font-weight:500; } .ds-nav__search { font-family: Inter, system-ui, -apple-system, sans-serif; height:36px; width:224px; padding:0 14px; border:1px solid var(--border); border-radius:9999px; background:var(--card); box-shadow:var(--elevation-card); font-size:13px; outline:none; } .ds-nav__search:focus-visible { border-color:var(--ring); box-shadow:0 0 0 2px color-mix(in srgb, var(--ring) 30%, transparent); } .ds-nav__new { font-family: Inter, system-ui, -apple-system, sans-serif; height:28px; padding:0 10px; border:0; border-radius:min(calc(var(--radius) * 0.8), 12px); background:var(--primary); color:var(--primary-foreground); font-size:12.8px; font-weight:500; cursor:pointer; } .ds-nav__new:hover { background:color-mix(in srgb, var(--primary) 80%, transparent); } .ds-nav__avatar { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:9999px; background:var(--accent); color:var(--accent-foreground); font-size:11px; font-weight:600; box-shadow:inset 0 0 0 1px var(--border); }"
     },
     {
-      "name": "Rail Panel",
-      "kind": "card",
-      "refersTo": "rail-panel",
-      "description": "Right-rail container: hairline, 8px radius, 12px padding, chrome-text label.",
-      "html": "<section class=\"ds-panel\"><h3 class=\"ds-panel__h\">Next up</h3><p class=\"ds-panel__t\">Collect asset inventory</p><p class=\"ds-panel__m\">SALES1 · Sep 15</p></section>",
-      "css": ".ds-panel { font-family: Inter, system-ui, -apple-system, sans-serif; width:280px; padding:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--background); color:var(--foreground); font-size:13px; } .ds-panel__h { margin:0 0 8px; font-size:12px; font-weight:600; color:var(--nav-fg); } .ds-panel__t { margin:0; font-weight:500; } .ds-panel__m { margin:4px 0 0; color:var(--muted-foreground); }"
+      "name": "Segmented Control",
+      "kind": "custom",
+      "refersTo": "segmented",
+      "description": "Flow views (Rollouts · Calendar · Kibana) and the projects list / cards switch: `rounded-full bg-muted p-0.5`, 28 px pills, the current one lifted with `bg-card shadow-card`.",
+      "html": "<div class=\"ds-seg\" role=\"tablist\"><button class=\"ds-seg__b ds-seg__b--on\" aria-pressed=\"true\">Rollouts</button><button class=\"ds-seg__b\">Calendar</button><button class=\"ds-seg__b\">Kibana</button></div>",
+      "css": ".ds-seg { font-family: Inter, system-ui, -apple-system, sans-serif; display:inline-flex; gap:2px; padding:2px; border-radius:9999px; background:var(--muted); } .ds-seg__b { height:28px; padding:0 12px; border:0; border-radius:9999px; background:transparent; color:var(--nav-fg); font-size:12.5px; font-weight:500; cursor:pointer; } .ds-seg__b:hover { color:var(--foreground); } .ds-seg__b--on { background:var(--card); color:var(--foreground); box-shadow:var(--elevation-card); }"
     },
     {
       "name": "Stepper",
       "kind": "custom",
       "refersTo": "rollout-row",
-      "description": "Seven 12px dots joined by 1.5px lines: done green, current state-ringed, upcoming stroke-grey.",
+      "description": "12 px dots joined by 1.5 px lines on a shared column order: done green, current state-ringed, upcoming stroke-grey.",
       "html": "<div class=\"ds-stepper\"><i class=\"ds-dot ds-dot--done\"></i><b class=\"ds-line ds-line--done\"></b><i class=\"ds-dot ds-dot--done\"></i><b class=\"ds-line ds-line--done\"></b><i class=\"ds-dot ds-dot--cur ds-dot--warn\"></i><b class=\"ds-line\"></b><i class=\"ds-dot\"></i><b class=\"ds-line\"></b><i class=\"ds-dot\"></i><b class=\"ds-line\"></b><i class=\"ds-dot\"></i><b class=\"ds-line\"></b><i class=\"ds-dot\"></i></div>",
-      "css": ".ds-stepper { display:flex; align-items:center; width:420px; } .ds-dot { display:block; width:12px; height:12px; flex:none; border-radius:9999px; border:1.5px solid var(--input); background:var(--background); } .ds-dot--done { border-color:var(--ok-line); background:var(--ok-line); } .ds-dot--cur { border-color:var(--foreground); box-shadow:0 0 0 3px var(--muted); } .ds-dot--warn { border-color:var(--warn-line); box-shadow:0 0 0 3px var(--warn-soft); } .ds-dot--bad { border-color:var(--bad-line); box-shadow:0 0 0 3px var(--bad-soft); } .ds-line { display:block; flex:1; height:1.5px; background:var(--input); } .ds-line--done { background:var(--ok-line); }"
+      "css": ".ds-stepper { display:flex; align-items:center; width:420px; } .ds-dot { display:block; width:12px; height:12px; flex:none; border-radius:9999px; border:1.5px solid var(--input); background:var(--card); } .ds-dot--done { border-color:var(--ok-line); background:var(--ok-line); } .ds-dot--cur { border-color:var(--foreground); box-shadow:0 0 0 3px var(--muted); } .ds-dot--warn { border-color:var(--warn-line); box-shadow:0 0 0 3px var(--warn-soft); } .ds-dot--bad { border-color:var(--bad-line); box-shadow:0 0 0 3px var(--bad-soft); } .ds-line { display:block; flex:1; height:1.5px; background:var(--input); } .ds-line--done { background:var(--ok-line); }"
     },
     {
       "name": "Stage Node Flow",
       "kind": "custom",
       "refersTo": "stage-node",
-      "description": "Flowchart nodes with drawn arrows: done (green soft), current (state ring), next (dashed).",
+      "description": "Flowchart nodes with drawn arrows inside the flow card: done (green soft), current (state ring), next (dashed). Nodes are nested cards and keep `--radius` and `shadow-card`.",
       "html": "<ol class=\"ds-flow\"><li class=\"ds-node ds-node--done\"><div class=\"ds-node__n\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg> Kickoff</div><div class=\"ds-node__m\">0 d</div></li><li class=\"ds-node ds-node--cur\"><span class=\"ds-arrow ds-arrow--done\"><b></b><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></span><div class=\"ds-node__n\">Deployment</div><div class=\"ds-node__m\">1 d · SLA 30</div></li><li class=\"ds-node ds-node--next\"><span class=\"ds-arrow\"><b></b><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></span><div class=\"ds-node__n\">Tuning &amp; UAT</div><div class=\"ds-node__m\">—</div></li></ol>",
-      "css": ".ds-flow { font-family: Inter, system-ui, -apple-system, sans-serif; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); list-style:none; margin:0; padding:0; width:420px; } .ds-node { position:relative; min-height:58px; margin:0 6px; padding:8px 10px; border:1.5px solid var(--input); border-radius:var(--radius); background:var(--card); box-sizing:border-box; } .ds-node:first-child { margin-left:0 } .ds-node:last-child { margin-right:0 } .ds-node--done { border-color:var(--ok-line); background:var(--ok-soft); } .ds-node--cur { border-color:var(--foreground); box-shadow:0 0 0 3px var(--muted); } .ds-node--next { border-style:dashed; } .ds-node--next .ds-node__n { color:var(--nav-fg); } .ds-node__n { display:flex; align-items:flex-start; gap:4px; font-size:12.5px; font-weight:600; line-height:1.25; color:var(--foreground); } .ds-node--done .ds-node__n svg { color:var(--ok); margin-top:1px; } .ds-node__m { margin-top:2px; font-size:11.5px; color:var(--muted-foreground); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .ds-arrow { position:absolute; left:-16px; top:18px; width:16px; display:flex; align-items:center; color:var(--input); } .ds-arrow b { flex:1; height:1.5px; background:var(--input); } .ds-arrow svg { margin-left:-6px; width:12px; height:12px; } .ds-arrow--done { color:var(--ok-line); } .ds-arrow--done b { background:var(--ok-line); }"
+      "css": ".ds-flow { font-family: Inter, system-ui, -apple-system, sans-serif; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); list-style:none; margin:0; padding:0; width:420px; } .ds-node { position:relative; min-height:58px; margin:0 6px; padding:8px 10px; border:1.5px solid var(--input); border-radius:var(--radius); background:var(--card); box-shadow:var(--elevation-card); box-sizing:border-box; } .ds-node:first-child { margin-left:0 } .ds-node:last-child { margin-right:0 } .ds-node--done { border-color:var(--ok-line); background:var(--ok-soft); } .ds-node--cur { border-color:var(--foreground); box-shadow:0 0 0 3px var(--muted); } .ds-node--next { border-style:dashed; } .ds-node--next .ds-node__n { color:var(--nav-fg); } .ds-node__n { display:flex; align-items:flex-start; gap:4px; font-size:12.5px; font-weight:600; line-height:1.25; color:var(--foreground); } .ds-node--done .ds-node__n svg { color:var(--ok); margin-top:1px; } .ds-node__m { margin-top:2px; font-size:11.5px; color:var(--muted-foreground); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .ds-arrow { position:absolute; left:-16px; top:18px; width:16px; display:flex; align-items:center; color:var(--input); } .ds-arrow b { flex:1; height:1.5px; background:var(--input); } .ds-arrow svg { margin-left:-6px; width:12px; height:12px; } .ds-arrow--done { color:var(--ok-line); } .ds-arrow--done b { background:var(--ok-line); }"
     },
     {
       "name": "Tooltip",
       "kind": "custom",
       "refersTo": "tooltip",
-      "description": "Inverted ink bubble on hover — the only floating surface, no shadow.",
+      "description": "Inverted ink bubble on hover, no shadow. Chart tooltips differ: popover surface, `shadow-pop`, 12 px radius.",
       "html": "<span class=\"ds-tip\">Scoping · done</span>",
       "css": ".ds-tip { font-family: Inter, system-ui, -apple-system, sans-serif; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:calc(var(--radius) * 0.8); background:var(--foreground); color:var(--background); font-size:12px; }"
     }
   ],
   "narrative": {
-    "northStar": "The Whiteboard Flowchart",
-    "overview": "**Creative North Star: \"The Whiteboard Flowchart\"**\n\nOdin answers one question before anything is read: where is every rollout, and what is stuck. The built world is convention played straight, benchmarked against Linear and FigJam: a white ground, ink text, hairline borders, and stage nodes with arrows drawn between them. It has no metaphor and no atmosphere; the interface is the diagram. There is exactly one accent, a saturated blue, and it is spent only on selection, the primary action, focus and the \"today\" marker. Every other colour on the screen is a state (done, on track, due soon / over SLA, overdue) and means nothing else.\n\nDensity is high but scannable. The first screen is a resizable vertical split: a list of rollout rows above (stuck rows first, each carrying a 7-dot stepper), and the selected rollout below drawn as a left-to-right flowchart with its open tasks hung under the current node, a right rail for next-up / ETA / advance, and a time strip along the bottom. Type is small (13 px body) but never below 11 px, and nothing is uppercased. Surfaces are flat: no shadows anywhere, depth comes from hairlines and tonal fills.\n\nThe build rejected, by the user's explicit choice, the dark/industrial look, kanban-style SaaS boards and number-dense grids. Where the direction contract and the build differ, this file records the build.",
+    "northStar": "Cards on a tinted ground",
+    "overview": "**Creative North Star: \"Cards on a tinted ground\" (29 Sep 2026, the user's call, from a TaskFlux reference)**\n\nOdin answers one question before anything is read: where is every rollout, and what is stuck. The built world is the soft card dashboard: a ground faintly tinted with the user's accent (`color-mix(in srgb, var(--primary) 7%, #F6F6F9)`), white cards with 16 px corners lifted by a quiet two-layer shadow, pill navigation with the current tab filled in the accent, and inside the cards the same ink text, hairlines and drawn flowchart as before. There is exactly one accent per user (eight to choose from), spent on selection, the primary action, focus, the current nav pill and the \"today\" marker. Every other colour on the screen is a state (done, on track, due soon / over SLA, overdue) and means nothing else. This replaces the 8 Sep \"whiteboard flowchart\" world (white ground, no shadows, 8 px corners).\n\nDensity is high but scannable. The first screen is a resizable vertical split: a list of rollout rows above (stuck rows first, each carrying a stepper on a shared column order), and the selected rollout below drawn as a left-to-right flowchart with its open tasks hung under the current node, a right rail, a time strip and the team and notes under it. Type is small (13 px body) but never below 11 px, and nothing is uppercased; the dashboard adds a five-step figure ramp (34 / 26 / 22 / 18 / 15 px) for numbers that are the point of a card. Every piece of content sits on a card (`panel`): the two flow panes, each settings section, every table, tile and widget.\n\nThe build rejected, by the user's explicit choice, the dark/industrial look, kanban-style SaaS boards and number-dense grids. Where the direction contract and the build differ, this file records the build.",
     "keyCharacteristics": [
-      "White ground, ink text, one blue accent; state colours in matched text / soft-fill / line triplets",
-      "Inter for everything read or typed, with `cv11` + `ss01`; Chakra Petch for page titles and brand surfaces only; sentence case in the UI, tracked caps only on brand surfaces",
-      "8 px base radius (`--radius: 0.5rem`) scaled by shadcn's ratios; pills and dots are fully round",
-      "Hairline 1 px borders (`#E4E6EB`); 1.5 px strokes only for flow geometry (nodes, dots, connectors)",
-      "No box-shadows; focus and selection are 3 px translucent rings",
-      "Master-detail vertical split; flowchart nodes with drawn arrows at `md` and up, stacked without arrows below"
+      "Accent-tinted ground (`--primary` at 7% over #F6F6F9), white cards, ink text, one accent per user; state colours in matched text / soft-fill / line triplets",
+      "Inter for everything read or typed, with `cv11` + `ss01` (and `calt` off); Chakra Petch for page titles, numbered panel labels and brand surfaces only; sentence case in the UI, tracked caps only on brand surfaces",
+      "16 px base radius (`--radius: 1rem`) scaled by shadcn's ratios (sm 9.6, md 12.8, lg 16, xl 22.4, 2xl 28.8); small buttons cap `md` at 12 px (xs at 10 px); pills, dots, avatars and badges are fully round",
+      "Hairline 1 px borders (`#E9EAF0`); 1.5 px strokes only for flow geometry (nodes, dots, connectors, today marker)",
+      "Two shadow tokens, `--elevation-card` (`shadow-card`, cards at rest) and `--elevation-pop` (`shadow-pop`, menus, sheets, chart tooltips); in dark each becomes a 1 px white ring plus a deep black drop; focus and selection are 3 px translucent rings",
+      "Text ramp 17 / 13.5 / 13 / 12.5 / 12 / 11.5 / 11 px with an 11 px floor; a separate figure ramp 34 / 26 / 22 / 18 / 15 px, Inter 600, leading-none, tracking-tight for dashboard numbers",
+      "Master-detail vertical split; flowchart nodes with drawn arrows at `md` and up, stacked without arrows below; the flow folds stages to fit rather than scrolling sideways"
     ],
     "rules": [
       {
@@ -650,22 +736,27 @@
       },
       {
         "name": "The One Accent Rule",
-        "body": "Blue appears only as selection (row border + wash, nav underline), the primary action, the focus ring and the today marker. It never labels a state, never decorates, and never appears as a heading colour.",
+        "body": "The accent appears only as selection (row border + wash, the current nav pill, the active palette row), the primary action, the focus ring, the today marker, and chart fills (`var(--primary)`, so every accent and both themes follow). It never labels a state, never decorates, and never appears as a heading colour. The ground tint is the accent at 7% and never a second hue.",
         "section": "colors"
       },
       {
         "name": "The Colour-Is-State Rule",
-        "body": "Green, amber and red mean done / warning / overdue and nothing else. `on_track` has *no* colour: an on-track row shows a plain grey duration and a transparent dot, so a coloured row is always a row needing attention.",
+        "body": "Green, amber and red mean done / warning / overdue and nothing else. `on_track` has *no* colour: an on-track row shows a plain grey duration and a transparent dot, and an on-track bar on the timeline or calendar is the accent, so a green / amber / red element is always one needing attention or one already done.",
         "section": "colors"
       },
       {
         "name": "The Triplet Rule",
-        "body": "State text uses the base token, state fills use `-soft`, state strokes and dots use `-line`. Never put the text shade in a fill or the line shade under text.",
+        "body": "State text uses the base token, state fills use `-soft`, state strokes, dots and bars use `-line`. Never put the text shade in a fill or the line shade under text. A stuck calendar bar is soft fill + text ringed in the line colour, never white on amber.",
         "section": "colors"
       },
       {
         "name": "The Accent-as-Text Rule",
-        "body": "When the accent is text on white, use `--primary-text` (`#2F47D6`), not `--primary`.",
+        "body": "When the accent is text on white, use `--primary-text` (`#2F47D6` for blue; each accent and each dark variant sets its own), not `--primary`.",
+        "section": "colors"
+      },
+      {
+        "name": "The Muted-Text Rule",
+        "body": "Secondary text is `--muted-foreground` `#5B6270` (30 Sep 2026), chosen by measurement: 4.9:1 or better on the darkest tinted ground (the ink accent at 7%) and on every soft fill, where `#6B7280` fell to 3.9. Dark keeps `#9AA0AB`. The UI suite's axe tier enforces it on every page in both themes.",
         "section": "colors"
       },
       {
@@ -675,7 +766,17 @@
       },
       {
         "name": "The Thirteen Rule",
-        "body": "13 px is body. Sizes step by half-pixels (13.5 / 12.5 / 11.5) to separate levels without visibly changing scale; do not add sizes above 17 px outside the sign-in card titles and the brand tagline.",
+        "body": "13 px is body. Text sizes step by half-pixels (13.5 / 12.5 / 11.5) to separate levels without visibly changing scale; the text ramp tops out at the 17 px title (24 px on the sign-in h1, the brand tagline aside). Anything larger is a figure and belongs to the figure ramp, not to text.",
+        "section": "typography"
+      },
+      {
+        "name": "The Figure Ramp Rule",
+        "body": "Numbers that are the point of a card use a ramp of their own, Inter 600, `leading-none`, tabular: 34 px for the one hero figure on a page (progress gauge, tasks-completed total, a custom metric), 26 px for a tile's headline count, 22 px inside a donut, 18 px in the small tonal tiles, 15 px for a legend's counts. 34 and 26 are tracked tight. Pick from these five; do not add a sixth. The label beside a figure stays on the text ramp (11–12 px muted).",
+        "section": "typography"
+      },
+      {
+        "name": "The Eleven Floor Rule",
+        "body": "Nothing readable goes below 11 px: time-strip ticks, chart axis ticks, count badges, due dates and avatar initials in 22–24 px avatars are the floor. The only exceptions are glyph-sized: 10 px initials inside a 20 px task avatar and the bell's unread pill.",
         "section": "typography"
       },
       {
@@ -684,9 +785,19 @@
         "section": "layout"
       },
       {
-        "name": "The Flat Rule",
-        "body": "Surfaces are flat at rest and under interaction. Do not add `shadow-*` to a panel, popover or button; use a border, a ring, or a fill step.",
+        "name": "The Card Rule",
+        "body": "Nothing sits bare on the ground: a page's content is one or more `panel`s (`bg-card`, 1 px `--border`, `rounded-lg` = 16 px, `shadow-card`). Never hand-roll `border border-border rounded-lg`; use `panel`. Cards may nest (a stage node inside the flow card) and the inner card keeps the same shadow. Depth inside a card is a fill step: Card → Muted Fill (hover) → Accent Wash (selection).",
         "section": "elevation"
+      },
+      {
+        "name": "The Two-Shadow Rule",
+        "body": "`--elevation-card` (`0 1px 2px ink/4% + 0 10px 28px -14px ink/14%`) is for surfaces at rest; `--elevation-pop` (`0 2px 6px ink/6% + 0 16px 40px -12px ink/22%`) is for surfaces that float (the phone nav sheet, menus, dialogs, chart tooltips). In dark both swap their first layer for a 1 px white ring at 3–5% over a black drop. Never write a third shadow value or a Tailwind `shadow-*` step; the two tokens are the scale.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Sixteen Rule",
+        "body": "`--radius` is 1rem (16 px): cards, inputs, default buttons, stage nodes, rollout rows and dialogs use it as `rounded-lg`; `rounded-md` (12.8 px) on state chips, tooltips and popovers; small buttons cap at 12 px (`min(var(--radius-md), 12px)`) so a 28 px button does not become a pill by accident; the phone nav sheet and the dashboard customise bar are `rounded-2xl`. Pills, chips, dots, avatars and badges are `rounded-full`. Nothing uses 2 px or 8 px corners any more.",
+        "section": "shapes"
       },
       {
         "name": "The No-Alarm-Accent Rule",
@@ -695,26 +806,28 @@
       },
       {
         "name": "The Same-Column Rule",
-        "body": "Every row places its dots on one shared column order (the union of all rows' stage lists, each list keeping its own order), so a stage sits in the same column on every row and the lead can read down a column; a stage a project doesn't have leaves a gap on its line. Above the stepper column, a sticky strip of 11 px counts shows how many rollouts sit in each stage; clicking a count filters the list to that stage (an ink chip with × clears it, and the URL keeps it). Done: `ok-line` fill and border, green connector. Current: white dot, state-line border, 3 px state-soft ring (ink border + Muted Fill ring when on track); scales to 110% when the row is selected. Upcoming: Stroke-grey border, white fill, grey connector. Each dot is a tooltip trigger (\"Scoping · done\"); the whole stepper carries an `aria-label` naming the current stage.",
+        "body": "Every row places its dots on one shared column order (the union of all rows' stage lists, each list keeping its own order), so a stage sits in the same column on every row and the lead can read down a column; a stage a project doesn't have leaves a gap on its line. Above the list a scrolling strip of named stage pills (\"PO Received 13\") counts the rollouts in each stage under the current filter; a pill filters the list to that stage (lit ink with ×, kept in the URL). Pills and filter chips are 32 px, 40 px under a coarse pointer. Done: `ok-line` fill and border, green connector. Current: white dot, state-line border, 3 px state-soft ring (ink border + Muted Fill ring when on track); scales to 110% when the row is selected. Upcoming: Stroke-grey border, white fill, grey connector. Each dot is a tooltip trigger; the whole stepper carries an `aria-label` naming the current stage.",
         "section": "components"
       }
     ],
     "dos": [
-      "**Do** keep Accent Blue to selection, the single primary action, focus and the today marker (The One Accent Rule).",
+      "**Do** keep the accent to selection, the single primary action, the current nav pill, focus, the today marker and chart fills (The One Accent Rule).",
       "**Do** map rollout state to its triplet exactly: `overdue` → `bad`, `due_soon` and `over_sla` → `warn`, done stages → `ok`; `on_track` gets no colour.",
       "**Do** pair every state colour with a second channel — the chip text, a visually-hidden label, the check glyph, dashed vs solid borders.",
-      "**Do** use `--primary-text` for accent-coloured text on white.",
+      "**Do** use `--primary-text` for accent-coloured text on white and `--muted-foreground` (#5B6270) for secondary text.",
       "**Do** build on the base-nova components with the `render` prop; apply `buttonVariants()` to anchors that navigate to un-ported Jinja pages.",
-      "**Do** keep chrome at 12–13 px, sentence case, weight 500–600, in Chrome Text or Muted Text.",
+      "**Do** keep chrome at 12–13 px, sentence case, weight 500–600, in Chrome Text or Muted Text; keep every readable size at 11 px or above.",
+      "**Do** set dashboard numbers from the figure ramp (34 / 26 / 22 / 18 / 15 px, Inter 600, leading-none) and their labels from the text ramp.",
       "**Do** use 1 px hairlines for structure and 1.5 px strokes only for flow geometry (nodes, dots, connectors, today marker).",
-      "**Do** convey depth with borders, rings and fill steps (Paper → Muted Fill → Accent Wash)."
+      "**Do** put every piece of content on a `panel` (16 px corners, `shadow-card`); convey depth inside a card with fill steps (Card → Muted Fill → Accent Wash); use `shadow-pop` only on surfaces that float."
     ],
     "donts": [
-      "**Don't** add box-shadows, gradients, or an off-white page tint; the ground is `#FFFFFF` and surfaces are flat.",
-      "**Don't** uppercase or letter-space UI labels, or bring back the retired dark nav or 2 px corners. Brand red and Chakra Petch are allowed only where \"Brand surfaces\" lists them; red never marks anything in the UI except `--bad` state.",
+      "**Don't** add a third shadow value, a Tailwind `shadow-*` step, or a gradient; the ground tint is the accent at 7% and never a second hue.",
+      "**Don't** uppercase or letter-space UI labels, or bring back the retired dark nav, 2 px corners, the 8 px corners or the 8 Sep flat white ground. Brand red and Chakra Petch are allowed only where \"Brand surfaces\" lists them; red never marks anything in the UI except `--bad` state.",
       "**Don't** use green for \"on track\" rows or amber/red for anything that is not a lateness state; don't use `--destructive` for rollout state.",
       "**Don't** put a state's text shade in a fill or its line shade under text.",
-      "**Don't** invent tokens: use the `:root` block in `frontend/src/index.css` and its `@theme inline` aliases (`ok-*`, `warn-*`, `bad-*`, `primary-text`, `nav-fg`). Dark and the accents are whole-token overrides (`:root[data-theme=\"dark\"]`, `:root[data-accent=…]`); a component never branches on the theme.",
+      "**Don't** invent tokens or hard-code a colour: use the `:root` block in `frontend/src/index.css` and its `@theme inline` aliases (`ok-*`, `warn-*`, `bad-*`, `primary-text`, `nav-fg`, `shadow-card`, `shadow-pop`). Dark and the accents are whole-token overrides (`:root[data-theme=\"dark\"]`, `:root[data-accent=…]`); a component never branches on the theme.",
+      "**Don't** add a text size above 17 px or a figure size outside 34 / 26 / 22 / 18 / 15 px, or any readable text below 11 px.",
       "**Don't** render the flow as a kanban board or a numeric table; the stepper and the node row are the read."
     ]
   }

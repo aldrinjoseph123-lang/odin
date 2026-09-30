@@ -1,8 +1,8 @@
 ---
 name: Odin
-description: Rollout lifecycle tracker read as a flow — white ground, ink text, one blue accent, colour only as state.
+description: Rollout lifecycle tracker read as a flow — accent-tinted ground, white cards with a quiet shadow, one accent per user, colour only as state.
 colors:
-  ground: "#FFFFFF"
+  ground: "color-mix(in srgb, #3D5AFE 7%, #F6F6F9)"   # the accent at 7% over near-white; each accent re-tints it
   ink: "#101114"
   accent-blue: "#3D5AFE"
   accent-blue-text: "#2F47D6"
@@ -10,7 +10,7 @@ colors:
   on-accent: "#FFFFFF"
   paper: "#F7F7F8"
   muted-fill: "#F3F4F6"
-  muted-text: "#6B7280"
+  muted-text: "#5B6270"
   chrome-text: "#4B4F58"
   hairline: "#E4E6EB"
   stroke: "#D0D3DA"
@@ -96,10 +96,10 @@ typography:
     fontWeight: 400
     lineHeight: 1.5
 rounded:
-  sm: "4.8px"
-  md: "6.4px"
-  lg: "8px"
-  xl: "11.2px"
+  sm: "9.6px"
+  md: "12.8px"
+  lg: "16px"
+  xl: "22.4px"
   full: "9999px"
 spacing:
   "0.5": "2px"
