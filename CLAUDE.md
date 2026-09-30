@@ -65,6 +65,11 @@ themselves to the next project created:
 `db.py` (`purge_deleted`) · `services/reports.draft_report` if it is
 project history · `scripts/seed_uat.py` if UAT needs rows · a purge for
 anything that only grows (`login_links` is trimmed as links are minted).
+`plan_changes` and `raid_items` (30 Sep 2026) are wired this way; plan dates live
+on `project_stages` (`plan_*`, `base_*`). Reports read one structure
+(`services/report_data.py` per rollout, `services/portfolio.py` for all) that
+the page, the PDF (`services/report_pdf.py`) and the weekly email share; the
+customer cut is made on the server, never in the page.
 
 # Front end migration — React + shadcn/ui (in progress)
 

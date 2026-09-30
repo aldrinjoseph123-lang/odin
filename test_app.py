@@ -2946,6 +2946,29 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.get("/projects/1/report.pdf?v=2").status_code, 404)
         self.assertNotIn(b"Internal worry", a.get("/projects/1/report.pdf?audience=internal").data)
 
+    def test_portfolio_report_health_slip_risks_pdf_and_the_customer_cut(self):
+        from datetime import date as _date
+        iso = lambda n: (_date.today() + timedelta(days=n)).isoformat()   # noqa: E731
+        self.new_project(name="Late", client="Acme", start_date=iso(-30), target_end_date=iso(-1))
+        self.new_project(name="Fine", client="Globex", start_date=iso(-5), target_end_date=iso(200))
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf}
+        c.post("/api/projects/1/raid", json={"kind": "blocker", "title": "Firewall"}, headers=h)
+        c.post("/api/projects/2/raid", json={"kind": "risk", "title": "Shown", "impact": "high", "customer_visible": True}, headers=h)
+        d = c.get("/api/reports/all").get_json()
+        self.assertEqual([r["name"] for r in d["rows"]], ["Late", "Fine"])      # worst health first
+        self.assertEqual(d["rows"][0]["rag"], "red"); self.assertEqual(d["rows"][0]["open"]["blocker"], 1)
+        self.assertEqual((d["summary"]["count"], d["summary"]["blockers"], d["summary"]["health"].get("red")), (2, 1, 1))
+        self.assertEqual([r["title"] for r in d["risks"]], ["Firewall", "Shown"]); self.assertIn("reasons", d["rows"][0])
+        pdf = c.get("/reports/all.pdf")
+        self.assertEqual(pdf.mimetype, "application/pdf"); self.assertTrue(pdf.data.startswith(b"%PDF-1.4"))
+        self._invite(2, "ann@globex.example", "Customer", "Ann")
+        ann = self._external_client("ann@globex.example")
+        e = ann.get("/api/reports/all").get_json()
+        self.assertEqual([r["name"] for r in e["rows"]], ["Fine"]); self.assertNotIn("reasons", e["rows"][0])
+        self.assertEqual([r["title"] for r in e["risks"]], ["Shown"]); self.assertIsNone(e["summary"]["avg_slip"])
+        self.assertEqual(ann.get("/reports/all.pdf").status_code, 404)
+
     def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))
         c, _ = self._api_client()
@@ -3085,9 +3108,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         subject, body = mail.call_args.args[1], mail.call_args.args[2]
         self.assertTrue(subject.startswith("Odin weekly report"))
         self.assertIn("Late one", body); self.assertIn("past its target date", body)
-        (name, pdf, ctype), = mail.call_args.kwargs["attachments"]
+        folio, (name, pdf, ctype) = mail.call_args.kwargs["attachments"]
+        self.assertTrue(folio[0].startswith("portfolio-report-") and folio[1].startswith(b"%PDF-1.4"))
         self.assertEqual((name, ctype), ("Late-one-report-v2.pdf", "application/pdf"))
         self.assertTrue(pdf.startswith(b"%PDF-1.4") and pdf.rstrip().endswith(b"%%EOF"))
+        self.assertIn("Health: 0 on track · 0 at risk · 1 off track", body)
         self.assertIn("1 overdue", hook.call_args.args[2][0])
         self.assertIn("Teams webhook", message)
         # the admin's own test copy: only to them, no Teams

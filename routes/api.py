@@ -300,15 +300,32 @@ def api_audit():
     )
 
 
-@app.route("/api/reports/all")
-@permission_required("view_reports")
-def api_report_all():
+def _portfolio():
+    from services import portfolio
     rows = get_db().execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
         f"WHERE {PROJECT_OPEN_SQL} AND p.deleted_at IS NULL{project_scope()[0]} ORDER BY p.client, p.name", project_scope()[1],
     ).fetchall()
-    return jsonify(generated_at=datetime.utcnow().isoformat(), rows=[
-        {k: p[k] for k in ("id", "name", "client", "stage", "owner_name", "delivery_mode", "vendor_name", "product_name", "target_end_date")} for p in rows])
+    return portfolio.build(rows, customer=session.get("kind") == "external")
+
+
+@app.route("/api/reports/all")
+@permission_required("view_reports")
+def api_report_all():
+    return jsonify(_portfolio())
+
+
+@app.route("/reports/all.pdf")
+@permission_required("view_reports")
+def portfolio_pdf():
+    """The portfolio report as a PDF: health mix, roadmap, slippage, blockers, every rollout."""
+    from flask import Response
+    from services.report_pdf import render_portfolio
+    if session.get("kind") == "external":
+        abort(404)            # the PDF is the internal cut
+    data = _portfolio()
+    return Response(render_portfolio(data), mimetype="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="portfolio-report-{data["today"]}.pdf"'})
 
 
 @app.route("/api/projects/<int:project_id>/report")

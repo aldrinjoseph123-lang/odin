@@ -264,3 +264,20 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   }
   expectClean(errors)
 })
+
+test("@flow portfolio report: health, roadmap into a rollout's report, the PDF", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/reports/all")
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Portfolio report")
+  await expect(page.locator("section[aria-label='Health']")).toContainText(/off track|at risk|on track/)
+  const roadmap = page.locator("section[aria-label='Roadmap']")
+  const first = roadmap.getByRole("link").first()
+  const name = (await first.textContent())!.trim()
+  const r = await page.request.get("/reports/all.pdf")
+  expect(r.status()).toBe(200)
+  expect(r.headers()["content-type"]).toContain("application/pdf")
+  await first.click()
+  await expect(page).toHaveURL(/\/projects\/\d+\/report$/)
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(name.slice(0, 12))
+  expectClean(errors)
+})

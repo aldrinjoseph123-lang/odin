@@ -83,7 +83,7 @@ POLICIES = {
     "report_emails": dict(area="reports", kind="emails", default="", max=1000,
                           label="And these addresses", help="e.g. ceo@company.com, delivery@company.com"),
     "report_attach": dict(area="reports", kind="bool", default=False,
-                          label="Attach each active project's latest saved report as a PDF", help="Only projects with a saved report version."),
+                          label="Attach the portfolio report and each project's latest saved report as PDFs", help="Project reports only for projects with a saved version."),
     "report_teams": dict(area="reports", kind="bool", default=False,
                          label="Also post a summary to Teams", help="The channel chosen under Integrations and/or the Workflows webhook under Notifications."),
     # ---- Audit & compliance

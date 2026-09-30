@@ -21,7 +21,7 @@ import People from "@/pages/People"
 import Person from "@/pages/Person"
 import Alerts from "@/pages/Alerts"
 import Analytics from "@/pages/Analytics"
-import ReportAll from "@/pages/ReportAll"
+const ReportAll = lazy(() => import("@/pages/ReportAll"))
 // the report carries the chart library too: its own chunk
 const Report = lazy(() => import("@/pages/Report"))
 import Login from "@/pages/Login"
@@ -72,7 +72,7 @@ export default function App() {
         <Route path="/projects/new" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
         <Route path="/projects/:id/edit" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
         <Route path="/projects/:id/report" element={<Protected>{(user) => <Suspense fallback={<PageSkeleton />}><Report user={user} /></Suspense>}</Protected>} />
-        <Route path="/reports/all" element={<Protected>{(user) => <ReportAll user={user} />}</Protected>} />
+        <Route path="/reports/all" element={<Protected>{(user) => <Suspense fallback={<PageSkeleton />}><ReportAll user={user} /></Suspense>}</Protected>} />
         <Route path="/projects/:id" element={<Protected>{(user) => <Project user={user} />}</Protected>} />
         <Route path="/users" element={<Protected>{(user) => <SettingsLayout user={user}><Users user={user} /></SettingsLayout>}</Protected>} />
         <Route path="/audit-logs" element={<Protected>{(user) => <SettingsLayout user={user}><Audit user={user} /></SettingsLayout>}</Protected>} />

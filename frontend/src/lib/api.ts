@@ -330,7 +330,18 @@ export type AuditData = {
 export const audit = (query: string) => getJson<AuditData>(`/api/audit${query ? `?${query}` : ""}`)
 
 // ---- reports ----
-export type ReportAllData = { generated_at: string; rows: { id: number; name: string; client: string; stage: string; owner_name: string; delivery_mode: string; vendor_name: string | null; product_name: string | null; target_end_date: string | null }[] }
+export type PortfolioRow = {
+  id: number; name: string; client: string; stage: string; owner_name: string; delivery_mode: string; vendor_name: string | null; product_name: string | null; target_end_date: string | null
+  rag: Rag; reasons?: string[]; confidence?: string; pct_complete: number; stage_number: number; stage_count: number
+  start: string; forecast: string | null; planned: string | null; baseline?: string | null; vs_target_days: number | null; vs_baseline_days?: number | null; has_plan: boolean
+  open: { blocker: number; issue: number; risk: number }; report: { version: number; kind: string; created_at: string } | null
+}
+export type ReportAllData = {
+  audience: "internal" | "customer"; generated_at: string; today: string; company: string
+  summary: { count: number; health: Partial<Record<Rag, number>>; late_vs_target: number; behind_baseline: number | null; avg_slip: number | null; blockers: number; finishing_30d: number; no_plan: number }
+  rows: PortfolioRow[]
+  risks: { project_id: number; project: string; kind: RaidKind; title: string; impact: string; status: string; owner_name: string | null; due_date: string | null }[]
+}
 export const reportAll = () => getJson<ReportAllData>("/api/reports/all")
 export type ReportData = {
   project: { id: number; name: string; client: string; owner_name: string; stage: string }

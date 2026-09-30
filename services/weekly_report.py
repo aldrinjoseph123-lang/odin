@@ -2,13 +2,15 @@
 
 One email: what needs attention first (overdue, over their stage SLA, due
 soon), stages moved in the last 7 days, what falls due in the next 7, and
-how many rollouts sit in each stage, with a link into Odin. Optionally each
-active project's latest saved report rides along as a PDF, and a short
+how many rollouts sit in each stage, with a link into Odin. Optionally the
+portfolio report and each active project's latest saved report ride along
+as PDFs, and a short
 summary goes to Teams (the connected channel and/or a Workflows webhook).
 
 Staff only: recipients are active internal users in the chosen roles plus
 the extra addresses an admin typed. Needs a request context (links).
 """
+import json
 from collections import Counter
 from datetime import datetime, timedelta
 
@@ -20,14 +22,19 @@ from db import PROJECT_OPEN_SQL, get_db, get_setting
 from policies import local_today, policy
 from services.alerts import build_alerts
 from services.dashboard import tasks_due_by
+from services import portfolio
 from services.pdf import report_pdf
+from services.report_pdf import render, render_portfolio
 
 
 def build():
     """(subject, html, summary_lines, attachments) for this week."""
     db = get_db()
     today = local_today()
-    projects = db.execute(f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.name").fetchall()
+    projects = db.execute(f"SELECT p.*, u.name AS owner_name FROM projects p LEFT JOIN users u ON u.id = p.owner_id "
+                          f"WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.name").fetchall()
+    folio = portfolio.build(projects)
+    mix = folio["summary"]["health"]
     alerts = build_alerts(projects)
     week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
     moves = db.execute(
@@ -54,24 +61,30 @@ def build():
         ("Due in the next 7 days", [due_row(t) for t in due_tasks], "Nothing falls due."),
         ("Rollouts per stage", [f"<li>{escape(stage)}: {n}</li>" for stage, n in per_stage.most_common()], "No active rollouts."),
     ]
+    health = f"{mix.get('green', 0)} on track · {mix.get('amber', 0)} at risk · {mix.get('red', 0)} off track"
     html = (f"<p><b>{len(projects)}</b> active rollouts · <b>{len(alerts['project_overdue'])}</b> overdue · "
-            f"<b>{len(alerts['stage_sla_breach'])}</b> over SLA · <b>{len(alerts['project_due_soon'])}</b> due soon</p>")
+            f"<b>{len(alerts['stage_sla_breach'])}</b> over SLA · <b>{len(alerts['project_due_soon'])}</b> due soon</p>"
+            f"<p>Health: {health}</p>")
     for title, items, empty in sections:
         html += f"<h3 style='margin:18px 0 6px;font-size:14px'>{title}</h3>" + (f"<ul style='margin:0;padding-left:18px'>{''.join(items)}</ul>" if items else f"<p style='color:#6B7280;margin:0'>{empty}</p>")
     html += f"<p style='margin-top:18px'><a href=\"{external_url('board')}\">Open the flow in Odin</a></p>"
     summary = [f"{len(projects)} active · {len(alerts['project_overdue'])} overdue · {len(alerts['stage_sla_breach'])} over SLA · {len(alerts['project_due_soon'])} due soon",
-               f"{len(moves)} stage move{'s' if len(moves) != 1 else ''} this week, {len(due_tasks)} task{'s' if len(due_tasks) != 1 else ''} due in the next 7 days"]
+               f"{len(moves)} stage move{'s' if len(moves) != 1 else ''} this week, {len(due_tasks)} task{'s' if len(due_tasks) != 1 else ''} due in the next 7 days", health]
 
     attachments = []
     if policy("report_attach"):
         company = policy("company_name")
+        attachments.append((f"portfolio-report-{today.isoformat()}.pdf", render_portfolio(folio), "application/pdf"))
         for p in projects:
-            latest = db.execute("SELECT version, body, created_at FROM project_reports WHERE project_id = ? ORDER BY version DESC LIMIT 1", (p["id"],)).fetchone()
-            if latest:
-                safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in p["name"])[:60]
-                attachments.append((f"{safe}-report-v{latest['version']}.pdf",
-                                    report_pdf(f"{p['name']} · report v{latest['version']}", latest["body"].splitlines(),
-                                               f"Odin · {company} · saved {latest['created_at'][:10]}"), "application/pdf"))
+            latest = db.execute("SELECT * FROM project_reports WHERE project_id = ? ORDER BY version DESC LIMIT 1", (p["id"],)).fetchone()
+            if not latest:
+                continue
+            safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in p["name"])[:60]
+            if latest["kind"] == "snapshot":
+                pdf = render(json.loads(latest["data"]), {"summary": latest["summary"], "next_steps": latest["next_steps"], "asks": latest["asks"]})
+            else:   # an old plain-text version
+                pdf = report_pdf(f"{p['name']} · report v{latest['version']}", (latest["body"] or "").splitlines(), f"Odin · {company} · saved {latest['created_at'][:10]}")
+            attachments.append((f"{safe}-report-v{latest['version']}.pdf", pdf, "application/pdf"))
     return f"Odin weekly report · {today.strftime('%d %b %Y')}", html, summary, attachments
 
 

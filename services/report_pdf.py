@@ -11,6 +11,7 @@ ACCENT, ACCENT_SOFT, WHITE = (61, 90, 254), (197, 206, 255), (255, 255, 255)
 RAG = {"green": ((230, 246, 236), (23, 122, 66), "On track"), "amber": ((255, 244, 224), (138, 83, 0), "At risk"),
        "red": ((253, 236, 235), (180, 35, 28), "Off track"), "done": ((243, 244, 246), (91, 98, 112), "Complete")}
 WARN_LINE, BAD_LINE, BRAND_RED = (227, 155, 29), (224, 70, 61), (225, 29, 46)
+MARK = {"green": (31, 157, 85), "amber": WARN_LINE, "red": BAD_LINE, "done": (150, 154, 162)}   # fills wear the -line colours
 LEFT, RIGHT = MARGIN - 16, Canvas.W - (MARGIN - 16)
 WIDTH = RIGHT - LEFT
 
@@ -25,9 +26,11 @@ def _fmt(iso):
 
 
 class _Doc:
-    def __init__(self, data):
+    def __init__(self, data, label=None, running=None):
         self.c = Canvas()
         self.data = data
+        self.label = label or "Rollout report · " + ("customer copy" if data["audience"] == "customer" else "internal")
+        self.running = running or data["project"]["name"]
         self.y = 0
         self._new_page(first=True)
 
@@ -39,13 +42,12 @@ class _Doc:
             c.rect(LEFT, 20, 4, 18, fill=BRAND_RED)
             c.text(LEFT + 10, 19, "ODIN", 17, True, WHITE)
             c.text(LEFT + 10 + c.width("ODIN", 17, True) + 8, 25, f"by {self.data['company']}", 8.5, False, (184, 184, 180))
-            label = "Rollout report · " + ("customer copy" if self.data["audience"] == "customer" else "internal")
-            c.text(RIGHT - c.width(label, 8.5), 19, label, 8.5, False, (184, 184, 180))
+            c.text(RIGHT - c.width(self.label, 8.5), 19, self.label, 8.5, False, (184, 184, 180))
             when = f"as of {_fmt(self.data['today'])}"
             c.text(RIGHT - c.width(when, 8.5), 32, when, 8.5, False, WHITE)
             self.y = 76
         else:
-            c.text(LEFT, 26, self.data["project"]["name"], 9, True, MUTED)
+            c.text(LEFT, 26, self.running, 9, True, MUTED)
             c.line(LEFT, 40, RIGHT, 40, HAIR)
             self.y = 52
 
@@ -198,14 +200,7 @@ def render(data, words):
         vb = f.get("vs_baseline_days")
         boxes.insert(2, ("Against baseline", "-" if vb is None else "on plan" if vb == 0 else f"{abs(vb)} d {'late' if vb > 0 else 'early'}",
                          f"baseline of {_fmt(data['baseline_at'])}" if data.get("baseline_at") else "no baseline", bool(vb and vb > 0)))
-    bw = (WIDTH - 8 * (len(boxes) - 1)) / len(boxes)
-    for i, (label, value, sub, bad) in enumerate(boxes):
-        bx = LEFT + i * (bw + 8)
-        c.rect(bx, doc.y, bw, 52, fill=FAINT)
-        c.text(bx + 9, doc.y + 8, label, 7.5, False, MUTED)
-        c.text(bx + 9, doc.y + 20, c.fit(value, 14, bw - 18, True), 14, True, (180, 35, 28) if bad else INK)
-        c.text(bx + 9, doc.y + 38, c.fit(sub, 7.5, bw - 18), 7.5, False, MUTED)
-    doc.y += 64
+    _boxes(doc, boxes)
 
     doc.heading("Summary")
     doc.para(words.get("summary") or "-")
@@ -284,3 +279,128 @@ def render(data, words):
         doc.heading("Team")
         doc.para(" · ".join(f"{m['name']} ({m['role']})" for m in data["team"]), 9)
     return c.render(f"Odin · {data['company']} · {p['name']} · {'customer copy' if customer else 'internal'}")
+
+
+def _boxes(doc, boxes):
+    """A row of number boxes: (label, value, sub, bad)."""
+    c = doc.c
+    bw = (WIDTH - 8 * (len(boxes) - 1)) / len(boxes)
+    for i, (label, value, sub, bad) in enumerate(boxes):
+        bx = LEFT + i * (bw + 8)
+        c.rect(bx, doc.y, bw, 52, fill=FAINT)
+        c.text(bx + 9, doc.y + 8, label, 7.5, False, MUTED)
+        c.text(bx + 9, doc.y + 20, c.fit(value, 14, bw - 18, True), 14, True, (180, 35, 28) if bad else INK)
+        c.text(bx + 9, doc.y + 38, c.fit(sub, 7.5, bw - 18), 7.5, False, MUTED)
+    doc.y += 64
+
+
+def _roadmap(doc, rows, today):
+    """One bar per rollout from its start to its forecast finish: done so far
+    solid, the rest pale, the baseline finish as a tick, the target as a dashed tick."""
+    c = doc.c
+    dates = [_d(x) for r in rows for x in (r["start"], r["forecast"], r["baseline"], r["target_end_date"]) if x] + [_d(today)]
+    t0, t1 = min(dates) - timedelta(days=5), max(dates) + timedelta(days=5)
+    label_w, row_h = 150, 16
+    track_x, track_w = LEFT + label_w, WIDTH - label_w
+    x = lambda d: track_x + track_w * ((d - t0).days / max(1, (t1 - t0).days))   # noqa: E731
+
+    def ticks():
+        m = date(t0.year, t0.month, 1)
+        while m <= t1:
+            if m >= t0 and x(m) < RIGHT - 20:
+                c.text(x(m) + 2, doc.y, m.strftime("%b %y"), 7, False, MUTED)
+            m = date(m.year + (m.month == 12), m.month % 12 + 1, 1)
+        doc.y += 12
+    doc.room(40)
+    ticks()
+    top = doc.y
+    for r in rows:
+        if doc.y + row_h > c.H - 44:
+            tx = x(_d(today))
+            c.line(tx, top, tx, doc.y, ACCENT, 0.9)
+            doc._new_page(); ticks(); top = doc.y
+        y, mid = doc.y, doc.y + row_h / 2
+        soft, strong = RAG[r["rag"]][0], MARK[r["rag"]]
+        c.rect(LEFT, mid - 2.5, 5, 5, fill=strong)
+        c.text(LEFT + 9, y + 3.5, c.fit(f"{r['name']}", 8, label_w - 14), 8, False, INK)
+        c.line(track_x, y + row_h, RIGHT, y + row_h, FAINT, 0.5)
+        s, f = _d(r["start"]), _d(r["forecast"]) or _d(today)
+        now = min(max(_d(today), s), f)
+        c.rect(x(s), mid - 3, max(2, x(now) - x(s)), 6, fill=strong)
+        if f > now:
+            c.rect(x(now), mid - 3, max(2, x(f) - x(now)), 6, fill=soft, stroke=strong, width=0.4)
+        if r["baseline"]:
+            bx = x(_d(r["baseline"]))
+            c.rect(bx - 0.6, mid - 5.5, 1.2, 11, fill=(120, 124, 134))
+        if r["target_end_date"]:
+            tx = x(_d(r["target_end_date"]))
+            c.line(tx, mid - 6, tx, mid + 6, BAD_LINE, 0.9, dash=(1.5, 1.5))
+        doc.y += row_h
+    tx = x(_d(today))
+    c.line(tx, top, tx, doc.y, ACCENT, 0.9)
+    c.text(tx - 9, doc.y + 2, "today", 7, True, ACCENT)
+    doc.y += 14
+    lx = LEFT
+    for label, draw in (("Done so far", lambda: c.rect(lx, doc.y + 1.5, 14, 5, fill=(86, 88, 94))),
+                        ("Forecast", lambda: c.rect(lx, doc.y + 1.5, 14, 5, fill=FAINT, stroke=(86, 88, 94), width=0.4)),
+                        ("Baseline finish", lambda: c.rect(lx + 6, doc.y - 1, 1.2, 10, fill=(120, 124, 134))),
+                        ("Target", lambda: c.line(lx + 7, doc.y - 1, lx + 7, doc.y + 9, BAD_LINE, 0.9, dash=(1.5, 1.5)))):
+        draw()
+        c.text(lx + 18, doc.y, label, 7.5, False, MUTED)
+        lx += 18 + c.width(label, 7.5) + 14
+    doc.y += 16
+
+
+def render_portfolio(data):
+    """PDF bytes for the portfolio report (data from services.portfolio.build)."""
+    doc = _Doc(data, label="Portfolio report · internal", running="Portfolio report")
+    c, s, rows = doc.c, data["summary"], data["rows"]
+    c.text(LEFT, doc.y, "Portfolio report", 18, True)
+    doc.y += 24
+    c.text(LEFT, doc.y, f"{s['count']} active rollouts, as of {_fmt(data['today'])}", 9, False, MUTED)
+    doc.y += 18
+    # health mix: one bar split by health
+    h = s["health"]
+    x0 = LEFT
+    for rag in ("red", "amber", "green", "done"):
+        n = h.get(rag, 0)
+        if n:
+            w = WIDTH * n / max(1, s["count"])
+            c.rect(x0, doc.y, max(1, w - 2), 8, fill=MARK[rag])
+            x0 += w
+    doc.y += 13
+    lx = LEFT
+    for rag in ("red", "amber", "green", "done"):
+        if h.get(rag):
+            label = f"{RAG[rag][2]} {h[rag]}"
+            c.rect(lx, doc.y + 2, 5, 5, fill=MARK[rag])
+            c.text(lx + 9, doc.y, label, 8, False, INK)
+            lx += 9 + c.width(label, 8) + 14
+    doc.y += 20
+    _boxes(doc, [("Late against target", str(s["late_vs_target"]), f"of {s['count']} rollouts", s["late_vs_target"] > 0),
+                 ("Behind baseline", str(s["behind_baseline"]), "no baseline data" if s["avg_slip"] is None else f"average {s['avg_slip']:+} d", False),
+                 ("Open blockers", str(s["blockers"]), "across the portfolio", s["blockers"] > 0),
+                 ("Finishing in 30 days", str(s["finishing_30d"]), "by forecast", False)])
+    if rows:
+        doc.heading("Roadmap", "start to forecast finish, worst health first")
+        _roadmap(doc, rows, data["today"])
+        league = sorted([r for r in rows if r["vs_baseline_days"]], key=lambda r: -r["vs_baseline_days"])[:12]
+        if league:
+            doc.heading("Slippage", "against each rollout's baseline")
+            doc.table(["Rollout", "Stage", "Against baseline", "Forecast", "Against target", "Confidence"],
+                      [[r["name"], r["stage"], f"{abs(r['vs_baseline_days'])} d {'late' if r['vs_baseline_days'] > 0 else 'early'}", _fmt(r["forecast"]),
+                        "-" if r["vs_target_days"] is None else f"{abs(r['vs_target_days'])} d {'after' if r['vs_target_days'] > 0 else 'before'}", r["confidence"]] for r in league],
+                      [0.3, 0.16, 0.14, 0.13, 0.14, 0.13],
+                      [{2: (180, 35, 28)} if r["vs_baseline_days"] > 0 else {} for r in league])
+    if data["risks"]:
+        doc.heading("Blockers and high-impact risks", f"{len(data['risks'])} open")
+        doc.table(["Rollout", "Kind", "Item", "Owner", "Due"],
+                  [[r["project"], r["kind"].title(), r["title"], r.get("owner_name") or "-", _fmt(r.get("due_date")) if r.get("due_date") else "-"] for r in data["risks"]],
+                  [0.22, 0.1, 0.4, 0.14, 0.14], [{1: (180, 35, 28)} if r["kind"] == "blocker" else {} for r in data["risks"]])
+    doc.heading("Every rollout")
+    doc.table(["Rollout", "Client", "Health", "Stage", "Done", "Forecast", "Target", "PM"],
+              [[r["name"], r["client"] or "-", RAG[r["rag"]][2], f"{r['stage_number']}/{r['stage_count']} {r['stage']}", f"{r['pct_complete']}%",
+                _fmt(r["forecast"]), _fmt(r["target_end_date"]) if r["target_end_date"] else "-", r["owner_name"]] for r in rows],
+              [0.2, 0.13, 0.09, 0.18, 0.06, 0.11, 0.11, 0.12],
+              [{2: RAG[r["rag"]][1]} for r in rows])
+    return c.render(f"Odin · {data['company']} · portfolio report")

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
 import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTip, XAxis, YAxis } from "recharts"
@@ -8,6 +8,7 @@ import { PrintBrand } from "@/components/Brand"
 import { PageSkeleton } from "@/components/PageSkeleton"
 import { PlanGantt, RagPill } from "@/components/PlanGantt"
 import { RAID_KIND } from "@/components/RaidPanel"
+import { Section, Table } from "@/components/ReportParts"
 import { ApiError, rolloutReport, saveRolloutReport, type RolloutReport, type User } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { cn } from "@/lib/utils"
@@ -21,25 +22,6 @@ import { fmtDate, fmtWhen, groupBlocks } from "@/lib/format"
 const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[12.5px]")
 const slip = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--elevation-pop)", fontSize: 12 }, labelStyle: { color: "var(--muted-foreground)" } }
-
-function Section({ n, title, sub, children, className }: { n?: boolean; title: string; sub?: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <section className={cn("panel p-5 break-inside-avoid print:shadow-none", className)} aria-label={title}>
-      <h2 data-n={n ? "" : undefined} className="mb-3 text-[14px] font-semibold">{title}{sub && <span className="ml-2 text-[12.5px] font-normal text-muted-foreground">{sub}</span>}</h2>
-      {children}
-    </section>
-  )
-}
-function Table({ head, rows, tone }: { head: string[]; rows: ReactNode[][]; tone?: (r: number, c: number) => string | undefined }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[12.5px]">
-        <thead><tr className="border-b border-border text-left text-[11.5px] text-muted-foreground">{head.map((h) => <th key={h} className="px-2 py-1.5 font-normal">{h}</th>)}</tr></thead>
-        <tbody>{rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn("px-2 py-1.5 align-top", tone?.(i, j))}>{c}</td>)}</tr>)}</tbody>
-      </table>
-    </div>
-  )
-}
 
 export default function Report(_props: { user: User }) {
   const id = Number(useParams().id)
