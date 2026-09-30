@@ -44,6 +44,8 @@ log "backup done"
 
 deploy() {
   git checkout --quiet "$1" && docker compose up -d --build --quiet-pull >/dev/null 2>&1 || return 1
+  # nginx's config is a file mounted from the checkout: recreate it so a changed config applies
+  docker compose up -d --no-deps --force-recreate nginx >/dev/null 2>&1 || return 1
   i=0
   until docker compose exec -T app python preflight.py >/dev/null 2>&1; do   # the app needs a moment after a restart
     i=$((i + 1)); [ $i -ge 12 ] && return 1; sleep 10
