@@ -26,9 +26,14 @@ DEFAULT_STAGES = [
     "Deployment",
     "Tuning/UAT",
     "Hypercare",
+    "Sign-off",
     "Closed",
 ]
-DEFAULT_DOC_CATEGORIES = ["Client PO", "Deliverable"]
+# The stage where the customer signs the sign-off document; the terminal stage
+# after it cannot be reached until they (and we) have signed (services/signoff.py).
+SIGNOFF_STAGE = "Sign-off"
+SIGNOFF_DOC_CATEGORY = "Sign-off"
+DEFAULT_DOC_CATEGORIES = ["Client PO", "Deliverable", "Sign-off"]
 
 DEFAULT_SETTINGS = {
     "notify_email_enabled": "0",

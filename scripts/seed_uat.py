@@ -119,11 +119,53 @@ with app.test_client() as c:
     for p in con.execute("SELECT id, name FROM projects WHERE id > 3 ORDER BY id"):
         stages = [r["name"] for r in con.execute("SELECT name FROM project_stages WHERE project_id = ? ORDER BY position", (p["id"],))]
         depth = random.choice([0, 1, 1, 2, 2, 3, 4, 5, len(stages) - 1])
+        if p["id"] in (8, 14, 19):   # three reach the end of the work: the sign-off stories below
+            depth = stages.index("Sign-off")
         plan[p["id"]] = stages[1:depth + 1]
     con.close()
     for pid, path in plan.items():
         for s in path:
-            post(f"/projects/{pid}/stage", stage=s, note=f"Now in {s}")
+            post(f"/projects/{pid}/stage", stage=s, note=f"Now in {s}")   # the last stage waits for the sign-off: those stop in Sign-off
+
+    # the agreed scope of the first rollout: three delivered, one still open (the journey test marks it)
+    hdr = {"X-CSRF-Token": token}
+    for title, status in [("Falcon sensor on 1,200 endpoints", "delivered"), ("Prevention policies tuned to the baseline", "delivered"),
+                          ("SOC runbook and handover session", "delivered"), ("Alerts forwarded to the customer's SIEM", "agreed")]:
+        r = c.post("/api/projects/1/scope", json={"title": title}, headers=hdr)
+        assert r.status_code == 200, r.data
+        if status != "agreed":
+            c.put(f"/api/projects/1/scope/{r.get_json()['id']}", json={"status": status}, headers=hdr)
+    # rollouts that reached Sign-off: a customer contact each, the scope marked, and a sign-off in every state
+    con = sqlite3.connect(DB_PATH)
+    waiting = [r[0] for r in con.execute("SELECT id FROM projects WHERE stage = 'Sign-off' ORDER BY id")]
+    con.close()
+    con = sqlite3.connect(DB_PATH)
+    for pid in waiting[:3]:   # they began two months ago (the history pass below keeps these dates)
+        con.execute("UPDATE projects SET start_date = date('now', '-62 days'), created_at = datetime('now', '-62 days') WHERE id = ?", (pid,))
+    con.commit()
+    con.close()
+    for n, pid in enumerate(waiting[:3]):
+        post(f"/projects/{pid}/participants/invite", email=f"signer{pid}@customer.example", name=["Mia Chen", "Raj Patel", "Eva Novak"][n], role="Customer")
+        for title in ["Agents deployed to every in-scope endpoint", "Detection policies tuned", "Runbook and handover"]:
+            item = c.post(f"/api/projects/{pid}/scope", json={"title": title}, headers=hdr).get_json()["id"]
+            c.put(f"/api/projects/{pid}/scope/{item}", json={"status": "delivered"}, headers=hdr)
+        d = c.get(f"/api/projects/{pid}/signoff").get_json()
+        body = {"summary": d["draft"]["summary"], "delivered": [], "outstanding": d["draft"]["outstanding"][:2], "terms": d["draft"]["terms"],
+                "signer_id": d["candidates"]["signers"][0]["id"], "counter_id": d["candidates"]["default_counter_id"]}
+        assert c.post(f"/api/projects/{pid}/signoff", json=body, headers=hdr).status_code == 200
+        if n in (0, 2):   # the customer signed; for the first, we countersigned too and the project closed
+            with app.test_request_context():
+                from services import signoff as so
+                strokes = [[[80 + k * 40, 180 + (30 if k % 2 else -30)] for k in range(12)]]
+                so.sign(so.latest(pid), {"name": body and d["candidates"]["signers"][0]["name"], "title": "IT Director", "accept": True,
+                                         "signature": {"kind": "drawn", "strokes": strokes}}, "203.0.113.7", "Seed")
+                if n == 0:
+                    so.countersign(so.latest(pid), {"name": "Admin", "title": "Delivery lead", "accept": True, "signature": {"kind": "typed", "text": "Admin"}}, "198.51.100.2", "Seed")
+            if n == 0:
+                con = sqlite3.connect(DB_PATH)
+                last = con.execute("SELECT name FROM project_stages WHERE project_id = ? ORDER BY position DESC LIMIT 1", (pid,)).fetchone()[0]
+                con.close()
+                post(f"/projects/{pid}/stage", stage=last, note="Signed off by the customer")
 
 # ---- history straight into the tables: a month of work, spread out ----
 con = sqlite3.connect(DB_PATH)
@@ -179,6 +221,8 @@ for p in con.execute("SELECT id, stage, target_end_date FROM projects ORDER BY i
     names = [r["name"] for r in stages]
     at = names.index(p["stage"]) if p["stage"] in names else 0
     began = now - timedelta(days=random.randint(25, 70))
+    if con.execute("SELECT 1 FROM signoffs WHERE project_id = ?", (p["id"],)).fetchone():   # its sign-off already names the start
+        began = datetime.fromisoformat(con.execute("SELECT created_at FROM projects WHERE id = ?", (p["id"],)).fetchone()[0])
     moves = con.execute("SELECT id FROM status_notes WHERE project_id = ? AND prev_stage IS NOT NULL ORDER BY id", (p["id"],)).fetchall()
     # the moves spread from the start to a few days ago, in order; the current stage entered at the last one
     span = (now - timedelta(days=random.randint(2, 12)) - began).total_seconds()

@@ -98,6 +98,10 @@ def guest_stage(token):
     if new_stage != next_stage_for(project):
         flash("Only the next stage can be set from this link")
         return redirect(url_for("guest_view", token=token))
+    from services.signoff import gate
+    if blocked := gate(project, new_stage):
+        flash(blocked)
+        return redirect(url_for("guest_view", token=token))
     db = get_db()
     now = datetime.utcnow().isoformat()
     db.execute("UPDATE projects SET stage = ?, updated_at = ?, stage_entered_at = ? WHERE id = ?",

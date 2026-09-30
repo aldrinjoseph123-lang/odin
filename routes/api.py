@@ -19,6 +19,7 @@ from security import csrf_token
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
 from services.audit import audit_log
+from services import signoff as signoff_service
 from spa import spa_asset
 
 
@@ -774,6 +775,10 @@ ACTIVITY_LABELS = {
     "add_project_stage": "added a stage", "rename_project_stage": "renamed a stage", "move_project_stage": "reordered the stages",
     "delete_project_stage": "removed a stage", "update_project_slas": "changed the stage SLAs", "rotate_guest_token": "rotated the guest links",
     "delete_project": "deleted the project", "restore_project": "restored the project",
+    "add_scope_item": "added to the scope", "edit_scope_item": "updated the scope", "move_scope_item": "reordered the scope", "delete_scope_item": "removed a scope item",
+    "signoff_send": "sent the sign-off", "signoff_sign": "signed the sign-off", "signoff_countersign": "countersigned the sign-off",
+    "signoff_reject": "did not accept the sign-off", "signoff_withdraw": "withdrew the sign-off", "signoff_upload": "uploaded the signed sign-off",
+    "signoff_waive": "waived the sign-off",
 }
 
 
@@ -1125,6 +1130,7 @@ def api_project_flow(project_id):
         "approval": ({"id": a["id"], "stage": a["stage"], "status": a["status"], "decided_by": a["decided_by"], "comment": a["comment"]}
                      if (a := current_approval(project_id)) else None),
         "can_approve": is_customer_on(project_id, session["user_id"]),
+        "signoff": signoff_service.state(project, session["user_id"], session.get("kind") != "external"),
     })
 
 

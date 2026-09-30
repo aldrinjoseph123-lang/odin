@@ -19,6 +19,8 @@ from constants import (
     SOFT_DELETE_TABLES,
     DEFAULT_ALERT_TYPE_SETTINGS,
     DEFAULT_DOC_CATEGORIES,
+    SIGNOFF_DOC_CATEGORY,
+    SIGNOFF_STAGE,
     DEFAULT_SETTINGS,
     DEFAULT_STAGES,
     DROPPED_PROJECT_COLUMNS,
@@ -114,7 +116,7 @@ def cleanup_soft_deletes(db=None):
         _remove_upload(project_id, stored_name)
 
     if doomed:
-        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items"):
+        for table in ("signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
@@ -139,7 +141,7 @@ def _purge_orphans(db):
     their children. Everything removed here is unreachable by definition: no
     project row means no page can ever display it.
     """
-    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items"):
+    for table in ("signoffs", "scope_items", "status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items"):
         column = "project_id"
         db.execute(
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
@@ -273,6 +275,7 @@ def migrate_db(db):
         db.execute("ALTER TABLE status_notes ADD COLUMN prev_entered_at TEXT")
 
     _migrate_stage_lists(db)
+    _migrate_signoff_stage(db)
     # A saved report version is either the old plain text (kind 'text') or a
     # frozen snapshot of the report data plus the PM's words (services/report_data.py).
     report_columns = {row[1] for row in db.execute("PRAGMA table_info(project_reports)")}
@@ -612,6 +615,30 @@ def _migrate_stage_lists(db):
             ).fetchone()[0] or 0
             db.execute("UPDATE project_stages SET position = position + 1 WHERE project_id = ? AND position = ?", (project_id, last))
             db.execute("INSERT INTO project_stages (project_id, name, position) VALUES (?, ?, ?)", (project_id, current, last))
+
+
+def _migrate_signoff_stage(db):
+    """Once (30 Sep 2026): every template and every open project's list gets a
+    Sign-off stage before its terminal one. An admin may remove it later; this
+    never runs again, so it is not put back."""
+    if db.execute("SELECT 1 FROM settings WHERE key = 'migration.signoff_stage'").fetchone():
+        return
+    def slot(table, key, owner_id):
+        rows = db.execute(f"SELECT name, position FROM {table} WHERE {key} = ? ORDER BY position", (owner_id,)).fetchall()
+        if len(rows) < 2 or any(r[0].lower() == SIGNOFF_STAGE.lower() for r in rows):
+            return
+        last = rows[-1][1]
+        db.execute(f"UPDATE {table} SET position = position + 1 WHERE {key} = ? AND position >= ?", (owner_id, last))
+        db.execute(f"INSERT INTO {table} ({key}, name, position) VALUES (?, ?, ?)", (owner_id, SIGNOFF_STAGE, last))
+    for (template_id,) in db.execute("SELECT id FROM stage_templates").fetchall():
+        slot("stage_template_stages", "template_id", template_id)
+    for (project_id, stage) in db.execute("SELECT id, stage FROM projects").fetchall():
+        last = db.execute("SELECT name FROM project_stages WHERE project_id = ? ORDER BY position DESC LIMIT 1", (project_id,)).fetchone()
+        if last and last[0] != stage:          # a closed project keeps the history it had
+            slot("project_stages", "project_id", project_id)
+    if db.execute("SELECT 1 FROM doc_categories LIMIT 1").fetchone():   # a fresh database seeds it with the defaults
+        db.execute("INSERT OR IGNORE INTO doc_categories (name) VALUES (?)", (SIGNOFF_DOC_CATEGORY,))
+    db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('migration.signoff_stage', '1')")
 
 
 def _migrate_participants(db):

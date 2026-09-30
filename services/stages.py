@@ -5,6 +5,7 @@ names — so a rename on a project cascades into that project's rows and its
 history keeps whatever the stage was called when each note was written.
 Every function returns an error message for the user, or None on success.
 """
+from constants import SIGNOFF_STAGE
 from db import get_db
 
 SCOPES = {
@@ -23,8 +24,9 @@ def list_stages(scope, scope_id):
 
 
 def add_stage(scope, scope_id, name):
-    """Insert *before* the terminal stage. The last stage means "closed"
-    everywhere, so appending would silently reopen finished work."""
+    """Insert *before* the terminal stage — and before the Sign-off stage
+    that precedes it. The last stage means "closed" everywhere, so appending
+    would silently reopen finished work; and the sign-off comes after the work."""
     table, col = _table(scope)
     name = (name or "").strip()[:80]
     if not name:
@@ -32,12 +34,14 @@ def add_stage(scope, scope_id, name):
     db = get_db()
     if db.execute(f"SELECT 1 FROM {table} WHERE {col} = ? AND name = ?", (scope_id, name)).fetchone():
         return "Stage already exists"
-    last = db.execute(f"SELECT MAX(position) FROM {table} WHERE {col} = ?", (scope_id,)).fetchone()[0]
-    if last is None:
+    rows = db.execute(f"SELECT name, position FROM {table} WHERE {col} = ? ORDER BY position", (scope_id,)).fetchall()
+    if not rows:
         db.execute(f"INSERT INTO {table} ({col}, name, position) VALUES (?, ?, 0)", (scope_id, name))
     else:
-        db.execute(f"UPDATE {table} SET position = position + 1 WHERE {col} = ? AND position = ?", (scope_id, last))
-        db.execute(f"INSERT INTO {table} ({col}, name, position) VALUES (?, ?, ?)", (scope_id, name, last))
+        tail = 2 if len(rows) >= 2 and rows[-2]["name"] == SIGNOFF_STAGE else 1
+        at = rows[-tail]["position"]
+        db.execute(f"UPDATE {table} SET position = position + 1 WHERE {col} = ? AND position >= ?", (scope_id, at))
+        db.execute(f"INSERT INTO {table} ({col}, name, position) VALUES (?, ?, ?)", (scope_id, name, at))
     db.commit()
     return None
 

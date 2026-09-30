@@ -24,6 +24,7 @@ import Analytics from "@/pages/Analytics"
 const ReportAll = lazy(() => import("@/pages/ReportAll"))
 // the report carries the chart library too: its own chunk
 const Report = lazy(() => import("@/pages/Report"))
+const Signoff = lazy(() => import("@/pages/Signoff"))
 import Login from "@/pages/Login"
 import LinkRequest from "@/pages/LinkRequest"
 import LinkContinue from "@/pages/LinkContinue"
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="/projects" element={<Protected>{(user) => <Projects user={user} />}</Protected>} />
         <Route path="/projects/new" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
         <Route path="/projects/:id/edit" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
+        <Route path="/projects/:id/signoff" element={<Protected>{(user) => <Suspense fallback={<PageSkeleton />}><Signoff user={user} /></Suspense>}</Protected>} />
         <Route path="/projects/:id/report" element={<Protected>{(user) => <Suspense fallback={<PageSkeleton />}><Report user={user} /></Suspense>}</Protected>} />
         <Route path="/reports/all" element={<Protected>{(user) => <Suspense fallback={<PageSkeleton />}><ReportAll user={user} /></Suspense>}</Protected>} />
         <Route path="/projects/:id" element={<Protected>{(user) => <Project user={user} />}</Protected>} />

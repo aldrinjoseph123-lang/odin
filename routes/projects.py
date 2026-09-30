@@ -565,6 +565,9 @@ def change_stage(project_id, new_stage, note_text):
         abort(404)
     if new_stage not in get_stage_names(project_id):
         return "Invalid stage"
+    from services.signoff import gate
+    if blocked := gate(project, new_stage):
+        return blocked
     now = datetime.utcnow().isoformat()
     db.execute(
         "UPDATE projects SET stage = ?, updated_at = ?, stage_entered_at = ? WHERE id = ?",

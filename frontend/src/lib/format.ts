@@ -241,3 +241,20 @@ export function laneSpans(spans: Span[], week: string[], lanes: number): { segme
   }
   return { segments, overflow }
 }
+
+// Where a sign-off stands, in words (services/signoff.py statuses).
+export function signoffText(status: string | null | undefined): string {
+  switch (status) {
+    case "sent": return "Sent, waiting for the customer's signature"
+    case "signed": return "Signed by the customer, waiting for our countersignature"
+    case "countersigned": return "Signed by both sides"
+    case "uploaded": return "Signed on paper; the copy is on file"
+    case "waived": return "Waived by an admin"
+    case "rejected": return "Not accepted; send a new version"
+    case "withdrawn": return "Withdrawn; send a new version"
+    default: return "Not sent yet"
+  }
+}
+
+// A textarea's lines as a list: trimmed, blanks dropped.
+export const toLines = (text: string): string[] => text.split("\n").map((x) => x.trim()).filter(Boolean)

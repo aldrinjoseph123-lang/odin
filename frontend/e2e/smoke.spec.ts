@@ -17,6 +17,7 @@ const PAGES: { path: string; h1: RegExp; who?: Who[] }[] = [
   { path: "/projects/new", h1: /New project/, who: ["admin", "member"] },
   { path: "/projects/1/edit", h1: /Edit/, who: ["admin"] },   // editing needs a role on the project
   { path: "/projects/1/report", h1: /EDR Rollout - Globex/ },
+  { path: "/projects/1/signoff", h1: /Sign-off/ },
   { path: "/reports/all", h1: /report/i },
   { path: "/analytics", h1: /Cycle time/ },
   { path: "/alerts", h1: /Alerts/ },

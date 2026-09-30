@@ -1073,7 +1073,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="P", client="C")
         c, csrf = self._api_client()
         d = c.get("/api/settings").get_json()
-        self.assertEqual(d["templates"][0]["projects"], 1); self.assertEqual(len(d["templates"][0]["stages"]), 7)
+        self.assertEqual(d["templates"][0]["projects"], 1); self.assertEqual(len(d["templates"][0]["stages"]), 8)
         self.assertIn("Client PO", [x["name"] for x in d["doc_categories"]])
         self.assertEqual([a["key"] for a in d["alerts"]], ["project_overdue", "project_due_soon", "stage_sla_breach", "stale"])
         self.assertEqual(d["alerts"][1]["threshold_days"], 7); self.assertTrue(d["alerts"][1]["notify_inapp"])
@@ -1156,7 +1156,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         d = c.get("/api/projects/1").get_json()
         self.assertEqual((d["name"], d["details"]["client"], d["details"]["po_number"], d["details"]["outsourcer_name"]), ("P", "Acme", "PO-1", "VendorCo"))
         self.assertTrue(d["guest_links"]["customer"].startswith("http://localhost/guest/")); self.assertIsNotNone(d["guest_links"]["vendor"])
-        self.assertEqual(len(d["stage_rows"]), 7); self.assertIn("sla_days", d["stage_rows"][0])
+        self.assertEqual(len(d["stage_rows"]), 8); self.assertIn("sla_days", d["stage_rows"][0])
         self.assertEqual([p["role"] for p in d["participants"]], ["Project manager"])
         self.assertEqual([n["note"] for n in d["notes"]], ["first"])
         self.assertEqual([x["filename"] for x in d["documents"]], ["po.pdf"]); self.assertIn("Client PO", d["doc_categories"])
@@ -1214,7 +1214,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "project_new": "/projects/new", "project_edit": "/projects/1/edit", "users": "/users", "audit_logs_view": "/audit-logs",
             "settings": "/settings", "settings_section": "/settings/general", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
             "account": "/account", "my_work": "/my-work", "analytics": "/analytics", "alerts_log_view": "/alerts",
-            "report_all": "/reports/all", "report_single": "/projects/1/report", "auth_link_request": "/auth/link",
+            "report_all": "/reports/all", "report_single": "/projects/1/report", "project_signoff": "/projects/1/signoff", "auth_link_request": "/auth/link",
             "auth_reset_request": "/auth/reset", "auth_reset_form": "/auth/reset/any-token", "auth_link_consume": "/auth/link/any-token", "login_password": "/login/password",
         }
         self.assertEqual(set(paths), spa.SPA_PAGES)          # a new port must be listed here too
@@ -1810,7 +1810,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.get("/api/alerts?type=stale").get_json()["total"], 0)
         an = c.get("/api/analytics").get_json()
         self.assertEqual(an["templates"][0]["id"], an["template_id"]); self.assertEqual(an["stats"]["measured_projects"], 1)
-        self.assertEqual(an["stats"]["aging"][0]["project_name"], "Mine"); self.assertEqual(len(an["stats"]["stages"]), 7)
+        self.assertEqual(an["stats"]["aging"][0]["project_name"], "Mine"); self.assertEqual(len(an["stats"]["stages"]), 8)
         v, _ = self._api_client(self._make_user("vw", "Viewer") and "vw", STRONG_PASSWORD)
         self.assertEqual(v.get("/api/analytics").status_code, 200)     # Viewers hold view_reports
         self.assertEqual(v.get("/api/my-work").get_json()["projects"], [])
@@ -1849,6 +1849,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     # ---- projects list as JSON (React port) --------------------------------
 
     def test_api_projects_filters_sorts_pages_and_remembers_the_query(self):
+        self._no_signoff()   # these close projects directly; the gate has its own tests
         for i in range(27):
             self.new_project(name=f"Proj {i:02d}", client="Acme" if i % 2 else "Globex", target_end_date="2020-01-01" if i == 3 else None)
         with self.raw_db() as db:
@@ -2421,14 +2422,18 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         """Two projects, two lists, two different terminal stages. Closing one
         by its own last stage hides it; the other, whose list is longer, stays
         open even though its stage has the same name."""
+        self._no_signoff()   # these close projects directly; the gate has its own tests
         self.new_project(name="Short", client="C")
         self.new_project(name="Long", client="C")
         with self.raw_db() as db:
             last = db.execute("SELECT id, name FROM project_stages WHERE project_id=2 ORDER BY position DESC LIMIT 1").fetchone()
-        self.client.post("/projects/2/stages/add", data={"name": "Post-mortem"})   # before Closed
+        self.client.post("/projects/2/stages/add", data={"name": "Post-mortem"})   # before Sign-off and Closed
         with self.raw_db() as db:
             pm = db.execute("SELECT id FROM project_stages WHERE project_id=2 AND name='Post-mortem'").fetchone()["id"]
-        self.client.post(f"/projects/2/stages/{pm}/move", data={"direction": "down"})   # now Post-mortem is last
+            names = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=2 ORDER BY position")]
+        self.assertEqual(names[-3:], ["Post-mortem", "Sign-off", "Closed"])
+        for _ in range(2):
+            self.client.post(f"/projects/2/stages/{pm}/move", data={"direction": "down"})   # now Post-mortem is last
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT name FROM project_stages WHERE project_id=2 ORDER BY position DESC LIMIT 1").fetchone()[0], "Post-mortem")
         self.client.post("/projects/1/stage", data={"stage": last["name"]})
@@ -2969,6 +2974,121 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual([r["title"] for r in e["risks"]], ["Shown"]); self.assertIsNone(e["summary"]["avg_slip"])
         self.assertEqual(ann.get("/reports/all.pdf").status_code, 404)
 
+    def _no_signoff(self):
+        with self.raw_db() as db:
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('policy.signoff_required', '0')"); db.commit()
+
+    def _signoff_setup(self, customer=True):
+        self.new_project(name="Close me", client="Globex")
+        c, csrf = self._api_client()
+        if customer:
+            self._invite(1, "ann@globex.example", "Customer", "Ann")
+        with self.raw_db() as db:
+            ann = db.execute("SELECT id FROM users WHERE email = 'ann@globex.example'").fetchone()
+            stages = [r["name"] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position")]
+        return c, {"X-CSRF-Token": csrf}, (ann["id"] if ann else None), stages
+
+    def _ext(self, email):
+        e = self._external_client(email)
+        return e, {"X-CSRF-Token": e.get("/api/session").get_json()["csrf"]}
+
+    DRAWN = {"kind": "drawn", "strokes": [[[100, 150], [200, 100], [300, 200], [400, 120], [500, 180]]]}
+
+    def test_signoff_scope_sign_countersign_and_the_gate(self):
+        c, h, ann, stages = self._signoff_setup()
+        self.assertEqual(stages[-2:], ["Sign-off", "Closed"])
+        # the terminal stage waits for the sign-off
+        r = c.post("/api/projects/1/stage", json={"stage": "Closed"}, headers=h)
+        self.assertEqual(r.status_code, 400); self.assertIn("sign-off", r.get_json()["error"])
+        # the scope: agreed, then marked; partial and descoped need a reason
+        for t in ("Deploy sensors to 500 endpoints", "Tune policies", "SIEM integration"):
+            self.assertEqual(c.post("/api/projects/1/scope", json={"title": t}, headers=h).status_code, 200)
+        items = c.get("/api/projects/1/scope").get_json()["items"]
+        self.assertEqual([x["status"] for x in items], ["agreed"] * 3)
+        body = {"summary": "Done.", "signer_id": ann, "counter_id": 1, "outstanding": ["Hand over the runbook"], "terms": ["Support as per contract"]}
+        self.assertIn("Mark every scope item", c.post("/api/projects/1/signoff", json=body, headers=h).get_json()["error"])
+        c.put(f"/api/projects/1/scope/{items[0]['id']}", json={"status": "delivered"}, headers=h)
+        self.assertEqual(c.put(f"/api/projects/1/scope/{items[1]['id']}", json={"status": "partial"}, headers=h).status_code, 400)
+        c.put(f"/api/projects/1/scope/{items[1]['id']}", json={"status": "partial", "note": "Two policies left for phase 2"}, headers=h)
+        c.put(f"/api/projects/1/scope/{items[2]['id']}", json={"status": "descoped", "note": "Customer moved SIEM out"}, headers=h)
+        c.put(f"/api/projects/1/scope/{items[2]['id']}", json={"move": -1}, headers=h)
+        self.assertEqual([x["title"] for x in c.get("/api/projects/1/scope").get_json()["items"]][1], "SIEM integration")
+        # the page's draft and candidates, then send
+        d = c.get("/api/projects/1/signoff").get_json()
+        self.assertEqual([s["id"] for s in d["candidates"]["signers"]], [ann]); self.assertEqual(d["candidates"]["default_counter_id"], 1)
+        self.assertIn("1 of 3 agreed scope items were delivered in full, 1 in part, 1 descoped", d["draft"]["summary"])
+        self.assertIn("Pick the customer", c.post("/api/projects/1/signoff", json={**body, "signer_id": 1}, headers=h).get_json()["error"])
+        self.assertEqual(c.post("/api/projects/1/signoff", json=body, headers=h).get_json()["version"], 1)
+        # the customer signs; nobody else can
+        e, eh = self._ext("ann@globex.example")
+        v = e.get("/api/projects/1/signoff").get_json()
+        self.assertTrue(v["can"]["sign"]); self.assertNotIn("draft", v); self.assertNotIn("signed_ip", v["current"])
+        self.assertEqual(len(v["current"]["content_hash"]), 64); self.assertTrue(v["current"]["intact"])
+        self.assertEqual(c.post("/api/projects/1/signoff/1/sign", json={"name": "Admin", "accept": True, "signature": self.DRAWN}, headers=h).status_code, 403)
+        self.assertIn("Tick the box", e.post("/api/projects/1/signoff/1/sign", json={"name": "Ann Reyes", "signature": self.DRAWN}, headers=eh).get_json()["error"])
+        self.assertIn("Draw your signature", e.post("/api/projects/1/signoff/1/sign", json={"name": "Ann Reyes", "accept": True, "signature": {"kind": "drawn", "strokes": [[[1, 1]]]}}, headers=eh).get_json()["error"])
+        self.assertEqual(e.post("/api/projects/1/signoff/1/sign", json={"name": "Ann Reyes", "title": "CISO", "accept": True, "signature": self.DRAWN}, headers=eh).status_code, 200)
+        self.assertEqual(e.post("/api/projects/1/signoff/1/countersign", json={"name": "Ann", "accept": True, "signature": self.DRAWN}, headers=eh).status_code, 403)
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": "Closed"}, headers=h).status_code, 400)   # not yet: our half is missing
+        # we countersign; the project can close; the PDF carries both
+        r = c.post("/api/projects/1/signoff/1/countersign", json={"name": "Admin", "title": "Delivery lead", "accept": True, "signature": {"kind": "typed", "text": "Admin"}}, headers=h)
+        self.assertEqual(r.status_code, 200)
+        cur = c.get("/api/projects/1/signoff").get_json()
+        self.assertEqual(cur["current"]["status"], "countersigned"); self.assertTrue(cur["state"]["complete"]); self.assertIn("signed_ip", cur["current"])
+        self.assertNotIn("draft", cur); self.assertFalse(cur["can"]["manage"])
+        self.assertEqual(c.post("/api/projects/1/scope", json={"title": "Late addition"}, headers=h).status_code, 409)
+        pdf = e.get("/projects/1/signoff.pdf")
+        self.assertEqual(pdf.mimetype, "application/pdf"); self.assertTrue(pdf.data.startswith(b"%PDF-1.4"))
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": "Closed"}, headers=h).status_code, 200)
+        with self.raw_db() as db:
+            acts = [r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action LIKE 'signoff_%' ORDER BY id")]
+        self.assertEqual(acts, ["signoff_send", "signoff_sign", "signoff_countersign"])
+
+    def test_signoff_tampering_is_caught(self):
+        c, h, ann, _ = self._signoff_setup()
+        c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["Everything"]}, headers=h)
+        with self.raw_db() as db:
+            db.execute("UPDATE signoffs SET content = replace(content, 'Everything', 'Nothing') WHERE project_id = 1"); db.commit()
+        e, eh = self._ext("ann@globex.example")
+        self.assertFalse(e.get("/api/projects/1/signoff").get_json()["current"]["intact"])
+        self.assertIn("changed since it was sent", e.post("/api/projects/1/signoff/1/sign", json={"name": "Ann", "accept": True, "signature": self.DRAWN}, headers=eh).get_json()["error"])
+
+    def test_signoff_reject_then_paper_copy_and_the_admin_waiver(self):
+        c, h, ann, _ = self._signoff_setup()
+        d = c.get("/api/projects/1/signoff").get_json()["draft"]
+        self.assertTrue(d["delivered"] is not None and d["scope"] == [])     # no scope: drafted from what happened
+        self.assertIn("List what was delivered", c.post("/api/projects/1/signoff", json={"summary": "x", "signer_id": ann, "counter_id": 1}, headers=h).get_json()["error"])
+        c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["Sensors on 500 endpoints"]}, headers=h)
+        e, eh = self._ext("ann@globex.example")
+        self.assertIn("Say what needs to change", e.post("/api/projects/1/signoff/1/reject", json={}, headers=eh).get_json()["error"])
+        self.assertEqual(e.post("/api/projects/1/signoff/1/reject", json={"comment": "Runbook missing"}, headers=eh).status_code, 200)
+        raid = e.get("/api/projects/1/raid").get_json()["items"]
+        self.assertEqual([(x["title"], x["kind"]) for x in raid], [("Sign-off v1 not accepted", "issue")])
+        # version 2 comes back on paper
+        c.post("/api/projects/1/signoff", json={"summary": "Done, runbook attached.", "signer_id": ann, "counter_id": 1, "delivered": ["Sensors", "Runbook"]}, headers=h)
+        self.assertEqual(c.post("/api/projects/1/signoff/2/upload", data={"signer_name": "Ann Reyes"}, headers=h).status_code, 400)
+        r = c.post("/api/projects/1/signoff/2/upload", data={"signer_name": "Ann Reyes", "signed_on": "2026-09-30", "file": (io.BytesIO(b"%PDF-1.4 signed"), "signed.pdf")},
+                   headers=h, content_type="multipart/form-data")
+        self.assertEqual(r.status_code, 200)
+        cur = c.get("/api/projects/1/signoff").get_json()
+        self.assertEqual((cur["current"]["status"], cur["state"]["complete"]), ("uploaded", True))
+        self.assertIn("Sign-off", [x["category"] for x in c.get("/api/projects/1").get_json()["documents"]])
+        self.assertEqual([x["status"] for x in cur["versions"]], ["uploaded", "rejected"])
+        # another project: only an admin waives, and only with a reason
+        self.new_project(name="Legacy", client="Initech")
+        self._make_user("pm2", "Member")
+        m, mcsrf = self._api_client("pm2", STRONG_PASSWORD)
+        self.assertEqual(m.post("/api/projects/2/signoff/waive", json={"reason": "Customer went quiet for months"}, headers={"X-CSRF-Token": mcsrf}).status_code, 403)
+        self.assertIn("reason", c.post("/api/projects/2/signoff/waive", json={"reason": "no"}, headers=h).get_json()["error"])
+        self.assertEqual(c.post("/api/projects/2/signoff/waive", json={"reason": "Signed by email in 2025; migrated project"}, headers=h).status_code, 200)
+        self.assertTrue(c.get("/api/projects/2/signoff").get_json()["state"]["complete"])
+
+    def test_signoff_policy_off_lets_projects_close(self):
+        c, h, _, stages = self._signoff_setup(customer=False)
+        with self.raw_db() as db:
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.signoff_required', '0')"); db.commit()
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[-1]}, headers=h).status_code, 200)
+
     def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))
         c, _ = self._api_client()
@@ -3507,6 +3627,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_adding_a_stage_does_not_reopen_closed_projects(self):
         """The last stage is terminal everywhere. Appending a new stage would
         hand that role over and put every closed project back on the board."""
+        self._no_signoff()   # these close projects directly; the gate has its own tests
         self.new_project(name="Finished", client="C")
         with self.raw_db() as db:
             terminal_before = db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position DESC LIMIT 1").fetchone()["name"]

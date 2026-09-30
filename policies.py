@@ -123,6 +123,18 @@ POLICIES = {
                            help="A rollout turns amber when it is forecast to finish more than this many days after its target date."),
     "rag_red_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Red after (days late)",
                          help="…and red past this many days, or when it is already past its target, or has an open blocker."),
+    "signoff_required": dict(area="workflow", kind="bool", default=True,
+                             label="A signed sign-off closes a project",
+                             help="The last stage cannot be reached until the customer has signed the sign-off document and we have countersigned (or a signed copy is uploaded). An admin can waive it with a written reason."),
+    "signoff_statement": dict(area="workflow", kind="text", default=(
+        "By signing, the customer confirms that the work listed above has been delivered in line with the agreed scope, "
+        "that the items marked descoped or outstanding are recorded as stated, and that the project is accepted as complete."),
+        max=1200, multiline=True, label="Acceptance statement", help="The sentence the customer signs under, on every sign-off document."),
+    "signoff_terms": dict(area="workflow", kind="text", default=(
+        "Support continues under the terms of the existing agreement.\n"
+        "Outstanding items listed above will be closed as described, without affecting acceptance."),
+        max=2000, optional=True, multiline=True, label="Handover and support terms",
+        help="Printed on the sign-off under Handover; one point per line. The project manager can edit it per document."),
     "default_customer_approval": dict(area="workflow", kind="bool", default=False,
                                       label="Ask the customer to approve each stage by default",
                                       help="Pre-ticked on the new project form; each project can still change it."),
@@ -236,7 +248,7 @@ def policy_view(area=None):
         if area and e["area"] != area:
             continue
         item = {"key": key, "area": e["area"], "kind": e["kind"], "label": e["label"], "help": e.get("help", ""), "value": policy(key)}
-        for k in ("min", "max"):
+        for k in ("min", "max", "multiline"):
             if k in e:
                 item[k] = e[k]
         if "choices" in e:

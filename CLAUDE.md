@@ -70,6 +70,11 @@ on `project_stages` (`plan_*`, `base_*`). Reports read one structure
 (`services/report_data.py` per rollout, `services/portfolio.py` for all) that
 the page, the PDF (`services/report_pdf.py`) and the weekly email share; the
 customer cut is made on the server, never in the page.
+`scope_items` and `signoffs` (30 Sep 2026) are wired the same way. The sign-off
+(`services/signoff.py`, routes in `routes/signoff.py`) gates the terminal stage:
+every stage-move path (`change_stage`, the vendor guest link) calls
+`signoff.gate()`; a new path must too. A sent version is frozen (canonical JSON +
+SHA-256); never edit `signoffs.content` after sending — withdraw and send anew.
 
 # Front end migration — React + shadcn/ui (in progress)
 

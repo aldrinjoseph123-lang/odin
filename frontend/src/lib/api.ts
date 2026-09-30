@@ -122,6 +122,7 @@ export type FlowDetail = {
   assignable: { id: number; name: string }[]; can_edit: boolean; me: number
   customer_approval: boolean; can_approve: boolean
   approval: { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null } | null
+  signoff?: SignoffState
 }
 export const decideApproval = (projectId: number, approvalId: number, decision: "approved" | "declined", comment = "") =>
   post<{ ok: true }>(`/api/projects/${projectId}/approvals/${approvalId}`, { decision, comment })
@@ -189,6 +190,59 @@ export const raid = (id: number) => getJson<RaidData>(`/api/projects/${id}/raid`
 export const saveRaid = (projectId: number, item: Partial<RaidItem>, itemId?: number) =>
   itemId ? send<{ ok: true }>(`/api/projects/${projectId}/raid/${itemId}`, "PUT", item) : post<{ ok: true; id: number }>(`/api/projects/${projectId}/raid`, item)
 export const deleteRaid = (projectId: number, itemId: number) => send<{ ok: true }>(`/api/projects/${projectId}/raid/${itemId}`, "DELETE")
+
+// ---- scope and sign-off (services/signoff.py) ----
+export type ScopeStatus = "agreed" | "delivered" | "partial" | "descoped"
+export type ScopeItem = { id: number; title: string; detail: string | null; status: ScopeStatus; note: string | null; position: number }
+export type ScopeData = { items: ScopeItem[]; statuses: ScopeStatus[]; can_edit: boolean }
+export const scopeItems = (id: number) => getJson<ScopeData>(`/api/projects/${id}/scope`)
+export const saveScope = (projectId: number, item: Partial<ScopeItem> & { move?: -1 | 1 }, itemId?: number) =>
+  itemId ? send<{ ok: true }>(`/api/projects/${projectId}/scope/${itemId}`, "PUT", item) : post<{ ok: true; id: number }>(`/api/projects/${projectId}/scope`, item)
+export const deleteScope = (projectId: number, itemId: number) => send<{ ok: true }>(`/api/projects/${projectId}/scope/${itemId}`, "DELETE")
+
+export type SignoffStatus = "sent" | "signed" | "countersigned" | "uploaded" | "waived" | "rejected" | "withdrawn"
+export type SignoffState = { required: boolean; status: SignoffStatus | null; version: number | null; complete: boolean; in_stage: boolean; needed: boolean; awaiting_me?: boolean }
+export type Signature = { kind: "drawn"; strokes: number[][][] } | { kind: "typed"; text: string }
+export type SignoffContent = {
+  project: { id: number; name: string; client: string; po_number: string | null; po_date: string | null; start_date: string | null; target_end_date: string | null
+             finished: string; owner_name: string; partner_name: string | null; vendor_name: string | null; product_name: string | null; delivery_mode: string; company: string }
+  summary: string; scope: { title: string; detail: string | null; status: ScopeStatus; note: string | null }[]
+  delivered: string[]; outstanding: string[]; terms: string[]; statement: string
+  signer: { name: string; email: string; role: string } | null; countersigner: { name: string; role: string } | null; prepared_by: string; prepared_at: string
+}
+export type SignoffVersion = {
+  version: number; status: SignoffStatus; content_hash: string; created_by: string; created_at: string; content: SignoffContent; intact: boolean
+  signer_id: number | null; signer_name: string | null; signer_title: string | null; signer_email: string | null; signed_at: string | null; signature: Signature | null
+  counter_id: number | null; counter_name: string | null; counter_title: string | null; counter_signed_at: string | null; counter_signature: Signature | null
+  reject_comment: string | null; rejected_at: string | null; document_id: number | null; waiver_reason: string | null; waived_by: string | null; completed_at: string | null
+  signed_ip?: string | null; signed_agent?: string | null; counter_ip?: string | null; counter_agent?: string | null
+}
+export type SignoffDraft = { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; scope: ScopeItem[]; statement: string }
+export type SignoffData = {
+  project: { id: number; name: string; client: string; stage: string; owner_id: number }
+  state: SignoffState
+  versions: { version: number; status: SignoffStatus; created_at: string; created_by: string }[]
+  current: SignoffVersion | null
+  can: { manage: boolean; sign: boolean; countersign: boolean; upload: boolean; withdraw: boolean; waive: boolean }
+  me: { name: string }
+  draft?: SignoffDraft
+  candidates?: { signers: { id: number; name: string; role: string; email: string }[]; countersigners: { id: number; name: string; role: string }[]; default_counter_id: number | null }
+}
+export type SignBody = { name: string; title: string; accept: boolean; signature: Signature }
+export const signoff = (id: number, v?: number | null) => getJson<SignoffData>(`/api/projects/${id}/signoff${v ? `?v=${v}` : ""}`)
+export const sendSignoff = (id: number, body: { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; signer_id: number; counter_id: number }) =>
+  post<{ ok: true; version: number }>(`/api/projects/${id}/signoff`, body)
+export const signSignoff = (id: number, v: number, body: SignBody, counter = false) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/${counter ? "countersign" : "sign"}`, body)
+export const rejectSignoff = (id: number, v: number, comment: string) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/reject`, { comment })
+export const withdrawSignoff = (id: number, v: number) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/withdraw`)
+export const waiveSignoff = (id: number, reason: string) => post<{ ok: true; version: number }>(`/api/projects/${id}/signoff/waive`, { reason })
+export async function uploadSignoff(id: number, v: number, form: FormData): Promise<{ ok: true }> {
+  if (!csrfToken) await session()
+  const res = await fetch(`/api/projects/${id}/signoff/${v}/upload`, { method: "POST", credentials: "same-origin", body: form, headers: { "X-CSRF-Token": csrfToken ?? "" } })
+  const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: true }
+  if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`)
+  return data as { ok: true }
+}
 
 // ---- calendar and kibana (views on the Flow page) ----
 export type CalendarData = {
@@ -279,7 +333,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 export type Policy = {
   key: string; area: "general" | "security" | "workflow" | "notifications" | "integrations" | "backups" | "reports" | "audit"
   kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines"
-  label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]
+  label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
 }
 export type BackupRun = {
   id: number; started_at: string; finished_at: string | null; trigger: string; actor: string | null; file: string | null

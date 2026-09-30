@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
-import { ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, Plus, Trash2, UserRound, X } from "lucide-react"
-import { useSearchParams } from "react-router-dom"
+import { ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
+import { Link, useSearchParams } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { days, fitStages, fmtDate, groupRows, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
+import { days, fitStages, fmtDate, groupRows, signoffText, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { Calendar } from "@/pages/Calendar"
 import { Kibana } from "@/pages/Kibana"
@@ -505,7 +505,21 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {d.approval && d.approval.stage === d.stage && d.approval.status !== "pending" && d.approval.status !== "superseded" && (
           <p className="text-[12.5px] text-muted-foreground">{d.stage} {d.approval.status} by {d.approval.decided_by}{d.approval.comment ? ` · ${d.approval.comment}` : ""}</p>
         )}
-        {d.can_move && d.next_stage && (
+        {d.signoff?.awaiting_me && (
+          <section className="rounded-lg border border-warn-line bg-warn-soft/40 p-3">
+            <h3 className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Your signature</h3>
+            <p className="mb-2 text-[12.5px] text-muted-foreground">The sign-off for {d.name} is waiting for you: review what was delivered, then sign.</p>
+            <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>Review and sign</Link>
+          </section>
+        )}
+        {d.can_move && d.next_stage && d.signoff?.needed && (
+          <section className="panel p-3">
+            <h3 className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</h3>
+            <p className="mb-2 text-[12.5px] text-muted-foreground">{signoffText(d.signoff.status)}. The project closes once the customer has signed and we have countersigned.</p>
+            <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>{d.signoff.status ? "Open the sign-off" : "Prepare the sign-off"}</Link>
+          </section>
+        )}
+        {d.can_move && d.next_stage && !d.signoff?.needed && (
           <section className="panel p-3" onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); setConfirming(false) } }}>
             {/* what the move will do, next to the button that does it */}
             <ul className="mb-2 grid gap-1 text-[12.5px] text-muted-foreground">

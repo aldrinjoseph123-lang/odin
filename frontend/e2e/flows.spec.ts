@@ -134,9 +134,10 @@ test("@flow calendar: months, toggles, a day, and a chip into the flow", async (
   await expect(title).toHaveText(start!)
   // hiding tasks removes their chips
   const chips = page.locator(".grid-cols-7 a[title]")
+  await page.waitForLoadState("networkidle")               // the month's data has landed before counting
   const before = await chips.count()
   await page.getByRole("button", { name: "Tasks", exact: true }).click()
-  expect(await chips.count()).toBeLessThan(before)
+  await expect.poll(() => chips.count()).toBeLessThan(before)
   await page.getByRole("button", { name: "Tasks", exact: true }).click()
   // a day with more than three items opens as a list
   await page.getByRole("button", { name: /\+\d+ more/ }).first().click()
@@ -280,4 +281,39 @@ test("@flow portfolio report: health, roadmap into a rollout's report, the PDF",
   await expect(page).toHaveURL(/\/projects\/\d+\/report$/)
   await expect(page.getByRole("heading", { level: 1 })).toContainText(name.slice(0, 12))
   expectClean(errors)
+})
+
+test("@flow scope and sign-off: mark the last item, send, see it waiting, withdraw; the gate holds", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/1")
+  const scope = page.locator("#scope")
+  await expect(scope).toContainText("1 agreed")
+  await scope.getByRole("button", { name: /^Alerts forwarded/ }).click()
+  await page.getByRole("radio", { name: "Delivered", exact: true }).click()
+  await page.getByRole("button", { name: "Save" }).click()
+  await expect(scope).toContainText("4 delivered")
+  await scope.getByRole("link", { name: "Prepare the sign-off" }).click()
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign-off")
+  await expect(page.getByRole("textbox", { name: "Summary" })).toHaveValue(/4 of 4 agreed scope items were delivered in full/)
+  await page.getByRole("button", { name: "Send for signature" }).click()
+  await page.getByRole("button", { name: /^Send to Ann Reyes now$/ }).click()
+  await expect(page.getByRole("status")).toHaveText(/Version \d+ sent to Ann Reyes/)
+  await expect(page.getByText("Sent, waiting for the customer's signature").first()).toBeVisible()
+  await expect(page.getByText(/SHA-256 [0-9a-f]{64}/)).toBeVisible()
+  const pdf = await page.request.get("/projects/1/signoff.pdf")
+  expect(pdf.headers()["content-type"]).toContain("application/pdf")
+  // the admin is not the signatory: no signing form, and the stage move to the end is refused
+  await expect(page.getByRole("button", { name: "Sign", exact: true })).toHaveCount(0)
+  const refused = await page.evaluate(async () => {
+    const s = await (await fetch("/api/session")).json()
+    const stages = (await (await fetch("/api/projects/1/flow")).json()).stages as { name: string }[]
+    const r = await fetch("/api/projects/1/stage", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": s.csrf }, body: JSON.stringify({ stage: stages[stages.length - 1].name }) })
+    return r.status
+  })
+  expect(refused).toBe(400)
+  page.once("dialog", (d) => d.accept())
+  await page.getByRole("button", { name: "Withdraw and revise" }).click()
+  await expect(page.getByRole("status")).toHaveText(/withdrawn/)
+  await expect(page.getByRole("button", { name: "Send for signature" })).toBeVisible()
+  expectClean(errors.filter((e) => !/\/api\/projects\/1\/stage|400 \(BAD REQUEST\)/.test(e)))   // the refused move is the point
 })

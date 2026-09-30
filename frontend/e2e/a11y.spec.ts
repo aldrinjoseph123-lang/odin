@@ -5,7 +5,7 @@ import { setTheme, signIn } from "./helpers"
 // @a11y: axe on every page, light and dark, against WCAG 2.1 AA. Serious and
 // critical findings fail the run; moderate ones are listed so they don't hide.
 const PAGES = ["/dashboard", "/board", "/board?rollout=1", "/board?view=calendar", "/board?view=kibana", "/my-work", "/people", "/people/2", "/projects", "/projects/1", "/projects/new",
-  "/projects/1/report", "/reports/all", "/analytics", "/alerts", "/account", "/settings/general", "/settings/integrations", "/settings/rbac", "/settings/contacts", "/users", "/audit-logs", "/login"]
+  "/projects/1/report", "/projects/1/signoff", "/projects/11/signoff", "/reports/all", "/analytics", "/alerts", "/account", "/settings/general", "/settings/integrations", "/settings/rbac", "/settings/contacts", "/users", "/audit-logs", "/login"]
 
 for (const theme of ["light", "dark"] as const) {
   test(`@a11y every page passes WCAG 2.1 AA in ${theme}`, async ({ page }) => {

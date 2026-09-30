@@ -60,6 +60,47 @@ CREATE TABLE IF NOT EXISTS raid_items (
 );
 CREATE INDEX IF NOT EXISTS idx_raid_project ON raid_items (project_id, status);
 
+-- The agreed scope of a rollout (services/signoff.py): recorded while scoping,
+-- marked delivered / partial / descoped at the end, listed on the sign-off.
+CREATE TABLE IF NOT EXISTS scope_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL,
+    detail TEXT,
+    status TEXT NOT NULL DEFAULT 'agreed',
+    note TEXT,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scope_project ON scope_items (project_id, position);
+
+-- Sign-off documents (services/signoff.py): each version freezes its content
+-- and fingerprint when sent; the customer signs, then we countersign. A
+-- scanned copy (document_id) or an admin's written waiver also completes it.
+CREATE TABLE IF NOT EXISTS signoffs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    content TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    signer_id INTEGER REFERENCES users(id),
+    signer_name TEXT, signer_title TEXT, signer_email TEXT,
+    signed_at TEXT, signed_ip TEXT, signed_agent TEXT, signature TEXT,
+    counter_id INTEGER REFERENCES users(id),
+    counter_name TEXT, counter_title TEXT,
+    counter_signed_at TEXT, counter_ip TEXT, counter_agent TEXT, counter_signature TEXT,
+    reject_comment TEXT, rejected_at TEXT,
+    document_id INTEGER REFERENCES documents(id),
+    waiver_reason TEXT, waived_by TEXT,
+    completed_at TEXT,
+    UNIQUE (project_id, version)
+);
+
 -- One row a day of the portfolio's headline counts (services/dashboard.py):
 -- the history behind the Dashboard's week-over-week deltas.
 CREATE TABLE IF NOT EXISTS portfolio_snapshots (

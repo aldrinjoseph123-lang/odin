@@ -9,7 +9,7 @@ import graph
 from db import get_db, get_setting
 
 
-def project_link(project_id, user):
+def project_link(project_id, user, target=None):
     """The line that lets the reader act on the mail. Staff get the project
     page. An external account has no password, so it gets a fresh one-time
     sign-in link that lands on the project — the same bearer-by-email model
@@ -17,12 +17,15 @@ def project_link(project_id, user):
     from core import external_url
     from policies import policy
     from security import issue_login_link
-    target = url_for("project_detail", project_id=project_id)
+    page = target or url_for("project_detail", project_id=project_id)
     if user["kind"] == "external":
-        href = external_url("auth_link_consume", token=issue_login_link(user["id"]), next=target)
+        href = external_url("auth_link_consume", token=issue_login_link(user["id"]), next=page)
         return (f'<p><a href="{href}">Open the project in Odin</a> — this sign-in link works once and '
                 f"expires in {policy('link_minutes')} minutes; after that, request a new one from the sign-in page.</p>")
-    return f'<p><a href="{external_url("project_detail", project_id=project_id)}">Open the project in Odin</a></p>'
+    href = external_url("project_detail", project_id=project_id)
+    if target:
+        href = href.rsplit(url_for("project_detail", project_id=project_id), 1)[0] + target
+    return f'<p><a href="{href}">Open the project in Odin</a></p>'
 
 
 def _plain(html):
@@ -65,7 +68,7 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
         if not r["email"] or kind in (r["email_off"] or "").split(","):
             continue
         try:
-            extra = project_link(project_id, r) if project_id else ""
+            extra = project_link(project_id, r, link if link and link.startswith("/projects/") else None) if project_id else ""
             ok, error = graph.send_mail(r["email"], subject, message_html + extra)
         except Exception as exc:   # never let mail break the request that caused it
             ok, error = False, str(exc)

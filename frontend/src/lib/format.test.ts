@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, stageColumns, stateText, timeAgo } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, signoffText, stageColumns, stateText, timeAgo, toLines } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -187,5 +187,16 @@ describe("calendar grid", () => {
     const { segments, overflow } = laneSpans([span(1, "2026-09-01", "2026-09-30"), span(2, "2026-09-09", "2026-09-10"), span(3, "2026-09-09", null), span(4, "2026-09-20", "2026-09-25")], week, 2)
     expect(segments.map((s) => [s.id, s.startCol, s.cols, s.lane, s.startsHere, s.endsHere])).toEqual([[1, 0, 7, 0, false, false], [3, 2, 5, 1, true, false]])
     expect([...overflow]).toEqual([["2026-09-09", 1], ["2026-09-10", 1]])   // span 2 had no lane left
+  })
+})
+
+describe("sign-off words", () => {
+  it("names every state, and an unsent one", () => {
+    expect(signoffText(null)).toBe("Not sent yet")
+    expect(signoffText("signed")).toMatch(/countersignature/)
+    expect(signoffText("rejected")).toMatch(/new version/)
+  })
+  it("turns a textarea into lines", () => {
+    expect(toLines("  a \n\n b\n")).toEqual(["a", "b"])
   })
 })

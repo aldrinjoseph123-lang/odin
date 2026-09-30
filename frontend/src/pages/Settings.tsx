@@ -215,8 +215,12 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
                 <Input id={`pol-${p.key}`} type={p.kind === "url" ? "url" : "text"} maxLength={p.max} placeholder={p.key === "sharepoint_site" ? "https://contoso.sharepoint.com/sites/IT" : p.key === "teams_webhook_url" ? "https://…logic.azure.com/workflows/…" : p.kind === "url" ? "https://odin.example.com" : p.kind === "emails" ? "ceo@company.com, delivery@company.com" : "partner.com, vendor.ae"}
                   value={Array.isArray(v[p.key]) ? (v[p.key] as string[]).join(", ") : String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-md text-[13px]" />
               )}
-              {p.kind === "text" && (
+              {p.kind === "text" && !p.multiline && (
                 <Input id={`pol-${p.key}`} required maxLength={p.max} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-sm text-[13px]" />
+              )}
+              {p.kind === "text" && p.multiline && (
+                <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })}
+                  className="w-full max-w-2xl rounded-md border border-input bg-background p-2 text-[13px] leading-relaxed" />
               )}
               {p.kind === "lines" && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
