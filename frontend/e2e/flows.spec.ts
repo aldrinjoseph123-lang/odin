@@ -349,7 +349,32 @@ test("@flow people: active minutes are counted while the page is in use", async 
   await ping                                                    // the first minute is sent on arrival
   await expect(page.getByRole("region", { name: "Time on Odin" })).toContainText("Last 30 days")
   await page.goto("/account")
-  await expect(page.getByRole("region", { name: "Time on Odin" })).toContainText("Admins and Members can see")
+  await expect(page.getByRole("region", { name: "Time on Odin" })).toContainText("Admins and Members can also see")
+  expectClean(errors)
+})
+
+test("@flow settings: an admin switches time on Odin and sign-up links off, then on again", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/people")
+  const save = page.getByRole("button", { name: "Save", exact: true })
+  await page.getByLabel("Record time on Odin").uncheck()
+  await page.getByLabel("Sign-up links work").uncheck()
+  await save.click()
+  await expect(page.getByRole("status")).toContainText("Saved")
+  await page.goto("/account")
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
+  await expect(page.getByRole("region", { name: "Time on Odin" })).toHaveCount(0)
+  await page.goto("/users")
+  await expect(page.getByRole("region", { name: "Sign-up links" })).toContainText("switched off")
+  await expect(page.getByRole("button", { name: "Create link" })).toHaveCount(0)
+  // back on, so later journeys see the defaults
+  await page.goto("/settings/people")
+  await page.getByLabel("Record time on Odin").check()
+  await page.getByLabel("Sign-up links work").check()
+  await save.click()
+  await expect(page.getByRole("status")).toContainText("Saved")
+  await page.goto("/account")
+  await expect(page.getByRole("region", { name: "Time on Odin" })).toBeVisible()
   expectClean(errors)
 })
 

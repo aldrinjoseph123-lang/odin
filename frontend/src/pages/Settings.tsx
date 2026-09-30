@@ -29,6 +29,7 @@ function Panel({ title, hint, children, id }: { title: string; hint?: string; ch
 const TITLES: Record<string, { title: string; lede: string }> = {
   general: { title: "General", lede: "How the workspace reads for everyone." },
   security: { title: "Sign-in & security", lede: "Sessions, passwords, uploads and outside access." },
+  people: { title: "Sign-up & activity", lede: "Whether sign-up links work and what they allow, and whether Odin records each person's active time and who may see it." },
   workflow: { title: "Projects & workflow", lede: "What new projects start with, their stages and the alerts they raise." },
   notifications: { title: "Notifications", lede: "Which channels carry project events. Each person also picks what they get by email on their Account page." },
   integrations: { title: "Integrations", lede: "Microsoft 365 (mail, Teams and OneDrive through one Azure app) and the Kibana dashboards shown on the Flow page." },
@@ -84,6 +85,7 @@ export default function Settings(_props: { user: User }) {
           instead of stretching the page on a phone */}
       <div className="mt-4 grid max-w-5xl gap-4 [&>*]:min-w-0">
         {section === "general" && policyForm("general", "Workspace")}
+        {section === "people" && policyForm("people", "Sign-up links and time on Odin", "links are made and revoked on the Users page")}
         {section === "security" && (
           <>
             <Sso key={JSON.stringify(data.sso)} sso={data.sso} busy={busy} send={send} />

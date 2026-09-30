@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 
 from db import PROJECT_OPEN_SQL, avatar_url, get_db, stages_for_projects
-from policies import local_today, local_date
+from policies import local_date, local_today, policy
 from services.alerts import build_alerts
 
 STATE_LABEL = {"overdue": "Overdue", "over_sla": "Over SLA", "due_soon": "Due soon", "on_track": "On track"}
@@ -90,8 +90,9 @@ def people(scope):
         f"(SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.assignee_id = u.id AND t.done = 1 AND t.done_at >= ? AND p.deleted_at IS NULL{scope_sql}) AS done_30d "
         "FROM users u WHERE u.active = 1 AND u.kind = 'internal' ORDER BY projects DESC, open DESC, u.name",
         (*scope_params, *scope_params, today, *scope_params, month_ago, *scope_params)).fetchall()
+    seen = policy("activity_tracking")   # off: Last seen is the last sign-in
     return [{"id": r["id"], "name": r["name"], "role": r["role"], "avatar_url": avatar_url(r), "last_login_at": r["last_login_at"],
-             "last_seen_at": r["last_seen_at"] or r["last_login_at"],
+             "last_seen_at": (r["last_seen_at"] if seen else None) or r["last_login_at"],
              "projects": r["projects"], "open": r["open"], "late": r["late"], "done_30d": r["done_30d"]}
             for r in rows if r["projects"] or r["open"] or r["done_30d"]]
 

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { Link } from "react-router-dom"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { UserAvatar } from "@/components/UserAvatar"
 import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ApiError, createSignupLink, postForm, revokeSignupLink, signupLinks, users as fetchUsers, type AdminUser, type SignupLinks, type User, type UsersData } from "@/lib/api"
+import { ApiError, createSignupLink, postForm, revokeAllSignupLinks, revokeSignupLink, signupLinks, users as fetchUsers, type AdminUser, type SignupLinks, type User, type UsersData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton } from "@/components/PageSkeleton"
@@ -184,7 +185,7 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
 const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[12.5px]"
 function SignupLinksPanel() {
   const [d, setD] = useState<SignupLinks | null>(null)
-  const [f, setF] = useState({ label: "", role: "Contributor", project_id: "", project_role: "Coordinator", days: 7, max_uses: 1 })
+  const [f, setF] = useState({ label: "", role: "Contributor", project_id: "", project_role: "Coordinator", days: 0, max_uses: 1 })
   const [made, setMade] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -205,18 +206,19 @@ function SignupLinksPanel() {
     <section className="panel p-4" aria-label="Sign-up links">
       <h3 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h3>
       <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
-      <form onSubmit={make} className="grid gap-2 text-[12.5px]">
+      {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-2.5 text-[12.5px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
+      {d.enabled && <form onSubmit={make} className="grid gap-2 text-[12.5px]">
         <label className="grid gap-1 font-medium">For<input className={field} required maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Omar, field engineer" /></label>
         <div className="grid grid-cols-2 gap-2">
           <label className="grid gap-1 font-medium">Role<select className={field} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{d.roles.map((r) => <option key={r}>{r}</option>)}</select></label>
-          <label className="grid gap-1 font-medium">Valid for<select className={field} value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })}>{[1, 3, 7, 14, 30].map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></label>
+          <label className="grid gap-1 font-medium">Valid for<select className={field} value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })}><option value={0}>{d.default_days} day{d.default_days > 1 ? "s" : ""} (default)</option>{[1, 3, 7, 14, 30].filter((n) => n !== d.default_days).map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></label>
           <label className="grid gap-1 font-medium">Project<select className={field} value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })}><option value="">None</option>{d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
           <label className="grid gap-1 font-medium">As<select className={field} value={f.project_role} disabled={!f.project_id} onChange={(e) => setF({ ...f, project_role: e.target.value })}>{d.project_roles.map((r) => <option key={r}>{r}</option>)}</select></label>
           <label className="grid gap-1 font-medium">Uses<select className={field} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: Number(e.target.value) })}>{[1, 5, 10, 25].map((n) => <option key={n} value={n}>{n === 1 ? "One person" : `Up to ${n}`}</option>)}</select></label>
         </div>
         {err && <p className="text-bad" role="alert">{err}</p>}
         <Button type="submit" size="sm" disabled={busy || !f.label.trim()}>Create link</Button>
-      </form>
+      </form>}
       {made && (
         <div className="mt-3 grid gap-1.5 rounded-lg bg-muted/60 p-2.5">
           <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[11.5px]" />
@@ -236,6 +238,8 @@ function SignupLinksPanel() {
         </ul>
       )}
       {open.length === 0 && d.links.length > 0 && <p className="mt-2 text-[11.5px] text-muted-foreground">No open links.</p>}
+      {open.length > 1 && <Button size="sm" variant="ghost" className="mt-2 h-7 text-bad" disabled={busy}
+        onClick={() => { if (confirm(`Revoke all ${open.length} open links? Anyone holding one can no longer sign up with it.`)) void revokeAllSignupLinks().then(load) }}>Revoke all open links</Button>}
     </section>
   )
 }

@@ -6,6 +6,7 @@ from markupsafe import escape
 
 from core import admin_required, app, external_url
 from db import get_db
+from policies import policy
 from security import rate_limited
 from services import signup
 from services.audit import audit_log
@@ -18,7 +19,7 @@ from spa import spa_index, spa_serves
 def api_signup_links():
     projects = [{"id": r["id"], "name": r["name"]} for r in get_db().execute(
         "SELECT id, name FROM projects WHERE deleted_at IS NULL ORDER BY name")]
-    return jsonify(links=signup.links(), roles=list(signup.LINK_ROLES), project_roles=list(signup.PROJECT_LINK_ROLES), projects=projects)
+    return jsonify(links=signup.links(), enabled=policy("signup_enabled"), default_days=policy("signup_days"), roles=list(signup.LINK_ROLES), project_roles=list(signup.PROJECT_LINK_ROLES), projects=projects)
 
 
 @app.route("/api/signup-links", methods=["POST"])
@@ -42,6 +43,14 @@ def api_signup_link_revoke(link_id):
     return jsonify(ok=True)
 
 
+@app.route("/api/signup-links/revoke-all", methods=["POST"])
+@admin_required
+def api_signup_links_revoke_all():
+    n = signup.revoke_all()
+    audit_log("signup_link_revoke", "signup_link", None, "all open links", f"{n} revoked")
+    return jsonify(ok=True, revoked=n)
+
+
 @app.route("/join/<token>")
 def join_page(token):
     """The public sign-up page; the React app draws it (or a plain notice without a build)."""
@@ -50,12 +59,17 @@ def join_page(token):
     return ("Open this link in a browser with Odin's web app.", 200, {"Content-Type": "text/plain"})
 
 
+def _gone():
+    if not policy("signup_enabled"):
+        return jsonify(error="Sign-up is closed at the moment. Ask the admin who sent you the link."), 404
+    return jsonify(error="This sign-up link is no longer valid. Ask the admin who sent it for a new one."), 404
+
+
 @app.route("/api/join/<token>")
 def api_join(token):
     link = signup.lookup(token)
     if link is None:
-        return jsonify(error="This sign-up link is no longer valid. Ask the admin who sent it for a new one."), 404
-    from policies import policy
+        return _gone()
     return jsonify(role=link["role"], project=link["project"], project_role=link["project_role"], expires_at=link["expires_at"],
                    company=policy("company_name"), domains=policy("signup_domains"))
 
@@ -66,7 +80,7 @@ def api_join_submit(token):
         return jsonify(error="Too many attempts from here; wait a few minutes"), 429
     link = signup.lookup(token)
     if link is None:
-        return jsonify(error="This sign-up link is no longer valid. Ask the admin who sent it for a new one."), 404
+        return _gone()
     try:
         uid = signup.register(link, request.get_json(silent=True) or {})
     except ValueError as e:

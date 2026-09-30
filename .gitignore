@@ -5,6 +5,7 @@ odin.db-*
 uploads/
 backups/
 avatars/
+brand/
 uat-data/
 *.log
 

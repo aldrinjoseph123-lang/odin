@@ -175,7 +175,7 @@ def settings():
 
 
 # Settings is one page with a side menu; each area has its own address.
-SETTINGS_SECTIONS = ("general", "security", "workflow", "notifications", "integrations", "reports", "documents", "backups", "api", "audit")
+SETTINGS_SECTIONS = ("general", "security", "people", "workflow", "notifications", "integrations", "reports", "documents", "backups", "api", "audit")
 
 
 @app.route("/settings/<section>")

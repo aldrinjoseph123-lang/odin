@@ -1,23 +1,31 @@
 """Last seen and active time (People, Person, Account).
 
-The browser pings once a minute while Odin is open, visible and was used in
-the last five minutes (services the ping: POST /api/activity). Each accepted
+The browser pings once a minute while Odin is open, visible and was used
+within the idle limit (policy activity_idle_minutes; POST /api/activity). Each accepted
 ping is one active minute on the person's workspace-local day; pings closer
 than 50 seconds apart are not counted, so a second tab or a fast client
 cannot inflate the figure. Idle time with a tab left open is never counted.
-Rows older than 400 days are trimmed nightly by the scheduler.
+Rows older than 400 days are trimmed nightly by the scheduler. An admin can
+switch the whole thing off (activity_tracking) and choose which roles see
+other people's figures (activity_roles).
 """
 from datetime import datetime, timedelta
 
 from db import get_db
-from policies import local_today
+from policies import local_today, policy
 
 KEEP_DAYS = 400
 MIN_GAP_SECONDS = 50
 
 
+def enabled():
+    return policy("activity_tracking")
+
+
 def ping(user_id):
-    """Record one active minute unless one was recorded under 50 s ago."""
+    """Record one active minute unless one was recorded under 50 s ago (or tracking is off)."""
+    if not enabled():
+        return False
     db = get_db()
     now = datetime.utcnow()
     row = db.execute("SELECT last_ping_at FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -48,7 +56,7 @@ def summary(user_id, days=30):
 
 
 def can_see_others(role):
-    return role in ("Admin", "Member")
+    return enabled() and role in policy("activity_roles")
 
 
 def trim(db=None):

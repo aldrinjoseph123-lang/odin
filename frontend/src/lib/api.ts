@@ -14,7 +14,7 @@ export type User = {
   accent: string
   avatar_url: string | null
   home: "dashboard" | "board"
-  prefs?: { date_format: DateFormat; undo_minutes: number }
+  prefs?: { date_format: DateFormat; undo_minutes: number; activity_idle_minutes?: number }
 }
 
 export type SignIn = { microsoft: boolean; microsoft_only: boolean; link_minutes?: number }
@@ -336,7 +336,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 
 // ---- settings ----
 export type Policy = {
-  key: string; area: "general" | "security" | "workflow" | "notifications" | "integrations" | "backups" | "reports" | "audit"
+  key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "backups" | "reports" | "audit"
   kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
 }
@@ -413,17 +413,18 @@ export const report = (id: number, query: string) => getJson<ReportData>(`/api/p
 
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
-  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity; notify_via: "email" | "teams"; teams_ready: boolean }>("/api/account")
+  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[]; notify_via: "email" | "teams"; teams_ready: boolean }>("/api/account")
 // active minutes (services/activity.py): today, 7 and 30 days, one row per day
 export type Activity = { today: number; week: number; month: number; days: { day: string; minutes: number }[]; last_seen_at: string | null; last_login_at: string | null }
 // sign-up links (services/signup.py): admins make them; a new colleague fills /join/<token>
 export type SignupLink = { id: number; label: string; role: string; project_id: number | null; project: string | null; project_role: string | null
   max_uses: number; uses: number; expires_at: string; created_by: string; created_at: string; state: "open" | "expired" | "used up" | "revoked" }
-export type SignupLinks = { links: SignupLink[]; roles: string[]; project_roles: string[]; projects: { id: number; name: string }[] }
+export type SignupLinks = { links: SignupLink[]; enabled: boolean; default_days: number; roles: string[]; project_roles: string[]; projects: { id: number; name: string }[] }
 export const signupLinks = () => getJson<SignupLinks>("/api/signup-links")
 export const createSignupLink = (b: { label: string; role: string; project_id: number | null; project_role: string | null; days: number; max_uses: number }) =>
   post<{ ok: true; link: string }>("/api/signup-links", b)
 export const revokeSignupLink = (id: number) => post<{ ok: true }>(`/api/signup-links/${id}/revoke`)
+export const revokeAllSignupLinks = () => post<{ ok: true; revoked: number }>("/api/signup-links/revoke-all")
 export type JoinInfo = { role: string; project: string | null; project_role: string | null; expires_at: string; company: string; domains: string[] }
 export const joinInfo = (token: string) => getJson<JoinInfo>(`/api/join/${token}`)
 export const joinSubmit = (token: string, b: { name: string; username: string; email: string; password: string; notify_via: "email" | "teams" }) =>

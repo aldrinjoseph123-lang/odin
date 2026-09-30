@@ -37,7 +37,7 @@ function NavLink({ item, current, onClick }: { item: Item; current: boolean; onC
 
 export default function AppShell({ user, children, messages = [], onDismiss }: { user: User; children: ReactNode; messages?: string[]; onDismiss?: () => void }) {
   const { pathname } = useLocation()
-  useActivityPing()
+  useActivityPing(user.prefs?.activity_idle_minutes ?? 5)
   const [open, setOpen] = useState(false)
   const [theme, setTheme] = useState<Theme>(user.theme)
   const [palette, setPalette] = useState(false)

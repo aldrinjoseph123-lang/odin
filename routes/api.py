@@ -20,7 +20,7 @@ from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
 from services.audit import audit_log
 from services import signoff as signoff_service
-from services.activity import summary as activity_summary
+from services.activity import enabled as activity_enabled, summary as activity_summary
 from spa import spa_asset
 
 
@@ -59,7 +59,8 @@ def _current_user():
         "permissions": _permissions_for(session.get("role")),
         "nav": nav_counts(),
         # workspace-wide display choices from Settings → General
-        "prefs": {"date_format": policy("date_format"), "undo_minutes": policy("undo_minutes")},
+        "prefs": {"date_format": policy("date_format"), "undo_minutes": policy("undo_minutes"),
+                  "activity_idle_minutes": policy("activity_idle_minutes") if policy("activity_tracking") else 0},
     }
 
 
@@ -448,7 +449,8 @@ def api_account():
                    email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
                                 if k != "access" or session.get("role") == "Admin"],   # access requests reach admins only
                    mail_enabled=get_setting("notify_email_enabled") == "1",
-                   activity=activity_summary(session["user_id"]), notify_via=u["notify_via"],
+                   activity=activity_summary(session["user_id"]) if activity_enabled() else None,
+                   activity_viewers=policy("activity_roles"), notify_via=u["notify_via"],
                    teams_ready=get_setting("notify_teams_enabled") == "1")
 
 
@@ -480,7 +482,7 @@ def api_person(user_id):
         abort(404)
     d["can_notify"] = session.get("role") in ("Admin", "Member", "Contributor") and user_id != session["user_id"]
     from services import activity
-    if activity.can_see_others(session.get("role")) or user_id == session["user_id"]:
+    if activity.can_see_others(session.get("role")) or (activity.enabled() and user_id == session["user_id"]):
         d["activity"] = activity.summary(user_id)
     return jsonify(d)
 

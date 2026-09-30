@@ -266,8 +266,8 @@ export function localToday(now: Date = new Date()): string {
 }
 
 // Activity: ping only while the page is visible and was used in the last five minutes.
-export const IDLE_MS = 5 * 60_000
-export const shouldPing = (now: number, lastInput: number, visible: boolean) => visible && now - lastInput < IDLE_MS
+// idleMinutes comes from the workspace policy; 0 means time tracking is off
+export const shouldPing = (now: number, lastInput: number, visible: boolean, idleMinutes = 5) => idleMinutes > 0 && visible && now - lastInput < idleMinutes * 60_000
 
 // Minutes as "3 h 20 min", "45 min", "0 min".
 export function minutesText(m: number): string {
@@ -278,3 +278,11 @@ export function minutesText(m: number): string {
 
 // A document template's {placeholders} (services/doc_templates.fill): known ones filled, others left as typed.
 export const fillPlaceholders = (text: string, values: Record<string, string>) => text.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? values[k] : m))
+
+// Who besides the person can see their time on Odin (policy activity_roles)
+export function viewersText(roles: string[]) {
+  if (!roles.length) return "Only you can see these figures."
+  const names = roles.map((r) => `${r}s`)
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]
+  return `${list} can also see them on your People page.`
+}

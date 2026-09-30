@@ -91,6 +91,9 @@ def isolate_uploads(test):
     patcher = patch.object(projects_module, "UPLOAD_DIR", tmp)
     patcher.start()
     test.addCleanup(patcher.stop)
+    data = patch.object(db_module, "DATA_DIR", tempfile.mkdtemp())   # template logos (brand/) and the like
+    data.start()
+    test.addCleanup(data.stop)
     return tmp
 
 
@@ -3323,6 +3326,51 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c.post(f"/api/signup-links/{lid}/revoke", headers=h)
         self.assertEqual(anon.get(f"/api/join/{r['link'].rsplit('/join/', 1)[1]}").status_code, 404)
         self.assertEqual(app_module.app.test_client().get("/api/signup-links").status_code, 302)   # admins only
+
+    def _set_policy(self, **values):
+        with self.raw_db() as db:
+            for k, v in values.items():
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (f"policy.{k}", v))
+            db.commit()
+
+    def test_admin_controls_time_tracking_and_sign_up(self):
+        pm = self._make_user("pmy", "Member"); con = self._make_user("cony", "Contributor")
+        c, csrf = self._api_client("pmy", STRONG_PASSWORD)
+        h = {"X-CSRF-Token": csrf}
+        self.assertEqual(c.get("/api/session").get_json()["user"]["prefs"]["activity_idle_minutes"], 5)
+        # who sees other people's time follows the policy; everyone keeps their own
+        self._set_policy(activity_roles="Admin,Contributor")
+        cc, _ = self._api_client("cony", STRONG_PASSWORD)
+        self.assertIn("activity", cc.get(f"/api/people/{pm}").get_json())
+        self.assertNotIn("activity", c.get(f"/api/people/{con}").get_json())
+        self.assertEqual(c.get("/api/account").get_json()["activity_viewers"], ["Admin", "Contributor"])
+        # switched off: nothing counted, no panels, the ping hook is told to stop, last seen is the sign-in
+        self._set_policy(activity_tracking="0")
+        self.assertFalse(c.post("/api/activity", headers=h).get_json()["counted"])
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM user_activity WHERE user_id = ?", (pm,)).fetchone())
+        self.assertIsNone(c.get("/api/account").get_json()["activity"])
+        admin, ah = self._api_client()
+        self.assertNotIn("activity", admin.get(f"/api/people/{pm}").get_json())
+        self.assertEqual(c.get("/api/session").get_json()["user"]["prefs"]["activity_idle_minutes"], 0)
+        # sign-up off: no new links, open ones stop working, and come back when it is on again
+        hh = {"X-CSRF-Token": ah}
+        link = admin.post("/api/signup-links", json={"label": "a", "role": "Viewer"}, headers=hh).get_json()["link"]
+        admin.post("/api/signup-links", json={"label": "b", "role": "Viewer"}, headers=hh)
+        token = link.rsplit("/join/", 1)[1]
+        self._set_policy(signup_enabled="0")
+        anon = app_module.app.test_client()
+        r = anon.get(f"/api/join/{token}")
+        self.assertEqual(r.status_code, 404); self.assertIn("closed", r.get_json()["error"])
+        self.assertEqual(admin.post("/api/signup-links", json={"label": "c", "role": "Viewer"}, headers=hh).status_code, 400)
+        self.assertFalse(admin.get("/api/signup-links").get_json()["enabled"])
+        self._set_policy(signup_enabled="1")
+        self.assertEqual(anon.get(f"/api/join/{token}").status_code, 200)
+        # revoke every open link at once (audited)
+        self.assertEqual(admin.post("/api/signup-links/revoke-all", headers=hh).get_json()["revoked"], 2)
+        self.assertEqual(anon.get(f"/api/join/{token}").status_code, 404)
+        with self.raw_db() as db:
+            self.assertTrue(db.execute("SELECT 1 FROM audit_logs WHERE action = 'signup_link_revoke' AND details LIKE '2 revoked%'").fetchone())
 
     def _png(self, w=4, h=2):
         import struct

@@ -27,6 +27,8 @@ def _hash(raw):
 
 def create(label, role, project_id, project_role, days, max_uses, author):
     """Returns the raw token (shown once in the link)."""
+    if not policy("signup_enabled"):
+        raise ValueError("Sign-up links are switched off (Settings → Sign-up & activity)")
     label = (label or "").strip()[:80]
     if not label:
         raise ValueError("Name the link (e.g. who it is for)")
@@ -68,8 +70,19 @@ def revoke(link_id):
     return bool(done)
 
 
+def revoke_all():
+    """Revoke every link still open; returns how many."""
+    db = get_db()
+    now = datetime.utcnow().isoformat()
+    n = db.execute("UPDATE signup_links SET revoked_at = ? WHERE revoked_at IS NULL AND expires_at >= ? AND uses < max_uses", (now, now)).rowcount
+    db.commit()
+    return n
+
+
 def lookup(raw):
-    """The open link for this token, or None (unknown, revoked, expired or used up)."""
+    """The open link for this token, or None (unknown, revoked, expired, used up, or sign-up switched off)."""
+    if not policy("signup_enabled"):
+        return None
     row = get_db().execute("SELECT l.*, p.name AS project FROM signup_links l LEFT JOIN projects p ON p.id = l.project_id WHERE token_hash = ?",
                            (_hash(raw or ""),)).fetchone()
     if not row or row["revoked_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["uses"] >= row["max_uses"]:

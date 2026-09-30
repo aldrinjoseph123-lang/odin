@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils"
 // Every entry is its own address, so a link or a reload lands on the same area.
 const SETTINGS_GROUPS: { label: string; items: { href: string; label: string }[] }[] = [
   { label: "Workspace", items: [{ href: "/settings/general", label: "General" }, { href: "/settings/security", label: "Sign-in & security" }] },
-  { label: "People", items: [{ href: "/users", label: "Users" }, { href: "/settings/rbac", label: "Role permissions" }] },
+  { label: "People", items: [{ href: "/users", label: "Users" }, { href: "/settings/rbac", label: "Role permissions" },
+    { href: "/settings/people", label: "Sign-up & activity" }] },
   { label: "Delivery", items: [{ href: "/settings/workflow", label: "Projects & workflow" }, { href: "/settings/contacts", label: "Contacts & partners" },
     { href: "/settings/documents", label: "Documents" }] },
   { label: "Connections", items: [{ href: "/settings/notifications", label: "Notifications" }, { href: "/settings/integrations", label: "Integrations" },

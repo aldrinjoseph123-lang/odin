@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, stateText, timeAgo, toLines } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -212,6 +212,11 @@ describe("activity", () => {
     expect(shouldPing(1_000_000, 1_000_000 - 60_000, true)).toBe(true)
     expect(shouldPing(1_000_000, 1_000_000 - 6 * 60_000, true)).toBe(false)   // idle
     expect(shouldPing(1_000_000, 1_000_000, false)).toBe(false)               // hidden tab
+    expect(shouldPing(1_000_000, 1_000_000 - 6 * 60_000, true, 10)).toBe(true)   // a longer idle limit
+    expect(shouldPing(1_000_000, 1_000_000, true, 0)).toBe(false)             // tracking off
+    expect(viewersText([])).toBe("Only you can see these figures.")
+    expect(viewersText(["Admin"])).toBe("Admins can also see them on your People page.")
+    expect(viewersText(["Admin", "Member", "Contributor"])).toBe("Admins, Members and Contributors can also see them on your People page.")
   })
   it("says minutes the way people read them", () => {
     expect(minutesText(0)).toBe("0 min"); expect(minutesText(45)).toBe("45 min"); expect(minutesText(120)).toBe("2 h"); expect(minutesText(200)).toBe("3 h 20 min")

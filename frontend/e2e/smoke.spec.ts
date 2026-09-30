@@ -30,6 +30,7 @@ const PAGES: { path: string; h1: RegExp; who?: Who[] }[] = [
   { path: "/settings/reports", h1: /Reports/, who: ["admin"] },
   { path: "/settings/backups", h1: /Backups/, who: ["admin"] },
   { path: "/settings/documents", h1: /Documents/, who: ["admin"] },
+  { path: "/settings/people", h1: /Sign-up & activity/, who: ["admin"] },
   { path: "/settings/api", h1: /API/, who: ["admin"] },
   { path: "/settings/audit", h1: /Audit/, who: ["admin"] },
   { path: "/settings/rbac", h1: /Role permissions/, who: ["admin"] },
