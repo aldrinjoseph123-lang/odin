@@ -197,6 +197,14 @@ NEW_USER_COLUMNS = {
     "signup_link_id": "INTEGER",
     "signup_project_id": "INTEGER",
     "signup_project_role": "TEXT",
+    # Two-step sign-in (services/mfa.py): the authenticator secret, sealed with a
+    # key derived from SECRET_KEY; one waiting for its first code; when it was
+    # turned on; the last time step used (a code works once); recovery code hashes.
+    "totp_secret": "TEXT",
+    "totp_pending": "TEXT",
+    "totp_enabled_at": "TEXT",
+    "totp_last_step": "INTEGER NOT NULL DEFAULT 0",
+    "recovery_codes": "TEXT",
     # Appearance is the user's, not the deployment's: light / dark / follow the
     # OS, and which hue the one accent takes. The avatar is a filename under
     # ODIN_DATA_DIR/avatars, unique per upload so its URL changes on replace.

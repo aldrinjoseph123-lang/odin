@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button"
 import { AuthHeading, AuthLayout } from "@/components/Brand"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ApiError, login, session, type SignIn } from "@/lib/api"
+import { ApiError, login, loginCode, session, type SignIn, type User } from "@/lib/api"
 
 // ?next= is honoured only when relative — the same open-redirect rule Flask applies.
-function destinationAfterLogin(user: { must_change_password: boolean; home: "dashboard" | "board" }): string {
-  if (user.must_change_password) return "/account"
+function destinationAfterLogin(user: Pick<User, "must_change_password" | "must_enroll_mfa" | "home">): string {
+  if (user.must_change_password || user.must_enroll_mfa) return "/account"
   const next = new URLSearchParams(window.location.search).get("next") ?? ""
   // one leading slash, no second slash or backslash, no control characters ("/\\evil.com" and "/\t/evil.com" leave the site)
   return /^\/(?![\/\\])[^\\\x00-\x1f\x7f]*$/.test(next) ? next : user.home === "board" ? "/board" : "/dashboard"
@@ -29,6 +29,10 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [signin, setSignin] = useState<SignIn | null>(null)
+  // two-step sign-in: after the right password, the code (or a recovery code)
+  const [codeStep, setCodeStep] = useState(false)
+  const [code, setCode] = useState("")
+  const [recovery, setRecovery] = useState(false)
   const userRef = useRef<HTMLInputElement>(null)
   const passRef = useRef<HTMLInputElement>(null)
   const emergency = window.location.pathname === "/login/password"
@@ -41,7 +45,7 @@ export default function Login() {
       .catch(() => setSignin({ microsoft: false, microsoft_only: false }))
   }, [emergency])
   const showPassword = emergency || (signin !== null && !signin.microsoft_only)
-  const microsoft = !emergency && !!signin?.microsoft
+  const microsoft = !emergency && !codeStep && !!signin?.microsoft
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -51,20 +55,35 @@ export default function Login() {
     setBusy(true)
     setError(null)
     try {
-      const { user } = await login(username.trim(), password)
-      window.location.assign(destinationAfterLogin(user))
+      const r = await login(username.trim(), password)
+      if (r.code_needed) { setCodeStep(true); setBusy(false); return }
+      window.location.assign(destinationAfterLogin(r.user!))
     } catch (err) {
       setError({ field: err instanceof ApiError ? "password" : "form", text: err instanceof ApiError ? err.message : "Could not reach Odin — check your connection and try again" })
       setBusy(false)
       passRef.current?.select()
     }
   }
+  async function submitCode(event: FormEvent) {
+    event.preventDefault()
+    if (!code.trim()) { setError({ field: "form", text: recovery ? "Enter a recovery code" : "Enter the 6-digit code" }); return }
+    setBusy(true); setError(null)
+    try {
+      const { user } = await loginCode(code.trim())
+      window.location.assign(destinationAfterLogin(user))
+    } catch (err) {
+      const again = err instanceof ApiError && (err.status === 410 || err.status === 429)
+      if (again) { setCodeStep(false); setPassword(""); setCode("") }
+      setError({ field: again ? "password" : "form", text: err instanceof ApiError ? err.message : "Could not reach Odin — check your connection and try again" })
+      setBusy(false)
+    }
+  }
   const capsCheck = (e: KeyboardEvent<HTMLInputElement>) => setCaps(e.getModifierState?.("CapsLock") ?? false)
 
   return (
     <AuthLayout>
-      <AuthHeading title={emergency ? "Emergency sign-in" : "Sign in to Odin"}>
-        {emergency ? "For accounts an admin allowed to keep a password. Each use is recorded and the admins are told."
+      <AuthHeading title={codeStep ? "Two-step sign-in" : emergency ? "Emergency sign-in" : "Sign in to Odin"}>
+        {codeStep ? `Signed in as ${username.trim()}: one more step.` : emergency ? "For accounts an admin allowed to keep a password. Each use is recorded and the admins are told."
           : microsoft ? "Staff sign in with their work account." : "Use the username and password your admin gave you."}
       </AuthHeading>
 
@@ -80,7 +99,27 @@ export default function Login() {
       )}
       {microsoft && showPassword && <p className="my-5 flex items-center gap-3 text-[12px] text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">or with a password</p>}
 
-      {showPassword && (
+      {codeStep && (
+        <form onSubmit={submitCode} className="grid gap-4" noValidate aria-busy={busy} aria-label="Two-step sign-in">
+          <p className="text-[13.5px] text-muted-foreground">{recovery ? "Enter one of the recovery codes you saved when you set up two-step sign-in. Each works once." : "Open your authenticator app and enter the 6-digit code for Odin."}</p>
+          {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="code" className="text-[13.5px]">{recovery ? "Recovery code" : "Code"}</Label>
+            <Input id="code" name="code" autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} autoCapitalize="none"
+              maxLength={recovery ? 12 : 7} value={code} onChange={(e) => { setCode(e.target.value); if (error) setError(null) }} className={`${field} tracking-[0.2em] tabular-nums`} />
+          </div>
+          <Button type="submit" disabled={busy} className="mt-1 h-11 text-sm">
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Checking…</> : "Continue"}
+          </Button>
+          <div className="flex flex-wrap justify-between gap-2 text-[13px]">
+            <button type="button" className="text-primary-text hover:underline" onClick={() => { setRecovery(!recovery); setCode(""); setError(null) }}>
+              {recovery ? "Use the authenticator code" : "Lost your phone? Use a recovery code"}</button>
+            <button type="button" className="text-muted-foreground hover:underline" onClick={() => { setCodeStep(false); setCode(""); setPassword(""); setError(null) }}>Start again</button>
+          </div>
+        </form>
+      )}
+
+      {showPassword && !codeStep && (
         <form onSubmit={submit} className="grid gap-4" noValidate aria-busy={busy}>
           {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
           <div className="grid gap-1.5">
@@ -116,7 +155,7 @@ export default function Login() {
       )}
 
       {/* Partners and customers have no password: their way in is the email link. */}
-      {!emergency && (
+      {!emergency && !codeStep && (
         <a href="/auth/link" className="mt-8 flex min-h-11 items-center justify-between gap-3 panel px-4 py-3 text-[13.5px] outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
           <span><span className="block font-medium">Partner or customer?</span><span className="text-muted-foreground">Get a one-time sign-in link by email</span></span>
           <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />

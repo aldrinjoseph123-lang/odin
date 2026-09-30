@@ -130,6 +130,9 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
         {u.kind === "external" ? <span className="text-muted-foreground">Email link</span> : (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {u.microsoft && <Badge variant="secondary">Microsoft</Badge>}
+            {u.two_step && <span className="inline-flex items-center gap-1"><Badge variant="secondary">Two-step</Badge>
+              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" disabled={busy} aria-label={`Reset two-step sign-in for ${u.name}`}
+                onClick={() => send(`/users/${u.id}/two-step-reset`, {}, `Reset two-step sign-in for ${u.name}? Use this when they lost their phone and recovery codes. Their sessions end.`)}>Reset</Button></span>}
             <label className="flex items-center gap-1.5 whitespace-nowrap" title="Keeps a password when staff must use Microsoft: the emergency way in">
               <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => send(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-3.5 w-3.5 accent-primary" />
               Password

@@ -65,8 +65,29 @@ def attempt_login(username, password):
         record_login_attempt(username, success=False)
         audit_log("login_failure", "user", user["id"], username, "password sign-in not allowed: Microsoft only", actor=username)
         return False, "Staff sign in with Microsoft — use the Microsoft button"
+    from services import mfa
+    if mfa.enabled(user):
+        # The password was right; the session holds only "who, since when"
+        # until the code arrives (/api/login/code), never a signed-in user.
+        session.clear()
+        session["mfa_user"], session["mfa_at"], session["mfa_tries"] = user["id"], datetime.utcnow().isoformat(), 0
+        audit_log("login_password_ok", "user", user["id"], username, "waiting for the two-step code", actor=username)
+        return False, MFA_NEEDED
+    finish_login(user)
+    return True, None
+
+
+MFA_NEEDED = "two-step code needed"
+
+
+def finish_login(user, how=None):
+    """The shared end of a password sign-in (with its code, if any)."""
+    from routes.sso import sso_enforced
+    from services import mfa
+    username = user["username"]
     record_login_attempt(username, success=True)
     start_session(user)
+    session["must_enroll_mfa"] = mfa.required(user) and not mfa.enabled(user)
     if sso_enforced():
         # The emergency way in: always on the record, and the admins hear of it.
         from services.notifications import notify_users
@@ -76,8 +97,7 @@ def attempt_login(username, password):
                      f"{escape(user['name'])} used the emergency password sign-in from {escape(request.remote_addr or 'an unknown address')}. If that wasn't expected, deactivate the account on the Users page.",
                      link="/audit-logs")
     else:
-        audit_log("login_success", "user", user["id"], username, actor=username)
-    return True, None
+        audit_log("login_success", "user", user["id"], username, how, actor=username)
 
 
 def start_session(user):
@@ -271,7 +291,7 @@ def login():
         ok, message = attempt_login(request.form["username"].strip(), request.form["password"])
         if ok:
             return redirect(safe_next_url() or home_url())
-        flash(message)
+        flash("Two-step sign-in needs Odin's web app to enter the code" if message == MFA_NEEDED else message)
         return render_template("login.html")
     if spa_serves("login"):
         return spa_index()

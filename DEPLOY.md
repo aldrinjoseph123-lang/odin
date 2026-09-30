@@ -200,6 +200,11 @@ Keep it out of the code — it's passed via the systemd unit below. If Microsoft
 publicly-known development key — anyone who knows it can forge a session cookie
 and log in as any user.
 
+Keep `SECRET_KEY` stable: two-step sign-in secrets are sealed with a key derived
+from it. Changing it signs everyone out and makes every enrolled authenticator
+unreadable: people then sign in with a recovery code, or an admin resets
+two-step sign-in for them on the Users page.
+
 ### Security environment variables
 
 | Variable | Set it to | Why |

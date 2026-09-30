@@ -8,6 +8,7 @@ export type User = {
   role: "Admin" | "Member" | "Contributor" | "Viewer" | "External"
   kind: "internal" | "external"
   must_change_password: boolean
+  must_enroll_mfa?: boolean
   permissions: string[]
   nav: Nav
   theme: "system" | "light" | "dark"
@@ -54,8 +55,21 @@ async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: u
 const post = <T,>(path: string, body?: unknown) => send<T>(path, "POST", body)
 
 export function login(username: string, password: string) {
-  return post<{ user: User; csrf: string }>("/api/login", { username, password })
+  return post<{ user?: User; csrf: string; code_needed?: boolean }>("/api/login", { username, password })
 }
+
+// After the password, when two-step sign-in is on: the authenticator code or a recovery code.
+// 410 or 429 means start again from the password.
+export function loginCode(code: string) {
+  return post<{ user: User; csrf: string }>("/api/login/code", { code })
+}
+
+export type TwoStep = { enabled: boolean; enabled_at: string | null; required: boolean; recovery_left: number; password: boolean }
+export const twoStep = () => getJson<TwoStep>("/api/account/two-step")
+export const twoStepSetup = () => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup")
+export const twoStepConfirm = (code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/confirm", { code })
+export const twoStepOff = (password: string, code: string) => post<{ ok: true }>("/api/account/two-step/off", { password, code })
+export const twoStepCodes = (password: string, code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/recovery-codes", { password, code })
 
 export function logout() {
   return post<{ ok: true; csrf: string }>("/api/logout")
@@ -378,7 +392,7 @@ export const contacts = () => getJson<ContactsData>("/api/settings/contacts")
 // ---- admin: users and the audit log ----
 export type AdminUser = {
   id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"
-  last_login_at: string | null; created_at: string | null; avatar_url: string | null; pending: boolean; password_login: boolean; microsoft: boolean
+  last_login_at: string | null; created_at: string | null; avatar_url: string | null; pending: boolean; password_login: boolean; two_step: boolean; microsoft: boolean
   notify_via?: "email" | "teams"; signup_label?: string | null; signup_project?: string | null; signup_project_role?: string | null
 }
 export type UsersData = { users: AdminUser[]; roles: string[]; me: number; microsoft_only: boolean }

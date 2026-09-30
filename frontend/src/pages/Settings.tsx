@@ -196,7 +196,8 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
   const optionLabel = (p: Policy, c: string) =>
     p.key === "default_template" ? templates.find((t) => String(t.id) === c)?.name ?? c
       : p.key === "date_format" ? DATE_EXAMPLES[c] ?? c
-        : p.key === "default_theme" ? (c === "system" ? "Follow the device" : cap(c)) : p.key === "default_accent" ? cap(c) : c
+        : p.key === "default_theme" ? (c === "system" ? "Follow the device" : cap(c)) : p.key === "default_accent" ? cap(c)
+          : p.key === "mfa_required" ? ({ off: "Optional (each person decides)", admins: "Required for admins", everyone: "Required for everyone" }[c] ?? c) : c
   return (
     <Panel title={title} hint={hint}>
       <form onSubmit={submit} className="grid gap-4">

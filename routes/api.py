@@ -12,7 +12,7 @@ from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTI
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
-from routes.auth import attempt_login
+from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
 from security import csrf_token, safe_csv_writer
@@ -56,6 +56,7 @@ def _current_user():
         # where sign-in and the logo land; partners always get the flow
         "home": "board" if session.get("kind") == "external" or not me or me["home"] == "board" else "dashboard",
         "must_change_password": bool(session.get("must_change_password")),
+        "must_enroll_mfa": bool(session.get("must_enroll_mfa")),
         "permissions": _permissions_for(session.get("role")),
         "nav": nav_counts(),
         # workspace-wide display choices from Settings → General
@@ -89,6 +90,8 @@ def api_session():
 def api_login():
     data = request.get_json(silent=True) or {}
     ok, message = attempt_login((data.get("username") or "").strip(), data.get("password") or "")
+    if message == MFA_NEEDED:
+        return jsonify({"code_needed": True, "csrf": csrf_token()})
     if not ok:
         # attempt_login audits every outcome; 429 when it is the lockout talking.
         return jsonify({"error": message}), (429 if message.startswith("Too many") else 401)
@@ -273,12 +276,12 @@ def api_settings_contacts():
 def api_users():
     rows = get_db().execute(
         "SELECT u.id, u.username, u.name, u.email, u.role, u.active, u.kind, u.last_login_at, u.created_at, u.avatar, u.pending, u.password_login, u.ms_oid, "
-        "u.notify_via, l.label AS signup_label, p.name AS signup_project, u.signup_project_role FROM users u "
+        "u.notify_via, u.totp_enabled_at IS NOT NULL AS two_step, l.label AS signup_label, p.name AS signup_project, u.signup_project_role FROM users u "
         "LEFT JOIN signup_links l ON l.id = u.signup_link_id LEFT JOIN projects p ON p.id = u.signup_project_id ORDER BY u.name"
     ).fetchall()
     from routes.sso import sso_enforced
     return jsonify(users=[{k: r[k] for k in r.keys() if k not in ("avatar", "ms_oid")}
-                          | {"active": bool(r["active"]), "pending": bool(r["pending"]), "password_login": bool(r["password_login"]),
+                          | {"active": bool(r["active"]), "pending": bool(r["pending"]), "password_login": bool(r["password_login"]), "two_step": bool(r["two_step"]),
                              "microsoft": r["ms_oid"] is not None, "avatar_url": avatar_url(r)} for r in rows],
                    roles=list(ROLES), me=session["user_id"], microsoft_only=sso_enforced())
 

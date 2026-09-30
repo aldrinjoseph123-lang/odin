@@ -52,6 +52,8 @@ POLICIES = {
                                 label="Minimum password length", help="For accounts allowed to sign in with a password."),
     "login_max_attempts": dict(area="security", kind="int", default=5, min=3, max=20,
                                label="Failed sign-ins before a pause", help="Per username and network address."),
+    "mfa_required": dict(area="security", kind="choice", default="off", choices=("off", "admins", "everyone"),
+                         label="Two-step sign-in", help="For password sign-in (Microsoft sign-in has its own). Anyone may turn it on for themselves on the Account page; when required and not yet set up, the next sign-in goes straight to setting it up."),
     "login_account_max": dict(area="security", kind="int", default=20, min=10, max=200,
                               label="Failed sign-ins per account before a pause", help="From all addresses together: stops a password being guessed from many machines. The account pauses for the same length."),
     "login_window_minutes": dict(area="security", kind="int", default=15, min=5, max=120,

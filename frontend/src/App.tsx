@@ -49,7 +49,7 @@ function Protected({ children }: { children: (user: User) => React.ReactNode }) 
   useEffect(() => {
     session().then((s) => {
       if (!s.user) window.location.assign(`/login?next=${encodeURIComponent(pathname + search)}`)
-      else if (s.user.must_change_password && pathname !== "/account") window.location.assign("/account")
+      else if ((s.user.must_change_password || s.user.must_enroll_mfa) && pathname !== "/account") window.location.assign("/account")
       else { setDateFormat(s.user.prefs?.date_format); setUser(s.user); if (s.messages?.length) setMessages(s.messages) }
     })
   }, [pathname, search])

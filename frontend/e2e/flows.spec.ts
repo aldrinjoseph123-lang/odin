@@ -1,5 +1,6 @@
+import { createHmac } from "node:crypto"
 import { expect, test } from "@playwright/test"
-import { expectClean, signIn, watch } from "./helpers"
+import { expectClean, signIn, USERS, watch } from "./helpers"
 
 // @flow: the journeys, end to end, on the seeded portfolio. Each test leaves
 // the data as it found it where it can (undo, reset, restore), so the order
@@ -375,6 +376,52 @@ test("@flow settings: an admin switches time on Odin and sign-up links off, then
   await expect(page.getByRole("status")).toContainText("Saved")
   await page.goto("/account")
   await expect(page.getByRole("region", { name: "Time on Odin" })).toBeVisible()
+  expectClean(errors)
+})
+
+// RFC 6238 in a few lines, to play the authenticator app
+function totp(secret: string, step = Math.floor(Date.now() / 30000)) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+  const bits = secret.replace(/\s/g, "").split("").map((c) => alphabet.indexOf(c).toString(2).padStart(5, "0")).join("")
+  const key = Buffer.from(bits.match(/.{8}/g)!.map((b) => parseInt(b, 2)))
+  const msg = Buffer.alloc(8); msg.writeBigUInt64BE(BigInt(step))
+  const h = createHmac("sha1", key).update(msg).digest()
+  const o = h[h.length - 1] & 15
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1_000_000).padStart(6, "0")
+}
+
+test("@flow two-step sign-in: set up with the app, sign in with a code, turn it off with a recovery code", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "viewer", "/account")
+  const panel = page.getByRole("region", { name: "Two-step sign-in" })
+  await panel.getByRole("button", { name: "Set up two-step sign-in" }).click()
+  await expect(panel.getByRole("img", { name: "QR code for your authenticator app" })).toBeVisible()
+  const secret = (await panel.locator("code").innerText()).replace(/\s/g, "")
+  await panel.getByLabel("Code", { exact: true }).fill(totp(secret))
+  await panel.getByRole("button", { name: "Turn on" }).click()
+  await expect(panel.getByRole("list", { name: "Recovery codes" }).getByRole("listitem")).toHaveCount(10)
+  const codes = await panel.getByRole("list", { name: "Recovery codes" }).getByRole("listitem").allInnerTexts()
+  expect(codes).toHaveLength(10)
+  await panel.getByRole("button", { name: "I have saved them" }).click()
+  await expect(panel).toContainText("on since")
+  // sign in again: password, then the code
+  await page.evaluate(async () => { const s = await (await fetch("/api/session")).json(); await fetch("/api/logout", { method: "POST", headers: { "X-CSRF-Token": s.csrf } }) })
+  await page.goto("/login")
+  await page.getByLabel("Username").fill(USERS.viewer.username)
+  await page.getByLabel("Password", { exact: true }).fill(USERS.viewer.password)
+  await page.getByRole("button", { name: "Sign in", exact: true }).click()
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Two-step sign-in")
+  await page.getByLabel("Code", { exact: true }).fill(totp(secret, Math.floor(Date.now() / 30000) + 1))   // the enrolment used this step's code
+  await page.getByRole("button", { name: "Continue" }).click()
+  await expect(page).toHaveURL(/\/dashboard|\/board/)
+  // and off again, proven with the password and a recovery code
+  await page.goto("/account")
+  await panel.getByRole("button", { name: "Turn off" }).click()
+  await panel.getByLabel("Password").fill(USERS.viewer.password)
+  await panel.getByLabel("Authenticator or recovery code").fill(codes[0])
+  await panel.getByRole("button", { name: "Turn off" }).click()
+  await expect(panel).toContainText("off")
+  await expect(panel.getByRole("button", { name: "Set up two-step sign-in" })).toBeVisible()
   expectClean(errors)
 })
 

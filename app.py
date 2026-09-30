@@ -23,6 +23,7 @@ import routes.api  # noqa: E402,F401
 import routes.auth  # noqa: E402,F401
 import routes.board  # noqa: E402,F401
 import routes.guest  # noqa: E402,F401
+import routes.mfa  # noqa: E402,F401
 import routes.integrations  # noqa: E402,F401
 import routes.projects  # noqa: E402,F401
 import routes.settings  # noqa: E402,F401

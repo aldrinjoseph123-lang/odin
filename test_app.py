@@ -4148,6 +4148,52 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual(titles, {"old unread", "new"})
             self.assertIsNone(db.execute("SELECT 1 FROM user_activity").fetchone())
 
+    def test_two_step_sign_in_setup_code_recovery_and_reset(self):
+        import time
+        from services import mfa
+        uid = self._make_user("twostep", "Member")
+        c, csrf = self._api_client("twostep", STRONG_PASSWORD)
+        h = {"X-CSRF-Token": csrf}
+        self.assertFalse(c.get("/api/account/two-step").get_json()["enabled"])
+        setup = c.post("/api/account/two-step/setup", headers=h).get_json()
+        self.assertIn("<svg", setup["qr_svg"]); self.assertTrue(setup["uri"].startswith("otpauth://totp/"))
+        secret, step = setup["secret"], int(time.time() // mfa.STEP)
+        self.assertEqual(c.post("/api/account/two-step/confirm", json={"code": "000000" if mfa.code_at(secret, step) != "000000" else "111111"}, headers=h).status_code, 400)
+        codes = c.post("/api/account/two-step/confirm", json={"code": mfa.code_at(secret, step)}, headers=h).get_json()["recovery_codes"]
+        self.assertEqual(len(codes), 10)
+        with self.raw_db() as db:
+            row = db.execute("SELECT totp_secret, recovery_codes FROM users WHERE id = ?", (uid,)).fetchone()
+            self.assertNotIn(secret, row["totp_secret"]); self.assertNotIn(codes[0], row["recovery_codes"])   # sealed and hashed
+        # sign-in: the right password alone is not a session
+        n = app_module.app.test_client(); ncsrf = n.get("/api/session").get_json()["csrf"]
+        r = n.post("/api/login", json={"username": "twostep", "password": STRONG_PASSWORD}, headers={"X-CSRF-Token": ncsrf}).get_json()
+        self.assertTrue(r["code_needed"]); self.assertIsNone(n.get("/api/session").get_json()["user"])
+        nh = {"X-CSRF-Token": r["csrf"]}
+        self.assertEqual(n.post("/api/login/code", json={"code": mfa.code_at(secret, step)}, headers=nh).status_code, 401)   # already used
+        self.assertEqual(n.post("/api/login/code", json={"code": mfa.code_at(secret, step + 1)}, headers=nh).status_code, 200)
+        self.assertEqual(n.get("/api/session").get_json()["user"]["id"], uid)
+        # a recovery code works once
+        for expect in (200, 401):
+            m = app_module.app.test_client(); mcsrf = m.get("/api/session").get_json()["csrf"]
+            r = m.post("/api/login", json={"username": "twostep", "password": STRONG_PASSWORD}, headers={"X-CSRF-Token": mcsrf}).get_json()
+            self.assertEqual(m.post("/api/login/code", json={"code": codes[0]}, headers={"X-CSRF-Token": r["csrf"]}).status_code, expect)
+        # turning it off needs the password and a code
+        self.assertEqual(c.post("/api/account/two-step/off", json={"password": "wrong", "code": codes[1]}, headers=h).status_code, 400)
+        # required for everyone: it cannot be turned off, and someone without it is sent to set it up
+        self._set_policy(mfa_required="everyone")
+        self.assertEqual(c.post("/api/account/two-step/off", json={"password": STRONG_PASSWORD, "code": codes[1]}, headers=h).status_code, 400)
+        self._make_user("nosetup", "Member")
+        o, _ = self._api_client("nosetup", STRONG_PASSWORD)
+        self.assertTrue(o.get("/api/session").get_json()["user"]["must_enroll_mfa"])
+        self.assertEqual(o.get("/api/people").status_code, 302)                 # everything else waits
+        self.assertEqual(o.get("/api/account/two-step").status_code, 200)
+        # an admin resets it (lost phone): off, and their sessions end
+        self.client.post(f"/users/{uid}/two-step-reset")
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT totp_enabled_at FROM users WHERE id = ?", (uid,)).fetchone()[0])
+            self.assertTrue(db.execute("SELECT 1 FROM audit_logs WHERE action = 'mfa_reset'").fetchone())
+        self.assertIsNone(c.get("/api/session").get_json()["user"])
+
     def test_stage_sla_state_flags_only_real_breaches(self):
         from services.analytics import stage_sla_state
         from datetime import datetime

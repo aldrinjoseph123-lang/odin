@@ -120,6 +120,8 @@ def close_db(exception=None):
 # The React Account page reads /api/account and the header's bell reads
 # /api/notifications: without them the forced-change screen never loads.
 PASSWORD_CHANGE_ALLOWED = {"account", "account_email", "logout", "static", "api_account", "api_notifications", "api_logout", "api_activity"}
+# Two-step sign-in required but not set up yet: the account page and its setup only.
+MFA_SETUP_ALLOWED = PASSWORD_CHANGE_ALLOWED | {"api_two_step", "api_two_step_setup", "api_two_step_confirm"}
 
 
 def _auth_gate():
@@ -134,6 +136,9 @@ def _auth_gate():
         return redirect(url_for("login", next=request.path))
     if session.get("must_change_password") and request.endpoint not in PASSWORD_CHANGE_ALLOWED:
         flash("Set a new password before continuing")
+        return redirect(url_for("account"))
+    if session.get("must_enroll_mfa") and request.endpoint not in MFA_SETUP_ALLOWED:
+        flash("Set up two-step sign-in before continuing")
         return redirect(url_for("account"))
     return None
 
