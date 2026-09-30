@@ -126,3 +126,4 @@ jobs:
           printf 'SECRET_KEY=x\nCLOUDFLARE_TUNNEL_TOKEN=x\n' > .env
           docker compose -f docker-compose.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.host-tunnel.yml config -q

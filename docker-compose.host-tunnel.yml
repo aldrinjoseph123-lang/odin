@@ -1,0 +1,18 @@
+# Cloudflare Tunnel with cloudflared installed on the HOST (systemd service,
+# `sudo cloudflared service install <token>`), as on the Zeus server. Use with
+# the base file:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.host-tunnel.yml   (in .env)
+#
+# nginx serves plain HTTP on 127.0.0.1:8080 only — reachable by the host's
+# cloudflared, not by the LAN — and the tunnel's published application route
+# points at http://localhost:8080. No certificates, no open ports.
+services:
+  nginx:
+    ports: !override
+      - "127.0.0.1:8080:80"
+    # !override, not a plain list: Compose appends overlay lists, which would
+    # mount two files onto default.conf.
+    volumes: !override
+      - ./deploy/nginx.cloudflare.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static:/srv/odin-static:ro
