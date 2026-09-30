@@ -8,6 +8,7 @@ import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
 import { Ago } from "@/components/Ago"
 import { cn } from "@/lib/utils"
+import { isDark } from "@/lib/theme"
 import { DocTemplates } from "@/components/DocTemplates"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
@@ -37,6 +38,7 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   documents: { title: "Documents", lede: "Templates for the rollout report, the portfolio report and the sign-off: brand, sections and wording. Documents already issued keep the template they were issued with." },
   api: { title: "API tokens", lede: "Read-only access for scripts and other tools: projects, their stages and tasks, and saved reports." },
   audit: { title: "Retention", lede: "How long the audit trail, read notifications and time on Odin are kept, and where older audit rows go." },
+  map: { title: "System map & changes", lede: "How Odin works, what changed in each version, and the known gaps. It describes the version this server runs and is updated with every release." },
   backups: { title: "Backups", lede: "Copies of the database, documents and pictures: made on schedule, tested by restoring them, copied off the server, pruned by age." },
 }
 
@@ -152,6 +154,7 @@ export default function Settings(_props: { user: User }) {
           </>
         )}
         {section === "api" && <ApiTokens tokens={data.api_tokens} busy={busy} send={send} />}
+        {section === "map" && <SystemMap />}
         {section === "audit" && (
           <>
             {policyForm("audit", "Retention")}
@@ -179,6 +182,15 @@ export default function Settings(_props: { user: User }) {
 // limit or a choice is defined once. Numbers carry their range; ticks post "on".
 const DATE_EXAMPLES: Record<string, string> = { "d MMM yyyy": "27 Sep", "yyyy-MM-dd": "2026-09-27", "dd/MM/yyyy": "27/09/2026", "MM/dd/yyyy": "09/27/2026" }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+// The system map is a self-contained page shipped with each release; the
+// change log opens first. It follows the app's light or dark theme.
+function SystemMap() {
+  return (
+    <iframe title="Odin System Map" src={`/settings/map/page?embed=1&theme=${isDark() ? "dark" : "light"}#changes`}
+      className="h-[calc(100dvh-200px)] min-h-[640px] w-full rounded-xl border border-border bg-background" />
+  )
+}
+
 function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
   area: Policy["area"]; title: string; hint?: string; policies: Policy[]; templates: SettingsData["templates"]; busy: boolean; send: Send
 }) {

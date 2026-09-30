@@ -175,7 +175,23 @@ def settings():
 
 
 # Settings is one page with a side menu; each area has its own address.
-SETTINGS_SECTIONS = ("general", "security", "people", "workflow", "notifications", "integrations", "reports", "documents", "backups", "api", "audit")
+SETTINGS_SECTIONS = ("general", "security", "people", "workflow", "notifications", "integrations", "reports", "documents", "backups", "api", "audit", "map")
+
+
+@app.route("/settings/map/page")
+@permission_required("manage_settings")
+def settings_map_page():
+    """The Odin System Map (docs/system-map.html, regenerated with every change
+    and shipped in the image), framed by Settings → System map & changes. The
+    one page Odin lets itself frame: same origin only, admins only."""
+    import os
+    from flask import send_file
+    from security import CSP
+    resp = send_file(os.path.join(app.root_path, "docs", "system-map.html"), mimetype="text/html", max_age=0)
+    resp.headers["Content-Security-Policy"] = CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.route("/settings/<section>")

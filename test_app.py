@@ -4194,6 +4194,20 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertTrue(db.execute("SELECT 1 FROM audit_logs WHERE action = 'mfa_reset'").fetchone())
         self.assertIsNone(c.get("/api/session").get_json()["user"])
 
+    def test_system_map_is_served_to_admins_and_framed_only_by_odin(self):
+        r = self.client.get("/settings/map/page")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Odin System Map", r.data)
+        self.assertIn(b'id="repo-data"', r.data)                               # the generated facts ship with it
+        self.assertIn("frame-ancestors 'self'", r.headers["Content-Security-Policy"])
+        self.assertEqual(r.headers["X-Frame-Options"], "SAMEORIGIN")
+        r.close()
+        self.assertIn("frame-ancestors 'none'", self.client.get("/api/session").headers["Content-Security-Policy"])   # nothing else
+        self._make_user("mapmember", "Member")
+        m, _ = self._api_client("mapmember", STRONG_PASSWORD)
+        self.assertNotEqual(m.get("/settings/map/page").status_code, 200)          # admins only
+        self.assertNotEqual(app_module.app.test_client().get("/settings/map/page").status_code, 200)
+
     def test_stage_sla_state_flags_only_real_breaches(self):
         from services.analytics import stage_sla_state
         from datetime import datetime

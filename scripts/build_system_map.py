@@ -296,6 +296,67 @@ def releases():
     return out
 
 
+# Which part of Odin a changed file belongs to, first match wins.
+AREAS = [
+    ("Tests", r"^(test_app\.py|frontend/e2e/|.*\.test\.tsx?$)"),
+    ("Screens", r"^frontend/"),
+    ("Deployment", r"^(Dockerfile|docker-compose|deploy/|\.github/|docker-entrypoint\.sh|requirements\.txt|preflight\.py|\.dockerignore|\.gitignore|\.env\.example|VERSION$)"),
+    ("Docs", r"(\.md$|^docs/)"),
+    ("Tooling", r"^(scripts/|\.claude/|\.impeccable/)"),
+    ("Server", r"."),
+]
+MAP_ONLY = {"docs/system-map.html"}
+
+
+def area_of(path):
+    return next(name for name, rx in AREAS if re.search(rx, path))
+
+
+def changelog():
+    """Every change by release: the tags in order, then what is after the last
+    tag, named by VERSION. A commit that only regenerates this page is left
+    out, so regenerating never changes the log it writes."""
+    version = (HEAD.get("VERSION") or "").strip()
+    tags = [t for t in git("tag", "--sort=creatordate").splitlines() if t]
+    reachable = set(git("tag", "--merged", "HEAD").splitlines())
+    tags = [t for t in tags if t in reachable]
+    ranges, prev = [], None
+    for t in tags:
+        ranges.append((t, f"{prev}..{t}" if prev else t))
+        prev = t
+    ranges.append((None, f"{prev}..HEAD" if prev else "HEAD"))
+    out = []
+    for tag, rng in ranges:
+        log = git("log", "--no-merges", "--format=%x1e%h%x1f%cs%x1f%s%x1f%b%x1f", "--name-only", rng)
+        commits = []
+        for chunk in log.split("\x1e")[1:]:
+            short, day, subject, body, files = (chunk.split("\x1f") + [""] * 5)[:5]
+            files = [f for f in files.split("\n") if f.strip()]
+            if not files or set(files) <= MAP_ONLY:
+                continue
+            body = "\n".join(l for l in body.strip().splitlines() if not l.startswith("Co-Authored-By")).strip()
+            tally = {}
+            for f in files:
+                a = area_of(f)
+                tally[a] = tally.get(a, 0) + 1
+            order = [a for a, _ in AREAS]
+            main = max(tally, key=lambda a: (tally[a], -order.index(a)))
+            commits.append({"id": short, "date": day, "subject": subject, "body": body[:1500], "files": len(files),
+                            "area": main, "areas": sorted(tally, key=order.index)})
+        if tag is None and not commits:
+            continue
+        if tag:
+            info = git("for-each-ref", "--format=%(creatordate:short)\t%(contents:subject)", f"refs/tags/{tag}").strip().split("\t")
+            entry = {"version": tag, "date": info[0], "title": re.sub(r"^Odin [\d.]+: ?", "", info[1] if len(info) > 1 else "")}
+        else:
+            named = version and f"v{version}" not in tags
+            entry = {"version": f"v{version}" if named else "Next release", "date": commits[0]["date"], "title": "", "untagged": True}
+        entry["current"] = entry["version"] == f"v{version}"
+        entry["commits"] = commits
+        out.append(entry)
+    return {"version": version, "releases": list(reversed(out))}
+
+
 def counts():
     def grep(pattern, *paths):
         n = 0
@@ -324,7 +385,7 @@ def build():
                              "unit": sum(sum(1 for i in f["items"] if i["kind"] != "describe") for f in unit),
                              "ui": sum(sum(1 for i in f["items"] if i["kind"] != "describe") for f in ui),
                              "e2e": sum(len(f["items"]) for f in e2e)}},
-        "ci": ci_jobs(), "docker": docker(), "releases": releases(),
+        "ci": ci_jobs(), "docker": docker(), "releases": releases(), "changelog": changelog(),
     }
 
 

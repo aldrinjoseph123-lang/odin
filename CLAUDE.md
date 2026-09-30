@@ -143,6 +143,12 @@ exposes data, notifies, grants access, or closes a loophole: edit the page
 (a fixed loophole keeps its number and gets `fixed: "vX.Y.Z"`; a new one gets
 the next number), bump `MAP_STAMP`, commit it, and republish it to that URL
 with the Artifact tool (`file_path: docs/system-map.html`, `url:` as above).
+Admins see the same page inside Odin (Settings → System map & changes,
+`/settings/map`, framed from `/settings/map/page`), so each release carries the
+map and change log of its own code. The change log is generated from git: each
+tag is a release, and commits after the last tag appear under the version in
+`VERSION`. **Releasing:** set `VERSION` to the new number, regenerate the map,
+commit, let CI pass, then tag `v<VERSION>` on that commit.
 The Stop hook `scripts/system_map_stale.sh` (`.claude/settings.json`) blocks
 the end of a turn while the generated facts do not match HEAD or a code commit
 is newer than the map's last commit.

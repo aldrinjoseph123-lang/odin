@@ -13,7 +13,7 @@ case "$input" in *'"stop_hook_active":true'*|*'"stop_hook_active": true'*) exit 
 CODE="app.py core.py security.py db.py schema.sql constants.py policies.py scheduler.py graph.py backup.py
   send_daily_alerts.py spa.py wsgi.py routes services frontend/src Dockerfile docker-compose.yml
   docker-compose.host-tunnel.yml docker-compose.cloudflare.yml deploy
-  test_app.py frontend/e2e .github scripts docker-entrypoint.sh preflight.py reset_data.py"
+  test_app.py frontend/e2e .github scripts docker-entrypoint.sh preflight.py reset_data.py VERSION"
 URL=https://claude.ai/artifact/DLoSQZo8uDQ5B4hh3ZnnQz
 if ! python3 scripts/build_system_map.py --check >/dev/null 2>&1; then
   cat <<JSON
