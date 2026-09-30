@@ -374,6 +374,7 @@ export const contacts = () => getJson<ContactsData>("/api/settings/contacts")
 export type AdminUser = {
   id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"
   last_login_at: string | null; created_at: string | null; avatar_url: string | null; pending: boolean; password_login: boolean; microsoft: boolean
+  notify_via?: "email" | "teams"; signup_label?: string | null; signup_project?: string | null; signup_project_role?: string | null
 }
 export type UsersData = { users: AdminUser[]; roles: string[]; me: number; microsoft_only: boolean }
 export const users = () => getJson<UsersData>("/api/users")
@@ -409,9 +410,21 @@ export const report = (id: number, query: string) => getJson<ReportData>(`/api/p
 
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
-  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity }>("/api/account")
+  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity; notify_via: "email" | "teams"; teams_ready: boolean }>("/api/account")
 // active minutes (services/activity.py): today, 7 and 30 days, one row per day
 export type Activity = { today: number; week: number; month: number; days: { day: string; minutes: number }[]; last_seen_at: string | null; last_login_at: string | null }
+// sign-up links (services/signup.py): admins make them; a new colleague fills /join/<token>
+export type SignupLink = { id: number; label: string; role: string; project_id: number | null; project: string | null; project_role: string | null
+  max_uses: number; uses: number; expires_at: string; created_by: string; created_at: string; state: "open" | "expired" | "used up" | "revoked" }
+export type SignupLinks = { links: SignupLink[]; roles: string[]; project_roles: string[]; projects: { id: number; name: string }[] }
+export const signupLinks = () => getJson<SignupLinks>("/api/signup-links")
+export const createSignupLink = (b: { label: string; role: string; project_id: number | null; project_role: string | null; days: number; max_uses: number }) =>
+  post<{ ok: true; link: string }>("/api/signup-links", b)
+export const revokeSignupLink = (id: number) => post<{ ok: true }>(`/api/signup-links/${id}/revoke`)
+export type JoinInfo = { role: string; project: string | null; project_role: string | null; expires_at: string; company: string; domains: string[] }
+export const joinInfo = (token: string) => getJson<JoinInfo>(`/api/join/${token}`)
+export const joinSubmit = (token: string, b: { name: string; username: string; email: string; password: string; notify_via: "email" | "teams" }) =>
+  post<{ ok: true }>(`/api/join/${token}`, b)
 export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
 export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
 export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string }

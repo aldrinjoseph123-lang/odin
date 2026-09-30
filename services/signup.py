@@ -1,0 +1,127 @@
+"""Sign-up links: an admin makes a link (a default role, optionally a project
+and a project role, an expiry and a number of uses); a new colleague opens it,
+fills in their name, username, email, password and preferred channel, and
+waits as a pending account until an admin approves it (the Users page, as for
+Microsoft sign-in requests). Approval activates the account and, when the link
+named one, adds them to the project. Only a SHA-256 of the token is stored.
+"""
+import hashlib
+import secrets
+from datetime import datetime, timedelta
+
+from werkzeug.security import generate_password_hash
+
+from constants import PROJECT_MANAGER, PROJECT_ROLES, EXTERNAL_PROJECT_ROLES
+from db import get_db
+from policies import policy
+from security import password_problem, valid_email
+
+LINK_ROLES = ("Member", "Contributor", "Viewer")                                  # never Admin by link
+PROJECT_LINK_ROLES = tuple(r for r in PROJECT_ROLES if r != PROJECT_MANAGER and r not in EXTERNAL_PROJECT_ROLES)
+CHANNELS = ("email", "teams")
+
+
+def _hash(raw):
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def create(label, role, project_id, project_role, days, max_uses, author):
+    """Returns the raw token (shown once in the link)."""
+    label = (label or "").strip()[:80]
+    if not label:
+        raise ValueError("Name the link (e.g. who it is for)")
+    if role not in LINK_ROLES:
+        raise ValueError(f"The role is one of: {', '.join(LINK_ROLES)}")
+    db = get_db()
+    if project_id:
+        if not db.execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
+            raise ValueError("That project does not exist")
+        if project_role not in PROJECT_LINK_ROLES:
+            raise ValueError(f"The project role is one of: {', '.join(PROJECT_LINK_ROLES)}")
+    else:
+        project_id, project_role = None, None
+    days = max(1, min(90, int(days or policy("signup_days"))))
+    max_uses = max(1, min(100, int(max_uses or 1)))
+    raw = secrets.token_urlsafe(32)
+    now = datetime.utcnow()
+    db.execute("INSERT INTO signup_links (token_hash, label, role, project_id, project_role, max_uses, expires_at, created_by, created_at) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+               (_hash(raw), label, role, project_id, project_role, max_uses, (now + timedelta(days=days)).isoformat(), author, now.isoformat()))
+    db.commit()
+    return raw
+
+
+def links():
+    rows = get_db().execute("SELECT l.*, p.name AS project FROM signup_links l LEFT JOIN projects p ON p.id = l.project_id ORDER BY l.id DESC LIMIT 100").fetchall()
+    now = datetime.utcnow().isoformat()
+    out = []
+    for r in rows:
+        state = "revoked" if r["revoked_at"] else "expired" if r["expires_at"] < now else "used up" if r["uses"] >= r["max_uses"] else "open"
+        out.append({k: r[k] for k in ("id", "label", "role", "project_id", "project", "project_role", "max_uses", "uses", "expires_at", "created_by", "created_at")} | {"state": state})
+    return out
+
+
+def revoke(link_id):
+    db = get_db()
+    done = db.execute("UPDATE signup_links SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", (datetime.utcnow().isoformat(), link_id)).rowcount
+    db.commit()
+    return bool(done)
+
+
+def lookup(raw):
+    """The open link for this token, or None (unknown, revoked, expired or used up)."""
+    row = get_db().execute("SELECT l.*, p.name AS project FROM signup_links l LEFT JOIN projects p ON p.id = l.project_id WHERE token_hash = ?",
+                           (_hash(raw or ""),)).fetchone()
+    if not row or row["revoked_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["uses"] >= row["max_uses"]:
+        return None
+    return row
+
+
+def register(link, form):
+    """Create the pending account; returns its id or raises ValueError with the reason."""
+    name = str(form.get("name") or "").strip()[:120]
+    username = str(form.get("username") or "").strip()[:40]
+    email = str(form.get("email") or "").strip().lower()[:200]
+    password = str(form.get("password") or "")
+    channel = form.get("notify_via") or "email"
+    if not name:
+        raise ValueError("Your full name")
+    if not username or not all(ch.isalnum() or ch in "._-" for ch in username):
+        raise ValueError("A username of letters, digits, dots, dashes or underscores")
+    if not valid_email(email):
+        raise ValueError("A valid email address")
+    allowed = policy("signup_domains")
+    if allowed and email.rsplit("@", 1)[-1] not in allowed:
+        raise ValueError("That email domain is not accepted here; use your work address")
+    if problem := password_problem(password):
+        raise ValueError(problem)
+    if channel not in CHANNELS:
+        raise ValueError("Pick email or Teams")
+    db = get_db()
+    if db.execute("SELECT 1 FROM users WHERE lower(username) = ?", (username.lower(),)).fetchone():
+        raise ValueError("That username is taken; pick another")
+    if db.execute("SELECT 1 FROM users WHERE lower(email) = ?", (email,)).fetchone():
+        raise ValueError("That address already has an account; ask an admin")
+    cur = db.execute(
+        "INSERT INTO users (username, password_hash, name, role, active, email, created_at, kind, pending, theme, accent, notify_via, "
+        "signup_link_id, signup_project_id, signup_project_role) VALUES (?, ?, ?, ?, 0, ?, ?, 'internal', 1, ?, ?, ?, ?, ?, ?)",
+        (username, generate_password_hash(password, method="pbkdf2:sha256"), name, link["role"], email, datetime.utcnow().isoformat(),
+         policy("default_theme"), policy("default_accent"), channel, link["id"], link["project_id"], link["project_role"]))
+    db.execute("UPDATE signup_links SET uses = uses + 1 WHERE id = ?", (link["id"],))
+    db.commit()
+    return cur.lastrowid
+
+
+def on_approve(user):
+    """Approval: join the project the link named (when it still exists)."""
+    if not user["signup_project_id"]:
+        return None
+    db = get_db()
+    p = db.execute("SELECT id, name FROM projects WHERE id = ? AND deleted_at IS NULL", (user["signup_project_id"],)).fetchone()
+    if not p:
+        return None
+    db.execute("INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, NULL, ?) "
+               "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
+               (p["id"], user["id"], user["signup_project_role"] or "Coordinator", datetime.utcnow().isoformat()))
+    db.commit()
+    return p["name"]

@@ -271,7 +271,9 @@ def api_settings_contacts():
 @permission_required("manage_users")
 def api_users():
     rows = get_db().execute(
-        "SELECT id, username, name, email, role, active, kind, last_login_at, created_at, avatar, pending, password_login, ms_oid FROM users ORDER BY name"
+        "SELECT u.id, u.username, u.name, u.email, u.role, u.active, u.kind, u.last_login_at, u.created_at, u.avatar, u.pending, u.password_login, u.ms_oid, "
+        "u.notify_via, l.label AS signup_label, p.name AS signup_project, u.signup_project_role FROM users u "
+        "LEFT JOIN signup_links l ON l.id = u.signup_link_id LEFT JOIN projects p ON p.id = u.signup_project_id ORDER BY u.name"
     ).fetchall()
     from routes.sso import sso_enforced
     return jsonify(users=[{k: r[k] for k in r.keys() if k not in ("avatar", "ms_oid")}
@@ -432,14 +434,15 @@ def api_rollout_report_save(project_id):
 def api_account():
     from constants import NOTIFICATION_KINDS
     from db import get_setting
-    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, notify_via FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
     return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
                    theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u), home=u["home"],
                    email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
                                 if k != "access" or session.get("role") == "Admin"],   # access requests reach admins only
                    mail_enabled=get_setting("notify_email_enabled") == "1",
-                   activity=activity_summary(session["user_id"]))
+                   activity=activity_summary(session["user_id"]), notify_via=u["notify_via"],
+                   teams_ready=get_setting("notify_teams_enabled") == "1")
 
 
 @app.route("/api/my-work")

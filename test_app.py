@@ -1222,7 +1222,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "project_new": "/projects/new", "project_edit": "/projects/1/edit", "users": "/users", "audit_logs_view": "/audit-logs",
             "settings": "/settings", "settings_section": "/settings/general", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
             "account": "/account", "my_work": "/my-work", "analytics": "/analytics", "alerts_log_view": "/alerts",
-            "report_all": "/reports/all", "report_single": "/projects/1/report", "project_signoff": "/projects/1/signoff", "auth_link_request": "/auth/link",
+            "report_all": "/reports/all", "report_single": "/projects/1/report", "project_signoff": "/projects/1/signoff", "join_page": "/join/any-token", "auth_link_request": "/auth/link",
             "auth_reset_request": "/auth/reset", "auth_reset_form": "/auth/reset/any-token", "auth_link_consume": "/auth/link/any-token", "login_password": "/login/password",
         }
         self.assertEqual(set(paths), spa.SPA_PAGES)          # a new port must be listed here too
@@ -3281,6 +3281,47 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertNotIn("activity", cc.get(f"/api/people/{pm}").get_json())               # a contributor does not
         self.assertIn("activity", cc.get(f"/api/people/{con_id}").get_json())              # but sees their own
         self.assertNotEqual(app_module.app.test_client().post("/api/activity").status_code, 200)   # no session: refused
+
+    def test_signup_link_pending_approval_and_the_project(self):
+        self.new_project(name="Rollout", client="C")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf}
+        self.assertEqual(c.post("/api/signup-links", json={"label": "x", "role": "Admin"}, headers=h).status_code, 400)
+        r = c.post("/api/signup-links", json={"label": "Omar - engineer", "role": "Contributor", "project_id": 1, "project_role": "Coordinator", "days": 7, "max_uses": 1}, headers=h).get_json()
+        token = r["link"].rsplit("/join/", 1)[1]
+        self.assertEqual(c.get("/api/signup-links").get_json()["links"][0]["state"], "open")
+        anon = app_module.app.test_client()
+        acsrf = anon.get("/api/session").get_json()["csrf"]
+        ah = {"X-CSRF-Token": acsrf}
+        info = anon.get(f"/api/join/{token}").get_json()
+        self.assertEqual((info["role"], info["project"], info["project_role"]), ("Contributor", "Rollout", "Coordinator"))
+        body = {"name": "Omar Haddad", "username": "omar", "email": "omar@corp.example", "password": "short", "notify_via": "teams"}
+        self.assertIn("12 characters", anon.post(f"/api/join/{token}", json=body, headers=ah).get_json()["error"])
+        body["password"] = STRONG_PASSWORD
+        with patch("services.signup.policy", side_effect=lambda k, *a: ["protect24x7.com"] if k == "signup_domains" else __import__("policies").policy(k, *a)):
+            self.assertIn("domain", anon.post(f"/api/join/{token}", json=body, headers=ah).get_json()["error"])
+        self.assertEqual(anon.post(f"/api/join/{token}", json=body, headers=ah).status_code, 200)
+        self.assertEqual(anon.get(f"/api/join/{token}").status_code, 404)                    # one use: spent
+        with self.raw_db() as db:
+            u = db.execute("SELECT * FROM users WHERE username = 'omar'").fetchone()
+            self.assertEqual((u["pending"], u["active"], u["role"], u["notify_via"]), (1, 0, "Contributor", "teams"))
+            self.assertTrue(db.execute("SELECT 1 FROM notifications WHERE user_id = 1 AND kind = 'access'").fetchone())   # the admin hears
+        # before approval: told to wait (only with the right password)
+        o = app_module.app.test_client(); ocsrf = o.get("/api/session").get_json()["csrf"]
+        self.assertIn("waiting for an admin", o.post("/api/login", json={"username": "omar", "password": STRONG_PASSWORD}, headers={"X-CSRF-Token": ocsrf}).get_json()["error"])
+        pending = [x for x in c.get("/api/users").get_json()["users"] if x["username"] == "omar"][0]
+        self.assertEqual((pending["signup_label"], pending["signup_project"]), ("Omar - engineer", "Rollout"))
+        self.client.post(f"/users/{u['id']}/approve", data={"role": "Contributor"})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT role FROM project_participants WHERE project_id = 1 AND user_id = ?", (u["id"],)).fetchone()[0], "Coordinator")
+        o2, _ = self._api_client("omar", STRONG_PASSWORD)
+        self.assertEqual(o2.get("/api/session").get_json()["user"]["name"], "Omar Haddad")
+        # a revoked link is dead; the channel can be changed on the account page
+        r = c.post("/api/signup-links", json={"label": "spare", "role": "Viewer"}, headers=h).get_json()
+        lid = c.get("/api/signup-links").get_json()["links"][0]["id"]
+        c.post(f"/api/signup-links/{lid}/revoke", headers=h)
+        self.assertEqual(anon.get(f"/api/join/{r['link'].rsplit('/join/', 1)[1]}").status_code, 404)
+        self.assertEqual(app_module.app.test_client().get("/api/signup-links").status_code, 302)   # admins only
 
     def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))

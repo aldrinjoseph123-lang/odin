@@ -5,7 +5,7 @@ import { UserAvatar } from "@/components/UserAvatar"
 import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ApiError, postForm, users as fetchUsers, type AdminUser, type User, type UsersData } from "@/lib/api"
+import { ApiError, createSignupLink, postForm, revokeSignupLink, signupLinks, users as fetchUsers, type AdminUser, type SignupLinks, type User, type UsersData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton } from "@/components/PageSkeleton"
@@ -68,7 +68,10 @@ export default function Users(_props: { user: User }) {
             </tbody>
           </table>
         </div>
-        <AddUser roles={data.roles} busy={busy} send={send} />
+        <div className="grid content-start gap-4">
+          <AddUser roles={data.roles} busy={busy} send={send} />
+          <SignupLinksPanel />
+        </div>
       </div>
     </div>
   )
@@ -80,15 +83,17 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
   const [role, setRole] = useState<Record<number, string>>({})
   return (
     <section className="mt-3 rounded-lg border border-warn-line bg-warn-soft/40 p-4" aria-label="Waiting for approval">
-      <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Waiting for approval <span className="font-normal text-muted-foreground">signed in with Microsoft, not yet allowed in</span></h3>
+      <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Waiting for approval <span className="font-normal text-muted-foreground">asked to use Odin, not yet allowed in</span></h3>
       <ul className="grid gap-2">
         {people.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-2 text-[13px]">
-            <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.email} · asked {fmt(u.created_at, true)}</span></span>
-            <select value={role[u.id] ?? "Viewer"} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={selectClass}>
+            <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.username} · {u.email} · asked {fmt(u.created_at, true)}
+              {u.signup_label ? ` · via sign-up link "${u.signup_label}"` : u.microsoft ? " · via Microsoft sign-in" : ""}{u.signup_project ? ` · joins ${u.signup_project} as ${u.signup_project_role}` : ""}
+              {u.notify_via === "teams" ? " · prefers Teams" : ""}</span></span>
+            <select value={role[u.id] ?? (u.signup_label ? u.role : "Viewer")} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={selectClass}>
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
-            <Button size="sm" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/approve`, { role: role[u.id] ?? "Viewer" })}>Approve</Button>
+            <Button size="sm" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/approve`, { role: role[u.id] ?? (u.signup_label ? u.role : "Viewer") })}>Approve</Button>
             <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/decline`, {}, `Decline ${u.name}? They stay unable to sign in.`)}>Decline</Button>
           </li>
         ))}
@@ -171,5 +176,66 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
       <Button type="submit" size="sm" className="mt-1" disabled={busy || !f.name || !f.username || f.password.length < 12}>Create user</Button>
       <p className="text-[11.5px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
     </form>
+  )
+}
+
+// Sign-up links: a link for a new colleague to request an account themselves.
+// Requests land in "Waiting for approval" above; nothing is active until approved.
+const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[12.5px]"
+function SignupLinksPanel() {
+  const [d, setD] = useState<SignupLinks | null>(null)
+  const [f, setF] = useState({ label: "", role: "Contributor", project_id: "", project_role: "Coordinator", days: 7, max_uses: 1 })
+  const [made, setMade] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(() => signupLinks().then(setD).catch(() => setErr("Could not load the links")), [])
+  useEffect(() => { void load() }, [load])
+  if (!d) return null
+  async function make(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true); setErr(null); setCopied(false)
+    try {
+      const r = await createSignupLink({ label: f.label, role: f.role, project_id: f.project_id ? Number(f.project_id) : null, project_role: f.project_id ? f.project_role : null, days: f.days, max_uses: f.max_uses })
+      setMade(r.link); setF({ ...f, label: "" }); await load()
+    } catch (x) { setErr(x instanceof ApiError ? x.message : "That did not work") } finally { setBusy(false) }
+  }
+  const open = d.links.filter((l) => l.state === "open")
+  return (
+    <section className="panel p-4" aria-label="Sign-up links">
+      <h3 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h3>
+      <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
+      <form onSubmit={make} className="grid gap-2 text-[12.5px]">
+        <label className="grid gap-1 font-medium">For<input className={field} required maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Omar, field engineer" /></label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="grid gap-1 font-medium">Role<select className={field} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{d.roles.map((r) => <option key={r}>{r}</option>)}</select></label>
+          <label className="grid gap-1 font-medium">Valid for<select className={field} value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })}>{[1, 3, 7, 14, 30].map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></label>
+          <label className="grid gap-1 font-medium">Project<select className={field} value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })}><option value="">None</option>{d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+          <label className="grid gap-1 font-medium">As<select className={field} value={f.project_role} disabled={!f.project_id} onChange={(e) => setF({ ...f, project_role: e.target.value })}>{d.project_roles.map((r) => <option key={r}>{r}</option>)}</select></label>
+          <label className="grid gap-1 font-medium">Uses<select className={field} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: Number(e.target.value) })}>{[1, 5, 10, 25].map((n) => <option key={n} value={n}>{n === 1 ? "One person" : `Up to ${n}`}</option>)}</select></label>
+        </div>
+        {err && <p className="text-bad" role="alert">{err}</p>}
+        <Button type="submit" size="sm" disabled={busy || !f.label.trim()}>Create link</Button>
+      </form>
+      {made && (
+        <div className="mt-3 grid gap-1.5 rounded-lg bg-muted/60 p-2.5">
+          <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[11.5px]" />
+          <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => {})}>{copied ? "Copied" : "Copy the link"}</Button>
+          <p className="text-[11.5px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
+        </div>
+      )}
+      {d.links.length > 0 && (
+        <ul className="mt-3 divide-y divide-border text-[12.5px]">
+          {d.links.slice(0, 12).map((l) => (
+            <li key={l.id} className="flex items-center gap-2 py-1.5">
+              <span className="min-w-0 flex-1"><span className="block truncate font-medium">{l.label}</span>
+                <span className="block truncate text-[11.5px] text-muted-foreground">{l.role}{l.project ? ` · ${l.project}` : ""} · {l.uses}/{l.max_uses} used · {l.state === "open" ? `until ${fmtWhen(l.expires_at)}` : l.state}</span></span>
+              {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={() => { if (confirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load) }}>Revoke</Button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {open.length === 0 && d.links.length > 0 && <p className="mt-2 text-[11.5px] text-muted-foreground">No open links.</p>}
+    </section>
   )
 }

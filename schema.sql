@@ -60,6 +60,23 @@ CREATE TABLE IF NOT EXISTS raid_items (
 );
 CREATE INDEX IF NOT EXISTS idx_raid_project ON raid_items (project_id, status);
 
+-- Sign-up links an admin hands to a new colleague (services/signup.py): only
+-- a hash is stored; each creates pending accounts the admins approve.
+CREATE TABLE IF NOT EXISTS signup_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    role TEXT NOT NULL,
+    project_id INTEGER REFERENCES projects(id),
+    project_role TEXT,
+    max_uses INTEGER NOT NULL DEFAULT 1,
+    uses INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    revoked_at TEXT
+);
+
 -- Active minutes per person per workspace-local day (services/activity.py):
 -- counted only while Odin is open, visible and in use.
 CREATE TABLE IF NOT EXISTS user_activity (

@@ -94,6 +94,18 @@ export default function Account(_props: { user: User }) {
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" aria-label="Email address" className="h-8 text-[13px]" />
           <div><Button type="submit" size="sm" variant="outline" disabled={busy || email === (me.email ?? "")}>Save email</Button></div>
         </form>
+        {me.kind === "internal" && (
+          <section className="grid content-start gap-2 panel p-4" aria-label="How Odin reaches you">
+            <h3 data-n className="text-[12px] font-semibold text-nav-fg">Reach me by <span className="font-normal text-muted-foreground">besides the bell</span></h3>
+            <div className="flex rounded-full bg-muted p-0.5" role="radiogroup" aria-label="Reach me by">
+              {(["email", "teams"] as const).map((v) => (
+                <button key={v} type="button" role="radio" aria-checked={me.notify_via === v} disabled={busy} onClick={() => void send("/account/notify-via", { notify_via: v })}
+                  className={cn("h-7 flex-1 rounded-full text-[12.5px]", me.notify_via === v ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{v === "email" ? "Email" : "Microsoft Teams"}</button>
+              ))}
+            </div>
+            {me.notify_via === "teams" && !me.teams_ready && <p className="text-[11.5px] text-muted-foreground">Teams is not connected on this installation yet; you get email until it is.</p>}
+          </section>
+        )}
         {me.kind === "internal" ? (
           <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" })) }} className="grid content-start gap-2 panel p-4">
             <h3 data-n className="text-[12px] font-semibold text-nav-fg">Change password</h3>

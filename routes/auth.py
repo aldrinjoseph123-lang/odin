@@ -39,6 +39,9 @@ def attempt_login(username, password):
         from policies import policy
         return False, f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
     user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    if user and not user["active"] and user["pending"] and "$" in user["password_hash"] and check_password_hash(user["password_hash"], password):
+        audit_log("login_failure", "user", user["id"], username, "pending approval", actor=username)
+        return False, "Your request is waiting for an admin's approval; you can sign in once it is approved"
     if user and not user["active"]:
         record_login_attempt(username, success=False)
         audit_log("login_failure", "user", user["id"], username, "account deactivated", actor=username)
@@ -514,6 +517,21 @@ def user_avatar(user_id, stored):
     response = send_from_directory(AVATAR_DIR, stored, as_attachment=False, max_age=31536000)
     response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
     return response
+
+
+@app.route("/account/notify-via", methods=["POST"])
+@login_required
+def account_notify_via():
+    choice = request.form.get("notify_via", "")
+    if choice not in ("email", "teams"):
+        flash("Pick email or Teams")
+        return redirect(url_for("account"))
+    db = get_db()
+    db.execute("UPDATE users SET notify_via = ? WHERE id = ?", (choice, session["user_id"]))
+    db.commit()
+    audit_log("change_notify_via", "user", session["user_id"], session.get("user_name"), choice)
+    flash("Saved: " + ("Microsoft Teams (email until Teams is connected)" if choice == "teams" else "email"))
+    return redirect(url_for("account"))
 
 
 @app.route("/account/email", methods=["POST"])

@@ -190,6 +190,13 @@ NEW_USER_COLUMNS = {
     "last_seen_at": "TEXT",
     # The last counted active minute (services/activity.py guards on this, not on last_seen_at).
     "last_ping_at": "TEXT",
+    # How the person wants to hear from Odin beyond the bell: 'email' or 'teams'
+    # (Teams is delivered once Microsoft 365 is connected; email until then).
+    "notify_via": "TEXT NOT NULL DEFAULT 'email'",
+    # A sign-up link's request: which link, and the project it asks to join (applied on approval).
+    "signup_link_id": "INTEGER",
+    "signup_project_id": "INTEGER",
+    "signup_project_role": "TEXT",
     # Appearance is the user's, not the deployment's: light / dark / follow the
     # OS, and which hue the one accent takes. The avatar is a filename under
     # ODIN_DATA_DIR/avatars, unique per upload so its URL changes on replace.

@@ -213,8 +213,10 @@ def user_approve(user_id):
         return redirect(url_for("users"))
     db.execute("UPDATE users SET pending = 0, active = 1, role = ? WHERE id = ?", (role, user_id))
     db.commit()
-    audit_log("approve_access", "user", user_id, user["username"], f"role={role}")
-    flash(f"{user['name']} can now sign in as {role}")
+    from services.signup import on_approve
+    joined = on_approve(user)   # a sign-up link that named a project
+    audit_log("approve_access", "user", user_id, user["username"], f"role={role}" + (f"; joined {joined}" if joined else ""))
+    flash(f"{user['name']} can now sign in as {role}" + (f" and is on {joined}" if joined else ""))
     return redirect(url_for("users"))
 
 
