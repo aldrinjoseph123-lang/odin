@@ -76,6 +76,25 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             print(f"[notify_users] email to {r['email']} failed: {error}")
 
 
+def report_mail_failure(error):
+    """Email is switched on but a message failed: tell the admins in the bell,
+    at most once a day, instead of failing silently (system map #2)."""
+    from datetime import datetime, timedelta
+    from markupsafe import escape
+    from db import set_setting
+    if get_setting("notify_email_enabled") != "1":
+        return
+    last, now = get_setting("mail_failure_reported_at"), datetime.utcnow()
+    if last and datetime.fromisoformat(last) > now - timedelta(hours=24):
+        return
+    set_setting("mail_failure_reported_at", now.isoformat())
+    admins = [r[0] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+    notify_users(admins, "access", None, "Odin could not send email",
+                 f"Email is switched on but a message failed ({escape(str(error)[:200])}). Everything still reaches the bell. "
+                 "Connect Microsoft 365 under Settings → Integrations, or switch email off under Settings → Notifications.",
+                 link="/settings/integrations", email=False)
+
+
 def trim(db=None):
     """Read notifications past Settings → Retention; unread ones stay. Nightly (scheduler housekeeping)."""
     from datetime import datetime, timedelta

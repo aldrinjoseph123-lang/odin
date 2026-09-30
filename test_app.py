@@ -94,6 +94,12 @@ def isolate_uploads(test):
     data = patch.object(db_module, "DATA_DIR", tempfile.mkdtemp())   # template logos (brand/) and the like
     data.start()
     test.addCleanup(data.stop)
+    # graph.py opens the database by its own path: point it at this test's
+    # database, never the developer's odin.db
+    import graph
+    g = patch.object(graph, "DB_PATH", db_module.DB_PATH)
+    g.start()
+    test.addCleanup(g.stop)
     return tmp
 
 
@@ -3835,7 +3841,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             doc = db.execute("SELECT id FROM documents WHERE project_id=1").fetchone()["id"]
         self.client.get(f"/projects/1/documents/{doc}/download")
-        c.get("/logout")
+        c.post("/logout")
         with self.raw_db() as db:
             actions = {r[0] for r in db.execute("SELECT action FROM audit_logs")}
         for a in ("login_failure", "login_success", "download_document", "upload_document", "logout", "create_project"):
@@ -3874,7 +3880,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
             # attempt_login audits every outcome itself; both login doors use it.
-            if not any(marker in src for marker in ("audit_log(", "attempt_login(", "change_stage(", "_stage_change(", "_template_change(", "decide_approval(")):
+            if not any(marker in src for marker in ("audit_log(", "attempt_login(", "change_stage(", "_stage_change(", "_template_change(", "decide_approval(", "end_session(")):
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"POST routes without an audit entry: {missing}")
 
@@ -3988,8 +3994,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         graph.DB_PATH = db_module.DB_PATH
         graph._save_tokens({"access_token": "a1", "refresh_token": "r1", "expires_in": 3600})
         graph._save_tokens({"access_token": "a2", "expires_in": 3600})   # no refresh_token
-        with self.raw_db() as db:
-            row = db.execute("SELECT access_token, refresh_token FROM ms_connection WHERE id=1").fetchone()
+        row = graph.get_connection()   # stored sealed, read back plain
         self.assertEqual(row["access_token"], "a2")   # access token still rotates
         self.assertEqual(row["refresh_token"], "r1")  # refresh token preserved
         self.assertTrue(graph.is_connected())
@@ -4158,7 +4163,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c, csrf = self._api_client("twostep", STRONG_PASSWORD)
         h = {"X-CSRF-Token": csrf}
         self.assertFalse(c.get("/api/account/two-step").get_json()["enabled"])
-        setup = c.post("/api/account/two-step/setup", headers=h).get_json()
+        self.assertEqual(c.post("/api/account/two-step/setup", json={"password": "wrong"}, headers=h).status_code, 400)   # #25: the password first
+        setup = c.post("/api/account/two-step/setup", json={"password": STRONG_PASSWORD}, headers=h).get_json()
         self.assertIn("<svg", setup["qr_svg"]); self.assertTrue(setup["uri"].startswith("otpauth://totp/"))
         secret, step = setup["secret"], int(time.time() // mfa.STEP)
         self.assertEqual(c.post("/api/account/two-step/confirm", json={"code": "000000" if mfa.code_at(secret, step) != "000000" else "111111"}, headers=h).status_code, 400)
@@ -4371,6 +4377,92 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(len(r.get("/api/notifications").get_json()["rows"]), 1)
         self.client.post(f"/projects/1/participants/{pp}/remove")
         self.assertEqual(r.get("/api/notifications").get_json()["rows"], [])
+
+    # ---- loopholes, phase 3: operations and security hygiene (system map #2, #6, #7, #8, #17, #18, #22-#25)
+
+    def test_email_failures_reach_the_admins_bell_once_a_day(self):
+        with self.raw_db() as db:
+            db.execute("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"); db.commit()
+        import graph
+        with app_module.app.test_request_context():
+            for _ in range(2):
+                self.assertFalse(graph.send_mail("x@corp.example", "s", "b")[0])   # Microsoft 365 is not connected
+        with self.raw_db() as db:
+            rows = db.execute("SELECT title FROM notifications WHERE user_id = 1 AND title = 'Odin could not send email'").fetchall()
+        self.assertEqual(len(rows), 1)
+
+    def test_microsoft_secrets_are_sealed_at_rest(self):
+        import graph
+        with app_module.app.app_context():
+            graph.set_azure_app_credentials("client-1", "very-secret", "tenant-1")
+            graph._save_tokens({"access_token": "at-123", "refresh_token": "rt-456", "expires_in": 3600})
+            self.assertEqual(graph._client_secret(), "very-secret")
+            conn = graph.get_connection()
+            self.assertEqual((conn["access_token"], conn["refresh_token"]), ("at-123", "rt-456"))
+        with self.raw_db() as db:
+            stored = db.execute("SELECT value FROM settings WHERE key = 'ms_client_secret'").fetchone()[0]
+            tokens = db.execute("SELECT access_token, refresh_token FROM ms_connection").fetchone()
+        self.assertTrue(stored.startswith("sealed:")); self.assertNotIn("very-secret", stored)
+        self.assertNotIn("rt-456", tokens["refresh_token"]); self.assertNotIn("at-123", tokens["access_token"])
+
+    def test_a_failed_restore_test_prunes_nothing_off_the_server(self):
+        import backup
+        share = tempfile.mkdtemp()
+        old = ["odin-backup-20200101-020000.zip", "odin-backup-20200102-020000.zip"]
+        for name in old:
+            open(os.path.join(share, name), "w").close()
+        new = os.path.join(tempfile.mkdtemp(), "odin-backup-20260930-020000.zip"); open(new, "w").close()
+        backup._copy_share(new, share, (1, 0, 0), prune=False)
+        self.assertEqual(sorted(os.listdir(share)), sorted(old + [os.path.basename(new)]))   # nothing pushed out
+        backup._copy_share(new, share, (1, 0, 0))
+        self.assertEqual(os.listdir(share), [os.path.basename(new)])
+
+    def test_purging_a_project_named_by_a_sign_up_link_still_works(self):
+        self.new_project(name="P", client="C")
+        c, csrf = self._api_client()
+        c.post("/api/signup-links", json={"label": "for P", "role": "Viewer", "project_id": 1, "project_role": "Coordinator"}, headers={"X-CSRF-Token": csrf})
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET deleted_at = '2000-01-01T00:00:00' WHERE id = 1"); db.commit()
+        with app_module.app.app_context():
+            db_module.cleanup_soft_deletes()
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM projects WHERE id = 1").fetchone())
+            self.assertIsNone(db.execute("SELECT project_id FROM signup_links").fetchone()[0])   # the link survives, without the project
+
+    def test_signing_out_ends_the_session_and_any_copy_of_its_cookie(self):
+        a, csrf = self._api_client()
+        cookie = a.get_cookie("session").value
+        b = app_module.app.test_client(); b.set_cookie("session", cookie)
+        self.assertIsNotNone(b.get("/api/session").get_json()["user"])       # a copied cookie works while the session lives
+        self.assertEqual(a.get("/logout").status_code, 200)                    # a GET only shows the button
+        self.assertIsNotNone(b.get("/api/session").get_json()["user"])
+        a.post("/api/logout", headers={"X-CSRF-Token": csrf})
+        self.assertIsNone(b.get("/api/session").get_json()["user"])           # the copy is dead too
+        other, _ = self._api_client()
+        self.assertIsNotNone(other.get("/api/session").get_json()["user"])   # other sessions of the same person are untouched
+
+    def test_access_log_redacts_secret_links(self):
+        import gunicorn_logger
+        self.assertEqual(gunicorn_logger.redact("GET /guest/abc123/stage HTTP/1.1"), "GET /guest/[redacted]/stage HTTP/1.1")
+        self.assertEqual(gunicorn_logger.redact("/auth/reset/tok?x=1"), "/auth/reset/[redacted]?x=1")
+
+    def test_settings_routes_follow_the_permission_matrix_and_token_reads_are_audited(self):
+        self._make_user("setmem", "Member")
+        m = app_module.app.test_client(); m.post("/login", data={"username": "setmem", "password": STRONG_PASSWORD})
+        m.post("/settings/doc-categories/add", data={"name": "Runbook"})
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM doc_categories WHERE name = 'Runbook'").fetchone())
+            db.execute("UPDATE role_permissions SET allowed = 1 WHERE permission = 'manage_settings' AND role = 'Member'"); db.commit()
+        m.post("/settings/doc-categories/add", data={"name": "Runbook"})
+        with self.raw_db() as db:
+            self.assertTrue(db.execute("SELECT 1 FROM doc_categories WHERE name = 'Runbook'").fetchone())   # the matrix, not the role name
+        c, csrf = self._api_client()
+        raw = c.post("/settings/api-tokens", data={"name": "BI", "days": "30"}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()["messages"][0].rsplit(": ", 1)[1]
+        anon = app_module.app.test_client()
+        for _ in range(3):
+            anon.get("/api/v1/projects", headers={"Authorization": f"Bearer {raw}"})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'api_token_read'").fetchone()[0], 1)   # once a day per token
 
     def test_stage_sla_state_flags_only_real_breaches(self):
         from services.analytics import stage_sla_state

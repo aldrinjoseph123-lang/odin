@@ -66,7 +66,7 @@ export function loginCode(code: string) {
 
 export type TwoStep = { enabled: boolean; enabled_at: string | null; required: boolean; recovery_left: number; password: boolean }
 export const twoStep = () => getJson<TwoStep>("/api/account/two-step")
-export const twoStepSetup = () => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup")
+export const twoStepSetup = (password: string) => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup", { password })
 export const twoStepConfirm = (code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/confirm", { code })
 export const twoStepOff = (password: string, code: string) => post<{ ok: true }>("/api/account/two-step/off", { password, code })
 export const twoStepCodes = (password: string, code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/recovery-codes", { password, code })

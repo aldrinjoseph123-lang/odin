@@ -8,7 +8,7 @@ import secrets
 from flask import flash, redirect, request, session, url_for
 
 import graph
-from core import admin_required, app, permission_required
+from core import app, permission_required
 from db import get_db, set_setting
 from services.audit import audit_log
 
@@ -47,7 +47,7 @@ def settings_azure_app_clear():
 
 
 @app.route("/integrations/connect")
-@admin_required
+@permission_required("manage_integrations")
 def integrations_connect():
     if not graph.oauth_client_configured():
         flash("Enter your Azure app credentials first")
@@ -59,7 +59,7 @@ def integrations_connect():
 
 
 @app.route("/integrations/callback")
-@admin_required
+@permission_required("manage_integrations")
 def integrations_callback():
     error = request.args.get("error_description") or request.args.get("error")
     if error:
@@ -82,7 +82,7 @@ def integrations_callback():
 
 
 @app.route("/integrations/disconnect", methods=["POST"])
-@admin_required
+@permission_required("manage_integrations")
 def integrations_disconnect():
     audit_log("disconnect_microsoft365")
     graph.disconnect()
@@ -92,7 +92,7 @@ def integrations_disconnect():
 
 
 @app.route("/integrations/channel", methods=["POST"])
-@admin_required
+@permission_required("manage_integrations")
 def integrations_set_channel():
     team_id = request.form.get("team_id", "")
     channel_id = request.form.get("channel_id", "")

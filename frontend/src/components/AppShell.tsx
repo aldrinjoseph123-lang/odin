@@ -67,7 +67,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
     { href: "/people", label: "People", match: (p) => p.startsWith("/people") },
     { href: "/analytics", label: "Cycle time", match: (p) => p === "/analytics" },
     { href: "/alerts", label: "Alerts", count: user.nav.active_alert_count, match: (p) => p === "/alerts" },
-    ...(user.role === "Admin" ? [{ href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") || p === "/audit-logs" || p === "/users" }] : []),
+    ...(user.permissions.includes("manage_settings") ? [{ href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") || p === "/audit-logs" || p === "/users" }] : []),
   ]
   // External partners get their projects and the flow — nothing product-wide.
   const items = all.filter((item) => user.kind !== "external" || ["Flow", "Projects"].includes(item.label))
@@ -92,7 +92,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
             <Search className="h-3.5 w-3.5" /><span className="flex-1 truncate">Search…</span>
             <kbd className="rounded-md border border-border px-1 text-[11px]">{isMac ? "⌘K" : "Ctrl K"}</kbd>
           </button>
-          {user.role !== "Viewer" && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
+          {user.permissions.includes("create_project") && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
           {user.kind === "external" && <Badge variant="secondary">Partner access</Badge>}
           <button type="button" onClick={signOut} className="text-left text-[13px] font-medium text-nav-fg hover:text-foreground lg:hidden">Log out</button>
@@ -119,7 +119,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
       <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">{children}</main>
       <CommandPalette open={palette} onClose={() => setPalette(false)}
         pages={[...items.map((i) => ({ label: i.label, href: i.href })), { label: "Account", href: "/account" },
-          ...(user.role !== "Viewer" && user.kind !== "external" ? [{ label: "New project", href: "/projects/new" }] : [])]} />
+          ...(user.permissions.includes("create_project") && user.kind !== "external" ? [{ label: "New project", href: "/projects/new" }] : [])]} />
     </div>
   )
 }

@@ -13,7 +13,7 @@ from markupsafe import Markup
 
 import graph
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, PERMISSIONS, ROLES
-from core import admin_required, app, permission_required, undo_button, undo_note, write_required
+from core import app, permission_required, undo_button, undo_note, write_required
 from db import get_db, get_setting, restore_deleted, soft_delete
 from services.alerts import get_alert_type_settings
 from services import stages as stage_ops
@@ -278,7 +278,7 @@ def _template_change(action, error, detail=None):
 
 
 @app.route("/settings/templates/add", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_template_add():
     name = request.form.get("name", "").strip()[:80]
     db = get_db()
@@ -303,7 +303,7 @@ def settings_template_add():
 
 
 @app.route("/settings/templates/<int:template_id>/rename", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_template_rename(template_id):
     _template(template_id)
     name = request.form.get("name", "").strip()[:80]
@@ -318,7 +318,7 @@ def settings_template_rename(template_id):
 
 
 @app.route("/settings/templates/<int:template_id>/delete", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_template_delete(template_id):
     template = _template(template_id)
     db = get_db()
@@ -333,7 +333,7 @@ def settings_template_delete(template_id):
 
 
 @app.route("/settings/templates/<int:template_id>/stages/add", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_stage_add(template_id):
     _template(template_id)
     name = request.form.get("name", "")
@@ -341,7 +341,7 @@ def settings_stage_add(template_id):
 
 
 @app.route("/settings/templates/<int:template_id>/stages/<int:stage_id>/rename", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_stage_rename(template_id, stage_id):
     _template(template_id)
     name = request.form.get("name", "")
@@ -349,7 +349,7 @@ def settings_stage_rename(template_id, stage_id):
 
 
 @app.route("/settings/templates/<int:template_id>/stages/<int:stage_id>/move", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_stage_move(template_id, stage_id):
     _template(template_id)
     direction = request.form.get("direction", "")
@@ -357,14 +357,14 @@ def settings_stage_move(template_id, stage_id):
 
 
 @app.route("/settings/templates/<int:template_id>/stages/<int:stage_id>/delete", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_stage_delete(template_id, stage_id):
     _template(template_id)
     return _template_change("delete_template_stage", stage_ops.delete_stage("template", template_id, stage_id), str(stage_id))
 
 
 @app.route("/settings/templates/<int:template_id>/sla", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_stage_sla(template_id):
     """Expected days per stage for projects created from this template."""
     _template(template_id)
@@ -372,7 +372,7 @@ def settings_stage_sla(template_id):
 
 
 @app.route("/settings/templates/<int:template_id>/sla/from-measured", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_stage_sla_from_measured(template_id):
     """Adopt each stage's measured average across projects created from this
     template. Stages nothing has passed through are left alone — no evidence,
@@ -408,7 +408,7 @@ def settings_stage_sla_from_measured(template_id):
 
 
 @app.route("/settings/doc-categories/add", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_category_add():
     name = request.form.get("name", "").strip()
     db = get_db()
@@ -425,7 +425,7 @@ def settings_category_add():
 
 
 @app.route("/settings/doc-categories/<int:cat_id>/delete", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_category_delete(cat_id):
     db = get_db()
     category = db.execute("SELECT * FROM doc_categories WHERE id = ?", (cat_id,)).fetchone()
@@ -445,7 +445,7 @@ def settings_category_delete(cat_id):
 
 
 @app.route("/settings/doc-categories/<int:cat_id>/partners", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_category_partners(cat_id):
     """Whether partners and customers see documents of this kind."""
     db = get_db()
@@ -582,7 +582,7 @@ def settings_partner_manager_delete(manager_id):
 
 
 @app.route("/settings/alerts", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def settings_alerts():
     # threshold_days-having types render a number input; the two overdue
     # types don't (they fire on the due date itself), so their field is

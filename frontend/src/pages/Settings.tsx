@@ -135,6 +135,7 @@ export default function Settings(_props: { user: User }) {
             { key: "notify_email_enabled", label: "Email notifications on project events (stage changes, approvals, assignments, mentions, due tasks)" },
             { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
           ]} extra={<>
+            {!data.m365.connected && <p className="basis-full text-[12.5px] text-warn" role="note">Microsoft 365 is not connected (Settings → Integrations), so email and Teams channel posts cannot be delivered. The bell and the Teams webhook still work.</p>}
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-email")}>Send test email</Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send test Teams message</Button>
           </>} />

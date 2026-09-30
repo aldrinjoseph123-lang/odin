@@ -32,7 +32,7 @@ from db import DB_PATH, UPLOAD_DIR
 # the id counter is reset below, so a survivor would attach itself to the
 # next project created (see the "new table" checklist in CLAUDE.md).
 WIPE_TABLES = ["signoffs", "scope_items", "plan_changes", "raid_items", "notifications", "status_notes", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
-               "project_participants", "project_stages", "login_links", "projects"]
+               "project_participants", "project_stages", "login_links", "signup_links", "projects"]
 
 
 def counts(db):

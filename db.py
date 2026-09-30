@@ -121,6 +121,8 @@ def cleanup_soft_deletes(db=None):
         _remove_upload(project_id, stored_name)
 
     if doomed:
+        # a sign-up link that named the project keeps working, without the project
+        db.execute(f"UPDATE signup_links SET project_id = NULL, project_role = NULL WHERE project_id IN ({marks})", doomed)
         for table in ("signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 

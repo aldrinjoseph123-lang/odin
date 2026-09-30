@@ -59,7 +59,8 @@ def _client_id():
 
 
 def _client_secret():
-    return _db_setting("ms_client_secret") or _env("MS_CLIENT_SECRET")
+    from services.sealed import unseal
+    return unseal(_db_setting("ms_client_secret")) or _env("MS_CLIENT_SECRET")
 
 
 def _tenant():
@@ -87,10 +88,11 @@ def azure_app_credentials():
 
 
 def set_azure_app_credentials(client_id, client_secret, tenant_id):
+    from services.sealed import seal
     db = _db()
     for key, value in [
         ("ms_client_id", client_id.strip()),
-        ("ms_client_secret", client_secret.strip()),
+        ("ms_client_secret", seal(client_secret.strip())),   # sealed at rest (services/sealed.py)
         ("ms_tenant_id", tenant_id.strip()),
     ]:
         db.execute(
@@ -115,7 +117,10 @@ def get_connection():
     db = _db()
     row = db.execute("SELECT * FROM ms_connection WHERE id = 1").fetchone()
     db.close()
-    return row
+    if row is None:
+        return None
+    from services.sealed import unseal   # the tokens are stored sealed
+    return {**dict(row), "access_token": unseal(row["access_token"]), "refresh_token": unseal(row["refresh_token"])}
 
 
 def is_connected():
@@ -150,6 +155,7 @@ def build_authorize_url(redirect_uri, state):
 
 
 def _save_tokens(token_response):
+    from services.sealed import seal
     now = int(time.time())
     db = _db()
     db.execute(
@@ -163,8 +169,8 @@ def _save_tokens(token_response):
              refresh_token = COALESCE(excluded.refresh_token, ms_connection.refresh_token),
              expires_at = excluded.expires_at""",
         (
-            token_response["access_token"],
-            token_response.get("refresh_token"),
+            seal(token_response["access_token"]),
+            seal(token_response.get("refresh_token")),
             now + int(token_response.get("expires_in", 3600)),
         ),
     )
@@ -302,7 +308,19 @@ EMAIL_SHELL = (
 
 def send_mail(to_email, subject, html_body, attachments=None):
     """attachments: [(filename, bytes, content_type)] — small files only
-    (Graph's sendMail takes the whole message in one ~4 MB request)."""
+    (Graph's sendMail takes the whole message in one ~4 MB request). A failure
+    while email is switched on is reported to the admins' bell, at most daily."""
+    ok, error = _send_mail(to_email, subject, html_body, attachments)
+    if not ok:
+        try:
+            from services.notifications import report_mail_failure
+            report_mail_failure(error)
+        except Exception:  # noqa: BLE001 — reporting never breaks the sender
+            pass
+    return ok, error
+
+
+def _send_mail(to_email, subject, html_body, attachments=None):
     try:   # the footer names the company from Settings → General; a script without the app still sends
         from policies import policy
         company = policy("company_name").upper()

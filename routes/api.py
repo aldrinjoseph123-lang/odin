@@ -101,9 +101,8 @@ def api_login():
 
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
-    if "user_id" in session:
-        audit_log("logout", "user", session["user_id"], session.get("user_name"))
-    session.clear()
+    from core import end_session
+    end_session()
     return jsonify({"ok": True, "csrf": csrf_token()})
 
 

@@ -34,6 +34,7 @@ from core import app, external_url, permission_required
 from db import get_db, get_setting, set_setting
 from routes.auth import safe_next_url, start_session
 from services.audit import audit_log
+from services.sealed import seal, unseal
 
 LOGIN_BASE = "https://login.microsoftonline.com"
 
@@ -42,7 +43,7 @@ def sso_config():
     """(client_id, tenant_id, secret) — Settings first, then environment."""
     return (get_setting("sso_client_id") or os.environ.get("SSO_CLIENT_ID", ""),
             get_setting("sso_tenant_id") or os.environ.get("SSO_TENANT_ID", ""),
-            get_setting("sso_client_secret") or os.environ.get("SSO_CLIENT_SECRET", ""))
+            unseal(get_setting("sso_client_secret")) or os.environ.get("SSO_CLIENT_SECRET", ""))
 
 
 def sso_configured():
@@ -183,7 +184,7 @@ def settings_sso():
         set_setting("sso_client_id", client_id)
         set_setting("sso_tenant_id", tenant)
         if f.get("client_secret", "").strip():
-            set_setting("sso_client_secret", f["client_secret"].strip())
+            set_setting("sso_client_secret", seal(f["client_secret"].strip()))   # sealed at rest
     want = f.get("enforced") == "on"
     if want and not sso_configured():
         flash("Save the app registration before requiring Microsoft sign-in")
