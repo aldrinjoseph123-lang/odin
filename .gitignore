@@ -29,3 +29,6 @@ __pycache__/
 .impeccable/*payload*.json
 .impeccable/live/
 .DS_Store
+
+# --- stray tool caches at the root ---
+node_modules/
