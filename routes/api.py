@@ -1193,11 +1193,13 @@ def api_project_flow(project_id):
 @app.route("/api/notifications")
 @login_required
 def api_notifications():
+    from services.notifications import visible_clause
+    where, params = visible_clause(session["user_id"], session.get("kind"))
     rows = get_db().execute(
         "SELECT n.*, p.name AS project_name FROM notifications n LEFT JOIN projects p ON p.id = n.project_id "
-        "WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 40", (session["user_id"],),
+        f"WHERE n.user_id = ?{where} ORDER BY n.id DESC LIMIT 40", (session["user_id"], *params),
     ).fetchall()
-    unread = get_db().execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (session["user_id"],)).fetchone()[0]
+    unread = get_db().execute(f"SELECT COUNT(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL{where}", (session["user_id"], *params)).fetchone()[0]
     return jsonify(unread=unread, rows=[{
         "id": r["id"], "kind": r["kind"], "title": r["title"], "body": r["body"], "link": r["link"], "actor": r["actor"],
         "project_name": r["project_name"], "created_at": r["created_at"], "read": r["read_at"] is not None,

@@ -339,7 +339,7 @@ details.change .also { margin: 6px 0 0 14px; display: flex; gap: 6px; flex-wrap:
     </div>
     <div class="table-wrap"><table id="notif-table"></table></div>
     <div class="panel">
-      <h3>Events that tell nobody <button class="linkmk medium" data-loop="11" aria-label="Loophole 11">11</button></h3>
+      <h3>Events that still tell nobody, on purpose <button class="linkmk medium" data-loop="11" aria-label="Loophole 11">11</button></h3>
       <ul id="silent" style="margin:8px 0 0;padding-left:18px;display:grid;gap:4px"></ul>
     </div>
   </section>
@@ -523,7 +523,7 @@ const LOOPS = [
     impact: "Deleted projects stop being purged and the dashboard loses its daily history, silently.",
     fix: "Clear the project from sign-up links in the purge and in reset_data, and trim old links.",
     ref: "db.py:118-126 · schema.sql:84", on: ["data", "lc-purge"] },
-  { id: 9, sev: "medium", area: "Process", title: "The vendor guest link is a weaker second way to move stages",
+  { id: 9, fixed: "v1.3.0", done: "The vendor link goes through the one stage-change path: the sign-off gate, a proper history entry (so the weekly report counts it), the customer's approval when the project asks for it, and the whole team told.", sev: "medium", area: "Process", title: "The vendor guest link is a weaker second way to move stages",
     what: "A stage move through the vendor link skips the customer's approval even when the project requires it, leaves no undo, is missing from the weekly report's 'stages moved', and tells only the owner by email (not connected) and Teams.",
     impact: "Approvals can be bypassed and the move is easy to miss.",
     fix: "Send it through the normal stage change, or retire guest links.",
@@ -533,12 +533,12 @@ const LOOPS = [
     impact: "Stalled projects, and Contributors holding manager powers by accident.",
     fix: "Ask for a manager who may move stages when the project is created (the edit form already checks this), or keep project creation to Members.",
     ref: "routes/projects.py:388", on: ["lc-create"] },
-  { id: 11, sev: "medium", area: "Notifications", title: "Several events tell nobody",
+  { id: 11, fixed: "v1.3.0", done: "The project manager's new and old owner, staff added to a project (and the team at creation), a colleague whose access is approved, a signer whose sign-off is withdrawn, and the project manager after a bulk completion are all told. An alert clearing stays quiet: the Alerts page shows it.", sev: "medium", area: "Notifications", title: "Several events tell nobody",
     what: "No one is told when the project manager changes, when staff are added to a project, when an access request is approved or declined (the requester never hears), when a sign-off is withdrawn (the signer is not told), when tasks are completed in bulk, or when an alert clears.",
     impact: "People learn of changes that affect them by accident.",
     fix: "Add a bell notification for each.",
     ref: "routes/projects.py:540, 875 · routes/sso.py:204-234 · routes/signoff.py", on: ["n-silent"] },
-  { id: 12, sev: "medium", area: "Notifications", title: "Alerts never reach the bell, and the digest skips project managers",
+  { id: 12, fixed: "v1.3.0", done: "A new alert goes to the bell of the owner and the staff on the project (by email when the alert type says so, honouring each person's choices), and the daily digest reaches every Admin and each project manager for their own rollouts, in the bell and by email.", sev: "medium", area: "Notifications", title: "Alerts never reach the bell, and the digest skips project managers",
     what: "New alerts (overdue, due soon, over SLA, stale) go to the owner by email or Teams only, and both are off by default; participants are never told. The daily digest goes to Admins by email only and ignores their email choices.",
     impact: "The people who can act on a late project are not the ones who hear about it.",
     fix: "Put new alerts in the owner's and participants' bell, and send each project manager a digest of their own rollouts.",
@@ -578,12 +578,12 @@ const LOOPS = [
     impact: "Less defence in depth against cross-site scripting.",
     fix: "Move to a nonce-based policy.",
     ref: "security.py:309-316", on: ["app"] },
-  { id: 20, sev: "low", area: "Notifications", title: "Customers who mute stage emails also miss approval requests",
+  { id: 20, fixed: "v1.3.0", done: 'Approval requests are their own kind of notification, so muting stage emails no longer hides them.', sev: "low", area: "Notifications", title: "Customers who mute stage emails also miss approval requests",
     what: "An approval request is sent as a stage-change notification, so muting stage emails mutes approval requests too.",
     impact: "Approvals wait on a customer who was never asked.",
     fix: "Send approval requests as their own kind.",
     ref: "routes/projects.py:611", on: ["n-approval"] },
-  { id: 21, sev: "low", area: "Notifications", title: "People removed from a project keep its notifications",
+  { id: 21, fixed: "v1.3.0", done: 'The bell and its count only show notifications for projects the person can still see.', sev: "low", area: "Notifications", title: "People removed from a project keep its notifications",
     what: "The bell does not re-check access, so old notification titles and text stay visible after someone leaves a project.",
     impact: "Minor information leak after a role change.",
     fix: "Filter the bell by what the person may see now.",
@@ -608,7 +608,7 @@ const LOOPS = [
     impact: "Account takeover becomes sticky.",
     fix: "Ask for the password before starting setup.",
     ref: "routes/mfa.py:52", on: ["d-password"] },
-  { id: 26, sev: "low", area: "Operations", title: "Read notifications are trimmed only when a new one is sent",
+  { id: 26, fixed: "v1.3.0", done: 'Read notifications are trimmed in the nightly housekeeping.', sev: "low", area: "Operations", title: "Read notifications are trimmed only when a new one is sent",
     what: "Retention runs as a side effect of the next notification; unread items are kept forever.",
     impact: "The table grows on quiet workspaces.",
     fix: "Trim in the nightly housekeeping.",
@@ -678,7 +678,7 @@ document.addEventListener("click", (e) => {
     [`<span class="bad">${c("high")}</span> · ${c("medium")} · ${c("low")}`, "open loopholes: high · medium · low, plus " + c("decision") + " decisions to confirm" + (LOOPS.some((l) => l.fixed) ? `; ${LOOPS.filter((l) => l.fixed).length} fixed` : "")],
     ["7", "ways into Odin, each with its own guard"],
     ["5 × 6", "workspace roles × project roles; both must agree"],
-    ["30 + 6", "notification events mapped, and 6 that tell nobody"],
+    [`<span id="notif-count">–</span>`, "notification events mapped, each with who hears it"],
   ].map(([n, l]) => `<div class="tile"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   const top = LOOPS.filter((l) => isOpen(l) && l.sev !== "decision" && l.sev !== "low").sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev] || a.id - b.id).slice(0, 8).map((l) => l.id);
   $("#top-fixes").innerHTML = top.map((id) => `<li>${mkBtn(id)} ${esc(byId[id].title)}</li>`).join("");
@@ -808,7 +808,7 @@ const LIFE = {
   "lc-gate": { kind: "Gate", title: "Sign-off gate", text: "The final stage is refused until the sign-off is complete, while 'A signed sign-off closes a project' is on. Every stage-move path calls the gate.", refs: ["services/signoff.py:134 gate()"] },
   "lc-closed": { kind: "Step 5", title: "Closed", text: "The project leaves the active views, stays readable and reportable, and keeps its sign-off and history." },
   "lc-purge": { kind: "End", title: "Delete and purge", text: "Deleting is soft: the project can be undone inside the undo window. The nightly housekeeping then purges it, its children and its files.", refs: ["db.py:93-130 cleanup_soft_deletes"] },
-  "lc-guest": { kind: "Side door", title: "Vendor guest link", text: "A link with no sign-in. The vendor can add notes and move the project to its next stage (never the final one; the gate still applies).", points: ["No customer approval, no undo, thin history", "Only the owner (email) and Teams hear of it"], refs: ["routes/guest.py:90-119"] },
+  "lc-guest": { kind: "Side door", title: "Vendor guest link", text: "A link with no sign-in. The vendor can add notes and move the project to its next stage (never the final one). Since v1.3.0 the move goes through the normal stage-change path.", points: ["Sign-off gate, history entry, customer approval when asked", "The team and Teams hear of it; only a staff mover can undo their own move"], refs: ["routes/guest.py", "routes/projects.py change_stage"] },
   "lc-approval": { kind: "Gate", title: "Customer approval (optional)", text: "When the project asks for it, each move creates a pending approval for the Customer on the team. The decision is recorded, noted and audited; the stage has already moved.", refs: ["routes/projects.py:658-690"] },
 };
 (function life() {
@@ -836,8 +836,8 @@ const LIFE = {
     ${e("M822 106 H838", "accent", "aa")} ${e("M920 106 H938", "accent", "aa")} ${e("M1050 106 H1068", "dash")}
     ${e("M519 152 V180", "dash")}
     ${e("M455 298 V154", "dash")} ${e("M745 298 V154", "dash")}
-    <path d="M130 328 C 130 250, 380 220, 440 154" class="edge bad" marker-end="url(#lf-ab)"/>
-    <text x="150" y="252" class="t-small" style="fill:var(--bad)">skips approval and undo</text>
+    <path d="M130 328 C 130 250, 380 220, 440 154" class="edge dash" marker-end="url(#lf-a)"/>
+    <text x="150" y="252" class="t-small t-muted">same path since v1.3.0</text>
     <text x="20" y="470" class="t-small t-muted">Every step writes the audit trail. Deleting is possible at any step (Admins; soft, undoable), then the nightly purge.</text>
   </svg>`;
   const host = $("#life-diagram");
@@ -850,11 +850,11 @@ const LIFE = {
 const NOTIF = [
   ["Project", "Project created", "The project manager, when someone else created it; Teams", "-", "E", "TW", "", null],
   ["Project", "Stage moved", "Everyone on the project except the mover; Teams", "B", "E", "TW", "", null],
-  ["Project", "Customer approval requested", "The Customer on the project", "B", "E", "TW", "Sent as a stage change", 20],
+  ["Project", "Customer approval requested", "The Customer on the project", "B", "E", "TW", "Its own kind: approval", 20],
   ["Project", "Stage move undone", "Everyone on the project except the mover; Teams", "B", "E", "TW", "", null],
   ["Project", "Approval decided", "Everyone on the project except the customer; Teams", "B", "E", "TW", "", null],
-  ["Project", "Vendor moved a stage (guest link)", "Owner only; Teams", "-", "E", "TW", "No bell, team not told", 9],
-  ["Project", "Vendor added a note (guest link)", "Owner only; Teams", "-", "E", "TW", "", null],
+  ["Project", "Vendor moved a stage (guest link)", "Everyone on the project; the Customer as an approval; Teams", "B", "E", "TW", "The same path as a staff move", 9],
+  ["Project", "Vendor added a note (guest link)", "The project manager; Teams", "B", "E", "TW", "", null],
   ["Work", "Task assigned", "The assignee (not self-assignment)", "B", "E", "-", "", null],
   ["Work", "Task done", "The project manager", "B", "E", "-", "", null],
   ["Work", "Document uploaded", "The project manager", "B", "E", "-", "", null],
@@ -869,8 +869,8 @@ const NOTIF = [
   ["Sign-off", "Countersigned (complete)", "Everyone on the project; signed PDF to signer, countersigner, owner", "B", "E", "-", "PDF ignores email choices; the customer's copy has no signing record", 4],
   ["Sign-off", "Scanned copy uploaded", "Everyone on the project", "B", "E", "-", "", null],
   ["Sign-off", "Waived by an Admin", "The owner", "B", "E", "-", "", null],
-  ["Schedules", "New alert (overdue, due soon, over SLA, stale)", "The owner only", "-", "E", "TW", "Email and Teams off by default; shows on the Alerts page", 12],
-  ["Schedules", "Daily digest", "Admins; Teams", "-", "E", "T", "Admins only; ignores email choices", 12],
+  ["Schedules", "New alert (overdue, due soon, over SLA, stale)", "The owner and the staff on the project", "B", "E", "TW", "Email and Teams per alert type (off by default)", 12],
+  ["Schedules", "Daily digest", "Admins (everything) and each project manager (their rollouts); Teams", "B", "E", "T", "Honours each person's email choices", 12],
   ["Schedules", "Weekly report", "Chosen roles and extra addresses; Teams", "-", "E", "TW", "When switched on; ignores the email switch; PDFs to staff accounts only", 5],
   ["Access", "Microsoft first sign-in (asks for access)", "All Admins", "B", "E", "-", "", null],
   ["Access", "Sign-up link used", "All Admins", "B", "E", "-", "", null],
@@ -878,8 +878,11 @@ const NOTIF = [
   ["Access", "Partner invited", "The invitee", "-", "E", "-", "If mail fails, the link is shown to the inviter", null],
   ["Access", "Partner asks for a sign-in link", "The partner", "-", "E", "-", "Refused while mail is off", 2],
   ["Access", "Password reset", "The staff member", "-", "E", "-", "Refused while mail is off", 2],
+  ["Access", "Access approved", "The person let in", "B", "E", "-", "", null],
+  ["Work", "Added to a project / made its manager", "The person added; the previous manager", "B", "E", "-", "", null],
+  ["Sign-off", "Sign-off withdrawn", "The signer", "B", "E", "-", "", null],
 ];
-const SILENT = ["Project manager changed", "Staff added to a project, or added as team at creation", "Access request approved or declined (the requester is never told)", "Sign-off withdrawn (the signer is not told)", "Tasks completed in bulk", "An alert clears"];
+const SILENT = ["An access request declined (the account stays inactive, so there is no bell to reach)", "An alert clears (the Alerts page shows it)"];
 let notifGroup = "All";
 function renderNotif() {
   const prod = $("#prod-toggle").checked;
@@ -910,6 +913,7 @@ function renderNotif() {
   });
   $("#prod-toggle").addEventListener("change", renderNotif);
   $("#silent").innerHTML = SILENT.map((s) => `<li>${esc(s)}</li>`).join("");
+  $("#notif-count").textContent = NOTIF.length;
   renderNotif();
   const box = (x, y, w, h, t, lines, cls = "box") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" class="${cls}"/><text x="${x + 12}" y="${y + 22}" class="t-title">${esc(t)}</text>${lines.map((l, i) => `<text x="${x + 12}" y="${y + 41 + i * 16}" class="t-small t-muted">${esc(l)}</text>`).join("")}`;
   const e = (d, cls = "", m = "a") => `<path d="${d}" class="edge ${cls}" marker-end="url(#nf-${m})"/>`;

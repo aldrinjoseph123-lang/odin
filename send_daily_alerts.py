@@ -92,15 +92,23 @@ def main():
             print("Teams digest sent." if ok else f"Teams digest failed: {error}")
             sent_anything = sent_anything or ok
 
-        if get_setting("notify_email_enabled") == "1":
-            admins = db.execute(
-                "SELECT email FROM users WHERE role = 'Admin' AND active = 1 AND email IS NOT NULL AND email != ''"
-            ).fetchall()
-            for admin in admins:
-                ok, error = graph.send_mail(admin["email"], "Odin Daily Alert Digest", html)
-                print(f"Email to {admin['email']}: {'sent' if ok else error}")
-                sent_anything = sent_anything or ok
-
+        # Admins get the whole picture, each project manager their own rollouts:
+        # the bell always, email unless they turned alert mails off.
+        from services.notifications import notify_users
+        admins = [r[0] for r in db.execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+        notify_users(admins, "alert", None, "Odin daily alert digest", html, link="/alerts")
+        sent_anything = sent_anything or bool(admins)
+        mine = {}
+        for key, items in alerts.items():
+            for p in items or []:
+                mine.setdefault(p["owner_id"], {}).setdefault(p["id"], p["name"])
+        for owner, projects in mine.items():
+            if owner in admins:
+                continue   # already has the whole digest
+            n = len(projects)
+            notify_users([owner], "alert", None, f"{n} of your rollout{'s' if n != 1 else ''} need{'s' if n == 1 else ''} attention today",
+                         _format_alerts_html({k: [p for p in v if p["owner_id"] == owner] for k, v in alerts.items()}), link="/alerts")
+        print(f"Digest: {len(admins)} admin(s), {len([o for o in mine if o not in admins])} project manager(s).")
         return 0 if sent_anything else 1
 
 

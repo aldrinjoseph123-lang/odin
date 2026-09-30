@@ -1489,13 +1489,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # pm1 switches stage emails off; the bell still gets it
         p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on", "due": "on"}, headers=ph)
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
-        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False})
+        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False})
         mail.reset_mock()
         self.client.post("/projects/1/stage", data={"stage": stages[1]})
         self.assertEqual([c.args[0] for c in mail.call_args_list], [])                     # pm1 opted out; admin is the actor
         bell = p.get("/api/notifications").get_json()
-        self.assertEqual((bell["unread"], bell["rows"][0]["kind"], bell["rows"][0]["link"], bell["rows"][0]["actor"]), (1, "stage", "/board?rollout=1", "Admin"))
-        self.assertEqual(p.get("/api/session").get_json()["user"]["nav"]["unread_notifications"], 1)
+        # 2 unread: being added to the project, then the stage move
+        self.assertEqual((bell["unread"], bell["rows"][0]["kind"], bell["rows"][0]["link"], bell["rows"][0]["actor"]), (2, "stage", "/board?rollout=1", "Admin"))
+        self.assertEqual(p.get("/api/session").get_json()["user"]["nav"]["unread_notifications"], 2)
         # mentions: by full name, by unique first name, by username; an outsider is never reached
         mail.reset_mock()
         self.client.post("/projects/1/note", data={"note": "@Priya Menon can you check the rack? cc @sam"})
@@ -1512,8 +1513,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         rid = p.get("/api/notifications").get_json()["rows"][0]["id"]
         a, acsrf = self._api_client()
         self.assertEqual(a.post("/api/notifications/read", json={"id": rid}, headers={"X-CSRF-Token": acsrf}).status_code, 200)
-        self.assertEqual(p.get("/api/notifications").get_json()["unread"], 2)                 # admin could not mark pm1's
-        self.assertEqual(p.post("/api/notifications/read", json={"id": rid}, headers=ph).get_json()["unread"], 1)
+        self.assertEqual(p.get("/api/notifications").get_json()["unread"], 3)                 # admin could not mark pm1's
+        self.assertEqual(p.post("/api/notifications/read", json={"id": rid}, headers=ph).get_json()["unread"], 2)
         self.assertEqual(p.post("/api/notifications/read", json={"all": True}, headers=ph).get_json()["unread"], 0)
         self.assertEqual(p.post("/api/notifications/read", json={}, headers=ph).status_code, 400)
 
@@ -3764,7 +3765,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIn(f"Advance to {stages[1]}", page)
         self.assertNotIn("Closed", page.split("Update Progress")[1].split("</form>")[0])
         csrf = re.search(r'name="_csrf" value="([^"]+)"', page).group(1)
-        with _patch("routes.guest.notify_event") as notify:
+        with _patch("routes.projects.notify_event") as notify:
             g.post(f"/guest/{tok}/stage", data={"stage": stages[-1], "author": "Sam", "_csrf": csrf})
             with self.raw_db() as db:
                 self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=1").fetchone()[0], stages[0])
@@ -4140,8 +4141,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("INSERT INTO user_activity (user_id, day, minutes) VALUES (1, ?, 5)", ((datetime.utcnow() - timedelta(days=40)).date().isoformat(),))
             db.commit()
         self._set_policy(notifications_keep_days="14", activity_keep_days="30")
+        from services.notifications import trim as trim_notifications
         with app_module.app.test_request_context():
-            notify_users([1], "nudge", None, "new", "new")   # a new notification trims the old read ones
+            notify_users([1], "nudge", None, "new", "new")
+            trim_notifications()   # nightly, in the scheduler's housekeeping
             trim()
         with self.raw_db() as db:
             titles = {r[0] for r in db.execute("SELECT title FROM notifications WHERE user_id = 1")}
@@ -4294,6 +4297,80 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.client.post(f"/users/{staff}/role", data={"role": "External"})
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT role FROM users WHERE id = ?", (staff,)).fetchone()[0], "Member")
+
+    # ---- loopholes, phase 2: the stage path and notifications (system map #9, #11, #12, #20, #21, #26)
+
+    def _bell(self, user_id):
+        with self.raw_db() as db:
+            return [(r["kind"], r["title"]) for r in db.execute("SELECT kind, title FROM notifications WHERE user_id = ? ORDER BY id", (user_id,))]
+
+    def test_the_vendor_link_moves_a_stage_through_the_normal_path(self):
+        self.new_project(name="V", client="C", delivery_mode="Outsourced", outsourcer_name="VendorCo", customer_approval="on")
+        member = self._make_user("coord9", "Member")
+        self.client.post("/projects/1/participants/add", data={"user_id": str(member), "role": "Coordinator"})
+        self._invite(1, "cara@client.example", "Customer", "Cara")
+        with self.raw_db() as db:
+            tok = db.execute("SELECT access_token FROM projects WHERE id=1").fetchone()[0]
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+            cara = db.execute("SELECT id FROM users WHERE email = 'cara@client.example'").fetchone()[0]
+        g = app_module.app.test_client()
+        csrf = re.search(r'name="_csrf" value="([^"]+)"', g.get(f"/guest/{tok}").data.decode()).group(1)
+        g.post(f"/guest/{tok}/stage", data={"stage": stages[1], "author": "Sam", "_csrf": csrf})
+        with self.raw_db() as db:
+            note = db.execute("SELECT author, prev_stage FROM status_notes WHERE stage = ? ORDER BY id DESC", (stages[1],)).fetchone()
+            approval = db.execute("SELECT stage, status FROM stage_approvals WHERE project_id = 1").fetchone()
+        self.assertEqual((note["prev_stage"], approval["stage"], approval["status"]), (stages[0], stages[1], "pending"))   # history and the customer's approval
+        self.assertIn("vendor link", note["author"])
+        self.assertIn("stage", [k for k, _ in self._bell(member)])                     # the team hears of it
+        self.assertEqual([k for k, _ in self._bell(cara)][-1], "approval")             # #20: the customer is asked as an approval
+
+    def test_new_alerts_reach_the_bell_of_the_owner_and_the_team_and_pms_get_a_digest(self):
+        pm = self._make_user("pm9", "Member"); coord = self._make_user("co9", "Contributor")
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        self.client.post("/projects/1/edit", data={"name": "Late", "client": "C", "via": "Direct", "delivery_mode": "Distribution/MSSP", "owner_id": pm, "target_end_date": "2020-01-01"})
+        self.client.post("/projects/1/participants/add", data={"user_id": str(coord), "role": "Coordinator"})
+        import scheduler
+        scheduler.sync_alerts()
+        self.assertIn("alert", [k for k, _ in self._bell(pm)])
+        self.assertIn("alert", [k for k, _ in self._bell(coord)])
+        import send_daily_alerts
+        with patch("policies.is_working_day", return_value=True):
+            send_daily_alerts.main()
+        self.assertTrue(any("of your rollout" in t for k, t in self._bell(pm) if k == "alert"))   # the PM's own digest
+        self.assertTrue(any("digest" in t for k, t in self._bell(1) if k == "alert"))             # the admins' digest, in the bell
+
+    def test_the_silent_events_now_tell_the_people_they_affect(self):
+        self.new_project(name="P", client="C")
+        new_pm = self._make_user("npm9", "Member"); added = self._make_user("add9", "Contributor")
+        self.client.post("/projects/1/participants/add", data={"user_id": str(added), "role": "Sales"})
+        self.assertIn(("assigned", "You are on P"), self._bell(added))
+        self.client.post("/projects/1/edit", data={"name": "P", "client": "C", "via": "Direct", "delivery_mode": "Distribution/MSSP", "owner_id": new_pm})
+        self.assertIn(("assigned", "You now manage P"), self._bell(new_pm))
+        # a bulk completion tells the PM; a signed-up colleague hears they were let in
+        self.client.post("/projects/1/tasks", data={"title": "a"}); self.client.post("/projects/1/tasks", data={"title": "b"})
+        with self.raw_db() as db:
+            ids = [str(r[0]) for r in db.execute("SELECT id FROM tasks WHERE project_id = 1")]
+        self.client.post("/projects/1/tasks/bulk", data={"action": "complete", "task_ids": ids})
+        self.assertTrue(any("2 tasks done" in t for _, t in self._bell(new_pm)))
+        with self.raw_db() as db:
+            db.execute("INSERT INTO users (username, password_hash, name, role, active, pending, kind) VALUES ('wait9', 'x', 'Wait', 'Viewer', 0, 1, 'internal')")
+            waiter = db.execute("SELECT id FROM users WHERE username = 'wait9'").fetchone()[0]; db.commit()
+        self.client.post(f"/users/{waiter}/approve", data={"role": "Viewer"})
+        self.assertIn(("access", "Welcome to Odin"), self._bell(waiter))
+
+    def test_a_partner_removed_from_a_project_stops_seeing_its_notifications(self):
+        self.new_project(name="P", client="C")
+        self._invite(1, "rick@reseller.example", "Reseller", "Rick")
+        with self.raw_db() as db:
+            rick = db.execute("SELECT id FROM users WHERE email = 'rick@reseller.example'").fetchone()[0]
+            pp = db.execute("SELECT id FROM project_participants WHERE user_id = ?", (rick,)).fetchone()[0]
+        with app_module.app.test_request_context():
+            from services.notifications import notify_users
+            notify_users([rick], "stage", 1, "P moved", "moved")
+        r, _ = self._ext("rick@reseller.example")
+        self.assertEqual(len(r.get("/api/notifications").get_json()["rows"]), 1)
+        self.client.post(f"/projects/1/participants/{pp}/remove")
+        self.assertEqual(r.get("/api/notifications").get_json()["rows"], [])
 
     def test_stage_sla_state_flags_only_real_breaches(self):
         from services.analytics import stage_sla_state
@@ -4676,7 +4753,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
         self.client.get("/board")
-        sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Project inactive")]
+        sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Project inactive: Proj")]
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0].args[2].startswith("Project: Proj (C)"))
         self.assertIn("http://localhost/projects/1", sent[0].args[2])     # the alert mail links to the project too

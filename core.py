@@ -294,13 +294,15 @@ def nav_counts():
         return {"active_alert_count": 0, "my_open_task_count": 0, "unread_notifications": 0, "projects_nav_url": url_for("projects_list")}
     db = get_db()
     scope_sql, scope_params = project_scope()
+    from services.notifications import visible_clause
+    _bell = visible_clause(session.get("user_id"), session.get("kind"))
     return {
         "active_alert_count": db.execute(
             f"SELECT COUNT(*) AS count FROM alerts a JOIN projects p ON p.id = a.project_id WHERE a.resolved = 0{scope_sql}",
             scope_params,
         ).fetchone()["count"],
         "unread_notifications": db.execute(
-            "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (session.get("user_id"),)
+            "SELECT COUNT(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL" + _bell[0], (session.get("user_id"), *_bell[1])
         ).fetchone()[0],
         "my_open_task_count": db.execute(
             "SELECT COUNT(*) AS count FROM tasks t JOIN projects p ON p.id = t.project_id "

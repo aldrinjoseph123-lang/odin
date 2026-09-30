@@ -110,6 +110,8 @@ def run_due():
                     cleanup_soft_deletes()   # deleted projects and files past the undo window
                     from services.activity import trim
                     trim()                   # active-minute rows past activity_keep_days
+                    from services.notifications import trim as trim_notifications
+                    trim_notifications()     # read bell items past notifications_keep_days
                     record_snapshot()        # the day's portfolio counts, for the Dashboard's deltas
         except Exception as exc:  # noqa: BLE001 — one failed job must not stop the clock
             print(f"[scheduler] {job} failed: {exc}", file=sys.stderr)

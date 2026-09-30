@@ -269,6 +269,11 @@ def api_signoff_withdraw(project_id, version):
     except ValueError as e:
         return _bad(e)
     audit_log("signoff_withdraw", "project", project_id, project["name"], f"v{version}")
+    row = signoff.get(project_id, version)
+    if row and row["signer_id"]:
+        notify_users([row["signer_id"]], "approval", project_id, f"{project['name']}: the sign-off was withdrawn",
+                     f"Version {version} of the sign-off for <b>{escape(project['name'])}</b> was withdrawn and will be revised; nothing to sign for now.",
+                     link=f"/projects/{project_id}/signoff")
     return jsonify(ok=True)
 
 

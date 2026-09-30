@@ -216,6 +216,9 @@ def user_approve(user_id):
     from services.signup import on_approve
     joined = on_approve(user)   # a sign-up link that named a project
     audit_log("approve_access", "user", user_id, user["username"], f"role={role}" + (f"; joined {joined}" if joined else ""))
+    from services.notifications import notify_users
+    notify_users([user_id], "access", None, "Welcome to Odin",
+                 f"Your access was approved: you are a {escape(role)}" + (f" and on {escape(joined)}" if joined else "") + ".", link="/")
     flash(f"{user['name']} can now sign in as {role}" + (f" and is on {joined}" if joined else ""))
     return redirect(url_for("users"))
 
