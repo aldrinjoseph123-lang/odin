@@ -41,7 +41,7 @@ export default function ProjectForm(_props: { user: User }) {
         target_end_date: p.target_end_date ?? "", delivery_mode: p.delivery_mode ?? data.delivery_modes[0], vendor_name: p.vendor_name ?? "", product_name: p.product_name ?? "",
         outsourcer_name: p.outsourcer_name ?? "", outsourcer_email: p.outsourcer_email ?? "",
         // a new project starts from Settings → Projects & workflow; a copy or an edit keeps its own
-        stage_template_id: String(p.stage_template_id ?? data.defaults.stage_template_id ?? data.templates[0]?.id ?? ""), owner_id: String(p.owner_id ?? data.me),
+        stage_template_id: String(p.stage_template_id ?? data.defaults.stage_template_id ?? data.templates[0]?.id ?? ""), owner_id: String(p.owner_id ?? (data.mode !== "edit" && !data.can_lead ? "" : data.me)),
       })
       setApproval(data.mode === "new" ? data.defaults.customer_approval : !!p.customer_approval)
       setInitial("pending")   // the snapshot is taken on the next render, once f is set
@@ -92,13 +92,20 @@ export default function ProjectForm(_props: { user: User }) {
             <Field label="Owner" hint="the project manager">
               <select value={f.owner_id} onChange={set("owner_id")} aria-label="Owner" className={selectClass}>{d.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
             </Field>
-          ) : (
-            <Field label="Team" hint="optional — added as coordinators; you are the project manager">
+          ) : (<>
+            {!d.can_lead && (
+              <Field label="Project manager *" hint="someone who can move stages; you join as a coordinator">
+                <select value={f.owner_id} onChange={set("owner_id")} required aria-label="Project manager" className={selectClass}>
+                  <option value="">Choose…</option>{d.leads.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </Field>
+            )}
+            <Field label="Team" hint={d.can_lead ? "optional — added as coordinators; you are the project manager" : "optional — added as coordinators"}>
               <select multiple size={4} value={team} onChange={(e) => setTeam([...e.target.selectedOptions].map((o) => o.value))} aria-label="Team members" className="rounded-md border border-input bg-background px-2 py-1 text-[13px]">
                 {d.users.filter((u) => u.id !== d.me).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </Field>
-          )}
+          </>)}
           <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} className="h-3.5 w-3.5 accent-primary" /> Ask the customer contact to approve each stage change</label>
           <Field label="PO number"><Input value={f.po_number} onChange={set("po_number")} maxLength={100} aria-label="PO number" className="h-8 text-[13px]" /></Field>
           <div className="grid grid-cols-3 gap-2">

@@ -483,7 +483,7 @@ const MAP_STAMP = { date: "30 Sep 2026" };   // the date the hand-written views 
 
 // ---------- data: loopholes. A fixed one keeps its number: add fixed: "v1.x.y" ----------
 const LOOPS = [
-  { id: 1, sev: "high", area: "Access", title: "Any staff account can take the anonymous guest links",
+  { id: 1, fixed: "v1.3.0", done: 'Guest links are handed only to whoever manages the project (its project manager, and Admins); everyone else gets none.', sev: "high", area: "Access", title: "Any staff account can take the anonymous guest links",
     what: "The project page API hands the customer and vendor guest links to every internal account, Viewers and staff who are not on the project included. The vendor link moves a project to its next stage without signing in.",
     impact: "A Viewer can advance a rollout, and the trail records it as a guest, not as them.",
     fix: "Return guest links only to the project manager and Admins. Better: switch legacy guest links off (Settings → Sign-in & security) now that partners have their own accounts.",
@@ -493,17 +493,17 @@ const LOOPS = [
     impact: "People assume they are told; they are not. Only the bell and the Teams webhook arrive. Partners cannot request their own sign-in link and staff cannot reset a forgotten password.",
     fix: "Connect Microsoft 365 (Phase 6). Until then, refuse to turn email on while it is not connected, and put a notice in the admins' bell when a send fails.",
     ref: "graph.py:303 · routes/integrations.py:115", on: ["m365", "n-email", "d-link", "d-reset"] },
-  { id: 3, sev: "medium", area: "Data exposure", title: "Partners and customers see every document and the internal contacts",
+  { id: 3, fixed: "v1.3.0", done: "Partners and customers get a cut of the project page: no internal or partner-channel contacts, no one else's email, the PO number only for the Customer. Document categories carry a 'partners' switch (Settings → Projects & workflow); Client PO starts hidden, and a hidden kind neither lists nor downloads.", sev: "medium", area: "Data exposure", title: "Partners and customers see every document and the internal contacts",
     what: "On a project they belong to, an external account lists and downloads every document, including the client's PO, and receives every participant's email and the internal account-manager and partner fields. The report has a customer cut; the project page does not.",
     impact: "A reseller or contractor can read the client PO and the internal contact list.",
     fix: "Mark document categories as customer-visible (PO internal by default) and cut participant emails and internal fields from the external view of the project.",
     ref: "routes/api.py:767-784 · routes/projects.py:782", on: ["app", "lc-work"] },
-  { id: 4, sev: "medium", area: "Data exposure", title: "The signed sign-off PDF mailed to the customer holds staff-only records",
+  { id: 4, fixed: "v1.3.0", done: "The signer's copy of the signed PDF is rendered in the customer view; staff get the copy with the signing record.", sev: "medium", area: "Data exposure", title: "The signed sign-off PDF mailed to the customer holds staff-only records",
     what: "When a sign-off completes, the PDF is rendered in the staff view, with the signer's IP address and browser, and mailed to the customer as well as to staff.",
     impact: "Internal signing evidence leaves the company; the product rule says it is for staff.",
     fix: "Render the customer's copy with the customer view (staff=False).",
     ref: "routes/signoff.py:173", on: ["lc-signoff"] },
-  { id: 5, sev: "medium", area: "Data exposure", title: "The weekly report sends internal versions to any address",
+  { id: 5, fixed: "v1.3.0", done: 'The attached PDFs go only to addresses that belong to Odin staff accounts; any other address gets the summary alone.', sev: "medium", area: "Data exposure", title: "The weekly report sends internal versions to any address",
     what: "The report attaches each project's internal snapshot and the internal portfolio PDF to every address in 'And these addresses', which may be outside the company. It also ignores the global email switch.",
     impact: "Baseline slip, internal notes and risks can reach a customer by mistake.",
     fix: "Limit extra addresses to company domains, or send the customer cut to anyone outside them.",
@@ -528,7 +528,7 @@ const LOOPS = [
     impact: "Approvals can be bypassed and the move is easy to miss.",
     fix: "Send it through the normal stage change, or retire guest links.",
     ref: "routes/guest.py:90-119", on: ["lc-guest", "n-guest"] },
-  { id: 10, sev: "medium", area: "Access", title: "A Contributor who creates a project becomes its manager",
+  { id: 10, fixed: "v1.3.0", done: 'Someone who cannot move stages names a project manager who can (the form asks); they join the project as a Coordinator.', sev: "medium", area: "Access", title: "A Contributor who creates a project becomes its manager",
     what: "The creator becomes project manager, with team, partner invitations, guest links and sign-off powers. A Contributor cannot move stages, so the project cannot advance until an Admin steps in.",
     impact: "Stalled projects, and Contributors holding manager powers by accident.",
     fix: "Ask for a manager who may move stages when the project is created (the edit form already checks this), or keep project creation to Members.",
@@ -548,17 +548,17 @@ const LOOPS = [
     impact: "One disk or one leaked credential away from a long outage.",
     fix: "Finish the go-live list: Proxmox snapshot and schedule, SSH keys only, rotate the tunnel token, a Cloudflare rate limit on sign-in.",
     ref: "docs/GO_LIVE.md", on: ["vm", "cf"] },
-  { id: 14, sev: "low", area: "Access", title: "Staff can hold the Customer project role",
+  { id: 14, fixed: "v1.3.0", done: 'Staff can no longer be given the Customer role (stage approvals), and partner accounts can only hold partner roles (Customer, Reseller, Contractor).', sev: "low", area: "Access", title: "Staff can hold the Customer project role",
     what: "Adding a staff member to a project accepts Customer, Reseller or Contractor. A staff member set as Customer can record the customer's stage approvals.",
     impact: "An internal person can approve on the customer's behalf.",
     fix: "Allow partner roles only for external accounts.",
     ref: "routes/projects.py:885", on: ["lc-stages"] },
-  { id: 15, sev: "low", area: "Access", title: "Role and account type can disagree",
+  { id: 15, fixed: "v1.3.0", done: 'The External role follows the account: staff cannot be given it, and partner accounts keep it.', sev: "low", area: "Access", title: "Role and account type can disagree",
     what: "An internal account can be given the External role (it then sees every project with a partner's rights), and a partner account can be made Admin. The External column in Role permissions is not locked.",
     impact: "Confusing accounts with unexpected reach.",
     fix: "Tie the role to the account type and lock External's write permissions.",
     ref: "routes/users.py:29, 76-94", on: [] },
-  { id: 16, sev: "low", area: "Data exposure", title: "Old plain-text report versions reach customers",
+  { id: 16, fixed: "by design", done: "Reviewed: a saved text version is the report the project manager chose to publish, and partners are meant to read it. Snapshots and the live report were already cut for them.", sev: "low", area: "Data exposure", title: "Old plain-text report versions reach customers",
     what: "One report address returns any saved version to partners, including early text versions drafted from internal notes. The report API already limits partners to snapshots.",
     impact: "Internal wording can leak through an old version.",
     fix: "Give partners snapshots only, as the API does.",
@@ -799,7 +799,7 @@ const ARCH = {
 
 // ---------- lifecycle ----------
 const LIFE = {
-  "lc-create": { kind: "Step 1", title: "Create the project", text: "Staff with 'create project' fill the form. The client PO is required and checked for type and content.", points: ["Stages copied from the chosen template (each project then owns its list)", "Two guest links minted (customer, vendor)", "The creator becomes project manager; team members become Coordinators", "Owner told by email and Teams (not connected), audit row written"], refs: ["routes/projects.py:313-407"] },
+  "lc-create": { kind: "Step 1", title: "Create the project", text: "Staff with 'create project' fill the form. The client PO is required and checked for type and content.", points: ["Stages copied from the chosen template (each project then owns its list)", "Two guest links minted (customer, vendor)", "The creator becomes project manager; someone who cannot move stages names one and joins as a Coordinator", "Owner told by email and Teams (not connected), audit row written"], refs: ["routes/projects.py:313-407"] },
   "lc-plan": { kind: "Step 2", title: "Plan and baseline", text: "Planned start and end per stage. The first save freezes the baseline; every later move is logged with its reason, and re-baselining needs one.", points: ["Forecast chains actual, current and remaining stages", "Lengths count working days minus holidays", "Health red / amber / green with reasons"], refs: ["services/plan.py", "services/workdays.py"] },
   "lc-stages": { kind: "Step 3 · repeats", title: "Move through the stages", text: "The project manager moves the project on. Each move writes a history note, notifies the team and Teams, and can be undone by its author inside the undo window.", points: ["Needs 'edit project stage' and the project manager role (Admins always)", "Optional: the customer approves each move (recorded, the move is not blocked)", "SLA per stage, measured in working days; alerts sync every 15 minutes"], refs: ["routes/projects.py:567-616", "services/alerts.py"] },
   "lc-work": { kind: "Alongside", title: "Daily work", text: "Tasks, documents, risks and notes hang off the project while it moves.", points: ["Tasks and RAID: project manager and Coordinators; assignees tick their own", "Documents: project manager and Coordinators upload; everyone on it downloads", "Notes: anyone on it; @mentions notify; partners see only customer-visible notes"], refs: ["routes/projects.py:723-1390", "routes/api.py:1047-1110"] },
@@ -848,7 +848,7 @@ const LIFE = {
 // ---------- notifications ----------
 // channel codes: B bell, E email (needs M365), T Teams channel (needs M365), W webhook (works today), - none
 const NOTIF = [
-  ["Project", "Project created", "The creator (as owner)", "-", "E", "TW", "Emails the creator about their own action", null],
+  ["Project", "Project created", "The project manager, when someone else created it; Teams", "-", "E", "TW", "", null],
   ["Project", "Stage moved", "Everyone on the project except the mover; Teams", "B", "E", "TW", "", null],
   ["Project", "Customer approval requested", "The Customer on the project", "B", "E", "TW", "Sent as a stage change", 20],
   ["Project", "Stage move undone", "Everyone on the project except the mover; Teams", "B", "E", "TW", "", null],
@@ -866,12 +866,12 @@ const NOTIF = [
   ["Sign-off", "Sign-off sent", "The signer (partner gets a one-time link)", "B", "E", "-", "", null],
   ["Sign-off", "Signed", "The countersigner and the owner", "B", "E", "-", "", null],
   ["Sign-off", "Rejected", "The owner and the countersigner", "B", "E", "-", "Opens an issue in RAID", null],
-  ["Sign-off", "Countersigned (complete)", "Everyone on the project; signed PDF to signer, countersigner, owner", "B", "E", "-", "PDF ignores email choices", 4],
+  ["Sign-off", "Countersigned (complete)", "Everyone on the project; signed PDF to signer, countersigner, owner", "B", "E", "-", "PDF ignores email choices; the customer's copy has no signing record", 4],
   ["Sign-off", "Scanned copy uploaded", "Everyone on the project", "B", "E", "-", "", null],
   ["Sign-off", "Waived by an Admin", "The owner", "B", "E", "-", "", null],
   ["Schedules", "New alert (overdue, due soon, over SLA, stale)", "The owner only", "-", "E", "TW", "Email and Teams off by default; shows on the Alerts page", 12],
   ["Schedules", "Daily digest", "Admins; Teams", "-", "E", "T", "Admins only; ignores email choices", 12],
-  ["Schedules", "Weekly report", "Chosen roles and extra addresses; Teams", "-", "E", "TW", "When switched on; ignores the email switch", 5],
+  ["Schedules", "Weekly report", "Chosen roles and extra addresses; Teams", "-", "E", "TW", "When switched on; ignores the email switch; PDFs to staff accounts only", 5],
   ["Access", "Microsoft first sign-in (asks for access)", "All Admins", "B", "E", "-", "", null],
   ["Access", "Sign-up link used", "All Admins", "B", "E", "-", "", null],
   ["Access", "Emergency password sign-in", "All Admins", "B", "E", "-", "Only while Microsoft sign-in is required", null],
@@ -969,7 +969,7 @@ function renderNotif() {
 
   $("#visibility").innerHTML = [
     ["Staff (any role)", `every project, whether on it or not ${mkBtn(27)}`],
-    ["Partners and customers", "only the projects they are on; reports, plans and risks cut for customers"],
+    ["Partners and customers", "only the projects they are on; reports, plans, risks, contacts and documents cut for them (Client PO internal)"],
     ["Guest link holder", `one project: its stages and customer-visible notes ${mkBtn(1)}`],
     ["API token", `what staff see, read-only ${mkBtn(24)}`],
     ["Time on Odin", "your own always; others' only for the roles chosen in Settings (Admins and Members)"],
@@ -1250,8 +1250,8 @@ function renderRegister() {
   const list = LOOPS.filter((l) => (sevFilter === "fixed" ? l.fixed : isOpen(l) && (sevFilter === "all" || l.sev === sevFilter)) && (areaFilter === "all" || l.area === areaFilter))
     .sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev] || a.id - b.id);
   $("#register").innerHTML = list.map((l) => `<article class="card" id="loop-${l.id}" tabindex="-1">
-    <div class="head"><span class="num">#${l.id}</span><span class="ttl">${esc(l.title)}</span>${l.fixed ? `<span class="sev fixed">fixed in ${esc(l.fixed)}</span>` : `<span class="sev ${l.sev}">${l.sev === "decision" ? "to decide" : l.sev}</span>`}<span class="area">${esc(l.area)}</span></div>
-    <dl><dt>What happens</dt><dd>${esc(l.what)}</dd><dt>Why it matters</dt><dd>${esc(l.impact)}</dd><dt>Fix</dt><dd>${esc(l.fix)}</dd><dt>In the code</dt><dd><code>${esc(l.ref)}</code></dd></dl>
+    <div class="head"><span class="num">#${l.id}</span><span class="ttl">${esc(l.title)}</span>${l.fixed ? `<span class="sev fixed">${/^v\d/.test(l.fixed) ? "fixed in " : ""}${esc(l.fixed)}</span>` : `<span class="sev ${l.sev}">${l.sev === "decision" ? "to decide" : l.sev}</span>`}<span class="area">${esc(l.area)}</span></div>
+    <dl><dt>What happens</dt><dd>${esc(l.what)}</dd><dt>Why it matters</dt><dd>${esc(l.impact)}</dd>${l.done ? `<dt>What changed</dt><dd>${esc(l.done)}</dd>` : `<dt>Fix</dt><dd>${esc(l.fix)}</dd>`}<dt>In the code</dt><dd><code>${esc(l.ref)}</code></dd></dl>
   </article>`).join("") || `<p class="lede">Nothing matches these filters.</p>`;
 }
 $("#sev-filter").addEventListener("click", (e) => { const b = e.target.closest("[data-sev]"); if (b) { sevFilter = b.dataset.sev; renderRegister() } });

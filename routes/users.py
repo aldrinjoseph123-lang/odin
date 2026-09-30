@@ -27,7 +27,7 @@ def users():
         email = request.form.get("email", "").strip()
         password = request.form["password"]
         role = request.form.get("role", "Member")
-        if role not in ROLES:
+        if role not in ROLES or role == "External":   # staff accounts; partners are invited to a project instead
             role = "Member"
         existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
         problem = password_problem(password)
@@ -84,9 +84,13 @@ def user_set_role(user_id):
         flash("You cannot remove your own Admin role")
         return redirect(url_for("users"))
     db = get_db()
-    user = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = db.execute("SELECT username, kind FROM users WHERE id = ?", (user_id,)).fetchone()
     if user is None:
         abort(404)
+    if (role == "External") != (user["kind"] == "external"):
+        # the role follows the kind of account: partners stay External, staff never become it
+        flash("External is the role of partner accounts only; staff take Admin, Member, Contributor or Viewer")
+        return redirect(url_for("users"))
     # the role rides in the session cookie: end their sessions so it takes effect now, not at their next sign-in
     db.execute("UPDATE users SET role = ?, session_epoch = session_epoch + 1 WHERE id = ?", (role, user_id))
     db.commit()

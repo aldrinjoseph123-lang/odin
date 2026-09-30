@@ -15,6 +15,7 @@ from flask import g
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from constants import (
+    CLIENT_PO_DOC_CATEGORY,
     ALERT_TYPES,
     SOFT_DELETE_TABLES,
     DEFAULT_ALERT_TYPE_SETTINGS,
@@ -372,9 +373,15 @@ def migrate_db(db):
     if "purpose" not in {row[1] for row in db.execute("PRAGMA table_info(login_links)")}:
         db.execute("ALTER TABLE login_links ADD COLUMN purpose TEXT NOT NULL DEFAULT 'signin'")
 
+    # Which document kinds partners and customers may see (Settings → Projects &
+    # workflow). The client's PO is internal from the start.
+    if "partners" not in {row[1] for row in db.execute("PRAGMA table_info(doc_categories)")}:
+        db.execute("ALTER TABLE doc_categories ADD COLUMN partners INTEGER NOT NULL DEFAULT 1")
+        db.execute("UPDATE doc_categories SET partners = 0 WHERE name = ?", (CLIENT_PO_DOC_CATEGORY,))
     if not db.execute("SELECT 1 FROM doc_categories LIMIT 1").fetchone():
         for name in DEFAULT_DOC_CATEGORIES:
             db.execute("INSERT INTO doc_categories (name) VALUES (?)", (name,))
+        db.execute("UPDATE doc_categories SET partners = 0 WHERE name = ?", (CLIENT_PO_DOC_CATEGORY,))
 
     _backfill_stage_entered_at(db)
 
@@ -676,6 +683,11 @@ def set_project_manager(db, project_id, user_id, added_by=None):
         "ON CONFLICT(project_id, user_id) DO UPDATE SET role = 'Project manager'",
         (project_id, user_id, added_by, datetime.utcnow().isoformat()),
     )
+
+
+def partner_hidden_categories(db=None):
+    """Document categories partners and customers never see."""
+    return {r[0] for r in (db or get_db()).execute("SELECT name FROM doc_categories WHERE partners = 0")}
 
 
 def participants_for(project_id):

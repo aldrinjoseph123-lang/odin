@@ -363,7 +363,7 @@ export type BackupRun = {
 export type BackupsView = { runs: BackupRun[]; scheduler_seen: string | null; scheduler_alive: boolean; next_run: string | null }
 export type SettingsData = {
   templates: { id: number; name: string; projects: number; stages: { id: number; name: string; sla_days: number | null }[] }[]
-  doc_categories: { id: number; name: string }[]
+  doc_categories: { id: number; name: string; partners: boolean }[]
   alerts: { key: string; title: string; severity: "critical" | "warning" | "info"; threshold_days: number | null; notify_email: boolean; notify_teams: boolean; notify_inapp: boolean }[]
   m365: {
     oauth_client_configured: boolean; azure_app: { client_id: string | null; tenant_id: string | null; has_secret: boolean; source: string | null }
@@ -526,6 +526,8 @@ export const markRead = (which: { id: number } | { all: true }) => post<{ ok: tr
 // ---- the new / duplicate / edit project form ----
 export type ProjectFormData = {
   mode: "new" | "duplicate" | "edit"; id: number | null; me: number
+  // who may manage a project (they can move stages); can_lead: whether you can yourself
+  leads: { id: number; name: string }[]; can_lead: boolean
   project: Partial<Record<string, string | null>> & { customer_approval?: boolean; stage_template_id?: number | null; owner_id?: number }
   defaults: { stage_template_id: number | null; customer_approval: boolean }
   via_options: string[]; delivery_modes: string[]

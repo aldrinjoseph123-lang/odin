@@ -10,7 +10,7 @@ from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
-from db import avatar_url, get_doc_category_names, get_setting, stage_rows
+from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
@@ -182,7 +182,7 @@ def api_settings():
             channels, teams_error = graph.list_channels(team_id)
     return jsonify({
         "templates": templates,
-        "doc_categories": [{"id": r["id"], "name": r["name"]} for r in db.execute("SELECT * FROM doc_categories ORDER BY name")],
+        "doc_categories": [{"id": r["id"], "name": r["name"], "partners": bool(r["partners"])} for r in db.execute("SELECT * FROM doc_categories ORDER BY name")],
         "alerts": alerts,
         "m365": {
             "oauth_client_configured": graph.oauth_client_configured(),
@@ -690,6 +690,10 @@ def api_project_form():
                       else (db.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone() or [None])[0],
                      "customer_approval": policy("default_customer_approval")},
         "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")],
+        # a project manager must be able to move stages; someone who cannot picks one
+        "leads": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name, role FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")
+                  if role_has_permission(u["role"], "edit_project_stage")],
+        "can_lead": role_has_permission(session.get("role"), "edit_project_stage"),
     })
 
 
@@ -759,6 +763,13 @@ def api_project(project_id):
               "delivery_mode", "outsourcer_name", "outsourcer_email", "vendor_name", "product_name"]
     can_manage = project_allows(project_id, "manage_project")
     entries = stage_entry_note_ids(project_id)
+    external = session.get("kind") == "external"
+    if external:
+        # partners and customers: no internal contacts or partner channel; the PO only to the customer
+        fields = ["client", "account_manager_name", "start_date", "target_end_date", "delivery_mode", "vendor_name", "product_name"]
+        if project_role_of(project_id, session["user_id"]) == "Customer":
+            fields += ["po_number", "po_date"]
+    hidden_docs = partner_hidden_categories(db) if external else set()
     from db import get_setting
     guest_on = get_setting("guest_links_enabled", "1") == "1"
     return jsonify({
@@ -770,9 +781,10 @@ def api_project(project_id):
             "customer": url_for("guest_view", token=project["customer_token"], _external=True) if project["customer_token"] else None,
             "vendor": url_for("guest_view", token=project["access_token"], _external=True)
             if project["delivery_mode"] == "Outsourced" and project["access_token"] else None,
-        } if guest_on and (can_manage or role != "External") else {"customer": None, "vendor": None},
+        } if guest_on and can_manage else {"customer": None, "vendor": None},
         "stage_rows": [{"id": r["id"], "name": r["name"], "sla_days": r["sla_days"]} for r in stage_rows(project_id)],
-        "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"], "email": r["email"], "active": bool(r["active"]),
+        "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
+                          "email": r["email"] if not external or r["user_id"] == session["user_id"] else None, "active": bool(r["active"]),
                           "avatar_url": f"/users/{r['user_id']}/avatar/{r['avatar']}" if r["avatar"] else None}
                          for r in participants_for(project_id)],
         "notes": [{"id": n["id"], "author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"],
@@ -781,10 +793,11 @@ def api_project(project_id):
                   for n in db.execute("SELECT * FROM status_notes WHERE project_id = ?" + (" AND guest_visible = 1" if session.get("kind") == "external" else "")
                                       + " ORDER BY created_at DESC", (project_id,))],
         "documents": [{"id": d["id"], "category": d["category"], "filename": d["filename"], "uploaded_by": d["uploaded_by"], "uploaded_at": d["uploaded_at"]}
-                      for d in db.execute("SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", (project_id,))],
+                      for d in db.execute("SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", (project_id,))
+                      if d["category"] not in hidden_docs],
         "doc_categories": get_doc_category_names(),
         "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")] if can_manage else [],
-        "roles": [r for r in PROJECT_ROLES if r != PROJECT_MANAGER], "external_roles": list(EXTERNAL_PROJECT_ROLES),
+        "roles": [r for r in PROJECT_ROLES if r not in (PROJECT_MANAGER, "Customer")], "external_roles": list(EXTERNAL_PROJECT_ROLES),
         "can": {
             "manage": can_manage, "tasks": project_allows(project_id, "manage_tasks"),
             "docs": project_allows(project_id, "manage_documents"), "move": project_allows(project_id, "move_stage"),

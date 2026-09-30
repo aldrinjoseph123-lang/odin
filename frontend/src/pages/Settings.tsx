@@ -108,11 +108,14 @@ export default function Settings(_props: { user: User }) {
               <p className="mt-2 text-[11.5px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
             </Panel>
             <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
-              <Panel title="Document categories">
+              <Panel title="Document categories" hint="untick to keep a kind from partners and customers">
                 <ul className="grid gap-1.5 text-[13px]">
                   {data.doc_categories.map((c) => (
                     <li key={c.id} className="flex items-center gap-2">
                       <span className="flex-1">{c.name}</span>
+                      <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground" title="Partners and customers on the project can see and download these">
+                        <input type="checkbox" checked={c.partners} disabled={busy} onChange={(e) => send(`/settings/doc-categories/${c.id}/partners`, e.target.checked ? { partners: "on" } : {})}
+                          aria-label={`Partners see ${c.name}`} className="h-3.5 w-3.5 accent-primary" />partners</label>
                       <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>
                     </li>
                   ))}

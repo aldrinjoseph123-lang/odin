@@ -103,9 +103,14 @@ def send(to=None, teams=True):
     when asked and allowed, a summary to Teams. Returns (sent, failed, message)."""
     subject, html, summary, attachments = build()
     targets = to if to is not None else recipients()
+    # The PDFs are internal (baseline, slip, notes, risks): they go to Odin staff
+    # accounts only. Any other address gets the summary without them.
+    staff = {r[0].lower() for r in get_db().execute("SELECT email FROM users WHERE kind = 'internal' AND active = 1 AND email IS NOT NULL")}
+    outside_html = html + ("<p style=\"color:#666\">The PDF reports go to Odin accounts only; sign in to Odin to read them.</p>" if attachments else "")
     sent, failed = 0, []
     for address in targets:
-        ok, error = graph.send_mail(address, subject, html, attachments=attachments)
+        inside = address.lower() in staff
+        ok, error = graph.send_mail(address, subject, html if inside else outside_html, attachments=attachments if inside else [])
         sent += ok
         if not ok:
             failed.append(f"{address}: {error}")

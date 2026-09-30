@@ -170,10 +170,14 @@ def _completed_mail(project, row):
     if get_setting("notify_email_enabled") != "1":
         return
     from services.signoff_pdf import render
-    pdf = render(signoff.view(signoff.get(project["id"], row["version"]), True))
+    signed = signoff.get(project["id"], row["version"])
+    # the signing record (addresses, browsers) is for staff: the customer's copy leaves it out
+    pdfs = {True: render(signoff.view(signed, True)), False: render(signoff.view(signed, False))}
     db = get_db()
-    to = {row["signer_email"]} | {r["email"] for r in db.execute("SELECT email FROM users WHERE id IN (?, ?) AND email IS NOT NULL", (row["counter_id"], project["owner_id"]))}
+    staff = {r["email"] for r in db.execute("SELECT email FROM users WHERE id IN (?, ?) AND email IS NOT NULL", (row["counter_id"], project["owner_id"]))}
+    to = {row["signer_email"]} | staff
     for address in sorted(x for x in to if x):
+        pdf = pdfs[address in staff]
         try:
             graph.send_mail(address, f"Signed off: {project['name']}", f"<p>The sign-off for <b>{escape(project['name'])}</b> is signed by both sides. The signed copy is attached.</p>",
                             attachments=[(f"signoff-{project['id']}-v{row['version']}.pdf", pdf, "application/pdf")])

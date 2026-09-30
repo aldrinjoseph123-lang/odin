@@ -46,6 +46,7 @@ from db import (
     get_db,
     get_doc_category_names,
     get_setting,
+    partner_hidden_categories,
     PROJECT_OPEN_SQL,
     copy_template_stages,
     my_project_ids,
@@ -343,6 +344,16 @@ def project_new():
         if problem := _date_problem(request.form):
             flash(problem)
             return redirect(url_for("project_new"))
+        # The project manager must be able to move stages. Someone who cannot
+        # (a Contributor) names one and joins as a Coordinator.
+        lead_id = session["user_id"]
+        if not role_has_permission(session.get("role"), "edit_project_stage"):
+            raw = request.form.get("owner_id", "")
+            lead = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone() if raw.isdigit() else None
+            if lead is None or not role_has_permission(lead["role"], "edit_project_stage"):
+                flash("Choose a project manager who can move stages (an Admin or Member)")
+                return redirect(url_for("project_new"))
+            lead_id = lead["id"]
         now = datetime.utcnow().isoformat()
         name = request.form["name"].strip()[:200]
         cursor = db.execute(
@@ -360,7 +371,7 @@ def project_new():
                 request.form.get("po_number") or None,
                 request.form.get("po_date") or None,
                 first_stage["name"],
-                session["user_id"],
+                lead_id,
                 request.form.get("via") or None,
                 request.form.get("account_manager_name") or None,
                 request.form.get("account_manager_email") or None,
@@ -385,20 +396,22 @@ def project_new():
         )
         project_id = cursor.lastrowid
         copy_template_stages(db, template["id"], project_id)
-        set_project_manager(db, project_id, session["user_id"], session["user_id"])
-        for raw in request.form.getlist("team_user_ids"):
-            if raw.isdigit() and int(raw) != session["user_id"] and db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (raw,)).fetchone():
+        set_project_manager(db, project_id, lead_id, session["user_id"])
+        team = request.form.getlist("team_user_ids") + ([str(session["user_id"])] if lead_id != session["user_id"] else [])
+        for raw in team:
+            if raw.isdigit() and int(raw) != lead_id and db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone():
                 db.execute(
                     "INSERT OR IGNORE INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, 'Coordinator', ?, ?)",
                     (project_id, int(raw), session["user_id"], now),
                 )
         save_document(project_id, po_document, CLIENT_PO_DOC_CATEGORY, session["user_name"])
         db.commit()
-        audit_log("create_project", "project", project_id, name, f"client={request.form['client']}")
+        audit_log("create_project", "project", project_id, name, f"client={request.form['client']}" + (f" manager_id={lead_id}" if lead_id != session["user_id"] else ""))
         notify_event(
-            {"owner_id": session["user_id"]},
+            {"owner_id": lead_id},
             f"New project: {escape(name)}",
-            f"Project '{escape(name)}' for {escape(request.form['client'])} was created and assigned to you.",
+            f"Project '{escape(name)}' for {escape(request.form['client'])} was created"
+            + (f" by {escape(session['user_name'])} and assigned to you." if lead_id != session["user_id"] else "."),
         )
         flash("Project created")
         return redirect(url_for("board"))
@@ -429,10 +442,11 @@ def project_detail(project_id):
         "SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at DESC",
         (project_id,),
     ).fetchall()
-    documents = db.execute(
+    hidden = partner_hidden_categories(db) if session.get("kind") == "external" else set()
+    documents = [d for d in db.execute(
         "SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC",
         (project_id,),
-    ).fetchall()
+    ).fetchall() if d["category"] not in hidden]
     if not project["access_token"]:
         token = secrets.token_urlsafe(16)
         db.execute("UPDATE projects SET access_token = ? WHERE id = ?", (token, project_id))
@@ -787,8 +801,8 @@ def document_download(project_id, doc_id):
     doc = db.execute(
         "SELECT * FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL", (doc_id, project_id)
     ).fetchone()
-    if doc is None:
-        abort(404)
+    if doc is None or (session.get("kind") == "external" and doc["category"] in partner_hidden_categories(db)):
+        abort(404)   # a kind partners never see does not exist for them
     # Reads are data access; SOC 2 wants them in the trail as much as writes.
     audit_log("download_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
     project_dir = os.path.join(UPLOAD_DIR, str(project_id))
@@ -879,11 +893,14 @@ def participant_add(project_id):
     role = request.form.get("role", "")
     raw = request.form.get("user_id", "")
     db = get_db()
-    user = db.execute("SELECT id, name FROM users WHERE id = ? AND active = 1", (raw,)).fetchone() if raw.isdigit() else None
+    user = db.execute("SELECT id, name, kind FROM users WHERE id = ? AND active = 1", (raw,)).fetchone() if raw.isdigit() else None
     if user is None:
         flash("Pick an active user")
     elif role not in PROJECT_ROLES:
         flash("Pick a role")
+    elif (role == "Customer" and user["kind"] != "external") or (user["kind"] == "external" and role not in EXTERNAL_PROJECT_ROLES):
+        # staff never stand in for the customer (stage approvals); partners never hold a staff role (tasks, documents)
+        flash("Customer is for the customer's own account; partners take Customer, Reseller or Contractor")
     elif role == PROJECT_MANAGER and user["id"] != project["owner_id"]:
         flash("The project manager is the owner — change the owner on Edit")
     elif user["id"] == project["owner_id"] and role != PROJECT_MANAGER:

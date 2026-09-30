@@ -444,6 +444,22 @@ def settings_category_delete(cat_id):
     return redirect(url_for("settings"))
 
 
+@app.route("/settings/doc-categories/<int:cat_id>/partners", methods=["POST"])
+@admin_required
+def settings_category_partners(cat_id):
+    """Whether partners and customers see documents of this kind."""
+    db = get_db()
+    category = db.execute("SELECT * FROM doc_categories WHERE id = ?", (cat_id,)).fetchone()
+    if not category:
+        abort(404)
+    on = request.form.get("partners") == "on"
+    db.execute("UPDATE doc_categories SET partners = ? WHERE id = ?", (1 if on else 0, cat_id))
+    db.commit()
+    audit_log("doc_category_partners", "doc_category", cat_id, category["name"], "shown to partners" if on else "hidden from partners")
+    flash(f"'{category['name']}' is {'shown to' if on else 'hidden from'} partners and customers")
+    return redirect(url_for("settings"))
+
+
 @app.route("/settings/contacts")
 @permission_required("manage_contacts")
 def settings_contacts():

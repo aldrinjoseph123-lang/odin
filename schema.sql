@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS stages (
 
 CREATE TABLE IF NOT EXISTS doc_categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL
+    name TEXT UNIQUE NOT NULL,
+    partners INTEGER NOT NULL DEFAULT 1   -- 0: partners and customers never see documents of this kind
 );
 
 CREATE TABLE IF NOT EXISTS settings (

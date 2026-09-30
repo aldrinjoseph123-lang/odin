@@ -3471,7 +3471,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_contributor_creates_and_comments_but_never_moves_a_stage(self):
         self._make_user("sales", "Contributor")
         c = app_module.app.test_client(); c.post("/login", data={"username": "sales", "password": STRONG_PASSWORD})
-        c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 x"), "po.pdf"), "name": "S", "client": "C"})
+        c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 x"), "po.pdf"), "name": "S", "client": "C", "owner_id": "1"})   # names a manager who can move stages
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0], 1)
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
@@ -4207,6 +4207,93 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         m, _ = self._api_client("mapmember", STRONG_PASSWORD)
         self.assertNotEqual(m.get("/settings/map/page").status_code, 200)          # admins only
         self.assertNotEqual(app_module.app.test_client().get("/settings/map/page").status_code, 200)
+
+    # ---- loopholes, phase 1: access and data exposure (system map #1, #3, #4, #5, #10, #14, #15)
+
+    def test_guest_links_go_only_to_whoever_manages_the_project(self):
+        self.new_project(name="P", client="C")
+        admin, _ = self._api_client()
+        self.assertIsNotNone(admin.get("/api/projects/1").get_json()["guest_links"]["customer"])
+        self._make_user("viewer9", "Viewer"); self._make_user("member9", "Member")
+        for who in ("viewer9", "member9"):   # not on the project: no anonymous links, which could move a stage
+            c, _ = self._api_client(who, STRONG_PASSWORD)
+            self.assertEqual(c.get("/api/projects/1").get_json()["guest_links"], {"customer": None, "vendor": None})
+
+    def test_partners_get_a_cut_of_the_project_page_and_never_the_client_po(self):
+        self.new_project(name="P", client="C", account_manager_email="am@corp.example", partner_account_manager_email="pam@partner.example", po_number="PO-77")
+        self._invite(1, "rick@reseller.example", "Reseller", "Rick")
+        self._invite(1, "cara@client.example", "Customer", "Cara")
+        r, _ = self._ext("rick@reseller.example")
+        d = r.get("/api/projects/1").get_json()
+        self.assertNotIn("account_manager_email", d["details"]); self.assertNotIn("partner_account_manager_email", d["details"])
+        self.assertNotIn("po_number", d["details"])                                            # a reseller: no PO
+        self.assertTrue(all(p["email"] is None for p in d["participants"] if p["name"] != "Rick"))
+        self.assertEqual(d["documents"], [])                                                   # the PO document is internal
+        with self.raw_db() as db:
+            doc = db.execute("SELECT id FROM documents WHERE project_id = 1").fetchone()["id"]
+        self.assertEqual(r.get(f"/projects/1/documents/{doc}/download").status_code, 404)
+        cust, _ = self._ext("cara@client.example")
+        self.assertEqual(cust.get("/api/projects/1").get_json()["details"]["po_number"], "PO-77")   # the customer's own PO number
+        # an admin may share the kind with partners
+        with self.raw_db() as db:
+            cat = db.execute("SELECT id FROM doc_categories WHERE name = 'Client PO'").fetchone()["id"]
+        self.client.post(f"/settings/doc-categories/{cat}/partners", data={"partners": "on"})
+        self.assertEqual(len(r.get("/api/projects/1").get_json()["documents"]), 1)
+        self.assertEqual(r.get(f"/projects/1/documents/{doc}/download").status_code, 200)
+
+    def test_the_customers_signed_copy_leaves_out_the_signing_record(self):
+        c, h, ann, _ = self._signoff_setup()
+        c.post("/api/projects/1/scope", json={"title": "Deploy"}, headers=h)
+        item = c.get("/api/projects/1/scope").get_json()["items"][0]["id"]
+        c.put(f"/api/projects/1/scope/{item}", json={"status": "delivered"}, headers=h)
+        c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1}, headers=h)
+        e, eh = self._ext("ann@globex.example")
+        e.post("/api/projects/1/signoff/1/sign", json={"name": "Ann", "accept": True, "signature": self.DRAWN}, headers=eh)
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'admin@corp.example' WHERE id = 1")
+            db.execute("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+            db.commit()
+        sent = {}
+        with patch("routes.signoff.graph.send_mail", side_effect=lambda to, subject, body, attachments=None: sent.update({to: attachments[0][1]}) or (True, None)), \
+             patch("services.signoff_pdf.render", side_effect=lambda view: b"STAFF" if "signed_ip" in view else b"CUSTOMER"):
+            c.post("/api/projects/1/signoff/1/countersign", json={"name": "Admin", "accept": True, "signature": {"kind": "typed", "text": "Admin"}}, headers=h)
+        self.assertEqual(sent, {"ann@globex.example": b"CUSTOMER", "admin@corp.example": b"STAFF"})
+
+    def test_weekly_report_pdfs_go_only_to_staff_accounts(self):
+        from services import weekly_report
+        self.new_project(name="P", client="C")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'admin@corp.example' WHERE id = 1"); db.commit()
+        self._set_policy(report_attach="1", report_emails="ceo@corp.example,someone@outside.example", report_roles="Admin")
+        got = {}
+        with app_module.app.test_request_context(), patch("services.weekly_report.graph.send_mail", side_effect=lambda to, subject, body, attachments=None: got.update({to: len(attachments or [])}) or (True, None)):
+            weekly_report.send(teams=False)
+        self.assertGreater(got["admin@corp.example"], 0)
+        self.assertEqual((got["ceo@corp.example"], got["someone@outside.example"]), (0, 0))   # not Odin accounts: the summary only
+
+    def test_a_contributor_names_a_project_manager_who_can_move_stages(self):
+        self._make_user("contrib9", "Contributor"); lead = self._make_user("lead9", "Member")
+        c = app_module.app.test_client(); c.post("/login", data={"username": "contrib9", "password": STRONG_PASSWORD})
+        new = lambda **x: c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 po"), "po.pdf"), "name": "By contributor", "client": "C", **x})   # noqa: E731
+        new()
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM projects WHERE name = 'By contributor'").fetchone())   # refused without a manager
+        new(owner_id=str(lead))
+        with self.raw_db() as db:
+            p = db.execute("SELECT id, owner_id FROM projects WHERE name = 'By contributor'").fetchone()
+            roles = dict(db.execute("SELECT u.username, pp.role FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.project_id = ?", (p["id"],)).fetchall())
+        self.assertEqual(p["owner_id"], lead)
+        self.assertEqual(roles, {"lead9": "Project manager", "contrib9": "Coordinator"})
+
+    def test_partner_roles_are_for_partners_and_external_for_partner_accounts(self):
+        self.new_project(name="P", client="C")
+        staff = self._make_user("staff9", "Member")
+        self.client.post("/projects/1/participants/add", data={"user_id": str(staff), "role": "Customer"})
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM project_participants WHERE user_id = ?", (staff,)).fetchone())   # staff cannot stand in for the customer
+        self.client.post(f"/users/{staff}/role", data={"role": "External"})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT role FROM users WHERE id = ?", (staff,)).fetchone()[0], "Member")
 
     def test_stage_sla_state_flags_only_real_breaches(self):
         from services.analytics import stage_sla_state

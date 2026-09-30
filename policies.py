@@ -100,7 +100,7 @@ POLICIES = {
     "report_roles": dict(area="reports", kind="multi", default="Admin", choices=("Admin", "Member", "Contributor", "Viewer"),
                          label="To everyone with these roles", help="Active staff with an email address. Partners never receive it."),
     "report_emails": dict(area="reports", kind="emails", default="", max=1000,
-                          label="And these addresses", help="e.g. ceo@company.com, delivery@company.com"),
+                          label="And these addresses", help="e.g. ceo@company.com. The attached PDFs go only to addresses that belong to Odin staff accounts; any other address gets the summary alone."),
     "report_attach": dict(area="reports", kind="bool", default=False,
                           label="Attach the portfolio report and each project's latest saved report as PDFs", help="Project reports only for projects with a saved version."),
     "report_teams": dict(area="reports", kind="bool", default=False,
