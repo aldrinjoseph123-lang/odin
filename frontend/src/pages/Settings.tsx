@@ -8,6 +8,7 @@ import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
 import { Ago } from "@/components/Ago"
 import { cn } from "@/lib/utils"
+import { DocTemplates } from "@/components/DocTemplates"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
@@ -32,6 +33,7 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   notifications: { title: "Notifications", lede: "Which channels carry project events. Each person also picks what they get by email on their Account page." },
   integrations: { title: "Integrations", lede: "Microsoft 365 (mail, Teams and OneDrive through one Azure app) and the Kibana dashboards shown on the Flow page." },
   reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
+  documents: { title: "Documents", lede: "Templates for the rollout report, the portfolio report and the sign-off: brand, sections and wording. Documents already issued keep the template they were issued with." },
   api: { title: "API tokens", lede: "Read-only access for scripts and other tools: projects, their stages and tasks, and saved reports." },
   audit: { title: "Audit retention", lede: "How long the audit trail is kept, and where older rows go." },
   backups: { title: "Backups", lede: "Copies of the database, documents and pictures: made on schedule, tested by restoring them, copied off the server, pruned by age." },
@@ -139,6 +141,7 @@ export default function Settings(_props: { user: User }) {
             {policyForm("integrations", "Kibana")}
           </>
         )}
+        {section === "documents" && <DocTemplates />}
         {section === "reports" && (
           <>
             {!data.public_url_set && <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-[13px] text-warn">Set the public web address under General, so the links in scheduled mail point at Odin and not at the server's own name.</p>}

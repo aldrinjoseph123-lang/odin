@@ -60,6 +60,20 @@ CREATE TABLE IF NOT EXISTS raid_items (
 );
 CREATE INDEX IF NOT EXISTS idx_raid_project ON raid_items (project_id, status);
 
+-- Document templates for the rollout report, the portfolio report and the
+-- sign-off (services/doc_templates.py): brand, sections and text, as JSON.
+CREATE TABLE IF NOT EXISTS doc_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    config TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT NOT NULL
+);
+
 -- Sign-up links an admin hands to a new colleague (services/signup.py): only
 -- a hash is stored; each creates pending accounts the admins approve.
 CREATE TABLE IF NOT EXISTS signup_links (

@@ -156,6 +156,7 @@ export const rebaseline = (id: number, reason: string) => post<{ ok: true }>(`/a
 export type ReportWords = { summary: string; next_steps: string; asks: string; suggested?: { summary: string; next_steps: string; asks: string }; blocks?: ["h" | "li" | "p", string][] }
 export type ReportPayload = {
   audience: "internal" | "customer"; generated_at: string; today: string; company: string
+  template?: DocConfig
   project: { id: number; name: string; client: string; po_number: string | null; stage: string; owner_name: string; start_date: string; target_end_date: string | null; vendor_name: string | null; product_name: string | null; delivery_mode: string; stage_number: number; stage_count: number }
   health: PlanData["health"]; pct_complete: number; finish: Partial<PlanData["finish"]>; baseline_at: string | null; elapsed_days: number; has_plan: boolean
   stages: PlanStage[]; milestones: { stage: string; start: string | null; end: string | null; planned_end: string | null }[]
@@ -176,9 +177,10 @@ export type RolloutReport = {
   version: { version: number; kind: "text" | "snapshot"; created_by: string; created_at: string } | null
   versions: { version: number; kind: "text" | "snapshot"; created_by: string; created_at: string }[]; can_edit: boolean; project: { id: number; name: string; client: string }
 }
-export const rolloutReport = (id: number, audience: string, v?: number | null) =>
-  getJson<RolloutReport>(`/api/projects/${id}/rollout-report?audience=${audience}${v ? `&v=${v}` : ""}`)
-export const saveRolloutReport = (id: number, words: { summary: string; next_steps: string; asks: string }) => post<{ ok: true; version: number }>(`/api/projects/${id}/rollout-report`, words)
+export const rolloutReport = (id: number, audience: string, v?: number | null, template?: number | null) =>
+  getJson<RolloutReport>(`/api/projects/${id}/rollout-report?${new URLSearchParams({ audience, ...(v ? { v: String(v) } : {}), ...(template ? { template: String(template) } : {}) })}`)
+export const saveRolloutReport = (id: number, words: { summary: string; next_steps: string; asks: string }, template_id?: number | null) =>
+  post<{ ok: true; version: number }>(`/api/projects/${id}/rollout-report`, { ...words, template_id: template_id ?? null })
 export type RaidKind = "risk" | "issue" | "decision" | "blocker"
 export type RaidItem = {
   id: number; kind: RaidKind; title: string; detail: string | null; impact: "low" | "medium" | "high"; likelihood: "low" | "medium" | "high" | null
@@ -230,8 +232,9 @@ export type SignoffData = {
   candidates?: { signers: { id: number; name: string; role: string; email: string }[]; countersigners: { id: number; name: string; role: string }[]; default_counter_id: number | null }
 }
 export type SignBody = { name: string; title: string; accept: boolean; signature: Signature }
-export const signoff = (id: number, v?: number | null) => getJson<SignoffData>(`/api/projects/${id}/signoff${v ? `?v=${v}` : ""}`)
-export const sendSignoff = (id: number, body: { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; signer_id: number; counter_id: number }) =>
+export const signoff = (id: number, v?: number | null, template?: number | null) =>
+  getJson<SignoffData>(`/api/projects/${id}/signoff${v ? `?v=${v}` : template ? `?template=${template}` : ""}`)
+export const sendSignoff = (id: number, body: { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; signer_id: number; counter_id: number; template_id?: number | null }) =>
   post<{ ok: true; version: number }>(`/api/projects/${id}/signoff`, body)
 export const signSignoff = (id: number, v: number, body: SignBody, counter = false) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/${counter ? "countersign" : "sign"}`, body)
 export const rejectSignoff = (id: number, v: number, comment: string) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/reject`, { comment })
@@ -394,12 +397,12 @@ export type PortfolioRow = {
   open: { blocker: number; issue: number; risk: number }; report: { version: number; kind: string; created_at: string } | null
 }
 export type ReportAllData = {
-  audience: "internal" | "customer"; generated_at: string; today: string; company: string
+  audience: "internal" | "customer"; generated_at: string; today: string; company: string; template?: DocConfig
   summary: { count: number; health: Partial<Record<Rag, number>>; late_vs_target: number; behind_baseline: number | null; avg_slip: number | null; blockers: number; finishing_30d: number; no_plan: number }
   rows: PortfolioRow[]
   risks: { project_id: number; project: string; kind: RaidKind; title: string; impact: string; status: string; owner_name: string | null; due_date: string | null }[]
 }
-export const reportAll = () => getJson<ReportAllData>("/api/reports/all")
+export const reportAll = (template?: number | null) => getJson<ReportAllData>(`/api/reports/all${template ? `?template=${template}` : ""}`)
 export type ReportData = {
   project: { id: number; name: string; client: string; owner_name: string; stage: string }
   versions: { version: number; created_by: string; created_at: string }[]
@@ -425,6 +428,34 @@ export type JoinInfo = { role: string; project: string | null; project_role: str
 export const joinInfo = (token: string) => getJson<JoinInfo>(`/api/join/${token}`)
 export const joinSubmit = (token: string, b: { name: string; username: string; email: string; password: string; notify_via: "email" | "teams" }) =>
   post<{ ok: true }>(`/api/join/${token}`, b)
+// document templates (services/doc_templates.py)
+export type DocKind = "rollout" | "portfolio" | "signoff"
+export type DocConfig = { title: string; accent: string; logo: string | null; co_logo: string | null; company_line: string; footer: string
+  sections: { key: string; on: boolean }[]; texts: Record<string, string> }
+export type DocTemplate = { id: number; kind: DocKind; name: string; is_default: boolean; config: DocConfig; updated_at: string; updated_by: string }
+export type DocTemplatesData = {
+  templates: DocTemplate[]; placeholders: Record<string, string>; accents: string[]
+  kinds: Record<DocKind, { label: string; sections: { key: string; label: string }[]; texts: { key: string; label: string; help: string }[]; default: DocConfig }>
+}
+export const docTemplates = () => getJson<DocTemplatesData>("/api/doc-templates")
+export const saveDocTemplate = (kind: DocKind, name: string, config: DocConfig, id?: number) =>
+  id ? send<{ ok: true }>(`/api/doc-templates/${id}`, "PUT", { kind, name, config }) : post<{ ok: true; id: number }>("/api/doc-templates", { kind, name, config })
+export const deleteDocTemplate = (id: number) => send<{ ok: true }>(`/api/doc-templates/${id}`, "DELETE")
+export const defaultDocTemplate = (id: number) => post<{ ok: true }>(`/api/doc-templates/${id}/default`)
+export const docTemplateChoices = (kind: DocKind) => getJson<{ choices: { id: number; name: string; is_default: boolean }[] }>(`/api/doc-templates/choices?kind=${kind}`)
+async function raw(path: string, body: BodyInit, json = false): Promise<Response> {
+  if (!csrfToken) await session()
+  const res = await fetch(path, { method: "POST", credentials: "same-origin", body, headers: { "X-CSRF-Token": csrfToken ?? "", ...(json ? { "Content-Type": "application/json" } : {}) } })
+  if (!res.ok) { const d = (await res.json().catch(() => ({}))) as { error?: string }; throw new ApiError(res.status, d.error ?? `Request failed (${res.status})`) }
+  return res
+}
+export async function uploadDocLogo(file: File): Promise<string> {
+  const fd = new FormData(); fd.append("file", file)
+  return ((await (await raw("/api/doc-templates/logo", fd)).json()) as { name: string }).name
+}
+export async function previewDocTemplate(kind: DocKind, config: DocConfig): Promise<Blob> {
+  return (await raw("/api/doc-templates/preview.pdf", JSON.stringify({ kind, config }), true)).blob()
+}
 export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
 export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
 export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string }

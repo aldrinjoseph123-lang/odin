@@ -14,6 +14,7 @@ import {
   type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User,
 } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
+import { TemplatePicker } from "@/components/TemplatePicker"
 import { cn } from "@/lib/utils"
 import { fmtDate, fmtWhen, signoffText, toLines } from "@/lib/format"
 
@@ -194,7 +195,7 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
   )
 }
 
-function Composer({ d, id, onSent }: { d: SignoffData; id: number; onSent: (m: string) => void }) {
+function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id: number; onSent: (m: string) => void; template: number | null; onTemplate: (t: number | null) => void }) {
   const draft = d.draft!
   const cand = d.candidates!
   const [summary, setSummary] = useState(draft.summary)
@@ -214,7 +215,7 @@ function Composer({ d, id, onSent }: { d: SignoffData; id: number; onSent: (m: s
     if (!signer || !counter) return
     setBusy(true); setErr(null)
     try {
-      const r = await sendSignoff(id, { summary, delivered: toLines(delivered), outstanding: toLines(outstanding), terms: toLines(terms), signer_id: signer, counter_id: counter })
+      const r = await sendSignoff(id, { summary, delivered: toLines(delivered), outstanding: toLines(outstanding), terms: toLines(terms), signer_id: signer, counter_id: counter, template_id: template })
       onSent(`Version ${r.version} sent to ${who?.name}. They get an email with a link to review and sign.`)
     } catch (x) { setErr(x instanceof ApiError ? x.message : "That did not send"); setConfirming(false) } finally { setBusy(false) }
   }
@@ -245,6 +246,7 @@ function Composer({ d, id, onSent }: { d: SignoffData; id: number; onSent: (m: s
       <aside className="grid content-start gap-3 lg:sticky lg:top-4">
         <section className="panel grid gap-3 p-4">
           <h2 className="text-[14px] font-semibold">Send for signature</h2>
+          <TemplatePicker kind="signoff" value={template} onChange={onTemplate} />
           <label className="grid gap-1 text-[12.5px] font-medium">Customer's signatory
             <select className={input} value={signer} onChange={(e) => setSigner(e.target.value ? Number(e.target.value) : "")}>
               {cand.signers.length === 0 && <option value="">Nobody yet</option>}
@@ -277,6 +279,7 @@ export default function Signoff(_props: { user: User }) {
   const id = Number(useParams().id)
   const [params, setParams] = useSearchParams()
   const v = Number(params.get("v")) || null
+  const template = Number(params.get("template")) || null
   const [d, setD] = useState<SignoffData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -285,9 +288,9 @@ export default function Signoff(_props: { user: User }) {
   const [reason, setReason] = useState("")
   const [dialogErr, setDialogErr] = useState<string | null>(null)
   const load = useCallback(async () => {
-    try { const x = await signoff(id, v); setD(x); document.title = `Sign-off · ${x.project.name} · Odin` }
+    try { const x = await signoff(id, v, template); setD(x); document.title = `Sign-off · ${x.project.name} · Odin` }
     catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This project or version does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the sign-off") }
-  }, [id, v])
+  }, [id, v, template])
   useEffect(() => { void load() }, [load])
   if (error) return <div className="p-5"><Alert role="status"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!d) return <PageSkeleton />
@@ -348,7 +351,7 @@ export default function Signoff(_props: { user: User }) {
       )}
 
       <div className="mt-4">
-        {composing ? <Composer d={d} id={id} onSent={done} /> : cur ? (
+        {composing ? <Composer key={template ?? 0} d={d} id={id} onSent={done} template={template} onTemplate={(t) => setParams(t ? { template: String(t) } : {}, { replace: true })} /> : cur ? (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <Document v={cur} />
             <aside className="grid content-start gap-3 print:hidden lg:sticky lg:top-4">

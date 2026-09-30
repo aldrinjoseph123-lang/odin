@@ -275,3 +275,6 @@ export function minutesText(m: number): string {
   const h = Math.floor(m / 60), r = m % 60
   return r ? `${h} h ${r} min` : `${h} h`
 }
+
+// A document template's {placeholders} (services/doc_templates.fill): known ones filled, others left as typed.
+export const fillPlaceholders = (text: string, values: Record<string, string>) => text.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? values[k] : m))

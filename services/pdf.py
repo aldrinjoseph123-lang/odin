@@ -126,12 +126,115 @@ def _rgb(c):
     return b"%.3f %.3f %.3f" % tuple(v / 255 for v in c)
 
 
+class Image:
+    """A raster for Canvas.image: PNG (8/16-bit; grey, RGB, palette, with or
+    without alpha; not interlaced) or JPEG, decoded without any library. JPEG
+    is embedded as it is; PNG pixels are unfiltered and re-deflated, alpha
+    becomes a soft mask."""
+
+    def __init__(self, data):
+        import struct
+        import zlib
+        if data[:2] == b"\xff\xd8":
+            self._jpeg(data)
+            return
+        if data[:8] != b"\x89PNG\r\n\x1a\n":
+            raise ValueError("Use a PNG or JPEG image")
+        pos, idat, plte, trns = 8, b"", None, None
+        while pos < len(data):
+            n, kind = struct.unpack(">I4s", data[pos:pos + 8])
+            chunk = data[pos + 8:pos + 8 + n]
+            if kind == b"IHDR":
+                w, h, depth, ctype, _, _, interlace = struct.unpack(">IIBBBBB", chunk)
+            elif kind == b"PLTE":
+                plte = chunk
+            elif kind == b"tRNS":
+                trns = chunk
+            elif kind == b"IDAT":
+                idat += chunk
+            pos += 12 + n
+        if interlace:
+            raise ValueError("Save the PNG without interlacing")
+        if depth not in (8, 16) and ctype != 3:
+            raise ValueError("Use an 8-bit PNG")
+        channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[ctype]
+        bpp = channels * (2 if depth == 16 else 1)
+        stride = (w * channels * depth + 7) // 8
+        raw, rows, prev = zlib.decompress(idat), [], bytearray(stride)
+        for y in range(h):
+            f, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+            for i in range(stride):
+                a = line[i - bpp] if i >= bpp else 0
+                b, c = prev[i], prev[i - bpp] if i >= bpp else 0
+                if f == 1:
+                    line[i] = (line[i] + a) & 255
+                elif f == 2:
+                    line[i] = (line[i] + b) & 255
+                elif f == 3:
+                    line[i] = (line[i] + (a + b) // 2) & 255
+                elif f == 4:
+                    pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                    line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+            rows.append(bytes(line))
+            prev = line
+        pix = b"".join(rows)
+        if depth == 16:
+            pix = pix[::2]   # the high byte of each sample
+        if ctype == 3:       # palette → RGB (+ alpha from tRNS)
+            if depth != 8:
+                raise ValueError("Use an 8-bit PNG")
+            rgb = bytearray()
+            alpha = bytearray() if trns else None
+            for i in pix:
+                rgb += plte[i * 3:i * 3 + 3]
+                if alpha is not None:
+                    alpha.append(trns[i] if i < len(trns) else 255)
+            color, a = bytes(rgb), (bytes(alpha) if alpha is not None else None)
+            ncomp = 3
+        elif ctype in (4, 6):
+            n = 2 if ctype == 4 else 4
+            color = b"".join(pix[i:i + n - 1] for i in range(0, len(pix), n))
+            a = pix[n - 1::n]
+            ncomp = n - 1
+        else:
+            color, a, ncomp = pix, None, channels
+        self.w, self.h, self.filter = w, h, b"/FlateDecode"
+        self.cs = b"/DeviceRGB" if ncomp == 3 else b"/DeviceGray"
+        self.data = zlib.compress(color)
+        self.alpha = zlib.compress(a) if a is not None and min(a) < 255 else None
+
+    def _jpeg(self, data):
+        i = 2
+        while i < len(data):
+            if data[i] != 0xFF:
+                raise ValueError("That JPEG could not be read")
+            marker, n = data[i + 1], int.from_bytes(data[i + 2:i + 4], "big")
+            if marker in (0xC0, 0xC1, 0xC2):
+                self.h, self.w = int.from_bytes(data[i + 5:i + 7], "big"), int.from_bytes(data[i + 7:i + 9], "big")
+                comps = data[i + 9]
+                self.cs = {1: b"/DeviceGray", 3: b"/DeviceRGB", 4: b"/DeviceCMYK"}[comps]
+                self.data, self.alpha, self.filter = data, None, b"/DCTDecode"
+                return
+            i += 2 + n
+        raise ValueError("That JPEG could not be read")
+
+
 class Canvas:
     W, H = PAGE_W, PAGE_H
 
     def __init__(self):
         self.pages = []
         self.ops = None
+        self.images = []   # Image objects; every page may draw any of them
+
+    def image(self, img, x, y, w, h):
+        """Draw `img` into the box, keeping its proportions, centred vertically, left-aligned."""
+        if img not in self.images:
+            self.images.append(img)
+        k = min(w / img.w, h / img.h)
+        dw, dh = img.w * k, img.h * k
+        n = self.images.index(img) + 1
+        self.ops.append(b"q %.2f 0 0 %.2f %.2f %.2f cm /Im%d Do Q" % (dw, dh, x, self.H - y - (h + dh) / 2, n))
 
     def page(self):
         self.ops = []
@@ -180,14 +283,25 @@ class Canvas:
         objects = [None, None,
                    b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
                    b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"]
+        xobjects = []
+        for n, img in enumerate(self.images, 1):
+            smask = b""
+            if img.alpha is not None:
+                objects.append(b"<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\nstream\n"
+                               % (img.w, img.h, len(img.alpha)) + img.alpha + b"\nendstream")
+                smask = b" /SMask %d 0 R" % len(objects)
+            objects.append(b"<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace %s /BitsPerComponent 8 /Filter %s%s /Length %d >>\nstream\n"
+                           % (img.w, img.h, img.cs, img.filter, smask, len(img.data)) + img.data + b"\nendstream")
+            xobjects.append(b"/Im%d %d 0 R" % (n, len(objects)))
+        xres = b" /XObject << " + b" ".join(xobjects) + b" >>" if xobjects else b""
         kids = []
         for n, ops in enumerate(self.pages, 1):
             foot = f"{footer}  \u00b7  page {n} of {len(self.pages)}" if footer else f"page {n} of {len(self.pages)}"
             stream = b"\n".join(ops + [b"0.42 0.45 0.5 rg BT /F1 7.5 Tf %d %d Td (" % (MARGIN - 16, 22) + _esc(foot) + b") Tj ET"])
             objects.append(b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream")
             content_id = len(objects)
-            objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents %d 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>"
-                           % (PAGE_W, PAGE_H, content_id))
+            objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents %d 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >>%s >> >>"
+                           % (PAGE_W, PAGE_H, content_id, xres))
             kids.append(len(objects))
         objects[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
         objects[1] = b"<< /Type /Pages /Kids [" + b" ".join(b"%d 0 R" % k for k in kids) + b"] /Count %d >>" % len(kids)

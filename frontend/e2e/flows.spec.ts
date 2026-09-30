@@ -390,3 +390,30 @@ test("@flow sign-up link: an admin makes it, a colleague asks, the admin approve
   await other.close()
   expectClean(errors)
 })
+
+test("@flow document templates: brand, sections and wording; previewed, saved, picked for a sign-off", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/documents")
+  await page.getByRole("region", { name: "Sign-off" }).getByRole("button", { name: "New template" }).click()
+  await page.getByLabel("Template name").fill("E2E certificate")
+  await page.getByLabel("Document title").fill("Acceptance certificate")
+  await page.getByRole("button", { name: "teal" }).click()
+  await page.getByLabel("Show Summary").uncheck()
+  await page.getByRole("button", { name: "Move Outstanding items up" }).click()
+  await page.getByLabel(/Opening text/).fill("Prepared for {client}.")
+  await page.getByRole("button", { name: "Preview" }).click()
+  await expect(page.frameLocator("iframe[title='Template preview']").locator("body")).toBeAttached()
+  await page.getByRole("button", { name: "Save template" }).click()
+  await expect(page.getByRole("status")).toHaveText(/Template saved/)
+  await expect(page.getByRole("region", { name: "Sign-off" })).toContainText("E2E certificate")
+  await expect(page.getByRole("region", { name: "Sign-off" })).toContainText("Default")   // the first of its kind
+  // a sign-off composer offers it
+  await page.goto("/projects/1/signoff")
+  await expect(page.getByRole("combobox", { name: "Document template" })).toContainText("E2E certificate (default)")
+  // clean up: delete it
+  await page.goto("/settings/documents")
+  page.once("dialog", (d) => d.accept())
+  await page.getByRole("button", { name: "Delete E2E certificate" }).click()
+  await expect(page.getByRole("status")).toHaveText(/Template deleted/)
+  expectClean(errors)
+})

@@ -177,8 +177,18 @@ def _meta(project):
             "company": policy("company_name")}
 
 
-def draft(project):
-    """The suggested words: the PM edits them before sending."""
+def _values(project):
+    from services.report_pdf import _fmt
+    return {"project": project["name"], "client": project["client"], "company": policy("company_name"), "pm": project["owner_name"],
+            "po": project["po_number"] or "", "stage": project["stage"], "target": _fmt(project["target_end_date"]), "forecast": "",
+            "date": _fmt(local_today().isoformat())}
+
+
+def draft(project, template_id=None):
+    """The suggested words: the PM edits them before sending. The template's
+    statement and terms stand in for the workspace's when it has them."""
+    from services.doc_templates import resolve
+    tpl = resolve("signoff", template_id)
     db = get_db()
     pid = project["id"]
     items = scope(pid)
@@ -202,8 +212,9 @@ def draft(project):
     if items:
         extra = [f"{counts['partial']} in part" if counts["partial"] else "", f"{counts['descoped']} descoped by agreement" if counts["descoped"] else ""]
         words.append(f"{counts['delivered']} of {len(items)} agreed scope items were delivered in full" + ("".join(f", {x}" for x in extra if x)) + ".")
+    terms = tpl["texts"].get("terms") or policy("signoff_terms") or ""
     return {"summary": " ".join(words), "delivered": delivered, "outstanding": outstanding[:30],
-            "terms": [x for x in (policy("signoff_terms") or "").splitlines() if x.strip()], "scope": items, "statement": policy("signoff_statement")}
+            "terms": [x for x in terms.splitlines() if x.strip()], "scope": items, "statement": tpl["texts"].get("statement") or policy("signoff_statement")}
 
 
 def _lines(value, limit=40, width=500):
@@ -233,11 +244,15 @@ def send(project, body, author):
     delivered = _lines(body.get("delivered"))
     if not items and not delivered:
         raise ValueError("List what was delivered, or record the scope")
+    from services.doc_templates import fill, resolve
+    tpl = resolve("signoff", body.get("template_id"))
+    values = _values(project)
     content = {
+        "template": tpl, "intro": fill(tpl["texts"].get("intro"), values).strip(), "closing": fill(tpl["texts"].get("closing"), values).strip(),
         "project": _meta(project), "summary": summary,
         "scope": [{"title": x["title"], "detail": x["detail"], "status": x["status"], "note": x["note"]} for x in items],
         "delivered": [] if items else delivered, "outstanding": _lines(body.get("outstanding")), "terms": _lines(body.get("terms")),
-        "statement": policy("signoff_statement"),
+        "statement": fill(tpl["texts"].get("statement"), values).strip() or policy("signoff_statement"),
         "signer": {"name": signer["name"], "email": signer["email"], "role": signer["role"]},
         "countersigner": {"name": counter["name"], "role": counter["role"]},
         "prepared_by": author, "prepared_at": _now(),

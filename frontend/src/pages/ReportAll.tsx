@@ -11,6 +11,7 @@ import { RAID_KIND } from "@/components/RaidPanel"
 import { Section, Table } from "@/components/ReportParts"
 import { ApiError, reportAll, type PortfolioRow, type Rag, type ReportAllData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { TemplatePicker } from "@/components/TemplatePicker"
 import { dayOf, fmtDate, fmtWhen, monthTicks } from "@/lib/format"
 
 // The portfolio report: every open rollout's health, when each lands against
@@ -78,11 +79,13 @@ function Roadmap({ rows, today }: { rows: PortfolioRow[]; today: string }) {
 export default function ReportAll(_props: { user: User }) {
   const [d, setD] = useState<ReportAllData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => { document.title = "Portfolio report · Odin"; reportAll().then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [])
+  const [template, setTemplate] = useState<number | null>(null)
+  useEffect(() => { document.title = "Portfolio report · Odin"; reportAll(template).then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [template])
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!d) return <PageSkeleton />
   const s = d.summary
   const internal = d.audience === "internal"
+  const hide = (key: string) => (!d.template || d.template.sections.some((x) => x.key === key && x.on) ? undefined : "hidden")   // the document template's sections
   const league = internal ? d.rows.filter((r) => r.vs_baseline_days).sort((a, b) => (b.vs_baseline_days ?? 0) - (a.vs_baseline_days ?? 0)).slice(0, 10) : []
   const tiles: { label: string; value: string; sub: string; bad?: boolean }[] = [
     { label: "Late against target", value: String(s.late_vs_target), sub: `of ${s.count} rollouts, by forecast`, bad: s.late_vs_target > 0 },
@@ -99,12 +102,13 @@ export default function ReportAll(_props: { user: User }) {
           <p className="mt-0.5 text-[13px] text-muted-foreground">{s.count} active rollout{s.count === 1 ? "" : "s"} · as of {fmtDate(d.today)} · generated {fmtWhen(d.generated_at, true)}</p>
         </div>
         <span className="ml-auto flex gap-2 print:hidden">
-          {internal && <a href="/reports/all.pdf" target="_blank" rel="noreferrer" className={pill}><Download className="h-3.5 w-3.5" /> PDF</a>}
+          {internal && <TemplatePicker kind="portfolio" value={template} onChange={setTemplate} />}
+          {internal && <a href={`/reports/all.pdf${template ? `?template=${template}` : ""}`} target="_blank" rel="noreferrer" className={pill}><Download className="h-3.5 w-3.5" /> PDF</a>}
           <button type="button" onClick={() => window.print()} className={pill}><Printer className="h-3.5 w-3.5" /> Print</button>
         </span>
       </header>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)]">
+      <div className={cn("mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)]", hide("health"))}>
         <section className="panel p-4 print:shadow-none" aria-label="Health">
           <div className="text-[11.5px] text-muted-foreground">Health</div>
           <div className="mt-2 flex h-3 gap-[2px] overflow-hidden rounded-full bg-muted" role="img" aria-label={RAGS.filter((g) => s.health[g]).map((g) => `${s.health[g]} ${WORD[g].toLowerCase()}`).join(", ") || "no rollouts"}>
@@ -127,17 +131,17 @@ export default function ReportAll(_props: { user: User }) {
       </div>
 
       <div className="mt-4 grid gap-4">
-        {d.rows.length > 0 && <Section n title="Roadmap" sub="start to forecast finish, worst health first; open a rollout for its report"><Roadmap rows={d.rows} today={d.today} /></Section>}
+        {d.rows.length > 0 && <Section n title="Roadmap" sub="start to forecast finish, worst health first; open a rollout for its report" className={hide("roadmap")}><Roadmap rows={d.rows} today={d.today} /></Section>}
 
         <div className={cn("grid gap-4", league.length > 0 && "lg:grid-cols-2")}>
           {league.length > 0 && (
-            <Section n title="Slippage" sub="against each rollout's baseline">
+            <Section n title="Slippage" sub="against each rollout's baseline" className={hide("slippage")}>
               <Table head={["Rollout", "Stage", "Baseline", "Target", "Confidence"]}
                 rows={league.map((r) => [<Link key="n" to={`/projects/${r.id}/report`} className="font-medium hover:underline">{r.name}</Link>, r.stage, days(r.vs_baseline_days), days(r.vs_target_days, "after", "before"), r.confidence ?? "—"])}
                 tone={(i, c) => (c === 2 && (league[i].vs_baseline_days ?? 0) > 0 ? "font-medium text-bad" : c === 3 && (league[i].vs_target_days ?? 0) > 0 ? "text-bad" : undefined)} />
             </Section>
           )}
-          <Section n title={internal ? "Blockers and high-impact risks" : "Open points"} sub={`${d.risks.length} open`}>
+          <Section n title={internal ? "Blockers and high-impact risks" : "Open points"} sub={`${d.risks.length} open`} className={hide("risks")}>
             <ul className="divide-y divide-border text-[13px]">
               {d.risks.map((x, i) => {
                 const K = RAID_KIND[x.kind]
@@ -156,7 +160,7 @@ export default function ReportAll(_props: { user: User }) {
           </Section>
         </div>
 
-        <Section n title="Every rollout">
+        <Section n title="Every rollout" className={hide("table")}>
           <Table head={["Rollout", "Health", "Stage", "Done", "Forecast", "Target", "PM", "Report"]}
             rows={d.rows.map((r) => [
               <span key="n"><Link to={`/projects/${r.id}`} className="font-medium hover:underline">{r.name}</Link><span className="block text-[11.5px] text-muted-foreground">{r.client}</span></span>,

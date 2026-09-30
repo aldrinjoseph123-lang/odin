@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, localToday, minutesText, shouldPing, signoffText, stageColumns, stateText, timeAgo, toLines } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, stateText, timeAgo, toLines } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -215,5 +215,11 @@ describe("activity", () => {
   })
   it("says minutes the way people read them", () => {
     expect(minutesText(0)).toBe("0 min"); expect(minutesText(45)).toBe("45 min"); expect(minutesText(120)).toBe("2 h"); expect(minutesText(200)).toBe("3 h 20 min")
+  })
+})
+
+describe("fillPlaceholders", () => {
+  it("fills the known ones and leaves the rest", () => {
+    expect(fillPlaceholders("For {client}: {project} ({unknown})", { client: "Globex", project: "EDR" })).toBe("For Globex: EDR ({unknown})")
   })
 })

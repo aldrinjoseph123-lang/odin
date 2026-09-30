@@ -74,7 +74,8 @@ def build():
     attachments = []
     if policy("report_attach"):
         company = policy("company_name")
-        attachments.append((f"portfolio-report-{today.isoformat()}.pdf", render_portfolio(folio), "application/pdf"))
+        from services.doc_templates import resolve
+        attachments.append((f"portfolio-report-{today.isoformat()}.pdf", render_portfolio(folio, resolve("portfolio")), "application/pdf"))
         for p in projects:
             latest = db.execute("SELECT * FROM project_reports WHERE project_id = ? ORDER BY version DESC LIMIT 1", (p["id"],)).fetchone()
             if not latest:

@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import secrets
@@ -2766,7 +2767,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # Kibana: nothing until an admin lists dashboards; then the Flow page may frame their origins
         k0 = c.get("/api/kibana").get_json()
         self.assertEqual((k0["dashboards"], k0["can_manage"], k0["rollout"], [r["name"] for r in k0["rollouts"]]), ([], True, None, ["Late", "Soon"]))
-        self.assertNotIn("frame-src", c.get("/board").headers["Content-Security-Policy"])
+        self.assertIn("frame-src 'self' blob:", c.get("/board").headers["Content-Security-Policy"])   # only our own rendered PDFs
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         r = c.post("/settings/policies/integrations", data={"kibana_dashboards": "SOC | not-a-url"}, headers=h).get_json()
         self.assertIn('each line as "Name | https://address"', r["messages"][0])
@@ -2779,8 +2780,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(k["rollout"], 2); self.assertEqual([r["name"] for r in k["rollouts"]], ["Late", "Soon"])
         self.assertTrue(k["dashboards"][0]["per_rollout"]); self.assertIn("client:C and", k["dashboards"][0]["url"].replace("%20", " "))
         self.assertIn("{client}", c.get("/api/kibana").get_json()["dashboards"][0]["url"])   # nothing chosen: shown as typed
-        self.assertIn("frame-src 'self' https://kibana.example.com", c.get("/board").headers["Content-Security-Policy"])
-        self.assertNotIn("frame-src", c.get("/projects").headers["Content-Security-Policy"])
+        self.assertIn("frame-src 'self' blob: https://kibana.example.com", c.get("/board").headers["Content-Security-Policy"])
+        self.assertNotIn("kibana.example.com", c.get("/projects").headers["Content-Security-Policy"])
 
     def test_my_work_people_and_a_note_to_a_colleague(self):
         from datetime import date as _date
@@ -3323,6 +3324,60 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(anon.get(f"/api/join/{r['link'].rsplit('/join/', 1)[1]}").status_code, 404)
         self.assertEqual(app_module.app.test_client().get("/api/signup-links").status_code, 302)   # admins only
 
+    def _png(self, w=4, h=2):
+        import struct
+        import zlib
+        chunk = lambda k, d: struct.pack(">I", len(d)) + k + d + struct.pack(">I", zlib.crc32(k + d) & 0xffffffff)   # noqa: E731
+        rows = b"".join(b"\x00" + bytes([200, 30, 40, 255] * w) for _ in range(h))
+        return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+    def test_document_templates_brand_sections_texts_and_freezing(self):
+        c, h, ann, _ = self._signoff_setup()
+        hj = {"X-CSRF-Token": h["X-CSRF-Token"]}
+        # a logo: PNG accepted, anything else refused
+        bad = c.post("/api/doc-templates/logo", data={"file": (io.BytesIO(b"GIF89a..."), "x.gif")}, headers=hj, content_type="multipart/form-data")
+        self.assertEqual(bad.status_code, 400)
+        logo = c.post("/api/doc-templates/logo", data={"file": (io.BytesIO(self._png()), "logo.png")}, headers=hj, content_type="multipart/form-data").get_json()["name"]
+        self.assertEqual(c.get(f"/api/doc-templates/logo/{logo}").status_code, 200)
+        cfg = {"title": "Acceptance certificate", "accent": "teal", "logo": logo, "co_logo": logo, "company_line": "Protect24x7 · Dubai",
+               "footer": "Confidential", "sections": [{"key": "scope", "on": True}, {"key": "summary", "on": False}],
+               "texts": {"intro": "Prepared for {client} on {date}.", "statement": "{client} accepts {project} as complete.", "terms": "Warranty: 12 months", "closing": "Thank you."}}
+        self.assertIn("accent", c.post("/api/doc-templates", json={"kind": "signoff", "name": "X", "config": {**cfg, "accent": "#123"}}, headers=h).get_json()["error"])
+        tid = c.post("/api/doc-templates", json={"kind": "signoff", "name": "Customer certificate", "config": cfg}, headers=h).get_json()["id"]
+        t = c.get("/api/doc-templates").get_json()["templates"][0]
+        self.assertTrue(t["is_default"])                                                    # the first of its kind is the default
+        self.assertEqual([x["key"] for x in t["config"]["sections"]][:2], ["scope", "summary"])   # the order kept; the rest appended, on
+        self.assertEqual(len(t["config"]["sections"]), 5)
+        # the preview renders it
+        pv = c.post("/api/doc-templates/preview.pdf", json={"kind": "signoff", "config": cfg}, headers=h)
+        self.assertTrue(pv.data.startswith(b"%PDF-1.4")); self.assertIn(b"/Im1", pv.data); self.assertIn(b"(Acceptance certificate)", pv.data)
+        self.assertNotIn(b"(Summary)", pv.data)                                              # switched off
+        # a sign-off sent with it freezes the template and fills its texts
+        d = c.get("/api/projects/1/signoff").get_json()
+        self.assertEqual(d["draft"]["terms"], ["Warranty: 12 months"]); self.assertEqual(d["draft"]["statement"], "{client} accepts {project} as complete.")
+        c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["All"], "terms": d["draft"]["terms"], "template_id": tid}, headers=h)
+        v = c.get("/api/projects/1/signoff").get_json()["current"]
+        self.assertEqual(v["content"]["statement"], "Globex accepts Close me as complete.")
+        self.assertTrue(v["content"]["intro"].startswith("Prepared for Globex on ")); self.assertEqual(v["content"]["template"]["accent"], "teal")
+        # editing the template later does not touch the issued version
+        c.put(f"/api/doc-templates/{tid}", json={"kind": "signoff", "name": "Customer certificate", "config": {**cfg, "title": "Changed"}}, headers=h)
+        self.assertIn(b"(Acceptance certificate)", c.get("/projects/1/signoff.pdf").data)
+        self.assertTrue(c.get("/api/projects/1/signoff").get_json()["current"]["intact"])
+        # the other kinds preview too; a writer lists the choices, a member cannot edit
+        self.assertTrue(c.post("/api/doc-templates/preview.pdf", json={"kind": "rollout", "config": {"sections": [{"key": "timeline", "on": False}]}}, headers=h).data.startswith(b"%PDF"))
+        self.assertTrue(c.post("/api/doc-templates/preview.pdf", json={"kind": "portfolio", "config": {}}, headers=h).data.startswith(b"%PDF"))
+        rid = c.post("/api/doc-templates", json={"kind": "rollout", "name": "Short report", "config": {"sections": [{"key": "raid", "on": False}], "texts": {"closing": "Ends here."}}}, headers=h).get_json()["id"]
+        self.assertEqual([x["name"] for x in c.get("/api/doc-templates/choices?kind=rollout").get_json()["choices"]], ["Short report"])
+        c.post("/api/projects/1/rollout-report", json={"summary": "Fine.", "template_id": rid}, headers=h)
+        with self.raw_db() as db:
+            snap = json.loads(db.execute("SELECT data FROM project_reports WHERE kind='snapshot'").fetchone()[0])
+        self.assertEqual(snap["template"]["texts"]["closing"], "Ends here.")
+        self.assertIn(b"(Ends here.)", c.get("/projects/1/report.pdf?v=1").data)
+        self._make_user("mem", "Member")
+        m, mcsrf = self._api_client("mem", STRONG_PASSWORD)
+        self.assertEqual(m.post("/api/doc-templates", json={"kind": "rollout", "name": "x"}, headers={"X-CSRF-Token": mcsrf}).status_code, 403)
+        self.assertEqual(m.get("/api/doc-templates/choices?kind=signoff").status_code, 200)
+
     def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))
         c, _ = self._api_client()
@@ -3761,6 +3816,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         not_audited = {
             "/api/notifications/read": "marks the caller's own inbox read: personal UI state, not an act on shared data",
             "/api/activity": "the active-minute ping is itself the record (user_activity); an audit row a minute would drown the trail",
+            "/api/doc-templates/preview.pdf": "renders an unsaved template to look at; changes nothing",
         }
         missing = []
         for rule in app_module.app.url_map.iter_rules():

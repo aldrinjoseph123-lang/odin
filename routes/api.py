@@ -316,7 +316,8 @@ def _portfolio():
 @app.route("/api/reports/all")
 @permission_required("view_reports")
 def api_report_all():
-    return jsonify(_portfolio())
+    from services.doc_templates import resolve
+    return jsonify({**_portfolio(), "template": resolve("portfolio", request.args.get("template", type=int))})
 
 
 @app.route("/reports/all.pdf")
@@ -327,8 +328,9 @@ def portfolio_pdf():
     from services.report_pdf import render_portfolio
     if session.get("kind") == "external":
         abort(404)            # the PDF is the internal cut
+    from services.doc_templates import resolve
     data = _portfolio()
-    return Response(render_portfolio(data), mimetype="application/pdf",
+    return Response(render_portfolio(data, resolve("portfolio", request.args.get("template", type=int))), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="portfolio-report-{data["today"]}.pdf"'})
 
 
@@ -370,7 +372,9 @@ def _rollout_report(project_id, audience, version):
     elif row is not None:                       # an old plain-text version
         data, words = None, {"blocks": render_blocks(row["body"])}
     else:
+        from services.doc_templates import resolve
         data = report_data.build(project, audience)
+        data["template"] = resolve("rollout", request.args.get("template", type=int))   # a saved version keeps the one it was saved with
         last = db.execute("SELECT summary, next_steps, asks FROM project_reports WHERE project_id = ? AND kind = 'snapshot' ORDER BY version DESC LIMIT 1", (project_id,)).fetchone()
         words = {k: (last[k] if last and last[k] else data["draft"][k]) for k in ("summary", "next_steps", "asks")}
         words["suggested"] = data.pop("draft")
@@ -421,8 +425,11 @@ def api_rollout_report_save(project_id):
         return jsonify(error="Write the summary first — two or three lines on where it stands"), 400
     db = get_db()
     version = (db.execute("SELECT MAX(version) FROM project_reports WHERE project_id = ?", (project_id,)).fetchone()[0] or 0) + 1
+    from services.doc_templates import resolve
+    snap = report_data.snapshot(project)
+    snap["template"] = resolve("rollout", body.get("template_id"))   # frozen: a later template edit never changes an issued version
     db.execute("INSERT INTO project_reports (project_id, version, body, created_by, created_at, kind, data, summary, next_steps, asks) VALUES (?, ?, ?, ?, ?, 'snapshot', ?, ?, ?, ?)",
-               (project_id, version, words["summary"], session["user_name"], datetime.utcnow().isoformat(), snapshot_json(report_data.snapshot(project)),
+               (project_id, version, words["summary"], session["user_name"], datetime.utcnow().isoformat(), snapshot_json(snap),
                 words["summary"], words["next_steps"], words["asks"]))
     db.commit()
     audit_log("save_report", "project", project_id, project["name"], f"version {version}")

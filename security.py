@@ -319,7 +319,9 @@ CSP = (
     "form-action 'self'; "
     "frame-ancestors 'none'; "
     "base-uri 'self'; "
-    "object-src 'none'"
+    "object-src 'none'; "
+    # blob: frames are PDFs this app renders in the page (the document template preview)
+    "frame-src 'self' blob:"
 )
 
 
@@ -332,7 +334,7 @@ def _csp():
     from urllib.parse import urlsplit
     from policies import kibana_dashboards
     origins = sorted({f"{urlsplit(d['url']).scheme}://{urlsplit(d['url']).netloc}" for d in kibana_dashboards()})
-    return CSP + (f"; frame-src 'self' {' '.join(origins)}" if origins else "")
+    return CSP + (f" {' '.join(origins)}" if origins else "")   # extends the frame-src directive at the end of CSP
 
 
 def _security_headers(response):

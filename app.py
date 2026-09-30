@@ -28,6 +28,7 @@ import routes.projects  # noqa: E402,F401
 import routes.settings  # noqa: E402,F401
 import routes.signoff  # noqa: E402,F401
 import routes.signup  # noqa: E402,F401
+import routes.doc_templates  # noqa: E402,F401
 import routes.sso  # noqa: E402,F401
 import routes.tokens  # noqa: E402,F401
 import routes.users  # noqa: E402,F401

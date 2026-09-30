@@ -76,7 +76,7 @@ def api_signoff(project_id):
     }
     if manage and not st["complete"]:
         signers, counters = signoff.candidates(project_id)
-        out["draft"] = signoff.draft(project)
+        out["draft"] = signoff.draft(project, request.args.get("template", type=int))
         out["candidates"] = {"signers": [{k: s[k] for k in ("id", "name", "role", "email")} for s in signers],
                              "countersigners": [{k: s[k] for k in ("id", "name", "role")} for s in counters],
                              "default_counter_id": project["owner_id"] if any(c["id"] == project["owner_id"] for c in counters) else (counters[0]["id"] if counters else None)}

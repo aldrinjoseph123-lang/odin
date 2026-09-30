@@ -70,6 +70,11 @@ on `project_stages` (`plan_*`, `base_*`). Reports read one structure
 (`services/report_data.py` per rollout, `services/portfolio.py` for all) that
 the page, the PDF (`services/report_pdf.py`) and the weekly email share; the
 customer cut is made on the server, never in the page.
+`user_activity` (per-user active minutes, trimmed nightly), `signup_links` and
+`doc_templates` (not project-keyed) arrived the same day; template logos live in
+DATA_DIR/brand, which backups include. Document renderers take a template config
+(`services/doc_templates.resolve`); a new section must be added to
+`doc_templates.KINDS` and to the renderer's section map.
 `scope_items` and `signoffs` (30 Sep 2026) are wired the same way. The sign-off
 (`services/signoff.py`, routes in `routes/signoff.py`) gates the terminal stage:
 every stage-move path (`change_stage`, the vendor guest link) calls

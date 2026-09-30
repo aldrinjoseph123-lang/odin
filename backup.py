@@ -184,7 +184,8 @@ def run_backup(trigger="manual", actor=None):
                 zf.writestr("manifest.json", json.dumps(manifest, indent=1))
                 from services.retention import ARCHIVE_DIR_NAME
                 for folder, label in ((_db.UPLOAD_DIR, "uploads"), (_db.AVATAR_DIR, "avatars"),
-                                      (os.path.join(_db.DATA_DIR, ARCHIVE_DIR_NAME), ARCHIVE_DIR_NAME)):
+                                      (os.path.join(_db.DATA_DIR, ARCHIVE_DIR_NAME), ARCHIVE_DIR_NAME),
+                                      (os.path.join(_db.DATA_DIR, "brand"), "brand")):   # document template logos
                     for root, _dirs, files in os.walk(folder):
                         for fname in files:
                             full = os.path.join(root, fname)

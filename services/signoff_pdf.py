@@ -31,23 +31,30 @@ def _signature(c, sig, x, y, w, h):
 
 def render(v):
     """PDF bytes for one version (services.signoff.view)."""
+    from services.doc_templates import default_config, section_on
     d, p = v["content"], v["content"]["project"]
-    doc = _Doc({"company": p["company"], "today": v["completed_at"] or v["created_at"]}, label=f"Project sign-off · version {v['version']}", running=f"{p['name']} · sign-off v{v['version']}")
+    tpl = d.get("template") or default_config("signoff")   # frozen with the version (older versions: the built-in)
+    doc = _Doc({"company": p["company"], "today": v["completed_at"] or v["created_at"]}, label=f"{tpl['title']} · version {v['version']}",
+               running=f"{p['name']} · sign-off v{v['version']}", tpl=tpl)
     c = doc.c
-    c.text(LEFT, doc.y, "Project sign-off", 18, True)
+    c.text(LEFT, doc.y, c.fit(tpl["title"], 18, WIDTH, True), 18, True)
     doc.y += 24
     c.text(LEFT, doc.y, c.fit(p["name"], 12, WIDTH, True), 12, True)
     doc.y += 18
+    doc.company_line()
+    if d.get("intro"):
+        doc.para(d["intro"]); doc.y += 6
     facts = [("Customer", p["client"]), ("Delivered by", p["company"] + (f" with {p['partner_name']}" if p.get("partner_name") else "")),
              ("Purchase order", " · ".join(x for x in (p.get("po_number"), _fmt(p.get("po_date")) if p.get("po_date") else None) if x) or "-"),
              ("Project manager", p["owner_name"]), ("Solution", " ".join(x for x in (p.get("vendor_name"), p.get("product_name")) if x) or "-"),
              ("Started", _fmt(p.get("start_date"))), ("Target", _fmt(p.get("target_end_date"))), ("Completed", _fmt(p.get("finished")))]
     col = WIDTH / 2
-    for i, (label, value) in enumerate(facts):
-        x, y = LEFT + (i % 2) * col, doc.y + (i // 2) * 14
-        c.text(x, y, label, 8, False, MUTED)
-        c.text(x + 88, y, c.fit(value or "-", 9, col - 96), 9, False, INK)
-    doc.y += 14 * ((len(facts) + 1) // 2) + 8
+    if section_on(tpl, "facts"):
+        for i, (label, value) in enumerate(facts):
+            x, y = LEFT + (i % 2) * col, doc.y + (i // 2) * 14
+            c.text(x, y, label, 8, False, MUTED)
+            c.text(x + 88, y, c.fit(value or "-", 9, col - 96), 9, False, INK)
+        doc.y += 14 * ((len(facts) + 1) // 2) + 8
 
     rag, word = STATUS.get(v["status"], ("done", v["status"]))
     soft, strong = RAG[rag][0], RAG[rag][1]
@@ -57,21 +64,35 @@ def render(v):
     c.text(LEFT + 15, doc.y + 3.8, word, 9, True, strong)
     doc.y += 28
 
-    doc.heading("Summary")
-    doc.para(d["summary"])
-    if d["scope"]:
-        doc.heading("Agreed scope and what was delivered", f"{sum(1 for x in d['scope'] if x['status'] == 'delivered')} of {len(d['scope'])} delivered in full")
-        doc.table(["#", "Scope item", "Status", "Notes"],
-                  [[str(i + 1), x["title"] + (f" - {x['detail']}" if x.get("detail") else ""), SCOPE_WORD.get(x["status"], x["status"]), x.get("note") or ""] for i, x in enumerate(d["scope"])],
-                  [0.05, 0.47, 0.16, 0.32], [{2: (138, 83, 0)} if x["status"] == "partial" else {2: MUTED} if x["status"] == "descoped" else {} for x in d["scope"]])
-    else:
-        doc.heading("What was delivered")
-        doc.bullets(d["delivered"] or ["-"])
-    doc.heading("Outstanding items", "recorded here; they do not hold up acceptance")
-    doc.bullets(d["outstanding"] or ["None."])
-    if d["terms"]:
-        doc.heading("Handover and support")
-        doc.bullets(d["terms"])
+    def summary():
+        doc.heading("Summary")
+        doc.para(d["summary"])
+
+    def scope():
+        if d["scope"]:
+            doc.heading("Agreed scope and what was delivered", f"{sum(1 for x in d['scope'] if x['status'] == 'delivered')} of {len(d['scope'])} delivered in full")
+            doc.table(["#", "Scope item", "Status", "Notes"],
+                      [[str(i + 1), x["title"] + (f" - {x['detail']}" if x.get("detail") else ""), SCOPE_WORD.get(x["status"], x["status"]), x.get("note") or ""] for i, x in enumerate(d["scope"])],
+                      [0.05, 0.47, 0.16, 0.32], [{2: (138, 83, 0)} if x["status"] == "partial" else {2: MUTED} if x["status"] == "descoped" else {} for x in d["scope"]])
+        else:
+            doc.heading("What was delivered")
+            doc.bullets(d["delivered"] or ["-"])
+
+    def outstanding():
+        doc.heading("Outstanding items", "recorded here; they do not hold up acceptance")
+        doc.bullets(d["outstanding"] or ["None."])
+
+    def terms():
+        if d["terms"]:
+            doc.heading("Handover and support")
+            doc.bullets(d["terms"])
+
+    sections = {"summary": summary, "scope": scope, "outstanding": outstanding, "terms": terms}
+    for key in [s["key"] for s in tpl["sections"] if s["on"] and s["key"] in sections]:
+        sections[key]()
+    if d.get("closing"):
+        doc.y += 6
+        doc.para(d["closing"])
 
     doc.heading("Acceptance")
     lines = c.wrap(d["statement"], 9.5, WIDTH - 20)
@@ -132,4 +153,4 @@ def render(v):
             c.text(LEFT + 90, doc.y, chunk, 8.5, False, tone.get(1, INK))
             doc.y += 11.5
         doc.y += 3
-    return c.render(f"Odin · {p['company']} · {p['name']} · sign-off v{v['version']} · SHA-256 {v['content_hash'][:16]}…")
+    return c.render(doc.footer(f"Odin · {p['company']} · {p['name']} · sign-off v{v['version']} · SHA-256 {v['content_hash'][:16]}…"))

@@ -12,7 +12,8 @@ import { Section, Table } from "@/components/ReportParts"
 import { ApiError, rolloutReport, saveRolloutReport, type RolloutReport, type User } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { cn } from "@/lib/utils"
-import { fmtDate, fmtWhen, groupBlocks } from "@/lib/format"
+import { fillPlaceholders, fmtDate, fmtWhen, groupBlocks } from "@/lib/format"
+import { TemplatePicker } from "@/components/TemplatePicker"
 
 // The rollout report: where it stands, when it lands, what could stop it,
 // who is doing what, and how it got here. Staff read it live and can switch
@@ -28,6 +29,7 @@ export default function Report(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
   const audience = params.get("audience") === "customer" ? "customer" : "internal"
   const v = Number(params.get("v")) || null
+  const template = Number(params.get("template")) || null
   const [r, setR] = useState<RolloutReport | null>(null)
   const [words, setWords] = useState({ summary: "", next_steps: "", asks: "" })
   const [error, setError] = useState<string | null>(null)
@@ -35,12 +37,12 @@ export default function Report(_props: { user: User }) {
   const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
     try {
-      const x = await rolloutReport(id, audience, v)
+      const x = await rolloutReport(id, audience, v, template)
       setR(x); setError(null)
       setWords({ summary: x.words.summary ?? "", next_steps: x.words.next_steps ?? "", asks: x.words.asks ?? "" })
       document.title = `Report · ${x.project.name} · Odin`
     } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "No report has been published for this rollout yet." : e instanceof ApiError ? e.message : "Could not load the report") }
-  }, [id, audience, v])
+  }, [id, audience, v, template])
   useEffect(() => { void load() }, [load])
   const editable = !!r && r.is_live && r.can_edit
   const dirty = !!r && editable && (words.summary !== r.words.summary || words.next_steps !== r.words.next_steps || words.asks !== r.words.asks)
@@ -50,9 +52,9 @@ export default function Report(_props: { user: User }) {
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
     setBusy(true); setNotice(null)
-    try { const x = await saveRolloutReport(id, words); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+    try { const x = await saveRolloutReport(id, words, template); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
-  const pdf = `/projects/${id}/report.pdf?audience=${r.audience}${r.version ? `&v=${r.version.version}` : ""}`
+  const pdf = `/projects/${id}/report.pdf?audience=${r.audience}${r.version ? `&v=${r.version.version}` : template ? `&template=${template}` : ""}`
   const toolbar = (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
       <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{r.project.name}</Link>
@@ -69,6 +71,7 @@ export default function Report(_props: { user: User }) {
             {r.versions.map((x) => <option key={x.version} value={x.version}>v{x.version} · {x.created_by} · {fmtWhen(x.created_at)}{x.kind === "text" ? " (text)" : ""}</option>)}
           </select>
         )}
+        {r.is_live && r.can_edit && <TemplatePicker kind="rollout" value={template} onChange={(t) => set("template", t ? String(t) : null)} />}
         {r.data && <a href={pdf} target="_blank" rel="noreferrer" className={pill}><Download className="h-3.5 w-3.5" /> PDF</a>}
         <button type="button" onClick={() => window.print()} className={pill}><Printer className="h-3.5 w-3.5" /> Print</button>
         {editable && <Button size="sm" className="h-8 rounded-full" disabled={busy || !words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
@@ -94,6 +97,13 @@ export default function Report(_props: { user: User }) {
 
   const d = r.data
   const customer = d.audience === "customer"
+  // the document template: which sections show, and its opening and closing words
+  const on = (key: string) => !d.template || d.template.sections.some((s) => s.key === key && s.on)
+  const hide = (key: string) => (on(key) ? undefined : "hidden")
+  const tplValues = { project: d.project.name, client: d.project.client, company: d.company, pm: d.project.owner_name, po: d.project.po_number ?? "",
+    stage: d.project.stage, target: fmtDate(d.finish.target), forecast: fmtDate(d.finish.forecast), date: fmtDate(d.today) }
+  const intro = fillPlaceholders(d.template?.texts.intro ?? "", tplValues).trim()
+  const closing = fillPlaceholders(d.template?.texts.closing ?? "", tplValues).trim()
   const f = d.finish
   const tiles: { label: string; value: string; sub: string; bad?: boolean }[] = [
     { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, bad: (f.vs_target_days ?? 0) > 0 },
@@ -136,7 +146,8 @@ export default function Report(_props: { user: User }) {
         </div>
       </header>
 
-      <div className={cn("mt-4 grid grid-cols-2 gap-3", customer ? "lg:grid-cols-4" : "lg:grid-cols-5")}>
+      {intro && <p className="mt-3 whitespace-pre-line text-[13.5px] leading-relaxed">{intro}</p>}
+      <div className={cn("mt-4 grid grid-cols-2 gap-3", customer ? "lg:grid-cols-4" : "lg:grid-cols-5", hide("numbers"))}>
         {tiles.map((t) => (
           <div key={t.label} className="panel p-4 print:shadow-none">
             <div className="text-[11.5px] text-muted-foreground">{t.label}</div>
@@ -147,7 +158,7 @@ export default function Report(_props: { user: User }) {
       </div>
 
       <div className="mt-4 grid gap-4">
-        <Section n title="Summary">
+        <Section n title="Summary" className={hide("summary")}>
           <div className="grid gap-4 lg:grid-cols-2">
             {wordBlock("summary", "Where it stands", 5, "Two or three lines: where the rollout stands, what changed, what happens next.")}
             <div className="grid content-start gap-4">
@@ -163,7 +174,7 @@ export default function Report(_props: { user: User }) {
           </div>
         </Section>
 
-        <Section n title="Timeline" sub="plan against actual, and the forecast for what is left">
+        <Section n title="Timeline" sub="plan against actual, and the forecast for what is left" className={hide("timeline")}>
           <PlanGantt stages={d.stages} today={d.today} target={f.target} />
           <div className="mt-4">
             <Table head={["Stage", "Planned", "Actual", "Forecast", ...(customer ? [] : ["Slip"])]}
@@ -177,7 +188,7 @@ export default function Report(_props: { user: User }) {
         </Section>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <Section n title="What's next" sub="the coming stages, as forecast">
+          <Section n title="What's next" sub="the coming stages, as forecast" className={hide("timeline")}>
             <ol className="grid gap-2">
               {d.milestones.map((m, i) => (
                 <li key={m.stage} className="flex items-center gap-3 rounded-xl bg-muted/50 px-3 py-2 text-[13px]">
@@ -191,7 +202,7 @@ export default function Report(_props: { user: User }) {
             </ol>
           </Section>
 
-          <Section n title={customer ? "Decisions and open points" : "Risks, issues, decisions, blockers"} sub={`${d.raid.filter((x) => x.open).length} open`}>
+          <Section n title={customer ? "Decisions and open points" : "Risks, issues, decisions, blockers"} sub={`${d.raid.filter((x) => x.open).length} open`} className={hide("raid")}>
             <ul className="divide-y divide-border text-[13px]">
               {d.raid.map((x) => {
                 const K = RAID_KIND[x.kind]
@@ -210,7 +221,7 @@ export default function Report(_props: { user: User }) {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <Section n title="Work" sub={`${d.work.done} of ${d.work.total} tasks done${d.work.late ? `, ${d.work.late} late` : ""}`}>
+          <Section n title="Work" sub={`${d.work.done} of ${d.work.total} tasks done${d.work.late ? `, ${d.work.late} late` : ""}`} className={hide("work")}>
             {d.work.burn.length > 1 && (
               <div className="h-40" role="img" aria-label={`Tasks known and done per week: ${d.work.burn.map((w) => `${fmtDate(w.week)} ${w.done} of ${w.total}`).join(", ")}`}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -236,7 +247,7 @@ export default function Report(_props: { user: User }) {
           </Section>
 
           {!customer && d.people ? (
-            <Section n title="People" sub="who carries the work">
+            <Section n title="People" sub="who carries the work" className={hide("work")}>
               <Table head={["Person", "Role", "Open", "Done", "Late"]} rows={d.people.map((p) => [p.name, p.role ?? "—", p.open, p.done, p.late])} tone={(i, c) => (c === 4 && d.people![i].late ? "font-medium text-bad" : undefined)} />
               {d.work.open && d.work.open.length > 0 && (
                 <>
@@ -247,11 +258,11 @@ export default function Report(_props: { user: User }) {
               )}
             </Section>
           ) : (
-            <Section n title="Team"><ul className="grid gap-1 text-[13px]">{d.team.map((m) => <li key={m.name} className="flex justify-between"><span className="font-medium">{m.name}</span><span className="text-muted-foreground">{m.role}</span></li>)}</ul></Section>
+            <Section n title="Team" className={hide("team")}><ul className="grid gap-1 text-[13px]">{d.team.map((m) => <li key={m.name} className="flex justify-between"><span className="font-medium">{m.name}</span><span className="text-muted-foreground">{m.role}</span></li>)}</ul></Section>
           )}
         </div>
 
-        <Section n title="History" sub="time in each stage against its SLA, decisions, and what moved">
+        <Section n title="History" sub="time in each stage against its SLA, decisions, and what moved" className={hide("history")}>
           <div className="grid gap-5 lg:grid-cols-2">
             <div>
               <Table head={["Stage", "Entered", "Left", "Days", "SLA"]}
@@ -289,6 +300,7 @@ export default function Report(_props: { user: User }) {
           </div>
         </Section>
       </div>
+      {closing && <p className="mt-4 whitespace-pre-line text-[13.5px] leading-relaxed">{closing}</p>}
       <p className="mt-4 text-[11.5px] text-muted-foreground">Odin · {d.company} · {customer ? "customer copy" : "internal"} · generated {fmtWhen(d.generated_at, true)}</p>
     </div>
   )
