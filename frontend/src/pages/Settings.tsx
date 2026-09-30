@@ -85,7 +85,7 @@ export default function Settings(_props: { user: User }) {
 
       {/* min-w-0 on every grid item: a wide table scrolls inside its panel
           instead of stretching the page on a phone */}
-      <div className="mt-4 grid max-w-5xl gap-4 [&>*]:min-w-0">
+      <div className={cn("mt-4 grid gap-4 [&>*]:min-w-0", section !== "map" && "max-w-5xl")}>
         {section === "general" && policyForm("general", "Workspace")}
         {section === "people" && policyForm("people", "Sign-up links and time on Odin", "links are made and revoked on the Users page")}
         {section === "security" && (
@@ -186,7 +186,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 // change log opens first. It follows the app's light or dark theme.
 function SystemMap() {
   return (
-    <iframe title="Odin System Map" src={`/settings/map/page?embed=1&theme=${isDark() ? "dark" : "light"}#changes`}
+    <iframe title="Odin System Map" src={`/settings/map/page?embed=1&tab=changes&theme=${isDark() ? "dark" : "light"}`}
       className="h-[calc(100dvh-200px)] min-h-[640px] w-full rounded-xl border border-border bg-background" />
   )
 }

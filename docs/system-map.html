@@ -1254,6 +1254,7 @@ $("#sev-filter").addEventListener("click", (e) => { const b = e.target.closest("
 $("#area-filter").addEventListener("click", (e) => { const b = e.target.closest("[data-area]"); if (b) { areaFilter = b.dataset.area; renderRegister() } });
 renderRegister();
 
-show(location.hash.slice(1) || store.get("odin-map-tab") || "overview");
+// ?tab= opens a tab without scrolling to it (how Odin opens the change log)
+show(location.hash.slice(1) || new URLSearchParams(location.search).get("tab") || store.get("odin-map-tab") || "overview");
 window.addEventListener("hashchange", () => show(location.hash.slice(1)));
 </script>
