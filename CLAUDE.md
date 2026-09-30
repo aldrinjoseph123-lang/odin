@@ -55,6 +55,11 @@ url, domains, emails, time, lines), read it with `policy("key")`
 (pass `db` outside an app context), and the settings page draws, validates
 (`save_policies`, one audited route `/settings/policies/<area>`) and
 explains it. Never hard-code a number an admin could reasonably want to change.
+**Sign-in paths:** password sign-in ends in `routes/auth.finish_login` after the
+two-step check (`services/mfa.py`, `/api/login/code`); a new password path must
+go through `attempt_login`, never `start_session` directly. Stage lengths and
+SLAs count working days through `services/workdays.py`; gaps between dates stay
+calendar days.
 
 # Adding a table
 
