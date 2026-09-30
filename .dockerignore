@@ -1,13 +1,35 @@
+# The image carries code only. Secrets and state live in .env and the
+# odin-data volume — never baked into a layer anyone with the image can read.
+
+# secrets
+.env
+.env.*
+deploy/certs/
+
+# state (dev copies; production state is the volume)
+*.db
+*.db-*
+*.db.*.bak
+*.bak
+uploads/
+backups/
+avatars/
+audit-archive/
+uat-data*/
+*.log
+
+# tooling and dependencies rebuilt in the image
 venv/
 __pycache__/
 *.pyc
-.git/
-.claude/
-.impeccable/
-*.db
-*.db.*.bak
-uploads/
-.DS_Store
-test_app.py
+node_modules/
 frontend/node_modules
 frontend/dist
+frontend/test-results
+frontend/playwright-report
+.git/
+.github/
+.claude/
+.impeccable/
+.DS_Store
+test_app.py

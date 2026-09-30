@@ -113,6 +113,14 @@ jobs:
             sleep 1
           done
           echo "never became healthy"; docker logs odin; exit 1
+      - name: Secrets and state never enter the image
+        run: |
+          printf 'SECRET_KEY=must-not-ship\n' > .env
+          mkdir -p deploy/certs uploads && echo key > deploy/certs/privkey.pem && echo x > odin.db
+          docker build -q -t odin:leak .
+          docker run --rm -e SECRET_KEY=x odin:leak sh -c 'test ! -e /app/.env && test ! -e /app/deploy/certs/privkey.pem && test ! -e /app/odin.db && test -f /app/scripts/set_password.py' \
+            && echo "image clean" || { echo "a secret or state file is baked into the image"; exit 1; }
+          rm -f .env deploy/certs/privkey.pem odin.db
       - name: Compose files are valid (base + Cloudflare overlay)
         run: |
           printf 'SECRET_KEY=x\nCLOUDFLARE_TUNNEL_TOKEN=x\n' > .env

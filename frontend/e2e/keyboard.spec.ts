@@ -69,6 +69,7 @@ test("@keys calendar: months, toggles and a day, by Tab and Enter", async ({ pag
 
 test("@keys the skip link reaches the content", async ({ page }) => {
   await signIn(page, "admin", "/dashboard")
+  await expect(page.getByRole("link", { name: "Odin, home" })).toBeVisible()   // the shell is up: Tab before it lands in the loading skeleton
   await page.keyboard.press("Tab")
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused()
   await page.keyboard.press("Enter")

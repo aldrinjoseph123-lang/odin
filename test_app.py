@@ -3044,6 +3044,32 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             acts = [r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action LIKE 'signoff_%' ORDER BY id")]
         self.assertEqual(acts, ["signoff_send", "signoff_sign", "signoff_countersign"])
 
+    def test_signoff_link_by_hand_lands_the_signatory_on_the_document(self):
+        c, h, ann, _ = self._signoff_setup()
+        c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["Everything"]}, headers=h)
+        r = c.post("/api/projects/1/signoff/1/link", headers=h).get_json()
+        self.assertEqual(r["email"], "ann@globex.example"); self.assertIn("next=/projects/1/signoff", r["link"].replace("%2F", "/"))
+        token = r["link"].split("/auth/link/")[1].split("?")[0]
+        e = app_module.app.test_client()
+        landed = e.post(f"/auth/link/{token}?next=/projects/1/signoff")
+        self.assertEqual(landed.status_code, 302); self.assertTrue(landed.headers["Location"].endswith("/projects/1/signoff"))
+        self.assertTrue(e.get("/api/projects/1/signoff").get_json()["can"]["sign"])
+        e.get("/api/session")
+        csrf = e.get("/api/session").get_json()["csrf"]
+        e.post("/api/projects/1/signoff/1/reject", json={"comment": "Not yet"}, headers={"X-CSRF-Token": csrf})
+        self.assertIn("Only a version waiting", c.post("/api/projects/1/signoff/1/link", headers=h).get_json()["error"])
+
+    def test_set_password_from_the_server_shell(self):
+        import runpy
+        self._make_user("pm9", "Member")
+        with patch("getpass.getpass", side_effect=["Harbour-Lantern-2026!", "Harbour-Lantern-2026!"]), patch("sys.argv", ["set_password.py", "pm9"]):
+            runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(app_module.__file__)), "scripts", "set_password.py"), run_name="__main__")
+        c, _ = self._api_client("pm9", "Harbour-Lantern-2026!")
+        self.assertEqual(c.get("/api/session").get_json()["user"]["name"], "pm9")   # signed in with the new password
+        with patch("getpass.getpass", side_effect=["short"]), patch("sys.argv", ["set_password.py", "pm9"]):
+            with self.assertRaises(SystemExit):
+                runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(app_module.__file__)), "scripts", "set_password.py"), run_name="__main__")
+
     def test_signoff_tampering_is_caught(self):
         c, h, ann, _ = self._signoff_setup()
         c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["Everything"]}, headers=h)

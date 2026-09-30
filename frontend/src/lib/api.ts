@@ -234,6 +234,7 @@ export const sendSignoff = (id: number, body: { summary: string; delivered: stri
   post<{ ok: true; version: number }>(`/api/projects/${id}/signoff`, body)
 export const signSignoff = (id: number, v: number, body: SignBody, counter = false) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/${counter ? "countersign" : "sign"}`, body)
 export const rejectSignoff = (id: number, v: number, comment: string) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/reject`, { comment })
+export const signoffLink = (id: number, v: number) => post<{ ok: true; link: string; minutes: number; email: string }>(`/api/projects/${id}/signoff/${v}/link`)
 export const withdrawSignoff = (id: number, v: number) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/withdraw`)
 export const waiveSignoff = (id: number, reason: string) => post<{ ok: true; version: number }>(`/api/projects/${id}/signoff/waive`, { reason })
 export async function uploadSignoff(id: number, v: number, form: FormData): Promise<{ ok: true }> {

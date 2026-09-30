@@ -1,5 +1,8 @@
 # Deploying Odin
 
+**First production install:** follow [docs/GO_LIVE.md](docs/GO_LIVE.md) — the phased runbook
+for a Linux VM behind Cloudflare Tunnel, starting clean. This file is the reference behind it.
+
 ## Docker (recommended)
 
 Everything stateful lives in one volume (`odin-data`): `odin.db` plus every

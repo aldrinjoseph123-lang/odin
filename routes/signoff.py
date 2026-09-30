@@ -7,10 +7,11 @@ from markupsafe import escape
 
 import graph
 from constants import SIGNOFF_DOC_CATEGORY
-from core import admin_required, app, login_required, permission_required, project_allows, project_role_required
+from core import admin_required, app, external_url, login_required, permission_required, project_allows, project_role_required
 from db import get_db, get_setting
 from routes.projects import load_project, save_document
-from security import content_matches_extension, upload_problem
+from policies import policy
+from security import content_matches_extension, issue_login_link, upload_problem
 from services import signoff
 from services.audit import audit_log
 from services.notifications import notify_users
@@ -232,6 +233,21 @@ def api_signoff_reject(project_id, version):
                  f"<p>{escape(session['user_name'])} did not sign version {version}: {escape(_body().get('comment') or '')}</p><p>It is now an open issue on the project; send a new version once it is resolved.</p>",
                  exclude_user_id=session["user_id"], link=_link(project_id))
     return jsonify(ok=True)
+
+
+@app.route("/api/projects/<int:project_id>/signoff/<int:version>/link", methods=["POST"])
+@permission_required("edit_project")
+@project_role_required("manage_project")
+def api_signoff_link(project_id, version):
+    """A one-time sign-in link for the signatory, landing on the sign-off: for
+    when mail is not connected, or the email went astray. Carried by hand."""
+    project = load_project(project_id)
+    row = _version(project_id, version)
+    if row["status"] != "sent":
+        return _bad("Only a version waiting for the customer's signature needs their link")
+    link = external_url("auth_link_consume", token=issue_login_link(row["signer_id"], session["user_id"]), next=_link(project_id))
+    audit_log("signoff_link", "project", project_id, project["name"], f"v{version} sign-in link for {row['signer_email']}")
+    return jsonify(ok=True, link=link, minutes=policy("link_minutes"), email=row["signer_email"])
 
 
 @app.route("/api/projects/<int:project_id>/signoff/<int:version>/withdraw", methods=["POST"])

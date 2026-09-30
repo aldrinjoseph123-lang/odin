@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
-import { CheckCircle2, ChevronLeft, Download, FileSignature, Printer, ShieldCheck, Upload } from "lucide-react"
+import { CheckCircle2, ChevronLeft, Copy, Download, FileSignature, Link2, Printer, ShieldCheck, Upload } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -10,7 +10,7 @@ import { Section } from "@/components/ReportParts"
 import { SCOPE_TONE, SCOPE_WORD } from "@/components/ScopePanel"
 import { SignaturePad, SignatureView } from "@/components/SignaturePad"
 import {
-  ApiError, rejectSignoff, sendSignoff, signoff, signSignoff, uploadSignoff, waiveSignoff, withdrawSignoff,
+  ApiError, rejectSignoff, sendSignoff, signoff, signoffLink, signSignoff, uploadSignoff, waiveSignoff, withdrawSignoff,
   type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User,
 } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
@@ -162,6 +162,34 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
       <Button type="submit" className="rounded-full" disabled={busy || !accept || !sig || !name.trim()}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
       {canReject && <button type="button" onClick={() => setRejecting(true)} className="text-[12.5px] text-muted-foreground hover:text-foreground hover:underline">I can't sign this yet</button>}
     </form>
+  )
+}
+
+// Mail not connected, or the email went astray: a one-time link to hand over yourself.
+function SignerLink({ id, version, name }: { id: number; version: number; name: string }) {
+  const [link, setLink] = useState<{ link: string; minutes: number; email: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  async function get() {
+    setErr(null); setCopied(false)
+    try { setLink(await signoffLink(id, version)) } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not make a link") }
+  }
+  async function copy() {
+    try { await navigator.clipboard.writeText(link!.link); setCopied(true) } catch { setErr("Select the link and copy it") }
+  }
+  return (
+    <section className="panel grid gap-2 p-4">
+      <h2 className="text-[13px] font-semibold">Send the link yourself</h2>
+      <p className="text-[12px] text-muted-foreground">If {name} did not get the email, give them a one-time sign-in link that opens this sign-off.</p>
+      {link ? (
+        <>
+          <input readOnly value={link.link} aria-label="Sign-in link for the signatory" onFocus={(e) => e.currentTarget.select()} className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-[11.5px]" />
+          <Button size="sm" variant="outline" className="rounded-full" onClick={copy}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy the link"}</Button>
+          <p className="text-[11.5px] text-muted-foreground">For {link.email} only. It works once and expires in {link.minutes} minutes; make a new one if it lapses.</p>
+        </>
+      ) : <Button size="sm" variant="outline" className="rounded-full" onClick={get}><Link2 className="h-3.5 w-3.5" /> Get a sign-in link</Button>}
+      {err && <p className="text-[12px] text-bad" role="alert">{err}</p>}
+    </section>
   )
 }
 
@@ -335,6 +363,7 @@ export default function Signoff(_props: { user: User }) {
                   {cur.status === "sent" ? `Waiting for ${cur.content.signer?.name} to sign.` : `Waiting for ${cur.content.countersigner?.name} to countersign.`}
                 </section>
               )}
+              {d.can.withdraw && cur.status === "sent" && <SignerLink id={id} version={cur.version} name={cur.content.signer?.name ?? "the signatory"} />}
               {(d.can.upload || d.can.withdraw) && (
                 <section className="panel grid gap-2 p-4">
                   <h2 className="text-[13px] font-semibold">If the customer signs on paper</h2>

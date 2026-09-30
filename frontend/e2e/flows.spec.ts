@@ -311,6 +311,9 @@ test("@flow scope and sign-off: mark the last item, send, see it waiting, withdr
     return r.status
   })
   expect(refused).toBe(400)
+  // no mail on day one: the PM hands the signatory a one-time link
+  await page.getByRole("button", { name: "Get a sign-in link" }).click()
+  await expect(page.getByRole("textbox", { name: "Sign-in link for the signatory" })).toHaveValue(/\/auth\/link\/[^?]+\?next=%2Fprojects%2F1%2Fsignoff|\/auth\/link\/.+next=\/projects\/1\/signoff/)
   page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Withdraw and revise" }).click()
   await expect(page.getByRole("status")).toHaveText(/withdrawn/)

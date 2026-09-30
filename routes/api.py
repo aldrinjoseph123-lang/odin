@@ -778,7 +778,7 @@ ACTIVITY_LABELS = {
     "add_scope_item": "added to the scope", "edit_scope_item": "updated the scope", "move_scope_item": "reordered the scope", "delete_scope_item": "removed a scope item",
     "signoff_send": "sent the sign-off", "signoff_sign": "signed the sign-off", "signoff_countersign": "countersigned the sign-off",
     "signoff_reject": "did not accept the sign-off", "signoff_withdraw": "withdrew the sign-off", "signoff_upload": "uploaded the signed sign-off",
-    "signoff_waive": "waived the sign-off",
+    "signoff_waive": "waived the sign-off", "signoff_link": "made a sign-in link for the signatory",
 }
 
 
