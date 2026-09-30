@@ -91,7 +91,7 @@ def start_session(user):
     session["login_at"] = datetime.utcnow().isoformat()
     session["epoch"] = user["session_epoch"]
     session.permanent = True  # opt into the idle cap; the absolute cap is checked per request
-    get_db().execute("UPDATE users SET last_login_at = ? WHERE id = ?", (session["login_at"], user["id"]))
+    get_db().execute("UPDATE users SET last_login_at = ?, last_seen_at = ? WHERE id = ?", (session["login_at"], session["login_at"], user["id"]))
     get_db().commit()
 
 

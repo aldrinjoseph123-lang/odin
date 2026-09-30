@@ -409,7 +409,10 @@ export const report = (id: number, query: string) => getJson<ReportData>(`/api/p
 
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
-  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board" }>("/api/account")
+  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity }>("/api/account")
+// active minutes (services/activity.py): today, 7 and 30 days, one row per day
+export type Activity = { today: number; week: number; month: number; days: { day: string; minutes: number }[]; last_seen_at: string | null; last_login_at: string | null }
+export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
 export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
 export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string }
 export type MyWorkData = {
@@ -419,11 +422,11 @@ export type MyWorkData = {
 export const myWork = () => getJson<MyWorkData>("/api/my-work")
 
 // ---- people ----
-export type PersonCard = { id: number; name: string; role: string; avatar_url: string | null; last_login_at: string | null; projects: number; open: number; late: number; done_30d: number }
+export type PersonCard = { id: number; name: string; role: string; avatar_url: string | null; last_login_at: string | null; last_seen_at: string | null; projects: number; open: number; late: number; done_30d: number }
 export type PeopleData = { people: PersonCard[]; can_notify: boolean; me: number }
 export type PersonData = {
   user: { id: number; name: string; role: string; email: string | null; avatar_url: string | null; last_login_at: string | null; since: string }
-  today: string; can_notify: boolean
+  today: string; can_notify: boolean; activity?: Activity
   kpis: { rollouts: number; stuck: number; open: number; late: number; done_30d: number; on_time_pct: number | null }
   projects: WorkProject[]; pending: WorkTask[]; upcoming: WorkTask[]
   contribution: { weeks: { week: string; done: number }[]; notes_30d: number; moves_30d: number }

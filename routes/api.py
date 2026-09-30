@@ -20,6 +20,7 @@ from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, sla_by_stage, stage_sla_state, stage_timeline
 from services.audit import audit_log
 from services import signoff as signoff_service
+from services.activity import summary as activity_summary
 from spa import spa_asset
 
 
@@ -437,7 +438,8 @@ def api_account():
                    theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u), home=u["home"],
                    email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
                                 if k != "access" or session.get("role") == "Admin"],   # access requests reach admins only
-                   mail_enabled=get_setting("notify_email_enabled") == "1")
+                   mail_enabled=get_setting("notify_email_enabled") == "1",
+                   activity=activity_summary(session["user_id"]))
 
 
 @app.route("/api/my-work")
@@ -467,7 +469,18 @@ def api_person(user_id):
     if d is None:
         abort(404)
     d["can_notify"] = session.get("role") in ("Admin", "Member", "Contributor") and user_id != session["user_id"]
+    from services import activity
+    if activity.can_see_others(session.get("role")) or user_id == session["user_id"]:
+        d["activity"] = activity.summary(user_id)
     return jsonify(d)
+
+
+@app.route("/api/activity", methods=["POST"])
+@login_required
+def api_activity():
+    """One active minute (see services/activity.py). Not audited: it is the measurement itself."""
+    from services import activity
+    return jsonify(ok=True, counted=activity.ping(session["user_id"]))
 
 
 @app.route("/api/people/<int:user_id>/notify", methods=["POST"])

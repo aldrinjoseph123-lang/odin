@@ -31,9 +31,9 @@ for (const theme of ["light", "dark"] as const) {
   })
 }
 
-test("@a11y the dashboard's customise mode is operable by assistive tech", async ({ page }) => {
+test("@a11y a dashboard widget's menu is operable by assistive tech", async ({ page }) => {
   await signIn(page, "admin", "/dashboard")
-  await page.getByRole("button", { name: "Customise" }).click()
+  await page.getByRole("button", { name: "Customise Timeline" }).click()
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze()
   expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id}: ${v.help}`)).toEqual([])
 })

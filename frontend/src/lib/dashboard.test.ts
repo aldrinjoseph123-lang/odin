@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { configure, keyOf, move, newUid, pctChange, remove, reorder, resize, splitWindow, type LayoutItem } from "./dashboard"
+import { configure, keyOf, move, newUid, pctChange, remove, reorder, resize, splitWindow, type LayoutItem, pack } from "./dashboard"
 
 const L: LayoutItem[] = [{ id: "a", w: 3, settings: {} }, { id: "b", w: 1, settings: { limit: 5 } }, { id: "c", w: 2, settings: {} }]
 const ids = (l: LayoutItem[]) => l.map((x) => x.id).join("")
@@ -40,5 +40,29 @@ describe("week-over-week", () => {
   })
   it("splits a series into this window and the one before", () => {
     expect(splitWindow([1, 2, 3, 4, 5, 6, 7, 8], 3)).toEqual({ now: [6, 7, 8], before: [3, 4, 5] })
+  })
+})
+
+describe("pack: rows without holes", () => {
+  const L = (...ws: number[]) => ws.map((w, i) => ({ id: `w${i}`, w: w as 1 | 2 | 3, settings: {} }))
+  const shape = (ws: number[], cols: number) => pack(L(...ws), cols).map((x) => `${x.item.id}:${x.span}`)
+  it("stretches the last widget of a short row", () => {
+    expect(shape([1, 1], 3)).toEqual(["w0:1", "w1:2"])
+    expect(shape([2], 3)).toEqual(["w0:3"])
+  })
+  it("pulls up a later widget that fits a gap", () => {
+    expect(shape([2, 3, 1], 3)).toEqual(["w0:2", "w2:1", "w1:3"])   // the ⅓ fills the ⅔ row; the full one follows
+  })
+  it("adapts to two columns and to phones", () => {
+    expect(shape([1, 2, 1], 2)).toEqual(["w0:1", "w2:1", "w1:2"])
+    expect(shape([3, 1, 2], 1)).toEqual(["w0:1", "w1:1", "w2:1"])
+  })
+  it("every row is full", () => {
+    for (const cols of [1, 2, 3]) {
+      const spans = pack(L(1, 3, 2, 1, 1, 2, 1), cols).map((x) => x.span)
+      let used = 0
+      for (const s of spans) { used += s; if (used > cols) throw new Error("overflow"); if (used === cols) used = 0 }
+      expect(used).toBe(0)
+    }
   })
 })

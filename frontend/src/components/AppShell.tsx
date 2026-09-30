@@ -10,6 +10,7 @@ import { CommandPalette } from "@/components/CommandPalette"
 import { NotificationBell } from "@/components/NotificationBell"
 import { applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
+import { useActivityPing } from "@/lib/useActivityPing"
 
 // White top bar, ink links, accent underline on the current section. Un-ported
 // pages are plain anchors (full navigation to Flask); React pages use <Link>.
@@ -36,6 +37,7 @@ function NavLink({ item, current, onClick }: { item: Item; current: boolean; onC
 
 export default function AppShell({ user, children, messages = [], onDismiss }: { user: User; children: ReactNode; messages?: string[]; onDismiss?: () => void }) {
   const { pathname } = useLocation()
+  useActivityPing()
   const [open, setOpen] = useState(false)
   const [theme, setTheme] = useState<Theme>(user.theme)
   const [palette, setPalette] = useState(false)

@@ -119,7 +119,7 @@ def close_db(exception=None):
 # Endpoints a user may still reach while a password change is pending.
 # The React Account page reads /api/account and the header's bell reads
 # /api/notifications: without them the forced-change screen never loads.
-PASSWORD_CHANGE_ALLOWED = {"account", "account_email", "logout", "static", "api_account", "api_notifications", "api_logout"}
+PASSWORD_CHANGE_ALLOWED = {"account", "account_email", "logout", "static", "api_account", "api_notifications", "api_logout", "api_activity"}
 
 
 def _auth_gate():

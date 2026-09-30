@@ -60,6 +60,15 @@ CREATE TABLE IF NOT EXISTS raid_items (
 );
 CREATE INDEX IF NOT EXISTS idx_raid_project ON raid_items (project_id, status);
 
+-- Active minutes per person per workspace-local day (services/activity.py):
+-- counted only while Odin is open, visible and in use.
+CREATE TABLE IF NOT EXISTS user_activity (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    day TEXT NOT NULL,
+    minutes INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+);
+
 -- The agreed scope of a rollout (services/signoff.py): recorded while scoping,
 -- marked delivered / partial / descoped at the end, listed on the sign-off.
 CREATE TABLE IF NOT EXISTS scope_items (

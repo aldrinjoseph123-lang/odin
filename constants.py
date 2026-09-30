@@ -186,6 +186,10 @@ NEW_USER_COLUMNS = {
     # Set on the seed admin and whenever an admin resets someone's password:
     # the next login is funnelled to the account page until it is changed.
     "must_change_password": "INTEGER NOT NULL DEFAULT 0",
+    # The last time the person was active in Odin (an activity ping or a sign-in).
+    "last_seen_at": "TEXT",
+    # The last counted active minute (services/activity.py guards on this, not on last_seen_at).
+    "last_ping_at": "TEXT",
     # Appearance is the user's, not the deployment's: light / dark / follow the
     # OS, and which hue the one accent takes. The avatar is a filename under
     # ODIN_DATA_DIR/avatars, unique per upload so its URL changes on replace.

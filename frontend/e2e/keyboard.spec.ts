@@ -27,22 +27,19 @@ test("@keys flow: j/k move, Enter opens, Esc closes, Home/End jump", async ({ pa
   await expect(rows.first()).not.toBeFocused()
 })
 
-test("@keys dashboard: customise entirely from the keyboard", async ({ page }) => {
+test("@keys dashboard: a widget's menu entirely from the keyboard", async ({ page }) => {
   await signIn(page, "admin", "/dashboard")
-  await page.getByRole("button", { name: "Customise" }).focus()
+  await page.getByRole("button", { name: "Customise Portfolio progress" }).focus()
   await page.keyboard.press("Enter")
-  await expect(page.getByText("No changes yet")).toBeVisible()
-  await page.getByRole("button", { name: "Move Portfolio progress up" }).focus()
+  await expect(page.getByRole("button", { name: "Move Portfolio progress earlier" })).toBeVisible()
+  await page.getByRole("button", { name: "Move Portfolio progress earlier" }).focus()
   await page.keyboard.press("Enter")
-  await expect(page.getByText("Unsaved changes")).toBeVisible()
-  await page.getByRole("button", { name: "Settings for Timeline" }).focus()
-  await page.keyboard.press("Space")
-  await expect(page.locator("#timeline-show")).toBeVisible()
-  await page.getByRole("button", { name: "Cancel" }).focus()
+  await expect(page.getByRole("status")).toHaveText(/Saved to your dashboard/)
+  await page.keyboard.press("Escape")
+  await page.getByRole("button", { name: "Undo" }).focus()
   await page.keyboard.press("Enter")
-  await expect(page.getByRole("button", { name: "Customise" })).toBeVisible()
-  // every control in the toolbar has a name
-  await page.getByRole("button", { name: "Customise" }).click()
+  await expect(page.getByRole("status")).toHaveText(/undone/)
+  // every control on the page has a name
   const nameless = await page.locator("main button").evaluateAll((els) => els.filter((b) => !b.textContent?.trim() && !b.getAttribute("aria-label")).length)
   expect(nameless).toBe(0)
 })

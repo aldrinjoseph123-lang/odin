@@ -6,8 +6,28 @@ export type Width = 1 | 2 | 3
 export type LayoutItem = { id: string; uid?: string; w: Width; settings: Record<string, unknown> }
 export const keyOf = (x: { id: string; uid?: string }) => x.uid ?? x.id
 
-// Tailwind needs whole class names: one per width, on the md (2-col) and xl (3-col) grids.
-export const WIDTH_CLASS: Record<Width, string> = { 1: "", 2: "md:col-span-2 xl:col-span-2", 3: "md:col-span-2 xl:col-span-3" }
+// Rows without holes, for a grid of `cols` columns (3 wide, 2 on tablets, 1 on
+// phones). Widgets are placed in layout order; a row with room left pulls up the
+// next widget that fits, and the last widget in each row stretches to fill it.
+// A ⅔ widget is a full row on two columns; everything is one column on phones.
+export function pack(layout: LayoutItem[], cols: number): { item: LayoutItem; span: number }[] {
+  const queue = [...layout]
+  const out: { item: LayoutItem; span: number }[] = []
+  while (queue.length) {
+    let room = cols
+    const row: { item: LayoutItem; span: number }[] = []
+    for (let i = 0; i < queue.length && room > 0;) {
+      const span = Math.min(queue[i].w, cols)
+      if (span <= room) { row.push({ item: queue[i], span }); room -= span; queue.splice(i, 1) } else i++
+    }
+    row[row.length - 1].span += room
+    out.push(...row)
+  }
+  return out
+}
+// Whole class names for Tailwind: the grid and each span.
+export const GRID_CLASS: Record<number, string> = { 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3" }
+export const SPAN_CLASS: Record<number, string> = { 1: "col-span-1", 2: "col-span-2", 3: "col-span-3" }
 
 export function move(layout: LayoutItem[], key: string, by: -1 | 1): LayoutItem[] {
   const i = layout.findIndex((x) => keyOf(x) === key)

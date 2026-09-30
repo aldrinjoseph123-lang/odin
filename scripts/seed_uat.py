@@ -268,6 +268,17 @@ for p in con.execute("SELECT id, stage, target_end_date FROM projects ORDER BY i
 con.commit()
 con.close()
 
+# a month of active minutes for the staff, and when each was last seen (People, Account)
+con = sqlite3.connect(DB_PATH)
+for (uid,) in con.execute("SELECT id FROM users WHERE kind = 'internal'").fetchall():
+    for d in range(30):
+        day = date.today() - timedelta(days=d)
+        if day.weekday() < 5 and random.random() < 0.85:
+            con.execute("INSERT OR REPLACE INTO user_activity (user_id, day, minutes) VALUES (?, ?, ?)", (uid, day.isoformat(), random.randint(15, 190)))
+    con.execute("UPDATE users SET last_seen_at = ? WHERE id = ?", ((now - timedelta(minutes=random.randint(3, 60 * 30))).isoformat(), uid))
+con.commit()
+con.close()
+
 # the daily check, so the alerts table holds what the portfolio deserves
 with app.test_request_context():
     from db import get_db

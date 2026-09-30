@@ -10,6 +10,7 @@ import { Ago } from "@/components/Ago"
 import { PageSkeleton } from "@/components/PageSkeleton"
 import { ApiError, notifyPerson, person, type PersonData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { ActivityPanel } from "@/components/ActivityPanel"
 import { STATE } from "@/lib/state"
 import { fmtDate, lateBy } from "@/lib/format"
 
@@ -55,7 +56,7 @@ export default function Person(_props: { user: User }) {
         <UserAvatar name={d.user.name} url={d.user.avatar_url} className="h-14 w-14" textClass="text-[18px]" />
         <div className="min-w-0 flex-1">
           <h1 className="text-[17px] font-semibold tracking-tight">{d.user.name}</h1>
-          <p className="text-[13px] text-muted-foreground">{d.user.role}{d.user.email && ` · ${d.user.email}`}{d.user.last_login_at && <> · seen <Ago iso={d.user.last_login_at} /></>}</p>
+          <p className="text-[13px] text-muted-foreground">{d.user.role}{d.user.email && ` · ${d.user.email}`}{(d.activity?.last_seen_at ?? d.user.last_login_at) && <> · seen <Ago iso={(d.activity?.last_seen_at ?? d.user.last_login_at)!} /></>}</p>
         </div>
         {d.can_notify && <Button size="sm" className="rounded-full" onClick={() => setOpen(true)}><Send className="h-3.5 w-3.5" /> Notify {d.user.name.split(" ")[0]}</Button>}
       </div>
@@ -70,6 +71,8 @@ export default function Person(_props: { user: User }) {
           </div>
         ))}
       </div>
+
+      {d.activity && <div className="mt-4"><ActivityPanel a={d.activity} /></div>}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <section className="panel p-4" aria-label="Contribution">

@@ -6,6 +6,7 @@ import { account, ApiError, postForm, type User } from "@/lib/api"
 import { UserAvatar } from "@/components/UserAvatar"
 import { ACCENTS, THEMES, applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
+import { ActivityPanel } from "@/components/ActivityPanel"
 import { PageSkeleton } from "@/components/PageSkeleton"
 
 export default function Account(_props: { user: User }) {
@@ -116,6 +117,7 @@ export default function Account(_props: { user: User }) {
           {!me.mail_enabled && <p className="text-[11.5px] text-muted-foreground">Email is not connected on this installation yet, so for now only the bell is used.</p>}
           <div><Button type="submit" size="sm" variant="outline" disabled={busy}>Save</Button></div>
         </form>
+        {me.activity && <ActivityPanel a={me.activity} note="Odin counts the minutes it is open, visible and in use (idle time never counts) and when you were last seen. Admins and Members can see these figures on your People page." />}
         <section className="grid content-start gap-2 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Sessions</h3>
           <p className="text-[12.5px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>

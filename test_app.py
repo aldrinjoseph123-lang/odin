@@ -3264,6 +3264,24 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             self.assertTrue(db.execute("SELECT 1 FROM alerts WHERE project_id = 1 AND resolved = 0").fetchone())
 
+    def test_active_minutes_last_seen_and_who_may_see_them(self):
+        pm = self._make_user("pmx", "Member"); con_id = self._make_user("conx", "Contributor")
+        c, csrf = self._api_client("pmx", STRONG_PASSWORD)
+        h = {"X-CSRF-Token": csrf}
+        self.assertTrue(c.post("/api/activity", headers=h).get_json()["counted"])
+        self.assertFalse(c.post("/api/activity", headers=h).get_json()["counted"])   # under 50 s: not another minute
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET last_ping_at = '2000-01-01T00:00:00' WHERE id = ?", (pm,)); db.commit()
+        self.assertTrue(c.post("/api/activity", headers=h).get_json()["counted"])
+        mine = c.get("/api/account").get_json()["activity"]
+        self.assertEqual((mine["today"], mine["week"], len(mine["days"])), (2, 2, 30)); self.assertIsNotNone(mine["last_seen_at"])
+        admin, _ = self._api_client()
+        self.assertEqual(admin.get(f"/api/people/{pm}").get_json()["activity"]["today"], 2)   # an admin sees it
+        cc, _ = self._api_client("conx", STRONG_PASSWORD)
+        self.assertNotIn("activity", cc.get(f"/api/people/{pm}").get_json())               # a contributor does not
+        self.assertIn("activity", cc.get(f"/api/people/{con_id}").get_json())              # but sees their own
+        self.assertNotEqual(app_module.app.test_client().post("/api/activity").status_code, 200)   # no session: refused
+
     def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))
         c, _ = self._api_client()
@@ -3701,6 +3719,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # The only exemptions, each with its reason. Keep this list short.
         not_audited = {
             "/api/notifications/read": "marks the caller's own inbox read: personal UI state, not an act on shared data",
+            "/api/activity": "the active-minute ping is itself the record (user_activity); an audit row a minute would drown the trail",
         }
         missing = []
         for rule in app_module.app.url_map.iter_rules():

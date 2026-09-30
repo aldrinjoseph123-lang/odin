@@ -264,3 +264,14 @@ export function localToday(now: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0")
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
 }
+
+// Activity: ping only while the page is visible and was used in the last five minutes.
+export const IDLE_MS = 5 * 60_000
+export const shouldPing = (now: number, lastInput: number, visible: boolean) => visible && now - lastInput < IDLE_MS
+
+// Minutes as "3 h 20 min", "45 min", "0 min".
+export function minutesText(m: number): string {
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60), r = m % 60
+  return r ? `${h} h ${r} min` : `${h} h`
+}

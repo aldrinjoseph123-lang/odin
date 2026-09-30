@@ -83,7 +83,7 @@ def people(scope):
     month_ago = (local_today() - timedelta(days=30)).isoformat()
     open_sql = f"p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql}"
     rows = db.execute(
-        "SELECT u.id, u.name, u.role, u.avatar, u.last_login_at, "
+        "SELECT u.id, u.name, u.role, u.avatar, u.last_login_at, u.last_seen_at, "
         f"(SELECT COUNT(DISTINCT p.id) FROM projects p LEFT JOIN project_participants pp ON pp.project_id = p.id AND pp.user_id = u.id WHERE {open_sql} AND (p.owner_id = u.id OR pp.id IS NOT NULL)) AS projects, "
         f"(SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.assignee_id = u.id AND t.done = 0 AND {open_sql}) AS open, "
         f"(SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.assignee_id = u.id AND t.done = 0 AND t.due_date < ? AND {open_sql}) AS late, "
@@ -91,6 +91,7 @@ def people(scope):
         "FROM users u WHERE u.active = 1 AND u.kind = 'internal' ORDER BY projects DESC, open DESC, u.name",
         (*scope_params, *scope_params, today, *scope_params, month_ago, *scope_params)).fetchall()
     return [{"id": r["id"], "name": r["name"], "role": r["role"], "avatar_url": avatar_url(r), "last_login_at": r["last_login_at"],
+             "last_seen_at": r["last_seen_at"] or r["last_login_at"],
              "projects": r["projects"], "open": r["open"], "late": r["late"], "done_30d": r["done_30d"]}
             for r in rows if r["projects"] or r["open"] or r["done_30d"]]
 

@@ -1,11 +1,12 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
-import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripVertical, Layers, Maximize2, MessageSquare, PauseCircle, Plus, Settings2, ShieldCheck, SlidersHorizontal, Timer, UserCheck, X } from "lucide-react"
+import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripVertical, Layers, Maximize2, MessageSquare, MoreHorizontal, PauseCircle, Plus, ShieldCheck, Timer, Trash2, UserCheck } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, Line, LineChart, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as ChartTip, XAxis } from "recharts"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
 import { Ago } from "@/components/Ago"
@@ -14,7 +15,7 @@ import { ApiError, dashboard, dashboardVersion, resetLayout, saveLayout, type Ag
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
 import { dayOf, deltaText, fmtDate, lateBy, monthTicks, timelineDomain } from "@/lib/format"
-import { configure, keyOf, move, newUid, pctChange, remove, reorder, resize, same, splitWindow, WIDTH_CLASS, type LayoutItem, type Width } from "@/lib/dashboard"
+import { configure, GRID_CLASS, keyOf, move, newUid, pack, pctChange, remove, reorder, resize, SPAN_CLASS, splitWindow, type LayoutItem, type Width } from "@/lib/dashboard"
 
 // The dashboard: widgets on a three-column grid, in the order and widths of
 // the layout the server hands over (the workspace default, or this user's
@@ -36,7 +37,11 @@ const chip = "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foregroun
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const dayLabel = (iso: string) => WEEKDAY[new Date(`${iso}T00:00:00`).getDay()]
 
+// Each grid cell hands its widget the ⋯ menu to show in the header.
+const MenuSlot = createContext<ReactNode>(null)
+
 function Widget({ title, sub, action, onExpand, children }: { title: string; sub?: ReactNode; action?: ReactNode; onExpand?: () => void; children: ReactNode }) {
+  const menu = useContext(MenuSlot)
   return (
     <section className="panel flex h-full min-w-0 flex-col p-4" aria-label={title}>
       <header className="mb-3 flex items-start justify-between gap-3">
@@ -44,6 +49,7 @@ function Widget({ title, sub, action, onExpand, children }: { title: string; sub
         <span className="flex shrink-0 items-center gap-1">
           {action}
           {onExpand && <button type="button" onClick={onExpand} aria-label={`Expand ${title}`} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><Maximize2 className="h-3.5 w-3.5" /></button>}
+          {menu}
         </span>
       </header>
       <div className="min-h-0 flex-1">{children}</div>
@@ -538,71 +544,93 @@ function renderWidget(item: LayoutItem, d: D, today: string, on: { tile: (k: Das
   }
 }
 
-// ---- customising: the toolbar over each widget while editing -------------------
+// ---- customising: each widget's own ⋯ menu -------------------------------------
+// Every change saves at once to this person's arrangement (with an Undo);
+// text and number settings save a moment after typing stops.
 const WIDTHS: { w: Width; label: string }[] = [{ w: 1, label: "⅓" }, { w: 2, label: "⅔" }, { w: 3, label: "Full" }]
-const tool = "inline-flex h-7 w-7 items-center justify-center rounded-full text-nav-fg hover:bg-muted hover:text-foreground disabled:opacity-40"
-function WidgetTools({ item, info, first, last, open, onMove, onResize, onRemove, onToggle, onSettings }: {
-  item: LayoutItem; info: WidgetInfo; first: boolean; last: boolean; open: boolean
-  onMove: (by: -1 | 1) => void; onResize: (w: Width) => void; onRemove: () => void; onToggle: () => void; onSettings: (s: Record<string, unknown>) => void
+const tool = "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove, onSettings }: {
+  item: LayoutItem; info: WidgetInfo; title: string; first: boolean; last: boolean
+  onMove: (by: -1 | 1) => void; onResize: (w: Width) => void; onRemove: () => void; onSettings: (s: Record<string, unknown>) => void
 }) {
-  const title = item.id === "custom" ? String(item.settings.title || info.title) : info.title
   return (
-    <div className="mb-2 rounded-2xl bg-card p-1.5 shadow-card">
-      <div className="flex items-center gap-1 text-[12.5px]">
-        <GripVertical className="h-4 w-4 cursor-grab text-muted-foreground" aria-hidden />
-        <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
-        <button type="button" onClick={() => onMove(-1)} disabled={first} className={tool} aria-label={`Move ${title} up`}><ChevronUp className="h-4 w-4" /></button>
-        <button type="button" onClick={() => onMove(1)} disabled={last} className={tool} aria-label={`Move ${title} down`}><ChevronDown className="h-4 w-4" /></button>
-        <span className="mx-1 flex rounded-full bg-muted p-0.5" role="group" aria-label={`Width of ${title}`}>
-          {WIDTHS.map((x) => (
-            <button key={x.w} type="button" onClick={() => onResize(x.w)} aria-pressed={item.w === x.w}
-              className={cn("h-6 rounded-full px-2 text-[11.5px] font-medium", item.w === x.w ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground")}>{x.label}</button>
-          ))}
-        </span>
-        {info.settings.length > 0 && <button type="button" onClick={onToggle} aria-expanded={open} className={cn(tool, open && "bg-muted text-foreground")} aria-label={`Settings for ${title}`}><Settings2 className="h-4 w-4" /></button>}
-        <button type="button" onClick={onRemove} className={cn(tool, "hover:text-bad")} aria-label={`Remove ${title}`}><X className="h-4 w-4" /></button>
-      </div>
-      {open && (
-        <div className="mt-1.5 grid gap-2 border-t border-border px-1.5 pb-1 pt-2 text-[12.5px] sm:grid-cols-2">
-          {info.settings.map((s) => {
-            const v = item.settings[s.key] ?? s.default
-            const id = `${keyOf(item)}-${s.key}`
-            if (s.kind === "multi") return (
-              <fieldset key={s.key} className="sm:col-span-2"><legend className="mb-1 text-muted-foreground">{s.label}</legend>
-                <div className="flex flex-wrap gap-1.5">
-                  {s.choices?.map((c) => {
-                    const on = (v as string[]).includes(c)
-                    return <button key={c} type="button" aria-pressed={on} onClick={() => onSettings({ [s.key]: on ? (v as string[]).filter((x) => x !== c) : [...(v as string[]), c] })}
-                      className={cn("h-7 rounded-full border px-2.5 text-[12px]", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{TILES.find((t) => t.key === c)?.label ?? c}</button>
-                  })}
-                </div>
-              </fieldset>
-            )
-            return (
-              <label key={s.key} htmlFor={id} className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{s.label}</span>
-                {s.kind === "choice" ? (
-                  <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 max-w-[60%] rounded-md border border-input bg-background px-2 text-[12.5px]">
-                    {s.choices?.map((c) => <option key={c} value={c}>{MEASURE_LABEL[c] ?? c}</option>)}
-                  </select>
-                ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 w-40 rounded-md border border-input bg-background px-2 text-[12.5px]" />
-                : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[12.5px]" />}
-              </label>
-            )
-          })}
+    <Popover>
+      <PopoverTrigger render={<button type="button" />} aria-label={`Customise ${title}`} className={tool}><MoreHorizontal className="h-4 w-4" /></PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-3 text-[12.5px]">
+        <div className="mb-2 font-semibold">{title}</div>
+        {info.settings.length > 0 && (
+          <div className="grid gap-2 border-b border-border pb-3">
+            {info.settings.map((s) => {
+              const v = item.settings[s.key] ?? s.default
+              const id = `${keyOf(item)}-${s.key}`
+              if (s.kind === "multi") return (
+                <fieldset key={s.key}><legend className="mb-1 text-muted-foreground">{s.label}</legend>
+                  <div className="flex flex-wrap gap-1.5">
+                    {s.choices?.map((c) => {
+                      const on = (v as string[]).includes(c)
+                      return <button key={c} type="button" aria-pressed={on} onClick={() => onSettings({ [s.key]: on ? (v as string[]).filter((x) => x !== c) : [...(v as string[]), c] })}
+                        className={cn("h-7 rounded-full border px-2.5 text-[12px]", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{TILES.find((t) => t.key === c)?.label ?? c}</button>
+                    })}
+                  </div>
+                </fieldset>
+              )
+              return (
+                <label key={s.key} htmlFor={id} className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{s.label}</span>
+                  {s.kind === "choice" ? (
+                    <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 max-w-[60%] rounded-md border border-input bg-background px-2 text-[12.5px]">
+                      {s.choices?.map((c) => <option key={c} value={c}>{MEASURE_LABEL[c] ?? c}</option>)}
+                    </select>
+                  ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 w-40 rounded-md border border-input bg-background px-2 text-[12.5px]" />
+                  : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[12.5px]" />}
+                </label>
+              )
+            })}
+          </div>
+        )}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <span className="text-muted-foreground">Width</span>
+          <span className="flex rounded-full bg-muted p-0.5" role="group" aria-label={`Width of ${title}`}>
+            {WIDTHS.map((x) => (
+              <button key={x.w} type="button" onClick={() => onResize(x.w)} aria-pressed={item.w === x.w}
+                className={cn("h-6 rounded-full px-2.5 text-[11.5px] font-medium", item.w === x.w ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground")}>{x.label}</button>
+            ))}
+          </span>
         </div>
-      )}
-    </div>
+        <div className="mt-2 flex items-center gap-1">
+          <span className="mr-auto text-muted-foreground">Position</span>
+          <button type="button" onClick={() => onMove(-1)} disabled={first} className={cn(tool, "w-auto px-2.5 text-[12px]")} aria-label={`Move ${title} earlier`}><ChevronUp className="h-3.5 w-3.5" /> Earlier</button>
+          <button type="button" onClick={() => onMove(1)} disabled={last} className={cn(tool, "w-auto px-2.5 text-[12px]")} aria-label={`Move ${title} later`}><ChevronDown className="h-3.5 w-3.5" /> Later</button>
+        </div>
+        <button type="button" onClick={onRemove} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-border py-1.5 text-[12px] text-bad hover:bg-bad-soft" aria-label={`Remove ${title}`}><Trash2 className="h-3.5 w-3.5" /> Remove from my dashboard</button>
+      </PopoverContent>
+    </Popover>
   )
+}
+
+// Three columns on wide screens, two on tablets, one on phones: the packer needs to know which.
+function useColumns() {
+  const get = () => (typeof window.matchMedia !== "function" ? 3 : window.matchMedia("(min-width: 1280px)").matches ? 3 : window.matchMedia("(min-width: 768px)").matches ? 2 : 1)
+  const [cols, setCols] = useState(get)
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return
+    const lists = ["(min-width: 1280px)", "(min-width: 768px)"].map((q) => window.matchMedia(q))
+    const on = () => setCols(get())
+    lists.forEach((l) => l.addEventListener("change", on))
+    return () => lists.forEach((l) => l.removeEventListener("change", on))
+  }, [])
+  return cols
 }
 
 export default function Dashboard({ user }: { user: User }) {
   const [d, setD] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [updatedAt, setUpdatedAt] = useState<string>(() => new Date().toISOString())
-  // customising: edits go to a draft until Save; Cancel drops it
-  const [draft, setDraft] = useState<LayoutItem[] | null>(null)
-  const [openTools, setOpenTools] = useState<string | null>(null)
+  // customising: every change saves at once (typing settles first), with an Undo
   const [dragging, setDragging] = useState<string | null>(null)
+  const [grip, setGrip] = useState<string | null>(null)
+  const [undo, setUndo] = useState<LayoutItem[] | null>(null)
+  const saveTimer = useRef<number | undefined>(undefined)
+  const cols = useColumns()
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [tile, setTile] = useState<DashKey | null>(null)
@@ -635,21 +663,30 @@ export default function Dashboard({ user }: { user: User }) {
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!d) return <PageSkeleton />
   const hour = new Date().getHours()
-  const editing = draft !== null
-  const layout = (draft ?? d.layout) as LayoutItem[]
+  const layout = d.layout as LayoutItem[]
   const info = (id: string) => d.catalogue.find((w) => w.id === id)!
   const hidden = d.catalogue.filter((w) => !w.multiple && !layout.some((x) => x.id === w.id))
   const repeatable = d.catalogue.filter((w) => w.multiple)
   const admin = user.permissions.includes("manage_settings")
-  const edit = (fn: (l: LayoutItem[]) => LayoutItem[]) => setDraft((cur) => fn(cur ?? (d.layout as LayoutItem[])))
-  const add = (w: WidgetInfo) => edit((l) => [...l, { id: w.id, w: w.w, settings: Object.fromEntries(w.settings.map((s) => [s.key, s.default])), ...(w.multiple ? { uid: newUid() } : {}) }])
+  // one door for every change: show it now, save it (debounced for typing), offer Undo
+  const commit = (fn: (l: LayoutItem[]) => LayoutItem[], label = "Saved to your dashboard.", settle = 0) => {
+    const before = layout
+    const next = fn(layout)
+    setD({ ...d, layout: next, is_custom: true })
+    setUndo(before)
+    window.clearTimeout(saveTimer.current)
+    saveTimer.current = window.setTimeout(() => {
+      saveLayout(next).then(() => setNotice(label)).catch((e) => setNotice(e instanceof ApiError ? e.message : "That did not save"))
+    }, settle)
+  }
+  const add = (w: WidgetInfo) => commit((l) => [...l, { id: w.id, w: w.w, settings: Object.fromEntries(w.settings.map((s) => [s.key, s.default])), ...(w.multiple ? { uid: newUid() } : {}) }], `${w.title} added.`)
   async function run(label: string, fn: () => Promise<{ layout: DashboardData["layout"]; is_custom?: boolean }>, after: (r: { layout: DashboardData["layout"]; is_custom?: boolean }) => void) {
     setBusy(true); setNotice(null)
-    try { const r = await fn(); after(r); setNotice(label) } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+    try { const r = await fn(); after(r); setNotice(label); setUndo(null) } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
-  const save = () => run("Your dashboard is saved.", () => saveLayout(draft!), (r) => { setD({ ...d, layout: r.layout, is_custom: true }); setDraft(null) })
-  const saveDefault = () => run("Saved as the workspace default.", () => saveLayout(draft!, "default"), (r) => { setD({ ...d, layout: d.is_custom ? d.layout : r.layout }); if (!d.is_custom) setDraft(null) })
-  const reset = () => run("Back to the workspace default.", () => resetLayout(), (r) => { setD({ ...d, layout: r.layout, is_custom: false }); setDraft(null) })
+  const saveDefault = () => run("Saved as the workspace default.", () => saveLayout(layout, "default"), () => {})
+  const reset = () => run("Back to the workspace default.", () => resetLayout(), (r) => setD({ ...d, layout: r.layout, is_custom: false }))
+  const packed = pack(layout, cols)
   const expandedItem = expanded ? layout.find((x) => keyOf(x) === expanded) : null
   const tileInfo = tile ? TILES.find((t) => t.key === tile)! : null
   const tileRows: DetailRow[] = tile ? d.data.kpis.detail[tile] ?? [] : []
@@ -664,37 +701,64 @@ export default function Dashboard({ user }: { user: User }) {
         <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
           <span className="h-1.5 w-1.5 rounded-full bg-ok-line" aria-hidden />live · updated <Ago iso={updatedAt} />
         </p>
-        {!editing && <button type="button" onClick={() => { setDraft(d.layout as LayoutItem[]); setNotice(null) }} className={cn(pill, "ml-auto")}><SlidersHorizontal className="h-3.5 w-3.5" /> Customise</button>}
+        <span className="ml-auto flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger render={<button type="button" />} className={pill}><Plus className="h-3.5 w-3.5" /> Add widget</PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-2 text-[12.5px]">
+              <ul className="grid gap-0.5">
+                {[...hidden, ...repeatable].map((w) => (
+                  <li key={w.id}><button type="button" onClick={() => add(w)} className="grid w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
+                    <span className="font-medium">{w.title}{w.multiple && <span className="ml-1.5 font-normal text-muted-foreground">add another</span>}</span>
+                    <span className="text-[11.5px] text-muted-foreground">{w.blurb}</span></button></li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+          {(admin || d.is_custom) && (
+            <Popover>
+              <PopoverTrigger render={<button type="button" />} aria-label="Dashboard layout" className={cn(pill, "px-2")}><MoreHorizontal className="h-4 w-4" /></PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-2 text-[12.5px]">
+                {admin && <button type="button" disabled={busy} onClick={saveDefault} className="grid w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
+                  <span className="font-medium">Save as workspace default</span><span className="text-[11.5px] text-muted-foreground">Everyone without their own arrangement sees this one</span></button>}
+                {d.is_custom && <button type="button" disabled={busy} onClick={reset} className="grid w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
+                  <span className="font-medium">Reset to default</span><span className="text-[11.5px] text-muted-foreground">Drop your arrangement and use the workspace's</span></button>}
+              </PopoverContent>
+            </Popover>
+          )}
+        </span>
       </div>
-      {notice && <p className="mt-2 text-[12.5px] text-muted-foreground" role="status">{notice}</p>}
-
-      {editing && (
-        <div className="panel mt-3 flex flex-wrap items-center gap-2 p-3 text-[12.5px]">
-          <span className="font-medium">Add a widget</span>
-          {hidden.map((w) => <button key={w.id} type="button" title={w.blurb} onClick={() => add(w)} className={pill}><Plus className="h-3.5 w-3.5" /> {w.title}</button>)}
-          {repeatable.map((w) => <button key={w.id} type="button" title={w.blurb} onClick={() => add(w)} className={cn(pill, "border-dashed")}><Plus className="h-3.5 w-3.5" /> {w.title}</button>)}
-          {hidden.length === 0 && <span className="text-muted-foreground">every built-in widget is on the board; a custom metric can be added any number of times</span>}
-        </div>
+      {notice && (
+        <p className="mt-2 text-[12.5px] text-muted-foreground" role="status">{notice}
+          {undo && <button type="button" onClick={() => { const back = undo; commit(() => back, "Change undone."); setUndo(null) }} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}
+        </p>
       )}
 
-      <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {layout.map((item, i) => {
+      <div className={cn("mt-3 grid gap-4", GRID_CLASS[cols])}>
+        {packed.map(({ item, span }) => {
           const key = keyOf(item)
+          const i = layout.findIndex((x) => keyOf(x) === key)
+          const menu = (
+            <WidgetMenu item={item} info={info(item.id)} title={titleOf(item)} first={i === 0} last={i === layout.length - 1}
+              onMove={(by) => commit((l) => move(l, key, by))} onResize={(w) => commit((l) => resize(l, key, w))}
+              onRemove={() => commit((l) => remove(l, key), `${titleOf(item)} removed.`)}
+              onSettings={(st) => commit((l) => configure(l, key, st), "Saved to your dashboard.", 600)} />
+          )
           return (
-            <div key={key} className={cn("min-w-0", WIDTH_CLASS[item.w], editing && "rounded-[20px] ring-2 ring-primary/25 ring-offset-2 ring-offset-background", dragging === key && "opacity-50")}
-              draggable={editing} onDragStart={() => setDragging(key)} onDragEnd={() => setDragging(null)}
-              onDragOver={(e) => { if (dragging) e.preventDefault() }} onDrop={(e) => { e.preventDefault(); if (dragging) { edit((l) => reorder(l, dragging, key)); setDragging(null) } }}>
-              {editing && (
-                <WidgetTools item={item} info={info(item.id)} first={i === 0} last={i === layout.length - 1} open={openTools === key}
-                  onMove={(by) => edit((l) => move(l, key, by))} onResize={(w) => edit((l) => resize(l, key, w))}
-                  onRemove={() => edit((l) => remove(l, key))} onToggle={() => setOpenTools(openTools === key ? null : key)}
-                  onSettings={(s) => edit((l) => configure(l, key, s))} />
-              )}
-              <div className={cn(editing && "pointer-events-none select-none")}>{renderWidget(item, d.data, d.today, { tile: setTile, expand: item.id === "kpis" ? undefined : () => setExpanded(key) })}</div>
+            <div key={key} className={cn("group/cell relative min-w-0", SPAN_CLASS[span], dragging === key && "opacity-50")}
+              draggable={grip === key} onDragStart={() => setDragging(key)} onDragEnd={() => { setDragging(null); setGrip(null) }}
+              onDragOver={(e) => { if (dragging) e.preventDefault() }} onDrop={(e) => { e.preventDefault(); if (dragging && dragging !== key) commit((l) => reorder(l, dragging, key)); setDragging(null); setGrip(null) }}>
+              {/* drag by the grip (mouse); the menu's Earlier / Later does the same from the keyboard */}
+              <span onPointerDown={() => setGrip(key)} onPointerUp={() => setGrip(null)} aria-hidden
+                className="absolute left-1.5 top-1.5 z-10 hidden cursor-grab rounded-md p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 md:block">
+                <GripVertical className="h-4 w-4" /></span>
+              {item.id === "kpis" && <div className="absolute -top-2 right-0 z-10 rounded-full bg-card opacity-0 shadow-card transition-opacity focus-within:opacity-100 group-hover/cell:opacity-100">{menu}</div>}
+              <MenuSlot.Provider value={item.id === "kpis" ? null : menu}>
+                {renderWidget(item, d.data, d.today, { tile: setTile, expand: item.id === "kpis" ? undefined : () => setExpanded(key) })}
+              </MenuSlot.Provider>
             </div>
           )
         })}
-        {layout.length === 0 && <p className="text-[13px] text-muted-foreground md:col-span-2 xl:col-span-3">Every widget is hidden{editing ? " — add one above" : ""}.</p>}
+        {layout.length === 0 && <p className={cn("text-[13px] text-muted-foreground", SPAN_CLASS[cols])}>Every widget is hidden. Add one with Add widget.</p>}
       </div>
 
       {/* a tile's pop-up: the rollouts behind the number */}
@@ -740,17 +804,6 @@ export default function Dashboard({ user }: { user: User }) {
         </DialogContent>
       </Dialog>
 
-      {editing && (
-        <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-4">
-          <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-card p-2 pl-4 shadow-pop">
-            <span className="text-[12.5px] text-muted-foreground">{same(draft!, d.layout as LayoutItem[]) ? "No changes yet" : "Unsaved changes"}</span>
-            <Button size="sm" className="rounded-full" onClick={save} disabled={busy || same(draft!, d.layout as LayoutItem[])}>Save my dashboard</Button>
-            {admin && <Button size="sm" variant="outline" className="rounded-full" onClick={saveDefault} disabled={busy}>Save as workspace default</Button>}
-            {d.is_custom && <Button size="sm" variant="ghost" className="rounded-full" onClick={reset} disabled={busy}>Reset to default</Button>}
-            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => { setDraft(null); setOpenTools(null) }} disabled={busy}>Cancel</Button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

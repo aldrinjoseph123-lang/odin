@@ -33,7 +33,7 @@ export default function People(_props: { user: User }) {
                 <UserAvatar name={p.name} url={p.avatar_url} className="h-11 w-11" textClass="text-[14px]" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13.5px] font-semibold">{p.name}{p.id === d.me && <span className="ml-1.5 font-normal text-muted-foreground">you</span>}</div>
-                  <div className="truncate text-[12px] text-muted-foreground">{p.role}{p.last_login_at && <> · seen <Ago iso={p.last_login_at} /></>}</div>
+                  <div className="truncate text-[12px] text-muted-foreground">{p.role}{p.last_seen_at && <> · seen <Ago iso={p.last_seen_at} /></>}</div>
                 </div>
               </div>
               <dl className="mt-3 grid grid-cols-4 gap-2 text-center">

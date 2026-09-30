@@ -5,44 +5,65 @@ import { expectClean, signIn, watch } from "./helpers"
 // the data as it found it where it can (undo, reset, restore), so the order
 // does not matter.
 
-test("@flow dashboard: customise, save, reload, reset, and the workspace default", async ({ page }) => {
+test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, and the workspace default", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/dashboard")
-  await page.getByRole("button", { name: "Customise" }).click()
-  await expect(page.getByText("No changes yet")).toBeVisible()
-  await page.getByRole("button", { name: "Move Portfolio progress up" }).click()
+  const titles = () => page.locator("main section[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))
+  await expect(page.locator("main section[aria-label='Timeline']")).toBeVisible()
+  // a widget's own menu: move, width, a setting — each saved at once
+  await page.getByRole("button", { name: "Customise Portfolio progress" }).click()
+  await page.getByRole("button", { name: "Move Portfolio progress earlier" }).click()
+  await expect(page.getByRole("status")).toHaveText(/Saved to your dashboard/)
+  await page.keyboard.press("Escape")
+  await page.getByRole("button", { name: "Customise Timeline" }).click()
   await page.getByRole("group", { name: "Width of Timeline" }).getByRole("button", { name: "Full" }).click()
-  await page.getByRole("button", { name: "Remove Open alerts" }).click()
-  await page.getByRole("button", { name: "Open alerts" }).click()          // the picker puts it back at the end
-  await page.getByRole("button", { name: "Settings for Timeline" }).click()
   await page.locator("#timeline-show").selectOption("attention")
-  await expect(page.getByText("Unsaved changes")).toBeVisible()
-  await page.getByRole("button", { name: "Save my dashboard" }).click()
-  await expect(page.getByRole("status")).toHaveText(/Your dashboard is saved/)
+  await page.keyboard.press("Escape")
+  await page.getByRole("button", { name: "Customise Open alerts" }).click()
+  await page.getByRole("button", { name: "Remove Open alerts" }).click()
+  await expect(page.locator("main section[aria-label='Open alerts']")).toHaveCount(0)
+  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.locator("main section[aria-label='Open alerts']")).toHaveCount(1)
+  // no gaps: every row of the three-column grid is full
+  const rowsFull = await page.locator("main .grid.grid-cols-3 > div").evaluateAll((cells) => {
+    let used = 0
+    for (const c of cells) { const span = Number((c.className.match(/col-span-(\d)/) || [])[1] || 1); used += span; if (used > 3) return false; if (used === 3) used = 0 }
+    return used === 0
+  })
+  expect(rowsFull).toBe(true)
+  await page.waitForTimeout(800)   // the debounced setting save lands
   await page.reload()
-  await expect(page.locator("main section[aria-label]").first()).toBeVisible()   // the dashboard chunk is lazy
-  const titles = page.locator("main section[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))
-  expect((await titles).slice(0, 2)).toEqual(["Portfolio progress", "Timeline"])
-  expect(await titles).toContain("Open alerts")
+  await expect(page.locator("main section[aria-label='Timeline']")).toBeVisible()
+  expect((await titles()).indexOf("Portfolio progress")).toBeLessThan((await titles()).indexOf("Timeline"))
   await expect(page.getByText("your arrangement")).toBeVisible()
+  // add a widget from the picker
+  await page.getByRole("button", { name: "Add widget" }).click()
+  await page.getByRole("button", { name: /^Custom metric/ }).click()
+  await page.keyboard.press("Escape")
+  await expect(page.locator("main section[aria-label='Custom metric']")).toHaveCount(1)
   // reset returns to the workspace default
-  await page.getByRole("button", { name: "Customise" }).click()
-  await page.getByRole("button", { name: "Reset to default" }).click()
+  await page.getByRole("button", { name: "Dashboard layout" }).click()
+  await page.getByRole("button", { name: /Reset to default/ }).click()
   await expect(page.getByRole("status")).toHaveText(/Back to the workspace default/)
-  expect((await page.locator("main section[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).slice(0, 2)).toEqual(["Timeline", "Portfolio progress"])
+  await expect(page.locator("main section[aria-label='Custom metric']")).toHaveCount(0)
   // an admin sets the default; a member without their own arrangement sees it
-  await page.getByRole("button", { name: "Customise" }).click()
+  await page.getByRole("button", { name: "Customise Cycle time" }).click()
   await page.getByRole("button", { name: "Remove Cycle time" }).click()
-  await page.getByRole("button", { name: "Save as workspace default" }).click()
+  await page.getByRole("button", { name: "Dashboard layout" }).click()
+  await page.getByRole("button", { name: /Save as workspace default/ }).click()
   await expect(page.getByRole("status")).toHaveText(/Saved as the workspace default/)
   await signIn(page, "member", "/dashboard")
+  await expect(page.locator("main section[aria-label='Timeline']")).toBeVisible()
   await expect(page.locator("main section[aria-label='Cycle time']")).toHaveCount(0)
-  await expect(page.getByRole("button", { name: "Save as workspace default" })).toHaveCount(0)
   // put it back
   await signIn(page, "admin", "/dashboard")
-  await page.getByRole("button", { name: "Customise" }).click()
-  await page.getByRole("button", { name: "Cycle time" }).click()
-  await page.getByRole("button", { name: "Save as workspace default" }).click()
+  await page.getByRole("button", { name: "Dashboard layout" }).click()
+  await page.getByRole("button", { name: /Reset to default/ }).click()
+  await page.getByRole("button", { name: "Add widget" }).click()
+  await page.getByRole("button", { name: /^Cycle time/ }).click()
+  await page.keyboard.press("Escape")
+  await page.getByRole("button", { name: "Dashboard layout" }).click()
+  await page.getByRole("button", { name: /Save as workspace default/ }).click()
   await expect(page.getByRole("status")).toHaveText(/Saved as the workspace default/)
   expectClean(errors)
 })
@@ -319,4 +340,15 @@ test("@flow scope and sign-off: mark the last item, send, see it waiting, withdr
   await expect(page.getByRole("status")).toHaveText(/withdrawn/)
   await expect(page.getByRole("button", { name: "Send for signature" })).toBeVisible()
   expectClean(errors.filter((e) => !/\/api\/projects\/1\/stage|400 \(BAD REQUEST\)/.test(e)))   // the refused move is the point
+})
+
+test("@flow people: active minutes are counted while the page is in use", async ({ page }) => {
+  const errors = watch(page)
+  const ping = page.waitForRequest((r) => r.url().endsWith("/api/activity") && r.method() === "POST")
+  await signIn(page, "admin", "/people/2")
+  await ping                                                    // the first minute is sent on arrival
+  await expect(page.getByRole("region", { name: "Time on Odin" })).toContainText("Last 30 days")
+  await page.goto("/account")
+  await expect(page.getByRole("region", { name: "Time on Odin" })).toContainText("Admins and Members can see")
+  expectClean(errors)
 })
