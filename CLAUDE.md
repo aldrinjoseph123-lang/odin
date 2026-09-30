@@ -129,3 +129,16 @@ Rules while both UIs exist:
   on 5050) or build once and let Flask serve it (`npm --prefix frontend run build`).
 - shadcn CLI: `npx shadcn@latest add <component>` from `frontend/`.
   Components land in `src/components/ui` via the `@` alias in `tsconfig.json`.
+
+# System map
+
+`docs/system-map.html` is the source of the **Odin System Map** artifact
+(https://claude.ai/artifact/DLoSQZo8uDQ5B4hh3ZnnQz): architecture, project
+lifecycle, notifications, permissions, ways in, and the loophole register.
+It must stay true to the code. When a change alters how Odin runs, moves or
+exposes data, notifies, grants access, or closes a loophole: edit the page
+(a fixed loophole keeps its number and gets `fixed: "vX.Y.Z"`; a new one gets
+the next number), bump `MAP_STAMP`, commit it, and republish it to that URL
+with the Artifact tool (`file_path: docs/system-map.html`, `url:` as above).
+The Stop hook `scripts/system_map_stale.sh` (`.claude/settings.json`) blocks
+the end of a turn while a code commit is newer than the map's last commit.

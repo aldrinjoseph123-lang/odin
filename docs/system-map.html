@@ -1,0 +1,853 @@
+<!-- Odin System Map: the source of https://claude.ai/artifact/DLoSQZo8uDQ5B4hh3ZnnQz.
+     Keep it true to the code: when a change alters how Odin runs, moves data, notifies,
+     grants access or fixes a loophole, edit this file (set `fixed` on a loophole, bump
+     MAP_STAMP) and republish it to that URL. See CLAUDE.md → System map. -->
+<title>Odin System Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a tabbed field manual. Diagrams on a quiet ground, one blue accent for
+   selection, red/amber/green only as state (loophole severity), as in Odin itself. */
+:root {
+  --bg: #f5f6fa; --surface: #ffffff; --sunk: #eef0f6; --ink: #161823; --muted: #5a6072; --faint: #8a90a3;
+  --line: #dde0ea; --line-strong: #c3c8d6;
+  --accent: #3d5afe; --accent-ink: #2a44d9; --accent-soft: #e7ebff;
+  --bad: #cf2a38; --bad-soft: #fde9eb; --warn: #a86400; --warn-soft: #fff1d8; --ok: #17804a; --ok-soft: #e1f4e8;
+  --info: #5b4fc7; --info-soft: #eeebff;
+  --display: "Chakra Petch", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1117; --surface: #171a23; --sunk: #1d2130; --ink: #e8eaf2; --muted: #a0a6ba; --faint: #767d93;
+  --line: #2a2f3e; --line-strong: #3b4153;
+  --accent: #7d8dff; --accent-ink: #a3afff; --accent-soft: #1f2547;
+  --bad: #ff6f78; --bad-soft: #3b1a20; --warn: #f2b653; --warn-soft: #3a2b12; --ok: #52c784; --ok-soft: #143322;
+  --info: #a99eff; --info-soft: #262045; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1117; --surface: #171a23; --sunk: #1d2130; --ink: #e8eaf2; --muted: #a0a6ba; --faint: #767d93;
+  --line: #2a2f3e; --line-strong: #3b4153;
+  --accent: #7d8dff; --accent-ink: #a3afff; --accent-soft: #1f2547;
+  --bad: #ff6f78; --bad-soft: #3b1a20; --warn: #f2b653; --warn-soft: #3a2b12; --ok: #52c784; --ok-soft: #143322;
+  --info: #a99eff; --info-soft: #262045; color-scheme: dark }
+
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body { background: var(--bg); color: var(--ink); font: 14.5px/1.55 var(--body); margin: 0 }
+.wrap { max-width: 1680px; margin: 0 auto; padding-inline: 20px; padding-block: 20px 56px }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: .01em; text-wrap: balance; margin: 0 }
+h1 { font-size: 26px; line-height: 1.15 }
+h2 { font-size: 19px }
+h3 { font-size: 15px }
+p { margin: 0; max-width: 72ch }
+code, .mono { font-family: var(--mono); font-size: 12px }
+a { color: var(--accent-ink) }
+button { font: inherit; color: inherit }
+
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; padding-block: 8px 16px }
+.eyebrow { font: 500 11.5px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px }
+.sub { color: var(--muted); margin-top: 6px }
+.stamp { font: 12px var(--mono); color: var(--faint); text-align: right }
+
+nav.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); display: flex; gap: 4px; overflow-x: auto;
+  border-bottom: 1px solid var(--line); margin-bottom: 20px; scrollbar-width: thin }
+nav.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 12px; cursor: pointer; white-space: nowrap; color: var(--muted); font-weight: 500 }
+nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent) }
+nav.tabs button:focus-visible, .chip:focus-visible, .node:focus-visible, .mk:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+nav.tabs .count { font: 500 11px var(--mono); background: var(--bad-soft); color: var(--bad); border-radius: 99px; padding: 1px 6px; margin-left: 4px }
+
+section.view { display: grid; gap: 18px }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px }
+.panel > h2 + p, .panel > h3 + p { margin-top: 6px; color: var(--muted) }
+.lede { color: var(--muted); max-width: 80ch }
+/* diagram full width with its detail below; side by side only on wide screens */
+.grid2 { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) }
+@media (min-width: 1560px) { .grid2 { grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) } }
+
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)) }
+@media (max-width: 800px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px }
+.tile .n { font: 600 28px/1.1 var(--display); font-variant-numeric: tabular-nums }
+.tile .l { color: var(--muted); font-size: 13px; margin-top: 4px }
+.tile .n .bad { color: var(--bad) }
+
+.diagram { overflow-x: auto; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line) }
+.diagram svg { display: block; min-width: 900px; width: 100%; height: auto }
+svg text { font-family: var(--body); fill: var(--ink) }
+svg .t-muted { fill: var(--muted) }
+svg .t-small { font-size: 11.5px }
+svg .t-title { font: 600 13.5px var(--body) }
+svg .t-display { font: 600 12px var(--display); letter-spacing: .06em; fill: var(--muted) }
+svg .box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.2 }
+svg .zone { fill: var(--sunk); stroke: var(--line); stroke-width: 1; }
+svg .zone-dash { fill: none; stroke: var(--line-strong); stroke-dasharray: 5 4 }
+svg .off { fill: var(--sunk); stroke: var(--line-strong); stroke-dasharray: 4 3 }
+svg .edge { stroke: var(--faint); stroke-width: 1.5; fill: none }
+svg .edge.accent { stroke: var(--accent) }
+svg .edge.dash { stroke-dasharray: 5 4 }
+svg .edge.bad { stroke: var(--bad); stroke-dasharray: 5 4 }
+svg .gate { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1.2 }
+svg .node { cursor: pointer }
+svg .node:hover .box, svg .node:hover .off { stroke: var(--accent) }
+svg .node.sel .box, svg .node.sel .off { stroke: var(--accent); stroke-width: 2.2 }
+svg .mk { cursor: pointer }
+svg .mk circle { fill: var(--bad); stroke: var(--surface); stroke-width: 2 }
+svg .mk text { fill: #fff; font: 600 10.5px var(--mono); text-anchor: middle; dominant-baseline: central; pointer-events: none }
+svg .mk.medium circle { fill: var(--warn) }
+svg .mk.low circle { fill: var(--faint) }
+svg .pill-bad { fill: var(--bad-soft) } svg .pill-bad-t { fill: var(--bad); font: 600 10.5px var(--body) }
+svg .pill-ok { fill: var(--ok-soft) } svg .pill-ok-t { fill: var(--ok); font: 600 10.5px var(--body) }
+svg .pill-warn { fill: var(--warn-soft) } svg .pill-warn-t { fill: var(--warn); font: 600 10.5px var(--body) }
+svg .arrowhead { fill: var(--faint) }
+svg .arrowhead-accent { fill: var(--accent) }
+svg .arrowhead-bad { fill: var(--bad) }
+
+@media (min-width: 1560px) { .detail { position: sticky; top: 60px; align-self: start } }
+.detail .kicker { font: 500 11.5px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
+.detail h3 { font-size: 17px; margin-top: 4px }
+.detail ul { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 4px }
+.detail .refs { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px }
+.detail .refs code { background: var(--sunk); border-radius: 6px; padding: 2px 6px }
+.detail .hint { color: var(--faint); font-size: 13px }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 12.5px; padding: 10px 14px; border-top: 1px solid var(--line) }
+.legend span { display: inline-flex; align-items: center; gap: 6px }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid var(--line-strong) }
+.dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; color: #fff; font: 600 9px/14px var(--mono); text-align: center }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 4px 11px; cursor: pointer; font-size: 13px }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink) }
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+
+.sev { font: 600 10.5px/1 var(--body); letter-spacing: .05em; text-transform: uppercase; border-radius: 99px; padding: 4px 8px; white-space: nowrap }
+.sev.high { background: var(--bad-soft); color: var(--bad) }
+.sev.medium { background: var(--warn-soft); color: var(--warn) }
+.sev.low { background: var(--sunk); color: var(--muted) }
+.sev.decision { background: var(--info-soft); color: var(--info) }
+.sev.fixed { background: var(--ok-soft); color: var(--ok) }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface) }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top }
+thead th { font: 500 12px var(--body); color: var(--muted); background: var(--sunk); position: sticky; top: 0 }
+tbody tr:last-child td { border-bottom: 0 }
+tr.group td { background: var(--sunk); font: 600 12px var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
+td.c { text-align: center; white-space: nowrap }
+.yes { color: var(--ok); font-weight: 600 }
+.no { color: var(--faint) }
+.lock { color: var(--muted); font-size: 11px; margin-left: 3px }
+.ch { display: inline-block; font-size: 11.5px; font-weight: 500; padding: 2px 7px; border-radius: 6px; white-space: nowrap }
+.ch.works { background: var(--ok-soft); color: var(--ok) }
+.ch.fails { background: var(--bad-soft); color: var(--bad); text-decoration: line-through; text-decoration-thickness: 1px }
+.ch.needs { background: var(--warn-soft); color: var(--warn) }
+.ch.none { color: var(--faint) }
+.linkmk { border: 0; background: var(--bad); color: #fff; font: 600 10.5px/18px var(--mono); border-radius: 99px; min-width: 20px; padding: 0 5px; cursor: pointer; margin-left: 4px }
+.linkmk.fixed { background: var(--ok) } .linkmk.medium { background: var(--warn) } .linkmk.low { background: var(--faint) } .linkmk.decision { background: var(--info) }
+
+.toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none }
+.toggle input { width: 16px; height: 16px; accent-color: var(--accent) }
+.callout { border-radius: var(--radius); padding: 12px 14px; background: var(--bad-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent) }
+.callout b { color: var(--bad) }
+
+.reg { display: grid; gap: 10px }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 8px; scroll-margin-top: 70px }
+.card.flash { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft) }
+.card .head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap }
+.card .num { font: 600 13px var(--mono); color: var(--muted); min-width: 28px }
+.card .ttl { font-weight: 600; flex: 1 1 280px; min-width: 0 }
+.card .area { font-size: 12px; color: var(--muted) }
+.card dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 13.5px }
+.card dt { color: var(--muted) }
+.card dd { margin: 0; min-width: 0 }
+@media (max-width: 560px) { .card dl { grid-template-columns: minmax(0, 1fr) } .card dt { margin-top: 6px } }
+
+.twocol { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)) }
+@media (max-width: 900px) { .twocol { grid-template-columns: minmax(0, 1fr) } }
+ol.steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 6px }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: 13.5px; margin-top: 10px }
+.kv b { font-weight: 600 }
+@media (prefers-reduced-motion: no-preference) { .card { transition: box-shadow .2s, border-color .2s } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Odin by Protect24x7 · how it works</div>
+      <h1>Odin System Map</h1>
+      <p class="sub">How requests, data, notifications and permissions move through Odin, and where the gaps are. Click any box for detail; red and amber numbers are loopholes.</p>
+    </div>
+    <div class="stamp" id="stamp"></div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button role="tab" id="t-overview" aria-controls="overview" aria-selected="true">Overview</button>
+    <button role="tab" id="t-architecture" aria-controls="architecture">Architecture</button>
+    <button role="tab" id="t-lifecycle" aria-controls="lifecycle">Project lifecycle</button>
+    <button role="tab" id="t-notifications" aria-controls="notifications">Notifications</button>
+    <button role="tab" id="t-permissions" aria-controls="permissions">Permissions</button>
+    <button role="tab" id="t-signin" aria-controls="signin">Ways in</button>
+    <button role="tab" id="t-loopholes" aria-controls="loopholes">Loopholes <span class="count" id="loop-count"></span></button>
+  </nav>
+
+  <!-- OVERVIEW -->
+  <section class="view" id="overview" role="tabpanel" aria-labelledby="t-overview">
+    <div class="tiles" id="tiles"></div>
+    <div class="twocol">
+      <div class="panel">
+        <h2>What Odin is, in one paragraph</h2>
+        <p style="margin-top:8px">Odin tracks each security rollout from purchase order to signed acceptance. Staff move a project through its stages; tasks, documents, risks and a dated plan hang off each project; reports and a signed sign-off close it. One Flask application serves the React screens and the data behind them, keeps everything in one SQLite database on the server, and a second process on the same server runs the scheduled work: reminders, alerts, backups and the weekly report.</p>
+        <div class="kv">
+          <b>Who uses it</b><span>Staff (Admin, Member, Contributor, Viewer) and invited partners or customers (External)</span>
+          <b>Where it runs</b><span>One Ubuntu VM, three Docker containers, reached only through a Cloudflare tunnel</span>
+          <b>What it talks to</b><span>Microsoft 365 for mail, Teams and backups, Microsoft sign-in, a Teams webhook, Kibana. Only the webhook is usable today.</span>
+          <b>Where data leaves</b><span>Emails, Teams posts, PDFs, CSV exports, document downloads, the read-only API, backups, guest pages</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Fix these first</h2>
+        <p>The high items and the mediums that expose data or lose it.</p>
+        <ol class="steps" id="top-fixes"></ol>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>How to read the map</h2>
+      <div class="kv">
+        <b>Architecture</b><span>the machines and services, and how a request travels</span>
+        <b>Project lifecycle</b><span>the logical flow of one rollout, with the gates it must pass</span>
+        <b>Notifications</b><span>every event, who hears about it and on which channel, with what actually arrives today</span>
+        <b>Permissions</b><span>the two keys (workspace role and project role) and who sees which projects</span>
+        <b>Ways in</b><span>the seven ways to get into Odin and what guards each</span>
+        <b>Loopholes</b><span>the register: severity, impact, the fix, and where it sits in the code</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section class="view" id="architecture" role="tabpanel" aria-labelledby="t-architecture" hidden>
+    <p class="lede">A request from any browser reaches Cloudflare, travels down the tunnel to the VM, passes nginx and lands in the Flask app. The app and the scheduler share one data volume. External services sit on the right; dashed boxes are not connected in production.</p>
+    <div class="grid2">
+      <div class="diagram" id="arch-diagram"></div>
+      <aside class="panel detail" id="arch-detail" aria-live="polite"></aside>
+    </div>
+  </section>
+
+  <!-- LIFECYCLE -->
+  <section class="view" id="lifecycle" role="tabpanel" aria-labelledby="t-lifecycle" hidden>
+    <p class="lede">One rollout from creation to purge. Amber diamonds are gates that can stop it. The red dashed line is the old vendor guest link, a second way to move stages that skips the checks.</p>
+    <div class="grid2">
+      <div class="diagram" id="life-diagram"></div>
+      <aside class="panel detail" id="life-detail" aria-live="polite"></aside>
+    </div>
+  </section>
+
+  <!-- NOTIFICATIONS -->
+  <section class="view" id="notifications" role="tabpanel" aria-labelledby="t-notifications" hidden>
+    <div class="diagram" id="notif-diagram"></div>
+    <div class="callout" id="notif-callout"><b>Production today:</b> Microsoft 365 is not connected, so every email and every Teams channel post fails without telling anyone. The bell and the Teams webhook are the only channels that arrive.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+      <label class="toggle"><input type="checkbox" id="prod-toggle" checked> Show what arrives in production today</label>
+      <div class="chips" id="notif-filter" role="group" aria-label="Filter events"></div>
+    </div>
+    <div class="table-wrap"><table id="notif-table"></table></div>
+    <div class="panel">
+      <h3>Events that tell nobody <button class="linkmk medium" data-loop="11" aria-label="Loophole 11">11</button></h3>
+      <ul id="silent" style="margin:8px 0 0;padding-left:18px;display:grid;gap:4px"></ul>
+    </div>
+  </section>
+
+  <!-- PERMISSIONS -->
+  <section class="view" id="permissions" role="tabpanel" aria-labelledby="t-permissions" hidden>
+    <div class="diagram" id="keys-diagram"></div>
+    <div class="panel">
+      <h2>Workspace roles</h2>
+      <p>What each role may do anywhere. Admins can change every cell under Settings → Role permissions except the locked ones. External is the partner or customer account.</p>
+    </div>
+    <div class="table-wrap"><table id="role-table"></table></div>
+    <div class="panel">
+      <h2>Project roles</h2>
+      <p>On a given project, the action also needs the right project role. Admins skip this second check.</p>
+    </div>
+    <div class="table-wrap"><table id="proj-table"></table></div>
+    <div class="twocol">
+      <div class="panel">
+        <h3>Who sees which projects</h3>
+        <div class="kv" id="visibility"></div>
+      </div>
+      <div class="panel">
+        <h3>Fixed to Admin, outside the matrix</h3>
+        <ul id="adminonly" style="margin:8px 0 0;padding-left:18px;display:grid;gap:4px"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- SIGN-IN -->
+  <section class="view" id="signin" role="tabpanel" aria-labelledby="t-signin" hidden>
+    <p class="lede">Seven ways into Odin. Every signed-in request then checks the session's age, its idle time and the account's epoch, which ends every session when a password is reset or an account is deactivated; every change needs a CSRF token.</p>
+    <div class="table-wrap"><table id="doors-table"></table></div>
+  </section>
+
+  <!-- LOOPHOLES -->
+  <section class="view" id="loopholes" role="tabpanel" aria-labelledby="t-loopholes" hidden>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">
+      <div class="chips" id="sev-filter" role="group" aria-label="Filter by severity"></div>
+      <div class="chips" id="area-filter" role="group" aria-label="Filter by area"></div>
+    </div>
+    <div class="reg" id="register"></div>
+  </section>
+</div>
+
+<script>
+// ---------- what this map describes: bump on every update ----------
+const MAP_STAMP = { version: "v1.2.0", date: "30 Sep 2026" };
+document.getElementById("stamp").innerHTML = `${MAP_STAMP.version} · production at odin.protect24x7.com<br>mapped from the code, ${MAP_STAMP.date}`;
+
+// ---------- data: loopholes. A fixed one keeps its number: add fixed: "v1.x.y" ----------
+const LOOPS = [
+  { id: 1, sev: "high", area: "Access", title: "Any staff account can take the anonymous guest links",
+    what: "The project page API hands the customer and vendor guest links to every internal account, Viewers and staff who are not on the project included. The vendor link moves a project to its next stage without signing in.",
+    impact: "A Viewer can advance a rollout, and the trail records it as a guest, not as them.",
+    fix: "Return guest links only to the project manager and Admins. Better: switch legacy guest links off (Settings → Sign-in & security) now that partners have their own accounts.",
+    ref: "routes/api.py:773", on: ["app", "lc-guest", "d-guest"] },
+  { id: 2, sev: "high", area: "Operations", title: "Microsoft 365 is not connected, so email goes nowhere",
+    what: "Owner emails, alert emails, the daily digest, the weekly report, the signed sign-off PDF, password resets and partner sign-in links all send through Microsoft 365. The email switch can be turned on anyway, and a failed send only reaches the server log.",
+    impact: "People assume they are told; they are not. Only the bell and the Teams webhook arrive. Partners cannot request their own sign-in link and staff cannot reset a forgotten password.",
+    fix: "Connect Microsoft 365 (Phase 6). Until then, refuse to turn email on while it is not connected, and put a notice in the admins' bell when a send fails.",
+    ref: "graph.py:303 · routes/integrations.py:115", on: ["m365", "n-email", "d-link", "d-reset"] },
+  { id: 3, sev: "medium", area: "Data exposure", title: "Partners and customers see every document and the internal contacts",
+    what: "On a project they belong to, an external account lists and downloads every document, including the client's PO, and receives every participant's email and the internal account-manager and partner fields. The report has a customer cut; the project page does not.",
+    impact: "A reseller or contractor can read the client PO and the internal contact list.",
+    fix: "Mark document categories as customer-visible (PO internal by default) and cut participant emails and internal fields from the external view of the project.",
+    ref: "routes/api.py:767-784 · routes/projects.py:782", on: ["app", "lc-work"] },
+  { id: 4, sev: "medium", area: "Data exposure", title: "The signed sign-off PDF mailed to the customer holds staff-only records",
+    what: "When a sign-off completes, the PDF is rendered in the staff view, with the signer's IP address and browser, and mailed to the customer as well as to staff.",
+    impact: "Internal signing evidence leaves the company; the product rule says it is for staff.",
+    fix: "Render the customer's copy with the customer view (staff=False).",
+    ref: "routes/signoff.py:173", on: ["lc-signoff"] },
+  { id: 5, sev: "medium", area: "Data exposure", title: "The weekly report sends internal versions to any address",
+    what: "The report attaches each project's internal snapshot and the internal portfolio PDF to every address in 'And these addresses', which may be outside the company. It also ignores the global email switch.",
+    impact: "Baseline slip, internal notes and risks can reach a customer by mistake.",
+    fix: "Limit extra addresses to company domains, or send the customer cut to anyone outside them.",
+    ref: "services/weekly_report.py:85, 98", on: ["scheduler", "lc-reports"] },
+  { id: 6, sev: "medium", area: "Data at rest", title: "Backups carry Microsoft secrets in plain text",
+    what: "The backup zip (database, documents, pictures) is not encrypted. Once Microsoft 365 is connected, the database holds its refresh token and client secrets in plain text, and backups are copied to OneDrive, SharePoint or a network share.",
+    impact: "Anyone who reads a backup copy can act as Odin's Microsoft 365 connection.",
+    fix: "Seal those secrets like the two-step secrets (a key from SECRET_KEY, which is not in the backup), or encrypt the archive.",
+    ref: "graph.py:152 · backup.py", on: ["data", "offsite"] },
+  { id: 7, sev: "medium", area: "Operations", title: "A failed restore test can still prune good off-host copies",
+    what: "Local pruning waits for a passing restore test; pruning on OneDrive, SharePoint and the network share runs regardless.",
+    impact: "A run of bad backups could push out the last good off-host copy.",
+    fix: "Skip every prune when the restore test fails.",
+    ref: "backup.py:199-206", on: ["scheduler", "offsite"] },
+  { id: 8, sev: "medium", area: "Operations", title: "Purging a project named by a sign-up link can break the nightly clean-up",
+    what: "Sign-up links point at a project, but they are not in the purge cascade. With foreign keys enforced, the purge of that project fails, and the same step also skips trimming time on Odin and the dashboard snapshot. Sign-up links are never trimmed.",
+    impact: "Deleted projects stop being purged and the dashboard loses its daily history, silently.",
+    fix: "Clear the project from sign-up links in the purge and in reset_data, and trim old links.",
+    ref: "db.py:118-126 · schema.sql:84", on: ["data", "lc-purge"] },
+  { id: 9, sev: "medium", area: "Process", title: "The vendor guest link is a weaker second way to move stages",
+    what: "A stage move through the vendor link skips the customer's approval even when the project requires it, leaves no undo, is missing from the weekly report's 'stages moved', and tells only the owner by email (not connected) and Teams.",
+    impact: "Approvals can be bypassed and the move is easy to miss.",
+    fix: "Send it through the normal stage change, or retire guest links.",
+    ref: "routes/guest.py:90-119", on: ["lc-guest", "n-guest"] },
+  { id: 10, sev: "medium", area: "Access", title: "A Contributor who creates a project becomes its manager",
+    what: "The creator becomes project manager, with team, partner invitations, guest links and sign-off powers. A Contributor cannot move stages, so the project cannot advance until an Admin steps in.",
+    impact: "Stalled projects, and Contributors holding manager powers by accident.",
+    fix: "Ask for a manager who may move stages when the project is created (the edit form already checks this), or keep project creation to Members.",
+    ref: "routes/projects.py:388", on: ["lc-create"] },
+  { id: 11, sev: "medium", area: "Notifications", title: "Several events tell nobody",
+    what: "No one is told when the project manager changes, when staff are added to a project, when an access request is approved or declined (the requester never hears), when a sign-off is withdrawn (the signer is not told), when tasks are completed in bulk, or when an alert clears.",
+    impact: "People learn of changes that affect them by accident.",
+    fix: "Add a bell notification for each.",
+    ref: "routes/projects.py:540, 875 · routes/sso.py:204-234 · routes/signoff.py", on: ["n-silent"] },
+  { id: 12, sev: "medium", area: "Notifications", title: "Alerts never reach the bell, and the digest skips project managers",
+    what: "New alerts (overdue, due soon, over SLA, stale) go to the owner by email or Teams only, and both are off by default; participants are never told. The daily digest goes to Admins by email only and ignores their email choices.",
+    impact: "The people who can act on a late project are not the ones who hear about it.",
+    fix: "Put new alerts in the owner's and participants' bell, and send each project manager a digest of their own rollouts.",
+    ref: "services/alerts.py:79-117 · send_daily_alerts.py:69-104", on: ["n-alerts", "scheduler"] },
+  { id: 13, sev: "medium", area: "Infrastructure", title: "Server hardening from go-live is still open",
+    what: "No VM snapshot or nightly VM backup yet, SSH still accepts passwords, the tunnel token sits in shell history, no Cloudflare rate limit on /login, and no Cloudflare Access in front.",
+    impact: "One disk or one leaked credential away from a long outage.",
+    fix: "Finish the go-live list: Proxmox snapshot and schedule, SSH keys only, rotate the tunnel token, a Cloudflare rate limit on sign-in.",
+    ref: "docs/GO_LIVE.md", on: ["vm", "cf"] },
+  { id: 14, sev: "low", area: "Access", title: "Staff can hold the Customer project role",
+    what: "Adding a staff member to a project accepts Customer, Reseller or Contractor. A staff member set as Customer can record the customer's stage approvals.",
+    impact: "An internal person can approve on the customer's behalf.",
+    fix: "Allow partner roles only for external accounts.",
+    ref: "routes/projects.py:885", on: ["lc-stages"] },
+  { id: 15, sev: "low", area: "Access", title: "Role and account type can disagree",
+    what: "An internal account can be given the External role (it then sees every project with a partner's rights), and a partner account can be made Admin. The External column in Role permissions is not locked.",
+    impact: "Confusing accounts with unexpected reach.",
+    fix: "Tie the role to the account type and lock External's write permissions.",
+    ref: "routes/users.py:29, 76-94", on: [] },
+  { id: 16, sev: "low", area: "Data exposure", title: "Old plain-text report versions reach customers",
+    what: "One report address returns any saved version to partners, including early text versions drafted from internal notes. The report API already limits partners to snapshots.",
+    impact: "Internal wording can leak through an old version.",
+    fix: "Give partners snapshots only, as the API does.",
+    ref: "routes/projects.py:274", on: ["lc-reports"] },
+  { id: 17, sev: "low", area: "Security", title: "Signing out does not end a copied session",
+    what: "Sessions are signed cookies. Sign-out clears the browser's copy, but a copied cookie keeps working until its idle or absolute limit. /logout is a GET, so another site can sign you out.",
+    impact: "A stolen cookie survives the victim signing out.",
+    fix: "Bump the account's session epoch on sign-out and make sign-out POST only.",
+    ref: "routes/auth.py:325", on: ["app", "d-password"] },
+  { id: 18, sev: "low", area: "Security", title: "Credentials travel in the web address",
+    what: "Guest links (which never expire), sign-in, reset and sign-up tokens are part of the URL, so they are written to the gunicorn and Cloudflare logs.",
+    impact: "Anyone with log access can reuse a live guest link.",
+    fix: "Retire guest links; keep token paths out of the access log.",
+    ref: "Dockerfile:48", on: ["cf", "d-guest"] },
+  { id: 19, sev: "low", area: "Security", title: "The Content Security Policy allows inline scripts",
+    what: "script-src includes 'unsafe-inline', which weakens the browser's defence if a script injection is ever found.",
+    impact: "Less defence in depth against cross-site scripting.",
+    fix: "Move to a nonce-based policy.",
+    ref: "security.py:309-316", on: ["app"] },
+  { id: 20, sev: "low", area: "Notifications", title: "Customers who mute stage emails also miss approval requests",
+    what: "An approval request is sent as a stage-change notification, so muting stage emails mutes approval requests too.",
+    impact: "Approvals wait on a customer who was never asked.",
+    fix: "Send approval requests as their own kind.",
+    ref: "routes/projects.py:611", on: ["n-approval"] },
+  { id: 21, sev: "low", area: "Notifications", title: "People removed from a project keep its notifications",
+    what: "The bell does not re-check access, so old notification titles and text stay visible after someone leaves a project.",
+    impact: "Minor information leak after a role change.",
+    fix: "Filter the bell by what the person may see now.",
+    ref: "routes/api.py:1181-1187", on: [] },
+  { id: 22, sev: "low", area: "Operations", title: "Uploads over 25 MB fail at the proxy",
+    what: "nginx caps request bodies at 25 MB while the upload policy allows up to 100 MB.",
+    impact: "A permitted upload fails with a proxy error.",
+    fix: "Match nginx's limit to the policy's maximum.",
+    ref: "deploy/nginx.cloudflare.conf:19", on: ["nginx"] },
+  { id: 23, sev: "low", area: "Access", title: "Menus follow role names, not the permission matrix",
+    what: "The menu shows Settings to the Admin role and 'New project' to everyone but Viewers, and several admin pages are fixed to the Admin role. A customised matrix is only partly honoured.",
+    impact: "What people see and what they may do can differ.",
+    fix: "Draw the menus from permissions and move the fixed Admin checks onto permissions.",
+    ref: "frontend/src/components/AppShell.tsx:70, 95", on: [] },
+  { id: 24, sev: "low", area: "Security", title: "API token reads are not in the audit trail",
+    what: "A read-only token sees what staff see (every project), and only its last use is recorded.",
+    impact: "No record of what a script read.",
+    fix: "Audit /api/v1 reads, or at least count them per token.",
+    ref: "routes/tokens.py", on: ["d-api", "scripts"] },
+  { id: 25, sev: "low", area: "Security", title: "Setting up two-step sign-in does not ask for the password",
+    what: "Someone holding a stolen session could enrol their own authenticator and lock the owner out.",
+    impact: "Account takeover becomes sticky.",
+    fix: "Ask for the password before starting setup.",
+    ref: "routes/mfa.py:52", on: ["d-password"] },
+  { id: 26, sev: "low", area: "Operations", title: "Read notifications are trimmed only when a new one is sent",
+    what: "Retention runs as a side effect of the next notification; unread items are kept forever.",
+    impact: "The table grows on quiet workspaces.",
+    fix: "Trim in the nightly housekeeping.",
+    ref: "services/notifications.py:64", on: [] },
+  { id: 27, sev: "decision", area: "Access", title: "Every staff account sees every project",
+    what: "Members, Contributors and Viewers see all rollouts, whether or not they are on the team; only what they may change follows their project role.",
+    impact: "Fine for a small team; wrong if some staff should see only their own work.",
+    fix: "Confirm this is intended, or scope staff to their projects the way partners are.",
+    ref: "core.py:280-287", on: ["vis"] },
+  { id: 28, sev: "decision", area: "Notifications", title: "The Teams preference is stored, not delivered",
+    what: "People can choose Teams on sign-up and on their account page; Odin still emails them (when mail works) because personal Teams messages need Microsoft 365.",
+    impact: "Expected, until Phase 6.",
+    fix: "Deliver Teams chats once Microsoft 365 is connected.",
+    ref: "routes/auth.py:544-553", on: ["n-teams"] },
+  { id: 29, sev: "decision", area: "Security", title: "Every email to a partner carries a fresh sign-in link",
+    what: "Each notification to an external account mints a one-time link valid for the link lifetime (Settings → Sign-in & security).",
+    impact: "A forwarded email lets the recipient in once, until it expires.",
+    fix: "Keep the lifetime short (it is 240 minutes in production) or link to the sign-in page instead.",
+    ref: "services/notifications.py:21-24", on: ["d-link"] },
+];
+const SEV_ORDER = { high: 0, medium: 1, low: 2, decision: 3 };
+const byId = Object.fromEntries(LOOPS.map((l) => [l.id, l]));
+const isOpen = (l) => !l.fixed;
+const loopsOn = (node) => LOOPS.filter((l) => isOpen(l) && l.on.includes(node));
+
+// ---------- helpers ----------
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const mkBtn = (id) => `<button class="linkmk ${byId[id].fixed ? "fixed" : byId[id].sev}" data-loop="${id}" aria-label="Loophole ${id}: ${esc(byId[id].title)}">${id}</button>`;
+const store = { get(k) { try { return localStorage.getItem(k) } catch { return null } }, set(k, v) { try { localStorage.setItem(k, v) } catch {} } };
+
+// ---------- tabs ----------
+const TABS = ["overview", "architecture", "lifecycle", "notifications", "permissions", "signin", "loopholes"];
+function show(tab) {
+  if (!TABS.includes(tab)) tab = "overview";
+  for (const t of TABS) {
+    $("#" + t).hidden = t !== tab;
+    $("#t-" + t).setAttribute("aria-selected", String(t === tab));
+    $("#t-" + t).tabIndex = t === tab ? 0 : -1;
+  }
+  store.set("odin-map-tab", tab);
+  if (location.hash.slice(1) !== tab) history.replaceState(null, "", "#" + tab);
+}
+for (const t of TABS) $("#t-" + t).addEventListener("click", () => show(t));
+$("nav.tabs").addEventListener("keydown", (e) => {
+  const i = TABS.findIndex((t) => $("#t-" + t).getAttribute("aria-selected") === "true");
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    const n = TABS[(i + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
+    show(n); $("#t-" + n).focus(); e.preventDefault();
+  }
+});
+function goLoop(id) {
+  sevFilter = byId[id] && byId[id].fixed ? "fixed" : "all"; areaFilter = "all"; renderRegister(); show("loopholes");
+  const card = document.getElementById("loop-" + id);
+  if (card) { card.scrollIntoView({ block: "center" }); card.classList.add("flash"); card.focus({ preventScroll: true }); setTimeout(() => card.classList.remove("flash"), 1600) }
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-loop]");
+  if (b) { e.preventDefault(); goLoop(Number(b.dataset.loop)) }
+});
+
+// ---------- overview ----------
+(function overview() {
+  const c = (s) => LOOPS.filter((l) => isOpen(l) && l.sev === s).length;
+  $("#loop-count").textContent = LOOPS.filter((l) => isOpen(l) && l.sev !== "decision").length;
+  $("#tiles").innerHTML = [
+    [`<span class="bad">${c("high")}</span> · ${c("medium")} · ${c("low")}`, "open loopholes: high · medium · low, plus " + c("decision") + " decisions to confirm" + (LOOPS.some((l) => l.fixed) ? `; ${LOOPS.filter((l) => l.fixed).length} fixed` : "")],
+    ["7", "ways into Odin, each with its own guard"],
+    ["5 × 6", "workspace roles × project roles; both must agree"],
+    ["30 + 6", "notification events mapped, and 6 that tell nobody"],
+  ].map(([n, l]) => `<div class="tile"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+  const top = LOOPS.filter((l) => isOpen(l) && l.sev !== "decision" && l.sev !== "low").sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev] || a.id - b.id).slice(0, 8).map((l) => l.id);
+  $("#top-fixes").innerHTML = top.map((id) => `<li>${mkBtn(id)} ${esc(byId[id].title)}</li>`).join("");
+})();
+
+// ---------- SVG helpers ----------
+const NS = "http://www.w3.org/2000/svg";
+function arrowDefs(prefix) {
+  return `<defs>
+    <marker id="${prefix}-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker>
+    <marker id="${prefix}-aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-accent"/></marker>
+    <marker id="${prefix}-ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-bad"/></marker>
+  </defs>`;
+}
+function markers(node, x, y) {
+  return loopsOn(node).map((l, i) => `<g class="mk ${l.sev}" data-loop="${l.id}" tabindex="0" role="button" aria-label="Loophole ${l.id}: ${esc(l.title)}">
+    <title>${l.id}. ${esc(l.title)}</title><circle cx="${x - i * 22}" cy="${y}" r="10"/><text x="${x - i * 22}" y="${y + 0.5}">${l.id}</text></g>`).join("");
+}
+function nodeBox(id, x, y, w, h, title, lines = [], opts = {}) {
+  const cls = opts.off ? "off" : "box";
+  const pill = opts.pill ? `<rect x="${x + w - opts.pill[0].length * 6.2 - 22}" y="${y + 9}" width="${opts.pill[0].length * 6.2 + 12}" height="18" rx="9" class="pill-${opts.pill[1]}"/><text x="${x + w - opts.pill[0].length * 6.2 - 16}" y="${y + 22}" class="pill-${opts.pill[1]}-t">${opts.pill[0]}</text>` : "";
+  return `<g class="node" data-node="${id}" tabindex="0" role="button" aria-label="${esc(title)}">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" class="${cls}"/>
+    <text x="${x + 12}" y="${y + 22}" class="t-title">${esc(title)}</text>${pill}
+    ${lines.map((l, i) => `<text x="${x + 12}" y="${y + 42 + i * 17}" class="t-small t-muted">${esc(l)}</text>`).join("")}
+    ${markers(id, x + w - 4, y)}
+  </g>`;
+}
+function wireDetail(root, panel, info, first) {
+  const sel = (id) => {
+    root.querySelectorAll(".node").forEach((n) => n.classList.toggle("sel", n.dataset.node === id));
+    const d = info[id]; if (!d) return;
+    const ls = loopsOn(id);
+    panel.innerHTML = `<div class="kicker">${esc(d.kind)}</div><h3>${esc(d.title)}</h3>
+      <p style="margin-top:8px">${esc(d.text)}</p>
+      ${d.points ? `<ul>${d.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
+      ${d.refs ? `<div class="refs">${d.refs.map((r) => `<code>${esc(r)}</code>`).join("")}</div>` : ""}
+      ${ls.length ? `<div style="margin-top:14px"><div class="kicker">Loopholes here</div><div style="display:grid;gap:6px;margin-top:6px">${ls.map((l) => `<div>${mkBtn(l.id)} ${esc(l.title)}</div>`).join("")}</div></div>` : ""}`;
+  };
+  root.addEventListener("click", (e) => { if (e.target.closest(".mk")) return; const n = e.target.closest(".node"); if (n) sel(n.dataset.node) });
+  root.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const m = e.target.closest(".mk"); if (m) { e.preventDefault(); goLoop(Number(m.dataset.loop)); return }
+    const n = e.target.closest(".node"); if (n) { e.preventDefault(); sel(n.dataset.node) }
+  });
+  sel(first);
+}
+
+// ---------- architecture ----------
+const ARCH = {
+  staff: { kind: "People", title: "Staff in a browser", text: "Admins, Members, Contributors and Viewers. They sign in with a password (plus two-step if set) or, once set up, with Microsoft.", points: ["Every page after sign-in is the React app", "Session cookie: HttpOnly, SameSite=Lax, idle and absolute limits"] },
+  partners: { kind: "People", title: "Partners and customers", text: "External accounts invited to a project. No password: each sign-in is a one-time link sent by email, or handed over by the project manager while mail is not connected.", points: ["See only the projects they are on", "Reports and plans are cut on the server for them"] },
+  anyone: { kind: "People", title: "Anyone holding a link", text: "Legacy guest links (no sign-in at all), sign-up links for new colleagues, and password-reset links. Each is a secret in the web address.", points: ["Guest links never expire; an admin switch turns them all off", "Sign-up and reset links are single-use and expire"] },
+  scripts: { kind: "Machines", title: "Scripts with an API token", text: "Read-only /api/v1 for other tools: projects, their stages and tasks, the latest saved report.", points: ["Token hashed at rest; 30, 90 or 365 days", "Never becomes a browser session"] },
+  cf: { kind: "Edge", title: "Cloudflare", text: "DNS and TLS for odin.protect24x7.com, and the public end of the tunnel. Nothing is exposed on the office network; the VM makes an outbound connection only.", points: ["No Cloudflare Access (same as Zeus)", "No rate-limit rule on /login yet", "Access logs record full URLs"] },
+  vm: { kind: "Server", title: "Ubuntu VM 'odin' (192.168.1.237)", text: "Proxmox guest with a static address. Runs cloudflared as a system service and Docker Compose for Odin in /opt/odin, checked out at a release tag.", points: ["Updates: back up, check out the tag, rebuild, preflight", "SECRET_KEY lives in /opt/odin/.env and must stay stable"] },
+  cloudflared: { kind: "Service", title: "cloudflared (tunnel)", text: "Runs on the host, not in Docker. Carries traffic from Cloudflare to nginx on 127.0.0.1:8080.", refs: ["systemd: cloudflared", "docker-compose.host-tunnel.yml"] },
+  nginx: { kind: "Container", title: "nginx", text: "Listens on 127.0.0.1:8080 only. Passes the visitor's real address (CF-Connecting-IP), forces https, serves the legacy stylesheet and proxies everything else to the app.", refs: ["deploy/nginx.cloudflare.conf"] },
+  app: { kind: "Container", title: "Odin app (gunicorn + Flask)", text: "Two workers × four threads. One application serves the React screens, the JSON API behind them, and the few pages still in Jinja (guest pages, the fallback sign-in form, the error page).", points: ["Every request: session age, idle time, account epoch; every change: CSRF token", "Decorators check the workspace permission, then the project role, then that the project is visible", "Every change writes an audit row (a test enforces it)"], refs: ["core.py", "routes/api.py", "spa.py", "security.py"] },
+  scheduler: { kind: "Container", title: "Scheduler", text: "Its own process on the same data volume; wakes every minute and runs each job at the time set in Settings, in the workspace time zone.", points: ["Daily digest and task reminders (working days, not holidays)", "Backups with a restore test; copies off the server when set up", "Weekly report when switched on", "03:30 housekeeping: audit retention, purge of deleted projects, trim time on Odin, dashboard snapshot", "Every 15 minutes: alert sync"], refs: ["scheduler.py", "backup.py", "services/weekly_report.py"] },
+  data: { kind: "Storage", title: "Data volume /data", text: "Everything Odin knows: the SQLite database (WAL mode, foreign keys on) and the files beside it.", points: ["odin.db: ~45 tables (identity, projects, work, reports, sign-off, signals, settings, audit)", "uploads/<project>/, avatars/, brand/ (template logos)", "backups/ (local copies), audit-archive/ (CSV before audit rows are removed)", "Audit log is append-only by database trigger"], refs: ["db.py", "schema.sql", "constants.py"] },
+  m365: { kind: "External · not connected", title: "Microsoft 365 (Graph)", text: "One Azure app, connected by an admin, for mail, Teams channel posts, and OneDrive/SharePoint document mirror and backups.", points: ["Not connected in production: all of these are off", "Tokens stored in the database in plain text once connected"], refs: ["graph.py", "routes/integrations.py"] },
+  entra: { kind: "External · not configured", title: "Microsoft sign-in (Entra)", text: "Its own app registration. Microsoft proves who someone is; Odin decides their role. A newcomer waits for an admin's approval.", refs: ["routes/sso.py"] },
+  webhook: { kind: "External · optional", title: "Teams Workflows webhook", text: "A plain HTTPS post into a Teams channel. Works without Microsoft 365: stage changes, decisions and the weekly summary can arrive here today.", refs: ["graph.py:337"] },
+  kibana: { kind: "External · optional", title: "Kibana dashboards", text: "Framed by the staff member's own browser on the Flow page; Odin only fills the project, client and PO into the address. Odin's server never talks to Kibana.", refs: ["routes/api.py:538"] },
+  offsite: { kind: "External · not set up", title: "Off-host backup copies", text: "OneDrive, a SharePoint site folder, or a network share mounted into the scheduler. Today backups stay on the VM only.", refs: ["backup.py"] },
+};
+(function arch() {
+  const box = (...a) => nodeBox(...a);
+  const e = (d, cls = "", m = "a") => `<path d="${d}" class="edge ${cls}" marker-end="url(#ar-${m})"/>`;
+  const svg = `<svg viewBox="0 0 1120 660" xmlns="${NS}" role="img" aria-label="Odin architecture">
+    ${arrowDefs("ar")}
+    <text x="24" y="28" class="t-display">PEOPLE &amp; TOOLS</text>
+    <text x="252" y="28" class="t-display">EDGE</text>
+    <text x="450" y="28" class="t-display">SERVER</text>
+    <text x="920" y="28" class="t-display">OUTSIDE SERVICES</text>
+    ${box("staff", 20, 44, 190, 64, "Staff", ["browser · password / Microsoft"])}
+    ${box("partners", 20, 150, 190, 64, "Partners & customers", ["browser · one-time email link"])}
+    ${box("anyone", 20, 256, 190, 64, "Anyone with a link", ["guest · sign-up · reset"])}
+    ${box("scripts", 20, 362, 190, 64, "Scripts", ["read-only API token"])}
+    ${box("cf", 248, 44, 160, 382, "Cloudflare", ["DNS · TLS", "tunnel endpoint", "", "no Access", "no /login rate limit"])}
+    <g class="node" data-node="vm" tabindex="0" role="button" aria-label="Ubuntu VM">
+      <rect x="440" y="40" width="440" height="600" rx="12" class="zone"/>
+      <text x="456" y="62" class="t-display">UBUNTU VM · ODIN · 192.168.1.237</text>
+      ${markers("vm", 876, 40)}
+    </g>
+    ${box("cloudflared", 460, 80, 160, 56, "cloudflared", ["systemd, on the host"])}
+    ${box("nginx", 460, 180, 160, 56, "nginx", ["127.0.0.1:8080"])}
+    ${box("app", 660, 80, 200, 250, "Odin app", ["gunicorn · Flask", "", "React screens", "JSON API", "legacy Jinja pages", "sign-in, sessions, CSRF", "permission checks", "audit trail"])}
+    ${box("scheduler", 660, 356, 200, 118, "Scheduler", ["digest · reminders", "backups · weekly report", "housekeeping 03:30", "alert sync / 15 min"])}
+    ${box("data", 460, 500, 400, 118, "Data volume /data", ["odin.db (SQLite, WAL)", "uploads · avatars · brand", "backups · audit-archive"])}
+    <rect x="460" y="356" width="160" height="118" rx="9" class="zone-dash"/>
+    <text x="472" y="380" class="t-small t-muted">Docker Compose:</text>
+    <text x="472" y="398" class="t-small t-muted">nginx, app, scheduler</text>
+    <text x="472" y="416" class="t-small t-muted">share one volume;</text>
+    <text x="472" y="434" class="t-small t-muted">no HTTP between</text>
+    <text x="472" y="452" class="t-small t-muted">app and scheduler</text>
+    ${box("m365", 912, 44, 190, 96, "Microsoft 365", ["mail · Teams channel", "OneDrive · SharePoint"], { off: true, pill: ["off", "bad"] })}
+    ${box("entra", 912, 160, 190, 64, "Microsoft sign-in", ["Entra ID"], { off: true, pill: ["off", "bad"] })}
+    ${box("webhook", 912, 244, 190, 64, "Teams webhook", ["works without M365"], { pill: ["ready", "ok"] })}
+    ${box("kibana", 912, 328, 190, 64, "Kibana", ["framed by the browser"])}
+    ${box("offsite", 912, 412, 190, 80, "Off-host backups", ["OneDrive · SharePoint", "network share"], { off: true, pill: ["none", "warn"] })}
+    ${e("M210 76 H246")} ${e("M210 182 H246")} ${e("M210 288 H246")} ${e("M210 394 H246")}
+    ${e("M408 108 H458", "accent", "aa")}
+    <text x="414" y="100" class="t-small t-muted">tunnel</text>
+    ${e("M540 136 V178", "accent", "aa")}
+    ${e("M620 208 H640 V160 H658", "accent", "aa")}
+    ${e("M660 300 H640 V498", "")}
+    <path d="M760 474 V498" class="edge" marker-end="url(#ar-a)"/>
+    ${e("M860 120 H910", "dash")} ${e("M860 190 H910", "dash")} ${e("M860 276 H910")}
+    ${e("M860 440 H880 V452 H910", "dash")}
+    ${e("M860 400 H886 V110 H910", "dash")}
+  </svg>`;
+  const host = $("#arch-diagram");
+  host.innerHTML = svg + `<div class="legend"><span><i class="sw" style="background:var(--surface)"></i>running</span><span><i class="sw" style="background:var(--sunk);border-style:dashed"></i>not connected</span><span><i class="dot" style="background:var(--bad)">n</i>high</span><span><i class="dot" style="background:var(--warn)">n</i>medium</span><span><i class="dot" style="background:var(--faint)">n</i>low</span></div>`;
+  wireDetail(host, $("#arch-detail"), ARCH, "app");
+})();
+
+// ---------- lifecycle ----------
+const LIFE = {
+  "lc-create": { kind: "Step 1", title: "Create the project", text: "Staff with 'create project' fill the form. The client PO is required and checked for type and content.", points: ["Stages copied from the chosen template (each project then owns its list)", "Two guest links minted (customer, vendor)", "The creator becomes project manager; team members become Coordinators", "Owner told by email and Teams (not connected), audit row written"], refs: ["routes/projects.py:313-407"] },
+  "lc-plan": { kind: "Step 2", title: "Plan and baseline", text: "Planned start and end per stage. The first save freezes the baseline; every later move is logged with its reason, and re-baselining needs one.", points: ["Forecast chains actual, current and remaining stages", "Lengths count working days minus holidays", "Health red / amber / green with reasons"], refs: ["services/plan.py", "services/workdays.py"] },
+  "lc-stages": { kind: "Step 3 · repeats", title: "Move through the stages", text: "The project manager moves the project on. Each move writes a history note, notifies the team and Teams, and can be undone by its author inside the undo window.", points: ["Needs 'edit project stage' and the project manager role (Admins always)", "Optional: the customer approves each move (recorded, the move is not blocked)", "SLA per stage, measured in working days; alerts sync every 15 minutes"], refs: ["routes/projects.py:567-616", "services/alerts.py"] },
+  "lc-work": { kind: "Alongside", title: "Daily work", text: "Tasks, documents, risks and notes hang off the project while it moves.", points: ["Tasks and RAID: project manager and Coordinators; assignees tick their own", "Documents: project manager and Coordinators upload; everyone on it downloads", "Notes: anyone on it; @mentions notify; partners see only customer-visible notes"], refs: ["routes/projects.py:723-1390", "routes/api.py:1047-1110"] },
+  "lc-reports": { kind: "Alongside", title: "Reports", text: "The live report is built from the project; 'save as version' freezes data and words. Partners see saved versions only, cut on the server. The portfolio report and the weekly email read the same structure.", points: ["PDFs use the chosen document template", "Weekly email on the days and time set in Settings"], refs: ["services/report_data.py", "services/weekly_report.py"] },
+  "lc-signoff": { kind: "Step 4", title: "Sign-off", text: "The project manager sends a version; it is frozen (canonical JSON plus a SHA-256 fingerprint). The customer signs or rejects; staff countersign; the signed PDF is mailed.", points: ["A rejection opens an issue in RAID", "Fallbacks: upload a scanned signed copy, or an Admin waiver with a reason", "A sent version is never edited: withdraw and send again"], refs: ["routes/signoff.py", "services/signoff.py"] },
+  "lc-gate": { kind: "Gate", title: "Sign-off gate", text: "The final stage is refused until the sign-off is complete, while 'A signed sign-off closes a project' is on. Every stage-move path calls the gate.", refs: ["services/signoff.py:134 gate()"] },
+  "lc-closed": { kind: "Step 5", title: "Closed", text: "The project leaves the active views, stays readable and reportable, and keeps its sign-off and history." },
+  "lc-purge": { kind: "End", title: "Delete and purge", text: "Deleting is soft: the project can be undone inside the undo window. The nightly housekeeping then purges it, its children and its files.", refs: ["db.py:93-130 cleanup_soft_deletes"] },
+  "lc-guest": { kind: "Side door", title: "Vendor guest link", text: "A link with no sign-in. The vendor can add notes and move the project to its next stage (never the final one; the gate still applies).", points: ["No customer approval, no undo, thin history", "Only the owner (email) and Teams hear of it"], refs: ["routes/guest.py:90-119"] },
+  "lc-approval": { kind: "Gate", title: "Customer approval (optional)", text: "When the project asks for it, each move creates a pending approval for the Customer on the team. The decision is recorded, noted and audited; the stage has already moved.", refs: ["routes/projects.py:658-690"] },
+};
+(function life() {
+  const box = (...a) => nodeBox(...a);
+  const e = (d, cls = "", m = "a") => `<path d="${d}" class="edge ${cls}" marker-end="url(#lf-${m})"/>`;
+  const diamond = (id, cx, cy, label) => `<g class="node" data-node="${id}" tabindex="0" role="button" aria-label="${esc(label)}">
+    <path d="M${cx} ${cy - 32} L${cx + 40} ${cy} L${cx} ${cy + 32} L${cx - 40} ${cy} z" class="gate"/>
+    <text x="${cx}" y="${cy + 4}" text-anchor="middle" class="t-small" style="font-weight:600">${esc(label)}</text>${markers(id, cx + 36, cy - 26)}</g>`;
+  const svg = `<svg viewBox="0 0 1180 520" xmlns="${NS}" role="img" aria-label="Project lifecycle">
+    ${arrowDefs("lf")}
+    ${box("lc-create", 20, 60, 170, 92, "1 · Create", ["PO required", "stages from template", "creator = manager"])}
+    ${box("lc-plan", 222, 60, 170, 92, "2 · Plan & baseline", ["dates per stage", "first save = baseline", "working days"])}
+    ${box("lc-stages", 424, 60, 190, 92, "3 · Stage moves", ["manager moves on", "history + notify", "undo in the window"])}
+    <path d="M580 60 C 600 20, 470 20, 490 58" class="edge accent" marker-end="url(#lf-aa)"/>
+    <text x="496" y="30" class="t-small t-muted">repeats per stage</text>
+    ${diamond("lc-approval", 519, 214, "approval")}
+    ${box("lc-signoff", 646, 60, 176, 92, "4 · Sign-off", ["frozen + SHA-256", "customer signs", "staff countersign"])}
+    ${diamond("lc-gate", 880, 106, "gate")}
+    ${box("lc-closed", 940, 60, 110, 92, "5 · Closed", ["final stage"])}
+    ${box("lc-purge", 1070, 60, 96, 92, "Purge", ["nightly", "after undo"])}
+    ${box("lc-work", 330, 300, 250, 110, "Daily work (alongside)", ["tasks · documents", "risks & issues (RAID)", "notes · @mentions"])}
+    ${box("lc-reports", 620, 300, 250, 110, "Reports (alongside)", ["live · saved versions", "customer cut on server", "portfolio · weekly email"])}
+    ${box("lc-guest", 20, 330, 220, 80, "Vendor guest link", ["no sign-in", "next stage only"])}
+    ${e("M190 106 H220", "accent", "aa")} ${e("M392 106 H422", "accent", "aa")} ${e("M614 106 H644", "accent", "aa")}
+    ${e("M822 106 H838", "accent", "aa")} ${e("M920 106 H938", "accent", "aa")} ${e("M1050 106 H1068", "dash")}
+    ${e("M519 152 V180", "dash")}
+    ${e("M455 298 V154", "dash")} ${e("M745 298 V154", "dash")}
+    <path d="M130 328 C 130 250, 380 220, 440 154" class="edge bad" marker-end="url(#lf-ab)"/>
+    <text x="150" y="252" class="t-small" style="fill:var(--bad)">skips approval and undo</text>
+    <text x="20" y="470" class="t-small t-muted">Every step writes the audit trail. Deleting is possible at any step (Admins; soft, undoable), then the nightly purge.</text>
+  </svg>`;
+  const host = $("#life-diagram");
+  host.innerHTML = svg + `<div class="legend"><span><i class="sw" style="background:var(--accent)"></i>main path</span><span><i class="sw" style="background:var(--warn-soft);border-color:var(--warn)"></i>gate</span><span><i class="sw" style="background:var(--bad)"></i>side door</span></div>`;
+  wireDetail(host, $("#life-detail"), LIFE, "lc-stages");
+})();
+
+// ---------- notifications ----------
+// channel codes: B bell, E email (needs M365), T Teams channel (needs M365), W webhook (works today), - none
+const NOTIF = [
+  ["Project", "Project created", "The creator (as owner)", "-", "E", "TW", "Emails the creator about their own action", null],
+  ["Project", "Stage moved", "Everyone on the project except the mover; Teams", "B", "E", "TW", "", null],
+  ["Project", "Customer approval requested", "The Customer on the project", "B", "E", "TW", "Sent as a stage change", 20],
+  ["Project", "Stage move undone", "Everyone on the project except the mover; Teams", "B", "E", "TW", "", null],
+  ["Project", "Approval decided", "Everyone on the project except the customer; Teams", "B", "E", "TW", "", null],
+  ["Project", "Vendor moved a stage (guest link)", "Owner only; Teams", "-", "E", "TW", "No bell, team not told", 9],
+  ["Project", "Vendor added a note (guest link)", "Owner only; Teams", "-", "E", "TW", "", null],
+  ["Work", "Task assigned", "The assignee (not self-assignment)", "B", "E", "-", "", null],
+  ["Work", "Task done", "The project manager", "B", "E", "-", "", null],
+  ["Work", "Document uploaded", "The project manager", "B", "E", "-", "", null],
+  ["Work", "Note added", "The project manager", "B", "E", "-", "", null],
+  ["Work", "@mention in a note", "The people mentioned (on the project)", "B", "E", "-", "", null],
+  ["Work", "Risk or issue owner set", "The new owner", "B", "E", "-", "", null],
+  ["Work", "Nudge from People", "The colleague", "B", "E", "-", "", null],
+  ["Work", "Task due today or overdue", "Each assignee, once a day", "B", "E", "-", "Working days only, not holidays", null],
+  ["Sign-off", "Sign-off sent", "The signer (partner gets a one-time link)", "B", "E", "-", "", null],
+  ["Sign-off", "Signed", "The countersigner and the owner", "B", "E", "-", "", null],
+  ["Sign-off", "Rejected", "The owner and the countersigner", "B", "E", "-", "Opens an issue in RAID", null],
+  ["Sign-off", "Countersigned (complete)", "Everyone on the project; signed PDF to signer, countersigner, owner", "B", "E", "-", "PDF ignores email choices", 4],
+  ["Sign-off", "Scanned copy uploaded", "Everyone on the project", "B", "E", "-", "", null],
+  ["Sign-off", "Waived by an Admin", "The owner", "B", "E", "-", "", null],
+  ["Schedules", "New alert (overdue, due soon, over SLA, stale)", "The owner only", "-", "E", "TW", "Email and Teams off by default; shows on the Alerts page", 12],
+  ["Schedules", "Daily digest", "Admins; Teams", "-", "E", "T", "Admins only; ignores email choices", 12],
+  ["Schedules", "Weekly report", "Chosen roles and extra addresses; Teams", "-", "E", "TW", "When switched on; ignores the email switch", 5],
+  ["Access", "Microsoft first sign-in (asks for access)", "All Admins", "B", "E", "-", "", null],
+  ["Access", "Sign-up link used", "All Admins", "B", "E", "-", "", null],
+  ["Access", "Emergency password sign-in", "All Admins", "B", "E", "-", "Only while Microsoft sign-in is required", null],
+  ["Access", "Partner invited", "The invitee", "-", "E", "-", "If mail fails, the link is shown to the inviter", null],
+  ["Access", "Partner asks for a sign-in link", "The partner", "-", "E", "-", "Refused while mail is off", 2],
+  ["Access", "Password reset", "The staff member", "-", "E", "-", "Refused while mail is off", 2],
+];
+const SILENT = ["Project manager changed", "Staff added to a project, or added as team at creation", "Access request approved or declined (the requester is never told)", "Sign-off withdrawn (the signer is not told)", "Tasks completed in bulk", "An alert clears"];
+let notifGroup = "All";
+function renderNotif() {
+  const prod = $("#prod-toggle").checked;
+  $("#notif-callout").hidden = !prod;
+  const cell = (code, kind) => {
+    if (kind === "B") return code.includes("B") ? `<span class="ch works">bell</span>` : `<span class="ch none">—</span>`;
+    if (kind === "E") return code.includes("E") ? (prod ? `<span class="ch fails">email</span>` : `<span class="ch needs">email</span>`) : `<span class="ch none">—</span>`;
+    const t = [];
+    if (code.includes("T")) t.push(prod ? `<span class="ch fails">channel</span>` : `<span class="ch needs">channel</span>`);
+    if (code.includes("W")) t.push(`<span class="ch works">webhook</span>`);
+    return t.length ? t.join(" ") : `<span class="ch none">—</span>`;
+  };
+  let last = "";
+  const rows = NOTIF.filter((r) => notifGroup === "All" || r[0] === notifGroup).map((r) => {
+    const head = r[0] !== last ? `<tr class="group"><td colspan="6">${r[0]}</td></tr>` : ""; last = r[0];
+    const nothing = prod && !r[3].includes("B") && !r[5].includes("W");
+    return head + `<tr><td><b style="font-weight:600">${esc(r[1])}</b>${r[7] ? mkBtn(r[7]) : ""}${nothing ? `<div style="color:var(--bad);font-size:12px;margin-top:2px">arrives nowhere today</div>` : ""}</td><td>${esc(r[2])}</td>
+      <td class="c">${cell(r[3], "B")}</td><td class="c">${cell(r[4], "E")}</td><td class="c">${cell(r[5], "T")}</td><td style="color:var(--muted)">${esc(r[6])}</td></tr>`;
+  }).join("");
+  $("#notif-table").innerHTML = `<thead><tr><th>Event</th><th>Who hears</th><th class="c">Bell</th><th class="c">Email</th><th class="c">Teams</th><th>Notes</th></tr></thead><tbody>${rows}</tbody>`;
+}
+(function notif() {
+  const groups = ["All", "Project", "Work", "Sign-off", "Schedules", "Access"];
+  $("#notif-filter").innerHTML = groups.map((g) => `<button class="chip" aria-pressed="${g === "All"}" data-g="${g}">${g}</button>`).join("");
+  $("#notif-filter").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-g]"); if (!b) return; notifGroup = b.dataset.g;
+    $("#notif-filter").querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c === b))); renderNotif();
+  });
+  $("#prod-toggle").addEventListener("change", renderNotif);
+  $("#silent").innerHTML = SILENT.map((s) => `<li>${esc(s)}</li>`).join("");
+  renderNotif();
+  const box = (x, y, w, h, t, lines, cls = "box") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" class="${cls}"/><text x="${x + 12}" y="${y + 22}" class="t-title">${esc(t)}</text>${lines.map((l, i) => `<text x="${x + 12}" y="${y + 41 + i * 16}" class="t-small t-muted">${esc(l)}</text>`).join("")}`;
+  const e = (d, cls = "", m = "a") => `<path d="${d}" class="edge ${cls}" marker-end="url(#nf-${m})"/>`;
+  $("#notif-diagram").innerHTML = `<svg viewBox="0 0 1120 300" xmlns="${NS}" role="img" aria-label="How a notification travels">
+    ${arrowDefs("nf")}
+    <text x="20" y="26" class="t-display">HOW A NOTIFICATION TRAVELS</text>
+    ${box(20, 44, 200, 96, "Something happens", ["a stage moves, a task is", "assigned, a sign-off is sent,", "a schedule fires"])}
+    ${box(300, 36, 260, 72, "To people (notify_users)", ["drops duplicates and the actor;", "active accounts only"])}
+    ${box(300, 124, 260, 72, "To the owner and Teams (notify_event)", ["project owner's email, the Teams", "channel, then the webhook"])}
+    ${box(300, 212, 260, 64, "Direct mail", ["digest, weekly report, invites,", "sign-in and reset links, signed PDF"])}
+    ${box(660, 20, 200, 56, "Bell (in Odin)", ["always written"])}
+    ${box(660, 92, 200, 70, "Email", ["needs Microsoft 365; skipped", "for kinds the person muted"], "off")}
+    ${box(660, 178, 200, 56, "Teams channel", ["needs Microsoft 365"], "off")}
+    ${box(660, 246, 200, 48, "Teams webhook", ["works today"])}
+    ${box(920, 44, 180, 200, "Settings that gate it", ["Email on/off (Notifications)", "Teams on/off", "each person's email choices", "alert types: in-app, email,", "Teams per type", "digest time, working days,", "holidays, report schedule"])}
+    ${e("M220 80 H298", "accent", "aa")} ${e("M220 110 C 260 110, 260 160, 298 160", "accent", "aa")} ${e("M220 130 C 250 200, 260 244, 298 244", "accent", "aa")}
+    ${e("M560 60 H658")} ${e("M560 80 C 610 80, 610 120, 658 124", "")}
+    ${e("M560 150 C 610 150, 610 124, 658 130", "")} ${e("M560 160 C 610 170, 610 200, 658 204", "")} ${e("M560 180 C 620 220, 620 262, 658 266", "")}
+    ${e("M560 244 C 610 244, 610 140, 658 140", "")}
+  </svg><div class="legend"><span><i class="sw" style="background:var(--surface)"></i>works in production</span><span><i class="sw" style="background:var(--sunk);border-style:dashed"></i>needs Microsoft 365 (not connected)</span></div>`;
+})();
+
+// ---------- permissions ----------
+(function perms() {
+  const R = ["Admin", "Member", "Contributor", "Viewer", "External"];
+  const P = [
+    ["See the flow, projects and project pages", "AMCVE", "A"],
+    ["See reports; download documents", "AMCVE", "A"],
+    ["Create projects", "AMC", ""],
+    ["Edit projects; upload documents", "AMC", ""],
+    ["Add notes", "AMCE", ""],
+    ["Move stages", "AM", ""],
+    ["Delete projects and documents", "A", ""],
+    ["Manage contacts and partners", "A", ""],
+    ["Manage integrations (Microsoft 365, backups, guest-link switch)", "A", ""],
+    ["Manage settings (all of Settings, audit log, API tokens)", "A", "A"],
+    ["Manage users (roles, approvals, resets, two-step reset)", "A", "A"],
+  ];
+  const code = { Admin: "A", Member: "M", Contributor: "C", Viewer: "V", External: "E" };
+  $("#role-table").innerHTML = `<thead><tr><th>Permission</th>${R.map((r) => `<th class="c">${r}</th>`).join("")}</tr></thead><tbody>${P.map(([p, who, locked]) =>
+    `<tr><td>${esc(p)}</td>${R.map((r) => who.includes(code[r]) ? `<td class="c"><span class="yes">✓</span>${locked.includes(code[r]) ? `<span class="lock">locked</span>` : ""}</td>` : `<td class="c"><span class="no">—</span></td>`).join("")}</tr>`).join("")}</tbody>`;
+
+  const PR = ["Project manager", "Coordinator", "Sales", "Contractor", "Reseller", "Customer"];
+  const A = [
+    ["Edit the project, its team, partner invitations, guest links, plan and baseline, scope; save report versions; send the sign-off", "Edit projects", "PM", null],
+    ["Move stages; undo your own move", "Move stages", "PM", 10],
+    ["Tasks, risks and issues", "Edit projects", "PM CO", null],
+    ["Upload documents (delete also needs 'delete documents')", "Edit / upload", "PM CO", 3],
+    ["Read, add notes, tick your own tasks", "—", "PM CO SA CT RS CU", null],
+    ["Approve or decline a stage move", "—", "CU", 14],
+    ["Sign or reject the sign-off", "—", "RS CU", null],
+  ];
+  const pc = { "Project manager": "PM", Coordinator: "CO", Sales: "SA", Contractor: "CT", Reseller: "RS", Customer: "CU" };
+  $("#proj-table").innerHTML = `<thead><tr><th>Action on a project</th><th>Also needs</th>${PR.map((r) => `<th class="c">${r}</th>`).join("")}</tr></thead><tbody>${A.map(([a, need, who, loop]) =>
+    `<tr><td>${esc(a)}${loop ? mkBtn(loop) : ""}</td><td style="color:var(--muted)">${esc(need)}</td>${PR.map((r) => who.split(" ").includes(pc[r]) ? `<td class="c"><span class="yes">✓</span></td>` : `<td class="c"><span class="no">—</span></td>`).join("")}</tr>`).join("")}
+    <tr><td colspan="8" style="color:var(--muted)">Sign or reject: only the signer named on that version. Countersign: the named staff countersigner or any Admin. Waive: Admins. Partner roles (Contractor, Reseller, Customer) are meant for external accounts.</td></tr></tbody>`;
+
+  $("#visibility").innerHTML = [
+    ["Staff (any role)", `every project, whether on it or not ${mkBtn(27)}`],
+    ["Partners and customers", "only the projects they are on; reports, plans and risks cut for customers"],
+    ["Guest link holder", `one project: its stages and customer-visible notes ${mkBtn(1)}`],
+    ["API token", `what staff see, read-only ${mkBtn(24)}`],
+    ["Time on Odin", "your own always; others' only for the roles chosen in Settings (Admins and Members)"],
+  ].map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("");
+  $("#adminonly").innerHTML = ["Stage templates, document categories, alert settings", "Document templates", "Sign-up links", "Microsoft 365 connection", "Sign-off waiver", `Settings menu shown to the Admin role only ${mkBtn(23)}`].map((s) => `<li>${s}</li>`).join("");
+
+  const e = (d, cls = "", m = "a") => `<path d="${d}" class="edge ${cls}" marker-end="url(#pk-${m})"/>`;
+  const box = (x, y, w, h, t, lines, cls = "box") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" class="${cls}"/><text x="${x + 12}" y="${y + 22}" class="t-title">${esc(t)}</text>${lines.map((l, i) => `<text x="${x + 12}" y="${y + 41 + i * 16}" class="t-small t-muted">${esc(l)}</text>`).join("")}`;
+  $("#keys-diagram").innerHTML = `<svg viewBox="0 0 1120 250" xmlns="${NS}" role="img" aria-label="Two keys: workspace role and project role">
+    ${arrowDefs("pk")}
+    <text x="20" y="26" class="t-display">EVERY CHANGE NEEDS TWO KEYS</text>
+    ${box(20, 44, 230, 84, "Signed in?", ["session age, idle time, epoch;", "two-step done; CSRF token"])}
+    ${box(310, 44, 250, 84, "Key 1 · workspace role", ["Admin, Member, Contributor,", "Viewer or External → permission"])}
+    ${box(620, 44, 250, 84, "Key 2 · project role", ["Project manager, Coordinator, …", "Admins skip this key"])}
+    ${box(930, 44, 170, 84, "Allowed", ["and audited"])}
+    ${box(620, 160, 250, 70, "Project visible to you?", ["staff: every project", "partners: projects they are on"])}
+    ${e("M250 86 H308", "accent", "aa")} ${e("M560 86 H618", "accent", "aa")} ${e("M870 86 H928", "accent", "aa")}
+    ${e("M745 158 V130", "dash")}
+    <text x="20" y="160" class="t-small t-muted">Reading a project needs key 1 and visibility only.</text>
+    <text x="20" y="178" class="t-small t-muted">Some admin pages are fixed to the Admin role instead of key 1.</text>
+  </svg>`;
+})();
+
+// ---------- ways in ----------
+(function doors() {
+  const D = [
+    ["d-password", "Password", "Staff", "Lockout per username + address and per account; minimum length; forced change for new accounts; optional two-step (authenticator code or recovery code), which Admins can require; break-glass form when Microsoft is required, announced to Admins", "Works", [17, 25]],
+    ["d-ms", "Microsoft sign-in", "Staff", "Microsoft proves identity (PKCE, claims checked); Odin decides the role; a newcomer waits for an admin's approval", "Not configured", []],
+    ["d-link", "Email sign-in link", "Partners, customers", "One-time, 256-bit, stored hashed, expires (240 min in production); a Continue button stops mail scanners using it; allowed partner domains", "Request needs email; PM can hand one over", [2, 29]],
+    ["d-reset", "Password reset link", "Staff", "One-time, 30 minutes; the reply never says whether the address exists; a reset signs the account out everywhere", "Needs email", [2]],
+    ["d-join", "Sign-up link", "New colleagues", "Made by Admins; role Member, Contributor or Viewer (never Admin); domains, expiry, uses; creates a waiting account that an Admin approves; master switch and revoke-all", "Works", []],
+    ["d-guest", "Guest link (legacy)", "Anyone holding it", "No sign-in; rate-limited writes; one switch turns every link off; the vendor link can move a stage", "On; never expires", [1, 18]],
+    ["d-api", "API token", "Scripts", "Read-only; stored hashed; 30, 90 or 365 days; never becomes a browser session", "Works", [24]],
+  ];
+  $("#doors-table").innerHTML = `<thead><tr><th>Way in</th><th>For</th><th>What guards it</th><th>In production</th></tr></thead><tbody>${D.map(([id, n, who, guard, state, ls]) =>
+    `<tr><td><b style="font-weight:600">${n}</b> ${ls.map(mkBtn).join("")}</td><td>${who}</td><td>${esc(guard)}</td><td><span class="ch ${state.startsWith("Works") ? "works" : state.startsWith("On") || state.startsWith("Not") || state.includes("email") ? "needs" : "none"}">${esc(state)}</span></td></tr>`).join("")}</tbody>`;
+})();
+
+// ---------- register ----------
+let sevFilter = "all", areaFilter = "all";
+function renderRegister() {
+  const sevs = [["all", "All open"], ["high", "High"], ["medium", "Medium"], ["low", "Low"], ["decision", "To decide"], ["fixed", "Fixed"]];
+  $("#sev-filter").innerHTML = sevs.map(([k, l]) => `<button class="chip" aria-pressed="${sevFilter === k}" data-sev="${k}">${l} <span class="mono">${k === "all" ? LOOPS.filter(isOpen).length : k === "fixed" ? LOOPS.filter((x) => x.fixed).length : LOOPS.filter((x) => isOpen(x) && x.sev === k).length}</span></button>`).join("");
+  const areas = ["all", ...new Set(LOOPS.map((l) => l.area))];
+  $("#area-filter").innerHTML = areas.map((a) => `<button class="chip" aria-pressed="${areaFilter === a}" data-area="${a}">${a === "all" ? "Every area" : a}</button>`).join("");
+  const list = LOOPS.filter((l) => (sevFilter === "fixed" ? l.fixed : isOpen(l) && (sevFilter === "all" || l.sev === sevFilter)) && (areaFilter === "all" || l.area === areaFilter))
+    .sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev] || a.id - b.id);
+  $("#register").innerHTML = list.map((l) => `<article class="card" id="loop-${l.id}" tabindex="-1">
+    <div class="head"><span class="num">#${l.id}</span><span class="ttl">${esc(l.title)}</span>${l.fixed ? `<span class="sev fixed">fixed in ${esc(l.fixed)}</span>` : `<span class="sev ${l.sev}">${l.sev === "decision" ? "to decide" : l.sev}</span>`}<span class="area">${esc(l.area)}</span></div>
+    <dl><dt>What happens</dt><dd>${esc(l.what)}</dd><dt>Why it matters</dt><dd>${esc(l.impact)}</dd><dt>Fix</dt><dd>${esc(l.fix)}</dd><dt>In the code</dt><dd><code>${esc(l.ref)}</code></dd></dl>
+  </article>`).join("") || `<p class="lede">Nothing matches these filters.</p>`;
+}
+$("#sev-filter").addEventListener("click", (e) => { const b = e.target.closest("[data-sev]"); if (b) { sevFilter = b.dataset.sev; renderRegister() } });
+$("#area-filter").addEventListener("click", (e) => { const b = e.target.closest("[data-area]"); if (b) { areaFilter = b.dataset.area; renderRegister() } });
+renderRegister();
+
+show(location.hash.slice(1) || store.get("odin-map-tab") || "overview");
+window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+</script>
