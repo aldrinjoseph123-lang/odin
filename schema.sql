@@ -24,6 +24,42 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+-- Every moved plan date on a rollout, and every re-baseline (services/plan.py).
+CREATE TABLE IF NOT EXISTS plan_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    stage TEXT,
+    field TEXT NOT NULL,
+    old TEXT,
+    new TEXT,
+    reason TEXT,
+    author TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_plan_changes_project ON plan_changes (project_id, id);
+
+-- A rollout's risks, issues, decisions and blockers (services/raid.py).
+CREATE TABLE IF NOT EXISTS raid_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT,
+    impact TEXT NOT NULL DEFAULT 'medium',
+    likelihood TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    owner_id INTEGER REFERENCES users(id),
+    due_date TEXT,
+    stage TEXT,
+    resolution TEXT,
+    customer_visible INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    closed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_raid_project ON raid_items (project_id, status);
+
 -- One row a day of the portfolio's headline counts (services/dashboard.py):
 -- the history behind the Dashboard's week-over-week deltas.
 CREATE TABLE IF NOT EXISTS portfolio_snapshots (

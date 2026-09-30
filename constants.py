@@ -140,6 +140,8 @@ DEFAULT_ALERT_TYPE_SETTINGS = {
 # Columns added to projects / users after their original CREATE TABLE — applied
 # idempotently by db.migrate_db() via ALTER TABLE on existing installs.
 NEW_PROJECT_COLUMNS = {
+    # When the plan was first frozen as the baseline (services/plan.py).
+    "baseline_at": "TEXT",
     # Second guest link. access_token is the vendor/outsourcer link (may
     # advance the stage); customer_token is view-and-comment only.
     "customer_token": "TEXT",

@@ -2377,7 +2377,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             if "<int:project_id>" not in rule.rule:
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
-            if not any(m in src for m in ("load_project(", "_live_project(", "change_stage(", "dismiss_alert(", "decide_approval(", "report_context(", "_own_note(")):
+            if not any(m in src for m in ("load_project(", "_live_project(", "change_stage(", "dismiss_alert(", "decide_approval(", "report_context(", "_own_note(", "_rollout_report(")):
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"project routes bypassing load_project: {missing}")
 
@@ -2804,6 +2804,147 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         v, vcsrf = self._api_client(self._make_user("vw", "Viewer") and "vw", STRONG_PASSWORD)
         self.assertEqual(v.post(f"/api/people/{pm}/notify", json={"message": "hi"}, headers={"X-CSRF-Token": vcsrf}).status_code, 403)
         self.assertEqual(v.get("/api/people").status_code, 200)
+
+    def test_plan_baseline_forecast_and_health(self):
+        from datetime import date as _date
+        today = _date.today()
+        iso = lambda n: (today + timedelta(days=n)).isoformat()   # noqa: E731
+        self.new_project(name="Planned", client="C", start_date=iso(-20), target_end_date=iso(30))
+        with self.raw_db() as db:
+            rows = db.execute("SELECT id, name, position FROM project_stages WHERE project_id = 1 ORDER BY position").fetchall()
+            db.execute("UPDATE projects SET stage_entered_at = ?, created_at = ? WHERE id = 1", (iso(-20) + "T09:00:00", iso(-20) + "T09:00:00"))
+            db.commit()
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf}
+        d = c.get("/api/projects/1/plan").get_json()
+        self.assertFalse(d["has_plan"]); self.assertIsNone(d["baseline_at"]); self.assertEqual(len(d["stages"]), len(rows))
+        self.assertEqual(d["stages"][0]["status"], "current"); self.assertEqual(d["stages"][0]["suggested_start"], iso(-20))
+        self.assertEqual(d["health"]["confidence"], "low")                       # no plan yet
+        # a plan: the first stage was meant to take 10 days (it has taken 20), the rest 5 each, the finish line none
+        plan = []
+        at = -20
+        for i, r in enumerate(rows):
+            length = 10 if i == 0 else 0 if i == len(rows) - 1 else 5
+            plan.append({"id": r["id"], "plan_start": iso(at), "plan_end": iso(at + length)}); at += length
+        r = c.put("/api/projects/1/plan", json={"stages": plan}, headers=h).get_json()
+        self.assertTrue(r["baselined"]); self.assertEqual(r["changed"], 2 * len(rows))
+        d = c.get("/api/projects/1/plan").get_json()
+        self.assertTrue(d["has_plan"]); self.assertIsNotNone(d["baseline_at"])
+        s0 = d["stages"][0]
+        self.assertEqual((s0["forecast_end"], s0["slip_days"]), (today.isoformat(), 10))   # 10 days late already, ends today at the earliest
+        self.assertEqual(d["stages"][1]["forecast_start"], today.isoformat())               # the rest chain on from today
+        self.assertEqual(d["finish"]["vs_baseline_days"], 10)
+        self.assertEqual(d["health"]["rag"], "amber"); self.assertIn("behind the baseline", " ".join(d["health"]["reasons"]))
+        self.assertEqual(d["health"]["confidence"], "low")                       # the current stage is past its planned end
+        # a later change is logged with its reason, and does not move the baseline
+        plan[1]["plan_end"] = iso(plan[1]["plan_end"] and (_date.fromisoformat(plan[1]["plan_end"]) - today).days + 3)
+        self.assertEqual(c.put("/api/projects/1/plan", json={"stages": plan, "reason": "vendor delay"}, headers=h).get_json()["changed"], 1)
+        d = c.get("/api/projects/1/plan").get_json()
+        self.assertEqual((d["changes"][0]["field"], d["changes"][0]["reason"]), ("end", "vendor delay"))
+        self.assertNotEqual(d["stages"][1]["plan_end"], d["stages"][1]["base_end"])
+        # bad dates are refused with the stage named
+        bad = [{"id": rows[1]["id"], "plan_start": iso(5), "plan_end": iso(1)}]
+        self.assertIn("end is before the start", c.put("/api/projects/1/plan", json={"stages": bad}, headers=h).get_json()["error"])
+        self.assertEqual(c.put("/api/projects/1/plan", json={"stages": [{"id": rows[1]["id"], "plan_start": iso(5)}]}, headers=h).status_code, 400)
+        # re-baselining needs a reason and is logged
+        self.assertEqual(c.post("/api/projects/1/plan/baseline", json={}, headers=h).status_code, 400)
+        self.assertEqual(c.post("/api/projects/1/plan/baseline", json={"reason": "scope change agreed"}, headers=h).status_code, 200)
+        d = c.get("/api/projects/1/plan").get_json()
+        self.assertEqual(d["stages"][1]["plan_end"], d["stages"][1]["base_end"]); self.assertEqual(d["changes"][0]["field"], "baseline")
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action IN ('save_plan', 'rebaseline_plan')").fetchone()[0], 3)
+        # a blocker turns it red; a viewer can read the plan but not change it
+        with self.raw_db() as db:
+            db.execute("INSERT INTO raid_items (project_id, kind, title, created_by, created_at, updated_at) VALUES (1, 'blocker', 'No firewall access', 'admin', datetime('now'), datetime('now'))")
+            db.commit()
+        self.assertEqual(c.get("/api/projects/1/plan").get_json()["health"]["rag"], "red")
+        v, vcsrf = self._api_client(self._make_user("vw", "Viewer") and "vw", STRONG_PASSWORD)
+        self.assertEqual(v.get("/api/projects/1/plan").status_code, 200)
+        self.assertEqual(v.put("/api/projects/1/plan", json={"stages": plan}, headers={"X-CSRF-Token": vcsrf}).status_code, 403)
+
+    def test_raid_register(self):
+        self.new_project(name="R", client="C")
+        pm = self._make_user("pm", "Member")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf}
+        self.assertEqual(c.post("/api/projects/1/raid", json={"kind": "worry", "title": "x"}, headers=h).status_code, 400)
+        self.assertIn("title", c.post("/api/projects/1/raid", json={"kind": "risk", "title": " "}, headers=h).get_json()["error"])
+        r1 = c.post("/api/projects/1/raid", json={"kind": "risk", "title": "Change window may slip", "impact": "high", "likelihood": "medium", "owner_id": pm, "due_date": "2026-11-01"}, headers=h).get_json()["id"]
+        c.post("/api/projects/1/raid", json={"kind": "blocker", "title": "No firewall access", "customer_visible": True}, headers=h)
+        c.post("/api/projects/1/raid", json={"kind": "decision", "title": "Pilot group of 50", "status": "decided"}, headers=h)
+        d = c.get("/api/projects/1/raid").get_json()
+        self.assertEqual([i["kind"] for i in d["items"]], ["blocker", "risk", "decision"])        # open blockers first, done last
+        self.assertEqual(d["items"][1]["owner_name"], "pm"); self.assertTrue(d["can_edit"])
+        self.assertIn("You own a RAID item", str(self._api_client("pm", STRONG_PASSWORD)[0].get("/api/notifications").get_json()))
+        # status words follow the kind; closing stamps closed_at; likelihood only on risks
+        self.assertEqual(c.put(f"/api/projects/1/raid/{r1}", json={"status": "decided"}, headers=h).status_code, 400)
+        self.assertEqual(c.put(f"/api/projects/1/raid/{r1}", json={"status": "closed", "resolution": "window agreed"}, headers=h).status_code, 200)
+        with self.raw_db() as db:
+            row = db.execute("SELECT status, closed_at, resolution, likelihood FROM raid_items WHERE id = ?", (r1,)).fetchone()
+            self.assertEqual((row["status"], row["resolution"], row["likelihood"]), ("closed", "window agreed", "medium")); self.assertIsNotNone(row["closed_at"])
+        # health: the open blocker makes the rollout red
+        self.assertEqual(c.get("/api/projects/1/plan").get_json()["health"]["rag"], "red")
+        # a contributor who is not on the project may not edit; delete needs the project manager
+        s, scsrf = self._api_client(self._make_user("sales", "Contributor") and "sales", STRONG_PASSWORD)
+        self.assertEqual(s.post("/api/projects/1/raid", json={"kind": "issue", "title": "x"}, headers={"X-CSRF-Token": scsrf}).status_code, 403)
+        self.assertEqual(c.delete(f"/api/projects/1/raid/{r1}", headers=h).status_code, 200)
+        self.assertEqual(c.delete("/api/projects/1/raid/999", headers=h).status_code, 404)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action LIKE '%raid_item'").fetchone()[0], 5)   # 3 added, 1 updated, 1 deleted
+
+    def test_rollout_report_internal_customer_and_versions(self):
+        from datetime import date as _date
+        iso = lambda n: (_date.today() + timedelta(days=n)).isoformat()   # noqa: E731
+        self.new_project(name="Rep", client="Globex", start_date=iso(-10), target_end_date=iso(40), customer_approval="1")
+        pm = self._make_user("pm", "Member")
+        with self.raw_db() as db:
+            db.execute("INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (1, ?, 'Coordinator', 1, datetime('now'))", (pm,))
+            db.execute("INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (1, 'Admin', 'internal only', 'PO Received', datetime('now'), 0)")
+            db.execute("INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (1, 'Admin', 'for the customer', 'PO Received', datetime('now'), 1)")
+            db.commit()
+        self.client.post("/projects/1/tasks", data={"title": "Late task", "assignee_id": pm, "due_date": iso(-2)})
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf}
+        c.post("/api/projects/1/raid", json={"kind": "risk", "title": "Internal worry", "impact": "high"}, headers=h)
+        c.post("/api/projects/1/raid", json={"kind": "decision", "title": "Weekend cutover", "status": "decided", "customer_visible": True}, headers=h)
+        r = c.get("/api/projects/1/rollout-report").get_json()
+        self.assertTrue(r["is_live"]); self.assertEqual(r["audience"], "internal"); self.assertTrue(r["can_edit"])
+        d = r["data"]
+        self.assertEqual(d["project"]["name"], "Rep"); self.assertEqual(d["work"]["late"], 1); self.assertEqual(d["people"][0]["name"], "pm")
+        self.assertEqual({x["title"] for x in d["raid"]}, {"Internal worry", "Weekend cutover"})
+        self.assertIn("internal only", str(d["history"]["notes"])); self.assertIn("Rep is in PO Received", r["words"]["summary"])
+        self.assertTrue(d["milestones"]); self.assertTrue(d["work"]["burn"])
+        cu = c.get("/api/projects/1/rollout-report?audience=customer").get_json()["data"]
+        self.assertEqual([x["title"] for x in cu["raid"]], ["Weekend cutover"]); self.assertNotIn("internal only", str(cu["history"]["notes"]))
+        self.assertNotIn("people", cu); self.assertEqual(cu["health"]["reasons"], []); self.assertNotIn("slip_days", cu["stages"][0])
+        self.assertNotIn("baseline", c.get("/api/projects/1/rollout-report?audience=customer").get_json()["words"]["summary"])
+        # saving freezes a snapshot with the words; a summary is required
+        self.assertEqual(c.post("/api/projects/1/rollout-report", json={"summary": " "}, headers=h).status_code, 400)
+        v = c.post("/api/projects/1/rollout-report", json={"summary": "Pilot on track.", "next_steps": "Fleet next.", "asks": "Confirm the window."}, headers=h).get_json()["version"]
+        self.client.post("/projects/1/tasks/1/toggle")                      # the live data moves on…
+        snap = c.get(f"/api/projects/1/rollout-report?v={v}").get_json()
+        self.assertFalse(snap["is_live"]); self.assertEqual(snap["words"]["asks"], "Confirm the window."); self.assertEqual(snap["data"]["work"]["late"], 1)   # …the snapshot does not
+        self.assertEqual(c.get("/api/projects/1/rollout-report").get_json()["words"]["summary"], "Pilot on track.")   # the words carry into the next draft
+        # a customer sees only saved versions, cut to the customer's view
+        self._invite(1, "ann@globex.example", "Customer", "Ann")
+        a = self._external_client("ann@globex.example")
+        ar = a.get("/api/projects/1/rollout-report?audience=internal").get_json()
+        self.assertEqual(ar["audience"], "customer"); self.assertFalse(ar["can_edit"]); self.assertEqual([x["title"] for x in ar["data"]["raid"]], ["Weekend cutover"])
+        self.assertIn("for the customer", str(ar["data"]["history"]["notes"])); self.assertNotIn("internal only", str(ar["data"]))
+        # an old plain-text version stays readable; a missing one is a 404
+        self.client.post("/projects/1/report/save", data={"body": "# Old\n- item"})
+        old = c.get("/api/projects/1/rollout-report?v=2").get_json()
+        self.assertEqual(old["version"]["kind"], "text"); self.assertEqual(old["words"]["blocks"][0], ["h", "Old"])
+        self.assertEqual(a.get("/api/projects/1/rollout-report?v=2").status_code, 404)             # customers never see text versions
+        self.assertEqual(c.get("/api/projects/1/rollout-report?v=9").status_code, 404)
+        # the PDF: live or saved, internal or the customer copy; text versions have none
+        pdf = c.get("/projects/1/report.pdf")
+        self.assertEqual(pdf.mimetype, "application/pdf"); self.assertTrue(pdf.data.startswith(b"%PDF-1.4")); self.assertIn(b"Internal worry", pdf.data)
+        cpdf = c.get(f"/projects/1/report.pdf?audience=customer&v={v}")
+        self.assertIn(b"customer copy", cpdf.data); self.assertNotIn(b"Internal worry", cpdf.data); self.assertIn(b"Confirm the window.", cpdf.data)
+        self.assertIn('-v1-customer.pdf', cpdf.headers["Content-Disposition"])
+        self.assertEqual(c.get("/projects/1/report.pdf?v=2").status_code, 404)
+        self.assertNotIn(b"Internal worry", a.get("/projects/1/report.pdf?audience=internal").data)
 
     def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))

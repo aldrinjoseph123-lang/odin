@@ -117,6 +117,12 @@ POLICIES = {
     # ---- Projects & workflow
     "default_template": dict(area="workflow", kind="choice", default="", choices="templates",
                              label="Stage template for new projects", help="Pre-selected on the new project form."),
+    "default_stage_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Default stage length (days)",
+                               help="How long a stage is assumed to take when neither the plan nor its SLA says — for the forecast and the suggested plan."),
+    "rag_amber_days": dict(area="workflow", kind="int", default=1, min=0, max=90, label="Amber after (days late)",
+                           help="A rollout turns amber when it is forecast to finish more than this many days after its target date."),
+    "rag_red_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Red after (days late)",
+                         help="…and red past this many days, or when it is already past its target, or has an open blocker."),
     "default_customer_approval": dict(area="workflow", kind="bool", default=False,
                                       label="Ask the customer to approve each stage by default",
                                       help="Pre-ticked on the new project form; each project can still change it."),

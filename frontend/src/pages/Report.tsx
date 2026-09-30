@@ -1,25 +1,42 @@
-import { useCallback, useEffect, useState } from "react"
-import { useParams, useSearchParams } from "react-router-dom"
-import { Printer } from "lucide-react"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { Link, useParams, useSearchParams } from "react-router-dom"
+import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
+import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTip, XAxis, YAxis } from "recharts"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { PrintBrand } from "@/components/Brand"
 import { Button, buttonVariants } from "@/components/ui/button"
-import { ApiError, postForm, report, type ReportData, type User } from "@/lib/api"
-import { groupBlocks, fmtWhen } from "@/lib/format"
-import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
+import { PrintBrand } from "@/components/Brand"
 import { PageSkeleton } from "@/components/PageSkeleton"
+import { PlanGantt, RagPill } from "@/components/PlanGantt"
+import { RAID_KIND } from "@/components/RaidPanel"
+import { ApiError, rolloutReport, saveRolloutReport, type RolloutReport, type User } from "@/lib/api"
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
+import { cn } from "@/lib/utils"
+import { fmtDate, fmtWhen, groupBlocks } from "@/lib/format"
 
-const fmt = (iso: string) => fmtWhen(iso, true)
+// The rollout report: where it stands, when it lands, what could stop it,
+// who is doing what, and how it got here. Staff read it live and can switch
+// to the customer's copy; the project manager's words are edited in place and
+// "Save as version" freezes the lot. Partners and customers read saved
+// versions only (the server enforces it). Every version exports to PDF.
+const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[12.5px]")
+const slip = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
+const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--elevation-pop)", fontSize: 12 }, labelStyle: { color: "var(--muted-foreground)" } }
 
-// The saved body is plain text with two conventions: "# " heads a section,
-// "- " is a list item. Rendered here exactly as the Jinja page did.
-function Blocks({ blocks }: { blocks: ReportData["blocks"] }) {
+function Section({ n, title, sub, children, className }: { n?: boolean; title: string; sub?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div className="text-[13px] leading-relaxed">
-      {groupBlocks(blocks).map((b, i) =>
-        b.kind === "ul" ? <ul key={i} className="my-1.5 list-disc pl-5">{b.items.map((t, j) => <li key={j} className="my-0.5 whitespace-pre-wrap">{t}</li>)}</ul>
-        : b.kind === "h" ? <h2 key={i} className="mt-5 border-b border-border pb-1 text-[13px] font-semibold first:mt-0">{b.text}</h2>
-        : <p key={i} className="my-1.5 whitespace-pre-wrap">{b.text}</p>)}
+    <section className={cn("panel p-5 break-inside-avoid print:shadow-none", className)} aria-label={title}>
+      <h2 data-n={n ? "" : undefined} className="mb-3 text-[14px] font-semibold">{title}{sub && <span className="ml-2 text-[12.5px] font-normal text-muted-foreground">{sub}</span>}</h2>
+      {children}
+    </section>
+  )
+}
+function Table({ head, rows, tone }: { head: string[]; rows: ReactNode[][]; tone?: (r: number, c: number) => string | undefined }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[12.5px]">
+        <thead><tr className="border-b border-border text-left text-[11.5px] text-muted-foreground">{head.map((h) => <th key={h} className="px-2 py-1.5 font-normal">{h}</th>)}</tr></thead>
+        <tbody>{rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn("px-2 py-1.5 align-top", tone?.(i, j))}>{c}</td>)}</tr>)}</tbody>
+      </table>
     </div>
   )
 }
@@ -27,71 +44,270 @@ function Blocks({ blocks }: { blocks: ReportData["blocks"] }) {
 export default function Report(_props: { user: User }) {
   const id = Number(useParams().id)
   const [params, setParams] = useSearchParams()
-  const [d, setD] = useState<ReportData | null>(null)
-  const [text, setText] = useState("")
+  const audience = params.get("audience") === "customer" ? "customer" : "internal"
+  const v = Number(params.get("v")) || null
+  const [r, setR] = useState<RolloutReport | null>(null)
+  const [words, setWords] = useState({ summary: "", next_steps: "", asks: "" })
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
-  const query = params.toString()
-  useUnsavedGuard(editing && !!d && text !== d.editor_text)
   const load = useCallback(async () => {
     try {
-      const r = await report(id, query)
-      setD(r); setText(r.editor_text); setEditing(r.is_draft && r.can_edit); setError(null)
-      document.title = `Report · ${r.project.name} · Odin`
-    } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "No such report version." : e instanceof ApiError ? e.message : "Could not load the report") }
-  }, [id, query])
+      const x = await rolloutReport(id, audience, v)
+      setR(x); setError(null)
+      setWords({ summary: x.words.summary ?? "", next_steps: x.words.next_steps ?? "", asks: x.words.asks ?? "" })
+      document.title = `Report · ${x.project.name} · Odin`
+    } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "No report has been published for this rollout yet." : e instanceof ApiError ? e.message : "Could not load the report") }
+  }, [id, audience, v])
   useEffect(() => { void load() }, [load])
+  const editable = !!r && r.is_live && r.can_edit
+  const dirty = !!r && editable && (words.summary !== r.words.summary || words.next_steps !== r.words.next_steps || words.asks !== r.words.asks)
+  useUnsavedGuard(dirty)
+  if (error) return <div className="p-5"><Alert role="status"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (!r) return <PageSkeleton />
+  const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
-    setBusy(true)
-    try {
-      const r = await postForm(`/projects/${id}/report/save`, { body: text })
-      setNotice(r.messages.join(" ") || null)
-      setParams({})            // the newest version is the default view
-      await load()
-    } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+    setBusy(true); setNotice(null)
+    try { const x = await saveRolloutReport(id, words); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
-  if (!d) return <PageSkeleton />
-  const next = (d.versions[0]?.version ?? 0) + 1
-  return (
-    <div className="mx-auto max-w-3xl px-5 pb-8 pt-4">
-      <PrintBrand />
-      <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <a href={`/projects/${id}`} className="text-[12.5px] text-muted-foreground hover:text-foreground">{d.project.name}</a>
-        <span className="text-[12.5px] text-muted-foreground">/</span>
-        <h1 className="text-[17px] font-semibold tracking-tight">Report</h1>
-        {d.versions.length > 0 && (
-          <select value={d.current?.version ?? ""} onChange={(e) => setParams({ v: e.target.value })} aria-label="Report version" className="ml-2 h-7 rounded-md border border-border bg-background px-2 text-[12.5px]">
-            {d.versions.map((v) => <option key={v.version} value={v.version}>v{v.version} · {v.created_by} · {fmt(v.created_at)}</option>)}
+  const pdf = `/projects/${id}/report.pdf?audience=${r.audience}${r.version ? `&v=${r.version.version}` : ""}`
+  const toolbar = (
+    <div className="flex flex-wrap items-center gap-2 print:hidden">
+      <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{r.project.name}</Link>
+      <span className="ml-auto flex flex-wrap items-center gap-2">
+        {r.can_edit && (
+          <span className="flex rounded-full bg-muted p-0.5" role="group" aria-label="Audience">
+            {(["internal", "customer"] as const).map((a) => <button key={a} type="button" aria-pressed={r.audience === a} onClick={() => set("audience", a === "internal" ? null : a)}
+              className={cn("h-7 rounded-full px-3 text-[12.5px] font-medium", r.audience === a ? "bg-card shadow-card" : "text-muted-foreground")}>{a === "internal" ? "Internal" : "Customer copy"}</button>)}
+          </span>
+        )}
+        {r.versions.length > 0 && (
+          <select value={r.version?.version ?? ""} onChange={(e) => set("v", e.target.value || null)} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[12.5px]">
+            {r.can_edit && <option value="">Live — today's data</option>}
+            {r.versions.map((x) => <option key={x.version} value={x.version}>v{x.version} · {x.created_by} · {fmtWhen(x.created_at)}{x.kind === "text" ? " (text)" : ""}</option>)}
           </select>
         )}
-        {d.can_edit && d.versions.length > 0 && !d.is_draft && <button type="button" onClick={() => setParams({ draft: "1" })} className={buttonVariants({ variant: "ghost", size: "sm" })}>Regenerate draft</button>}
-        <Button size="sm" variant="outline" className="ml-auto" onClick={() => window.print()}><Printer className="h-3.5 w-3.5" /> Print / save as PDF</Button>
+        {r.data && <a href={pdf} target="_blank" rel="noreferrer" className={pill}><Download className="h-3.5 w-3.5" /> PDF</a>}
+        <button type="button" onClick={() => window.print()} className={pill}><Printer className="h-3.5 w-3.5" /> Print</button>
+        {editable && <Button size="sm" className="h-8 rounded-full" disabled={busy || !words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
+      </span>
+    </div>
+  )
+
+  // an old plain-text version
+  if (!r.data) {
+    return (
+      <div className="mx-auto w-full max-w-4xl px-5 pb-10 pt-2">
+        <PrintBrand />{toolbar}
+        <h1 className="mt-3 text-[17px] font-semibold tracking-tight">Report, version {r.version?.version}</h1>
+        <Section title={`Written by ${r.version?.created_by}, ${fmtWhen(r.version?.created_at, true)}`} className="mt-3">
+          <div className="text-[13px] leading-relaxed">
+            {groupBlocks(r.words.blocks ?? []).map((b, i) => b.kind === "ul" ? <ul key={i} className="my-1.5 list-disc pl-5">{b.items.map((t, j) => <li key={j}>{t}</li>)}</ul>
+              : b.kind === "h" ? <h3 key={i} className="mt-4 border-b border-border pb-1 text-[13px] font-semibold first:mt-0">{b.text}</h3> : <p key={i} className="my-1.5">{b.text}</p>)}
+          </div>
+        </Section>
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[12.5px] print:hidden" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
-      {d.is_draft && d.can_edit && (
-        <p className="mt-3 text-[12.5px] text-muted-foreground print:hidden">{d.versions.length ? "Fresh draft from today's data — nothing is saved until you click Save." : "No report saved yet. This draft comes from the timeline, tasks, notes and documents; edit it and save the first version. Partners and customers see saved versions only."}</p>
-      )}
-      <div className="mt-4">
-        {d.blocks.length ? <Blocks blocks={d.blocks} /> : <p className="text-[13px] text-muted-foreground">No report has been published for this project yet.</p>}
+    )
+  }
+
+  const d = r.data
+  const customer = d.audience === "customer"
+  const f = d.finish
+  const tiles: { label: string; value: string; sub: string; bad?: boolean }[] = [
+    { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, bad: (f.vs_target_days ?? 0) > 0 },
+    { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
+    ...(customer ? [] : [{ label: "Against baseline", value: slip(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", bad: (f.vs_baseline_days ?? 0) > 0 }]),
+    { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
+    { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", bad: d.work.late > 0 },
+  ]
+  const textarea = "w-full rounded-lg border border-input bg-background p-2.5 text-[13.5px] leading-relaxed"
+  const wordBlock = (key: "summary" | "next_steps" | "asks", label: string, rows: number, hint: string) => (
+    <div>
+      <div className="mb-1 flex items-center gap-2"><h3 className="text-[12.5px] font-semibold text-nav-fg">{label}</h3>
+        {editable && r.words.suggested && r.words.suggested[key] && words[key] !== r.words.suggested[key] && (
+          <button type="button" onClick={() => setWords({ ...words, [key]: r.words.suggested![key] })} className="inline-flex items-center gap-1 text-[12px] text-primary-text hover:underline print:hidden"><Sparkles className="h-3 w-3" /> Use the suggestion</button>
+        )}
       </div>
-      {d.can_edit && (
-        <div className="mt-6 border-t border-border pt-4 print:hidden">
-          {editing ? (
-            <>
-              <p className="mb-2 text-[12px] text-muted-foreground">Plain text. A line starting with <code className="font-mono">#&nbsp;</code> is a heading, <code className="font-mono">-&nbsp;</code> a list item. Saving creates version {next}; earlier versions stay.</p>
-              <textarea value={text} onChange={(e) => setText(e.target.value)} aria-label="Report text" maxLength={50000} className="min-h-[28rem] w-full rounded-lg border border-input bg-background p-3 font-mono text-[12.5px] leading-relaxed" />
-              <div className="mt-2 flex gap-2">
-                <Button size="sm" onClick={save} disabled={busy || !text.trim()}>Save as version {next}</Button>
-                {!d.is_draft && <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setText(d.editor_text) }}>Cancel</Button>}
-              </div>
-            </>
-          ) : <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit report</Button>}
+      {editable && <textarea aria-label={label} rows={rows} value={words[key]} onChange={(e) => setWords({ ...words, [key]: e.target.value })} placeholder={hint} className={cn(textarea, "print:hidden")} />}
+      <div className={cn("whitespace-pre-line text-[13.5px] leading-relaxed", editable && "hidden print:block")}>{words[key] || <span className="text-muted-foreground">—</span>}</div>
+    </div>
+  )
+
+  return (
+    <div className="mx-auto w-full max-w-6xl px-5 pb-10 pt-2 print:max-w-none print:px-0">
+      <PrintBrand />
+      {toolbar}
+      {notice && <p className="mt-2 text-[12.5px] text-muted-foreground print:hidden" role="status">{notice}</p>}
+      <p className="mt-2 text-[12px] text-muted-foreground print:hidden">
+        {r.is_live ? (editable ? "Live: today's numbers. Edit the words, then Save as version — partners and customers see saved versions only." : "Live: today's numbers.")
+          : `Saved version ${r.version!.version} by ${r.version!.created_by}, ${fmtWhen(r.version!.created_at, true)} — the numbers as they were then.`}
+        {customer && r.can_edit ? " You are looking at the customer's copy." : ""}
+      </p>
+
+      <header className="mt-3">
+        <h1 className="text-[22px] font-semibold tracking-tight">{d.project.name}</h1>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">{[d.project.client, `PM ${d.project.owner_name}`, `stage ${d.project.stage_number} of ${d.project.stage_count}: ${d.project.stage}`, d.project.po_number, d.project.vendor_name && `${d.project.vendor_name}${d.project.product_name ? ` ${d.project.product_name}` : ""}`].filter(Boolean).join(" · ")}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <RagPill rag={d.health.rag} />
+          {!customer && <ul className="text-[12.5px] text-muted-foreground">{d.health.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
+          {!customer && <span className="text-[12px] text-muted-foreground">Forecast confidence: <span className="font-medium text-foreground">{d.health.confidence}</span></span>}
         </div>
-      )}
-      {d.current && <p className="mt-6 text-[11.5px] text-muted-foreground">Version {d.current.version} · {d.current.created_by} · {fmt(d.current.created_at)}</p>}
+      </header>
+
+      <div className={cn("mt-4 grid grid-cols-2 gap-3", customer ? "lg:grid-cols-4" : "lg:grid-cols-5")}>
+        {tiles.map((t) => (
+          <div key={t.label} className="panel p-4 print:shadow-none">
+            <div className="text-[11.5px] text-muted-foreground">{t.label}</div>
+            <div className={cn("mt-1.5 text-[22px] font-semibold leading-none tracking-tight", t.bad && "text-bad")}>{t.value}</div>
+            <div className="mt-1 text-[11.5px] text-muted-foreground">{t.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-4">
+        <Section n title="Summary">
+          <div className="grid gap-4 lg:grid-cols-2">
+            {wordBlock("summary", "Where it stands", 5, "Two or three lines: where the rollout stands, what changed, what happens next.")}
+            <div className="grid content-start gap-4">
+              {wordBlock("next_steps", "Next steps", 3, "One per line.")}
+              {(customer || editable) && wordBlock("asks", "What we need from the customer", 3, "One per line: approvals, access, windows, decisions.")}
+              {customer && (d.needs.approval || d.needs.tasks.length > 0) && (
+                <ul className="list-disc pl-5 text-[13px]">
+                  {d.needs.approval && <li>Approve the {d.needs.approval.stage} stage (asked {fmtDate(d.needs.approval.requested_at)}).</li>}
+                  {d.needs.tasks.map((t, i) => <li key={i}>{t.title}{t.due_date && ` — due ${fmtDate(t.due_date)}`}</li>)}
+                </ul>
+              )}
+            </div>
+          </div>
+        </Section>
+
+        <Section n title="Timeline" sub="plan against actual, and the forecast for what is left">
+          <PlanGantt stages={d.stages} today={d.today} target={f.target} />
+          <div className="mt-4">
+            <Table head={["Stage", "Planned", "Actual", "Forecast", ...(customer ? [] : ["Slip"])]}
+              rows={d.stages.map((s) => [<span key="name" className={cn(s.status === "current" && "font-semibold")}>{s.name}{s.status === "current" && <span className="ml-1 text-[11px] font-normal text-primary-text">now</span>}</span>,
+                s.plan_start ? `${fmtDate(s.plan_start)} → ${fmtDate(s.plan_end)}` : "—",
+                s.actual_start ? `${fmtDate(s.actual_start)} → ${s.actual_end ? fmtDate(s.actual_end) : "now"}` : s.status === "skipped" ? "skipped" : "—",
+                s.forecast_end ? `${fmtDate(s.forecast_start)} → ${fmtDate(s.forecast_end)}` : "—",
+                ...(customer ? [] : [slip(s.slip_days)])])}
+              tone={(i, c) => (c === 4 && (d.stages[i].slip_days ?? 0) > 0 ? "font-medium text-bad" : undefined)} />
+          </div>
+        </Section>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Section n title="What's next" sub="the coming stages, as forecast">
+            <ol className="grid gap-2">
+              {d.milestones.map((m, i) => (
+                <li key={m.stage} className="flex items-center gap-3 rounded-xl bg-muted/50 px-3 py-2 text-[13px]">
+                  <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", i === 0 ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}>{i + 1}</span>
+                  <span className="min-w-0 flex-1 font-medium">{m.stage}</span>
+                  <span className="text-[12.5px] text-muted-foreground">{fmtDate(m.start)} → <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
+                  {!customer && m.planned_end && m.end && m.end > m.planned_end && <span className="text-[12px] font-medium text-bad">plan {fmtDate(m.planned_end)}</span>}
+                </li>
+              ))}
+              {d.milestones.length === 0 && <li className="text-[13px] text-muted-foreground">Nothing left: the rollout is complete.</li>}
+            </ol>
+          </Section>
+
+          <Section n title={customer ? "Decisions and open points" : "Risks, issues, decisions, blockers"} sub={`${d.raid.filter((x) => x.open).length} open`}>
+            <ul className="divide-y divide-border text-[13px]">
+              {d.raid.map((x) => {
+                const K = RAID_KIND[x.kind]
+                return (
+                  <li key={x.id} className="flex items-start gap-2.5 py-2">
+                    <K.icon className={cn("mt-0.5 h-4 w-4 shrink-0", x.kind === "blocker" && x.open ? "text-bad" : "text-muted-foreground")} aria-hidden />
+                    <span className="min-w-0 flex-1"><span className={cn("block font-medium", !x.open && "text-muted-foreground")}>{x.title}</span>
+                      <span className="block text-[12px] text-muted-foreground">{K.label} · {x.status}{x.owner_name && ` · ${x.owner_name}`}{x.due_date && ` · due ${fmtDate(x.due_date)}`}{x.resolution && ` · ${x.resolution}`}</span></span>
+                    {x.kind !== "decision" && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", x.impact === "high" ? "bg-bad-soft text-bad" : x.impact === "medium" ? "bg-warn-soft text-warn" : "bg-muted text-muted-foreground")}>{x.impact}</span>}
+                  </li>
+                )
+              })}
+              {d.raid.length === 0 && <li className="py-2 text-muted-foreground">Nothing recorded.</li>}
+            </ul>
+          </Section>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Section n title="Work" sub={`${d.work.done} of ${d.work.total} tasks done${d.work.late ? `, ${d.work.late} late` : ""}`}>
+            {d.work.burn.length > 1 && (
+              <div className="h-40" role="img" aria-label={`Tasks known and done per week: ${d.work.burn.map((w) => `${fmtDate(w.week)} ${w.done} of ${w.total}`).join(", ")}`}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={d.work.burn} margin={{ top: 6, right: 6, bottom: 0, left: -18 }} accessibilityLayer={false}>
+                    <XAxis dataKey="week" tickFormatter={(x: string) => fmtDate(x).replace(/ \d{4}$/, "")} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+                    <ChartTip {...tip} labelFormatter={(x) => `week of ${fmtDate(String(x))}`} />
+                    <Area type="stepAfter" dataKey="total" name="Tasks known" stroke="var(--input)" fill="var(--muted)" isAnimationActive={false} />
+                    <Area type="stepAfter" dataKey="done" name="Done" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.25} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <div className="mt-3 grid gap-1.5 text-[12.5px]">
+              {d.work.by_stage.filter((b) => b.total).map((b) => (
+                <div key={b.stage} className="flex items-center gap-3">
+                  <span className="w-32 truncate">{b.stage}</span>
+                  <span className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden><span className="bg-primary" style={{ width: `${(b.done / b.total) * 100}%` }} /><span className="bg-bad-line" style={{ width: `${(b.late / b.total) * 100}%` }} /></span>
+                  <span className="w-24 text-right tabular-nums text-muted-foreground">{b.done}/{b.total}{b.late ? <span className="text-bad"> · {b.late} late</span> : ""}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          {!customer && d.people ? (
+            <Section n title="People" sub="who carries the work">
+              <Table head={["Person", "Role", "Open", "Done", "Late"]} rows={d.people.map((p) => [p.name, p.role ?? "—", p.open, p.done, p.late])} tone={(i, c) => (c === 4 && d.people![i].late ? "font-medium text-bad" : undefined)} />
+              {d.work.open && d.work.open.length > 0 && (
+                <>
+                  <h3 className="mb-1 mt-4 text-[12.5px] font-semibold text-nav-fg">Open tasks</h3>
+                  <Table head={["Task", "Stage", "Who", "Due"]} rows={d.work.open.slice(0, 12).map((t) => [t.title, t.stage ?? "—", t.who ?? "—", t.due_date ? (t.late ? `${fmtDate(t.due_date)} · late` : fmtDate(t.due_date)) : "—"])}
+                    tone={(i, c) => (c === 3 && d.work.open![i].late ? "font-medium text-bad" : undefined)} />
+                </>
+              )}
+            </Section>
+          ) : (
+            <Section n title="Team"><ul className="grid gap-1 text-[13px]">{d.team.map((m) => <li key={m.name} className="flex justify-between"><span className="font-medium">{m.name}</span><span className="text-muted-foreground">{m.role}</span></li>)}</ul></Section>
+          )}
+        </div>
+
+        <Section n title="History" sub="time in each stage against its SLA, decisions, and what moved">
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div>
+              <Table head={["Stage", "Entered", "Left", "Days", "SLA"]}
+                rows={d.history.dwell.map((x) => [x.stage, fmtDate(x.entered), x.left ? fmtDate(x.left) : "still here", x.days ?? "—", x.sla ? `${x.sla} d` : "—"])}
+                tone={(i, c) => (c === 3 && d.history.dwell[i].over ? "font-medium text-warn" : undefined)} />
+              {d.history.approvals.length > 0 && (
+                <>
+                  <h3 className="mb-1 mt-4 text-[12.5px] font-semibold text-nav-fg">Customer approvals</h3>
+                  <Table head={["Stage", "Status", "Asked", "Decided"]} rows={d.history.approvals.map((a) => [a.stage, a.status, fmtDate(a.requested_at), a.decided_at ? `${fmtDate(a.decided_at)}${a.decided_by ? ` · ${a.decided_by}` : ""}` : "—"])} />
+                </>
+              )}
+            </div>
+            <div className="grid content-start gap-4">
+              {!customer && d.plan_changes && d.plan_changes.length > 0 && (
+                <div>
+                  <h3 className="mb-1 text-[12.5px] font-semibold text-nav-fg">What moved in the plan</h3>
+                  <ul className="divide-y divide-border text-[12.5px]">{d.plan_changes.slice(0, 10).map((c, i) => (
+                    <li key={i} className="py-1.5">{c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</>}
+                      {c.reason && <span className="text-muted-foreground"> — {c.reason}</span>}<span className="block text-[11.5px] text-muted-foreground">{c.author} · {fmtDate(c.created_at)}</span></li>))}</ul>
+                </div>
+              )}
+              {d.history.notes.length > 0 && (
+                <div>
+                  <h3 className="mb-1 text-[12.5px] font-semibold text-nav-fg">Notes</h3>
+                  <ul className="grid gap-2 text-[12.5px]">{d.history.notes.slice(0, 8).map((n, i) => <li key={i}><span className="text-[11.5px] text-muted-foreground">{n.author} · {n.stage} · {fmtDate(n.created_at)}</span><p>{n.note}</p></li>)}</ul>
+                </div>
+              )}
+              {d.documents && d.documents.length > 0 && (
+                <div>
+                  <h3 className="mb-1 text-[12.5px] font-semibold text-nav-fg">Documents</h3>
+                  <ul className="grid gap-0.5 text-[12.5px]">{d.documents.slice(0, 12).map((x, i) => <li key={i} className="flex justify-between gap-3"><span className="truncate">{"filename" in x ? x.filename : x.category}</span><span className="shrink-0 text-muted-foreground">{"filename" in x ? `${x.category} · ${fmtDate(x.uploaded_at)}` : `${x.count} file${x.count === 1 ? "" : "s"}`}</span></li>)}</ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </Section>
+      </div>
+      <p className="mt-4 text-[11.5px] text-muted-foreground">Odin · {d.company} · {customer ? "customer copy" : "internal"} · generated {fmtWhen(d.generated_at, true)}</p>
     </div>
   )
 }

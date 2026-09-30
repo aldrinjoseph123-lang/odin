@@ -220,3 +220,47 @@ test("@flow account: the home page is a choice", async ({ page }) => {
   await page.goto("/")
   await expect(page).toHaveURL(/\/dashboard$/)
 })
+
+test("@flow plan, RAID and the rollout report: move a date, log a risk, save a version, both PDFs", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/1")
+  const plan = page.locator("#plan")
+  const end = plan.locator("input[aria-label$='planned end']").last()
+  await expect(end).toBeEnabled()
+  const was = await end.inputValue()
+  const later = new Date(Date.parse(was || "2026-12-01") + 3 * 864e5).toISOString().slice(0, 10)
+  await end.fill(later)
+  await plan.getByRole("textbox", { name: "Why the dates move" }).fill("E2E slip")
+  await plan.getByRole("button", { name: /^Save plan/ }).click()
+  await expect(plan.getByRole("status")).toHaveText(/Plan saved/)
+  await plan.getByRole("button", { name: /Show what moved/ }).click()
+  await expect(plan.getByText("— E2E slip").first()).toBeVisible()
+
+  // a risk: add, see it counted, then delete it
+  const raid = page.locator("#raid")
+  await raid.getByRole("button", { name: "Add" }).click()
+  await page.getByRole("textbox", { name: "Title" }).fill("E2E risk")
+  await page.getByRole("checkbox", { name: "Show in the customer's report" }).check()
+  await page.getByRole("button", { name: "Save" }).click()
+  await raid.getByRole("button", { name: /E2E risk/ }).click()
+  page.once("dialog", (d) => d.accept())
+  await page.getByRole("button", { name: "Delete" }).click()
+  await expect(raid.getByRole("button", { name: /E2E risk/ })).toHaveCount(0)
+
+  // the report: the customer copy hides the baseline; a saved version is listed; both PDFs render
+  await page.goto("/projects/1/report")
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/EDR Rollout - Globex/)
+  await page.getByRole("button", { name: "Customer copy" }).click()
+  await expect(page).toHaveURL(/audience=customer/)
+  await expect(page.locator("main")).not.toContainText(/baseline/i)
+  await page.getByRole("button", { name: "Internal" }).click()
+  await page.getByRole("textbox", { name: "What we need from the customer" }).fill("E2E: confirm the change window.")
+  await page.getByRole("button", { name: "Save as version" }).click()
+  await expect(page.getByRole("status")).toHaveText(/Version \d+ saved/)
+  for (const audience of ["internal", "customer"]) {
+    const r = await page.request.get(`/projects/1/report.pdf?audience=${audience}`)
+    expect(r.status()).toBe(200)
+    expect(r.headers()["content-type"]).toContain("application/pdf")
+  }
+  expectClean(errors)
+})

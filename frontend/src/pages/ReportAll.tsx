@@ -16,7 +16,7 @@ export default function ReportAll(_props: { user: User }) {
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!d) return <PageSkeleton />
   return (
-    <div className="mx-auto max-w-5xl px-5 pb-8 pt-4">
+    <div className="mx-auto w-full max-w-5xl px-5 pb-8 pt-4">
       <PrintBrand />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">All projects report</h1>

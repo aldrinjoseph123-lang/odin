@@ -133,6 +133,63 @@ async function getJson<T>(path: string): Promise<T> {
 export const flow = () => getJson<FlowData>("/api/flow")
 export const flowDetail = (id: number) => getJson<FlowDetail>(`/api/projects/${id}/flow`)
 
+// ---- the plan and the RAID register (services/plan.py, services/raid.py) ----
+export type Rag = "green" | "amber" | "red" | "done"
+export type PlanStage = {
+  id: number; name: string; position: number; sla_days: number | null; status: "done" | "skipped" | "current" | "next"
+  plan_start: string | null; plan_end: string | null; base_start: string | null; base_end: string | null
+  actual_start: string | null; actual_end: string | null; forecast_start: string | null; forecast_end: string | null
+  planned_days: number; actual_days: number | null; slip_days: number | null; suggested_start: string; suggested_end: string
+}
+export type PlanData = {
+  stages: PlanStage[]; has_plan: boolean; baseline_at: string | null; today: string; closed: boolean; default_days: number; pct_complete: number
+  finish: { forecast: string | null; planned: string | null; baseline: string | null; target: string | null; vs_target_days: number | null; vs_baseline_days: number | null; days_to_target: number | null }
+  health: { rag: Rag; reasons: string[]; confidence: "high" | "medium" | "low" }
+  changes: { stage: string | null; field: string; old: string | null; new: string | null; reason: string | null; author: string; created_at: string }[]
+  can_edit: boolean; project: { id: number; name: string; start_date: string | null; target_end_date: string | null }
+}
+export const plan = (id: number) => getJson<PlanData>(`/api/projects/${id}/plan`)
+export const savePlan = (id: number, stages: { id: number; plan_start: string | null; plan_end: string | null }[], reason: string) =>
+  send<{ ok: true; changed: number; baselined: boolean }>(`/api/projects/${id}/plan`, "PUT", { stages, reason })
+export const rebaseline = (id: number, reason: string) => post<{ ok: true }>(`/api/projects/${id}/plan/baseline`, { reason })
+export type ReportWords = { summary: string; next_steps: string; asks: string; suggested?: { summary: string; next_steps: string; asks: string }; blocks?: ["h" | "li" | "p", string][] }
+export type ReportPayload = {
+  audience: "internal" | "customer"; generated_at: string; today: string; company: string
+  project: { id: number; name: string; client: string; po_number: string | null; stage: string; owner_name: string; start_date: string; target_end_date: string | null; vendor_name: string | null; product_name: string | null; delivery_mode: string; stage_number: number; stage_count: number }
+  health: PlanData["health"]; pct_complete: number; finish: Partial<PlanData["finish"]>; baseline_at: string | null; elapsed_days: number; has_plan: boolean
+  stages: PlanStage[]; milestones: { stage: string; start: string | null; end: string | null; planned_end: string | null }[]
+  raid: RaidItem[]
+  work: { total: number; done: number; late: number; by_stage: { stage: string; total: number; done: number; late: number }[]; burn: { week: string; total: number; done: number }[]
+          open?: { id: number; title: string; stage: string | null; who: string | null; due_date: string | null; late: boolean }[] }
+  team: { name: string; role: string; active: boolean }[]
+  history: { dwell: { stage: string; status: string; entered: string | null; left: string | null; days: number | null; sla: number | null; over: number }[]
+             approvals: { stage: string; status: string; requested_by: string; requested_at: string; decided_by: string | null; decided_at: string | null; comment: string | null }[]
+             notes: { author: string; note: string; stage: string; created_at: string }[] }
+  needs: { approval: { stage: string; requested_at: string } | null; tasks: { title: string; due_date: string | null }[] }
+  people?: { name: string; role: string | null; open: number; done: number; late: number }[]
+  plan_changes?: PlanData["changes"]
+  documents?: ({ category: string; filename: string; uploaded_by: string; uploaded_at: string } | { category: string; count: number })[]
+}
+export type RolloutReport = {
+  audience: "internal" | "customer"; words: ReportWords; data: ReportPayload | null; is_live: boolean
+  version: { version: number; kind: "text" | "snapshot"; created_by: string; created_at: string } | null
+  versions: { version: number; kind: "text" | "snapshot"; created_by: string; created_at: string }[]; can_edit: boolean; project: { id: number; name: string; client: string }
+}
+export const rolloutReport = (id: number, audience: string, v?: number | null) =>
+  getJson<RolloutReport>(`/api/projects/${id}/rollout-report?audience=${audience}${v ? `&v=${v}` : ""}`)
+export const saveRolloutReport = (id: number, words: { summary: string; next_steps: string; asks: string }) => post<{ ok: true; version: number }>(`/api/projects/${id}/rollout-report`, words)
+export type RaidKind = "risk" | "issue" | "decision" | "blocker"
+export type RaidItem = {
+  id: number; kind: RaidKind; title: string; detail: string | null; impact: "low" | "medium" | "high"; likelihood: "low" | "medium" | "high" | null
+  status: string; owner_id: number | null; owner_name: string | null; due_date: string | null; stage: string | null; resolution: string | null
+  customer_visible: boolean; open: boolean; created_by: string; created_at: string; closed_at: string | null
+}
+export type RaidData = { items: RaidItem[]; owners: { id: number; name: string }[]; statuses: Record<RaidKind, string[]>; can_edit: boolean; stages: string[] }
+export const raid = (id: number) => getJson<RaidData>(`/api/projects/${id}/raid`)
+export const saveRaid = (projectId: number, item: Partial<RaidItem>, itemId?: number) =>
+  itemId ? send<{ ok: true }>(`/api/projects/${projectId}/raid/${itemId}`, "PUT", item) : post<{ ok: true; id: number }>(`/api/projects/${projectId}/raid`, item)
+export const deleteRaid = (projectId: number, itemId: number) => send<{ ok: true }>(`/api/projects/${projectId}/raid/${itemId}`, "DELETE")
+
 // ---- calendar and kibana (views on the Flow page) ----
 export type CalendarData = {
   month: string; today: string; from: string; to: string

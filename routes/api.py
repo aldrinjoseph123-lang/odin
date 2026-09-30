@@ -323,6 +323,91 @@ def api_report(project_id):
     )
 
 
+def _rollout_report(project_id, audience, version):
+    """(words, data, versions, current row or None) for the report page and its PDF.
+    Internal readers get live data by default; partners and customers only
+    ever see a saved version, cut down to the customer's view."""
+    import json
+    from services import report_data
+    from services.reports import render_blocks
+    db = get_db()
+    project = load_project(project_id)
+    external = session.get("kind") == "external"
+    if external:
+        audience = "customer"
+    versions = [dict(r) for r in db.execute(
+        "SELECT version, kind, created_by, created_at FROM project_reports WHERE project_id = ? ORDER BY version DESC", (project_id,))]
+    row = None
+    if version or external:
+        wanted = version or next((v["version"] for v in versions if v["kind"] == "snapshot"), None)
+        row = db.execute("SELECT * FROM project_reports WHERE project_id = ? AND version = ?", (project_id, wanted)).fetchone() if wanted else None
+        if row is None or (external and row["kind"] != "snapshot"):
+            abort(404)
+    if row is not None and row["kind"] == "snapshot":
+        data = json.loads(row["data"]) if audience == "internal" else report_data.customer_view(row["data"])
+        words = {"summary": row["summary"] or "", "next_steps": row["next_steps"] or "", "asks": row["asks"] or ""}
+    elif row is not None:                       # an old plain-text version
+        data, words = None, {"blocks": render_blocks(row["body"])}
+    else:
+        data = report_data.build(project, audience)
+        last = db.execute("SELECT summary, next_steps, asks FROM project_reports WHERE project_id = ? AND kind = 'snapshot' ORDER BY version DESC LIMIT 1", (project_id,)).fetchone()
+        words = {k: (last[k] if last and last[k] else data["draft"][k]) for k in ("summary", "next_steps", "asks")}
+        words["suggested"] = data.pop("draft")
+    return project, audience, words, data, versions, row
+
+
+@app.route("/api/projects/<int:project_id>/rollout-report")
+@permission_required("view_reports")
+def api_rollout_report(project_id):
+    audience = request.args.get("audience", "internal")
+    audience = audience if audience in ("internal", "customer") else "internal"
+    project, audience, words, data, versions, row = _rollout_report(project_id, audience, request.args.get("v", type=int))
+    external = session.get("kind") == "external"
+    return jsonify(audience=audience, words=words, data=data, is_live=row is None,
+                   version=None if row is None else {"version": row["version"], "kind": row["kind"], "created_by": row["created_by"], "created_at": row["created_at"]},
+                   versions=[v for v in versions if not external or v["kind"] == "snapshot"],
+                   can_edit=not external and project_allows(project_id, "manage_project"),
+                   project={"id": project["id"], "name": project["name"], "client": project["client"]})
+
+
+@app.route("/projects/<int:project_id>/report.pdf")
+@permission_required("view_reports")
+def rollout_report_pdf(project_id):
+    """The report as a PDF: the live draft or a saved version, internal or the customer copy."""
+    from flask import Response
+    from services.report_pdf import render
+    audience = request.args.get("audience", "internal")
+    project, audience, words, data, _versions, row = _rollout_report(project_id, audience if audience in ("internal", "customer") else "internal", request.args.get("v", type=int))
+    if data is None:
+        abort(404)            # an old plain-text version has no PDF of this kind
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in project["name"])[:60]
+    tag = f"-v{row['version']}" if row else ""
+    name = f"{safe}-report{tag}{'-customer' if audience == 'customer' else ''}.pdf"
+    return Response(render(data, words), mimetype="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
+
+
+@app.route("/api/projects/<int:project_id>/rollout-report", methods=["POST"])
+@permission_required("edit_project")
+@project_role_required("manage_project")
+def api_rollout_report_save(project_id):
+    """Freeze today's report with the project manager's words as a new version."""
+    from services import report_data
+    from services.plan import snapshot_json
+    project = load_project(project_id)
+    body = request.get_json(silent=True) or {}
+    words = {k: str(body.get(k) or "").strip()[:6000] for k in ("summary", "next_steps", "asks")}
+    if not words["summary"]:
+        return jsonify(error="Write the summary first — two or three lines on where it stands"), 400
+    db = get_db()
+    version = (db.execute("SELECT MAX(version) FROM project_reports WHERE project_id = ?", (project_id,)).fetchone()[0] or 0) + 1
+    db.execute("INSERT INTO project_reports (project_id, version, body, created_by, created_at, kind, data, summary, next_steps, asks) VALUES (?, ?, ?, ?, ?, 'snapshot', ?, ?, ?, ?)",
+               (project_id, version, words["summary"], session["user_name"], datetime.utcnow().isoformat(), snapshot_json(report_data.snapshot(project)),
+                words["summary"], words["next_steps"], words["asks"]))
+    db.commit()
+    audit_log("save_report", "project", project_id, project["name"], f"version {version}")
+    return jsonify(ok=True, version=version)
+
+
 @app.route("/api/account")
 @login_required
 def api_account():
@@ -847,6 +932,117 @@ def api_flow():
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}
     return jsonify({"stages": get_stage_names(), "rows": rows, "counts": counts, "today": local_today().isoformat(),
                     "can_move": role_has_permission(session.get("role"), "edit_project_stage")})
+
+
+@app.route("/api/projects/<int:project_id>/plan")
+@permission_required("view_project_detail")
+def api_plan(project_id):
+    """The rollout's plan, actuals, forecast and health, with the change log."""
+    from services import plan
+    project = load_project(project_id)
+    d = plan.build(project)
+    d["changes"] = plan.changes(project_id)
+    d["can_edit"] = project_allows(project_id, "manage_project")
+    d["project"] = {"id": project["id"], "name": project["name"], "start_date": project["start_date"], "target_end_date": project["target_end_date"]}
+    return jsonify(d)
+
+
+@app.route("/api/projects/<int:project_id>/plan", methods=["PUT"])
+@permission_required("edit_project")
+@project_role_required("manage_project")
+def api_plan_save(project_id):
+    """Save the plan's dates; the first plan saved becomes the baseline."""
+    from services import plan
+    project = load_project(project_id)
+    body = request.get_json(silent=True) or {}
+    reason = str(body.get("reason") or "").strip()[:300]
+    try:
+        changed, baselined = plan.save(project, body.get("stages"), reason, session["user_name"])
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    if changed or baselined:
+        audit_log("save_plan", "project", project_id, project["name"], f"{changed} date(s) changed{'; baseline set' if baselined else ''}{f'; {reason}' if reason else ''}")
+    return jsonify(ok=True, changed=changed, baselined=baselined)
+
+
+@app.route("/api/projects/<int:project_id>/plan/baseline", methods=["POST"])
+@permission_required("edit_project")
+@project_role_required("manage_project")
+def api_plan_rebaseline(project_id):
+    """Freeze the current plan as the new baseline; a reason is required."""
+    from services import plan
+    project = load_project(project_id)
+    reason = str((request.get_json(silent=True) or {}).get("reason") or "").strip()[:300]
+    if not reason:
+        return jsonify(error="Say why the baseline moves"), 400
+    plan.rebaseline(project, reason, session["user_name"])
+    audit_log("rebaseline_plan", "project", project_id, project["name"], reason)
+    return jsonify(ok=True)
+
+
+@app.route("/api/projects/<int:project_id>/raid")
+@permission_required("view_project_detail")
+def api_raid(project_id):
+    """The rollout's risks, issues, decisions and blockers. Partners and
+    customers see only what was marked for the customer."""
+    from services import raid
+    load_project(project_id)
+    external = session.get("kind") == "external"
+    owners = [] if external else [{"id": r["id"], "name": r["name"]} for r in get_db().execute(
+        "SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")]
+    return jsonify(items=raid.items(project_id, customer=external), owners=owners, statuses=raid.STATUSES,
+                   can_edit=not external and project_allows(project_id, "manage_tasks"), stages=get_stage_names(project_id))
+
+
+def _raid_notify_owner(project, item_title, owner_id, before=None):
+    from markupsafe import escape as _esc
+    from services.notifications import notify_users
+    if owner_id and owner_id != before:
+        notify_users([owner_id], "assigned", project["id"], f"You own a RAID item on {project['name']}",
+                     f"<p>{_esc(item_title)}</p>", exclude_user_id=session.get("user_id"))
+
+
+@app.route("/api/projects/<int:project_id>/raid", methods=["POST"])
+@permission_required("edit_project")
+@project_role_required("manage_tasks")
+def api_raid_create(project_id):
+    from services import raid
+    project = load_project(project_id)
+    try:
+        fields = raid.clean(request.get_json(silent=True) or {})
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    rid = raid.create(project_id, fields, session["user_name"])
+    audit_log("add_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:80]}")
+    _raid_notify_owner(project, fields["title"], fields["owner_id"])
+    return jsonify(ok=True, id=rid)
+
+
+@app.route("/api/projects/<int:project_id>/raid/<int:item_id>", methods=["PUT", "DELETE"])
+@permission_required("edit_project")
+@project_role_required("manage_tasks")
+def api_raid_item(project_id, item_id):
+    from services import raid
+    project = load_project(project_id)
+    db = get_db()
+    item = db.execute("SELECT * FROM raid_items WHERE id = ? AND project_id = ?", (item_id, project_id)).fetchone()
+    if item is None:
+        abort(404)
+    if request.method == "DELETE":
+        if not project_allows(project_id, "manage_project"):
+            abort(403)
+        db.execute("DELETE FROM raid_items WHERE id = ?", (item_id,))
+        db.commit()
+        audit_log("delete_raid_item", "project", project_id, project["name"], f"{item['kind']}: {item['title'][:80]}")
+        return jsonify(ok=True)
+    try:
+        fields = raid.clean(request.get_json(silent=True) or {}, existing=item)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    raid.update(item, fields)
+    audit_log("update_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:60]} → {fields['status']}")
+    _raid_notify_owner(project, fields["title"], fields["owner_id"], before=item["owner_id"])
+    return jsonify(ok=True)
 
 
 @app.route("/api/projects/<int:project_id>/flow")

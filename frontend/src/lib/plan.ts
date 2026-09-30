@@ -1,0 +1,39 @@
+// Plan editing, pure: moving one stage's dates and carrying the stages after
+// it along, and filling empty stages from the suggestion. Tested in plan.test.ts.
+export type PlanRow = { id: number; plan_start: string | null; plan_end: string | null; suggested_start: string; suggested_end: string }
+
+const DAY = 864e5
+const toDay = (iso: string) => Date.parse(`${iso}T00:00:00Z`)
+export const addDays = (iso: string, n: number) => new Date(toDay(iso) + n * DAY).toISOString().slice(0, 10)
+export const daysBetween = (a: string, b: string) => Math.round((toDay(b) - toDay(a)) / DAY)
+
+// Set one date. Moving a start keeps the stage's length; moving an end
+// changes it. With `cascade`, every later stage moves by the same number of
+// days the end did, so the plan stays back to back.
+export function setDate<T extends PlanRow>(rows: T[], index: number, field: "plan_start" | "plan_end", value: string, cascade: boolean): T[] {
+  const out = rows.map((r) => ({ ...r }))
+  const r = out[index]
+  const oldEnd = r.plan_end ?? r.suggested_end
+  if (field === "plan_start") {
+    const length = r.plan_start && r.plan_end ? daysBetween(r.plan_start, r.plan_end) : daysBetween(r.suggested_start, r.suggested_end)
+    r.plan_start = value
+    r.plan_end = addDays(value, Math.max(0, length))
+  } else {
+    r.plan_start = r.plan_start ?? r.suggested_start
+    r.plan_end = value < r.plan_start ? r.plan_start : value
+  }
+  const shift = daysBetween(oldEnd, r.plan_end!)
+  if (cascade && shift !== 0) {
+    for (let i = index + 1; i < out.length; i++) {
+      const x = out[i]
+      if (!x.plan_start || !x.plan_end) continue
+      x.plan_start = addDays(x.plan_start, shift)
+      x.plan_end = addDays(x.plan_end, shift)
+    }
+  }
+  return out
+}
+
+// Every stage without dates takes the suggested ones (SLA or default length, back to back).
+export const fillSuggested = <T extends PlanRow>(rows: T[]): T[] =>
+  rows.map((r) => (r.plan_start && r.plan_end ? r : { ...r, plan_start: r.suggested_start, plan_end: r.suggested_end }))

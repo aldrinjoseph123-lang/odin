@@ -114,7 +114,7 @@ def cleanup_soft_deletes(db=None):
         _remove_upload(project_id, stored_name)
 
     if doomed:
-        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications"):
+        for table in ("status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
@@ -139,7 +139,7 @@ def _purge_orphans(db):
     their children. Everything removed here is unreachable by definition: no
     project row means no page can ever display it.
     """
-    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications"):
+    for table in ("status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items"):
         column = "project_id"
         db.execute(
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
@@ -273,6 +273,17 @@ def migrate_db(db):
         db.execute("ALTER TABLE status_notes ADD COLUMN prev_entered_at TEXT")
 
     _migrate_stage_lists(db)
+    # A saved report version is either the old plain text (kind 'text') or a
+    # frozen snapshot of the report data plus the PM's words (services/report_data.py).
+    report_columns = {row[1] for row in db.execute("PRAGMA table_info(project_reports)")}
+    for column, coltype in (("kind", "TEXT NOT NULL DEFAULT 'text'"), ("data", "TEXT"), ("summary", "TEXT"), ("next_steps", "TEXT"), ("asks", "TEXT")):
+        if report_columns and column not in report_columns:   # a fresh database creates the table, with them, further on
+            db.execute(f"ALTER TABLE project_reports ADD COLUMN {column} {coltype}")
+    # A rollout's plan: dates per stage and the baseline they are measured against (services/plan.py).
+    plan_columns = {row[1] for row in db.execute("PRAGMA table_info(project_stages)")}
+    for column in ("plan_start", "plan_end", "base_start", "base_end"):
+        if column not in plan_columns:
+            db.execute(f"ALTER TABLE project_stages ADD COLUMN {column} TEXT")
     _migrate_participants(db)
     # tasks.stage: which stage a task belongs to (name, like status_notes).
     # NULL = "whatever stage the project is in" — old tasks and quick adds.
@@ -331,6 +342,11 @@ def migrate_db(db):
         body TEXT NOT NULL,
         created_by TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'text',
+        data TEXT,
+        summary TEXT,
+        next_steps TEXT,
+        asks TEXT,
         UNIQUE (project_id, version)
     )""")
     db.execute("""CREATE TABLE IF NOT EXISTS login_links (

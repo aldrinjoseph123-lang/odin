@@ -167,6 +167,59 @@ for d in range(14, 0, -1):
 con.commit()
 con.close()
 
+# ---- history in time: each rollout began weeks ago and moved through its stages since ----
+con = sqlite3.connect(DB_PATH)
+con.row_factory = sqlite3.Row
+RISKS = [("risk", "Customer change window may slip", "high", "medium"), ("risk", "Legacy endpoints below agent minimum", "medium", "high"),
+         ("issue", "Proxy blocks the agent's cloud endpoint", "high", None), ("issue", "Log volume above the sizing estimate", "medium", None),
+         ("blocker", "Waiting on firewall change approval", "high", None), ("decision", "Pilot on 50 endpoints before fleet", "medium", None),
+         ("decision", "Weekend cutover agreed", "low", None)]
+for p in con.execute("SELECT id, stage, target_end_date FROM projects ORDER BY id").fetchall():
+    stages = con.execute("SELECT id, name, position, sla_days FROM project_stages WHERE project_id = ? ORDER BY position", (p["id"],)).fetchall()
+    names = [r["name"] for r in stages]
+    at = names.index(p["stage"]) if p["stage"] in names else 0
+    began = now - timedelta(days=random.randint(25, 70))
+    moves = con.execute("SELECT id FROM status_notes WHERE project_id = ? AND prev_stage IS NOT NULL ORDER BY id", (p["id"],)).fetchall()
+    # the moves spread from the start to a few days ago, in order; the current stage entered at the last one
+    span = (now - timedelta(days=random.randint(2, 12)) - began).total_seconds()
+    stamps = sorted(began + timedelta(seconds=span * (k + 1) / (len(moves) + 1)) for k in range(len(moves)))
+    for m, when in zip(moves, stamps):
+        con.execute("UPDATE status_notes SET created_at = ? WHERE id = ?", (when.isoformat(), m["id"]))
+    entered = stamps[-1] if stamps else began
+    con.execute("UPDATE projects SET created_at = ?, start_date = ?, stage_entered_at = ? WHERE id = ?",
+                (began.isoformat(), began.date().isoformat(), entered.isoformat(), p["id"]))
+    # the plan as first agreed (the baseline): back to back from the start, SLA or 5-12 days a stage, a finish line at the end
+    day, first = began.date(), []
+    for i, r in enumerate(stages):
+        length = 0 if i == len(stages) - 1 else (r["sla_days"] or random.randint(5, 12))
+        first.append((r["id"], day, day + timedelta(days=length)))
+        day += timedelta(days=length)
+    for sid, s0, e0 in first:
+        con.execute("UPDATE project_stages SET plan_start = ?, plan_end = ?, base_start = ?, base_end = ? WHERE id = ?",
+                    (s0.isoformat(), e0.isoformat(), s0.isoformat(), e0.isoformat(), sid))
+    con.execute("UPDATE projects SET baseline_at = ?, target_end_date = COALESCE(target_end_date, ?) WHERE id = ?",
+                ((began + timedelta(days=1)).isoformat(), first[-1][2].isoformat(), p["id"]))
+    # some rollouts re-planned since: the stages from the current one on moved later, with a reason in the log
+    if random.random() < 0.55 and at < len(stages) - 1:
+        slip = random.choice([3, 5, 7, 10, 14])
+        why = random.choice(["Vendor delivery late", "Customer change freeze", "Scope added: branch office", "Waiting on firewall approval"])
+        for sid, s0, e0 in first[at:]:
+            name = next(r["name"] for r in stages if r["id"] == sid)
+            con.execute("UPDATE project_stages SET plan_start = ?, plan_end = ? WHERE id = ?", ((s0 + timedelta(days=slip)).isoformat(), (e0 + timedelta(days=slip)).isoformat(), sid))
+            con.execute("INSERT INTO plan_changes (project_id, stage, field, old, new, reason, author, created_at) VALUES (?, ?, 'end', ?, ?, ?, 'Priya Menon', ?)",
+                        (p["id"], name, e0.isoformat(), (e0 + timedelta(days=slip)).isoformat(), why, (now - timedelta(days=random.randint(1, 10))).isoformat()))
+    # a few RAID items each
+    for kind, title, impact, likelihood in random.sample(RISKS, random.randint(1, 4)):
+        status = {"decision": "decided"}.get(kind, random.choice(["open", "open", "mitigating" if kind == "risk" else "open", "closed"]))
+        made = now - timedelta(days=random.randint(1, 20))
+        con.execute("INSERT INTO raid_items (project_id, kind, title, impact, likelihood, status, owner_id, due_date, stage, resolution, customer_visible, created_by, created_at, updated_at, closed_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Priya Menon', ?, ?, ?)",
+                    (p["id"], kind, title, impact, likelihood, status, random.choice(staff_ids), (now + timedelta(days=random.randint(-5, 20))).date().isoformat(),
+                     p["stage"], "Agreed in the weekly call" if status in ("closed", "decided") else None, int(kind in ("decision", "blocker")),
+                     made.isoformat(), made.isoformat(), made.isoformat() if status in ("closed", "decided") else None))
+con.commit()
+con.close()
+
 # the daily check, so the alerts table holds what the portfolio deserves
 with app.test_request_context():
     from db import get_db
