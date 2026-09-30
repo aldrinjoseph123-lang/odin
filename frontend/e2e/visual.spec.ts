@@ -17,7 +17,8 @@ for (const theme of ["light", "dark"] as const) {
   for (const [name, path] of PAGES) {
     test(`@visual @phone ${name} ${theme}`, async ({ page }, info) => {
       const golden = info.snapshotPath(`${name}-${theme}-${info.project.name}.png`)
-      test.skip(!existsSync(golden) && info.config.updateSnapshots !== "all", "no golden yet — run the CI workflow with update_snapshots and commit the artifact")
+      // a bare --update-snapshots means "changed"; without either, a missing golden is skipped rather than failed
+      test.skip(!existsSync(golden) && !["all", "changed"].includes(info.config.updateSnapshots), "no golden yet — run the CI workflow with update_snapshots and commit the artifact")
       if (path !== "/login") await signIn(page, "admin", path); else await page.goto(path)
       await setTheme(page, theme)
       await page.locator("main, form").first().waitFor()

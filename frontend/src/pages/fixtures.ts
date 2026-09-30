@@ -27,18 +27,25 @@ export const flow: FlowData = {
 }
 
 export const dashboard: DashboardData = {
-  today: "2026-09-29", is_custom: false, scope_full: true,
+  today: "2026-09-29", version: 7, is_custom: false, scope_full: true,
   layout: [{ id: "kpis", w: 3, settings: { tiles: ["active", "overdue"] } }, { id: "timeline", w: 2, settings: { show: "all", limit: 12 } }, { id: "progress", w: 1, settings: {} }, { id: "alerts", w: 1, settings: { limit: 8 } }],
   catalogue: [
-    { id: "kpis", title: "Headline numbers", blurb: "", w: 3, settings: [{ key: "tiles", label: "Tiles", kind: "multi", default: ["active"], choices: ["active", "overdue"] }] },
-    { id: "timeline", title: "Timeline", blurb: "", w: 2, settings: [{ key: "show", label: "Show", kind: "choice", default: "all", choices: ["all", "attention"] }, { key: "limit", label: "Rows", kind: "int", default: 12, min: 5, max: 50 }] },
-    { id: "progress", title: "Portfolio progress", blurb: "", w: 1, settings: [] },
-    { id: "alerts", title: "Open alerts", blurb: "", w: 1, settings: [{ key: "limit", label: "Items", kind: "int", default: 8, min: 5, max: 30 }] },
-    { id: "team", title: "Team", blurb: "who is on what", w: 1, settings: [] },
+    { id: "kpis", title: "Headline numbers", blurb: "", w: 3, multiple: false, settings: [{ key: "tiles", label: "Tiles", kind: "multi", default: ["active"], choices: ["active", "overdue"] }] },
+    { id: "timeline", title: "Timeline", blurb: "", w: 2, multiple: false, settings: [{ key: "show", label: "Show", kind: "choice", default: "all", choices: ["all", "attention"] }, { key: "limit", label: "Rows", kind: "int", default: 12, min: 5, max: 50 }] },
+    { id: "progress", title: "Portfolio progress", blurb: "", w: 1, multiple: false, settings: [] },
+    { id: "alerts", title: "Open alerts", blurb: "", w: 1, multiple: false, settings: [{ key: "limit", label: "Items", kind: "int", default: 8, min: 5, max: 30 }] },
+    { id: "team", title: "Team", blurb: "who is on what", w: 1, multiple: false, settings: [] },
+    { id: "custom", title: "Custom metric", blurb: "your own", w: 1, multiple: true, settings: [
+      { key: "title", label: "Title", kind: "text", default: "Custom metric", max: 40 },
+      { key: "measure", label: "Measure", kind: "choice", default: "rollouts_by_stage", choices: ["rollouts_by_stage", "rollouts_by_owner"] },
+      { key: "chart", label: "Chart", kind: "choice", default: "bar", choices: ["number", "bar", "pie", "list"] },
+      { key: "top", label: "Top", kind: "int", default: 6, min: 3, max: 12 }] },
   ],
   data: {
     kpis: { counts: { active: 4, overdue: 1, over_sla: 1, due_soon: 0, awaiting: 1, idle: 0 }, before: { active: 3, overdue: 2, over_sla: 1, due_soon: 0, awaiting: 0, idle: 0 }, since: "2026-09-22", moved_this_week: 5,
-            series: { active: [{ day: "2026-09-28", v: 3 }, { day: "2026-09-29", v: 4 }], overdue: [], over_sla: [], due_soon: [], awaiting: [], idle: [] } },
+            series: { active: [{ day: "2026-09-28", v: 3 }, { day: "2026-09-29", v: 4 }], overdue: [], over_sla: [], due_soon: [], awaiting: [], idle: [] },
+            detail: { active: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", text: "On track" }], overdue: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", text: "12 d late" }], over_sla: [], due_soon: [], awaiting: [], idle: [] } },
+    aggregates: { rollouts_by_stage: [{ key: "Scoping", count: 4 }], rollouts_by_owner: [{ key: "Admin User", count: 4 }] },
     timeline: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", start_date: "2026-09-01", target_end_date: "2026-12-01", state: "on_track", progress: 0.25, team: [] }],
     progress: { done: 3, current: 4, pending: 10, pct: 18 }, stages: [{ stage: "Scoping", count: 4 }], completion: Array.from({ length: 56 }, (_, i) => ({ day: `2026-08-${String(i + 1).padStart(2, "0")}`, count: i % 3 })),
     schedule: { due: [], approvals: [] }, team: { people: [], unassigned: 0 }, activity: [], alerts: [{ id: 1, project_id: 1, project: "EDR Rollout - Globex", type: "project_overdue", title: "Project overdue", severity: "critical", created_at: "2026-09-29T08:00:00" }],

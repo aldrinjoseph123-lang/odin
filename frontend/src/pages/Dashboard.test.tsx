@@ -9,6 +9,7 @@ import { admin, dashboard } from "./fixtures"
 vi.mock("@/lib/api", async (orig) => ({
   ...(await orig<typeof import("@/lib/api")>()),
   dashboard: vi.fn(async () => dashboard),
+  dashboardVersion: vi.fn(async () => ({ version: dashboard.version })),
   saveLayout: vi.fn(async (layout: unknown) => ({ ok: true, layout, is_custom: true })),
   resetLayout: vi.fn(async () => ({ ok: true, layout: dashboard.layout, is_custom: false })),
 }))
@@ -26,6 +27,40 @@ describe("Dashboard", () => {
     expect(screen.queryByText("Over stage SLA")).toBeNull()                        // tiles setting hid it
     expect(screen.getByText("+1")).toBeInTheDocument()                             // active: 4 vs 3
     expect(screen.getByText("−1")).toBeInTheDocument()                             // overdue: 1 vs 2
+  })
+
+  it("a tile opens the rollouts behind its number; a widget expands with its data as a table", async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.click(await screen.findByRole("button", { name: "Overdue: 1. Show them" }))
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText("Overdue · 1")).toBeInTheDocument()
+    expect(within(dialog).getByRole("link", { name: "EDR Rollout - Globex" })).toHaveAttribute("href", "/board?rollout=1")
+    expect(within(dialog).getByText("12 d late")).toBeInTheDocument()
+    await user.keyboard("{Escape}")
+    await user.click(screen.getByRole("button", { name: "Expand Open alerts" }))
+    const big = await screen.findByRole("dialog")
+    expect(within(big).getByRole("columnheader", { name: "Severity" })).toBeInTheDocument()
+    expect(within(big).getByRole("cell", { name: "Project overdue" })).toBeInTheDocument()
+  })
+
+  it("a custom metric can be added more than once, titled and charted", async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.click(await screen.findByRole("button", { name: "Customise" }))
+    await user.click(screen.getByRole("button", { name: "Custom metric" }))   // the picker's pill, exactly
+    await user.click(screen.getByRole("button", { name: "Custom metric" }))
+    expect(screen.getAllByRole("region", { name: "Custom metric" })).toHaveLength(2)
+    await user.click(screen.getAllByRole("button", { name: "Settings for Custom metric" })[0])
+    await user.clear(screen.getByLabelText("Title")); await user.type(screen.getByLabelText("Title"), "Owners")
+    await user.selectOptions(screen.getByLabelText("Measure"), "rollouts_by_owner")
+    await user.selectOptions(screen.getByLabelText("Chart"), "number")
+    expect(screen.getByRole("region", { name: "Owners" })).toHaveTextContent("Admin User")
+    await user.click(screen.getByRole("button", { name: "Save my dashboard" }))
+    const saved = (saveLayout as unknown as { mock: { calls: unknown[][] } }).mock.calls.at(-1)![0] as { id: string; uid?: string; settings: Record<string, unknown> }[]
+    expect(saved.filter((x) => x.id === "custom")).toHaveLength(2)
+    expect(saved.find((x) => x.settings.title === "Owners")).toMatchObject({ id: "custom", settings: { measure: "rollouts_by_owner", chart: "number" } })
+    expect(new Set(saved.filter((x) => x.id === "custom").map((x) => x.uid)).size).toBe(2)
   })
 
   it("customise: moves, resizes, removes, adds and saves a draft", async () => {

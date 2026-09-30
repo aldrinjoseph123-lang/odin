@@ -13,39 +13,57 @@ page the first time it is opened on a day. Snapshots are staff-wide; an
 external account's narrower view gets none.
 """
 import json
+import re
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from db import PROJECT_OPEN_SQL, avatar_url, get_db, get_setting, get_stage_names, stages_for_projects
 from policies import local_today
 from services.alerts import build_alerts
+from services.analytics import _parse, sla_by_stage, stage_sla_state
 
 COUNT_KEYS = ("active", "overdue", "over_sla", "due_soon", "awaiting", "idle")
 LAYOUT_KEY = "dashboard.layout"
 HISTORY_DAYS = 14
+STATE_LABEL = {"overdue": "Overdue", "over_sla": "Over SLA", "due_soon": "Due soon", "on_track": "On track"}
+# what a custom widget can count; each is a list of {key, count} in `aggregates`
+MEASURES = ("rollouts_by_stage", "rollouts_by_client", "rollouts_by_state", "rollouts_by_owner", "rollouts_by_mode",
+            "open_tasks_by_person", "done_tasks_by_person", "tasks_done_per_day")
 
 # The catalogue. `w` is the default width in thirds of the grid; `settings`
 # are per-widget knobs the page applies itself (the server only validates them).
 WIDGETS = {
     "kpis":       dict(title="Headline numbers", blurb="Active, overdue, over SLA, due soon, waiting on customer and idle, with the week's change and a 14-day trend.", w=3,
-                       settings={"tiles": dict(kind="multi", choices=COUNT_KEYS, default=list(COUNT_KEYS), label="Tiles")}),
+                       settings={"tiles": dict(kind="multi", choices=COUNT_KEYS, default=list(COUNT_KEYS), label="Tiles"),
+                                 "trend": dict(kind="choice", choices=("area", "bars", "none"), default="area", label="Trend")}),
     "timeline":   dict(title="Timeline", blurb="Every active rollout from start to target on one axis, its team on the bar.", w=2,
                        settings={"show": dict(kind="choice", choices=("all", "attention"), default="all", label="Show"),
                                  "limit": dict(kind="int", min=5, max=50, default=12, label="Rows")}),
-    "progress":   dict(title="Portfolio progress", blurb="How far the portfolio is through its stages: done, in progress, still to come.", w=1, settings={}),
+    "progress":   dict(title="Portfolio progress", blurb="How far the portfolio is through its stages: done, in progress, still to come.", w=1,
+                       settings={"chart": dict(kind="choice", choices=("radial", "bar"), default="radial", label="Chart")}),
     "schedule":   dict(title="Schedule", blurb="What falls due next and which approvals are waiting on a customer.", w=1,
                        settings={"days": dict(kind="int", min=1, max=30, default=7, label="Days ahead")}),
     "completion": dict(title="Tasks completed", blurb="Tasks ticked off per day, against the week before.", w=1,
-                       settings={"days": dict(kind="choice", choices=("7", "14", "28"), default="7", label="Days")}),
+                       settings={"days": dict(kind="choice", choices=("7", "14", "28"), default="7", label="Days"),
+                                 "chart": dict(kind="choice", choices=("bar", "line"), default="bar", label="Chart")}),
     "team":       dict(title="Team", blurb="Who is on what: rollouts, open and late tasks per person.", w=1,
-                       settings={"limit": dict(kind="int", min=3, max=20, default=6, label="People")}),
-    "stages":     dict(title="Rollouts per stage", blurb="Where the active rollouts sit.", w=1, settings={}),
+                       settings={"limit": dict(kind="int", min=3, max=20, default=6, label="People"),
+                                 "chart": dict(kind="choice", choices=("list", "bar"), default="list", label="Show as")}),
+    "stages":     dict(title="Rollouts per stage", blurb="Where the active rollouts sit.", w=1,
+                       settings={"chart": dict(kind="choice", choices=("donut", "bar"), default="donut", label="Chart")}),
     "activity":   dict(title="Recent activity", blurb="Stage moves, notes, decisions, tasks done and documents, newest first.", w=1,
                        settings={"limit": dict(kind="int", min=5, max=30, default=10, label="Items")}),
     "alerts":     dict(title="Open alerts", blurb="Overdue, over SLA, due soon and inactive rollouts the daily check raised.", w=1,
                        settings={"limit": dict(kind="int", min=5, max=30, default=8, label="Items")}),
     "mywork":     dict(title="My work", blurb="Your open tasks, soonest first, and the rollouts you own.", w=2, settings={}),
-    "cycle":      dict(title="Cycle time", blurb="Lead time and rollouts closed per month for the main stage template.", w=1, settings={}),
+    "cycle":      dict(title="Cycle time", blurb="Lead time and rollouts closed per month for the main stage template.", w=1,
+                       settings={"chart": dict(kind="choice", choices=("bar", "line"), default="bar", label="Chart")}),
+    # a widget of the user's own; `multiple` means the layout may hold it more than once, each with a handle (uid)
+    "custom":     dict(title="Custom metric", blurb="A number, bar, pie or list of your own: rollouts by stage, client, state, owner or mode; open or finished tasks by person; tasks per day. Add as many as you like.", w=1, multiple=True,
+                       settings={"title": dict(kind="text", max=40, default="Custom metric", label="Title"),
+                                 "measure": dict(kind="choice", choices=MEASURES, default="rollouts_by_stage", label="Measure"),
+                                 "chart": dict(kind="choice", choices=("number", "bar", "pie", "list"), default="bar", label="Chart"),
+                                 "top": dict(kind="int", min=3, max=12, default=6, label="Top")}),
 }
 DEFAULT_LAYOUT = [
     {"id": "kpis", "w": 3}, {"id": "timeline", "w": 2}, {"id": "progress", "w": 1},
@@ -56,7 +74,7 @@ DEFAULT_LAYOUT = [
 
 
 def catalogue():
-    return [{"id": k, "title": v["title"], "blurb": v["blurb"], "w": v["w"],
+    return [{"id": k, "title": v["title"], "blurb": v["blurb"], "w": v["w"], "multiple": bool(v.get("multiple")),
              "settings": [{"key": sk, **{a: b for a, b in sv.items() if a != "choices"}, **({"choices": list(sv["choices"])} if "choices" in sv else {})}
                           for sk, sv in v["settings"].items()]} for k, v in WIDGETS.items()]
 
@@ -72,6 +90,8 @@ def _setting(schema, raw):
         if kind == "multi":
             picked = [x for x in raw if x in schema["choices"]] if isinstance(raw, list) else None
             return picked if picked else list(default)
+        if kind == "text":
+            return str(raw).strip()[:schema["max"]] or default
     except (TypeError, ValueError):
         pass
     return default
@@ -85,16 +105,22 @@ def normalize_layout(raw):
     out, seen = [], set()
     for item in raw:
         wid = item.get("id") if isinstance(item, dict) else None
-        if wid not in WIDGETS or wid in seen:
+        if wid not in WIDGETS:
             continue
-        seen.add(wid)
+        # a repeatable widget is told apart by its handle; anything else appears once
+        uid = str(item.get("uid") or "") if WIDGETS[wid].get("multiple") else ""
+        if WIDGETS[wid].get("multiple") and not re.fullmatch(r"[A-Za-z0-9_-]{1,24}", uid):
+            continue
+        if (wid, uid) in seen:
+            continue
+        seen.add((wid, uid))
         try:
             w = max(1, min(3, int(item.get("w", WIDGETS[wid]["w"]))))
         except (TypeError, ValueError):
             w = WIDGETS[wid]["w"]
         given = item.get("settings") if isinstance(item.get("settings"), dict) else {}
         settings = {k: _setting(s, given.get(k, s["default"])) for k, s in WIDGETS[wid]["settings"].items()}
-        out.append({"id": wid, "w": w, "settings": settings})
+        out.append({"id": wid, "w": w, "settings": settings, **({"uid": uid} if uid else {})})
     return out
 
 
@@ -146,7 +172,14 @@ def _counts(db, projects, alerts, scope):
 def _active(db, scope):
     scope_sql, scope_params = scope
     return db.execute(
-        f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY p.name", scope_params).fetchall()
+        f"SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY p.name", scope_params).fetchall()
+
+
+def version():
+    """A number that moves whenever anything changes: the audit log's last id
+    (every mutation writes one). The page polls it and reloads on a change."""
+    row = get_db().execute("SELECT MAX(id) FROM audit_logs").fetchone()
+    return row[0] or 0
 
 
 def record_snapshot(day=None):
@@ -250,6 +283,21 @@ def build(scope, user_id):
                          "state": state(p), "progress": (at / (len(names) - 1)) if len(names) > 1 else 0,
                          "team": team.get(p["id"], [])})
     timeline.sort(key=lambda r: (r["target_end_date"] or "9999", r["name"]))
+
+    # what stands behind each headline number: the rollouts, one line each (the tile's pop-up)
+    now = datetime.utcnow()
+    row = lambda p, text: {"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "text": text}   # noqa: E731
+    def over_by(p):
+        own = stage_lists.get(p["id"]) or []
+        s = stage_sla_state(p, sla_by_stage(own), own[-1]["name"] if own else None, now)
+        return round(s["over_by"]) if s else 0
+    detail = {
+        "active": [row(p, STATE_LABEL[state(p)]) for p in projects],
+        "overdue": [row(p, f"{(today - date.fromisoformat(p['target_end_date'])).days} d late") for p in alerts["project_overdue"]],
+        "over_sla": [row(p, f"{over_by(p)} d over SLA in {p['stage']}") for p in alerts["stage_sla_breach"]],
+        "due_soon": [row(p, f"due in {(date.fromisoformat(p['target_end_date']) - today).days} d") for p in alerts["project_due_soon"]],
+        "idle": [row(p, f"idle {int((now - (_parse(p['updated_at']) or now)).total_seconds() // 86400)} d") for p in alerts["stale"]],
+    }
     total_steps = done_steps + current_steps + pending_steps
     progress = {"done": done_steps, "current": current_steps, "pending": pending_steps,
                 "pct": round(100 * done_steps / total_steps) if total_steps else 0}
@@ -304,8 +352,28 @@ def build(scope, user_id):
         f"WHERE t.assignee_id = ? AND t.done = 0 AND {open_sql} ORDER BY t.due_date IS NULL, t.due_date, t.id LIMIT 12", (user_id, *scope_params))],
             "owned": db.execute(f"SELECT COUNT(*) FROM projects p WHERE p.owner_id = ? AND {open_sql}", (user_id, *scope_params)).fetchone()[0]}
 
+    detail["awaiting"] = [{"id": a["project_id"], "name": a["project"], "client": "", "stage": a["stage"], "text": f"asked {a['requested_at'][:10]}"} for a in approvals]
+
+    # what a custom widget may count
+    agg = lambda values: [{"key": k or "—", "count": n} for k, n in Counter(values).most_common()]   # noqa: E731
+    aggregates = {
+        "rollouts_by_stage": [{"key": s["stage"], "count": s["count"]} for s in stages],
+        "rollouts_by_client": agg(p["client"] for p in projects),
+        "rollouts_by_state": [{"key": STATE_LABEL[k], "count": n} for k, n in Counter(state(p) for p in projects).most_common()],
+        "rollouts_by_owner": agg(p["owner_name"] for p in projects),
+        "rollouts_by_mode": agg(p["delivery_mode"] for p in projects),
+        "open_tasks_by_person": [{"key": m["name"], "count": m["open"]} for m in people if m["open"]],
+        "done_tasks_by_person": [{"key": r["name"], "count": r["n"]} for r in db.execute(
+            "SELECT u.name, COUNT(*) AS n FROM tasks t JOIN users u ON u.id = t.assignee_id JOIN projects p ON p.id = t.project_id "
+            f"WHERE t.done = 1 AND t.done_at >= ? AND p.deleted_at IS NULL{scope_sql} GROUP BY u.id ORDER BY n DESC",
+            ((today - timedelta(days=30)).isoformat(), *scope_params))],
+        "tasks_done_per_day": [{"key": x["day"], "count": x["count"]} for x in completion[-14:]],
+    }
+
     return {"today": today.isoformat(), "layout": layout, "is_custom": is_custom, "catalogue": catalogue(), "scope_full": not scope_sql,
-            "data": {"kpis": {"counts": counts, "before": before, "since": since, "moved_this_week": moved, "series": series},
+            "version": version(),
+            "data": {"kpis": {"counts": counts, "before": before, "since": since, "moved_this_week": moved, "series": series, "detail": detail},
+                     "aggregates": aggregates,
                      "timeline": timeline, "progress": progress, "stages": stages, "completion": completion,
                      "schedule": {"due": due, "approvals": approvals}, "team": {"people": people, "unassigned": unassigned},
                      "activity": _activity(db, scope), "alerts": open_alerts, "mywork": mine, "cycle": _cycle(db, scope)}}

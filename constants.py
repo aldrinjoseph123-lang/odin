@@ -76,6 +76,7 @@ NOTIFICATION_KINDS = {
     "access": "Sign-in requests and emergency password sign-ins (admins)",
     "mention": "When someone mentions me in a note",
     "due": "A daily reminder of my tasks due today or overdue",
+    "nudge": "A note a colleague sends me from the People page",
 }
 
 THEMES = ("system", "light", "dark")

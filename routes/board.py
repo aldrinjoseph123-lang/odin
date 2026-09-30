@@ -38,6 +38,27 @@ def dashboard():
     return redirect(url_for("board"))
 
 
+@app.route("/people")
+@permission_required("view_board")
+def people():
+    """The people directory — a React page only; without a build, the flow stands in."""
+    if session.get("kind") == "external":
+        abort(403)
+    if spa_serves("people"):
+        return spa_index()
+    return redirect(url_for("board"))
+
+
+@app.route("/people/<int:user_id>")
+@permission_required("view_board")
+def person(user_id):
+    if session.get("kind") == "external":
+        abort(403)
+    if spa_serves("person"):
+        return spa_index()
+    return redirect(url_for("board"))
+
+
 @app.route("/my-work")
 @login_required
 def my_work():

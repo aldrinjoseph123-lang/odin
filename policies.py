@@ -69,8 +69,8 @@ POLICIES = {
                               label="Teams Workflows webhook", help="From a Teams channel: Workflows → \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
     # ---- Reports
     "kibana_dashboards": dict(area="integrations", kind="lines", default="", max=4000, optional=True, label="Kibana dashboards",
-                              help="One per line, \"Name | address\", e.g. SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true. "
-                                   "They appear as the Kibana view on the Flow page. Use the dashboard's share link with embed=true, and let Kibana be framed by this site "
+                              help="One per line, \"Name | address\", e.g. SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true&_a=(query:(language:kuery,query:'client:{client}')). "
+                                   "They appear as the Kibana view on the Flow page; {project}, {client} and {po} in an address take the chosen rollout's values. Use the dashboard's share link with embed=true, and let Kibana be framed by this site "
                                    "(kibana.yml: server.customResponseHeaders with a Content-Security-Policy frame-ancestors that names the Odin address)."),
     "report_enabled": dict(area="reports", kind="bool", default=False,
                            label="Send the weekly report", help="Stuck and overdue rollouts first, stages moved this week, due next week, counts per stage."),

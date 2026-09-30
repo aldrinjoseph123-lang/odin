@@ -667,7 +667,7 @@ export default function Flow({ user }: { user: User }) {
         <h1 className="text-[17px] font-semibold tracking-tight">{view === "calendar" ? "Calendar" : "Kibana"}</h1>
         {views}
       </div>
-      <div className="panel mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden">{view === "calendar" ? <Calendar wide={wide} /> : <Kibana />}</div>
+      <div className="panel mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden">{view === "calendar" ? <Calendar wide={wide} /> : <Kibana rollout={selectedId} onRollout={setSelectedId} />}</div>
     </div>
   )
   const list = <RolloutList data={data} me={user.id} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} tools={views} />

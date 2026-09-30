@@ -49,7 +49,7 @@ test("@flow dashboard: customise, save, reload, reset, and the workspace default
 
 test("@flow dashboard: every widget's link goes where it says", async ({ page }) => {
   await signIn(page, "admin", "/dashboard")
-  for (const [widget, link, url] of [["Timeline", "Open the flow", /\/board$/], ["Schedule", "My work", /\/my-work/], ["Team", "People", /\/users/], ["Open alerts", "All alerts", /\/alerts/], ["My work", "Open", /\/my-work/], ["Cycle time", "Detail", /\/analytics/]] as const) {
+  for (const [widget, link, url] of [["Timeline", "Open the flow", /\/board$/], ["Schedule", "My work", /\/my-work/], ["Team", "People", /\/people/], ["Open alerts", "All alerts", /\/alerts/], ["My work", "Open", /\/my-work/], ["Cycle time", "Detail", /\/analytics/]] as const) {
     await page.goto("/dashboard")
     await page.locator(`main section[aria-label='${widget}']`).getByRole("link", { name: link, exact: true }).click()
     await expect(page, `${widget} → ${link}`).toHaveURL(url)

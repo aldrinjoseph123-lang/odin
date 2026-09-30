@@ -78,7 +78,7 @@ jobs:
           E2E_PYTHON: python
       - name: Lighthouse budget and bundle ceiling
         run: |
-          E2E_PYTHON=python ODIN_DATA_DIR=/tmp/odin-e2e SECRET_KEY=e2e-not-secret PORT=5099 python -c "from app import app; app.run(host='127.0.0.1', port=5099)" &
+          (cd "$GITHUB_WORKSPACE" && ODIN_DATA_DIR=/tmp/odin-e2e SECRET_KEY=e2e-not-secret PORT=5099 python -c "from app import app; app.run(host='127.0.0.1', port=5099)") &
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:5099/healthz >/dev/null 2>&1 && break; sleep 1; done
           node e2e/perf.mjs
         working-directory: frontend

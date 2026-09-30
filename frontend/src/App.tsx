@@ -17,6 +17,8 @@ import Contacts from "@/pages/Contacts"
 import ProjectForm from "@/pages/ProjectForm"
 import Account from "@/pages/Account"
 import MyWork from "@/pages/MyWork"
+import People from "@/pages/People"
+import Person from "@/pages/Person"
 import Alerts from "@/pages/Alerts"
 import Analytics from "@/pages/Analytics"
 import ReportAll from "@/pages/ReportAll"
@@ -75,6 +77,8 @@ export default function App() {
         <Route path="/audit-logs" element={<Protected>{(user) => <SettingsLayout user={user}><Audit user={user} /></SettingsLayout>}</Protected>} />
         <Route path="/account" element={<Protected>{(user) => <Account user={user} />}</Protected>} />
         <Route path="/my-work" element={<Protected>{(user) => <MyWork user={user} />}</Protected>} />
+        <Route path="/people" element={<Protected>{(user) => <People user={user} />}</Protected>} />
+        <Route path="/people/:id" element={<Protected>{(user) => <Person user={user} />}</Protected>} />
         <Route path="/alerts" element={<Protected>{(user) => <Alerts user={user} />}</Protected>} />
         <Route path="/analytics" element={<Protected>{(user) => <Analytics user={user} />}</Protected>} />
         <Route path="/settings" element={<Navigate to="/settings/general" replace />} />

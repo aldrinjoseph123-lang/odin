@@ -340,25 +340,52 @@ def api_account():
 @app.route("/api/my-work")
 @login_required
 def api_my_work():
-    db = get_db()
-    uid = session["user_id"]
-    today = local_today().isoformat()
-    owned = db.execute(
-        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        f"WHERE p.owner_id = ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{project_scope()[0]} ORDER BY p.updated_at DESC",
-        (uid, *project_scope()[1]),
-    ).fetchall()
-    tasks = db.execute(
-        "SELECT t.*, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
-        f"WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL{project_scope()[0]} "
-        "ORDER BY t.due_date IS NULL, t.due_date ASC, t.id ASC", (uid, *project_scope()[1]),
-    ).fetchall()
-    return jsonify(
-        tasks=[{"id": t["id"], "title": t["title"], "project_id": t["project_id"], "project_name": t["project_name"], "due_date": t["due_date"],
-                "overdue": bool(t["due_date"] and t["due_date"] < today), "stage": t["stage"]} for t in tasks],
-        projects=[{"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "schedule": schedule_status(p),
-                   "target_end_date": p["target_end_date"]} for p in owned],
-    )
+    from services.people import my_work
+    return jsonify(my_work(session["user_id"], project_scope()))
+
+
+@app.route("/api/people")
+@permission_required("view_board")
+def api_people():
+    """Everyone internal who is on active work; staff only."""
+    from services.people import people
+    if session.get("kind") == "external":
+        abort(403)
+    return jsonify(people=people(project_scope()), can_notify=session.get("role") in ("Admin", "Member", "Contributor"), me=session["user_id"])
+
+
+@app.route("/api/people/<int:user_id>")
+@permission_required("view_board")
+def api_person(user_id):
+    from services.people import person
+    if session.get("kind") == "external":
+        abort(403)
+    d = person(user_id, project_scope())
+    if d is None:
+        abort(404)
+    d["can_notify"] = session.get("role") in ("Admin", "Member", "Contributor") and user_id != session["user_id"]
+    return jsonify(d)
+
+
+@app.route("/api/people/<int:user_id>/notify", methods=["POST"])
+@permission_required("view_board")
+def api_person_notify(user_id):
+    """A note to a colleague: in-app, and by mail unless they switched the kind off. Audited."""
+    from markupsafe import escape as _esc
+    from services.notifications import notify_users
+    if session.get("kind") == "external" or session.get("role") not in ("Admin", "Member", "Contributor") or user_id == session["user_id"]:
+        abort(403)
+    body = request.get_json(silent=True) or {}
+    message = str(body.get("message") or "").strip()[:1000]
+    if not message:
+        abort(400)
+    target = get_db().execute("SELECT id, name FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (user_id,)).fetchone()
+    if not target:
+        abort(404)
+    project_id = body.get("project_id") if isinstance(body.get("project_id"), int) else None
+    notify_users([user_id], "nudge", project_id, f"{session.get('user_name')} sent you a note", f"<p>{_esc(message)}</p>", link=f"/board?rollout={project_id}" if project_id else "/my-work")
+    audit_log("notify_person", "user", user_id, target["name"], message[:80])
+    return jsonify(ok=True)
 
 
 @app.route("/api/dashboard")
@@ -379,10 +406,32 @@ def api_calendar():
 @permission_required("view_board")
 def api_kibana():
     """The Kibana view's dashboards (Settings → Integrations); staff only."""
+    from urllib.parse import quote
     from policies import kibana_dashboards
     if session.get("kind") == "external":
         abort(403)
-    return jsonify(dashboards=kibana_dashboards(), can_manage=role_has_permission(session.get("role"), "manage_settings"))
+    db = get_db()
+    scope_sql, scope_params = project_scope()
+    rollouts = [{"id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"]} for r in db.execute(
+        f"SELECT p.id, p.name, p.client, p.po_number FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY p.name", scope_params)]
+    wanted = request.args.get("rollout", type=int)
+    current = next((r for r in rollouts if r["id"] == wanted), None)
+    # {project}, {client} and {po} in an address take the chosen rollout's values (URL-encoded)
+    def fill(url):
+        if not current:
+            return url
+        return url.replace("{project}", quote(current["name"])).replace("{client}", quote(current["client"] or "")).replace("{po}", quote(current["po_number"] or ""))
+    dashboards = [{"name": d["name"], "url": fill(d["url"]), "per_rollout": any(k in d["url"] for k in ("{project}", "{client}", "{po}"))} for d in kibana_dashboards()]
+    return jsonify(dashboards=dashboards, rollouts=rollouts, rollout=current["id"] if current else None,
+                   can_manage=role_has_permission(session.get("role"), "manage_settings"))
+
+
+@app.route("/api/dashboard/version")
+@permission_required("view_board")
+def api_dashboard_version():
+    """Cheap: the page asks every few seconds whether anything changed."""
+    from services import dashboard
+    return jsonify(version=dashboard.version())
 
 
 @app.route("/api/dashboard/layout", methods=["PUT", "DELETE"])

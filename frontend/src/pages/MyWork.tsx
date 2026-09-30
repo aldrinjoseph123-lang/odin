@@ -1,54 +1,157 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
+import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ApiError, myWork, type MyWorkData, type User } from "@/lib/api"
-import { cn } from "@/lib/utils"
-import { fmtWhen } from "@/lib/format"
+import { buttonVariants } from "@/components/ui/button"
+import { Stepper } from "@/components/Stepper"
 import { PageSkeleton } from "@/components/PageSkeleton"
+import { ApiError, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
+import { cn } from "@/lib/utils"
+import { STATE } from "@/lib/state"
+import { fmtDate, lateBy, stateText } from "@/lib/format"
 
-const fmtDate = (iso: string | null) => fmtWhen(iso)
-const SCHEDULE = { overdue: { label: "Overdue", cls: "bg-bad-soft text-bad" }, at_risk: { label: "Due soon", cls: "bg-warn-soft text-warn" }, on_track: { label: "On track", cls: "text-muted-foreground" } } as const
+// My work: what needs doing, in the order it needs doing. Headline numbers,
+// the fortnight of what got done, tasks grouped by urgency with a tick that
+// finishes them in place, and the rollouts this person is on with their state.
+const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 rounded-full px-3 text-[12px]")
+const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"]
+type Group = { key: string; title: string; hint: string; tone?: "bad" | "warn"; tasks: WorkTask[] }
 
-export default function MyWork(_props: { user: User }) {
+function groupTasks(tasks: WorkTask[], today: string): Group[] {
+  const week = new Date(`${today}T00:00:00Z`); week.setUTCDate(week.getUTCDate() + 7)
+  const w = week.toISOString().slice(0, 10)
+  const g: Record<string, WorkTask[]> = { overdue: [], today: [], week: [], later: [], undated: [] }
+  for (const t of tasks) {
+    if (!t.due_date) g.undated.push(t)
+    else if (t.due_date < today) g.overdue.push(t)
+    else if (t.due_date === today) g.today.push(t)
+    else if (t.due_date <= w) g.week.push(t)
+    else g.later.push(t)
+  }
+  const groups: Group[] = [
+    { key: "overdue", title: "Overdue", hint: "past their date", tone: "bad", tasks: g.overdue },
+    { key: "today", title: "Today", hint: fmtDate(today), tone: "warn", tasks: g.today },
+    { key: "week", title: "This week", hint: "the next 7 days", tasks: g.week },
+    { key: "later", title: "Later", hint: "beyond this week", tasks: g.later },
+    { key: "undated", title: "No date", hint: "whenever", tasks: g.undated },
+  ]
+  return groups.filter((x) => x.tasks.length > 0)
+}
+
+export default function MyWork({ user }: { user: User }) {
   const [d, setD] = useState<MyWorkData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => { document.title = "My work · Odin"; myWork().then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [])
+  const [busy, setBusy] = useState<number | null>(null)
+  const [project, setProject] = useState<number | null>(null)
+  const load = useCallback(() => myWork().then((x) => { setD(x); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")), [])
+  useEffect(() => { document.title = "My work · Odin"; void load() }, [load])
+  const groups = useMemo(() => (d ? groupTasks(project ? d.tasks.filter((t) => t.project_id === project) : d.tasks, d.today) : []), [d, project])
   if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!d) return <PageSkeleton />
-  const overdue = d.projects.filter((p) => p.schedule === "overdue").length
+  const c = d.counts
+  const peak = Math.max(1, ...d.done_by_day.map((x) => x.count))
+  async function tick(t: WorkTask) {
+    setBusy(t.id)
+    try { await toggleTask(t.project_id, t.id); await load() } catch (e) { setError(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(null) }
+  }
+  const tiles: { label: string; value: number; sub: string; icon: typeof Layers; tone?: "bad" | "warn" }[] = [
+    { label: "Open tasks", value: c.open, sub: `${c.due_week} due this week`, icon: CheckSquare },
+    { label: "Overdue", value: c.overdue, sub: c.overdue ? "need a date or a tick" : "nothing late", icon: AlertTriangle, tone: c.overdue ? "bad" : undefined },
+    { label: "Done this week", value: c.done_week, sub: "tasks ticked in 7 days", icon: Check },
+    { label: "My rollouts", value: c.rollouts, sub: c.stuck ? `${c.stuck} need attention` : "all on track", icon: Layers, tone: c.stuck ? "warn" : undefined },
+  ]
   return (
-    <div className="px-5 pb-6 pt-4">
+    <div className="px-5 pb-8 pt-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">My work</h1>
-        <p className="text-[13px] text-muted-foreground">{d.tasks.length} open task{d.tasks.length === 1 ? "" : "s"} · {d.projects.length} active project{d.projects.length === 1 ? "" : "s"}{overdue ? <> · <span className="font-medium text-bad">{overdue} overdue</span></> : null}</p>
+        <p className="text-[13px] text-muted-foreground">{user.name.split(" ")[0]}, here is what is on you · {fmtDate(d.today)}</p>
       </div>
-      <div className="mt-3 grid gap-4 lg:grid-cols-2">
-        <section className="panel p-4">
-          <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">My tasks <span className="font-normal text-muted-foreground">assigned to me, open</span></h3>
-          <ul className="divide-y divide-border text-[13px]">
-            {d.tasks.map((t) => (
-              <li key={t.id} className="flex items-center gap-3 py-1.5">
-                <span className="min-w-0 flex-1 truncate font-medium">{t.title}</span>
-                <a href={`/board?rollout=${t.project_id}`} className="truncate text-muted-foreground hover:text-foreground hover:underline">{t.project_name}{t.stage ? ` · ${t.stage}` : ""}</a>
-                <span className={cn("whitespace-nowrap text-[12px]", t.overdue ? "rounded-md bg-bad-soft px-1.5 py-0.5 font-medium text-bad" : "text-muted-foreground")}>{fmtDate(t.due_date)}</span>
-              </li>
-            ))}
-            {d.tasks.length === 0 && <li className="py-2 text-muted-foreground">No open tasks assigned to you.</li>}
-          </ul>
+
+      <div className="mt-3 grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {tiles.map((t) => (
+          <div key={t.label} className="panel p-4">
+            <div className="flex items-center gap-2 text-[12px] text-muted-foreground"><t.icon className="h-3.5 w-3.5" aria-hidden />{t.label}</div>
+            <div className={cn("mt-2 text-[26px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
+            <div className="mt-1 text-[11.5px] text-muted-foreground">{t.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <section className="panel p-4" aria-label="My tasks">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h3 className="text-[13.5px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h3>
+            {d.projects.length > 1 && (
+              <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className="ml-auto h-7 rounded-md border border-input bg-background px-2 text-[12.5px]">
+                <option value="">Every rollout</option>
+                {d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
+          </div>
+          {groups.length === 0 && <p className="py-4 text-center text-[13px] text-muted-foreground">Nothing open{project ? " on this rollout" : ""}. Enjoy it.</p>}
+          {groups.map((g) => (
+            <div key={g.key} className="mb-3 last:mb-0">
+              <h4 className={cn("mb-1 flex items-baseline gap-2 text-[12px] font-semibold", g.tone === "bad" ? "text-bad" : g.tone === "warn" ? "text-warn" : "text-nav-fg")}>{g.title}<span className="font-normal text-muted-foreground">{g.tasks.length} · {g.hint}</span></h4>
+              <ul className="divide-y divide-border text-[13px]">
+                {g.tasks.map((t) => {
+                  const late = t.due_date ? lateBy(t.due_date, d.today) : 0
+                  return (
+                    <li key={t.id} className="flex items-center gap-3 py-2">
+                      <button type="button" disabled={busy === t.id} onClick={() => tick(t)} aria-label={`Complete ${t.title}`}
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-input bg-background hover:border-foreground disabled:opacity-50">
+                        {busy === t.id && <Check className="h-3 w-3 text-muted-foreground" />}
+                      </button>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{t.title}</span>
+                        <Link to={`/board?rollout=${t.project_id}`} className="block truncate text-[12px] text-muted-foreground hover:underline">{t.project} · {t.stage || t.project_stage}</Link>
+                      </span>
+                      <span className={cn("shrink-0 whitespace-nowrap text-[12px]", late > 0 ? "rounded-md bg-bad-soft px-1.5 py-0.5 font-medium text-bad" : "text-muted-foreground")}>{t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "no date"}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))}
         </section>
-        <section className="panel p-4">
-          <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">My projects <span className="font-normal text-muted-foreground">owned by me, active</span></h3>
-          <ul className="divide-y divide-border text-[13px]">
-            {d.projects.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-1.5">
-                <a href={`/projects/${p.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></a>
-                <span className="truncate text-[12.5px]">{p.stage}</span>
-                {p.schedule && <span className={cn("whitespace-nowrap rounded-md px-1.5 py-0.5 text-[12px] font-medium", SCHEDULE[p.schedule].cls)}>{SCHEDULE[p.schedule].label}</span>}
-                <span className="hidden whitespace-nowrap text-[12px] text-muted-foreground sm:inline">{fmtDate(p.target_end_date)}</span>
-              </li>
-            ))}
-            {d.projects.length === 0 && <li className="py-2 text-muted-foreground">You do not own any active projects.</li>}
-          </ul>
-        </section>
+
+        <div className="grid content-start gap-4">
+          <section className="panel p-4" aria-label="Done, the last 14 days">
+            <h3 className="mb-2 text-[13.5px] font-semibold">Done <span className="font-normal text-muted-foreground">the last 14 days</span></h3>
+            <ul className="flex h-20 items-end gap-1" aria-label="Tasks done per day">
+              {d.done_by_day.map((x) => (
+                <li key={x.day} className="flex h-full flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
+                  <span className={cn("block w-full rounded-t-[3px]", x.count ? "bg-primary" : "bg-muted")} style={{ height: `${Math.max(x.count ? 8 : 3, (x.count / peak) * 100)}%` }} aria-hidden />
+                  <span aria-hidden>{WEEKDAY[new Date(`${x.day}T00:00:00`).getDay()]}</span>
+                  <span className="sr-only">{fmtDate(x.day)}: {x.count}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="panel p-4" aria-label="My rollouts">
+            <h3 className="mb-2 text-[13.5px] font-semibold">My rollouts <span className="font-normal text-muted-foreground">{d.projects.length} active</span></h3>
+            <ul className="divide-y divide-border text-[13px]">
+              {d.projects.map((p) => (
+                <li key={p.id} className="py-2">
+                  <div className="flex items-center gap-2">
+                    <span className={cn("h-2 w-2 shrink-0 rounded-full", p.state === "on_track" ? "bg-transparent" : STATE[p.state].dot)} aria-hidden />
+                    <Link to={`/board?rollout=${p.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{p.role}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-3 pl-4">
+                    <span className="w-24 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
+                    <span className="truncate text-[12.5px]">{p.stage}</span>
+                    <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "overdue" ? "font-medium text-bad" : p.state === "on_track" ? "text-muted-foreground" : "font-medium text-warn")}>
+                      {p.state === "on_track" ? (p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target") : stateText({ state: p.state, days_in_stage: null, over_by: null, target_end_date: p.target_end_date })}
+                    </span>
+                  </div>
+                </li>
+              ))}
+              {d.projects.length === 0 && <li className="py-2 text-muted-foreground">You are not on any active rollout.</li>}
+            </ul>
+            <div className="mt-2 flex gap-2"><Link to="/board?filter=mine" className={pill}>Mine on the flow</Link><Link to="/board?view=calendar" className={pill}><CalendarClock className="h-3.5 w-3.5" /> Calendar</Link></div>
+          </section>
+        </div>
       </div>
     </div>
   )

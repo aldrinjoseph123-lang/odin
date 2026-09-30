@@ -33,6 +33,8 @@ the port replaces it page by page.
 
 # Admin settings
 
+People pages (`/people`, `/people/<id>`) and My work draw from `services/people.py`; a
+note to a colleague is `POST /api/people/<id>/notify` (kind `nudge`, audited).
 The home page is `/dashboard` (`home_url()` in `routes/auth.py`: sign-in, `/`
 and the logo land there; a user may pick the flow on their Account page,
 `users.home`; partners always get the flow). Settings is one side-menu page (`components/SettingsLayout.tsx`), one address

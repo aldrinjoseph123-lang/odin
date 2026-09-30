@@ -1210,7 +1210,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         dist = tempfile.mkdtemp(); os.makedirs(os.path.join(dist, "assets"))
         open(os.path.join(dist, "index.html"), "w").write("<title>Odin</title><div id=root></div>")
         paths = {
-            "login": "/login", "board": "/board", "dashboard": "/dashboard", "projects_list": "/projects", "project_detail": "/projects/1",
+            "login": "/login", "board": "/board", "dashboard": "/dashboard", "people": "/people", "person": "/people/1", "projects_list": "/projects", "project_detail": "/projects/1",
             "project_new": "/projects/new", "project_edit": "/projects/1/edit", "users": "/users", "audit_logs_view": "/audit-logs",
             "settings": "/settings", "settings_section": "/settings/general", "settings_rbac": "/settings/rbac", "settings_contacts": "/settings/contacts",
             "account": "/account", "my_work": "/my-work", "analytics": "/analytics", "alerts_log_view": "/alerts",
@@ -1476,7 +1476,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # pm1 switches stage emails off; the bell still gets it
         p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on", "due": "on"}, headers=ph)
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
-        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True})
+        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False})
         mail.reset_mock()
         self.client.post("/projects/1/stage", data={"stage": stages[1]})
         self.assertEqual([c.args[0] for c in mail.call_args_list], [])                     # pm1 opted out; admin is the actor
@@ -1802,8 +1802,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.post("/account/email", data={"email": "admin@odin.example"}, headers=h).get_json()["messages"], ["Email updated"])
         self.assertEqual(c.post("/account", data={"current_password": "wrong", "new_password": STRONG_PASSWORD}, headers=h).get_json()["messages"], ["Current password is wrong"])
         w = c.get("/api/my-work").get_json()
-        self.assertEqual([t["title"] for t in w["tasks"]], ["Late one"]); self.assertTrue(w["tasks"][0]["overdue"])
-        self.assertEqual((w["projects"][0]["name"], w["projects"][0]["schedule"]), ("Mine", "overdue"))
+        self.assertEqual([t["title"] for t in w["tasks"]], ["Late one"]); self.assertLess(w["tasks"][0]["due_date"], w["today"])
+        self.assertEqual((w["projects"][0]["name"], w["projects"][0]["state"]), ("Mine", "overdue"))
         self.client.get("/board")   # syncs alerts
         al = c.get("/api/alerts").get_json()
         self.assertEqual(al["rows"][0]["alert_type"], "project_overdue"); self.assertFalse(al["show_resolved"]); self.assertIn("stale", al["types"])
@@ -2681,13 +2681,32 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual([a["kind"] for a in d["activity"]][:2], ["note", "task"])
         self.assertEqual(d["mywork"]["owned"], 3); self.assertEqual(d["mywork"]["tasks"][0]["title"], "Was due")
         self.assertIsNotNone(d["cycle"])
+        # the tiles' pop-ups and the custom widgets' measures
+        self.assertEqual([x["name"] for x in d["kpis"]["detail"]["overdue"]], ["Late"]); self.assertIn("d late", d["kpis"]["detail"]["overdue"][0]["text"])
+        self.assertEqual([x["name"] for x in d["kpis"]["detail"]["idle"]], ["Quiet"])
+        self.assertEqual(d["aggregates"]["rollouts_by_owner"], [{"key": "Admin", "count": 3}])
+        self.assertEqual(d["aggregates"]["rollouts_by_state"][0], {"key": "On track", "count": 2})
+        self.assertEqual(d["aggregates"]["open_tasks_by_person"], [{"key": "Admin", "count": 1}])
+        self.assertEqual(len(d["aggregates"]["tasks_done_per_day"]), 14)
+        # anything that changes moves the version the page polls
+        v = c.get("/api/dashboard/version").get_json()["version"]
+        self.assertIsInstance(v, int)
+        self.client.post("/projects/2/note", data={"note": "later"})
+        self.assertGreater(c.get("/api/dashboard/version").get_json()["version"], v)
         # the layout: the workspace default until this user saves their own
         self.assertEqual([w["id"] for w in r["layout"]], [w["id"] for w in DEFAULT_LAYOUT]); self.assertFalse(r["is_custom"])
-        self.assertEqual({w["id"] for w in r["catalogue"]}, {w["id"] for w in DEFAULT_LAYOUT})
+        self.assertEqual({w["id"] for w in r["catalogue"]}, {w["id"] for w in DEFAULT_LAYOUT} | {"custom"})   # custom is offered, never on by default
+        self.assertTrue(next(w for w in r["catalogue"] if w["id"] == "custom")["multiple"])
         h = {"X-CSRF-Token": csrf}
         mine = [{"id": "alerts", "w": 9, "settings": {"limit": 999}}, {"id": "bogus"}, {"id": "alerts"}, {"id": "completion", "settings": {"days": "99"}}]
         saved = c.put("/api/dashboard/layout", json={"layout": mine}, headers=h).get_json()["layout"]
-        self.assertEqual(saved, [{"id": "alerts", "w": 3, "settings": {"limit": 30}}, {"id": "completion", "w": 1, "settings": {"days": "7"}}])
+        self.assertEqual(saved, [{"id": "alerts", "w": 3, "settings": {"limit": 30}}, {"id": "completion", "w": 1, "settings": {"days": "7", "chart": "bar"}}])
+        # custom widgets: repeatable, each with a handle; a bad handle or a repeat is dropped, the title is trimmed
+        custom = [{"id": "custom", "uid": "a1", "settings": {"title": "  Owners  ", "measure": "rollouts_by_owner", "chart": "pie"}},
+                  {"id": "custom", "uid": "a1"}, {"id": "custom"}, {"id": "custom", "uid": "bad handle!"}, {"id": "custom", "uid": "b2", "settings": {"measure": "nope", "title": ""}}]
+        saved = c.put("/api/dashboard/layout", json={"layout": custom}, headers=h).get_json()["layout"]
+        self.assertEqual([(w["uid"], w["settings"]["title"], w["settings"]["measure"], w["settings"]["chart"]) for w in saved],
+                         [("a1", "Owners", "rollouts_by_owner", "pie"), ("b2", "Custom metric", "rollouts_by_stage", "bar")])
         self.assertTrue(c.get("/api/dashboard").get_json()["is_custom"])
         self.assertEqual(c.put("/api/dashboard/layout", json={"layout": "no"}, headers=h).status_code, 400)
         self.assertFalse(c.delete("/api/dashboard/layout", headers=h).get_json()["is_custom"])
@@ -2727,7 +2746,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual((d["moves"][0]["project"], d["moves"][0]["stage"]), ("Soon", stages[1]))
         self.assertEqual(c.get("/api/calendar?month=junk").get_json()["month"], month)
         # Kibana: nothing until an admin lists dashboards; then the Flow page may frame their origins
-        self.assertEqual(c.get("/api/kibana").get_json(), {"dashboards": [], "can_manage": True})
+        k0 = c.get("/api/kibana").get_json()
+        self.assertEqual((k0["dashboards"], k0["can_manage"], k0["rollout"], [r["name"] for r in k0["rollouts"]]), ([], True, None, ["Late", "Soon"]))
         self.assertNotIn("frame-src", c.get("/board").headers["Content-Security-Policy"])
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         r = c.post("/settings/policies/integrations", data={"kibana_dashboards": "SOC | not-a-url"}, headers=h).get_json()
@@ -2735,8 +2755,55 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         r = c.post("/settings/policies/integrations", data={"kibana_dashboards": "SOC overview | https://kibana.example.com/app/dashboards#/view/abc?embed=true&_g=(time:(from:now-7d))\n\n Threats | https://kibana.example.com/app/dashboards#/view/def "}, headers=h).get_json()
         self.assertEqual(r["messages"], ["Saved"])
         self.assertEqual([x["name"] for x in c.get("/api/kibana").get_json()["dashboards"]], ["SOC overview", "Threats"])
+        # a placeholder takes the chosen rollout's values; the picker lists the active rollouts
+        c.post("/settings/policies/integrations", data={"kibana_dashboards": "Per client | https://kibana.example.com/app/dashboards#/view/x?_a=(query:(query:'client:{client} and po:{po}'))"}, headers=h)
+        k = c.get("/api/kibana?rollout=2").get_json()
+        self.assertEqual(k["rollout"], 2); self.assertEqual([r["name"] for r in k["rollouts"]], ["Late", "Soon"])
+        self.assertTrue(k["dashboards"][0]["per_rollout"]); self.assertIn("client:C and", k["dashboards"][0]["url"].replace("%20", " "))
+        self.assertIn("{client}", c.get("/api/kibana").get_json()["dashboards"][0]["url"])   # nothing chosen: shown as typed
         self.assertIn("frame-src 'self' https://kibana.example.com", c.get("/board").headers["Content-Security-Policy"])
         self.assertNotIn("frame-src", c.get("/projects").headers["Content-Security-Policy"])
+
+    def test_my_work_people_and_a_note_to_a_colleague(self):
+        from datetime import date as _date
+        self.new_project(name="Mine", client="C", target_end_date="2020-01-01")
+        self.new_project(name="Theirs", client="C", target_end_date="2099-01-01")
+        pm = self._make_user("pm", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET name = 'Pat Mayer' WHERE id = ?", (pm,))
+            db.execute("UPDATE projects SET owner_id = ? WHERE name = 'Theirs'", (pm,))
+            db.execute("INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (1, ?, 'Sales', 1, datetime('now'))", (pm,))
+            db.commit()
+        self.client.post("/projects/1/tasks", data={"title": "Late one", "assignee_id": pm, "due_date": "2020-01-01"})
+        self.client.post("/projects/1/tasks", data={"title": "Soon one", "assignee_id": pm, "due_date": (_date.today() + timedelta(days=2)).isoformat()})
+        self.client.post("/projects/2/tasks", data={"title": "Done one", "assignee_id": pm, "due_date": _date.today().isoformat()})
+        self.client.post("/projects/2/tasks/3/toggle")
+        c, csrf = self._api_client("pm", STRONG_PASSWORD)
+        w = c.get("/api/my-work").get_json()
+        self.assertEqual(w["counts"], {"open": 2, "overdue": 1, "due_week": 1, "done_week": 1, "rollouts": 2, "stuck": 1})
+        self.assertEqual({(p["name"], p["role"], p["state"]) for p in w["projects"]}, {("Mine", "Sales", "overdue"), ("Theirs", "Project manager", "on_track")})
+        self.assertEqual(len(w["done_by_day"]), 14); self.assertEqual(sum(x["count"] for x in w["done_by_day"]), 1)
+        # the directory shows people on active work; a person's page counts their contribution
+        a, acsrf = self._api_client()
+        self.assertIn("Pat Mayer", [p["name"] for p in a.get("/api/people").get_json()["people"]])
+        d = a.get(f"/api/people/{pm}").get_json()
+        self.assertEqual((d["kpis"]["rollouts"], d["kpis"]["open"], d["kpis"]["late"], d["kpis"]["done_30d"], d["kpis"]["on_time_pct"]), (2, 2, 1, 1, 100))
+        self.assertEqual([t["title"] for t in d["pending"]], ["Late one", "Soon one"]); self.assertEqual([t["title"] for t in d["upcoming"]], ["Soon one"])
+        self.assertEqual(len(d["contribution"]["weeks"]), 8); self.assertEqual(d["contribution"]["weeks"][-1]["done"], 1)
+        self.assertEqual(d["recent"][0]["text"], "Done one"); self.assertTrue(d["can_notify"])
+        self.assertEqual(a.get("/api/people/999").status_code, 404)
+        # a note reaches them in-app and is audited; nobody notes themselves; a viewer may not
+        h = {"X-CSRF-Token": acsrf}
+        self.assertEqual(a.post(f"/api/people/{pm}/notify", json={"message": "Please look at Mine today", "project_id": 1}, headers=h).status_code, 200)
+        self.assertEqual(a.post(f"/api/people/{pm}/notify", json={"message": ""}, headers=h).status_code, 400)
+        self.assertEqual(a.post("/api/people/1/notify", json={"message": "me"}, headers=h).status_code, 403)
+        n = c.get("/api/notifications").get_json()
+        self.assertIn("Admin sent you a note", str(n)); self.assertIn("/board?rollout=1", str(n))
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT resource_name FROM audit_logs WHERE action = 'notify_person'").fetchone()[0], "Pat Mayer")
+        v, vcsrf = self._api_client(self._make_user("vw", "Viewer") and "vw", STRONG_PASSWORD)
+        self.assertEqual(v.post(f"/api/people/{pm}/notify", json={"message": "hi"}, headers={"X-CSRF-Token": vcsrf}).status_code, 403)
+        self.assertEqual(v.get("/api/people").status_code, 200)
 
     def test_home_page_is_the_dashboard_unless_the_user_picks_the_flow(self):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))

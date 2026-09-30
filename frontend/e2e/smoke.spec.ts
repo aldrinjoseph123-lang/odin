@@ -10,6 +10,8 @@ const PAGES: { path: string; h1: RegExp; who?: Who[] }[] = [
   { path: "/board?view=calendar", h1: /Calendar/ },
   { path: "/board?view=kibana", h1: /Kibana/ },
   { path: "/my-work", h1: /My work/ },
+  { path: "/people", h1: /People/ },
+  { path: "/people/2", h1: /./ },
   { path: "/projects", h1: /Projects/ },
   { path: "/projects/1", h1: /EDR Rollout - Globex/ },
   { path: "/projects/new", h1: /New project/, who: ["admin", "member"] },
@@ -60,7 +62,7 @@ test("@smoke the header: every link lands, every button does something", async (
   const errors = watch(page)
   await signIn(page, "admin")
   // the logo and the nav pills
-  for (const [label, path] of [["Dashboard", "/dashboard"], ["Flow", "/board"], ["My work", "/my-work"], ["Projects", "/projects"], ["Cycle time", "/analytics"], ["Alerts", "/alerts"], ["Settings", "/settings/general"]]) {
+  for (const [label, path] of [["Dashboard", "/dashboard"], ["Flow", "/board"], ["My work", "/my-work"], ["Projects", "/projects"], ["People", "/people"], ["Cycle time", "/analytics"], ["Alerts", "/alerts"], ["Settings", "/settings/general"]]) {
     await page.getByRole("navigation").getByRole("link", { name: new RegExp(`^${label}`) }).click()
     await expect(page, label).toHaveURL(new RegExp(path.replace("?", "\\?")))
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { configure, move, pctChange, remove, reorder, resize, splitWindow, type LayoutItem } from "./dashboard"
+import { configure, keyOf, move, newUid, pctChange, remove, reorder, resize, splitWindow, type LayoutItem } from "./dashboard"
 
 const L: LayoutItem[] = [{ id: "a", w: 3, settings: {} }, { id: "b", w: 1, settings: { limit: 5 } }, { id: "c", w: 2, settings: {} }]
 const ids = (l: LayoutItem[]) => l.map((x) => x.id).join("")
@@ -14,6 +14,13 @@ describe("layout edits", () => {
     expect(ids(reorder(L, "c", "a"))).toBe("cab")
     expect(ids(reorder(L, "a", null))).toBe("bca")
     expect(ids(reorder(L, "a", "a"))).toBe("abc")
+  })
+  it("tells repeated widgets apart by their handle", () => {
+    const L2: LayoutItem[] = [{ id: "custom", uid: "x1", w: 1, settings: {} }, { id: "custom", uid: "x2", w: 1, settings: {} }, { id: "kpis", w: 3, settings: {} }]
+    expect(L2.map(keyOf)).toEqual(["x1", "x2", "kpis"])
+    expect(remove(L2, "x1").map(keyOf)).toEqual(["x2", "kpis"])
+    expect(resize(L2, "x2", 2)[1].w).toBe(2); expect(resize(L2, "x2", 2)[0].w).toBe(1)
+    expect(newUid()).toMatch(/^c[a-z0-9]{6,}$/); expect(newUid()).not.toBe(newUid())
   })
   it("resizes, removes and configures without touching the others", () => {
     expect(resize(L, "b", 3)[1].w).toBe(3)

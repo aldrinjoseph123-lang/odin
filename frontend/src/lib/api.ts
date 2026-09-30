@@ -143,18 +143,21 @@ export type CalendarData = {
   approvals: { project_id: number; project: string; stage: string; day: string; kind: "asked" | "decided"; status: ApprovalStatus; who: string | null }[]
 }
 export const calendar = (month: string) => getJson<CalendarData>(`/api/calendar?month=${encodeURIComponent(month)}`)
-export type KibanaData = { dashboards: { name: string; url: string }[]; can_manage: boolean }
-export const kibana = () => getJson<KibanaData>("/api/kibana")
+export type KibanaData = { dashboards: { name: string; url: string; per_rollout: boolean }[]; rollouts: { id: number; name: string; client: string; po_number: string | null }[]; rollout: number | null; can_manage: boolean }
+export const kibana = (rollout?: number | null) => getJson<KibanaData>(`/api/kibana${rollout ? `?rollout=${rollout}` : ""}`)
 
 // ---- dashboard ----
 export type DashKey = "active" | "overdue" | "over_sla" | "due_soon" | "awaiting" | "idle"
 export type Person = { id: number; name: string; avatar_url: string | null }
-export type WidgetSetting = { key: string; label: string; kind: "int" | "choice" | "multi"; default: unknown; choices?: string[]; min?: number; max?: number }
-export type WidgetInfo = { id: string; title: string; blurb: string; w: 1 | 2 | 3; settings: WidgetSetting[] }
+export type WidgetSetting = { key: string; label: string; kind: "int" | "choice" | "multi" | "text"; default: unknown; choices?: string[]; min?: number; max?: number }
+export type WidgetInfo = { id: string; title: string; blurb: string; w: 1 | 2 | 3; multiple: boolean; settings: WidgetSetting[] }
+export type DetailRow = { id: number; name: string; client: string; stage: string; text: string }
+export type Aggregate = { key: string; count: number }[]
 export type DashboardData = {
-  today: string; layout: { id: string; w: 1 | 2 | 3; settings: Record<string, unknown> }[]; is_custom: boolean; catalogue: WidgetInfo[]; scope_full: boolean
+  today: string; version: number; layout: { id: string; uid?: string; w: 1 | 2 | 3; settings: Record<string, unknown> }[]; is_custom: boolean; catalogue: WidgetInfo[]; scope_full: boolean
   data: {
-    kpis: { counts: Record<DashKey, number>; before: Record<DashKey, number> | null; since: string | null; moved_this_week: number; series: Record<DashKey, { day: string; v: number }[]> }
+    kpis: { counts: Record<DashKey, number>; before: Record<DashKey, number> | null; since: string | null; moved_this_week: number; series: Record<DashKey, { day: string; v: number }[]>; detail: Record<DashKey, DetailRow[]> }
+    aggregates: Record<string, Aggregate>
     timeline: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState; progress: number; team: Person[] }[]
     progress: { done: number; current: number; pending: number; pct: number }
     stages: { stage: string; count: number }[]
@@ -169,6 +172,7 @@ export type DashboardData = {
   }
 }
 export const dashboard = () => getJson<DashboardData>("/api/dashboard")
+export const dashboardVersion = () => getJson<{ version: number }>("/api/dashboard/version")
 export const saveLayout = (layout: DashboardData["layout"], scope: "mine" | "default" = "mine") =>
   send<{ ok: true; layout: DashboardData["layout"]; is_custom?: boolean }>(scope === "default" ? "/api/dashboard/layout/default" : "/api/dashboard/layout", "PUT", { layout })
 export const resetLayout = () => send<{ ok: true; layout: DashboardData["layout"]; is_custom: false }>("/api/dashboard/layout", "DELETE")
@@ -282,11 +286,28 @@ export const report = (id: number, query: string) => getJson<ReportData>(`/api/p
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
   email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board" }>("/api/account")
+export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
+export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string }
 export type MyWorkData = {
-  tasks: { id: number; title: string; project_id: number; project_name: string; due_date: string | null; overdue: boolean; stage: string | null }[]
-  projects: { id: number; name: string; client: string; stage: string; schedule: "overdue" | "at_risk" | "on_track" | null; target_end_date: string | null }[]
+  today: string; tasks: WorkTask[]; done_by_day: { day: string; count: number }[]; projects: WorkProject[]
+  counts: { open: number; overdue: number; due_week: number; done_week: number; rollouts: number; stuck: number }
 }
 export const myWork = () => getJson<MyWorkData>("/api/my-work")
+
+// ---- people ----
+export type PersonCard = { id: number; name: string; role: string; avatar_url: string | null; last_login_at: string | null; projects: number; open: number; late: number; done_30d: number }
+export type PeopleData = { people: PersonCard[]; can_notify: boolean; me: number }
+export type PersonData = {
+  user: { id: number; name: string; role: string; email: string | null; avatar_url: string | null; last_login_at: string | null; since: string }
+  today: string; can_notify: boolean
+  kpis: { rollouts: number; stuck: number; open: number; late: number; done_30d: number; on_time_pct: number | null }
+  projects: WorkProject[]; pending: WorkTask[]; upcoming: WorkTask[]
+  contribution: { weeks: { week: string; done: number }[]; notes_30d: number; moves_30d: number }
+  recent: { kind: "move" | "note" | "task"; at: string; project_id: number; project: string; text: string }[]
+}
+export const people = () => getJson<PeopleData>("/api/people")
+export const person = (id: number) => getJson<PersonData>(`/api/people/${id}`)
+export const notifyPerson = (id: number, message: string, project_id?: number | null) => post<{ ok: true }>(`/api/people/${id}/notify`, { message, project_id: project_id ?? null })
 export type AlertsData = {
   rows: { id: number; project_id: number | null; project_name: string | null; alert_type: string; severity: "critical" | "warning" | "info"; title: string; description: string | null; created_at: string; resolved: boolean; resolved_at: string | null }[]
   show_resolved: boolean; alert_type: string; types: Record<string, string>; page: number; total_pages: number; total: number
