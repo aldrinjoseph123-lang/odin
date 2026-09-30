@@ -6,6 +6,13 @@ Tunnel + Access, starting from an empty database, with Microsoft 365 mail,
 sign-in and off-host backups added after go-live (Phase 6). `DEPLOY.md` is
 the reference behind each step.
 
+**As deployed on 30 Sep 2026 (v1.0.0):** Ubuntu 26.04 VM, cloudflared installed
+on the **host** (`sudo cloudflared service install <token>`, as on the Zeus
+server) with the published application route `odin.protect24x7.com →
+http://localhost:8080`, `COMPOSE_FILE=docker-compose.yml:docker-compose.host-tunnel.yml`,
+and no Cloudflare Access (same as Zeus). The container-cloudflared + Access
+variant below remains the alternative.
+
 Work top to bottom; each phase ends with a check. Do not enable the public
 hostname until Phase 3's checks pass.
 
