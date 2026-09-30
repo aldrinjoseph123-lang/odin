@@ -5,7 +5,7 @@ within the idle limit (policy activity_idle_minutes; POST /api/activity). Each a
 ping is one active minute on the person's workspace-local day; pings closer
 than 50 seconds apart are not counted, so a second tab or a fast client
 cannot inflate the figure. Idle time with a tab left open is never counted.
-Rows older than 400 days are trimmed nightly by the scheduler. An admin can
+Rows older than activity_keep_days (Settings → Retention) are trimmed nightly. An admin can
 switch the whole thing off (activity_tracking) and choose which roles see
 other people's figures (activity_roles).
 """
@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 from db import get_db
 from policies import local_today, policy
 
-KEEP_DAYS = 400
 MIN_GAP_SECONDS = 50
 
 
@@ -61,5 +60,5 @@ def can_see_others(role):
 
 def trim(db=None):
     db = db or get_db()
-    db.execute("DELETE FROM user_activity WHERE day < ?", ((local_today() - timedelta(days=KEEP_DAYS)).isoformat(),))
+    db.execute("DELETE FROM user_activity WHERE day < ?", ((local_today(db) - timedelta(days=policy("activity_keep_days", db))).isoformat(),))
     db.commit()

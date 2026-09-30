@@ -106,6 +106,10 @@ POLICIES = {
     # ---- Audit & compliance
     "audit_keep": dict(area="audit", kind="choice", default="3", choices=("1", "2", "3", "5", "7", "forever"),
                        label="Keep audit log rows for (years)", help="Older rows are written to a CSV archive (kept with the backups) and then removed, nightly. At least a year: SOC 2 asks for 12 months."),
+    "notifications_keep_days": dict(area="audit", kind="int", default=90, min=7, max=730,
+                                    label="Keep read notifications for (days)", help="Bell items someone has read are removed after this; unread ones stay until they are read."),
+    "activity_keep_days": dict(area="audit", kind="int", default=400, min=30, max=1825,
+                               label="Keep time on Odin for (days)", help="Per-person active minutes older than this are removed nightly. The panels show the last 30 days."),
     # ---- Backups
     "backup_time": dict(area="backups", kind="time", default="02:00",
                         label="Back up at", help="Workspace time zone."),

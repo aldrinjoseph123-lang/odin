@@ -36,7 +36,7 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
   documents: { title: "Documents", lede: "Templates for the rollout report, the portfolio report and the sign-off: brand, sections and wording. Documents already issued keep the template they were issued with." },
   api: { title: "API tokens", lede: "Read-only access for scripts and other tools: projects, their stages and tasks, and saved reports." },
-  audit: { title: "Audit retention", lede: "How long the audit trail is kept, and where older rows go." },
+  audit: { title: "Retention", lede: "How long the audit trail, read notifications and time on Odin are kept, and where older audit rows go." },
   backups: { title: "Backups", lede: "Copies of the database, documents and pictures: made on schedule, tested by restoring them, copied off the server, pruned by age." },
 }
 

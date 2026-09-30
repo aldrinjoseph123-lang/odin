@@ -4129,6 +4129,25 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with app_module.app.app_context():
             self.assertEqual(plan.suggested_plan(rows, date(2026, 11, 30), 7)[0]["plan_end"], "2026-12-03")
 
+    def test_retention_of_notifications_and_time_on_odin_follows_settings(self):
+        from datetime import timedelta
+        from services.activity import trim
+        from services.notifications import notify_users
+        old = (datetime.utcnow() - timedelta(days=20)).isoformat()
+        with self.raw_db() as db:
+            db.execute("INSERT INTO notifications (user_id, kind, title, created_at, read_at) VALUES (1, 'nudge', 'old read', ?, ?)", (old, old))
+            db.execute("INSERT INTO notifications (user_id, kind, title, created_at) VALUES (1, 'nudge', 'old unread', ?)", (old,))
+            db.execute("INSERT INTO user_activity (user_id, day, minutes) VALUES (1, ?, 5)", ((datetime.utcnow() - timedelta(days=40)).date().isoformat(),))
+            db.commit()
+        self._set_policy(notifications_keep_days="14", activity_keep_days="30")
+        with app_module.app.test_request_context():
+            notify_users([1], "nudge", None, "new", "new")   # a new notification trims the old read ones
+            trim()
+        with self.raw_db() as db:
+            titles = {r[0] for r in db.execute("SELECT title FROM notifications WHERE user_id = 1")}
+            self.assertEqual(titles, {"old unread", "new"})
+            self.assertIsNone(db.execute("SELECT 1 FROM user_activity").fetchone())
+
     def test_stage_sla_state_flags_only_real_breaches(self):
         from services.analytics import stage_sla_state
         from datetime import datetime

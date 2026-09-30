@@ -42,6 +42,7 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
     their own action. Best effort: mail failures never break the request."""
     from datetime import datetime, timedelta
     from flask import has_request_context, session
+    from policies import policy
     ids = []
     for uid in user_ids:
         if uid and uid != exclude_user_id and uid not in ids:
@@ -60,7 +61,7 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             "INSERT INTO notifications (user_id, project_id, kind, title, body, link, actor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (r["id"], project_id, kind, title[:300], body[:2000], link, actor, now.isoformat()),
         )
-    db.execute("DELETE FROM notifications WHERE read_at IS NOT NULL AND created_at < ?", ((now - timedelta(days=90)).isoformat(),))
+    db.execute("DELETE FROM notifications WHERE read_at IS NOT NULL AND created_at < ?", ((now - timedelta(days=policy("notifications_keep_days", db))).isoformat(),))
     db.commit()
     if get_setting("notify_email_enabled") != "1":
         return
