@@ -134,11 +134,15 @@ Rules while both UIs exist:
 
 `docs/system-map.html` is the source of the **Odin System Map** artifact
 (https://claude.ai/artifact/DLoSQZo8uDQ5B4hh3ZnnQz): architecture, project
-lifecycle, notifications, permissions, ways in, and the loophole register.
+lifecycle, notifications, permissions, ways in, code structure, tests,
+deploy & release, and the loophole register. The folders, files, test lists, CI
+jobs, Docker facts and releases are generated from the last commit by
+`python3 scripts/build_system_map.py` (never edit the REPO-DATA block by hand).
 It must stay true to the code. When a change alters how Odin runs, moves or
 exposes data, notifies, grants access, or closes a loophole: edit the page
 (a fixed loophole keeps its number and gets `fixed: "vX.Y.Z"`; a new one gets
 the next number), bump `MAP_STAMP`, commit it, and republish it to that URL
 with the Artifact tool (`file_path: docs/system-map.html`, `url:` as above).
 The Stop hook `scripts/system_map_stale.sh` (`.claude/settings.json`) blocks
-the end of a turn while a code commit is newer than the map's last commit.
+the end of a turn while the generated facts do not match HEAD or a code commit
+is newer than the map's last commit.
