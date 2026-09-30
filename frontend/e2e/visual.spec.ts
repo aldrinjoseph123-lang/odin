@@ -8,9 +8,11 @@ import { setTheme, signIn } from "./helpers"
 // refresh them after a deliberate change of look.
 test.skip(process.platform !== "linux", "goldens are rendered on Linux")
 
+// Rollout 2, not 1: the journeys (flows.spec) edit rollout 1 — its plan, scope,
+// sign-off and activity — so its page would differ with the order tests ran in.
 const PAGES: [string, string][] = [
-  ["dashboard", "/dashboard"], ["flow", "/board"], ["flow-open", "/board?rollout=1"], ["calendar", "/board?view=calendar&month=2026-09"],
-  ["projects", "/projects"], ["project", "/projects/1"], ["settings", "/settings/general"], ["login", "/login"],
+  ["dashboard", "/dashboard"], ["flow", "/board"], ["flow-open", "/board?rollout=2"], ["calendar", "/board?view=calendar&month=2026-09"],
+  ["projects", "/projects"], ["project", "/projects/2"], ["settings", "/settings/general"], ["login", "/login"],
 ]
 
 for (const theme of ["light", "dark"] as const) {
