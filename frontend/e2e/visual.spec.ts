@@ -10,8 +10,10 @@ test.skip(process.platform !== "linux", "goldens are rendered on Linux")
 
 // Rollout 2, not 1: the journeys (flows.spec) edit rollout 1 — its plan, scope,
 // sign-off and activity — so its page would differ with the order tests ran in.
+// No calendar: the seed dates everything from today, so a month grid changes
+// every day (smoke.spec and the calendar journey in flows.spec cover it).
 const PAGES: [string, string][] = [
-  ["dashboard", "/dashboard"], ["flow", "/board"], ["flow-open", "/board?rollout=2"], ["calendar", "/board?view=calendar&month=2026-09"],
+  ["dashboard", "/dashboard"], ["flow", "/board"], ["flow-open", "/board?rollout=2"],
   ["projects", "/projects"], ["project", "/projects/2"], ["settings", "/settings/general"], ["login", "/login"],
 ]
 
