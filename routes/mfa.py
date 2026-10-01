@@ -58,6 +58,10 @@ def api_two_step():
 def api_two_step_setup():
     if session.get("kind") == "external":
         abort(403)
+    u = _me()
+    # someone holding only the session must not be able to bind their own authenticator
+    if not (u["password_hash"] and "$" in u["password_hash"] and check_password_hash(u["password_hash"], (request.get_json(silent=True) or {}).get("password") or "")):
+        return jsonify(error="Your password is not right"), 400
     audit_log("mfa_setup_started", "user", session["user_id"], session.get("user_name"))
     return jsonify(mfa.start_setup(session["user_id"]))
 

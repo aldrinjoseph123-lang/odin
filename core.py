@@ -154,7 +154,26 @@ def _session_still_valid():
     row = get_db().execute(
         "SELECT active, session_epoch FROM users WHERE id = ?", (session["user_id"],)
     ).fetchone()
-    return bool(row) and bool(row["active"]) and row["session_epoch"] == session.get("epoch", 0)
+    if not (bool(row) and bool(row["active"]) and row["session_epoch"] == session.get("epoch", 0)):
+        return False
+    # signed out: this session (and any copy of its cookie) is over
+    return not get_db().execute("SELECT 1 FROM revoked_sessions WHERE user_id = ? AND login_at = ?", (session["user_id"], login_at)).fetchone()
+
+
+def end_session():
+    """Sign out: record this session as ended, so a copied cookie stops working
+    too, then clear it. Other sessions of the same person are untouched."""
+    from services.audit import audit_log
+    if "user_id" in session:
+        audit_log("logout", "user", session["user_id"], session.get("user_name"))
+        if session.get("login_at"):
+            db = get_db()
+            now = datetime.utcnow()
+            db.execute("INSERT OR IGNORE INTO revoked_sessions (user_id, login_at, revoked_at) VALUES (?, ?, ?)",
+                       (session["user_id"], session["login_at"], now.isoformat()))
+            db.execute("DELETE FROM revoked_sessions WHERE revoked_at < ?", ((now - timedelta(days=8)).isoformat(),))   # past any session's life
+            db.commit()
+    session.clear()
 
 
 def login_required(view):
@@ -294,13 +313,15 @@ def nav_counts():
         return {"active_alert_count": 0, "my_open_task_count": 0, "unread_notifications": 0, "projects_nav_url": url_for("projects_list")}
     db = get_db()
     scope_sql, scope_params = project_scope()
+    from services.notifications import visible_clause
+    _bell = visible_clause(session.get("user_id"), session.get("kind"))
     return {
         "active_alert_count": db.execute(
             f"SELECT COUNT(*) AS count FROM alerts a JOIN projects p ON p.id = a.project_id WHERE a.resolved = 0{scope_sql}",
             scope_params,
         ).fetchone()["count"],
         "unread_notifications": db.execute(
-            "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (session.get("user_id"),)
+            "SELECT COUNT(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL" + _bell[0], (session.get("user_id"), *_bell[1])
         ).fetchone()[0],
         "my_open_task_count": db.execute(
             "SELECT COUNT(*) AS count FROM tasks t JOIN projects p ON p.id = t.project_id "

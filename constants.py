@@ -82,6 +82,7 @@ NOTIFICATION_KINDS = {
     "mention": "When someone mentions me in a note",
     "due": "A daily reminder of my tasks due today or overdue",
     "nudge": "A note a colleague sends me from the People page",
+    "alert": "Alerts on projects I am on (overdue, due soon, over SLA, idle), and my daily digest",
 }
 
 THEMES = ("system", "light", "dark")

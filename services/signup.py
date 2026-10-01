@@ -79,6 +79,16 @@ def revoke_all():
     return n
 
 
+def trim(db=None):
+    """Links that stopped working (revoked, expired or used up) more than 90 days ago."""
+    from datetime import datetime, timedelta
+    db = db or get_db()
+    cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
+    db.execute("DELETE FROM signup_links WHERE (revoked_at IS NOT NULL AND revoked_at < ?) OR expires_at < ? "
+               "OR (uses >= max_uses AND created_at < ?)", (cutoff, cutoff, cutoff))
+    db.commit()
+
+
 def lookup(raw):
     """The open link for this token, or None (unknown, revoked, expired, used up, or sign-up switched off)."""
     if not policy("signup_enabled"):

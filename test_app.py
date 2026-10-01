@@ -94,6 +94,12 @@ def isolate_uploads(test):
     data = patch.object(db_module, "DATA_DIR", tempfile.mkdtemp())   # template logos (brand/) and the like
     data.start()
     test.addCleanup(data.stop)
+    # graph.py opens the database by its own path: point it at this test's
+    # database, never the developer's odin.db
+    import graph
+    g = patch.object(graph, "DB_PATH", db_module.DB_PATH)
+    g.start()
+    test.addCleanup(g.stop)
     return tmp
 
 
@@ -1489,13 +1495,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # pm1 switches stage emails off; the bell still gets it
         p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on", "due": "on"}, headers=ph)
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
-        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False})
+        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False})
         mail.reset_mock()
         self.client.post("/projects/1/stage", data={"stage": stages[1]})
         self.assertEqual([c.args[0] for c in mail.call_args_list], [])                     # pm1 opted out; admin is the actor
         bell = p.get("/api/notifications").get_json()
-        self.assertEqual((bell["unread"], bell["rows"][0]["kind"], bell["rows"][0]["link"], bell["rows"][0]["actor"]), (1, "stage", "/board?rollout=1", "Admin"))
-        self.assertEqual(p.get("/api/session").get_json()["user"]["nav"]["unread_notifications"], 1)
+        # 2 unread: being added to the project, then the stage move
+        self.assertEqual((bell["unread"], bell["rows"][0]["kind"], bell["rows"][0]["link"], bell["rows"][0]["actor"]), (2, "stage", "/board?rollout=1", "Admin"))
+        self.assertEqual(p.get("/api/session").get_json()["user"]["nav"]["unread_notifications"], 2)
         # mentions: by full name, by unique first name, by username; an outsider is never reached
         mail.reset_mock()
         self.client.post("/projects/1/note", data={"note": "@Priya Menon can you check the rack? cc @sam"})
@@ -1512,8 +1519,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         rid = p.get("/api/notifications").get_json()["rows"][0]["id"]
         a, acsrf = self._api_client()
         self.assertEqual(a.post("/api/notifications/read", json={"id": rid}, headers={"X-CSRF-Token": acsrf}).status_code, 200)
-        self.assertEqual(p.get("/api/notifications").get_json()["unread"], 2)                 # admin could not mark pm1's
-        self.assertEqual(p.post("/api/notifications/read", json={"id": rid}, headers=ph).get_json()["unread"], 1)
+        self.assertEqual(p.get("/api/notifications").get_json()["unread"], 3)                 # admin could not mark pm1's
+        self.assertEqual(p.post("/api/notifications/read", json={"id": rid}, headers=ph).get_json()["unread"], 2)
         self.assertEqual(p.post("/api/notifications/read", json={"all": True}, headers=ph).get_json()["unread"], 0)
         self.assertEqual(p.post("/api/notifications/read", json={}, headers=ph).status_code, 400)
 
@@ -3471,7 +3478,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_contributor_creates_and_comments_but_never_moves_a_stage(self):
         self._make_user("sales", "Contributor")
         c = app_module.app.test_client(); c.post("/login", data={"username": "sales", "password": STRONG_PASSWORD})
-        c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 x"), "po.pdf"), "name": "S", "client": "C"})
+        c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 x"), "po.pdf"), "name": "S", "client": "C", "owner_id": "1"})   # names a manager who can move stages
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0], 1)
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
@@ -3764,7 +3771,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIn(f"Advance to {stages[1]}", page)
         self.assertNotIn("Closed", page.split("Update Progress")[1].split("</form>")[0])
         csrf = re.search(r'name="_csrf" value="([^"]+)"', page).group(1)
-        with _patch("routes.guest.notify_event") as notify:
+        with _patch("routes.projects.notify_event") as notify:
             g.post(f"/guest/{tok}/stage", data={"stage": stages[-1], "author": "Sam", "_csrf": csrf})
             with self.raw_db() as db:
                 self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=1").fetchone()[0], stages[0])
@@ -3834,7 +3841,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             doc = db.execute("SELECT id FROM documents WHERE project_id=1").fetchone()["id"]
         self.client.get(f"/projects/1/documents/{doc}/download")
-        c.get("/logout")
+        c.post("/logout")
         with self.raw_db() as db:
             actions = {r[0] for r in db.execute("SELECT action FROM audit_logs")}
         for a in ("login_failure", "login_success", "download_document", "upload_document", "logout", "create_project"):
@@ -3873,7 +3880,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 continue
             src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
             # attempt_login audits every outcome itself; both login doors use it.
-            if not any(marker in src for marker in ("audit_log(", "attempt_login(", "change_stage(", "_stage_change(", "_template_change(", "decide_approval(")):
+            if not any(marker in src for marker in ("audit_log(", "attempt_login(", "change_stage(", "_stage_change(", "_template_change(", "decide_approval(", "end_session(")):
                 missing.append(rule.rule)
         self.assertEqual(missing, [], f"POST routes without an audit entry: {missing}")
 
@@ -3987,8 +3994,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         graph.DB_PATH = db_module.DB_PATH
         graph._save_tokens({"access_token": "a1", "refresh_token": "r1", "expires_in": 3600})
         graph._save_tokens({"access_token": "a2", "expires_in": 3600})   # no refresh_token
-        with self.raw_db() as db:
-            row = db.execute("SELECT access_token, refresh_token FROM ms_connection WHERE id=1").fetchone()
+        row = graph.get_connection()   # stored sealed, read back plain
         self.assertEqual(row["access_token"], "a2")   # access token still rotates
         self.assertEqual(row["refresh_token"], "r1")  # refresh token preserved
         self.assertTrue(graph.is_connected())
@@ -4140,8 +4146,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("INSERT INTO user_activity (user_id, day, minutes) VALUES (1, ?, 5)", ((datetime.utcnow() - timedelta(days=40)).date().isoformat(),))
             db.commit()
         self._set_policy(notifications_keep_days="14", activity_keep_days="30")
+        from services.notifications import trim as trim_notifications
         with app_module.app.test_request_context():
-            notify_users([1], "nudge", None, "new", "new")   # a new notification trims the old read ones
+            notify_users([1], "nudge", None, "new", "new")
+            trim_notifications()   # nightly, in the scheduler's housekeeping
             trim()
         with self.raw_db() as db:
             titles = {r[0] for r in db.execute("SELECT title FROM notifications WHERE user_id = 1")}
@@ -4155,7 +4163,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c, csrf = self._api_client("twostep", STRONG_PASSWORD)
         h = {"X-CSRF-Token": csrf}
         self.assertFalse(c.get("/api/account/two-step").get_json()["enabled"])
-        setup = c.post("/api/account/two-step/setup", headers=h).get_json()
+        self.assertEqual(c.post("/api/account/two-step/setup", json={"password": "wrong"}, headers=h).status_code, 400)   # #25: the password first
+        setup = c.post("/api/account/two-step/setup", json={"password": STRONG_PASSWORD}, headers=h).get_json()
         self.assertIn("<svg", setup["qr_svg"]); self.assertTrue(setup["uri"].startswith("otpauth://totp/"))
         secret, step = setup["secret"], int(time.time() // mfa.STEP)
         self.assertEqual(c.post("/api/account/two-step/confirm", json={"code": "000000" if mfa.code_at(secret, step) != "000000" else "111111"}, headers=h).status_code, 400)
@@ -4207,6 +4216,253 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         m, _ = self._api_client("mapmember", STRONG_PASSWORD)
         self.assertNotEqual(m.get("/settings/map/page").status_code, 200)          # admins only
         self.assertNotEqual(app_module.app.test_client().get("/settings/map/page").status_code, 200)
+
+    # ---- loopholes, phase 1: access and data exposure (system map #1, #3, #4, #5, #10, #14, #15)
+
+    def test_guest_links_go_only_to_whoever_manages_the_project(self):
+        self.new_project(name="P", client="C")
+        admin, _ = self._api_client()
+        self.assertIsNotNone(admin.get("/api/projects/1").get_json()["guest_links"]["customer"])
+        self._make_user("viewer9", "Viewer"); self._make_user("member9", "Member")
+        for who in ("viewer9", "member9"):   # not on the project: no anonymous links, which could move a stage
+            c, _ = self._api_client(who, STRONG_PASSWORD)
+            self.assertEqual(c.get("/api/projects/1").get_json()["guest_links"], {"customer": None, "vendor": None})
+
+    def test_partners_get_a_cut_of_the_project_page_and_never_the_client_po(self):
+        self.new_project(name="P", client="C", account_manager_email="am@corp.example", partner_account_manager_email="pam@partner.example", po_number="PO-77")
+        self._invite(1, "rick@reseller.example", "Reseller", "Rick")
+        self._invite(1, "cara@client.example", "Customer", "Cara")
+        r, _ = self._ext("rick@reseller.example")
+        d = r.get("/api/projects/1").get_json()
+        self.assertNotIn("account_manager_email", d["details"]); self.assertNotIn("partner_account_manager_email", d["details"])
+        self.assertNotIn("po_number", d["details"])                                            # a reseller: no PO
+        self.assertTrue(all(p["email"] is None for p in d["participants"] if p["name"] != "Rick"))
+        self.assertEqual(d["documents"], [])                                                   # the PO document is internal
+        with self.raw_db() as db:
+            doc = db.execute("SELECT id FROM documents WHERE project_id = 1").fetchone()["id"]
+        self.assertEqual(r.get(f"/projects/1/documents/{doc}/download").status_code, 404)
+        cust, _ = self._ext("cara@client.example")
+        self.assertEqual(cust.get("/api/projects/1").get_json()["details"]["po_number"], "PO-77")   # the customer's own PO number
+        # an admin may share the kind with partners
+        with self.raw_db() as db:
+            cat = db.execute("SELECT id FROM doc_categories WHERE name = 'Client PO'").fetchone()["id"]
+        self.client.post(f"/settings/doc-categories/{cat}/partners", data={"partners": "on"})
+        self.assertEqual(len(r.get("/api/projects/1").get_json()["documents"]), 1)
+        self.assertEqual(r.get(f"/projects/1/documents/{doc}/download").status_code, 200)
+
+    def test_the_customers_signed_copy_leaves_out_the_signing_record(self):
+        c, h, ann, _ = self._signoff_setup()
+        c.post("/api/projects/1/scope", json={"title": "Deploy"}, headers=h)
+        item = c.get("/api/projects/1/scope").get_json()["items"][0]["id"]
+        c.put(f"/api/projects/1/scope/{item}", json={"status": "delivered"}, headers=h)
+        c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1}, headers=h)
+        e, eh = self._ext("ann@globex.example")
+        e.post("/api/projects/1/signoff/1/sign", json={"name": "Ann", "accept": True, "signature": self.DRAWN}, headers=eh)
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'admin@corp.example' WHERE id = 1")
+            db.execute("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+            db.commit()
+        sent = {}
+        with patch("routes.signoff.graph.send_mail", side_effect=lambda to, subject, body, attachments=None: sent.update({to: attachments[0][1]}) or (True, None)), \
+             patch("services.signoff_pdf.render", side_effect=lambda view: b"STAFF" if "signed_ip" in view else b"CUSTOMER"):
+            c.post("/api/projects/1/signoff/1/countersign", json={"name": "Admin", "accept": True, "signature": {"kind": "typed", "text": "Admin"}}, headers=h)
+        self.assertEqual(sent, {"ann@globex.example": b"CUSTOMER", "admin@corp.example": b"STAFF"})
+
+    def test_weekly_report_pdfs_go_only_to_staff_accounts(self):
+        from services import weekly_report
+        self.new_project(name="P", client="C")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'admin@corp.example' WHERE id = 1"); db.commit()
+        self._set_policy(report_attach="1", report_emails="ceo@corp.example,someone@outside.example", report_roles="Admin")
+        got = {}
+        with app_module.app.test_request_context(), patch("services.weekly_report.graph.send_mail", side_effect=lambda to, subject, body, attachments=None: got.update({to: len(attachments or [])}) or (True, None)):
+            weekly_report.send(teams=False)
+        self.assertGreater(got["admin@corp.example"], 0)
+        self.assertEqual((got["ceo@corp.example"], got["someone@outside.example"]), (0, 0))   # not Odin accounts: the summary only
+
+    def test_a_contributor_names_a_project_manager_who_can_move_stages(self):
+        self._make_user("contrib9", "Contributor"); lead = self._make_user("lead9", "Member")
+        c = app_module.app.test_client(); c.post("/login", data={"username": "contrib9", "password": STRONG_PASSWORD})
+        new = lambda **x: c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 po"), "po.pdf"), "name": "By contributor", "client": "C", **x})   # noqa: E731
+        new()
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM projects WHERE name = 'By contributor'").fetchone())   # refused without a manager
+        new(owner_id=str(lead))
+        with self.raw_db() as db:
+            p = db.execute("SELECT id, owner_id FROM projects WHERE name = 'By contributor'").fetchone()
+            roles = dict(db.execute("SELECT u.username, pp.role FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.project_id = ?", (p["id"],)).fetchall())
+        self.assertEqual(p["owner_id"], lead)
+        self.assertEqual(roles, {"lead9": "Project manager", "contrib9": "Coordinator"})
+
+    def test_partner_roles_are_for_partners_and_external_for_partner_accounts(self):
+        self.new_project(name="P", client="C")
+        staff = self._make_user("staff9", "Member")
+        self.client.post("/projects/1/participants/add", data={"user_id": str(staff), "role": "Customer"})
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM project_participants WHERE user_id = ?", (staff,)).fetchone())   # staff cannot stand in for the customer
+        self.client.post(f"/users/{staff}/role", data={"role": "External"})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT role FROM users WHERE id = ?", (staff,)).fetchone()[0], "Member")
+
+    # ---- loopholes, phase 2: the stage path and notifications (system map #9, #11, #12, #20, #21, #26)
+
+    def _bell(self, user_id):
+        with self.raw_db() as db:
+            return [(r["kind"], r["title"]) for r in db.execute("SELECT kind, title FROM notifications WHERE user_id = ? ORDER BY id", (user_id,))]
+
+    def test_the_vendor_link_moves_a_stage_through_the_normal_path(self):
+        self.new_project(name="V", client="C", delivery_mode="Outsourced", outsourcer_name="VendorCo", customer_approval="on")
+        member = self._make_user("coord9", "Member")
+        self.client.post("/projects/1/participants/add", data={"user_id": str(member), "role": "Coordinator"})
+        self._invite(1, "cara@client.example", "Customer", "Cara")
+        with self.raw_db() as db:
+            tok = db.execute("SELECT access_token FROM projects WHERE id=1").fetchone()[0]
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+            cara = db.execute("SELECT id FROM users WHERE email = 'cara@client.example'").fetchone()[0]
+        g = app_module.app.test_client()
+        csrf = re.search(r'name="_csrf" value="([^"]+)"', g.get(f"/guest/{tok}").data.decode()).group(1)
+        g.post(f"/guest/{tok}/stage", data={"stage": stages[1], "author": "Sam", "_csrf": csrf})
+        with self.raw_db() as db:
+            note = db.execute("SELECT author, prev_stage FROM status_notes WHERE stage = ? ORDER BY id DESC", (stages[1],)).fetchone()
+            approval = db.execute("SELECT stage, status FROM stage_approvals WHERE project_id = 1").fetchone()
+        self.assertEqual((note["prev_stage"], approval["stage"], approval["status"]), (stages[0], stages[1], "pending"))   # history and the customer's approval
+        self.assertIn("vendor link", note["author"])
+        self.assertIn("stage", [k for k, _ in self._bell(member)])                     # the team hears of it
+        self.assertEqual([k for k, _ in self._bell(cara)][-1], "approval")             # #20: the customer is asked as an approval
+
+    def test_new_alerts_reach_the_bell_of_the_owner_and_the_team_and_pms_get_a_digest(self):
+        pm = self._make_user("pm9", "Member"); coord = self._make_user("co9", "Contributor")
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        self.client.post("/projects/1/edit", data={"name": "Late", "client": "C", "via": "Direct", "delivery_mode": "Distribution/MSSP", "owner_id": pm, "target_end_date": "2020-01-01"})
+        self.client.post("/projects/1/participants/add", data={"user_id": str(coord), "role": "Coordinator"})
+        import scheduler
+        scheduler.sync_alerts()
+        self.assertIn("alert", [k for k, _ in self._bell(pm)])
+        self.assertIn("alert", [k for k, _ in self._bell(coord)])
+        import send_daily_alerts
+        with patch("policies.is_working_day", return_value=True):
+            send_daily_alerts.main()
+        self.assertTrue(any("of your rollout" in t for k, t in self._bell(pm) if k == "alert"))   # the PM's own digest
+        self.assertTrue(any("digest" in t for k, t in self._bell(1) if k == "alert"))             # the admins' digest, in the bell
+
+    def test_the_silent_events_now_tell_the_people_they_affect(self):
+        self.new_project(name="P", client="C")
+        new_pm = self._make_user("npm9", "Member"); added = self._make_user("add9", "Contributor")
+        self.client.post("/projects/1/participants/add", data={"user_id": str(added), "role": "Sales"})
+        self.assertIn(("assigned", "You are on P"), self._bell(added))
+        self.client.post("/projects/1/edit", data={"name": "P", "client": "C", "via": "Direct", "delivery_mode": "Distribution/MSSP", "owner_id": new_pm})
+        self.assertIn(("assigned", "You now manage P"), self._bell(new_pm))
+        # a bulk completion tells the PM; a signed-up colleague hears they were let in
+        self.client.post("/projects/1/tasks", data={"title": "a"}); self.client.post("/projects/1/tasks", data={"title": "b"})
+        with self.raw_db() as db:
+            ids = [str(r[0]) for r in db.execute("SELECT id FROM tasks WHERE project_id = 1")]
+        self.client.post("/projects/1/tasks/bulk", data={"action": "complete", "task_ids": ids})
+        self.assertTrue(any("2 tasks done" in t for _, t in self._bell(new_pm)))
+        with self.raw_db() as db:
+            db.execute("INSERT INTO users (username, password_hash, name, role, active, pending, kind) VALUES ('wait9', 'x', 'Wait', 'Viewer', 0, 1, 'internal')")
+            waiter = db.execute("SELECT id FROM users WHERE username = 'wait9'").fetchone()[0]; db.commit()
+        self.client.post(f"/users/{waiter}/approve", data={"role": "Viewer"})
+        self.assertIn(("access", "Welcome to Odin"), self._bell(waiter))
+
+    def test_a_partner_removed_from_a_project_stops_seeing_its_notifications(self):
+        self.new_project(name="P", client="C")
+        self._invite(1, "rick@reseller.example", "Reseller", "Rick")
+        with self.raw_db() as db:
+            rick = db.execute("SELECT id FROM users WHERE email = 'rick@reseller.example'").fetchone()[0]
+            pp = db.execute("SELECT id FROM project_participants WHERE user_id = ?", (rick,)).fetchone()[0]
+        with app_module.app.test_request_context():
+            from services.notifications import notify_users
+            notify_users([rick], "stage", 1, "P moved", "moved")
+        r, _ = self._ext("rick@reseller.example")
+        self.assertEqual(len(r.get("/api/notifications").get_json()["rows"]), 1)
+        self.client.post(f"/projects/1/participants/{pp}/remove")
+        self.assertEqual(r.get("/api/notifications").get_json()["rows"], [])
+
+    # ---- loopholes, phase 3: operations and security hygiene (system map #2, #6, #7, #8, #17, #18, #22-#25)
+
+    def test_email_failures_reach_the_admins_bell_once_a_day(self):
+        with self.raw_db() as db:
+            db.execute("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"); db.commit()
+        import graph
+        with app_module.app.test_request_context():
+            for _ in range(2):
+                self.assertFalse(graph.send_mail("x@corp.example", "s", "b")[0])   # Microsoft 365 is not connected
+        with self.raw_db() as db:
+            rows = db.execute("SELECT title FROM notifications WHERE user_id = 1 AND title = 'Odin could not send email'").fetchall()
+        self.assertEqual(len(rows), 1)
+
+    def test_microsoft_secrets_are_sealed_at_rest(self):
+        import graph
+        with app_module.app.app_context():
+            graph.set_azure_app_credentials("client-1", "very-secret", "tenant-1")
+            graph._save_tokens({"access_token": "at-123", "refresh_token": "rt-456", "expires_in": 3600})
+            self.assertEqual(graph._client_secret(), "very-secret")
+            conn = graph.get_connection()
+            self.assertEqual((conn["access_token"], conn["refresh_token"]), ("at-123", "rt-456"))
+        with self.raw_db() as db:
+            stored = db.execute("SELECT value FROM settings WHERE key = 'ms_client_secret'").fetchone()[0]
+            tokens = db.execute("SELECT access_token, refresh_token FROM ms_connection").fetchone()
+        self.assertTrue(stored.startswith("sealed:")); self.assertNotIn("very-secret", stored)
+        self.assertNotIn("rt-456", tokens["refresh_token"]); self.assertNotIn("at-123", tokens["access_token"])
+
+    def test_a_failed_restore_test_prunes_nothing_off_the_server(self):
+        import backup
+        share = tempfile.mkdtemp()
+        old = ["odin-backup-20200101-020000.zip", "odin-backup-20200102-020000.zip"]
+        for name in old:
+            open(os.path.join(share, name), "w").close()
+        new = os.path.join(tempfile.mkdtemp(), "odin-backup-20260930-020000.zip"); open(new, "w").close()
+        backup._copy_share(new, share, (1, 0, 0), prune=False)
+        self.assertEqual(sorted(os.listdir(share)), sorted(old + [os.path.basename(new)]))   # nothing pushed out
+        backup._copy_share(new, share, (1, 0, 0))
+        self.assertEqual(os.listdir(share), [os.path.basename(new)])
+
+    def test_purging_a_project_named_by_a_sign_up_link_still_works(self):
+        self.new_project(name="P", client="C")
+        c, csrf = self._api_client()
+        c.post("/api/signup-links", json={"label": "for P", "role": "Viewer", "project_id": 1, "project_role": "Coordinator"}, headers={"X-CSRF-Token": csrf})
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET deleted_at = '2000-01-01T00:00:00' WHERE id = 1"); db.commit()
+        with app_module.app.app_context():
+            db_module.cleanup_soft_deletes()
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM projects WHERE id = 1").fetchone())
+            self.assertIsNone(db.execute("SELECT project_id FROM signup_links").fetchone()[0])   # the link survives, without the project
+
+    def test_signing_out_ends_the_session_and_any_copy_of_its_cookie(self):
+        a, csrf = self._api_client()
+        cookie = a.get_cookie("session").value
+        b = app_module.app.test_client(); b.set_cookie("session", cookie)
+        self.assertIsNotNone(b.get("/api/session").get_json()["user"])       # a copied cookie works while the session lives
+        self.assertEqual(a.get("/logout").status_code, 200)                    # a GET only shows the button
+        self.assertIsNotNone(b.get("/api/session").get_json()["user"])
+        a.post("/api/logout", headers={"X-CSRF-Token": csrf})
+        self.assertIsNone(b.get("/api/session").get_json()["user"])           # the copy is dead too
+        other, _ = self._api_client()
+        self.assertIsNotNone(other.get("/api/session").get_json()["user"])   # other sessions of the same person are untouched
+
+    def test_access_log_redacts_secret_links(self):
+        import gunicorn_logger
+        self.assertEqual(gunicorn_logger.redact("GET /guest/abc123/stage HTTP/1.1"), "GET /guest/[redacted]/stage HTTP/1.1")
+        self.assertEqual(gunicorn_logger.redact("/auth/reset/tok?x=1"), "/auth/reset/[redacted]?x=1")
+
+    def test_settings_routes_follow_the_permission_matrix_and_token_reads_are_audited(self):
+        self._make_user("setmem", "Member")
+        m = app_module.app.test_client(); m.post("/login", data={"username": "setmem", "password": STRONG_PASSWORD})
+        m.post("/settings/doc-categories/add", data={"name": "Runbook"})
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM doc_categories WHERE name = 'Runbook'").fetchone())
+            db.execute("UPDATE role_permissions SET allowed = 1 WHERE permission = 'manage_settings' AND role = 'Member'"); db.commit()
+        m.post("/settings/doc-categories/add", data={"name": "Runbook"})
+        with self.raw_db() as db:
+            self.assertTrue(db.execute("SELECT 1 FROM doc_categories WHERE name = 'Runbook'").fetchone())   # the matrix, not the role name
+        c, csrf = self._api_client()
+        raw = c.post("/settings/api-tokens", data={"name": "BI", "days": "30"}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()["messages"][0].rsplit(": ", 1)[1]
+        anon = app_module.app.test_client()
+        for _ in range(3):
+            anon.get("/api/v1/projects", headers={"Authorization": f"Bearer {raw}"})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'api_token_read'").fetchone()[0], 1)   # once a day per token
 
     def test_stage_sla_state_flags_only_real_breaches(self):
         from services.analytics import stage_sla_state
@@ -4589,7 +4845,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
         self.client.get("/board")
-        sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Project inactive")]
+        sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Project inactive: Proj")]
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0].args[2].startswith("Project: Proj (C)"))
         self.assertIn("http://localhost/projects/1", sent[0].args[2])     # the alert mail links to the project too

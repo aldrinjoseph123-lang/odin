@@ -106,11 +106,19 @@ def run_due():
                 from app import app
                 from db import cleanup_soft_deletes
                 from services.dashboard import record_snapshot
+                from services.activity import trim as trim_activity
+                from services.notifications import trim as trim_notifications
+                from services.signup import trim as trim_signup_links
                 with app.app_context():
-                    cleanup_soft_deletes()   # deleted projects and files past the undo window
-                    from services.activity import trim
-                    trim()                   # active-minute rows past activity_keep_days
-                    record_snapshot()        # the day's portfolio counts, for the Dashboard's deltas
+                    for step in (cleanup_soft_deletes,   # deleted projects and files past the undo window
+                                 trim_activity,          # active-minute rows past activity_keep_days
+                                 trim_notifications,     # read bell items past notifications_keep_days
+                                 trim_signup_links,      # sign-up links dead for 90 days
+                                 record_snapshot):       # the day's portfolio counts, for the Dashboard's deltas
+                        try:   # one failing step must not skip the others
+                            step()
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"[scheduler] housekeeping {step.__name__} failed: {exc}", file=sys.stderr)
         except Exception as exc:  # noqa: BLE001 — one failed job must not stop the clock
             print(f"[scheduler] {job} failed: {exc}", file=sys.stderr)
     return todo

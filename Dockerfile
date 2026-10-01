@@ -45,4 +45,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["gunicorn", "--preload", "--workers", "2", "--threads", "4", \
-     "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-", "wsgi:app"]
+     "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-", \
+     "--logger-class", "gunicorn_logger.RedactingLogger", "wsgi:app"]

@@ -395,6 +395,8 @@ test("@flow two-step sign-in: set up with the app, sign in with a code, turn it 
   await signIn(page, "viewer", "/account")
   const panel = page.getByRole("region", { name: "Two-step sign-in" })
   await panel.getByRole("button", { name: "Set up two-step sign-in" }).click()
+  await panel.getByLabel("Your password").fill(USERS.viewer.password)   // setting it up asks for the password first
+  await panel.getByRole("button", { name: "Continue" }).click()
   await expect(panel.getByRole("img", { name: "QR code for your authenticator app" })).toBeVisible()
   const secret = (await panel.locator("code").innerText()).replace(/\s/g, "")
   await panel.getByLabel("Code", { exact: true }).fill(totp(secret))

@@ -14,9 +14,20 @@ CREATE TABLE IF NOT EXISTS stages (
     position INTEGER NOT NULL
 );
 
+-- Sessions ended by signing out: the cookie is signed, not stored, so a copy
+-- would otherwise work until it expired. Rows older than a session's longest
+-- life are trimmed as new ones arrive.
+CREATE TABLE IF NOT EXISTS revoked_sessions (
+    user_id INTEGER NOT NULL,
+    login_at TEXT NOT NULL,
+    revoked_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, login_at)
+);
+
 CREATE TABLE IF NOT EXISTS doc_categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL
+    name TEXT UNIQUE NOT NULL,
+    partners INTEGER NOT NULL DEFAULT 1   -- 0: partners and customers never see documents of this kind
 );
 
 CREATE TABLE IF NOT EXISTS settings (

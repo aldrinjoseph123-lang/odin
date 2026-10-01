@@ -16,7 +16,7 @@ from core import app
 from db import get_db, get_setting, get_stage_names
 from security import rate_limited
 from services.audit import audit_log
-from services.notifications import notify_event
+from services.notifications import notify_event, notify_users
 
 GUEST_WRITES_PER_MINUTE = 10
 
@@ -98,24 +98,11 @@ def guest_stage(token):
     if new_stage != next_stage_for(project):
         flash("Only the next stage can be set from this link")
         return redirect(url_for("guest_view", token=token))
-    from services.signoff import gate
-    if blocked := gate(project, new_stage):
-        flash(blocked)
-        return redirect(url_for("guest_view", token=token))
-    db = get_db()
-    now = datetime.utcnow().isoformat()
-    db.execute("UPDATE projects SET stage = ?, updated_at = ?, stage_entered_at = ? WHERE id = ?",
-               (new_stage, now, now, project["id"]))
-    note_text = request.form.get("note", "").strip() or f"Stage changed to {new_stage}"
-    db.execute(
-        "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (?, ?, ?, ?, ?, 1)",
-        (project["id"], author, note_text, new_stage, now),
-    )
-    db.commit()
-    audit_log("guest_stage_change", "project", project["id"], project["name"],
-              f"stage={new_stage}; by={author}", actor=f"guest:{party}")
-    notify_event(project, f"Vendor moved {escape(project['name'])} to {escape(new_stage)}",
-                 f"{escape(author)}: {escape(note_text)}")
+    # the same path as a staff move: the sign-off gate, history, customer
+    # approval when the project asks for it, and the whole team is told
+    from routes.projects import change_stage
+    if error := change_stage(project["id"], new_stage, request.form.get("note", "").strip()[:5000], guest=(author, party)):
+        flash(error)
     return redirect(url_for("guest_view", token=token))
 
 
@@ -135,6 +122,8 @@ def guest_note(token):
         db.commit()
         audit_log("guest_note", "project", project["id"], project["name"],
                   f"by={author}", actor=f"guest:{party}")
+        # the project manager's bell (and mail), plus the Teams channel
+        notify_users([project["owner_id"]], "activity", project["id"], f"New note on {escape(project['name'])}", f"{escape(author)} (guest link): {escape(note_text)}")
         notify_event(project, f"New note on {escape(project['name'])}",
-                     f"{escape(author)}: {escape(note_text)}")
+                     f"{escape(author)}: {escape(note_text)}", channels={"email": False, "teams": True})
     return redirect(url_for("guest_view", token=token))

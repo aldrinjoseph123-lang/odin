@@ -34,15 +34,15 @@ def _plain(html):
     return unescape(re.sub(r"\s+", " ", re.sub(r"<br\s*/?>", " ", re.sub(r"<(?!br)[^>]+>", "", html or "")))).strip()
 
 
-def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user_id=None, link=None):
+def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user_id=None, link=None, email=True):
     """The one way a person hears about an event. Every recipient gets an
     in-app notification; those with an address who have not switched this
     kind off by email also get a mail (when mail is on). Recipients are
     de-duplicated and the person who caused the event is never told about
-    their own action. Best effort: mail failures never break the request."""
-    from datetime import datetime, timedelta
+    their own action. `email=False` keeps it to the bell. Best effort: mail
+    failures never break the request."""
+    from datetime import datetime
     from flask import has_request_context, session
-    from policies import policy
     ids = []
     for uid in user_ids:
         if uid and uid != exclude_user_id and uid not in ids:
@@ -61,9 +61,8 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             "INSERT INTO notifications (user_id, project_id, kind, title, body, link, actor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (r["id"], project_id, kind, title[:300], body[:2000], link, actor, now.isoformat()),
         )
-    db.execute("DELETE FROM notifications WHERE read_at IS NOT NULL AND created_at < ?", ((now - timedelta(days=policy("notifications_keep_days", db))).isoformat(),))
     db.commit()
-    if get_setting("notify_email_enabled") != "1":
+    if not email or get_setting("notify_email_enabled") != "1":
         return
     for r in rows:
         if not r["email"] or kind in (r["email_off"] or "").split(","):
@@ -75,6 +74,43 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             ok, error = False, str(exc)
         if not ok:
             print(f"[notify_users] email to {r['email']} failed: {error}")
+
+
+def report_mail_failure(error):
+    """Email is switched on but a message failed: tell the admins in the bell,
+    at most once a day, instead of failing silently (system map #2)."""
+    from datetime import datetime, timedelta
+    from markupsafe import escape
+    from db import set_setting
+    if get_setting("notify_email_enabled") != "1":
+        return
+    last, now = get_setting("mail_failure_reported_at"), datetime.utcnow()
+    if last and datetime.fromisoformat(last) > now - timedelta(hours=24):
+        return
+    set_setting("mail_failure_reported_at", now.isoformat())
+    admins = [r[0] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+    notify_users(admins, "access", None, "Odin could not send email",
+                 f"Email is switched on but a message failed ({escape(str(error)[:200])}). Everything still reaches the bell. "
+                 "Connect Microsoft 365 under Settings → Integrations, or switch email off under Settings → Notifications.",
+                 link="/settings/integrations", email=False)
+
+
+def trim(db=None):
+    """Read notifications past Settings → Retention; unread ones stay. Nightly (scheduler housekeeping)."""
+    from datetime import datetime, timedelta
+    from policies import policy
+    db = db or get_db()
+    db.execute("DELETE FROM notifications WHERE read_at IS NOT NULL AND created_at < ?",
+               ((datetime.utcnow() - timedelta(days=policy("notifications_keep_days", db))).isoformat(),))
+    db.commit()
+
+
+def visible_clause(user_id, kind):
+    """SQL (on alias n) keeping a bell to what the person may see now: a
+    partner removed from a project stops seeing its notifications."""
+    if kind == "external":
+        return " AND (n.project_id IS NULL OR n.project_id IN (SELECT project_id FROM project_participants WHERE user_id = ?))", (user_id,)
+    return "", ()
 
 
 def notify_participants(project_id, subject, message_html, exclude_user_id=None, kind="stage"):

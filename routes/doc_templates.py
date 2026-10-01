@@ -4,7 +4,7 @@ import json
 
 from flask import Response, abort, jsonify, request, send_file, session
 
-from core import admin_required, app, login_required
+from core import app, login_required, permission_required
 from services import doc_templates as dt
 from services.audit import audit_log
 
@@ -15,7 +15,7 @@ def _kinds():
 
 
 @app.route("/api/doc-templates")
-@admin_required
+@permission_required("manage_settings")
 def api_doc_templates():
     return jsonify(templates=dt.all_templates(), kinds=_kinds(), placeholders=dt.PLACEHOLDERS, accents=list(dt.ACCENTS))
 
@@ -31,7 +31,7 @@ def api_doc_template_choices():
 
 
 @app.route("/api/doc-templates", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def api_doc_template_create():
     b = request.get_json(silent=True) or {}
     try:
@@ -45,7 +45,7 @@ def api_doc_template_create():
 
 
 @app.route("/api/doc-templates/<int:template_id>", methods=["PUT", "DELETE"])
-@admin_required
+@permission_required("manage_settings")
 def api_doc_template(template_id):
     if request.method == "DELETE":
         try:
@@ -66,7 +66,7 @@ def api_doc_template(template_id):
 
 
 @app.route("/api/doc-templates/<int:template_id>/default", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def api_doc_template_default(template_id):
     try:
         dt.make_default(template_id)
@@ -77,7 +77,7 @@ def api_doc_template_default(template_id):
 
 
 @app.route("/api/doc-templates/logo", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def api_doc_template_logo():
     f = request.files.get("file")
     if not f:
@@ -100,7 +100,7 @@ def api_doc_template_logo_file(name):
 
 
 @app.route("/api/doc-templates/preview.pdf", methods=["POST"])
-@admin_required
+@permission_required("manage_settings")
 def api_doc_template_preview():
     """The unsaved template on sample data: the newest open project (or the portfolio)."""
     b = request.get_json(silent=True) or {}

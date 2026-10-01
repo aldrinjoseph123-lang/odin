@@ -1,0 +1,41 @@
+# A release is a tag on main. When CI passes on a main commit whose VERSION
+# names a version that has no tag yet, this tags that commit vVERSION. The
+# server's self-update (deploy/odin-update.sh) deploys the newest such tag, so
+# merging the dev → main pull request, with VERSION raised, is the release.
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Tag the release
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Tag vVERSION if it is new
+        run: |
+          set -e
+          version="v$(tr -d '[:space:]' < VERSION)"
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            echo "$version already exists: nothing to release"; exit 0
+          fi
+          subject=$(git log -1 --format=%s)
+          case "$subject" in   # a merged pull request: its title is the first line of the body
+            "Merge pull request"*) title=$(git log -1 --format=%b | sed -n '1p'); [ -n "$title" ] && subject=$title ;;
+          esac
+          git config user.name "odin-release"
+          git config user.email "odin-release@users.noreply.github.com"
+          git tag -a "$version" -m "Odin ${version#v}: $subject"
+          git push origin "$version"
+          echo "Released $version at $(git rev-parse --short HEAD)"

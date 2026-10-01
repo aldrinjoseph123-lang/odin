@@ -46,6 +46,7 @@ from db import (
     get_db,
     get_doc_category_names,
     get_setting,
+    partner_hidden_categories,
     PROJECT_OPEN_SQL,
     copy_template_stages,
     my_project_ids,
@@ -343,6 +344,16 @@ def project_new():
         if problem := _date_problem(request.form):
             flash(problem)
             return redirect(url_for("project_new"))
+        # The project manager must be able to move stages. Someone who cannot
+        # (a Contributor) names one and joins as a Coordinator.
+        lead_id = session["user_id"]
+        if not role_has_permission(session.get("role"), "edit_project_stage"):
+            raw = request.form.get("owner_id", "")
+            lead = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone() if raw.isdigit() else None
+            if lead is None or not role_has_permission(lead["role"], "edit_project_stage"):
+                flash("Choose a project manager who can move stages (an Admin or Member)")
+                return redirect(url_for("project_new"))
+            lead_id = lead["id"]
         now = datetime.utcnow().isoformat()
         name = request.form["name"].strip()[:200]
         cursor = db.execute(
@@ -360,7 +371,7 @@ def project_new():
                 request.form.get("po_number") or None,
                 request.form.get("po_date") or None,
                 first_stage["name"],
-                session["user_id"],
+                lead_id,
                 request.form.get("via") or None,
                 request.form.get("account_manager_name") or None,
                 request.form.get("account_manager_email") or None,
@@ -385,20 +396,25 @@ def project_new():
         )
         project_id = cursor.lastrowid
         copy_template_stages(db, template["id"], project_id)
-        set_project_manager(db, project_id, session["user_id"], session["user_id"])
-        for raw in request.form.getlist("team_user_ids"):
-            if raw.isdigit() and int(raw) != session["user_id"] and db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (raw,)).fetchone():
+        set_project_manager(db, project_id, lead_id, session["user_id"])
+        team = request.form.getlist("team_user_ids") + ([str(session["user_id"])] if lead_id != session["user_id"] else [])
+        for raw in team:
+            if raw.isdigit() and int(raw) != lead_id and db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone():
                 db.execute(
                     "INSERT OR IGNORE INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, 'Coordinator', ?, ?)",
                     (project_id, int(raw), session["user_id"], now),
                 )
         save_document(project_id, po_document, CLIENT_PO_DOC_CATEGORY, session["user_name"])
         db.commit()
-        audit_log("create_project", "project", project_id, name, f"client={request.form['client']}")
+        joined = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Coordinator'", (project_id,))]
+        notify_users(joined, "assigned", project_id, f"You are on {escape(name)}",
+                     f"{escape(session['user_name'])} added you to <b>{escape(name)}</b> as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
+        audit_log("create_project", "project", project_id, name, f"client={request.form['client']}" + (f" manager_id={lead_id}" if lead_id != session["user_id"] else ""))
         notify_event(
-            {"owner_id": session["user_id"]},
+            {"owner_id": lead_id},
             f"New project: {escape(name)}",
-            f"Project '{escape(name)}' for {escape(request.form['client'])} was created and assigned to you.",
+            f"Project '{escape(name)}' for {escape(request.form['client'])} was created"
+            + (f" by {escape(session['user_name'])} and assigned to you." if lead_id != session["user_id"] else "."),
         )
         flash("Project created")
         return redirect(url_for("board"))
@@ -429,10 +445,11 @@ def project_detail(project_id):
         "SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at DESC",
         (project_id,),
     ).fetchall()
-    documents = db.execute(
+    hidden = partner_hidden_categories(db) if session.get("kind") == "external" else set()
+    documents = [d for d in db.execute(
         "SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC",
         (project_id,),
-    ).fetchall()
+    ).fetchall() if d["category"] not in hidden]
     if not project["access_token"]:
         token = secrets.token_urlsafe(16)
         db.execute("UPDATE projects SET access_token = ? WHERE id = ?", (token, project_id))
@@ -540,6 +557,11 @@ def project_edit(project_id):
         if owner_id != project["owner_id"]:
             set_project_manager(db, project_id, owner_id, session["user_id"])
         db.commit()
+        if owner_id != project["owner_id"]:
+            notify_users([owner_id], "assigned", project_id, f"You now manage {escape(name)}",
+                         f"{escape(session['user_name'])} made you project manager of <b>{escape(name)}</b>.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
+            notify_users([project["owner_id"]], "activity", project_id, f"{escape(name)} has a new project manager",
+                         f"{escape(session['user_name'])} handed <b>{escape(name)}</b> to someone else; you stay on the team as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
         audit_log("update_project", "project", project_id, name, f"client={client}; owner_id={owner_id}")
         flash("Project updated")
         return redirect(url_for("project_detail", project_id=project_id))
@@ -564,15 +586,22 @@ def project_stage(project_id):
     return redirect(url_for("project_detail", project_id=project_id))
 
 
-def change_stage(project_id, new_stage, note_text):
-    """The one stage-change path (form + JSON). Returns an error message or
-    None; 404s when the project is gone. Caller must hold edit_project_stage."""
+def change_stage(project_id, new_stage, note_text, guest=None):
+    """The one stage-change path (form, JSON and the vendor's guest link).
+    Returns an error message or None; 404s when the project is gone. Staff
+    callers must hold edit_project_stage; `guest` is (author, party) for the
+    vendor link, which has no session and was checked by the guest route."""
     db = get_db()
     # Existence first, then validity: a missing project is a 404, not an
     # "invalid stage" — and its (empty) stage list must never be consulted.
-    project = load_project(project_id)
+    if guest:
+        project = db.execute("SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone()
+    else:
+        project = load_project(project_id)
     if project is None:
         abort(404)
+    actor_name = f"{guest[0]} (vendor link)" if guest else session["user_name"]
+    actor_id = None if guest else session["user_id"]
     if new_stage not in get_stage_names(project_id):
         return "Invalid stage"
     from services.signoff import gate
@@ -588,11 +617,11 @@ def change_stage(project_id, new_stage, note_text):
         " VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
         (
             project_id,
-            session["user_name"],
+            actor_name,
             note_text or f"Stage changed to {new_stage}",
             new_stage,
             now,
-            session["user_id"],
+            actor_id,
             project["stage"],
             project["stage_entered_at"],
         ),
@@ -604,15 +633,25 @@ def change_stage(project_id, new_stage, note_text):
         db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
         db.execute(
             "INSERT INTO stage_approvals (project_id, stage, requested_by, requested_at) VALUES (?, ?, ?, ?)",
-            (project_id, new_stage, session["user_name"], now),
+            (project_id, new_stage, actor_name, now),
         )
     db.commit()
-    audit_log("update_project_stage", "project", project_id, project["name"], f"stage={new_stage}")
-    body = (f"Stage moved to <b>{escape(new_stage)}</b> by {escape(session['user_name'])}."
-            + (f"<br>{escape(note_text)}" if note_text else "")
-            + ("<br>Please review and approve this step." if project["customer_approval"] else ""))
-    notify_event(project, f"Stage changed: {escape(project['name'])}", body, channels={"email": False, "teams": True})
-    notify_participants(project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=session["user_id"])
+    if guest:
+        audit_log("guest_stage_change", "project", project_id, project["name"], f"stage={new_stage}; by={guest[0]}", actor=f"guest:{guest[1]}")
+    else:
+        audit_log("update_project_stage", "project", project_id, project["name"], f"stage={new_stage}")
+    body = (f"Stage moved to <b>{escape(new_stage)}</b> by {escape(actor_name)}."
+            + (f"<br>{escape(note_text)}" if note_text else ""))
+    ask = "<br>Please review and approve this step."
+    notify_event(project, f"Stage changed: {escape(project['name'])}", body + (ask if project["customer_approval"] else ""), channels={"email": False, "teams": True})
+    # the customer is asked to approve as an approval (their own kind), everyone else hears of the move
+    customers = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Customer'", (project_id,))] \
+        if project["customer_approval"] else []
+    team = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,)) if r[0] not in customers]
+    notify_users(team, "stage", project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=actor_id)
+    if customers:
+        notify_users(customers, "approval", project_id, f"{escape(project['name'])}: please approve the move to {escape(new_stage)}", body + ask,
+                     exclude_user_id=actor_id, link=f"/projects/{project_id}")
     return None
 
 
@@ -787,8 +826,8 @@ def document_download(project_id, doc_id):
     doc = db.execute(
         "SELECT * FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL", (doc_id, project_id)
     ).fetchone()
-    if doc is None:
-        abort(404)
+    if doc is None or (session.get("kind") == "external" and doc["category"] in partner_hidden_categories(db)):
+        abort(404)   # a kind partners never see does not exist for them
     # Reads are data access; SOC 2 wants them in the trail as much as writes.
     audit_log("download_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
     project_dir = os.path.join(UPLOAD_DIR, str(project_id))
@@ -879,11 +918,14 @@ def participant_add(project_id):
     role = request.form.get("role", "")
     raw = request.form.get("user_id", "")
     db = get_db()
-    user = db.execute("SELECT id, name FROM users WHERE id = ? AND active = 1", (raw,)).fetchone() if raw.isdigit() else None
+    user = db.execute("SELECT id, name, kind FROM users WHERE id = ? AND active = 1", (raw,)).fetchone() if raw.isdigit() else None
     if user is None:
         flash("Pick an active user")
     elif role not in PROJECT_ROLES:
         flash("Pick a role")
+    elif (role == "Customer" and user["kind"] != "external") or (user["kind"] == "external" and role not in EXTERNAL_PROJECT_ROLES):
+        # staff never stand in for the customer (stage approvals); partners never hold a staff role (tasks, documents)
+        flash("Customer is for the customer's own account; partners take Customer, Reseller or Contractor")
     elif role == PROJECT_MANAGER and user["id"] != project["owner_id"]:
         flash("The project manager is the owner — change the owner on Edit")
     elif user["id"] == project["owner_id"] and role != PROJECT_MANAGER:
@@ -896,6 +938,8 @@ def participant_add(project_id):
         )
         db.commit()
         audit_log("add_participant", "project", project_id, project["name"], f"{user['name']} as {role}")
+        notify_users([user["id"]], "assigned", project_id, f"You are on {escape(project['name'])}",
+                     f"{escape(session['user_name'])} added you to <b>{escape(project['name'])}</b> as {escape(role)}.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
         flash(f"{user['name']} added as {role}")
     return redirect(url_for("project_detail", project_id=project_id) + "#team")
 
@@ -1372,6 +1416,10 @@ def task_bulk(project_id):
     db.commit()
     flash(message)
     audit_log("bulk_tasks", "project", project_id, None, request.form.get("action", ""))
+    if action == "complete":
+        project = load_project(project_id)
+        _tell_pm(project, f"{len(ids)} task{'s' if len(ids) != 1 else ''} done on {escape(project['name'])}",
+                 f"{escape(session['user_name'])} completed {len(ids)} task{'s' if len(ids) != 1 else ''} at once.")
     return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
 
 

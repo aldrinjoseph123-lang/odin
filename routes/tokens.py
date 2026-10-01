@@ -38,6 +38,10 @@ def token_required(view):
         if not row:
             return jsonify(error="A valid API token is required (Authorization: Bearer <token>)"), 401
         db = get_db()
+        if (row["last_used_at"] or "")[:10] != now[:10]:
+            # one audit row per token per day, naming what it read first; last_used_at keeps the rest
+            from services.audit import audit_log
+            audit_log("api_token_read", "api_token", row["id"], row["name"], f"{request.method} {request.path}", actor=f"token:{row['name']}")
         db.execute("UPDATE api_tokens SET last_used_at = ? WHERE id = ?", (now, row["id"]))
         db.commit()
         g.api_token = row["name"]

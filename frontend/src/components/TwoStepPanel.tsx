@@ -19,6 +19,7 @@ export function TwoStepPanel() {
   const [mode, setMode] = useState<"off" | "codes" | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [asking, setAsking] = useState(false)   // setting up: the password first
   const load = useCallback(() => twoStep().then(setS).catch(() => setErr("Could not load two-step sign-in")), [])
   useEffect(() => { void load() }, [load])
   if (!s || !s.password) return null
@@ -27,7 +28,7 @@ export function TwoStepPanel() {
     setBusy(true); setErr(null)
     try { await fn() } catch (x) { setErr(x instanceof ApiError ? x.message : "That did not work") } finally { setBusy(false) }
   }
-  const start = () => run(async () => { setSetup(await twoStepSetup()); setCode("") })
+  const start = (e: FormEvent) => { e.preventDefault(); void run(async () => { setSetup(await twoStepSetup(password)); setCode(""); setPassword(""); setAsking(false) }) }
   const confirm = (e: FormEvent) => { e.preventDefault(); void run(async () => {
     const r = await twoStepConfirm(code); setCodes(r.recovery_codes); setSetup(null); setCode(""); await load()
   }) }
@@ -68,7 +69,13 @@ export function TwoStepPanel() {
       {!s.enabled && !setup && !codes && (
         <>
           <p className="text-[12.5px] text-muted-foreground">After your password, Odin also asks for a code from an authenticator app on your phone (Microsoft Authenticator, Google Authenticator, 1Password and the like), so a stolen password alone is not enough.</p>
-          <div><Button size="sm" disabled={busy} onClick={start}>Set up two-step sign-in</Button></div>
+          {!asking ? <div><Button size="sm" disabled={busy} onClick={() => setAsking(true)}>Set up two-step sign-in</Button></div> : (
+            <form onSubmit={start} className="flex flex-wrap items-end gap-2">
+              <label className="grid gap-1 text-[12.5px] font-medium">Your password<Input type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 w-56" /></label>
+              <Button type="submit" size="sm" disabled={busy || !password}>Continue</Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => { setAsking(false); setPassword("") }}>Cancel</Button>
+            </form>
+          )}
         </>
       )}
 

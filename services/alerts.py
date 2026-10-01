@@ -20,7 +20,7 @@ from constants import (
 from policies import local_today
 from db import get_db, get_stage_names, get_terminal_stage, stages_for_projects
 from services.analytics import sla_by_stage, stage_sla_state
-from services.notifications import notify_event
+from services.notifications import notify_event, notify_users
 
 
 def create_alert(alert_type, project_id, title, description=None, severity="info"):
@@ -102,14 +102,16 @@ def sync_alerts_to_db(alerts):
             inserted = create_alert(
                 alert_type, project_id, ALERT_TYPE_TITLES[alert_type], severity=config["severity"]
             )
-            if inserted and (config["notify_email"] or config["notify_teams"]):
+            if inserted:
                 project = id_to_project[project_id]
-                notify_event(
-                    project,
-                    ALERT_TYPE_TITLES[alert_type],
-                    f"Project: {escape(project['name'])} ({escape(project['client'])})",
-                    channels={"email": config["notify_email"], "teams": config["notify_teams"]},
-                )
+                title, body = ALERT_TYPE_TITLES[alert_type], f"Project: {escape(project['name'])} ({escape(project['client'])})"
+                # the owner and the staff on the project: always in the bell, by
+                # email when the type says so (each person's email choices apply)
+                team = [r[0] for r in db.execute(
+                    "SELECT pp.user_id FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.project_id = ? AND u.kind = 'internal'", (project_id,))]
+                notify_users([project["owner_id"], *team], "alert", project_id, f"{title}: {escape(project['name'])}", body, email=config["notify_email"])
+                if config["notify_teams"]:
+                    notify_event(project, title, body, channels={"email": False, "teams": True})
 
         # Resolve alerts for issues that cleared (or all of them, if the type got disabled)
         for alert_row in existing:

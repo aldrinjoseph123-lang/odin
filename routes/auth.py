@@ -322,11 +322,17 @@ def robots():
     return "User-agent: *\nDisallow: /\n", 200, {"Content-Type": "text/plain"}
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
-    if "user_id" in session:
-        audit_log("logout", "user", session["user_id"], session.get("user_name"))
-    session.clear()
+    """POST signs out. A GET (the legacy pages' link) only shows the button, so
+    another site cannot sign someone out by linking here."""
+    if request.method == "GET" and "user_id" in session:
+        from flask import render_template_string
+        return render_template_string(
+            '<!doctype html><title>Sign out · Odin</title><form method="post"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">'
+            '<button type="submit">Sign out of Odin</button></form>')
+    from core import end_session
+    end_session()
     return redirect(url_for("login"))
 
 

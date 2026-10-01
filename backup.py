@@ -137,22 +137,22 @@ def _prune_local(keep_args):
             os.remove(os.path.join(_backup_dir(), name))
 
 
-def _copy_share(zip_path, folder, keep_args):
+def _copy_share(zip_path, folder, keep_args, prune=True):
     if not folder or not os.path.isabs(folder):
         return False, "no share folder set"
     if not os.path.isdir(folder):
         return False, f"{folder} is not mounted"
     shutil.copy2(zip_path, os.path.join(folder, os.path.basename(zip_path)))
     names = os.listdir(folder)
-    for name in set(names) - retention_keep(names, *keep_args):
+    for name in (set(names) - retention_keep(names, *keep_args)) if prune else ():
         os.remove(os.path.join(folder, name))
     return True, None
 
 
-def _copy_graph(zip_path, folder, drive, keep_args):
+def _copy_graph(zip_path, folder, drive, keep_args, prune=True):
     ok, error = graph.upload_file(zip_path, f"{folder}/{os.path.basename(zip_path)}", drive=drive)
-    if not ok:
-        return False, error
+    if not ok or not prune:
+        return ok, error
     items, error = graph.list_folder(folder, drive=drive)
     keep = retention_keep([n for n, _ in items], *keep_args)
     for name, item_id in items:
@@ -195,14 +195,15 @@ def run_backup(trigger="manual", actor=None):
             restore_ok, restore_detail = restore_test(zip_path)
             ok = restore_ok
         destinations = [("local", True, None)]
+        prune = restore_ok is not False   # a failed restore test must never push out older good copies, here or off the server
         if p["dest_onedrive"]:
-            destinations.append(("OneDrive", *_copy_graph(zip_path, "Odin-Backups", "/me/drive", keep_args)))
+            destinations.append(("OneDrive", *_copy_graph(zip_path, "Odin-Backups", "/me/drive", keep_args, prune)))
         if p["dest_sharepoint"]:
             drive, error = graph.sharepoint_drive(p["sharepoint_site"]) if p["sharepoint_site"] else (None, "no SharePoint site set")
-            destinations.append(("SharePoint", *(_copy_graph(zip_path, p["sharepoint_folder"] or "Odin-Backups", drive, keep_args) if drive else (False, error))))
+            destinations.append(("SharePoint", *(_copy_graph(zip_path, p["sharepoint_folder"] or "Odin-Backups", drive, keep_args, prune) if drive else (False, error))))
         if p["dest_share"]:
-            destinations.append(("network share", *_copy_share(zip_path, p["share_path"], keep_args)))
-        if restore_ok is not False:   # a failed restore test must never push out older good copies
+            destinations.append(("network share", *_copy_share(zip_path, p["share_path"], keep_args, prune)))
+        if prune:
             _prune_local(keep_args)
         for name, done, error in destinations:
             results.append(name if done else f"{name} failed: {error}")
