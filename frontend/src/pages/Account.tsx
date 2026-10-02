@@ -14,6 +14,7 @@ import { PageSkeleton } from "@/components/PageSkeleton"
 export default function Account(_props: { user: User }) {
   const [me, setMe] = useState<Awaited<ReturnType<typeof account>> | null>(null)
   const [email, setEmail] = useState("")
+  const [emailPw, setEmailPw] = useState("")
   const [name, setName] = useState("")
   const [pw, setPw] = useState({ current_password: "", new_password: "" })
   const [notice, setNotice] = useState<string | null>(null)
@@ -91,10 +92,14 @@ export default function Account(_props: { user: User }) {
           <div><Button type="submit" size="sm" variant="outline" disabled={busy || !name.trim() || name.trim() === me.name}>Save name</Button></div>
           <p className="text-[11.5px] text-muted-foreground">Notes you already wrote keep the name they were written under.</p>
         </form>
-        <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email }) }} className="grid content-start gap-2 panel p-4">
+        <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email, password: emailPw }, () => setEmailPw("")) }} className="grid content-start gap-2 panel p-4">
           <h3 data-n className="text-[12px] font-semibold text-nav-fg">Email <span className="font-normal text-muted-foreground">for notifications</span></h3>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" aria-label="Email address" className="h-8 text-[13px]" />
-          <div><Button type="submit" size="sm" variant="outline" disabled={busy || email === (me.email ?? "")}>Save email</Button></div>
+          {/* password reset links go to this address, so changing it takes the password */}
+          {me.has_password && email !== (me.email ?? "") && (
+            <label className="grid gap-1 text-[12px] text-muted-foreground">Current password<Input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} required autoComplete="current-password" className="h-8 text-[13px]" /></label>
+          )}
+          <div><Button type="submit" size="sm" variant="outline" disabled={busy || email === (me.email ?? "") || (me.has_password && !emailPw)}>Save email</Button></div>
         </form>
         {me.kind === "internal" && (
           <section className="grid content-start gap-2 panel p-4" aria-label="How Odin reaches you">

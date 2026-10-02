@@ -200,9 +200,10 @@ def issue_login_link(user_id, created_by=None, purpose="signin"):
     # value the audit trail does not already hold
     get_db().execute("DELETE FROM login_links WHERE expires_at < ?", ((now - timedelta(days=7)).isoformat(),))
     get_db().execute(
-        "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address, purpose) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address, purpose, epoch) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT session_epoch FROM users WHERE id = ?))",
         (user_id, hashlib.sha256(raw.encode()).hexdigest(), now.isoformat(),
-         (now + timedelta(minutes=policy("link_minutes"))).isoformat(), created_by, request.remote_addr, purpose),
+         (now + timedelta(minutes=policy("link_minutes"))).isoformat(), created_by, request.remote_addr, purpose, user_id),
     )
     get_db().commit()
     return raw
@@ -214,11 +215,11 @@ def consume_login_link(raw):
     import hashlib
     db = get_db()
     row = db.execute(
-        "SELECT l.*, u.active, u.kind FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
+        "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
         (hashlib.sha256((raw or "").encode()).hexdigest(),),
     ).fetchone()
-    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat():
-        return None
+    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
+        return None   # epoch: the password, role or active state changed since the link was issued
     if not row["active"] or row["kind"] != "external" or row["purpose"] != "signin":
         return None
     db.execute("UPDATE login_links SET used_at = ? WHERE id = ?", (datetime.utcnow().isoformat(), row["id"]))
@@ -231,11 +232,11 @@ def reset_link_row(raw):
     unexpired, purpose 'reset', for an active staff account."""
     import hashlib
     row = get_db().execute(
-        "SELECT l.*, u.active, u.kind FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
+        "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
         (hashlib.sha256((raw or "").encode()).hexdigest(),),
     ).fetchone()
-    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat():
-        return None
+    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
+        return None   # epoch: the password, role or active state changed since the link was issued
     if row["purpose"] != "reset" or not row["active"] or row["kind"] != "internal":
         return None
     return row

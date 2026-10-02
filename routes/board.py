@@ -114,7 +114,8 @@ def board_data():
     # the real_alerts counts feeding the stat tiles never do — dismissing a
     # notification hides it from the banner, it doesn't change the real data
     real_alerts = build_alerts(projects)
-    sync_alerts_to_db(real_alerts)
+    if not project_scope()[0]:   # only a view of every project may resolve alerts; a partner's narrow view would close the rest
+        sync_alerts_to_db(real_alerts)
     alerts = build_alerts(projects, get_dismissed_alerts())
     dashboard = build_dashboard(projects)
     outside = session.get("kind") == "external"   # partners: their projects, customer-visible notes only

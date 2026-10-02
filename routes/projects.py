@@ -910,6 +910,14 @@ def _chosen_template(db, raw_id):
 
 # ---- participants: who is on the project, and as what ------------------------
 
+_WRONG_KIND = "Customer is for the customer's own account; partners take Customer, Reseller or Contractor"
+
+
+def _wrong_kind_for_role(user, role):
+    # staff never stand in for the customer (stage approvals); partners never hold a staff role (tasks, documents)
+    return (role == "Customer" and user["kind"] != "external") or (user["kind"] == "external" and role not in EXTERNAL_PROJECT_ROLES)
+
+
 @app.route("/projects/<int:project_id>/participants/add", methods=["POST"])
 @permission_required("edit_project")
 @project_role_required("manage_project")
@@ -923,9 +931,8 @@ def participant_add(project_id):
         flash("Pick an active user")
     elif role not in PROJECT_ROLES:
         flash("Pick a role")
-    elif (role == "Customer" and user["kind"] != "external") or (user["kind"] == "external" and role not in EXTERNAL_PROJECT_ROLES):
-        # staff never stand in for the customer (stage approvals); partners never hold a staff role (tasks, documents)
-        flash("Customer is for the customer's own account; partners take Customer, Reseller or Contractor")
+    elif _wrong_kind_for_role(user, role):
+        flash(_WRONG_KIND)
     elif role == PROJECT_MANAGER and user["id"] != project["owner_id"]:
         flash("The project manager is the owner — change the owner on Edit")
     elif user["id"] == project["owner_id"] and role != PROJECT_MANAGER:
@@ -977,6 +984,9 @@ def participant_invite(project_id):
             audit_log("create_user", "user", user["id"], email, "external, invited")
         if user["id"] == project["owner_id"]:
             flash("That is the project manager")
+            return redirect(url_for("project_detail", project_id=project_id) + "#team")
+        if _wrong_kind_for_role(user, role):   # the invite is a second way onto the team (system map #14)
+            flash(_WRONG_KIND)
             return redirect(url_for("project_detail", project_id=project_id) + "#team")
         db.execute(
             "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) "

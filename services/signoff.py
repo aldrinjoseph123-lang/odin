@@ -131,12 +131,16 @@ def completed(project_id):
                             (project_id, *DONE)).fetchone()
 
 
-def gate(project, new_stage):
+GATE_MESSAGE = "The project closes once the sign-off is signed by the customer and countersigned. Send it from the Sign-off page, or ask an admin to waive it."
+
+
+def gate(project, new_stage, terminal=None):
     """Why this move is refused, or None: the terminal stage waits for a
-    completed sign-off while the policy asks for one."""
-    if not policy("signoff_required") or new_stage != get_terminal_stage(project["id"]) or completed(project["id"]):
+    completed sign-off while the policy asks for one. `terminal` is the
+    terminal stage a stage-list edit would leave (default: today's)."""
+    if not policy("signoff_required") or new_stage != (terminal or get_terminal_stage(project["id"])) or completed(project["id"]):
         return None
-    return "The project closes once the sign-off is signed by the customer and countersigned. Send it from the Sign-off page, or ask an admin to waive it."
+    return GATE_MESSAGE
 
 
 def state(project, user_id=None, staff=True):

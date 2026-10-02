@@ -479,7 +479,7 @@ details.change .also { margin: 6px 0 0 14px; display: flex; gap: 6px; flex-wrap:
 <!-- REPO-DATA:END -->
 <script>
 // ---------- what this map describes: bump on every update ----------
-const MAP_STAMP = { date: "30 Sep 2026" };   // the date the hand-written views were last reviewed
+const MAP_STAMP = { date: "2 Oct 2026" };   // the date the hand-written views were last reviewed
 
 // ---------- data: loopholes. A fixed one keeps its number: add fixed: "v1.x.y" ----------
 const LOOPS = [
@@ -548,7 +548,7 @@ const LOOPS = [
     impact: "One disk or one leaked credential away from a long outage.",
     fix: "Finish the go-live list: Proxmox snapshot and schedule, SSH keys only, rotate the tunnel token, a Cloudflare rate limit on sign-in.",
     ref: "docs/GO_LIVE.md", on: ["vm", "cf"] },
-  { id: 14, fixed: "v1.3.0", done: 'Staff can no longer be given the Customer role (stage approvals), and partner accounts can only hold partner roles (Customer, Reseller, Contractor).', sev: "low", area: "Access", title: "Staff can hold the Customer project role",
+  { id: 14, fixed: "v1.3.1", done: 'Staff can no longer be given the Customer role (stage approvals), and partner accounts can only hold partner roles (Customer, Reseller, Contractor). v1.3.0 covered adding a member; v1.3.1 closes the same gap on the email invite, found by the 2 Oct end-to-end test.', sev: "low", area: "Access", title: "Staff can hold the Customer project role",
     what: "Adding a staff member to a project accepts Customer, Reseller or Contractor. A staff member set as Customer can record the customer's stage approvals.",
     impact: "An internal person can approve on the customer's behalf.",
     fix: "Allow partner roles only for external accounts.",
@@ -628,6 +628,27 @@ const LOOPS = [
     impact: "A forwarded email lets the recipient in once, until it expires.",
     fix: "Keep the lifetime short (it is 240 minutes in production) or link to the sign-in page instead.",
     ref: "services/notifications.py:21-24", on: ["d-link"] },
+  // Found by the end-to-end test of 2 Oct 2026 and fixed in v1.3.1
+  { id: 30, fixed: "v1.3.1", done: "Reordering or deleting stages runs the same sign-off check as a stage move (services/stages.py, _closes_unsigned).", sev: "high", area: "Lifecycle", title: "A stage-list edit could close a project without its sign-off",
+    what: "Moving or deleting stages could make the stage the project sits in the terminal one; the sign-off gate only ran on stage moves.",
+    impact: "A project manager could close a rollout the customer never signed.",
+    fix: "Refuse a stage-list edit that would leave the project in a new terminal stage without a completed sign-off.",
+    ref: "services/stages.py, services/signoff.py gate()", on: [] },
+  { id: 31, fixed: "v1.3.1", done: "Only a view of every project resolves alerts; a partner's board no longer does.", sev: "high", area: "Notifications", title: "A partner opening the board re-fired the team's alerts",
+    what: "The board recorded alerts from the viewer's own project list, so a partner's narrow view resolved every other alert and the next staff visit raised them again.",
+    impact: "Repeated alert notifications to the team on every partner visit.",
+    fix: "Sync alerts only from an unscoped view (the scheduler does it every quarter hour anyway).",
+    ref: "routes/board.py board_data()", on: [] },
+  { id: 32, fixed: "v1.3.1", done: "A sign-in or reset link remembers the account's session epoch; a password change, deactivation, role change or two-step reset kills older links. Changing the account email needs the password.", sev: "medium", area: "Security", title: "Reset links outlived a password change; email changed without the password",
+    what: "An unused reset link stayed valid after a newer reset, a password change or a deactivation; the account email (where reset links go) changed with the session alone.",
+    impact: "A leaked or stale reset link, or a borrowed signed-in browser, could take over a staff account.",
+    fix: "Bind links to the session epoch; ask for the password before an email change.",
+    ref: "security.py reset_link_row(), routes/auth.py account_email()", on: [] },
+  { id: 33, fixed: "v1.3.1", done: "Project names are escaped in the daily alert digest.", sev: "medium", area: "Notifications", title: "The daily digest put project names into HTML unescaped",
+    what: "Anyone who can name a project could put links or markup into the admins' digest email and Teams message.",
+    impact: "A convincing phishing link inside an Odin email.",
+    fix: "Escape every user-supplied value in mail HTML.",
+    ref: "send_daily_alerts.py _format_alerts_html()", on: [] },
 ];
 const SEV_ORDER = { high: 0, medium: 1, low: 2, decision: 3 };
 const byId = Object.fromEntries(LOOPS.map((l) => [l.id, l]));

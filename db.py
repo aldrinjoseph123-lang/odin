@@ -374,6 +374,11 @@ def migrate_db(db):
     # only ever accepted by its own route.
     if "purpose" not in {row[1] for row in db.execute("PRAGMA table_info(login_links)")}:
         db.execute("ALTER TABLE login_links ADD COLUMN purpose TEXT NOT NULL DEFAULT 'signin'")
+    # The account's session_epoch when the link was issued: a password change,
+    # deactivation, role change or two-step reset bumps it and so kills every
+    # link issued before (system map test SEC-3). Older links (NULL) are dead.
+    if "epoch" not in {row[1] for row in db.execute("PRAGMA table_info(login_links)")}:
+        db.execute("ALTER TABLE login_links ADD COLUMN epoch INTEGER")
 
     # Which document kinds partners and customers may see (Settings → Projects &
     # workflow). The client's PO is internal from the start.

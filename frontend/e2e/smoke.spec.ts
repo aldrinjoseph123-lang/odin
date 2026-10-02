@@ -102,6 +102,17 @@ test("@smoke the header: every link lands, every button does something", async (
   expectClean(errors)
 })
 
+test("@smoke the admin's header fits laptop widths without sideways scrolling", async ({ page }) => {
+  // test report UX-1: at 1280-1366 px Log out, the avatar and the theme switch sat off-screen
+  await signIn(page, "admin")
+  for (const width of [1024, 1280, 1366, 1440, 1536]) {
+    await page.setViewportSize({ width, height: 800 })
+    const [scroll, inner] = await page.evaluate(() => [document.scrollingElement!.scrollWidth, window.innerWidth])
+    expect(scroll, `page width at ${width} px`).toBeLessThanOrEqual(inner)
+    await expect(page.getByRole("link", { name: "Your account" })).toBeInViewport()
+  }
+})
+
 test("@smoke @phoneonly the header folds into a menu that reaches every page", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin")

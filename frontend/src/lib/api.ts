@@ -428,7 +428,7 @@ export type ReportData = {
 export const report = (id: number, query: string) => getJson<ReportData>(`/api/projects/${id}/report${query ? `?${query}` : ""}`)
 
 // ---- account, my work, alerts, analytics ----
-export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
+export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; has_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
   email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[]; notify_via: "email" | "teams"; teams_ready: boolean }>("/api/account")
 // active minutes (services/activity.py): today, 7 and 30 days, one row per day
 export type Activity = { today: number; week: number; month: number; days: { day: string; minutes: number }[]; last_seen_at: string | null; last_login_at: string | null }

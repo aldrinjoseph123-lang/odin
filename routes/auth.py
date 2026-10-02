@@ -571,6 +571,11 @@ def account_email():
     if session.get("kind") == "external":
         flash("Your email address is how you sign in; ask the project manager to change it")
         return redirect(url_for("account"))
+    me = db.execute("SELECT password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    if me["password_hash"] and "$" in me["password_hash"] and not check_password_hash(me["password_hash"], request.form.get("password", "")):
+        # reset links go to this address, so changing it is as sensitive as the password (test report SEC-5)
+        flash("Enter your current password to change your email")
+        return redirect(url_for("account"))
     if email and db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND id != ?", (email.lower(), session["user_id"])).fetchone():
         flash("That address belongs to another account")
         return redirect(url_for("account"))

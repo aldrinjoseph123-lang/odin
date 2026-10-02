@@ -371,7 +371,7 @@ class IntegrationNotificationTestCase(unittest.TestCase):
         settle_seed_admin()
         self.client = app_module.app.test_client()
         self.client.post("/login", data={"username": "admin", "password": "changeme"})
-        self.client.post("/account/email", data={"email": "admin@example.com"})
+        self.client.post("/account/email", data={"email": "admin@example.com", "password": "changeme"})
 
     def tearDown(self):
         os.unlink(db_module.DB_PATH)
@@ -1819,7 +1819,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         a = c.get("/api/account").get_json()
         self.assertEqual((a["username"], a["kind"], a["must_change_password"]), ("admin", "internal", False))
-        self.assertEqual(c.post("/account/email", data={"email": "admin@odin.example"}, headers=h).get_json()["messages"], ["Email updated"])
+        self.assertEqual(c.post("/account/email", data={"email": "admin@odin.example", "password": "changeme"}, headers=h).get_json()["messages"], ["Email updated"])
         self.assertEqual(c.post("/account", data={"current_password": "wrong", "new_password": STRONG_PASSWORD}, headers=h).get_json()["messages"], ["Current password is wrong"])
         w = c.get("/api/my-work").get_json()
         self.assertEqual([t["title"] for t in w["tasks"]], ["Late one"]); self.assertLess(w["tasks"][0]["due_date"], w["today"])
@@ -2843,6 +2843,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             rows = db.execute("SELECT id, name, position FROM project_stages WHERE project_id = 1 ORDER BY position").fetchall()
             db.execute("UPDATE projects SET stage_entered_at = ?, created_at = ? WHERE id = 1", (iso(-20) + "T09:00:00", iso(-20) + "T09:00:00"))
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.count_working_days', '0')")   # calendar days: the forecast chains from today, so a weekend would move it
             db.commit()
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf}
@@ -3144,6 +3145,87 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("INSERT INTO settings (key, value) VALUES ('policy.signoff_required', '0')"); db.commit()
         self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[-1]}, headers=h).status_code, 200)
 
+    def test_a_stage_list_edit_cannot_close_an_unsigned_project(self):
+        # test report FN-1: reordering or deleting stages made the current stage terminal, closing it unsigned
+        c, h, _, stages = self._signoff_setup()
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": "Sign-off"}, headers=h).status_code, 200)
+        with self.raw_db() as db:
+            closed_id = db.execute("SELECT id FROM project_stages WHERE project_id = 1 AND name = 'Closed'").fetchone()["id"]
+        hj = {**h, "Accept": "application/json"}
+        r = c.post(f"/projects/1/stages/{closed_id}/move", data={"direction": "up"}, headers=hj).get_json()
+        self.assertIn("sign-off", " ".join(r["messages"]))
+        r = c.post(f"/projects/1/stages/{closed_id}/delete", headers=hj).get_json()
+        self.assertIn("sign-off", " ".join(r["messages"]))
+        with self.raw_db() as db:
+            self.assertEqual([x["name"] for x in db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position")], stages)
+        # once the sign-off is not required, the same edit goes through
+        with self.raw_db() as db:
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.signoff_required', '0')"); db.commit()
+        c.post(f"/projects/1/stages/{closed_id}/delete", headers=hj)
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM project_stages WHERE id = ?", (closed_id,)).fetchone())
+
+    def test_staff_cannot_be_invited_as_the_customer(self):
+        # test report SEC-1: the email invite skipped the rule participant_add enforces (system map #14)
+        self.new_project(name="P", client="Globex")
+        col = self._make_user("col", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'col@corp.example' WHERE id = ?", (col,)); db.commit()
+        self.client.post("/projects/1/participants/invite", data={"email": "col@corp.example", "name": "Col", "role": "Customer"})
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM project_participants WHERE user_id = ?", (col,)).fetchone())
+
+    def test_a_partner_opening_the_board_does_not_resolve_the_teams_alerts(self):
+        # test report OPS-1: the board synced alerts from the viewer's narrow project list
+        self.new_project(name="Theirs", client="Initech", target_end_date="2020-01-01")
+        self.new_project(name="Mine", client="Globex")
+        c, _ = self._api_client()
+        c.get("/api/board")
+        open_alerts = "SELECT COUNT(*) FROM alerts WHERE resolved = 0"
+        with self.raw_db() as db:
+            before = db.execute(open_alerts).fetchone()[0]
+        self.assertGreater(before, 0)
+        self._invite(2, "ann@globex.example", "Customer", "Ann")
+        self._external_client("ann@globex.example").get("/api/board")
+        with self.raw_db() as db:
+            self.assertEqual(db.execute(open_alerts).fetchone()[0], before)
+
+    def test_the_daily_digest_escapes_project_names(self):
+        # test report SEC-2
+        from send_daily_alerts import _format_alerts_html
+        html = _format_alerts_html({"project_overdue": [{"name": '<a href="https://evil.example">Re-auth</a>'}]})
+        self.assertNotIn("<a href", html); self.assertIn("&lt;a href", html)
+
+    @patch("graph.send_mail", return_value=(True, None))
+    def test_a_password_change_kills_outstanding_reset_links(self, mail):
+        # test report SEC-3: an older reset link outlived the password it was meant to replace
+        import re
+        self._mail_on()
+        pm = self._make_user("pm", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'pm@odin.example' WHERE id = ?", (pm,)); db.commit()
+        anon = app_module.app.test_client()
+        h = {"X-CSRF-Token": anon.get("/api/session").get_json()["csrf"], "Accept": "application/json"}
+        tokens = []
+        for _ in range(2):
+            anon.post("/auth/reset", data={"email": "pm@odin.example"}, headers=h)
+            tokens.append(re.search(r"/auth/reset/([A-Za-z0-9_-]+)", mail.call_args.args[2]).group(1))
+        self.assertEqual(anon.post(f"/auth/reset/{tokens[1]}", data={"new_password": "Granite-Harbour-Lantern-7"}, headers=h).get_json()["location"], "/login")
+        r = anon.post(f"/auth/reset/{tokens[0]}", data={"new_password": "Attacker-Harbour-Lantern-1"}, headers=h).get_json()
+        self.assertIn("invalid or has expired", " ".join(r["messages"]))
+        c, _ = self._api_client("pm", "Granite-Harbour-Lantern-7")
+        self.assertEqual(c.get("/api/session").get_json()["user"]["name"], "pm")
+
+    def test_changing_the_email_takes_the_password(self):
+        # test report SEC-5: reset links go to this address
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        self.assertTrue(c.get("/api/account").get_json()["has_password"])
+        r = c.post("/account/email", data={"email": "thief@evil.example"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Enter your current password to change your email"])
+        r = c.post("/account/email", data={"email": "admin@odin.example", "password": "changeme"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Email updated"])
+
     # ---- production review, 30 Sep 2026 ---------------------------------------
 
     def test_partners_see_only_their_projects_and_only_what_is_meant_for_them(self):
@@ -3202,7 +3284,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.get("/api/projects/1/signoff").get_json()["candidates"]["signers"], [])   # a staff "Customer" cannot sign
         self._invite(1, "ann@globex.example", "Customer", "Ann")
         c2, csrf = self._api_client("col", STRONG_PASSWORD)
-        r = c2.post("/account/email", data={"email": "ANN@globex.example"}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()
+        r = c2.post("/account/email", data={"email": "ANN@globex.example", "password": STRONG_PASSWORD}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()
         self.assertIn("another account", " ".join(r["messages"]))
         ann = self._external_client("ann@globex.example")
         acsrf = ann.get("/api/session").get_json()["csrf"]
@@ -4831,7 +4913,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     @patch("app.graph.send_mail", return_value=(True, None))
     def test_new_alert_fires_email_when_type_channel_enabled(self, mock_send_mail):
-        self.client.post("/account/email", data={"email": "admin@example.com"})
+        self.client.post("/account/email", data={"email": "admin@example.com", "password": "changeme"})
         self.client.post("/settings/alerts", data={
             "threshold::stale": "7",
             "severity::stale": "warning",
