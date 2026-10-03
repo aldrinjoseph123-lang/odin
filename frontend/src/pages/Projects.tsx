@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink, LayoutGrid, List, Search } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Stepper } from "@/components/Stepper"
@@ -9,7 +8,7 @@ import { TeamStack } from "@/components/TeamStack"
 import { ApiError, projects, type ProjectsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { activeProjectsView, fmtWhen } from "@/lib/format"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 // Every filter lives in the URL: shareable, back-button friendly, and the
 // same query string the CSV export and Flask's nav memory understand.
@@ -61,7 +60,7 @@ export default function Projects({ user }: { user: User }) {
   function search(e: FormEvent<HTMLFormElement>) { e.preventDefault(); update({ q: String(new FormData(e.currentTarget).get("q") ?? "").trim() || null }) }
   const filtered = Boolean(params.get("q") || params.get("view") || params.get("stage") || params.get("delivery_mode"))
 
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
 
   return (
@@ -117,11 +116,11 @@ export default function Projects({ user }: { user: User }) {
 
       {layout === "cards" ? (
         <div className="mt-3 min-h-0 flex-1 overflow-auto">
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Projects">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Projects">
             {data.rows.map((r) => {
               const done = r.total_tasks - r.open_tasks
               return (
-                <li key={r.id} className="grid content-start gap-2.5 panel p-4">
+                <li key={r.id} className="grid grid-cols-1 content-start gap-2.5 panel p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <a href={`/projects/${r.id}`} className="block truncate text-[13.5px] font-medium hover:underline">{r.name}</a>
@@ -129,7 +128,7 @@ export default function Projects({ user }: { user: User }) {
                     </div>
                     <TeamStack people={r.team} className="flex shrink-0" />
                   </div>
-                  <a href={`/board?rollout=${r.id}`} className="grid gap-1.5" title="Open on the flow">
+                  <a href={`/board?rollout=${r.id}`} className="grid grid-cols-1 gap-1.5" title="Open on the flow">
                     <Stepper stages={r.stages} index={r.stage_index} state="on_track" selected={false} />
                     <span className={cn("truncate text-[12.5px] font-medium", r.closed && "text-muted-foreground")}>{r.stage} <span className="font-normal text-muted-foreground">· stage {r.stage_index + 1} of {r.stages.length}</span></span>
                   </a>

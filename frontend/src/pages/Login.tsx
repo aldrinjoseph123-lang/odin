@@ -100,10 +100,10 @@ export default function Login() {
       {microsoft && showPassword && <p className="my-5 flex items-center gap-3 text-[12px] text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">or with a password</p>}
 
       {codeStep && (
-        <form onSubmit={submitCode} className="grid gap-4" noValidate aria-busy={busy} aria-label="Two-step sign-in">
+        <form onSubmit={submitCode} className="grid grid-cols-1 gap-4" noValidate aria-busy={busy} aria-label="Two-step sign-in">
           <p className="text-[13.5px] text-muted-foreground">{recovery ? "Enter one of the recovery codes you saved when you set up two-step sign-in. Each works once." : "Open your authenticator app and enter the 6-digit code for Odin."}</p>
           {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor="code" className="text-[13.5px]">{recovery ? "Recovery code" : "Code"}</Label>
             <Input id="code" name="code" autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} autoCapitalize="none"
               maxLength={recovery ? 12 : 7} value={code} onChange={(e) => { setCode(e.target.value); if (error) setError(null) }} className={`${field} tracking-[0.2em] tabular-nums`} />
@@ -120,16 +120,16 @@ export default function Login() {
       )}
 
       {showPassword && !codeStep && (
-        <form onSubmit={submit} className="grid gap-4" noValidate aria-busy={busy}>
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4" noValidate aria-busy={busy}>
           {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor="username" className="text-[13.5px]">Username</Label>
             <Input id="username" ref={userRef} name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus={!microsoft}
               value={username} onChange={(e) => { setUsername(e.target.value); if (error?.field === "username") setError(null) }}
               aria-invalid={error?.field === "username" || undefined} aria-describedby={error?.field === "username" ? "username-error" : undefined} className={field} />
             {error?.field === "username" && <p id="username-error" role="alert" className="text-[13px] text-bad">{error.text}</p>}
           </div>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <div className="flex items-baseline justify-between gap-3">
               <Label htmlFor="password" className="text-[13.5px]">Password</Label>
               {!emergency && <a href="/auth/reset" className="text-[13px] text-primary-text hover:underline">Forgot password?</a>}

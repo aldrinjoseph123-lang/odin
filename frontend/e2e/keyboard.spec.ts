@@ -72,3 +72,15 @@ test("@keys the skip link reaches the content", async ({ page }) => {
   await page.keyboard.press("Enter")
   await expect(page.locator("#main")).toBeFocused()
 })
+
+test("@keys a dialog gives focus back to the button that opened it", async ({ page }) => {
+  // test report UX-10: focus fell to the page body, so the next Tab started from the top
+  await signIn(page, "admin", "/projects/2")
+  const add = page.locator("#raid").getByRole("button", { name: "Add" })
+  await add.focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("dialog")).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("dialog")).toBeHidden()
+  await expect(add).toBeFocused()
+})

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { CheckCircle2, ChevronLeft, Copy, Download, FileSignature, Link2, Printer, ShieldCheck, Upload } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PrintBrand } from "@/components/Brand"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
 import { Section } from "@/components/ReportParts"
 import { SCOPE_TONE, SCOPE_WORD } from "@/components/ScopePanel"
 import { SignaturePad, SignatureView } from "@/components/SignaturePad"
@@ -44,7 +43,7 @@ function Facts({ p }: { p: SignoffContent["project"] }) {
     ["Solution", [p.vendor_name, p.product_name].filter(Boolean).join(" ") || "—"], ["Started", fmtDate(p.start_date)],
     ["Target", fmtDate(p.target_end_date)], ["Completed", fmtDate(p.finished)],
   ]
-  return <dl className="grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-2">{rows.map(([k, v]) => <div key={k} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2"><dt className="text-muted-foreground">{k}</dt><dd className="min-w-0 break-words">{v}</dd></div>)}</dl>
+  return <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-2">{rows.map(([k, v]) => <div key={k} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2"><dt className="text-muted-foreground">{k}</dt><dd className="min-w-0 break-words">{v}</dd></div>)}</dl>
 }
 
 function ScopeTable({ items }: { items: { title: string; detail: string | null; status: keyof typeof SCOPE_WORD; note: string | null }[] }) {
@@ -81,7 +80,7 @@ function SignatureBlock({ label, sig, name, title, when, pending, paper }: { lab
 function Document({ v }: { v: SignoffVersion }) {
   const c = v.content
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-1 gap-4">
       <Section n title="The project"><Facts p={c.project} /></Section>
       <Section n title="Summary"><p className="whitespace-pre-line text-[13.5px] leading-relaxed">{c.summary}</p></Section>
       {c.scope.length > 0
@@ -93,7 +92,7 @@ function Document({ v }: { v: SignoffVersion }) {
       {c.terms.length > 0 && <Section n title="Handover and support"><ul className="list-disc pl-5 text-[13.5px]">{c.terms.map((x, i) => <li key={i}>{x}</li>)}</ul></Section>}
       <Section n title="Acceptance">
         <p className="rounded-lg bg-muted/60 p-3 text-[13.5px] leading-relaxed">{c.statement}</p>
-        <div className="mt-4 grid gap-6 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
           <SignatureBlock label={`For ${c.project.client}`} sig={v.signature} name={v.signer_name ?? c.signer?.name ?? null} title={v.signer_title} when={v.signed_at}
             pending={v.status === "sent" ? c.signer?.name : null} paper={v.status === "uploaded"} />
           <SignatureBlock label={`For ${c.project.company}`} sig={v.counter_signature} name={v.counter_name ?? c.countersigner?.name ?? null} title={v.counter_title} when={v.counter_signed_at}
@@ -141,7 +140,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
     catch (x) { setErr(x instanceof ApiError ? x.message : "That did not go through") } finally { setBusy(false) }
   }
   if (rejecting) return (
-    <div className="grid gap-2">
+    <div className="grid grid-cols-1 gap-2">
       <label htmlFor="reject-comment" className="text-[12.5px] font-medium">What needs to change before you can sign?</label>
       <textarea id="reject-comment" rows={4} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} className={area} autoFocus />
       {err && <p className="text-[12.5px] text-bad" role="alert">{err}</p>}
@@ -150,10 +149,10 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
     </div>
   )
   return (
-    <form onSubmit={submit} className="grid gap-3">
+    <form onSubmit={submit} className="grid grid-cols-1 gap-3">
       <div className="grid grid-cols-2 gap-2">
-        <label className="grid gap-1 text-[12.5px] font-medium">Full name<input className={input} required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>
-        <label className="grid gap-1 text-[12.5px] font-medium">Title<input className={input} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" placeholder="e.g. IT Director" /></label>
+        <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Full name<input className={input} required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>
+        <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Title<input className={input} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" placeholder="e.g. IT Director" /></label>
       </div>
       <SignaturePad value={sig} onChange={setSig} typedDefault={name} />
       <label className="flex items-start gap-2 text-[12.5px] leading-snug">
@@ -180,7 +179,7 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
     try { await navigator.clipboard.writeText(link!.link); setCopied(true) } catch { setErr("Select the link and copy it") }
   }
   return (
-    <section className="panel grid gap-2 p-4">
+    <section className="panel grid grid-cols-1 gap-2 p-4">
       <h2 className="text-[13px] font-semibold">Send the link yourself</h2>
       <p className="text-[12px] text-muted-foreground">If {name} did not get the email, give them a one-time sign-in link that opens this sign-off.</p>
       {link ? (
@@ -220,8 +219,8 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
     } catch (x) { setErr(x instanceof ApiError ? x.message : "That did not send"); setConfirming(false) } finally { setBusy(false) }
   }
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="grid content-start gap-4">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 content-start gap-4">
         <Section n title="Summary" sub="drafted from the project; make it yours">
           <textarea aria-label="Summary" rows={4} maxLength={4000} value={summary} onChange={(e) => setSummary(e.target.value)} className={area} />
         </Section>
@@ -243,18 +242,18 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
         </Section>
         <Section n title="Acceptance" sub="set by an admin in Settings → Workflow"><p className="rounded-lg bg-muted/60 p-3 text-[13.5px] leading-relaxed">{draft.statement}</p></Section>
       </div>
-      <aside className="grid content-start gap-3 lg:sticky lg:top-4">
-        <section className="panel grid gap-3 p-4">
+      <aside className="grid grid-cols-1 content-start gap-3 lg:sticky lg:top-4">
+        <section className="panel grid grid-cols-1 gap-3 p-4">
           <h2 className="text-[14px] font-semibold">Send for signature</h2>
           <TemplatePicker kind="signoff" value={template} onChange={onTemplate} />
-          <label className="grid gap-1 text-[12.5px] font-medium">Customer's signatory
+          <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Customer's signatory
             <select className={input} value={signer} onChange={(e) => setSigner(e.target.value ? Number(e.target.value) : "")}>
               {cand.signers.length === 0 && <option value="">Nobody yet</option>}
               {cand.signers.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
           </label>
           {cand.signers.length === 0 && <p className="text-[12px] text-muted-foreground">Invite the customer's contact on the <Link to={`/projects/${id}`} className="underline">project page</Link> (Team → Invite, role Customer). They sign with a one-time link sent to their email.</p>}
-          <label className="grid gap-1 text-[12.5px] font-medium">Countersigns for us
+          <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Countersigns for us
             <select className={input} value={counter} onChange={(e) => setCounter(e.target.value ? Number(e.target.value) : "")}>
               {cand.countersigners.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
@@ -262,7 +261,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
           <p className="text-[12px] text-muted-foreground">Sending freezes this version and its fingerprint. To change it later, withdraw it and send a new one.</p>
           {err && <p className="text-[12.5px] text-bad" role="alert">{err}</p>}
           {confirming ? (
-            <div className="grid gap-1.5" role="group" aria-label="Confirm sending">
+            <div className="grid grid-cols-1 gap-1.5" role="group" aria-label="Confirm sending">
               <Button onClick={send} disabled={busy} autoFocus className="rounded-full">{busy ? "Sending…" : `Send to ${who?.name ?? "the customer"} now`}</Button>
               <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy} className="rounded-full">Cancel</Button>
             </div>
@@ -292,7 +291,7 @@ export default function Signoff(_props: { user: User }) {
     catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This project or version does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the sign-off") }
   }, [id, v, template])
   useEffect(() => { void load() }, [load])
-  if (error) return <div className="p-5"><Alert role="status"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} back={error.startsWith("This project or version does not exist") ? { href: "/projects", label: "All projects" } : undefined} />
   if (!d) return <PageSkeleton />
   const cur = d.current
   const composing = d.can.manage && !!d.draft && (!cur || cur.status === "rejected" || cur.status === "withdrawn") && !v
@@ -352,9 +351,9 @@ export default function Signoff(_props: { user: User }) {
 
       <div className="mt-4">
         {composing ? <Composer key={template ?? 0} d={d} id={id} onSent={done} template={template} onTemplate={(t) => setParams(t ? { template: String(t) } : {}, { replace: true })} /> : cur ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <Document v={cur} />
-            <aside className="grid content-start gap-3 print:hidden lg:sticky lg:top-4">
+            <aside className="grid grid-cols-1 content-start gap-3 print:hidden lg:sticky lg:top-4">
               {(d.can.sign || d.can.countersign) && (
                 <section className="panel p-4">
                   <h2 className="mb-1 text-[14px] font-semibold">{d.can.sign ? "Your signature" : "Countersign"}</h2>
@@ -369,7 +368,7 @@ export default function Signoff(_props: { user: User }) {
               )}
               {d.can.withdraw && cur.status === "sent" && <SignerLink id={id} version={cur.version} name={cur.content.signer?.name ?? "the signatory"} />}
               {(d.can.upload || d.can.withdraw) && (
-                <section className="panel grid gap-2 p-4">
+                <section className="panel grid grid-cols-1 gap-2 p-4">
                   <h2 className="text-[13px] font-semibold">If the customer signs on paper</h2>
                   <p className="text-[12px] text-muted-foreground">Send them the PDF; upload the signed copy when it comes back.</p>
                   {d.can.upload && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setDialogErr(null); setDialog("upload") }}><Upload className="h-3.5 w-3.5" /> Upload the signed copy</Button>}
@@ -386,13 +385,13 @@ export default function Signoff(_props: { user: User }) {
       <Dialog open={dialog === "upload"} onOpenChange={(o) => { if (!o) setDialog(null) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Upload the signed copy</DialogTitle><DialogDescription>For version {cur?.version}. It completes the sign-off and is filed under the project's documents.</DialogDescription></DialogHeader>
-          <form onSubmit={upload} className="grid gap-3">
-            <label className="grid gap-1 text-[12.5px] font-medium">Signed copy (PDF or image)<input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg" className="text-[13px]" /></label>
+          <form onSubmit={upload} className="grid grid-cols-1 gap-3">
+            <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Signed copy (PDF or image)<input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg" className="text-[13px]" /></label>
             <div className="grid grid-cols-2 gap-2">
-              <label className="grid gap-1 text-[12.5px] font-medium">Signed by<input name="signer_name" required maxLength={120} defaultValue={cur?.content.signer?.name ?? ""} className={input} /></label>
-              <label className="grid gap-1 text-[12.5px] font-medium">Title<input name="signer_title" maxLength={120} className={input} /></label>
+              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Signed by<input name="signer_name" required maxLength={120} defaultValue={cur?.content.signer?.name ?? ""} className={input} /></label>
+              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Title<input name="signer_title" maxLength={120} className={input} /></label>
             </div>
-            <label className="grid gap-1 text-[12.5px] font-medium">Signed on<input name="signed_on" type="date" required className={input} /></label>
+            <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Signed on<input name="signed_on" type="date" required className={input} /></label>
             {dialogErr && <p className="text-[12.5px] text-bad" role="alert">{dialogErr}</p>}
             <div className="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" disabled={busy}>Upload</Button></div>
           </form>

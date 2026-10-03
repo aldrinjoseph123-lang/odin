@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { ExternalLink } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, kibana, type KibanaData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
@@ -16,7 +15,7 @@ export function Kibana({ rollout, onRollout }: { rollout: number | null; onRollo
   const [error, setError] = useState<string | null>(null)
   const [at, setAt] = useState(0)
   useEffect(() => { kibana(rollout).then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [rollout])
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const current = d.dashboards[at] ?? d.dashboards[0]
   if (!current) {

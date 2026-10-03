@@ -2,7 +2,6 @@ import { createContext, Fragment, useCallback, useContext, useEffect, useRef, us
 import { Link } from "react-router-dom"
 import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripVertical, Layers, Maximize2, MessageSquare, MoreHorizontal, PauseCircle, Plus, ShieldCheck, Timer, Trash2, UserCheck } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, Line, LineChart, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as ChartTip, XAxis } from "recharts"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -10,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
 import { Ago } from "@/components/Ago"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, dashboard, dashboardVersion, resetLayout, saveLayout, type Aggregate, type DashboardData, type DashKey, type DetailRow, type User, type WidgetInfo } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
@@ -62,7 +61,7 @@ const Empty = ({ children }: { children: ReactNode }) => <p className="py-2 text
 function Bars({ rows, link }: { rows: Aggregate; link?: (key: string) => string }) {
   const peak = Math.max(0, ...rows.map((r) => r.count))
   return (
-    <ul className="grid gap-1.5 text-[13px]">
+    <ul className="grid grid-cols-1 gap-1.5 text-[13px]">
       {rows.map((r) => (
         <li key={r.key} className="flex items-center gap-3">
           {link ? <Link to={link(r.key)} className="w-32 truncate text-[12.5px] hover:underline">{r.key}</Link> : <span className="w-32 truncate text-[12.5px]">{r.key}</span>}
@@ -174,7 +173,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
   return (
     <Widget title="Timeline" sub="every active rollout, start to target" action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
       {shown.length === 0 ? <Empty>No active rollouts{s.show === "attention" ? " need attention" : ""}.</Empty> : (
-        <div className="grid grid-cols-[minmax(96px,176px)_minmax(0,1fr)] gap-x-3 text-[12.5px]">
+        <div className="grid grid-cols-[minmax(96px,176px)_minmax(0,1fr)] gap-x-3 overflow-x-clip text-[12.5px]">
           <span />
           <div ref={measure} className={cn("relative text-[11px] text-muted-foreground", crowded ? "h-9" : "h-5")}>
             {months.map((tk) => <span key={tk.t} className="absolute top-0 -translate-x-1/2" style={{ left: pct(tk.t) }}>{tk.label}</span>)}
@@ -388,7 +387,7 @@ function ActivityFeed({ rows, s, onExpand, large }: { rows: D["activity"]; s: S;
   const limit = large ? 100 : Number(s.limit ?? 10)
   return (
     <Widget title="Recent activity" sub="across the portfolio" onExpand={onExpand}>
-      <ul className="grid gap-2.5 text-[12.5px]">
+      <ul className="grid grid-cols-1 gap-2.5 text-[12.5px]">
         {rows.slice(0, limit).map((a, i) => {
           const k = KIND[a.kind]
           return (
@@ -432,7 +431,7 @@ function Alerts({ rows, s, onExpand, large }: { rows: D["alerts"]; s: S; onExpan
 function MyWork({ m, today, onExpand }: { m: D["mywork"]; today: string; onExpand?: () => void }) {
   return (
     <Widget title="My work" sub={`${m.tasks.length} open task${m.tasks.length === 1 ? "" : "s"} · ${m.owned} rollout${m.owned === 1 ? "" : "s"} you own`} action={<Link to="/my-work" className={pill}>Open</Link>} onExpand={onExpand}>
-      <ul className="grid gap-x-6 text-[13px] md:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-x-6 text-[13px] md:grid-cols-2">
         {m.tasks.map((t) => {
           const late = t.due_date ? lateBy(t.due_date, today) : 0
           return (
@@ -559,7 +558,7 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
       <PopoverContent align="end" className="w-80 p-3 text-[12.5px]">
         <div className="mb-2 font-semibold">{title}</div>
         {info.settings.length > 0 && (
-          <div className="grid gap-2 border-b border-border pb-3">
+          <div className="grid grid-cols-1 gap-2 border-b border-border pb-3">
             {info.settings.map((s) => {
               const v = item.settings[s.key] ?? s.default
               const id = `${keyOf(item)}-${s.key}`
@@ -660,7 +659,7 @@ export default function Dashboard({ user }: { user: User }) {
     return () => { stop = true; clearInterval(timer); document.removeEventListener("visibilitychange", check); window.removeEventListener("focus", check) }
   }, [load])
 
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const hour = new Date().getHours()
   const layout = d.layout as LayoutItem[]
@@ -705,9 +704,9 @@ export default function Dashboard({ user }: { user: User }) {
           <Popover>
             <PopoverTrigger render={<button type="button" />} className={pill}><Plus className="h-3.5 w-3.5" /> Add widget</PopoverTrigger>
             <PopoverContent align="end" className="w-80 p-2 text-[12.5px]">
-              <ul className="grid gap-0.5">
+              <ul className="grid grid-cols-1 gap-0.5">
                 {[...hidden, ...repeatable].map((w) => (
-                  <li key={w.id}><button type="button" onClick={() => add(w)} className="grid w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
+                  <li key={w.id}><button type="button" onClick={() => add(w)} className="grid grid-cols-1 w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
                     <span className="font-medium">{w.title}{w.multiple && <span className="ml-1.5 font-normal text-muted-foreground">add another</span>}</span>
                     <span className="text-[11.5px] text-muted-foreground">{w.blurb}</span></button></li>
                 ))}
@@ -718,9 +717,9 @@ export default function Dashboard({ user }: { user: User }) {
             <Popover>
               <PopoverTrigger render={<button type="button" />} aria-label="Dashboard layout" className={cn(pill, "px-2")}><MoreHorizontal className="h-4 w-4" /></PopoverTrigger>
               <PopoverContent align="end" className="w-72 p-2 text-[12.5px]">
-                {admin && <button type="button" disabled={busy} onClick={saveDefault} className="grid w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
+                {admin && <button type="button" disabled={busy} onClick={saveDefault} className="grid grid-cols-1 w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
                   <span className="font-medium">Save as workspace default</span><span className="text-[11.5px] text-muted-foreground">Everyone without their own arrangement sees this one</span></button>}
-                {d.is_custom && <button type="button" disabled={busy} onClick={reset} className="grid w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
+                {d.is_custom && <button type="button" disabled={busy} onClick={reset} className="grid grid-cols-1 w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
                   <span className="font-medium">Reset to default</span><span className="text-[11.5px] text-muted-foreground">Drop your arrangement and use the workspace's</span></button>}
               </PopoverContent>
             </Popover>

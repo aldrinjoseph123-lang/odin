@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { Navigate, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
@@ -10,7 +9,7 @@ import { Ago } from "@/components/Ago"
 import { cn } from "@/lib/utils"
 import { isDark } from "@/lib/theme"
 import { DocTemplates } from "@/components/DocTemplates"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
@@ -66,7 +65,7 @@ export default function Settings(_props: { user: User }) {
   }
 
   if (!TITLES[section]) return <Navigate to="/settings/general" replace />
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
   const policyForm = (area: Policy["area"], title: string, hint?: string) => (
     <PolicyForm key={`${area}:${JSON.stringify(data.policies.filter((p) => p.area === area).map((p) => p.value))}`} title={title} hint={hint}
@@ -101,15 +100,15 @@ export default function Settings(_props: { user: User }) {
           <>
             {policyForm("workflow", "New projects")}
             <Panel title="Stage templates" hint="a new project copies one, then owns its list" id="templates">
-              <div className="grid gap-5">
+              <div className="grid grid-cols-1 gap-5">
                 {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
               </div>
               <AddForm placeholder="New template name (e.g. EDR rollout)" label="New template name" button="Add template" busy={busy} onSubmit={(name) => send("/settings/templates/add", { name })} />
               <p className="mt-2 text-[11.5px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
             </Panel>
-            <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
               <Panel title="Document categories" hint="untick to keep a kind from partners and customers">
-                <ul className="grid gap-1.5 text-[13px]">
+                <ul className="grid grid-cols-1 gap-1.5 text-[13px]">
                   {data.doc_categories.map((c) => (
                     <li key={c.id} className="flex items-center gap-2">
                       <span className="flex-1">{c.name}</span>
@@ -164,7 +163,7 @@ export default function Settings(_props: { user: User }) {
             {policyForm("audit", "Retention")}
             <Panel title="Archives" hint="written nightly before rows are removed; included in every backup">
               {data.audit_archives.length === 0 ? <p className="text-[13px] text-muted-foreground">Nothing archived yet: no row is older than the retention period.</p> : (
-                <ul className="grid gap-1 text-[13px]">{data.audit_archives.map((a) => <li key={a.name} className="flex justify-between gap-3"><span className="font-mono text-[12px]">{a.name}</span><span className="text-muted-foreground">{bytes(a.size)}</span></li>)}</ul>
+                <ul className="grid grid-cols-1 gap-1 text-[13px]">{data.audit_archives.map((a) => <li key={a.name} className="flex justify-between gap-3"><span className="font-mono text-[12px]">{a.name}</span><span className="text-muted-foreground">{bytes(a.size)}</span></li>)}</ul>
               )}
               <p className="mt-3 text-[12px] text-muted-foreground">The full trail is on the <a href="/audit-logs" className="text-primary-text hover:underline">Audit log</a> page, with a CSV export.</p>
             </Panel>
@@ -216,8 +215,8 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
           : p.key === "mfa_required" ? ({ off: "Optional (each person decides)", admins: "Required for admins", everyone: "Required for everyone" }[c] ?? c) : c
   return (
     <Panel title={title} hint={hint}>
-      <form onSubmit={submit} className="grid gap-4">
-        <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
+      <form onSubmit={submit} className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
           {policies.map((p) => (
             <div key={p.key} className={cn("grid content-start gap-1", (p.kind === "multi" || p.kind === "dates") && "md:col-span-2")}>
               {p.kind === "bool" ? (
@@ -292,8 +291,8 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
     <>
       <Panel title="New token">
         <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then(() => setName("")) }} className="flex flex-wrap items-end gap-2">
-          <label className="grid gap-1 text-[12px] text-muted-foreground">What uses it<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></label>
-          <label className="grid gap-1 text-[12px] text-muted-foreground">Valid for
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">What uses it<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Valid for
             <select value={days} onChange={(e) => setDays(e.target.value)} className={selectClass}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
           </label>
           <Button type="submit" size="sm" disabled={busy || !name.trim()}>Create token</Button>
@@ -380,17 +379,17 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
   const status = !sso.configured ? "Not set up: staff sign in with a password." : sso.enforced ? "Required: staff sign in with Microsoft only." : "Set up: staff can use Microsoft or a password."
   return (
     <Panel title="Microsoft sign-in" hint="staff; partners keep their email link">
-      <form onSubmit={(e) => { e.preventDefault(); void send("/settings/sso", { ...f, ...(enforced ? { enforced: "on" } : {}) }).then(() => setF({ ...f, client_secret: "" })) }} className="grid gap-3">
+      <form onSubmit={(e) => { e.preventDefault(); void send("/settings/sso", { ...f, ...(enforced ? { enforced: "on" } : {}) }).then(() => setF({ ...f, client_secret: "" })) }} className="grid grid-cols-1 gap-3">
         <p className="text-[13px]">{status}</p>
-        <div className="grid gap-1 text-[12.5px]">
+        <div className="grid grid-cols-1 gap-1 text-[12.5px]">
           <span className="text-muted-foreground">Redirect URI to add to the app registration (Authentication → Web)</span>
           <code className="w-fit max-w-full break-all rounded-md border border-border bg-secondary px-2 py-1 font-mono text-[12px]">{sso.redirect_uri}</code>
           <span className="text-muted-foreground">In Entra ID: a separate app registration, single tenant, ID tokens only; a client secret under Certificates &amp; secrets.</span>
         </div>
-        <div className="grid max-w-md gap-2">
-          <label className="grid gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="h-8 font-mono text-[12.5px]" /></label>
-          <label className="grid gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={f.tenant_id} onChange={(e) => setF({ ...f, tenant_id: e.target.value })} className="h-8 font-mono text-[12.5px]" /></label>
-          <label className="grid gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[12.5px]" /></label>
+        <div className="grid grid-cols-1 max-w-md gap-2">
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="h-8 font-mono text-[12.5px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={f.tenant_id} onChange={(e) => setF({ ...f, tenant_id: e.target.value })} className="h-8 font-mono text-[12.5px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[12.5px]" /></label>
         </div>
         <label className="flex items-start gap-2 text-[13px]">
           <input type="checkbox" checked={enforced} onChange={(e) => setEnforced(e.target.checked)} disabled={!sso.configured} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
@@ -420,7 +419,7 @@ function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData;
   }
   return (
     <Panel title={title}>
-      <form onSubmit={submit} className="grid gap-2 text-[13px]">
+      <form onSubmit={submit} className="grid grid-cols-1 gap-2 text-[13px]">
         {keys.map((i) => (
           <label key={i.key} className="flex items-start gap-2">
             <input type="checkbox" checked={t[i.key]} onChange={(e) => setT({ ...t, [i.key]: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />
@@ -523,11 +522,11 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
           <button type="button" onClick={() => setEditing(true)} className="ml-2 text-[12px] text-primary-text hover:underline">Edit</button></p>
       )}
       {editing && (
-        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/azure-app", app).then(() => setApp({ ...app, client_secret: "" })) }} className="mb-3 grid max-w-md gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/azure-app", app).then(() => setApp({ ...app, client_secret: "" })) }} className="mb-3 grid grid-cols-1 max-w-md gap-2">
           {!m.oauth_client_configured && <p className="text-[12.5px] text-muted-foreground">Enter the Azure AD app registration's details (AZURE_SETUP.md explains the one-time step in the Azure portal).</p>}
-          <label className="grid gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[12.5px]" /></label>
-          <label className="grid gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[12.5px]" /></label>
-          <label className="grid gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[12.5px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[12.5px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[12.5px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[12.5px]" /></label>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={busy || !app.client_id || !app.tenant_id}>Save</Button>
             {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>}
@@ -542,7 +541,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
         </div>
       )}
       {m.connected && (
-        <div className="mt-2 grid gap-2 text-[13px]">
+        <div className="mt-2 grid grid-cols-1 gap-2 text-[13px]">
           <p>Connected as <span className="font-medium">{m.connected_email ?? "—"}</span> · Teams channel <span className="font-medium">{m.channel_id ? `${m.team_name} / ${m.channel_name}` : "not selected yet"}</span>
             <button type="button" disabled={busy} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-bad hover:underline">Disconnect</button></p>
           {m.teams_error && <p className="text-[12.5px] text-bad">Could not load teams: {m.teams_error}</p>}

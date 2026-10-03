@@ -56,7 +56,7 @@ export function SignaturePad({ value, onChange, typedDefault }: { value: Signatu
           {strokes.length === 0 && <text x={W / 2} y={H / 2} textAnchor="middle" fontSize={34} fill="var(--muted-foreground)">Sign here</text>}
         </svg>
       ) : (
-        <div className="grid gap-1.5">
+        <div className="grid grid-cols-1 gap-1.5">
           <input aria-label="Typed signature" maxLength={80} value={value?.kind === "typed" ? value.text : ""} onChange={(e) => onChange(e.target.value ? { kind: "typed", text: e.target.value } : null)}
             className="h-9 rounded-md border border-input bg-background px-2 text-[14px]" />
           <div className="flex h-20 items-center rounded-lg border border-dashed border-input bg-card px-4"><SignatureView sig={value} /></div>

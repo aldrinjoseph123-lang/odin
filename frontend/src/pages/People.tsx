@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserAvatar } from "@/components/UserAvatar"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { Ago } from "@/components/Ago"
 import { ApiError, people, type PeopleData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -15,7 +14,7 @@ export default function People(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState("")
   useEffect(() => { document.title = "People · Odin"; people().then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [])
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const list = d.people.filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.role.toLowerCase().includes(q.toLowerCase()))
   return (
@@ -25,7 +24,7 @@ export default function People(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">{d.people.length} on active rollouts</p>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a person" aria-label="Find a person" className="ml-auto h-8 w-52 rounded-full border border-input bg-card px-3 text-[13px] shadow-card" />
       </div>
-      <ul className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label="People">
+      <ul className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label="People">
         {list.map((p) => (
           <li key={p.id}>
             <Link to={`/people/${p.id}`} className="panel block p-4 outline-none transition-colors hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50">

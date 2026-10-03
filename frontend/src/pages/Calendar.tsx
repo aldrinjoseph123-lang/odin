@@ -1,9 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ArrowRight, CheckSquare, ChevronLeft, ChevronRight, ShieldCheck, Target } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, calendar, type CalendarData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
@@ -57,7 +56,7 @@ export function Calendar({ wide }: { wide: boolean }) {
   useEffect(() => { calendar(month).then((x) => { setD(x); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load the calendar")) }, [month])
   const weeks = useMemo(() => monthGrid(month), [month])
   const byDay = useMemo(() => (d ? items(d, show) : new Map<string, Item[]>()), [d, show])
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const today = d.today
   const inMonth = (day: string) => day.startsWith(month)
@@ -147,7 +146,7 @@ export function Calendar({ wide }: { wide: boolean }) {
             <h3 className="text-[13px] font-semibold">{fmtDate(openDay)} <span className="font-normal text-muted-foreground">· {open.length} item{open.length === 1 ? "" : "s"}</span></h3>
             <button type="button" onClick={() => setOpenDay(null)} className="text-[12px] text-muted-foreground hover:text-foreground">Close</button>
           </div>
-          <ul className="grid gap-x-6 md:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-x-6 md:grid-cols-2 xl:grid-cols-3">
             {open.map((it) => <li key={it.key}><Chip it={it} full /></li>)}
             {open.length === 0 && <li className="py-1 text-[13px] text-muted-foreground">Nothing on this day.</li>}
           </ul>

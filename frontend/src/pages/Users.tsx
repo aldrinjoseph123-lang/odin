@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { UserAvatar } from "@/components/UserAvatar"
 import { Ago } from "@/components/Ago"
@@ -9,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { ApiError, createSignupLink, postForm, revokeAllSignupLinks, revokeSignupLink, signupLinks, users as fetchUsers, type AdminUser, type SignupLinks, type User, type UsersData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const fmt = (iso: string | null, withTime = false) => fmtWhen(iso, withTime)
 const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-[12.5px] disabled:opacity-60"
@@ -34,7 +33,7 @@ export default function Users(_props: { user: User }) {
     } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
 
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
   const pending = data.users.filter((u) => u.pending)
   const people = data.users.filter((u) => !u.pending)
@@ -56,7 +55,7 @@ export default function Users(_props: { user: User }) {
 
       {pending.length > 0 && <Pending people={pending} roles={data.roles} busy={busy} send={send} />}
 
-      <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
             <thead className="bg-card">
@@ -69,7 +68,7 @@ export default function Users(_props: { user: User }) {
             </tbody>
           </table>
         </div>
-        <div className="grid content-start gap-4">
+        <div className="grid grid-cols-1 content-start gap-4">
           <AddUser roles={data.roles} busy={busy} send={send} />
           <SignupLinksPanel />
         </div>
@@ -85,7 +84,7 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
   return (
     <section className="mt-3 rounded-lg border border-warn-line bg-warn-soft/40 p-4" aria-label="Waiting for approval">
       <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Waiting for approval <span className="font-normal text-muted-foreground">asked to use Odin, not yet allowed in</span></h3>
-      <ul className="grid gap-2">
+      <ul className="grid grid-cols-1 gap-2">
         {people.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-2 text-[13px]">
             <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.username} · {u.email} · asked {fmt(u.created_at, true)}
@@ -166,13 +165,13 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
     void send("/users", f).then(() => setF({ name: "", username: "", email: "", password: "", role: "Member" }))
   }
   return (
-    <form onSubmit={submit} className="grid content-start gap-2 panel p-4">
+    <form onSubmit={submit} className="grid grid-cols-1 content-start gap-2 panel p-4">
       <h3 className="text-[12px] font-semibold text-nav-fg">Add a team member</h3>
-      <label className="grid gap-1 text-[12px] text-muted-foreground">Full name<Input value={f.name} onChange={set("name")} required aria-label="Full name" className="h-8 text-[13px]" /></label>
-      <label className="grid gap-1 text-[12px] text-muted-foreground">Username<Input value={f.username} onChange={set("username")} required aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
-      <label className="grid gap-1 text-[12px] text-muted-foreground">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" aria-label="Email" className="h-8 text-[13px]" /></label>
-      <label className="grid gap-1 text-[12px] text-muted-foreground">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
-      <label className="grid gap-1 text-[12px] text-muted-foreground">Role
+      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Full name<Input value={f.name} onChange={set("name")} required aria-label="Full name" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Username<Input value={f.username} onChange={set("username")} required aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" aria-label="Email" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Role
         <select value={f.role} onChange={set("role")} aria-label="Role" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]">
           {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
@@ -210,20 +209,20 @@ function SignupLinksPanel() {
       <h3 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h3>
       <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
       {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-2.5 text-[12.5px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
-      {d.enabled && <form onSubmit={make} className="grid gap-2 text-[12.5px]">
-        <label className="grid gap-1 font-medium">For<input className={field} required maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Omar, field engineer" /></label>
+      {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[12.5px]">
+        <label className="grid grid-cols-1 gap-1 font-medium">For<input className={field} required maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Omar, field engineer" /></label>
         <div className="grid grid-cols-2 gap-2">
-          <label className="grid gap-1 font-medium">Role<select className={field} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{d.roles.map((r) => <option key={r}>{r}</option>)}</select></label>
-          <label className="grid gap-1 font-medium">Valid for<select className={field} value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })}><option value={0}>{d.default_days} day{d.default_days > 1 ? "s" : ""} (default)</option>{[1, 3, 7, 14, 30].filter((n) => n !== d.default_days).map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></label>
-          <label className="grid gap-1 font-medium">Project<select className={field} value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })}><option value="">None</option>{d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-          <label className="grid gap-1 font-medium">As<select className={field} value={f.project_role} disabled={!f.project_id} onChange={(e) => setF({ ...f, project_role: e.target.value })}>{d.project_roles.map((r) => <option key={r}>{r}</option>)}</select></label>
-          <label className="grid gap-1 font-medium">Uses<select className={field} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: Number(e.target.value) })}>{[1, 5, 10, 25].map((n) => <option key={n} value={n}>{n === 1 ? "One person" : `Up to ${n}`}</option>)}</select></label>
+          <label className="grid grid-cols-1 gap-1 font-medium">Role<select className={field} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{d.roles.map((r) => <option key={r}>{r}</option>)}</select></label>
+          <label className="grid grid-cols-1 gap-1 font-medium">Valid for<select className={field} value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })}><option value={0}>{d.default_days} day{d.default_days > 1 ? "s" : ""} (default)</option>{[1, 3, 7, 14, 30].filter((n) => n !== d.default_days).map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></label>
+          <label className="grid grid-cols-1 gap-1 font-medium">Project<select className={field} value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })}><option value="">None</option>{d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+          <label className="grid grid-cols-1 gap-1 font-medium">As<select className={field} value={f.project_role} disabled={!f.project_id} onChange={(e) => setF({ ...f, project_role: e.target.value })}>{d.project_roles.map((r) => <option key={r}>{r}</option>)}</select></label>
+          <label className="grid grid-cols-1 gap-1 font-medium">Uses<select className={field} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: Number(e.target.value) })}>{[1, 5, 10, 25].map((n) => <option key={n} value={n}>{n === 1 ? "One person" : `Up to ${n}`}</option>)}</select></label>
         </div>
         {err && <p className="text-bad" role="alert">{err}</p>}
         <Button type="submit" size="sm" disabled={busy || !f.label.trim()}>Create link</Button>
       </form>}
       {made && (
-        <div className="mt-3 grid gap-1.5 rounded-lg bg-muted/60 p-2.5">
+        <div className="mt-3 grid grid-cols-1 gap-1.5 rounded-lg bg-muted/60 p-2.5">
           <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[11.5px]" />
           <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => {})}>{copied ? "Copied" : "Copy the link"}</Button>
           <p className="text-[11.5px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>

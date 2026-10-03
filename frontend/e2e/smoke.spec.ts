@@ -41,7 +41,8 @@ const PAGES: { path: string; h1: RegExp; who?: Who[] }[] = [
 ]
 
 for (const who of ["admin", "member", "viewer"] as Who[]) {
-  test(`@smoke every page renders for ${who}`, async ({ page }) => {
+  // desktop and phone: every page also fits its window (test report UX-2 to UX-4)
+  test(`@smoke @phone every page renders and fits for ${who}`, async ({ page }) => {
     const errors = watch(page)
     await signIn(page, who)
     for (const p of PAGES) {
@@ -49,6 +50,8 @@ for (const who of ["admin", "member", "viewer"] as Who[]) {
       await page.goto(p.path)
       await expect(page.locator("h1").first(), p.path).toHaveText(p.h1)
       await expect(page.locator("main"), p.path).toBeVisible()
+      const [scroll, inner] = await page.evaluate(() => [document.scrollingElement!.scrollWidth, document.documentElement.clientWidth])
+      expect(scroll, `${p.path} scrolls sideways`).toBeLessThanOrEqual(inner + 1)
     }
     expectClean(errors)
   })
@@ -116,7 +119,14 @@ test("@smoke the admin's header fits laptop widths without sideways scrolling", 
 test("@smoke @phoneonly the header folds into a menu that reaches every page", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin")
-  await page.getByRole("button", { name: "Menu" }).click()
+  const menu = page.getByRole("button", { name: "Menu" })
+  // keyboard: focus moves into the menu, Escape closes it and returns (test report UX-12)
+  await menu.click()
+  await expect(page.getByRole("navigation").getByRole("link").first()).toBeFocused()
+  await page.keyboard.press("Escape")
+  await expect(menu).toHaveAttribute("aria-expanded", "false")
+  await expect(menu).toBeFocused()
+  await menu.click()
   await page.getByRole("navigation").getByRole("link", { name: /^Flow/ }).click()
   await expect(page).toHaveURL(/\/board/)
   await expect(page.locator("h1").first()).toHaveText(/Active rollouts/)

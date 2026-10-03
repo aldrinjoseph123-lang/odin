@@ -49,7 +49,7 @@ export default function Join() {
       <AuthHeading title={`Join ${info.company} on Odin`}>
         You are invited as <b className="text-foreground">{info.role}</b>{info.project ? <> on <b className="text-foreground">{info.project}</b> ({info.project_role})</> : null}. The link works until {fmtDate(info.expires_at)}.
       </AuthHeading>
-      <form onSubmit={submit} className="grid gap-4" noValidate>
+      <form onSubmit={submit} className="grid grid-cols-1 gap-4" noValidate>
         <label className={label}>Full name<Input required autoComplete="name" value={f.name} onChange={set("name")} className="h-10" /></label>
         <label className={label}>Work email<Input required type="email" autoComplete="email" value={f.email} onChange={set("email")} className="h-10"
           placeholder={info.domains.length ? `you@${info.domains[0]}` : "you@company.com"} /></label>

@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
 import { Stepper } from "@/components/Stepper"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
@@ -46,7 +45,7 @@ export default function MyWork({ user }: { user: User }) {
   const load = useCallback(() => myWork().then((x) => { setD(x); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")), [])
   useEffect(() => { document.title = "My work · Odin"; void load() }, [load])
   const groups = useMemo(() => (d ? groupTasks(project ? d.tasks.filter((t) => t.project_id === project) : d.tasks, d.today) : []), [d, project])
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const c = d.counts
   const peak = Math.max(1, ...d.done_by_day.map((x) => x.count))
@@ -77,7 +76,7 @@ export default function MyWork({ user }: { user: User }) {
         ))}
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <section className="panel p-4" aria-label="My tasks">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h3 className="text-[13.5px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h3>
@@ -114,12 +113,12 @@ export default function MyWork({ user }: { user: User }) {
           ))}
         </section>
 
-        <div className="grid content-start gap-4">
+        <div className="grid grid-cols-1 content-start gap-4">
           <section className="panel p-4" aria-label="Done, the last 14 days">
             <h3 className="mb-2 text-[13.5px] font-semibold">Done <span className="font-normal text-muted-foreground">the last 14 days</span></h3>
             <ul className="flex h-20 items-end gap-1" aria-label="Tasks done per day">
               {d.done_by_day.map((x) => (
-                <li key={x.day} className="flex h-full flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
+                <li key={x.day} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
                   <span className={cn("block w-full rounded-t-[3px]", x.count ? "bg-primary" : "bg-muted")} style={{ height: `${Math.max(x.count ? 8 : 3, (x.count / peak) * 100)}%` }} aria-hidden />
                   <span aria-hidden>{WEEKDAY[new Date(`${x.day}T00:00:00`).getDay()]}</span>
                   <span className="sr-only">{fmtDate(x.day)}: {x.count}</span>

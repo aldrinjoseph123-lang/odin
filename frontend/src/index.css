@@ -207,6 +207,14 @@
     }
   body {
     @apply bg-background text-foreground;
+    /* a long unbroken name, note or URL wraps instead of widening the page
+       (test report UX-3: one note stretched a page to 47,000 px) */
+    overflow-wrap: anywhere;
+    }
+  /* a select sized by its longest option, or a file input's fixed width,
+     must not push a card past a phone screen (test report UX-3, UX-4) */
+  select, input[type="file"] {
+    max-width: 100%;
     }
   html {
     @apply font-sans antialiased;

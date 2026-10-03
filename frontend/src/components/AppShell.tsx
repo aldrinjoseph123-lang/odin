@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { Menu, Monitor, Moon, Search, Sun } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -39,6 +39,16 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   const { pathname } = useLocation()
   useActivityPing(user.prefs?.activity_idle_minutes ?? 5)
   const [open, setOpen] = useState(false)
+  const navRef = useRef<HTMLElement>(null)
+  const menuButton = useRef<HTMLButtonElement>(null)
+  // the phone menu: focus moves into it, Escape closes it and returns to the button (test report UX-12)
+  useEffect(() => {
+    if (!open) return
+    navRef.current?.querySelector<HTMLElement>("a, button")?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); menuButton.current?.focus() } }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open])
   const [theme, setTheme] = useState<Theme>(user.theme)
   const [palette, setPalette] = useState(false)
   // Ctrl/⌘ K anywhere; "/" when not typing in a field
@@ -83,7 +93,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
         {/* The admin's full row needs ~1,250 px (test report UX-1): below xl the
             links fold into the menu, and up to 2xl search is just its icon;
             bell, theme and avatar stay visible at every width. */}
-        <nav className={cn("absolute inset-x-0 top-14 z-40 mx-3 flex-col gap-3 rounded-2xl bg-card p-4 shadow-pop xl:static xl:mx-0 xl:flex xl:flex-1 xl:flex-row xl:items-center xl:gap-4 xl:rounded-none xl:bg-transparent xl:p-0 xl:shadow-none xl:gap-6", open ? "flex" : "hidden")}>
+        <nav ref={navRef} className={cn("absolute inset-x-0 top-14 z-40 mx-3 flex-col gap-3 rounded-2xl bg-card p-4 shadow-pop xl:static xl:mx-0 xl:flex xl:flex-1 xl:flex-row xl:items-center xl:gap-4 xl:rounded-none xl:bg-transparent xl:p-0 xl:shadow-none xl:gap-6", open ? "flex" : "hidden")}>
           <span className="flex flex-col gap-1 xl:flex-row xl:rounded-full xl:bg-card xl:p-1 xl:shadow-card">
             {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
           </span>
@@ -108,7 +118,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
             <UserAvatar name={user.name} url={user.avatar_url} className="h-7 w-7" textClass="text-[11px] bg-accent text-accent-foreground" />
           </a>
           <button type="button" onClick={signOut} className="hidden whitespace-nowrap text-[13px] font-medium text-nav-fg hover:text-foreground xl:ml-1.5 xl:inline">Log out</button>
-          <button type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted xl:hidden"><Menu className="h-5 w-5" /></button>
+          <button ref={menuButton} type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted xl:hidden"><Menu className="h-5 w-5" /></button>
         </div>
       </header>
       {messages.length > 0 && (

@@ -40,12 +40,12 @@ export default function ForgotPassword() {
       </AuthHeading>
       {message && <Alert className="mb-5" role="status"><AlertDescription>{message}</AlertDescription></Alert>}
       {done ? <a href="/login" className={buttonVariants({ className: "h-11 w-full text-sm" })}>Sign in</a> : (
-        <form onSubmit={submit} className="grid gap-4" aria-busy={busy}>
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4" aria-busy={busy}>
           {token ? (
-            <div className="grid gap-1.5"><Label htmlFor="pw" className="text-[13.5px]">New password</Label>
+            <div className="grid grid-cols-1 gap-1.5"><Label htmlFor="pw" className="text-[13.5px]">New password</Label>
               <Input id="pw" type="password" autoComplete="new-password" minLength={12} required autoFocus value={pw} onChange={(e) => setPw(e.target.value)} className="h-11 text-base" /></div>
           ) : (
-            <div className="grid gap-1.5"><Label htmlFor="email" className="text-[13.5px]">Email</Label>
+            <div className="grid grid-cols-1 gap-1.5"><Label htmlFor="email" className="text-[13.5px]">Email</Label>
               <Input id="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 text-base" /></div>
           )}
           <Button type="submit" className="mt-1 h-11 text-sm" disabled={busy}>

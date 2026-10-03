@@ -157,11 +157,11 @@ export default function Report(_props: { user: User }) {
         ))}
       </div>
 
-      <div className="mt-4 grid gap-4">
+      <div className="mt-4 grid grid-cols-1 gap-4">
         <Section n title="Summary" className={hide("summary")}>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {wordBlock("summary", "Where it stands", 5, "Two or three lines: where the rollout stands, what changed, what happens next.")}
-            <div className="grid content-start gap-4">
+            <div className="grid grid-cols-1 content-start gap-4">
               {wordBlock("next_steps", "Next steps", 3, "One per line.")}
               {(customer || editable) && wordBlock("asks", "What we need from the customer", 3, "One per line: approvals, access, windows, decisions.")}
               {customer && (d.needs.approval || d.needs.tasks.length > 0) && (
@@ -187,9 +187,9 @@ export default function Report(_props: { user: User }) {
           </div>
         </Section>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Section n title="What's next" sub="the coming stages, as forecast" className={hide("timeline")}>
-            <ol className="grid gap-2">
+            <ol className="grid grid-cols-1 gap-2">
               {d.milestones.map((m, i) => (
                 <li key={m.stage} className="flex items-center gap-3 rounded-xl bg-muted/50 px-3 py-2 text-[13px]">
                   <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", i === 0 ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}>{i + 1}</span>
@@ -220,7 +220,7 @@ export default function Report(_props: { user: User }) {
           </Section>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Section n title="Work" sub={`${d.work.done} of ${d.work.total} tasks done${d.work.late ? `, ${d.work.late} late` : ""}`} className={hide("work")}>
             {d.work.burn.length > 1 && (
               <div className="h-40" role="img" aria-label={`Tasks known and done per week: ${d.work.burn.map((w) => `${fmtDate(w.week)} ${w.done} of ${w.total}`).join(", ")}`}>
@@ -235,7 +235,7 @@ export default function Report(_props: { user: User }) {
                 </ResponsiveContainer>
               </div>
             )}
-            <div className="mt-3 grid gap-1.5 text-[12.5px]">
+            <div className="mt-3 grid grid-cols-1 gap-1.5 text-[12.5px]">
               {d.work.by_stage.filter((b) => b.total).map((b) => (
                 <div key={b.stage} className="flex items-center gap-3">
                   <span className="w-32 truncate">{b.stage}</span>
@@ -258,12 +258,12 @@ export default function Report(_props: { user: User }) {
               )}
             </Section>
           ) : (
-            <Section n title="Team" className={hide("team")}><ul className="grid gap-1 text-[13px]">{d.team.map((m) => <li key={m.name} className="flex justify-between"><span className="font-medium">{m.name}</span><span className="text-muted-foreground">{m.role}</span></li>)}</ul></Section>
+            <Section n title="Team" className={hide("team")}><ul className="grid grid-cols-1 gap-1 text-[13px]">{d.team.map((m) => <li key={m.name} className="flex justify-between"><span className="font-medium">{m.name}</span><span className="text-muted-foreground">{m.role}</span></li>)}</ul></Section>
           )}
         </div>
 
         <Section n title="History" sub="time in each stage against its SLA, decisions, and what moved" className={hide("history")}>
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div>
               <Table head={["Stage", "Entered", "Left", "Days", "SLA"]}
                 rows={d.history.dwell.map((x) => [x.stage, fmtDate(x.entered), x.left ? fmtDate(x.left) : "still here", x.days ?? "—", x.sla ? `${x.sla} d` : "—"])}
@@ -275,7 +275,7 @@ export default function Report(_props: { user: User }) {
                 </>
               )}
             </div>
-            <div className="grid content-start gap-4">
+            <div className="grid grid-cols-1 content-start gap-4">
               {!customer && d.plan_changes && d.plan_changes.length > 0 && (
                 <div>
                   <h3 className="mb-1 text-[12.5px] font-semibold text-nav-fg">What moved in the plan</h3>
@@ -287,13 +287,13 @@ export default function Report(_props: { user: User }) {
               {d.history.notes.length > 0 && (
                 <div>
                   <h3 className="mb-1 text-[12.5px] font-semibold text-nav-fg">Notes</h3>
-                  <ul className="grid gap-2 text-[12.5px]">{d.history.notes.slice(0, 8).map((n, i) => <li key={i}><span className="text-[11.5px] text-muted-foreground">{n.author} · {n.stage} · {fmtDate(n.created_at)}</span><p>{n.note}</p></li>)}</ul>
+                  <ul className="grid grid-cols-1 gap-2 text-[12.5px]">{d.history.notes.slice(0, 8).map((n, i) => <li key={i}><span className="text-[11.5px] text-muted-foreground">{n.author} · {n.stage} · {fmtDate(n.created_at)}</span><p>{n.note}</p></li>)}</ul>
                 </div>
               )}
               {d.documents && d.documents.length > 0 && (
                 <div>
                   <h3 className="mb-1 text-[12.5px] font-semibold text-nav-fg">Documents</h3>
-                  <ul className="grid gap-0.5 text-[12.5px]">{d.documents.slice(0, 12).map((x, i) => <li key={i} className="flex justify-between gap-3"><span className="truncate">{"filename" in x ? x.filename : x.category}</span><span className="shrink-0 text-muted-foreground">{"filename" in x ? `${x.category} · ${fmtDate(x.uploaded_at)}` : `${x.count} file${x.count === 1 ? "" : "s"}`}</span></li>)}</ul>
+                  <ul className="grid grid-cols-1 gap-0.5 text-[12.5px]">{d.documents.slice(0, 12).map((x, i) => <li key={i} className="flex justify-between gap-3"><span className="truncate">{"filename" in x ? x.filename : x.category}</span><span className="shrink-0 text-muted-foreground">{"filename" in x ? `${x.category} · ${fmtDate(x.uploaded_at)}` : `${x.count} file${x.count === 1 ? "" : "s"}`}</span></li>)}</ul>
                 </div>
               )}
             </div>
