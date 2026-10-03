@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 // that does not split across printed pages, and a plain hairline table.
 export function Section({ n, title, sub, children, className }: { n?: boolean; title: string; sub?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={cn("panel p-5 break-inside-avoid print:shadow-none", className)} aria-label={title}>
+    <section className={cn("panel min-w-0 p-5 break-inside-avoid print:shadow-none", className)} aria-label={title}>
       <h2 data-n={n ? "" : undefined} className="mb-3 text-[14px] font-semibold">{title}{sub && <span className="ml-2 text-[12.5px] font-normal text-muted-foreground">{sub}</span>}</h2>
       {children}
     </section>
