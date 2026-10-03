@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { StatTile } from "@/components/StatTile"
 
-const d1 = (n: number | null | undefined) => (n == null ? "—" : n.toFixed(1))
+const d1 = (n: number | null | undefined) => (n == null ? "—" : n > 0 && n < 0.05 ? "<0.1" : n.toFixed(1))   // a same-day close is not "0.0 days" (UX-23)
 const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
 
 export default function Analytics(_props: { user: User }) {

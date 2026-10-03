@@ -3276,6 +3276,23 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIn(b"/Subtype /Type0", pdf); self.assertIn(b"/FontFile2", pdf); self.assertIn(b"/ToUnicode", pdf)
         self.assertIn(b"NotoSansArabic", pdf); self.assertIn(b"NotoSans-", pdf)
 
+    def test_scripts_run_only_from_odin_or_with_the_response_nonce(self):
+        # system map #19: script-src 'unsafe-inline' is gone wherever no inline handler needs it
+        import re
+        dist = tempfile.mkdtemp(); os.makedirs(os.path.join(dist, "assets"))
+        open(os.path.join(dist, "index.html"), "w").write("<title>Odin</title><script>document.documentElement.dataset.theme='light'</script><div id=root></div>")
+        script_src = lambda r: re.search(r"script-src ([^;]*);", r.headers["Content-Security-Policy"]).group(1)   # noqa: E731
+        with patch.dict(app_module.app.config, {"SERVE_SPA": True, "SPA_DIST": dist}):
+            r = app_module.app.test_client().get("/login")
+            nonce = re.search(rb'<script nonce="([^"]+)">', r.data).group(1).decode()
+            self.assertEqual(script_src(r), f"'self' 'nonce-{nonce}'")
+            self.assertNotEqual(nonce, re.search(rb'nonce="([^"]+)"', app_module.app.test_client().get("/login").data).group(1).decode())   # one per response
+        r = self.client.get("/no-such-page")                                     # the Jinja error page: its script carries the nonce
+        self.assertIn("'nonce-", script_src(r)); self.assertNotIn("unsafe-inline", script_src(r))
+        self.new_project(name="P", client="C")
+        r = self.client.get("/projects/1")                                       # an old Jinja twin with onclick=: still allowed, for now
+        self.assertIn("'unsafe-inline'", script_src(r))
+
     def test_staff_cannot_be_invited_as_the_customer(self):
         # test report SEC-1: the email invite skipped the rule participant_add enforces (system map #14)
         self.new_project(name="P", client="Globex")

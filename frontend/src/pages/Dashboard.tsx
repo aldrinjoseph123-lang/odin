@@ -450,7 +450,7 @@ function MyWork({ m, today, onExpand }: { m: D["mywork"]; today: string; onExpan
 
 // ---- cycle time -------------------------------------------------------------
 function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () => void; large?: boolean }) {
-  const d1 = (n: number | null) => (n == null ? "—" : n.toFixed(1))
+  const d1 = (n: number | null) => (n == null ? "—" : n > 0 && n < 0.05 ? "<0.1" : n.toFixed(1))   // a same-day close is not "0.0 days" (UX-23)
   const data = c?.throughput.map(([m, n]) => ({ m: m.slice(5), n })) ?? []
   return (
     <Widget title="Cycle time" sub={c?.template} action={<Link to="/analytics" className={pill}>Detail</Link>} onExpand={onExpand}>
