@@ -3263,6 +3263,19 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             return {k: ("1" if policy(k) is True else "" if policy(k) is False else ",".join(policy(k)) if isinstance(policy(k), (list, tuple)) else str(policy(k)))
                     for k, e in POLICIES.items() if e["area"] == "security"}
 
+    def test_pdfs_print_arabic_greek_and_cyrillic(self):
+        # test report OPS-7: they printed as "?" (Windows-1252 Helvetica only)
+        from services.pdf import _shape, report_pdf
+        self.assertEqual(_shape("\u0633\u0644\u0627\u0645"), "\ufee1\ufefc\ufeb3")   # سلام: initial seen, lam-alef, isolated meem, drawn right to left
+        plain = report_pdf("Plain", ["Only Windows-1252: café"])
+        self.assertNotIn(b"/Type0", plain)                                    # Latin text keeps the standard fonts, nothing embedded
+        self.new_project(name="\u0634\u0631\u0643\u0629 \u0394\u03ad\u03bb\u03c4\u03b1 \u0414\u0435\u043b\u044c\u0442\u0430", client="C")
+        c, _ = self._api_client()
+        pdf = c.get("/projects/1/report.pdf").data
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertIn(b"/Subtype /Type0", pdf); self.assertIn(b"/FontFile2", pdf); self.assertIn(b"/ToUnicode", pdf)
+        self.assertIn(b"NotoSansArabic", pdf); self.assertIn(b"NotoSans-", pdf)
+
     def test_staff_cannot_be_invited_as_the_customer(self):
         # test report SEC-1: the email invite skipped the rule participant_add enforces (system map #14)
         self.new_project(name="P", client="Globex")
