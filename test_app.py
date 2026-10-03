@@ -1268,7 +1268,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c.post("/settings/integrations", data={"guest_links_enabled": "on"}, headers=h)
         self.assertEqual(anon.get(f"/guest/{tok}").status_code, 200)
 
-    def test_reset_data_wipes_every_project_table_so_ids_start_clean(self):
+    def test_reset_data_wipes_every_project_table_and_keeps_ids_moving(self):
         import reset_data
         self.new_project(name="Demo", client="C", customer_approval="1")
         self._invite(1, "ann@acme.example", "Customer", "Ann")
@@ -1283,10 +1283,13 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 self.assertEqual(db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0], 0, t)
             self.assertEqual(db.execute("SELECT COUNT(*) FROM users").fetchone()[0], 2)      # admin + Ann kept
             self.assertGreater(db.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0], 0)
-        # the next project starts with a clean team, not the demo's
+            self.assertIsNotNone(db.execute("SELECT 1 FROM audit_logs WHERE action = 'reset_data'").fetchone())   # OPS-14
+        # the next project gets a new id (the kept audit log names the old one) and a clean team (OPS-6)
         self.new_project(name="Real", client="C")
         with self.raw_db() as db:
-            self.assertEqual([r[0] for r in db.execute("SELECT role FROM project_participants WHERE project_id=1")], ["Project manager"])
+            pid = db.execute("SELECT id FROM projects WHERE name = 'Real'").fetchone()["id"]
+            self.assertNotEqual(pid, 1)
+            self.assertEqual([r[0] for r in db.execute("SELECT role FROM project_participants WHERE project_id=?", (pid,))], ["Project manager"])
 
     @patch("graph.send_mail", return_value=(True, None))
     @patch("graph.send_teams_message", return_value=(True, None))
@@ -3164,6 +3167,55 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c.post(f"/projects/1/stages/{closed_id}/delete", headers=hj)
         with self.raw_db() as db:
             self.assertIsNone(db.execute("SELECT 1 FROM project_stages WHERE id = ?", (closed_id,)).fetchone())
+
+    def test_names_in_any_script_download_and_upload(self):
+        # test report FN-2 (a Chinese or Arabic project name hung the PDF and CSV) and FN-15 (upload names reduced to "pdf")
+        self.new_project(name="日本語プロジェクト", client="Globex")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        for url in ("/projects/1/report.pdf", "/projects/1/activity.csv"):
+            r = c.get(url)
+            self.assertEqual(r.status_code, 200, url)
+            r.headers["Content-Disposition"].encode("latin-1")   # a header must be Latin-1
+        c.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"%PDF-1.4 x"), "报告 final.pdf")}, headers=h)
+        doc = c.get("/api/projects/1").get_json()["documents"][0]
+        self.assertEqual(doc["filename"], "报告 final.pdf")
+        r = c.get(f"/projects/1/documents/{doc['id']}/download")
+        self.assertEqual(r.status_code, 200); self.assertIn("filename*=UTF-8''", r.headers["Content-Disposition"])
+
+    def test_the_server_refuses_data_the_pages_cannot_use(self):
+        # test report FN-3, FN-4, FN-5, FN-6, FN-9, FN-10, FN-11
+        self.new_project(name="Mine", client="Globex")
+        self.new_project(name="Other", client="Initech")
+        self._invite(2, "ann@initech.example", "Customer", "Ann")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        with self.raw_db() as db:
+            ann = db.execute("SELECT id FROM users WHERE email = 'ann@initech.example'").fetchone()["id"]
+        r = c.post("/projects/1/tasks", data={"title": "Bad", "due_date": "not-a-date"}, headers=h).get_json()
+        self.assertIn("Due date must be a date", " ".join(r["messages"]))
+        c.post("/projects/1/tasks", data={"title": "Outsider", "assignee_id": str(ann)}, headers=h)
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT assignee_id FROM tasks WHERE title = 'Outsider'").fetchone()["assignee_id"])
+            self.assertIsNone(db.execute("SELECT 1 FROM notifications WHERE user_id = ? AND project_id = 1", (ann,)).fetchone())
+        po = lambda: (io.BytesIO(b"%PDF-1.4 po"), "po.pdf")   # noqa: E731
+        for form, says in (({"name": " ", "client": "C"}, "name and client are required"),
+                           ({"name": "N", "client": "C", "delivery_mode": "Telepathy"}, "Pick a delivery mode"),
+                           ({"name": "N", "client": "C", "start_date": "2026-12-31", "target_end_date": "2026-10-01"}, "before the start date")):
+            r = c.post("/projects/new", data={**form, "po_document": po()}, headers=h).get_json()
+            self.assertIn(says, " ".join(r["messages"]), form)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0], 2)
+        # users: one account per address and per username (any case); unknown ids are 404s
+        col = self._make_user("col", "Member")
+        r = c.post(f"/users/{col}/email", data={"email": "ANN@initech.example"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["That address belongs to another account"])
+        r = c.post("/users", data={"username": "COL", "name": "Twin", "password": STRONG_PASSWORD}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Username already exists"])
+        r = c.post("/users", data={"username": " ", "name": "Blank", "password": STRONG_PASSWORD}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Username and name are required"])
+        for url in ("/users/9999/active", "/users/9999/reset-password", "/users/9999/email", "/users/9999/role"):
+            self.assertEqual(c.post(url, data={"active": "0", "new_password": STRONG_PASSWORD, "role": "Member"}, headers=h).status_code, 404, url)
 
     def test_staff_cannot_be_invited_as_the_customer(self):
         # test report SEC-1: the email invite skipped the rule participant_add enforces (system map #14)

@@ -341,6 +341,12 @@ def project_new():
             flash(f"Template '{template['name']}' has no stages yet")
             return redirect(url_for("project_new"))
 
+        if not request.form.get("name", "").strip() or not request.form.get("client", "").strip():
+            flash("Project name and client are required")   # test report FN-5: edit refused this, create did not
+            return redirect(url_for("project_new"))
+        if request.form.get("delivery_mode", DELIVERY_MODES[0]) not in DELIVERY_MODES:
+            flash("Pick a delivery mode")
+            return redirect(url_for("project_new"))
         if problem := _date_problem(request.form):
             flash(problem)
             return redirect(url_for("project_new"))
@@ -756,6 +762,9 @@ def _date_problem(form):
                 _date.fromisoformat(value)
             except ValueError:
                 return f"{label} must be a date (YYYY-MM-DD)"
+    start, end = (form.get("start_date") or "").strip(), (form.get("target_end_date") or "").strip()
+    if start and end and end < start:
+        return "The target end date is before the start date"
     return None
 
 
@@ -763,8 +772,11 @@ def save_document(project_id, file, category, uploaded_by):
     """Save an uploaded file to disk + documents table (+ OneDrive mirror if
     enabled). Assumes the caller already validated file/category — shared by
     the Documents panel upload and project creation's bundled PO upload."""
-    original_name = secure_filename(file.filename)
-    stored_name = f"{uuid.uuid4().hex}_{original_name}"
+    # the name people gave the file, in any script (secure_filename kept only ASCII:
+    # "日本語の報告.pdf" became "pdf"); on disk it is a random id with a plain extension
+    original_name = "".join(ch for ch in os.path.basename(file.filename.replace("\\", "/")) if ch.isprintable()).strip()[:200] or "document"
+    ext = os.path.splitext(original_name)[1].lower()
+    stored_name = uuid.uuid4().hex + (ext if ext[1:].isascii() and ext[1:].isalnum() else "")
     project_dir = os.path.join(UPLOAD_DIR, str(project_id))
     os.makedirs(project_dir, exist_ok=True)
     file.save(os.path.join(project_dir, stored_name))
@@ -780,7 +792,7 @@ def save_document(project_id, file, category, uploaded_by):
 
     if get_setting("onedrive_mirror_uploads_enabled") == "1":
         project = db.execute("SELECT name FROM projects WHERE id = ?", (project_id,)).fetchone()
-        remote_path = f"Odin-Documents/{project_id}-{secure_filename(project['name'])}/{category}/{original_name}"
+        remote_path = f"Odin-Documents/{project_id}-{secure_filename(project['name'])}/{category}/{secure_filename(original_name) or stored_name}"
         ok, error = graph.upload_file(os.path.join(project_dir, stored_name), remote_path)
         if not ok:
             print(f"[save_document] OneDrive mirror failed: {error}")
@@ -1284,6 +1296,28 @@ def _task_stage(project_id, requested):
     return requested if requested and requested in get_stage_names(project_id) else None
 
 
+def _assignee(db, project_id, raw):
+    """The assignee, or None: an active staff account (staff see every
+    project), or a partner on this project — never a partner from elsewhere,
+    who would be told the name of a project they cannot open (test report FN-4)."""
+    if not raw:
+        return None
+    ok = db.execute("SELECT 1 FROM users u WHERE u.id = ? AND u.active = 1 AND (u.kind = 'internal' OR EXISTS "
+                    "(SELECT 1 FROM project_participants pp WHERE pp.project_id = ? AND pp.user_id = u.id))", (raw, project_id)).fetchone()
+    return raw if ok else None
+
+
+def _due_problem(form):
+    """A due date the reports can do arithmetic on (test report FN-3)."""
+    from datetime import date as _date
+    value = (form.get("due_date") or "").strip()
+    try:
+        value and _date.fromisoformat(value)
+    except ValueError:
+        return "Due date must be a date (YYYY-MM-DD)"
+    return None
+
+
 @app.route("/projects/<int:project_id>/tasks", methods=["POST"])
 @permission_required("edit_project")
 @project_role_required("manage_tasks")
@@ -1295,11 +1329,9 @@ def task_add(project_id):
     title = (form.get("title") or "").strip()[:200]
     if not title:
         return _task_reply(project_id, "Task needs a title")
-    assignee_id = form.get("assignee_id") or None
-    # must be a real, still-active user: the dropdown only offers active ones,
-    # but a hand-crafted POST could name a deactivated account.
-    if assignee_id and not db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (assignee_id,)).fetchone():
-        assignee_id = None
+    assignee_id = _assignee(db, project_id, form.get("assignee_id"))
+    if problem := _due_problem(form):
+        return _task_reply(project_id, problem)
     cur = db.execute(
         "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (project_id, title, assignee_id, form.get("due_date") or None,
@@ -1363,11 +1395,9 @@ def task_edit(project_id, task_id):
     title = (form.get("title") or "").strip()[:200]
     if not title:
         return _task_reply(project_id, "Task needs a title")
-    assignee_id = form.get("assignee_id") or None
-    # must be a real, still-active user: the dropdown only offers active ones,
-    # but a hand-crafted POST could name a deactivated account.
-    if assignee_id and not db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (assignee_id,)).fetchone():
-        assignee_id = None
+    assignee_id = _assignee(db, project_id, form.get("assignee_id"))
+    if problem := _due_problem(form):
+        return _task_reply(project_id, problem)
     stage = _task_stage(project_id, form.get("stage")) if "stage" in form else task["stage"]
     db.execute(
         "UPDATE tasks SET title = ?, assignee_id = ?, due_date = ?, stage = ? WHERE id = ?",

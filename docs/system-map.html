@@ -479,7 +479,7 @@ details.change .also { margin: 6px 0 0 14px; display: flex; gap: 6px; flex-wrap:
 <!-- REPO-DATA:END -->
 <script>
 // ---------- what this map describes: bump on every update ----------
-const MAP_STAMP = { date: "2 Oct 2026" };   // the date the hand-written views were last reviewed
+const MAP_STAMP = { date: "3 Oct 2026" };   // the date the hand-written views were last reviewed
 
 // ---------- data: loopholes. A fixed one keeps its number: add fixed: "v1.x.y" ----------
 const LOOPS = [
@@ -755,7 +755,7 @@ const ARCH = {
   anyone: { kind: "People", title: "Anyone holding a link", text: "Legacy guest links (no sign-in at all), sign-up links for new colleagues, and password-reset links. Each is a secret in the web address.", points: ["Guest links never expire; an admin switch turns them all off", "Sign-up and reset links are single-use and expire"] },
   scripts: { kind: "Machines", title: "Scripts with an API token", text: "Read-only /api/v1 for other tools: projects, their stages and tasks, the latest saved report.", points: ["Token hashed at rest; 30, 90 or 365 days", "Never becomes a browser session"] },
   cf: { kind: "Edge", title: "Cloudflare", text: "DNS and TLS for odin.protect24x7.com, and the public end of the tunnel. Nothing is exposed on the office network; the VM makes an outbound connection only.", points: ["No Cloudflare Access (same as Zeus)", "No rate-limit rule on /login yet", "Access logs record full URLs"] },
-  vm: { kind: "Server", title: "Ubuntu VM 'odin' (192.168.1.237)", text: "Proxmox guest with a static address. Runs cloudflared as a system service and Docker Compose for Odin in /opt/odin, checked out at a release tag.", points: ["Updates: back up, check out the tag, rebuild, preflight", "SECRET_KEY lives in /opt/odin/.env and must stay stable"] },
+  vm: { kind: "Server", title: "Ubuntu VM 'odin' (192.168.1.237)", text: "Proxmox guest with a static address. Runs cloudflared as a system service and Docker Compose for Odin in /opt/odin, checked out at a release tag.", points: ["Updates: local backup, check out the tag, rebuild, wait for healthy + preflight", "SECRET_KEY lives in /opt/odin/.env and must stay stable"] },
   cloudflared: { kind: "Service", title: "cloudflared (tunnel)", text: "Runs on the host, not in Docker. Carries traffic from Cloudflare to nginx on 127.0.0.1:8080.", refs: ["systemd: cloudflared", "docker-compose.host-tunnel.yml"] },
   nginx: { kind: "Container", title: "nginx", text: "Listens on 127.0.0.1:8080 only. Passes the visitor's real address (CF-Connecting-IP), forces https, serves the legacy stylesheet and proxies everything else to the app.", refs: ["deploy/nginx.cloudflare.conf"] },
   app: { kind: "Container", title: "Odin app (gunicorn + Flask)", text: "Two workers × four threads. One application serves the React screens, the JSON API behind them, and the few pages still in Jinja (guest pages, the fallback sign-in form, the error page).", points: ["Every request: session age, idle time, account epoch; every change: CSRF token", "Decorators check the workspace permission, then the project role, then that the project is visible", "Every change writes an audit row (a test enforces it)"], refs: ["core.py", "routes/api.py", "spa.py", "security.py"] },
@@ -765,7 +765,7 @@ const ARCH = {
   entra: { kind: "External · not configured", title: "Microsoft sign-in (Entra)", text: "Its own app registration. Microsoft proves who someone is; Odin decides their role. A newcomer waits for an admin's approval.", refs: ["routes/sso.py"] },
   webhook: { kind: "External · optional", title: "Teams Workflows webhook", text: "A plain HTTPS post into a Teams channel. Works without Microsoft 365: stage changes, decisions and the weekly summary can arrive here today.", refs: ["graph.py:337"] },
   kibana: { kind: "External · optional", title: "Kibana dashboards", text: "Framed by the staff member's own browser on the Flow page; Odin only fills the project, client and PO into the address. Odin's server never talks to Kibana.", refs: ["routes/api.py:538"] },
-  offsite: { kind: "External · not set up", title: "Off-host backup copies", text: "OneDrive, a SharePoint site folder, or a network share mounted into the scheduler. Today backups stay on the VM only.", refs: ["backup.py"] },
+  offsite: { kind: "External · not set up", title: "Off-host backup copies", text: "OneDrive, a SharePoint site folder, or a network share mounted into the scheduler and the app. Each copy fails on its own; one backup runs at a time. Today backups stay on the VM only.", refs: ["backup.py"] },
 };
 (function arch() {
   const box = (...a) => nodeBox(...a);
@@ -1181,10 +1181,10 @@ let pickFolder = () => {};
     ${box(330, 40, 190, 84, `CI (${jobs} jobs)`, ["Python · front end", "UI suite · Docker boot"])}
     ${box(330, 150, 190, 64, "Golden screenshots", ["refreshed by a manual run"], "off")}
     ${box(560, 40, 160, 84, "Release tag", ["CI green on main:", "tagged v<VERSION>"])}
-    ${box(760, 40, 340, 64, "1 · New tag on main? Back up", ["git fetch (read-only deploy key) · backup.py"])}
+    ${box(760, 40, 340, 64, "1 · New tag on main? Back up", ["git fetch (read-only deploy key)", "backup.py --local in a one-off container"])}
     ${box(760, 118, 340, 64, "2 · Check out the tag", ["git checkout vX.Y.Z", "forward only; a failed tag is not retried"])}
     ${box(760, 196, 340, 64, "3 · Rebuild and restart", ["docker compose up -d --build", "Node builds the bundle, Python runs it"])}
-    ${box(760, 274, 340, 50, "4 · Preflight", ["docker compose exec -T app python preflight.py"])}
+    ${box(760, 274, 340, 50, "4 · Healthy, then preflight", ["Docker health (/healthz) · preflight.py (DB check)"])}
     ${box(760, 338, 340, 56, "Live: odin.protect24x7.com", ["through the Cloudflare tunnel"])}
     ${e("M145 124 V148", "accent", "aa")} ${e("M270 182 H300 V82 H328", "accent", "aa")} ${e("M520 82 H558", "accent", "aa")}
     ${e("M425 150 V126", "dash")} ${lab(436, 142, "commit the images")}
@@ -1196,13 +1196,13 @@ let pickFolder = () => {};
   $("#fetch-facts").innerHTML = [
     "The server holds a git clone in /opt/odin, checked out at a release tag, never at main.",
     "It reaches GitHub with its own read-only deploy key (odin-server) through the SSH alias github-odin. It can read the repository and nothing else.",
-    "Every five minutes a cron job (deploy/odin-update.sh, installed as ~/odin-update.sh) fetches main and its tags. When a newer release tag exists it backs up, checks the tag out, rebuilds and runs preflight; if any step fails it returns to the previous tag and does not retry the failed one. It logs to ~/odin-update.log.",
+    "Every five minutes a cron job (deploy/odin-update.sh, installed as ~/odin-update.sh) fetches main and its tags. When a newer release tag exists it takes a local backup in a one-off container (so it works even with the app down), checks the tag out, rebuilds, and waits until Docker reports the app healthy and preflight passes (including SQLite's integrity check); if any step fails it returns to the previous tag and does not retry the failed one. It refreshes itself only from a copy that parses, and deploy/test-odin-update.sh checks it in CI. It logs to ~/odin-update.log.",
     "Only tags reach production, and a tag exists only after the dev → main pull request was merged and CI passed on main (the Release workflow creates it). Merging the pull request is the go-ahead.",
     "The image is built on the server from the checked-out code: stage 1 (Node) builds the React bundle, stage 2 (Python) installs the pinned requirements and runs gunicorn as an unprivileged user.",
     "Secrets are not in the repository: SECRET_KEY and the compose overlay choice live in /opt/odin/.env.",
     "The app applies schema changes itself when it starts (new tables and columns only), so an update needs no separate migration step.",
   ].map((x) => `<li>${esc(x)}</li>`).join("");
-  $("#update-cmds").textContent = ["# cron: */5 * * * * $HOME/odin-update.sh >> $HOME/odin-update.log 2>&1", "cd /opt/odin && git fetch --tags origin main", "docker compose exec -T app python backup.py", "git checkout vX.Y.Z", "docker compose up -d --build", "docker compose exec -T app python preflight.py", "# see what it did: tail ~/odin-update.log"].join("\n");
+  $("#update-cmds").textContent = ["# cron: */5 * * * * $HOME/odin-update.sh >> $HOME/odin-update.log 2>&1", "cd /opt/odin && git fetch --tags origin main", "docker compose run --rm --no-deps -T app python backup.py --local", "git checkout vX.Y.Z", "docker compose up -d --build", "# until the app is healthy:", "docker compose exec -T app python preflight.py", "# see what it did: tail ~/odin-update.log"].join("\n");
   $("#rollback-cmds").textContent = ["# preferred: fix on dev, raise VERSION, merge again", "# by hand, holding the bad release back from the updater:", "echo vBAD > ~/.odin-update/failed", "git checkout vPREVIOUS && docker compose up -d --build", "# the database only gains tables and columns, so an older", "# release runs on it; restore the pre-update backup only", "# if the release changed data that must be undone"].join("\n");
   $("#env-table").innerHTML = `<thead><tr><th>Where</th><th>What for</th><th>Data</th></tr></thead><tbody>${[
     ["dev branch", "where every change lands; CI runs on each push", "—"],

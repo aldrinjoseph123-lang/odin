@@ -20,6 +20,7 @@ import graph
 from core import external_url
 from db import PROJECT_OPEN_SQL, get_db, get_setting
 from policies import local_today, policy
+from security import file_stem
 from services.alerts import build_alerts
 from services.dashboard import tasks_due_by
 from services import portfolio
@@ -80,7 +81,7 @@ def build():
             latest = db.execute("SELECT * FROM project_reports WHERE project_id = ? ORDER BY version DESC LIMIT 1", (p["id"],)).fetchone()
             if not latest:
                 continue
-            safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in p["name"])[:60]
+            safe = file_stem(p["name"])
             if latest["kind"] == "snapshot":
                 pdf = render(json.loads(latest["data"]), {"summary": latest["summary"], "next_steps": latest["next_steps"], "asks": latest["asks"]})
             else:   # an old plain-text version

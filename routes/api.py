@@ -15,7 +15,7 @@ from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
-from security import csrf_token, safe_csv_writer
+from security import csrf_token, file_stem, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline
 from services.audit import audit_log
@@ -408,7 +408,7 @@ def rollout_report_pdf(project_id):
     project, audience, words, data, _versions, row = _rollout_report(project_id, audience if audience in ("internal", "customer") else "internal", request.args.get("v", type=int))
     if data is None:
         abort(404)            # an old plain-text version has no PDF of this kind
-    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in project["name"])[:60]
+    safe = file_stem(project["name"])
     tag = f"-v{row['version']}" if row else ""
     name = f"{safe}-report{tag}{'-customer' if audience == 'customer' else ''}.pdf"
     return Response(render(data, words), mimetype="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
@@ -871,7 +871,7 @@ def project_activity_export(project_id):
     for r in rows:
         writer.writerow([r["timestamp"], r["username"], r["action"], ACTIVITY_LABELS.get(r["action"], r["action"].replace("_", " ")), r["details"] or ""])
     audit_log("export_project_activity", "project", project_id, project["name"], f"{len(rows)} rows")
-    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in project["name"])[:60] or "project"
+    safe = file_stem(project["name"])
     return Response(out.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": f"attachment; filename=odin-activity-{safe}.csv"})
 

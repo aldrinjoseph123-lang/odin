@@ -242,6 +242,14 @@ def reset_link_row(raw):
     return row
 
 
+def file_stem(name, fallback="project"):
+    """A project name as a download file name: ASCII letters, digits, - and _
+    only (HTTP headers carry Latin-1 at most; a Chinese or Arabic name hung the
+    download), at most 60 characters."""
+    stem = re.sub(r"-{2,}", "-", "".join(ch if ch.isascii() and (ch.isalnum() or ch in "-_") else "-" for ch in name or "")).strip("-")[:60]
+    return stem or fallback
+
+
 # Deliberately loose — one @, a dot in the domain, no whitespace. Enough to
 # catch fat-finger input; real deliverability is proven by the test-email button.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
