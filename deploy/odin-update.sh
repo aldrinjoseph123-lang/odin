@@ -7,7 +7,8 @@
 # exists once a pull request from dev was merged and CI passed on main (the
 # Release workflow creates it), so this never deploys untested code.
 #
-# Steps: back up, check out the tag, rebuild, preflight. If the rebuild or
+# Steps: back up, check out the tag, rebuild, then wait until the app is
+# healthy (it answers /healthz) and preflight passes. If the rebuild or
 # preflight fails it goes back to the previous tag and rebuilds that, and it
 # does not retry the failed tag (a newer one is tried when it appears).
 # The database only ever gains tables and columns, so the previous release
@@ -37,17 +38,24 @@ if [ "$current" != none ] && [ "$(printf '%s\n%s\n' "$current" "$target" | sort 
 fi
 
 log "update $current -> $target"
-if ! docker compose exec -T app python backup.py >/dev/null 2>&1; then
+# A one-off container, so the backup works while the app is down (after a
+# failed rollback), and local only: a network share is mounted in the
+# scheduler, not here.
+if ! docker compose run --rm --no-deps -T app python backup.py --local >/dev/null 2>&1; then
   log "backup failed: update skipped"; exit 1
 fi
 log "backup done"
+
+healthy() {   # Docker's own health check: the app answers /healthz
+  [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q app)" 2>/dev/null)" = healthy ]
+}
 
 deploy() {
   git checkout --quiet "$1" && docker compose up -d --build --quiet-pull >/dev/null 2>&1 || return 1
   # nginx's config is a file mounted from the checkout: recreate it so a changed config applies
   docker compose up -d --no-deps --force-recreate nginx >/dev/null 2>&1 || return 1
   i=0
-  until docker compose exec -T app python preflight.py >/dev/null 2>&1; do   # the app needs a moment after a restart
+  until healthy && docker compose exec -T app python preflight.py >/dev/null 2>&1; do   # the app needs a moment after a restart
     i=$((i + 1)); [ $i -ge 12 ] && return 1; sleep 10
   done
 }
@@ -55,7 +63,8 @@ deploy() {
 if deploy "$target"; then
   log "now on $target"
   rm -f "$STATE/failed"
-  cp deploy/odin-update.sh "$HOME/odin-update.sh.new" 2>/dev/null && chmod +x "$HOME/odin-update.sh.new" && mv "$HOME/odin-update.sh.new" "$HOME/odin-update.sh"
+  # refresh this script from the release, unless the new copy does not even parse
+  cp deploy/odin-update.sh "$HOME/odin-update.sh.new" 2>/dev/null && sh -n "$HOME/odin-update.sh.new" && chmod +x "$HOME/odin-update.sh.new" && mv "$HOME/odin-update.sh.new" "$HOME/odin-update.sh"
   docker image prune -f >/dev/null 2>&1
   exit 0
 fi

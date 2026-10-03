@@ -142,7 +142,17 @@ def _copy_share(zip_path, folder, keep_args, prune=True):
         return False, "no share folder set"
     if not os.path.isdir(folder):
         return False, f"{folder} is not mounted"
-    shutil.copy2(zip_path, os.path.join(folder, os.path.basename(zip_path)))
+    final = os.path.join(folder, os.path.basename(zip_path))
+    partial = os.path.join(folder, ".partial-" + os.path.basename(zip_path))
+    try:   # copy under a temporary name: a full share must not leave a half archive passing for that day's copy
+        shutil.copy2(zip_path, partial)
+        os.replace(partial, final)
+    except OSError as exc:
+        try:
+            os.remove(partial)
+        except OSError:
+            pass
+        return False, str(exc)
     names = os.listdir(folder)
     for name in (set(names) - retention_keep(names, *keep_args)) if prune else ():
         os.remove(os.path.join(folder, name))
@@ -161,9 +171,30 @@ def _copy_graph(zip_path, folder, drive, keep_args, prune=True):
     return True, None
 
 
-def run_backup(trigger="manual", actor=None):
+def run_backup(trigger="manual", actor=None, local_only=False):
     """Make, test, copy and prune one backup; record it. Returns (ok, message).
-    Works without an app context (the scheduler and cron call it)."""
+    Works without an app context (the scheduler and cron call it). One run at
+    a time across processes (a double-click on Back up now, the scheduler and
+    the updater); `local_only` skips the off-server copies (the updater's
+    pre-update backup, which may run where no share is mounted)."""
+    import fcntl
+    with open(os.path.join(_backup_dir(), ".lock"), "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False, "another backup is running; try again in a minute"
+        return _run_backup(trigger, actor, local_only)
+
+
+def _destination(name, copy):
+    """One off-server copy; a failure (even an exception) is that destination's, never the run's."""
+    try:
+        return (name, *copy())
+    except Exception as exc:  # noqa: BLE001
+        return name, False, str(exc)
+
+
+def _run_backup(trigger, actor, local_only):
     from policies import policy
     con = sqlite3.connect(_db.DB_PATH)
     con.row_factory = sqlite3.Row
@@ -196,13 +227,15 @@ def run_backup(trigger="manual", actor=None):
             ok = restore_ok
         destinations = [("local", True, None)]
         prune = restore_ok is not False   # a failed restore test must never push out older good copies, here or off the server
-        if p["dest_onedrive"]:
-            destinations.append(("OneDrive", *_copy_graph(zip_path, "Odin-Backups", "/me/drive", keep_args, prune)))
-        if p["dest_sharepoint"]:
+        def sharepoint():
             drive, error = graph.sharepoint_drive(p["sharepoint_site"]) if p["sharepoint_site"] else (None, "no SharePoint site set")
-            destinations.append(("SharePoint", *(_copy_graph(zip_path, p["sharepoint_folder"] or "Odin-Backups", drive, keep_args, prune) if drive else (False, error))))
-        if p["dest_share"]:
-            destinations.append(("network share", *_copy_share(zip_path, p["share_path"], keep_args, prune)))
+            return _copy_graph(zip_path, p["sharepoint_folder"] or "Odin-Backups", drive, keep_args, prune) if drive else (False, error)
+        if p["dest_onedrive"] and not local_only:
+            destinations.append(_destination("OneDrive", lambda: _copy_graph(zip_path, "Odin-Backups", "/me/drive", keep_args, prune)))
+        if p["dest_sharepoint"] and not local_only:
+            destinations.append(_destination("SharePoint", sharepoint))
+        if p["dest_share"] and not local_only:
+            destinations.append(_destination("network share", lambda: _copy_share(zip_path, p["share_path"], keep_args, prune)))
         if prune:
             _prune_local(keep_args)
         for name, done, error in destinations:
@@ -229,6 +262,7 @@ def run_backup(trigger="manual", actor=None):
 
 
 if __name__ == "__main__":
-    success, msg = run_backup(trigger="command line")
+    local = "--local" in sys.argv   # the updater: this server only
+    success, msg = run_backup(trigger="before update" if local else "command line", local_only=local)
     print(msg if success else f"Backup failed: {msg}", file=sys.stdout if success else sys.stderr)
     sys.exit(0 if success else 1)

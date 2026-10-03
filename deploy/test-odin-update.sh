@@ -1,0 +1,50 @@
+#!/bin/sh
+# Self-check for deploy/odin-update.sh, run by CI: a throw-away origin and
+# server checkout, with docker/flock/sleep stubbed on PATH (failures driven by
+# files in $CFG). Each scenario asserts where the server ends up.
+#
+#   sh deploy/test-odin-update.sh
+set -eu
+SRC=$(cd "$(dirname "$0")/.." && pwd)
+S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
+mkdir -p "$S/bin" "$S/home" "$S/cfg"
+export PATH="$S/bin:$PATH" HOME="$S/home" ODIN_DIR="$S/app" ODIN_UPDATE_STATE="$S/state" CFG="$S/cfg"
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+
+git init -q --bare -b main "$S/origin.git"; git clone -q "$S/origin.git" "$S/work" 2>/dev/null
+( cd "$S/work" && mkdir deploy && cp "$SRC/deploy/odin-update.sh" deploy/ && echo 1.0.0 > VERSION &&
+  git add -A && git commit -qm v1.0.0 && git tag v1.0.0 && git push -q origin main --tags )
+git clone -q "$S/origin.git" "$S/app" 2>/dev/null; ( cd "$S/app" && git checkout -q v1.0.0 )
+cp "$SRC/deploy/odin-update.sh" "$HOME/odin-update.sh"
+
+cat > "$S/bin/docker" <<'EOF'
+#!/bin/sh
+tag=$(git describe --tags --exact-match HEAD 2>/dev/null || echo none)
+case "$*" in
+  *"backup.py --local"*) [ ! -e "$CFG/backup_fail" ];;
+  *"up -d --build"*) ! grep -qx "$tag" "$CFG/build_fail" 2>/dev/null && rm -f "$CFG/app_down";;
+  *"ps -q app"*) [ -e "$CFG/app_down" ] || echo cid;;
+  *"inspect"*) [ -e "$CFG/app_down" ] && exit 1; grep -qx "$tag" "$CFG/unhealthy" 2>/dev/null && echo starting || echo healthy;;
+  *"preflight.py"*) ! grep -qx "$tag" "$CFG/preflight_fail" 2>/dev/null;;
+  *) true;;
+esac
+EOF
+printf '#!/bin/sh\nexit 0\n' > "$S/bin/sleep"
+printf '#!/bin/sh\nexit 0\n' > "$S/bin/flock"
+chmod +x "$S/bin/"*
+
+release() { ( cd "$S/work" && echo "${1#v}" > VERSION && git add -A && git commit -qm "$1" && git tag "$1" && git push -q origin main --tags ); }
+run() { sh "$HOME/odin-update.sh" >> "$S/log" 2>&1 || true; }
+on() { got=$(cd "$S/app" && git describe --tags --exact-match HEAD 2>/dev/null || echo none)
+       [ "$got" = "$1" ] || { echo "FAIL $2: on $got, expected $1"; cat "$S/log"; exit 1; }; echo "ok   $2"; }
+
+release v1.1.0; run;                                                    on v1.1.0 "a new tag deploys"
+release v1.2.0; echo v1.2.0 > "$CFG/build_fail"; run;                   on v1.1.0 "a failed build rolls back"
+release v1.3.0; echo v1.3.0 > "$CFG/unhealthy"; run;                    on v1.1.0 "an app that never turns healthy rolls back"
+release v1.3.1; touch "$CFG/backup_fail"; run;                          on v1.1.0 "no backup, no update"
+rm "$CFG/backup_fail"; run;                                             on v1.3.1 "the next run retries after the backup works"
+release v1.4.0; printf 'v1.4.0\nv1.3.1\n' > "$CFG/build_fail"; run
+touch "$CFG/app_down"; : > "$CFG/build_fail"
+release v1.4.1; run;                                                    on v1.4.1 "a fixed release recovers a server left down by a failed rollback"
+( cd "$S/work" && echo 'if then fi' >> deploy/odin-update.sh ); release v1.5.0; run
+release v1.6.0; run;                                                    on v1.6.0 "a release whose updater does not parse cannot break the next update"

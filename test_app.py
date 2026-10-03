@@ -3636,6 +3636,28 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         runs = c.get("/api/settings?section=backups").get_json()["backups"]["runs"]
         self.assertEqual([r["ok"] for r in runs], [False, True])
 
+    def test_a_failing_backup_destination_is_its_own_failure_and_runs_do_not_overlap(self):
+        # test report OPS-5, OPS-9, OPS-2
+        import backup, fcntl
+        share = tempfile.mkdtemp()
+        with self.raw_db() as db:
+            for k, v in (("dest_share", "1"), ("share_path", share), ("dest_onedrive", "1")):
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (f"policy.{k}", v))
+            db.commit()
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()), patch("backup._copy_graph", side_effect=RuntimeError("token expired")):
+            ok, message = backup.run_backup()
+            self.assertFalse(ok); self.assertIn("OneDrive failed: token expired", message)
+            self.assertEqual(len([f for f in os.listdir(share) if f.endswith(".zip")]), 1)   # the share still got its copy
+            with self.raw_db() as db:
+                self.assertIsNotNone(db.execute("SELECT size_bytes FROM backup_runs ORDER BY id DESC").fetchone()[0])   # the local copy is recorded
+            # the updater's backup stays on this server
+            ok, message = backup.run_backup(local_only=True)
+            self.assertTrue(ok, message); self.assertEqual(message, "local")
+            # one run at a time
+            with open(os.path.join(db_module.DATA_DIR, "backups", ".lock"), "w") as held:
+                fcntl.flock(held, fcntl.LOCK_EX)
+                self.assertEqual(backup.run_backup(), (False, "another backup is running; try again in a minute"))
+
     def test_weekly_report_goes_to_chosen_roles_with_pdfs_and_a_teams_summary(self):
         from services import weekly_report
         self.new_project(name="Late one", client="Acme", target_end_date="2020-01-01")

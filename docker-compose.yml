@@ -25,6 +25,8 @@ services:
       PMS_TRUST_PROXY: "1"  # honour X-Forwarded-* from nginx (see security.init_security)
     volumes:
       - odin-data:/data
+      # A backup share (see the scheduler below) goes here too: Back up now runs in this container.
+      # - /mnt/nas/odin:/mnt/backup-share
     expose:
       - "8000"
 
@@ -55,8 +57,8 @@ services:
       PYTHONUNBUFFERED: "1"   # job lines reach `docker compose logs scheduler` as they happen
     volumes:
       - odin-data:/data
-      # A NAS / file-server share for backups: mount it here and set
-      # Settings → Backups → Share folder path to /mnt/backup-share.
+      # A NAS / file-server share for backups: mount it here and in the app
+      # above, and set Settings → Backups → Share folder path to /mnt/backup-share.
       # - /mnt/nas/odin:/mnt/backup-share
     # The app creates and migrates the database on start; wait for it.
     depends_on:
