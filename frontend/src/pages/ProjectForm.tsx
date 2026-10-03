@@ -1,18 +1,17 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, postForm, projectForm, type ProjectFormData, type User } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
 const selectClass = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return <label className="grid gap-1 text-[12px] text-muted-foreground">{label}{hint && <span className="ml-1 text-[11.5px]">({hint})</span>}{children}</label>
+  return <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">{label}{hint && <span className="ml-1 text-[11.5px]">({hint})</span>}{children}</label>
 }
 
 export default function ProjectForm(_props: { user: User }) {
@@ -69,7 +68,7 @@ export default function ProjectForm(_props: { user: User }) {
     } catch (err) { setNotice(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
   }
 
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const editing = d.mode === "edit"
   const title = editing ? "Edit project" : d.mode === "duplicate" ? "Duplicate project" : "New project"
@@ -83,9 +82,10 @@ export default function ProjectForm(_props: { user: User }) {
       </div>
       {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-1.5 text-[12.5px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
 
-      <form onSubmit={submit} className="mt-4 grid max-w-3xl gap-4 lg:grid-cols-2">
-        <section className="grid content-start gap-3 panel p-4">
-          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Project</h3>
+      <p className="mt-3 text-[12px] text-muted-foreground">Fields marked * are required.</p>   {/* test report UX-26 */}
+      <form onSubmit={submit} className="mt-2 grid grid-cols-1 max-w-3xl gap-4 lg:grid-cols-2">
+        <section className="grid grid-cols-1 content-start gap-3 panel p-4">
+          <h2 data-n className="text-[12px] font-semibold text-nav-fg">Project</h2>
           <Field label="Project name *"><Input value={f.name} onChange={set("name")} required maxLength={200} aria-label="Project name" className="h-8 text-[13px]" /></Field>
           <Field label="Client *"><Input value={f.client} onChange={set("client")} required maxLength={200} aria-label="Client" className="h-8 text-[13px]" /></Field>
           {editing ? (
@@ -125,8 +125,8 @@ export default function ProjectForm(_props: { user: User }) {
           )}
         </section>
 
-        <section className="grid content-start gap-3 panel p-4">
-          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Commercial route and delivery</h3>
+        <section className="grid grid-cols-1 content-start gap-3 panel p-4">
+          <h2 data-n className="text-[12px] font-semibold text-nav-fg">Commercial route and delivery</h2>
           <Field label="Via *"><select value={f.via} onChange={set("via")} aria-label="Via" className={selectClass}>{d.via_options.map((v) => <option key={v}>{v}</option>)}</select></Field>
           {f.via === "Partner" ? (
             <>

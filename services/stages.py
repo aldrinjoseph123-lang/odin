@@ -18,6 +18,19 @@ def _table(scope):
     return SCOPES[scope]
 
 
+def _closes_unsigned(scope, scope_id, names):
+    """A stage-list edit must not close the project by making its current
+    stage the terminal one (system map: sign-off gate) — the same rule a
+    stage move obeys."""
+    if scope != "project" or not names:
+        return None
+    from services import signoff
+    project = get_db().execute("SELECT * FROM projects WHERE id = ?", (scope_id,)).fetchone()
+    if project is None or project["stage"] != names[-1] or names[-1] == list_stages(scope, scope_id)[-1]["name"]:
+        return None   # not in the new terminal stage, or the terminal stage is unchanged (closed before)
+    return signoff.gate(project, names[-1], terminal=names[-1])
+
+
 def list_stages(scope, scope_id):
     table, col = _table(scope)
     return get_db().execute(f"SELECT * FROM {table} WHERE {col} = ? ORDER BY position", (scope_id,)).fetchall()
@@ -77,6 +90,11 @@ def move_stage(scope, scope_id, stage_id, direction):
     if not 0 <= swap < len(stages):
         return None
     a, b = stages[index], stages[swap]
+    names = [s["name"] for s in stages]
+    names[index], names[swap] = names[swap], names[index]
+    refused = _closes_unsigned(scope, scope_id, names)
+    if refused:
+        return refused
     db.execute(f"UPDATE {table} SET position = ? WHERE id = ?", (b["position"], a["id"]))
     db.execute(f"UPDATE {table} SET position = ? WHERE id = ?", (a["position"], b["id"]))
     db.commit()
@@ -95,6 +113,9 @@ def delete_stage(scope, scope_id, stage_id):
         current = db.execute("SELECT stage FROM projects WHERE id = ?", (scope_id,)).fetchone()
         if current and current["stage"] == row["name"]:
             return f"Cannot delete '{row['name']}' — the project is in it"
+        refused = _closes_unsigned(scope, scope_id, [s["name"] for s in list_stages(scope, scope_id) if s["id"] != stage_id])
+        if refused:
+            return refused
     db.execute(f"DELETE FROM {table} WHERE id = ?", (stage_id,))
     if scope == "project":   # its tasks fall back to "current stage" rather than vanish
         db.execute("UPDATE tasks SET stage = NULL WHERE project_id = ? AND stage = ?", (scope_id, row["name"]))

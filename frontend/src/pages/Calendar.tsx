@@ -1,9 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { ArrowRight, CheckSquare, ChevronLeft, ChevronRight, ShieldCheck, Target } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlarmClock, ArrowRight, CheckSquare, ChevronLeft, ChevronRight, ShieldCheck, Target } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, calendar, type CalendarData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
@@ -32,13 +31,15 @@ function items(d: CalendarData, show: Show): Map<string, Item[]> {
 
 const ICON = { task: CheckSquare, target: Target, move: ArrowRight, approval: ShieldCheck }
 function Chip({ it, full }: { it: Item; full?: boolean }) {
-  const Icon = ICON[it.kind]
+  // late is a glyph and a word, not red alone (WCAG 1.4.1, test report UX-19)
+  const late = it.tone === "bad" && !it.done && (it.kind === "task" || it.kind === "target")
+  const Icon = late ? AlarmClock : ICON[it.kind]
   const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
   return (
-    <Link to={it.href} className={cn("flex min-w-0 items-start gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] leading-tight hover:bg-muted", full && "py-1.5 text-[12.5px]")} title={`${it.text}${it.sub ? ` — ${it.sub}` : ""}`}>
+    <Link to={it.href} className={cn("flex min-w-0 items-start gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] leading-tight hover:bg-muted", full && "py-1.5 text-[12.5px]")} title={`${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}`}>
       <Icon className={cn("mt-px h-3 w-3 shrink-0", tone)} aria-hidden />
       <span className="min-w-0">
-        <span className={cn("block truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}>{it.text}</span>
+        <span className={cn("block truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}>{late && <span className="sr-only">Late: </span>}{it.text}</span>
         {full && it.sub && <span className="block truncate text-muted-foreground">{it.sub}</span>}
       </span>
     </Link>
@@ -57,7 +58,7 @@ export function Calendar({ wide }: { wide: boolean }) {
   useEffect(() => { calendar(month).then((x) => { setD(x); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load the calendar")) }, [month])
   const weeks = useMemo(() => monthGrid(month), [month])
   const byDay = useMemo(() => (d ? items(d, show) : new Map<string, Item[]>()), [d, show])
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const today = d.today
   const inMonth = (day: string) => day.startsWith(month)
@@ -147,7 +148,7 @@ export function Calendar({ wide }: { wide: boolean }) {
             <h3 className="text-[13px] font-semibold">{fmtDate(openDay)} <span className="font-normal text-muted-foreground">· {open.length} item{open.length === 1 ? "" : "s"}</span></h3>
             <button type="button" onClick={() => setOpenDay(null)} className="text-[12px] text-muted-foreground hover:text-foreground">Close</button>
           </div>
-          <ul className="grid gap-x-6 md:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-x-6 md:grid-cols-2 xl:grid-cols-3">
             {open.map((it) => <li key={it.key}><Chip it={it} full /></li>)}
             {open.length === 0 && <li className="py-1 text-[13px] text-muted-foreground">Nothing on this day.</li>}
           </ul>

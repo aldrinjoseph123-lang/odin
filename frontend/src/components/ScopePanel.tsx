@@ -79,16 +79,16 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
       <Dialog open={edit !== null} onOpenChange={(o) => { if (!o) setEdit(null) }}>
         <DialogContent className="sm:max-w-lg">
           {edit && (
-            <form onSubmit={submit} className="grid gap-3">
+            <form onSubmit={submit} className="grid grid-cols-1 gap-3">
               <DialogHeader><DialogTitle>{edit.id ? "Scope item" : "Add to the scope"}</DialogTitle>
                 <DialogDescription>Before sign-off, mark each item delivered, partly delivered or descoped; the last two need a reason.</DialogDescription></DialogHeader>
-              <label className="grid gap-1 text-[12.5px] font-medium">Deliverable<input className={field} required maxLength={300} value={edit.title} onChange={(e) => set({ title: e.target.value })} autoFocus /></label>
-              <label className="grid gap-1 text-[12.5px] font-medium">Detail<textarea rows={2} maxLength={2000} className="w-full rounded-md border border-input bg-background p-2 text-[13px]" value={edit.detail ?? ""} onChange={(e) => set({ detail: e.target.value })} placeholder="Quantities, sites, acceptance criteria" /></label>
+              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Deliverable<input className={field} required maxLength={300} value={edit.title} onChange={(e) => set({ title: e.target.value })} autoFocus /></label>
+              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Detail<textarea rows={2} maxLength={2000} className="w-full rounded-md border border-input bg-background p-2 text-[13px]" value={edit.detail ?? ""} onChange={(e) => set({ detail: e.target.value })} placeholder="Quantities, sites, acceptance criteria" /></label>
               <div className="flex rounded-full bg-muted p-0.5" role="radiogroup" aria-label="Status">
                 {(Object.keys(SCOPE_WORD) as ScopeStatus[]).map((s) => <button key={s} type="button" role="radio" aria-checked={edit.status === s} onClick={() => set({ status: s })}
                   className={cn("h-7 flex-1 rounded-full text-[12px]", edit.status === s ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{SCOPE_WORD[s]}</button>)}
               </div>
-              <label className="grid gap-1 text-[12.5px] font-medium">{edit.status === "descoped" ? "Why it was descoped" : edit.status === "partial" ? "What was left out, and why" : "Note"}
+              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">{edit.status === "descoped" ? "Why it was descoped" : edit.status === "partial" ? "What was left out, and why" : "Note"}
                 <input className={field} maxLength={1000} required={edit.status === "partial" || edit.status === "descoped"} value={edit.note ?? ""} onChange={(e) => set({ note: e.target.value })} /></label>
               {error && <p className="text-[12.5px] text-bad" role="alert">{error}</p>}
               <div className="flex gap-2">

@@ -5,10 +5,16 @@ A saved report is lines of text: "# " headings, "- " list items, paragraphs
 Helvetica fonts: wrapped by measured width, bold headings, bulleted items,
 new pages as needed, a title and a footer line on every page.
 
-Ceiling: the standard fonts cover Western European text (Windows-1252).
-Anything outside it (Arabic, CJK, emoji) prints as "?" — fine for delivery
-reports written in English; an embedded TrueType font is the upgrade path.
+Text Helvetica cannot print (beyond Windows-1252) is set in embedded Noto
+Sans: Latin, Greek, Cyrillic and Arabic, the Arabic joined from Unicode's
+presentation forms and laid right to left (services/fonts, built by
+scripts/build_pdf_fonts.py). Ceiling: Chinese, Japanese, Korean and emoji
+still print as "?" (those fonts run to megabytes).
 """
+import json
+import os
+import unicodedata
+import zlib
 
 # Helvetica advance widths (1/1000 em) for the printable ASCII range 32..126;
 # anything else is measured as a typical lowercase letter.
@@ -20,8 +26,162 @@ PAGE_W, PAGE_H, MARGIN = 595, 842, 56
 
 
 def _width(text, size, bold=False):
+    if not _plain(text):
+        return sum(adv for _, glyphs in _segments(text, bold) for _, adv, _ in glyphs) * size / 1000
     w = sum(_W[ord(c) - 32] if 32 <= ord(c) <= 126 else 556 for c in text)
     return w * size / 1000 * (1.06 if bold else 1)
+
+
+# ---- text beyond Windows-1252: the embedded Noto fonts ----------------------
+
+_FONTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+_LATIN, _ARABIC = ("NotoSans-Regular.ttf", "NotoSans-Bold.ttf"), ("NotoSansArabic-Regular.ttf", "NotoSansArabic-Bold.ttf")
+_FONT_ORDER = _LATIN + _ARABIC
+_cache = {}
+
+
+def _metrics():
+    if "m" not in _cache:
+        with open(os.path.join(_FONTS, "metrics.json")) as fh:
+            raw = json.load(fh)
+        _cache["m"] = {name: {**m, "chars": {int(k): v for k, v in m["chars"].items()}} for name, m in raw.items()}
+    return _cache["m"]
+
+
+def _plain(text):
+    try:
+        text.encode("cp1252")
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+def _is_arabic(c):
+    o = ord(c)
+    return 0x600 <= o <= 0x6FF or 0x750 <= o <= 0x77F or 0x8A0 <= o <= 0x8FF or 0xFB50 <= o <= 0xFDFF or 0xFE70 <= o <= 0xFEFF
+
+
+_ALEFS = ("\u0622", "\u0623", "\u0625", "\u0627")
+
+
+def _forms():
+    """{(letter or lam+alef, "isolated"|"final"|"initial"|"medial"): presentation form},
+    read from Unicode's own decompositions — the joining table, no library."""
+    if "forms" not in _cache:
+        forms = {}
+        for o in range(0xFB50, 0xFF00):
+            parts = unicodedata.decomposition(chr(o)).split()
+            if len(parts) >= 2 and parts[0] in ("<isolated>", "<final>", "<initial>", "<medial>"):
+                base = "".join(chr(int(h, 16)) for h in parts[1:])
+                if len(base) == 1 or (base[0] == "\u0644" and base[1:] in _ALEFS):   # letters, and the one required ligature
+                    forms.setdefault((base, parts[0][1:-1]), chr(o))
+        _cache["forms"] = forms
+    return _cache["forms"]
+
+
+def _shape(run):
+    """An Arabic run in logical order → its presentation forms in visual
+    (left-to-right drawing) order: each letter joined to its neighbours."""
+    forms, out, i = _forms(), [], 0
+    has = lambda c, f: (c, f) in forms   # noqa: E731
+    forward = lambda c: has(c, "initial") or has(c, "medial")   # noqa: E731 — dual-joining: connects to the next letter
+    marks = lambda j: unicodedata.category(run[j]) == "Mn"   # noqa: E731
+    letters = [j for j in range(len(run)) if not marks(j)]
+    for k, j in enumerate(letters):
+        if i > j:
+            continue
+        c = run[j]
+        prev = run[letters[k - 1]] if k and letters[k - 1] < j else None
+        after = letters[k + 1] if k + 1 < len(letters) else None
+        nxt = run[after] if after is not None else None
+        back = prev is not None and forward(prev) and has(c, "final")
+        if c == "\u0644" and nxt in _ALEFS and has(c + nxt, "isolated"):   # lam + alef: one ligature
+            out.append(forms[(c + nxt, "final" if back else "isolated")])
+            out.extend(run[m] for m in range(j + 1, after) if marks(m))
+            i = after + 1
+            continue
+        ahead = nxt is not None and forward(c) and has(nxt, "final")
+        form = "medial" if back and ahead else "final" if back else "initial" if ahead else "isolated"
+        out.append(forms.get((c, form)) or forms.get((c, "isolated")) or c)
+        out.extend(run[m] for m in range(j + 1, after if after is not None else len(run)) if marks(m))
+        i = j + 1
+    return "".join(reversed(out))
+
+
+def _segments(text, bold):
+    """[(font file, [(glyph id, advance, char)])] in drawing order: runs of
+    Arabic shaped and reversed, the rest left to right; each character from
+    the font that has it, "?" when none does."""
+    m = _metrics()
+    latin, arabic = _LATIN[bold], _ARABIC[bold]
+    kinds = ["R" if _is_arabic(c) and unicodedata.category(c) != "Nd" else "L" for c in text]
+    for i, c in enumerate(text):   # a space between two Arabic words stays in the Arabic run
+        if c == " " and 0 < i < len(text) - 1 and kinds[i - 1] == "R" and "R" in kinds[i + 1:i + 2]:
+            kinds[i] = "R"
+    runs, start = [], 0
+    for i in range(1, len(text) + 1):
+        if i == len(text) or kinds[i] != kinds[start]:
+            runs.append((kinds[start], text[start:i]))
+            start = i
+    out = []
+    for kind, run in runs:
+        for c in (_shape(run) if kind == "R" else run):
+            for name in ((arabic, latin) if _is_arabic(c) else (latin, arabic)):
+                g = m[name]["chars"].get(ord(c))
+                if g:
+                    break
+            else:
+                name, g = latin, m[latin]["chars"][ord("?")]
+            if out and out[-1][0] == name:
+                out[-1][1].append((g[0], g[1], c))
+            else:
+                out.append((name, [(g[0], g[1], c)]))
+    return out
+
+
+def _show(s, size, bold, used):
+    """The text operators for `s` at the current position: Helvetica for
+    Windows-1252, else the Noto glyphs (noted in `used` for embedding)."""
+    if _plain(s):
+        return b"/F%d %s Tf (" % (2 if bold else 1, b"%g" % size) + _esc(s) + b") Tj"
+    ops = []
+    for name, glyphs in _segments(s, bold):
+        n = _FONT_ORDER.index(name)
+        used.setdefault(name, {}).update({g: (adv, c) for g, adv, c in glyphs})
+        ops.append(b"/U%d %s Tf <" % (n, b"%g" % size) + b"".join(b"%04x" % g for g, _, _ in glyphs) + b"> Tj")
+    return b" ".join(ops)
+
+
+def _embed(used, objects):
+    """Append the objects for every Noto font `used` names; returns the font
+    resource entries (b"/U0 n 0 R ...")."""
+    entries = []
+    for name, glyphs in sorted(used.items()):
+        m = _metrics()[name]
+        with open(os.path.join(_FONTS, name), "rb") as fh:
+            raw = fh.read()
+        packed = zlib.compress(raw)
+        objects.append(b"<< /Length %d /Length1 %d /Filter /FlateDecode >>\nstream\n" % (len(packed), len(raw)) + packed + b"\nendstream")
+        file_id = len(objects)
+        base = m["name"].encode("ascii", "replace")
+        objects.append(b"<< /Type /FontDescriptor /FontName /%s /Flags 32 /FontBBox [%d %d %d %d] /ItalicAngle 0 /Ascent %d /Descent %d /CapHeight %d /StemV 80 /FontFile2 %d 0 R >>"
+                       % (base, *m["bbox"], m["ascent"], m["descent"], m["cap"], file_id))
+        desc_id = len(objects)
+        widths = b" ".join(b"%d [%d]" % (g, adv) for g, (adv, _) in sorted(glyphs.items()))
+        objects.append(b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /%s /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+                       b"/FontDescriptor %d 0 R /CIDToGIDMap /Identity /W [%s] >>" % (base, desc_id, widths))
+        cid_id = len(objects)
+        # copy and search read the presentation forms back as their letters
+        pairs = b"\n".join(b"<%04x> <%s>" % (g, "".join("%04x" % ord(x) for x in unicodedata.normalize("NFKC", c)).encode())
+                            for g, (_, c) in sorted(glyphs.items()))
+        cmap = (b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def "
+                b"/CMapName /Adobe-Identity-UCS def /CMapType 2 def 1 begincodespacerange <0000> <ffff> endcodespacerange\n%d beginbfchar\n" % len(glyphs)
+                + pairs + b"\nendbfchar endcmap CMapName currentdict /CMap defineresource pop end end")
+        objects.append(b"<< /Length %d >>\nstream\n" % len(cmap) + cmap + b"\nendstream")
+        objects.append(b"<< /Type /Font /Subtype /Type0 /BaseFont /%s /Encoding /Identity-H /DescendantFonts [%d 0 R] /ToUnicode %d 0 R >>"
+                       % (base, cid_id, len(objects)))
+        entries.append(b"/U%d %d 0 R" % (_FONT_ORDER.index(name), len(objects)))
+    return b" ".join(entries)
 
 
 def _wrap(text, size, width, bold=False):
@@ -43,10 +203,10 @@ def _esc(text):
 
 def report_pdf(title, lines, footer=""):
     """PDF bytes for a titled report of text lines ("# " heading, "- " item)."""
-    pages, ops, y = [], [], PAGE_H - MARGIN
+    pages, ops, y, used = [], [], PAGE_H - MARGIN, {}
 
     def text(x, size, bold, s):
-        ops.append(b"BT /F%d %d Tf %d %d Td (" % (2 if bold else 1, size, x, int(y)) + _esc(s) + b") Tj ET")
+        ops.append(b"BT %d %d Td " % (x, int(y)) + _show(s, size, bold, used) + b" ET")
 
     def new_page():
         nonlocal ops, y
@@ -93,13 +253,15 @@ def report_pdf(title, lines, footer=""):
     kids = []
     for n, page_ops in enumerate(pages, 1):
         foot = f"{footer}  ·  page {n} of {len(pages)}".strip(" ·") if footer else f"page {n} of {len(pages)}"
-        page_ops = page_ops + [b"BT /F1 8 Tf %d %d Td (" % (MARGIN, MARGIN - 24) + _esc(foot) + b") Tj ET"]
+        page_ops = page_ops + [b"BT %d %d Td " % (MARGIN, MARGIN - 24) + _show(foot, 8, False, used) + b" ET"]
         stream = b"\n".join(page_ops)
         objects.append(b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream")
         content_id = len(objects)
-        objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents %d 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>"
+        objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents %d 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R FONTS >> >> >>"
                        % (PAGE_W, PAGE_H, content_id))
         kids.append(len(objects))
+    fonts = _embed(used, objects)
+    objects = [o.replace(b"FONTS >>", fonts + b" >>") if o and o.startswith(b"<< /Type /Page ") else o for o in objects]
     objects[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
     objects[1] = b"<< /Type /Pages /Kids [" + b" ".join(b"%d 0 R" % k for k in kids) + b"] /Count %d >>" % len(kids)
 
@@ -226,6 +388,7 @@ class Canvas:
         self.pages = []
         self.ops = None
         self.images = []   # Image objects; every page may draw any of them
+        self.used = {}     # Noto glyphs drawn, by font file (text beyond Windows-1252)
 
     def image(self, img, x, y, w, h):
         """Draw `img` into the box, keeping its proportions, centred vertically, left-aligned."""
@@ -243,7 +406,7 @@ class Canvas:
     def text(self, x, y, s, size=10, bold=False, color=(16, 17, 20)):
         """Text with its baseline `size` points below y (y is the line's top)."""
         s = str(s).translate(_TRANSLATE)
-        self.ops.append(_rgb(color) + b" rg BT /F%d %.1f Tf %.1f %.1f Td (" % (2 if bold else 1, size, x, self.H - y - size * 0.82) + _esc(s) + b") Tj ET")
+        self.ops.append(_rgb(color) + b" rg BT %.1f %.1f Td " % (x, self.H - y - size * 0.82) + _show(s, size, bold, self.used) + b" ET")
 
     def rect(self, x, y, w, h, fill=None, stroke=None, width=0.8):
         if w <= 0 or h <= 0:
@@ -297,12 +460,14 @@ class Canvas:
         kids = []
         for n, ops in enumerate(self.pages, 1):
             foot = f"{footer}  \u00b7  page {n} of {len(self.pages)}" if footer else f"page {n} of {len(self.pages)}"
-            stream = b"\n".join(ops + [b"0.42 0.45 0.5 rg BT /F1 7.5 Tf %d %d Td (" % (MARGIN - 16, 22) + _esc(foot) + b") Tj ET"])
+            stream = b"\n".join(ops + [b"0.42 0.45 0.5 rg BT %d %d Td " % (MARGIN - 16, 22) + _show(foot, 7.5, False, self.used) + b" ET"])
             objects.append(b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream")
             content_id = len(objects)
-            objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents %d 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >>%s >> >>"
+            objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents %d 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R FONTS >>%s >> >>"
                            % (PAGE_W, PAGE_H, content_id, xres))
             kids.append(len(objects))
+        fonts = _embed(self.used, objects)
+        objects = [o.replace(b"FONTS >>", fonts + b" >>") if o and o.startswith(b"<< /Type /Page ") else o for o in objects]
         objects[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
         objects[1] = b"<< /Type /Pages /Kids [" + b" ".join(b"%d 0 R" % k for k in kids) + b"] /Count %d >>" % len(kids)
         out, offsets = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"), []

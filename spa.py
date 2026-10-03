@@ -27,7 +27,11 @@ def spa_serves(endpoint):
 
 
 def spa_index():
-    response = send_from_directory(current_app.config.get("SPA_DIST", DIST_DIR), "index.html")
+    from security import csp_nonce
+    with open(os.path.join(current_app.config.get("SPA_DIST", DIST_DIR), "index.html"), encoding="utf-8") as fh:
+        html = fh.read()
+    # the theme snippet runs before first paint: it carries this response's CSP nonce
+    response = current_app.response_class(html.replace("<script>", f'<script nonce="{csp_nonce()}">'), mimetype="text/html")
     # The shell is tiny and must never be cached: it names hashed asset files
     # that change on every build.
     response.headers["Cache-Control"] = "no-store"

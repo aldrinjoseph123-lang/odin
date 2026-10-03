@@ -13,7 +13,7 @@ from core import admin_required, app, external_url, login_required, permission_r
 from db import get_db, get_setting
 from routes.projects import load_project, save_document
 from policies import policy
-from security import content_matches_extension, issue_login_link, upload_problem
+from security import content_matches_extension, file_stem, issue_login_link, upload_problem
 from services import signoff
 from services.audit import audit_log
 from services.notifications import notify_users
@@ -335,6 +335,6 @@ def signoff_pdf(project_id):
     row = signoff.get(project_id, v) if v else signoff.latest(project_id)
     if row is None:
         abort(404)
-    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in project["name"])[:60]
+    safe = file_stem(project["name"])
     return Response(render(signoff.view(row, _staff())), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{safe}-signoff-v{row["version"]}.pdf"'})

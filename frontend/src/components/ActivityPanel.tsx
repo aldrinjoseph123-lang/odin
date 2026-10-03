@@ -11,8 +11,8 @@ export function ActivityPanel({ a, note }: { a: Activity; note?: string }) {
   const tiles = [{ label: "Today", value: a.today }, { label: "Last 7 days", value: a.week }, { label: "Last 30 days", value: a.month }]
   return (
     <section className="panel p-4" aria-label="Time on Odin">
-      <h3 data-n className="mb-3 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" aria-hidden /> Time on Odin
-        <span className="ml-1 font-normal text-muted-foreground">active minutes only</span></h3>
+      <h2 data-n className="mb-3 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" aria-hidden /> Time on Odin
+        <span className="ml-1 font-normal text-muted-foreground">active minutes only</span></h2>
       <div className="grid grid-cols-3 gap-3">
         {tiles.map((t) => (
           <div key={t.label} className="rounded-xl bg-muted/50 p-3">

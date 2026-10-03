@@ -72,6 +72,20 @@ def _data_dir():
     return True, f"{DATA_DIR} (source dir — fine for a VM, set ODIN_DATA_DIR in containers)"
 
 
+@check("Database opens and passes SQLite's quick check")
+def _database():
+    from db import DB_PATH
+    if not os.path.exists(DB_PATH):
+        return True, "no database yet — created on first boot"
+    try:
+        db = sqlite3.connect(DB_PATH)
+        result = db.execute("PRAGMA quick_check").fetchone()[0]
+        db.close()
+    except sqlite3.Error as exc:
+        return False, f"cannot read {DB_PATH}: {exc} — restore the last good backup"
+    return (True, "ok") if result == "ok" else (False, f"damaged: {result} — restore the last good backup")
+
+
 @check("Debug mode off")
 def _debug():
     if os.environ.get("FLASK_DEBUG") or os.environ.get("FLASK_ENV") == "development":

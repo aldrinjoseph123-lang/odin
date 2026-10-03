@@ -15,6 +15,18 @@ from security import password_problem, valid_email, safe_csv_writer
 from services.audit import audit_log
 
 
+def _email_taken(db, email, user_id=None):
+    """Email lookups (invites, sign-in links, password resets) need one account per address (test report FN-6)."""
+    return db.execute("SELECT 1 FROM users WHERE lower(email) = lower(?) AND id != ?", (email, user_id or 0)).fetchone() is not None
+
+
+def _user_or_404(db, user_id):
+    user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if user is None:
+        abort(404)
+    return user
+
+
 @app.route("/users", methods=["GET", "POST"])
 @permission_required("manage_users")
 def users():
@@ -29,12 +41,16 @@ def users():
         role = request.form.get("role", "Member")
         if role not in ROLES or role == "External":   # staff accounts; partners are invited to a project instead
             role = "Member"
-        existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+        existing = db.execute("SELECT id FROM users WHERE lower(username) = lower(?)", (username,)).fetchone()   # "Pm1" is "pm1"
         problem = password_problem(password)
-        if existing:
+        if not username or not name:
+            flash("Username and name are required")
+        elif existing:
             flash("Username already exists")
         elif email and not valid_email(email):
             flash("Enter a valid email address")
+        elif email and _email_taken(db, email):
+            flash("That address belongs to another account")
         elif problem:
             flash(problem)
         else:
@@ -84,7 +100,7 @@ def user_set_role(user_id):
         flash("You cannot remove your own Admin role")
         return redirect(url_for("users"))
     db = get_db()
-    user = db.execute("SELECT username, kind FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = _user_or_404(db, user_id)
     if user is None:
         abort(404)
     if (role == "External") != (user["kind"] == "external"):
@@ -107,7 +123,7 @@ def user_set_active(user_id):
         return redirect(url_for("users"))
     active = 1 if request.form.get("active") == "1" else 0
     db = get_db()
-    user = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = _user_or_404(db, user_id)
     # Bumping the epoch ends any session this user currently has open.
     db.execute("UPDATE users SET active = ?, session_epoch = session_epoch + 1 WHERE id = ?", (active, user_id))
     db.commit()
@@ -119,7 +135,7 @@ def user_set_active(user_id):
 @app.route("/users/<int:user_id>/reset-password", methods=["POST"])
 @permission_required("manage_users")
 def user_reset_password(user_id):
-    if get_db().execute("SELECT kind FROM users WHERE id = ?", (user_id,)).fetchone()["kind"] == "external":
+    if _user_or_404(get_db(), user_id)["kind"] == "external":
         flash("External accounts sign in by email link — nothing to reset")
         return redirect(url_for("users"))
     new_password = request.form.get("new_password", "")
@@ -149,7 +165,10 @@ def user_set_email(user_id):
         flash("Enter a valid email address")
         return redirect(url_for("users"))
     db = get_db()
-    user = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = _user_or_404(db, user_id)
+    if email and _email_taken(db, email, user_id):
+        flash("That address belongs to another account")
+        return redirect(url_for("users"))
     db.execute("UPDATE users SET email = ? WHERE id = ?", (email or None, user_id))
     db.commit()
     audit_log("set_user_email", "user", user_id, user["username"] if user else None)

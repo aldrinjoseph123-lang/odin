@@ -8,7 +8,7 @@ import io
 import sqlite3
 from datetime import datetime
 
-from flask import Response, abort, flash, redirect, render_template, request, url_for
+from flask import Response, abort, flash, redirect, render_template, request, session, url_for
 from markupsafe import Markup
 
 import graph
@@ -216,6 +216,19 @@ def settings_policies(area):
         flash("Not saved. " + "; ".join(errors))
     elif changed:
         audit_log("update_policies", "settings", None, area, ", ".join(changed))
+        if any(c.startswith("mfa_required=") for c in changed):
+            # test report SEC-6: sessions begun before the rule kept working; end
+            # those of everyone the rule now covers who has not set it up, so their
+            # next sign-in goes through the setup gate
+            from policies import policy
+            db = get_db()
+            rule = policy("mfa_required")
+            if rule != "off":
+                n = db.execute("UPDATE users SET session_epoch = session_epoch + 1 WHERE kind = 'internal' AND totp_enabled_at IS NULL AND id != ?"
+                               + ("" if rule == "everyone" else " AND role = 'Admin'"), (session["user_id"],)).rowcount
+                db.commit()
+                if n:
+                    audit_log("end_sessions_for_two_step", "settings", None, area, f"{n} account(s) must set up two-step sign-in")
         flash("Saved")
     else:
         flash("Nothing changed")

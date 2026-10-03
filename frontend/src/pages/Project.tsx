@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { useParams } from "react-router-dom"
 import { Copy, Trash2 } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserAvatar } from "@/components/UserAvatar"
 import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -14,7 +13,7 @@ import { ScopePanel } from "@/components/ScopePanel"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const fmtDate = (iso: string) => fmtWhen(iso)
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
@@ -27,7 +26,7 @@ const LABELS: Record<string, string> = {
 function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
   return (
     <section id={id} className="panel p-4">
-      <h3 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h3>
+      <h2 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="sr-only">, </span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h2>
       {children}
     </section>
   )
@@ -49,7 +48,7 @@ export default function Project(_props: { user: User }) {
     } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This project does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the project") }
   }, [id])
   useEffect(() => { void reload() }, [reload])
-  useEffect(() => { if (x) document.title = `${x.name} · Odin` }, [x])
+  useEffect(() => { document.title = x ? `${x.name} · Odin` : error ? "Project not found · Odin" : "Project · Odin" }, [x, error])
 
   // one door for every form post: show what Flask said, then refetch
   async function send(path: string, fields: Record<string, string> | FormData = {}, confirmText?: string): Promise<FormReply | null> {
@@ -68,7 +67,7 @@ export default function Project(_props: { user: User }) {
     await send(notice.undo)
   }
 
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} back={error === "This project does not exist, or you are not on it." ? { href: "/projects", label: "All projects" } : undefined} />
   if (!d || !x) return <PageSkeleton />
   const can = x.can
 
@@ -95,7 +94,7 @@ export default function Project(_props: { user: User }) {
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
       <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
 
-      <div className="grid gap-4 px-5 pb-6 lg:grid-cols-2 [&>*]:min-w-0">
+      <div className="grid grid-cols-1 gap-4 px-5 pb-6 lg:grid-cols-2 [&>*]:min-w-0">
         <div className="lg:col-span-2"><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} /></Panel></div>
         <div className="lg:col-span-2"><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} /></Panel></div>
         <div className="lg:col-span-2"><Panel title="Scope and sign-off" hint="what was agreed, what was delivered, and the customer's signature" id="scope"><ScopePanel projectId={id} signoff={d.signoff} /></Panel></div>
@@ -118,7 +117,7 @@ export default function Project(_props: { user: User }) {
 
         <Panel title="Notes" hint={`${x.notes.length}`}>
           {can.note && <NoteForm busy={busy} people={x.participants.filter((m) => m.active).map((m) => m.name)} onSubmit={(note) => send(`/projects/${id}/note`, { note })} />}
-          <ul className="mt-3 grid gap-2">
+          <ul className="mt-3 grid grid-cols-1 gap-2">
             {x.notes.map((n) => <NoteRow key={`${n.id}:${n.note}`} n={n} busy={busy}
               onEdit={(text) => send(`/projects/${id}/notes/${n.id}/edit`, { note: text })}
               onDelete={() => send(`/projects/${id}/notes/${n.id}/delete`, {}, "Delete this note?")} />)}
@@ -127,7 +126,7 @@ export default function Project(_props: { user: User }) {
         </Panel>
 
         <Panel title="Team" hint="who is on this project, and as what" id="team">
-          <ul className="grid gap-1.5">
+          <ul className="grid grid-cols-1 gap-1.5">
             {x.participants.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-[13px]">
                 <UserAvatar name={m.name} url={m.avatar_url} />
@@ -141,7 +140,7 @@ export default function Project(_props: { user: User }) {
             ))}
           </ul>
           {can.manage && (
-            <div className="mt-3 grid gap-2 border-t border-border pt-3">
+            <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border pt-3">
               <TeamAddForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/add`, f)} />
               <InviteForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/invite`, f)} />
               <p className="text-[11.5px] text-muted-foreground">The owner is the project manager; change it on Edit. Invited people get a one-time sign-in link and see only their projects.</p>
@@ -158,7 +157,7 @@ export default function Project(_props: { user: User }) {
 
         <Panel title="Documents" hint={`${x.documents.length}`}>
           {can.docs && <UploadForm x={x} busy={busy} onSubmit={(fd) => send(`/projects/${id}/documents`, fd)} />}
-          <ul className="mt-3 grid gap-1.5">
+          <ul className="mt-3 grid grid-cols-1 gap-1.5">
             {x.documents.map((doc) => (
               <li key={doc.id} className="flex items-center gap-3 text-[13px]">
                 <span className="w-28 shrink-0 truncate text-[12px] text-muted-foreground">{doc.category}</span>
@@ -174,7 +173,7 @@ export default function Project(_props: { user: User }) {
         {activity.length > 0 && (
           <Panel title="Activity" hint="everything recorded on this project, newest first">
             <a href={`/projects/${id}/activity.csv`} className="mb-2 inline-block text-[12px] text-primary-text hover:underline">Export CSV</a>
-            <ul className="grid gap-1.5 text-[12.5px]">
+            <ul className="grid grid-cols-1 gap-1.5 text-[12.5px]">
               {activity.map((a, i) => (
                 <li key={i} className="flex gap-2">
                   <Ago iso={a.when} className="w-24 shrink-0 whitespace-nowrap text-muted-foreground" />
@@ -233,7 +232,7 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
         )}
       </div>
       {editing ? (
-        <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then(() => setEditing(false)) }} className="mt-1 grid gap-1.5">
+        <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then(() => setEditing(false)) }} className="mt-1 grid grid-cols-1 gap-1.5">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={5000} aria-label="Edit note" autoFocus
             className="w-full rounded-md border border-input bg-background p-2 text-[13px]" onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
           <div className="flex gap-2">

@@ -207,6 +207,28 @@
     }
   body {
     @apply bg-background text-foreground;
+    /* a long unbroken name, note or URL wraps instead of widening the page
+       (test report UX-3: one note stretched a page to 47,000 px) */
+    overflow-wrap: break-word;
+    }
+  /* a select sized by its longest option, or a file input's fixed width,
+     must not push a card past a phone screen (test report UX-3, UX-4) */
+  select, input[type="file"] {
+    max-width: 100%;
+    }
+  /* a link inside a sentence is underlined: colour alone does not mark it
+     (WCAG 1.4.1, test report UX-14) */
+  p a:not([data-slot="button"]) {
+    text-decoration-line: underline;
+    text-underline-offset: 2px;
+    }
+  /* on a touch screen every button is at least 24 x 24 px to hit (WCAG 2.5.8,
+     test report UX-21: delete, remove and copy icons were 14 px) */
+  @media (pointer: coarse) {
+    button, [role="button"], input[type="checkbox"], input[type="radio"] {
+      min-height: 24px;
+      min-width: 24px;
+      }
     }
   html {
     @apply font-sans antialiased;
@@ -221,7 +243,7 @@
 /* Numbered panel labels, "01 / Stages": the parent's section numbering,
    in the muted ink (red is kept for brand surfaces). Opt in with data-n. */
 main { counter-reset: panel; }
-h3[data-n]::before {
+:is(h2, h3)[data-n]::before {
   counter-increment: panel;
   content: counter(panel, decimal-leading-zero) " / ";
   content: counter(panel, decimal-leading-zero) " / " / "";   /* decorative: not read aloud */

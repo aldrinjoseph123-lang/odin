@@ -24,7 +24,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
     void send(paths.sla, Object.fromEntries(rows.map((s) => [`sla::${s.id}`, slas[s.id] ?? ""])))
   }
   return (
-    <div className="grid gap-2 text-[13px]">
+    <div className="grid grid-cols-1 gap-2 text-[13px]">
       {rows.map((s, i) => (
         <div key={s.id} className="flex flex-wrap items-center gap-1.5">
           <button type="button" disabled={busy || i === 0} onClick={() => send(paths.move(s.id), { direction: "up" })} aria-label={`Move ${s.name} up`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-7 w-7 px-0")}><ArrowUp className="h-3.5 w-3.5" /></button>

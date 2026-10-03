@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { analytics, ApiError, type AnalyticsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { StatTile } from "@/components/StatTile"
 
-const d1 = (n: number | null | undefined) => (n == null ? "—" : n.toFixed(1))
+const d1 = (n: number | null | undefined) => (n == null ? "—" : n > 0 && n < 0.05 ? "<0.1" : n.toFixed(1))   // a same-day close is not "0.0 days" (UX-23)
 const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
 
 export default function Analytics(_props: { user: User }) {
@@ -15,7 +14,7 @@ export default function Analytics(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const tid = Number(params.get("template")) || null
   useEffect(() => { document.title = "Cycle time · Odin"; analytics(tid).then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [tid])
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const s = d.stats
   const scale = s ? Math.max(0, ...s.stages.map((r) => r.avg_days ?? 0)) : 0
@@ -34,7 +33,7 @@ export default function Analytics(_props: { user: User }) {
       {!s ? <p className="mt-4 text-[13px] text-muted-foreground">No stage template yet — create one in Settings.</p> : (
         <>
           <p className="mt-3 max-w-3xl text-[12.5px] text-muted-foreground">Timings compare only projects that share a stage list, so this is <span className="font-medium text-foreground">{tname}</span> across {s.measured_projects} project{s.measured_projects === 1 ? "" : "s"}. Averages count stages a project has already left; the stage it sits in now is under Aging.</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile label="Slowest stage" value={s.slowest?.stage ?? "—"} sub={s.slowest ? `${d1(s.slowest.avg_days)} days avg` : undefined} tone="warn" />
             <StatTile label="Lead time (avg)" value={d1(s.lead_avg)} sub={`${s.completed_count} completed project${s.completed_count === 1 ? "" : "s"}`} />
             <StatTile label="Lead time (median)" value={d1(s.lead_median)} sub="days, start to closed" />
@@ -63,9 +62,9 @@ export default function Analytics(_props: { user: User }) {
               </tbody>
             </table>
           </div>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <section className="panel p-4">
-              <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Aging <span className="font-normal text-muted-foreground">days in current stage</span></h3>
+              <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Aging <span className="font-normal text-muted-foreground">days in current stage</span></h2>
               <ul className="divide-y divide-border text-[13px]">
                 {s.aging.map((a) => (
                   <li key={`${a.project_id}-${a.stage}`} className="flex items-center gap-3 py-1.5">
@@ -78,8 +77,8 @@ export default function Analytics(_props: { user: User }) {
               </ul>
             </section>
             <section className="panel p-4">
-              <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Throughput <span className="font-normal text-muted-foreground">projects closed per month</span></h3>
-              <ul className="grid gap-1.5 text-[13px]">
+              <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Throughput <span className="font-normal text-muted-foreground">projects closed per month</span></h2>
+              <ul className="grid grid-cols-1 gap-1.5 text-[13px]">
                 {s.throughput.map(([month, n]) => (
                   <li key={month} className="flex items-center gap-3"><span className="w-16 text-[12px] text-muted-foreground">{month}</span><span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-ok-line" style={{ width: `${peak ? (n / peak) * 100 : 0}%` }} /></span><span className="w-6 text-right">{n}</span></li>
                 ))}

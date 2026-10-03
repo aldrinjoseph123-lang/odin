@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Trash2 } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, contacts, postForm, type ContactsData, type User } from "@/lib/api"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="panel p-4"><h3 className="mb-3 text-[12px] font-semibold text-nav-fg">{title}</h3>{children}</section>
+  return <section className="panel p-4"><h2 className="mb-3 text-[12px] font-semibold text-nav-fg">{title}</h2>{children}</section>
 }
 
 function AddRow({ withEmail, placeholder, button, busy, onSubmit }: { withEmail: boolean; placeholder: string; button: string; busy: boolean; onSubmit: (f: Record<string, string>) => Promise<unknown> }) {
@@ -41,14 +40,14 @@ export default function Contacts(_props: { user: User }) {
   const load = useCallback(async () => {
     try { setData(await contacts()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load contacts") }
   }, [])
-  useEffect(() => { document.title = "Contacts & partners · Odin"; void load() }, [load])
+  useEffect(() => { document.title = "Contacts & partners · Settings · Odin"; void load() }, [load])
   const send: Send = async (path, fields = {}, confirmText) => {
     if (confirmText && !window.confirm(confirmText)) return null
     setBusy(true)
     try { const r = await postForm(path, fields); setNotice(r.messages.length ? { text: r.messages.join(" "), undo: r.undo } : null); await load(); return r }
     catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save" }); return null } finally { setBusy(false) }
   }
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
   return (
     <div className="px-5 pb-6 pt-4">
@@ -62,10 +61,10 @@ export default function Contacts(_props: { user: User }) {
           <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
       )}
-      <div className="mt-3 grid gap-4 lg:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {data.lists.map((l) => (
           <Panel key={l.key} title={l.label}>
-            <ul className="grid gap-1.5">
+            <ul className="grid grid-cols-1 gap-1.5">
               {l.items.map((it) => <Line key={it.id} name={it.name} email={it.email} busy={busy} onDelete={() => send(`/settings/contacts/${l.key}/${it.id}/delete`, {}, `Delete ${it.name}?`)} />)}
               {l.items.length === 0 && <li className="text-[13px] text-muted-foreground">None yet.</li>}
             </ul>
@@ -73,14 +72,14 @@ export default function Contacts(_props: { user: User }) {
           </Panel>
         ))}
         <Panel title="Partners">
-          <div className="grid gap-4">
+          <div className="grid grid-cols-1 gap-4">
             {data.partners.map((p) => (
               <div key={p.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
                 <div className="flex items-center gap-2 text-[13px]">
                   <span className="flex-1 font-medium">{p.name}</span>
                   <button type="button" disabled={busy} onClick={() => send(`/settings/contacts/partners/${p.id}/delete`, {}, `Delete partner ${p.name}? Its account managers go too.`)} aria-label={`Delete partner ${p.name}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
-                <ul className="mt-1.5 grid gap-1.5 pl-3">
+                <ul className="mt-1.5 grid grid-cols-1 gap-1.5 pl-3">
                   {p.managers.map((m) => <Line key={m.id} name={m.name} email={m.email} busy={busy} onDelete={() => send(`/settings/contacts/partner-managers/${m.id}/delete`, {}, `Delete ${m.name}?`)} />)}
                   {p.managers.length === 0 && <li className="text-[12.5px] text-muted-foreground">No account managers yet.</li>}
                 </ul>

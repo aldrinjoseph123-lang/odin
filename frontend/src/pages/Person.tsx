@@ -1,13 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { Link, useParams } from "react-router-dom"
 import { ArrowRight, CheckSquare, ChevronLeft, MessageSquare, Send } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { UserAvatar } from "@/components/UserAvatar"
 import { Stepper } from "@/components/Stepper"
 import { Ago } from "@/components/Ago"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, notifyPerson, person, type PersonData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { ActivityPanel } from "@/components/ActivityPanel"
@@ -32,7 +31,7 @@ export default function Person(_props: { user: User }) {
     person(Number(id)).then((x) => { setD(x); document.title = `${x.user.name} · People · Odin` })
       .catch((e) => setError(e instanceof ApiError && e.status === 404 ? "No such person." : e instanceof ApiError ? e.message : "Could not load"))
   }, [id])
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const k = d.kpis
   const peak = Math.max(1, ...d.contribution.weeks.map((w) => w.done))
@@ -74,12 +73,12 @@ export default function Person(_props: { user: User }) {
 
       {d.activity && <div className="mt-4"><ActivityPanel a={d.activity} /></div>}
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <section className="panel p-4" aria-label="Contribution">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Contribution <span className="font-normal text-muted-foreground">tasks finished per week, 8 weeks</span></h3>
+          <h2 className="mb-2 text-[13.5px] font-semibold">Contribution <span className="font-normal text-muted-foreground">tasks finished per week, 8 weeks</span></h2>
           <ul className="flex h-24 items-end gap-1.5" aria-label="Tasks finished per week">
             {d.contribution.weeks.map((w) => (
-              <li key={w.week} className="flex h-full flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`week of ${fmtDate(w.week)}: ${w.done}`}>
+              <li key={w.week} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`week of ${fmtDate(w.week)}: ${w.done}`}>
                 {w.done > 0 && w.done === peak && <span className="text-foreground">{w.done}</span>}
                 <span className={cn("block w-full rounded-t-[3px]", w.done ? "bg-primary" : "bg-muted")} style={{ height: `${Math.max(w.done ? 8 : 3, (w.done / peak) * 100)}%` }} aria-hidden />
                 <span aria-hidden>{w.week.slice(8, 10)}/{w.week.slice(5, 7)}</span>
@@ -87,11 +86,11 @@ export default function Person(_props: { user: User }) {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-[12.5px] text-muted-foreground">In the last 30 days: <span className="font-medium text-foreground">{k.done_30d}</span> tasks finished, <span className="font-medium text-foreground">{d.contribution.notes_30d}</span> notes, <span className="font-medium text-foreground">{d.contribution.moves_30d}</span> stage moves.</p>
+          <p className="mt-3 text-[12.5px] text-muted-foreground">In the last 30 days: <span className="font-medium text-foreground">{k.done_30d}</span> task{k.done_30d === 1 ? "" : "s"} finished, <span className="font-medium text-foreground">{d.contribution.notes_30d}</span> note{d.contribution.notes_30d === 1 ? "" : "s"}, <span className="font-medium text-foreground">{d.contribution.moves_30d}</span> stage move{d.contribution.moves_30d === 1 ? "" : "s"}.</p>
         </section>
 
         <section className="panel p-4" aria-label="Active rollouts">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Active rollouts <span className="font-normal text-muted-foreground">{d.projects.length}</span></h3>
+          <h2 className="mb-2 text-[13.5px] font-semibold">Active rollouts <span className="font-normal text-muted-foreground">{d.projects.length}</span></h2>
           <ul className="divide-y divide-border text-[13px]">
             {d.projects.map((p) => (
               <li key={p.id} className="py-2">
@@ -112,7 +111,7 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4" aria-label="Pending tasks">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Pending <span className="font-normal text-muted-foreground">{d.pending.length} open, soonest first</span></h3>
+          <h2 className="mb-2 text-[13.5px] font-semibold">Pending <span className="font-normal text-muted-foreground">{d.pending.length} open, soonest first</span></h2>
           <ul className="divide-y divide-border text-[13px]">
             {d.pending.slice(0, 12).map((t) => {
               const late = t.due_date ? lateBy(t.due_date, d.today) : 0
@@ -129,7 +128,7 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4" aria-label="Upcoming tasks">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Upcoming <span className="font-normal text-muted-foreground">due in the next 14 days</span></h3>
+          <h2 className="mb-2 text-[13.5px] font-semibold">Upcoming <span className="font-normal text-muted-foreground">due in the next 14 days</span></h2>
           <ul className="divide-y divide-border text-[13px]">
             {d.upcoming.map((t) => (
               <li key={t.id} className="flex items-center gap-3 py-2">
@@ -142,8 +141,8 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4 xl:col-span-2" aria-label="Recent activity">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Recently <span className="font-normal text-muted-foreground">what {d.user.name.split(" ")[0]} did</span></h3>
-          <ul className="grid gap-2.5 text-[12.5px] md:grid-cols-2">
+          <h2 className="mb-2 text-[13.5px] font-semibold">Recently <span className="font-normal text-muted-foreground">what {d.user.name.split(" ")[0]} did</span></h2>
+          <ul className="grid grid-cols-1 gap-2.5 text-[12.5px] md:grid-cols-2">
             {d.recent.map((a, i) => {
               const K = KIND[a.kind]
               return (

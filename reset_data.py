@@ -83,8 +83,12 @@ def main():
     # is on for app connections even though it is off by default here.
     for table in WIPE_TABLES:
         db.execute(f"DELETE FROM {table}")
-    db.execute("DELETE FROM sqlite_sequence WHERE name IN ({})".format(
-        ",".join("?" for _ in WIPE_TABLES)), WIPE_TABLES)
+    # The id counters are kept: the audit log survives the reset, and a new
+    # project 1 would otherwise show the wiped project 1's history (test report OPS-6).
+    from datetime import datetime
+    db.execute("INSERT INTO audit_logs (user_id, username, action, resource_type, resource_id, resource_name, details, timestamp, ip_address) "
+               "VALUES (NULL, ?, 'reset_data', 'workspace', NULL, NULL, ?, ?, NULL)",
+               (os.environ.get("USER") or "command line", f"{sum(before.values())} rows wiped; copy at {backup}", datetime.utcnow().isoformat()))
     db.commit()
     db.execute("VACUUM")
     db.close()

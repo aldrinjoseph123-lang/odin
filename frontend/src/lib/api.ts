@@ -38,18 +38,51 @@ export class ApiError extends Error {
   }
 }
 
+export const SIGNED_OUT = "You were signed out. Sign in again to carry on (open Odin in a new tab to keep what you typed)."
+
+// What a failed request tells the person: what went wrong and what to do,
+// never "Request failed (500)" (test report UX-6, UX-7).
+export function failureText(status: number): string {
+  if (status === 0) return "Could not reach Odin. Check your connection and try again."
+  if (status === 401) return SIGNED_OUT
+  if (status === 403) return "You do not have access to this."
+  if (status === 404) return "Not found. It may have been deleted, or you are not on it."
+  if (status === 413) return "That file is too large."
+  if (status === 429) return "Too many attempts. Wait a minute and try again."
+  if (status >= 500) return "Odin could not do that just now. Try again in a moment."
+  return `Odin could not do that (error ${status}). Reload the page and try again.`
+}
+
+// fetch, with a dropped connection as an ApiError like any other failure
+async function call(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, { credentials: "same-origin", ...init })
+  } catch {
+    throw new ApiError(0, failureText(0))
+  }
+}
+
+// The error for a failed response: the server's own words when it gave some;
+// a 400/401 from a session that has ended (the CSRF check fails first) says so.
+async function failure(res: Response, said?: string): Promise<ApiError> {
+  if (res.status === 400 || res.status === 401) {
+    const alive = await fetch("/api/session", { credentials: "same-origin" }).then((r) => r.json()).then((d: SessionResponse) => !!d.user).catch(() => true)
+    if (!alive) return new ApiError(401, SIGNED_OUT)
+  }
+  return new ApiError(res.status, said ?? failureText(res.status))
+}
+
 // One JSON request with the CSRF token; every mutation goes through here.
 async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
   if (!csrfToken) await session()
-  const res = await fetch(path, {
+  const res = await call(path, {
     method,
-    credentials: "same-origin",
     headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken ?? "" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string; csrf?: string } & T
   if (data.csrf) csrfToken = data.csrf
-  if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`)
+  if (!res.ok) throw await failure(res, data.error)
   return data
 }
 const post = <T,>(path: string, body?: unknown) => send<T>(path, "POST", body)
@@ -98,8 +131,8 @@ export type BoardData = {
 }
 
 export async function board(): Promise<BoardData> {
-  const res = await fetch("/api/board", { credentials: "same-origin" })
-  if (!res.ok) throw new ApiError(res.status, `Board failed (${res.status})`)
+  const res = await call("/api/board")
+  if (!res.ok) throw await failure(res)
   return res.json()
 }
 
@@ -141,8 +174,8 @@ export type FlowDetail = {
 export const decideApproval = (projectId: number, approvalId: number, decision: "approved" | "declined", comment = "") =>
   post<{ ok: true }>(`/api/projects/${projectId}/approvals/${approvalId}`, { decision, comment })
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path, { credentials: "same-origin" })
-  if (!res.ok) throw new ApiError(res.status, `Request failed (${res.status})`)
+  const res = await call(path)
+  if (!res.ok) throw await failure(res)
   return res.json()
 }
 export const flow = () => getJson<FlowData>("/api/flow")
@@ -259,9 +292,9 @@ export const withdrawSignoff = (id: number, v: number) => post<{ ok: true }>(`/a
 export const waiveSignoff = (id: number, reason: string) => post<{ ok: true; version: number }>(`/api/projects/${id}/signoff/waive`, { reason })
 export async function uploadSignoff(id: number, v: number, form: FormData): Promise<{ ok: true }> {
   if (!csrfToken) await session()
-  const res = await fetch(`/api/projects/${id}/signoff/${v}/upload`, { method: "POST", credentials: "same-origin", body: form, headers: { "X-CSRF-Token": csrfToken ?? "" } })
+  const res = await call(`/api/projects/${id}/signoff/${v}/upload`, { method: "POST", body: form, headers: { "X-CSRF-Token": csrfToken ?? "" } })
   const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: true }
-  if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`)
+  if (!res.ok) throw await failure(res, data.error)
   return data as { ok: true }
 }
 
@@ -343,8 +376,8 @@ export type FormReply = { ok: true; messages: string[]; undo: string | null; loc
 export async function postForm(path: string, fields: Record<string, string> | FormData = {}): Promise<FormReply> {
   if (!csrfToken) await session()
   const body = fields instanceof FormData ? fields : new URLSearchParams(fields)
-  const res = await fetch(path, { method: "POST", credentials: "same-origin", body, headers: { Accept: "application/json", "X-CSRF-Token": csrfToken ?? "" } })
-  if (!res.ok) throw new ApiError(res.status, res.status === 403 ? "You cannot do that on this project" : res.status === 404 ? "Not found" : `Request failed (${res.status})`)
+  const res = await call(path, { method: "POST", body, headers: { Accept: "application/json", "X-CSRF-Token": csrfToken ?? "" } })
+  if (!res.ok) throw await failure(res, res.status === 403 ? "You cannot do that on this project" : undefined)
   const data = (await res.json().catch(() => null)) as FormReply | null
   if (!data) throw new ApiError(res.status, "Your session has ended — sign in again")
   return data
@@ -428,7 +461,7 @@ export type ReportData = {
 export const report = (id: number, query: string) => getJson<ReportData>(`/api/projects/${id}/report${query ? `?${query}` : ""}`)
 
 // ---- account, my work, alerts, analytics ----
-export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
+export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; has_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
   email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[]; notify_via: "email" | "teams"; teams_ready: boolean }>("/api/account")
 // active minutes (services/activity.py): today, 7 and 30 days, one row per day
 export type Activity = { today: number; week: number; month: number; days: { day: string; minutes: number }[]; last_seen_at: string | null; last_login_at: string | null }
@@ -462,8 +495,8 @@ export const defaultDocTemplate = (id: number) => post<{ ok: true }>(`/api/doc-t
 export const docTemplateChoices = (kind: DocKind) => getJson<{ choices: { id: number; name: string; is_default: boolean }[] }>(`/api/doc-templates/choices?kind=${kind}`)
 async function raw(path: string, body: BodyInit, json = false): Promise<Response> {
   if (!csrfToken) await session()
-  const res = await fetch(path, { method: "POST", credentials: "same-origin", body, headers: { "X-CSRF-Token": csrfToken ?? "", ...(json ? { "Content-Type": "application/json" } : {}) } })
-  if (!res.ok) { const d = (await res.json().catch(() => ({}))) as { error?: string }; throw new ApiError(res.status, d.error ?? `Request failed (${res.status})`) }
+  const res = await call(path, { method: "POST", body, headers: { "X-CSRF-Token": csrfToken ?? "", ...(json ? { "Content-Type": "application/json" } : {}) } })
+  if (!res.ok) { const d = (await res.json().catch(() => ({}))) as { error?: string }; throw await failure(res, d.error) }
   return res
 }
 export async function uploadDocLogo(file: File): Promise<string> {

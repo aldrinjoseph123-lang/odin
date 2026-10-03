@@ -27,6 +27,7 @@
       "runtimeExecutable": "env",
       "runtimeArgs": [
         "ODIN_DATA_DIR=uat-data",
+        "ODIN_DEBUGGER=0",
         "PORT=5051",
         "./venv/bin/python",
         "app.py"

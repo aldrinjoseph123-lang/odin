@@ -70,7 +70,9 @@ export default function App() {
         <Route path="/auth/reset" element={<ForgotPassword />} />
         <Route path="/auth/reset/:token" element={<ForgotPassword />} />
         <Route path="/board" element={<Protected>{(user) => <Flow user={user} />}</Protected>} />
-        <Route path="/dashboard" element={<Protected>{(user) => <Suspense fallback={<PageSkeleton />}><Dashboard user={user} /></Suspense>}</Protected>} />
+        <Route path="/dashboard" element={<Protected>{(user) => user.kind === "external"
+          ? <Navigate to="/board" replace />   /* partners always get the flow (test report UX-5: a bookmark showed a bare 403) */
+          : <Suspense fallback={<PageSkeleton />}><Dashboard user={user} /></Suspense>}</Protected>} />
         <Route path="/projects" element={<Protected>{(user) => <Projects user={user} />}</Protected>} />
         <Route path="/projects/new" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />
         <Route path="/projects/:id/edit" element={<Protected>{(user) => <ProjectForm user={user} />}</Protected>} />

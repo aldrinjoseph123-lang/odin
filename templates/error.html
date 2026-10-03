@@ -6,7 +6,7 @@
   <title>{{ title }} · Odin</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=raven2">
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&display=swap" rel="stylesheet">
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (function () {  // same pre-paint rule as the React app
       try {
         var t = localStorage.getItem("odin.theme") || "system", a = localStorage.getItem("odin.accent") || "blue";

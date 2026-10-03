@@ -42,8 +42,11 @@ def create(label, role, project_id, project_role, days, max_uses, author):
             raise ValueError(f"The project role is one of: {', '.join(PROJECT_LINK_ROLES)}")
     else:
         project_id, project_role = None, None
-    days = max(1, min(90, int(days or policy("signup_days"))))
-    max_uses = max(1, min(100, int(max_uses or 1)))
+    try:   # test report FN-16: int()'s own error text reached the page
+        days = max(1, min(90, int(days or policy("signup_days"))))
+        max_uses = max(1, min(100, int(max_uses or 1)))
+    except (TypeError, ValueError):
+        raise ValueError("Days and uses are whole numbers") from None
     raw = secrets.token_urlsafe(32)
     now = datetime.utcnow()
     db.execute("INSERT INTO signup_links (token_hash, label, role, project_id, project_role, max_uses, expires_at, created_by, created_at) "

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
 import { ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
 import { Ago } from "@/components/Ago"
@@ -17,7 +16,7 @@ import { days, fitStages, fmtDate, groupRows, signoffText, stateText, lateBy, ne
 import { Stepper } from "@/components/Stepper"
 import { Calendar } from "@/pages/Calendar"
 import { Kibana } from "@/pages/Kibana"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 
 // Customer approval of the current stage: amber while open, green/red once decided.
@@ -85,7 +84,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
       )}
       {/* a finished stage keeps its tasks but takes no new ones */}
       {d.can_edit && !done && (adding ? (
-        <form className="mt-1.5 grid gap-1" onSubmit={(e) => { e.preventDefault(); void submit() }}>
+        <form className="mt-1.5 grid grid-cols-1 gap-1" onSubmit={(e) => { e.preventDefault(); void submit() }}>
           <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task" aria-label={`New task in ${stage}`} maxLength={200} className="h-7 px-2 text-[12.5px]"
             onKeyDown={(e) => { if (e.key === "Escape") { setAdding(false); setTitle("") } }} />
           <div className="flex items-center gap-1">
@@ -175,8 +174,8 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
   )
 }
 
-function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage, setStage, group, setGroup, tools }: {
-  data: FlowData; me: number; selectedId: number | null; onSelect: (id: number) => void; tools?: ReactNode
+function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilter, stage, setStage, group, setGroup, tools }: {
+  data: FlowData; me: number; partner?: boolean; selectedId: number | null; onSelect: (id: number) => void; tools?: ReactNode
   filter: Filter; setFilter: (f: Filter) => void
   stage: string | null; setStage: (s: string | null) => void
   group: FlowGroupBy | null; setGroup: (g: FlowGroupBy | null) => void
@@ -263,14 +262,14 @@ function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage,
         <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-1.5 text-[11.5px] text-muted-foreground md:grid">
           <span>Rollout · next step</span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
-        <ul className="grid gap-0.5 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
+        <ul className="grid grid-cols-1 gap-0.5 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {group ? groupRows(shown, group).map((g) => (
             <li key={g.key} className="mt-2 first:mt-0">
               <p className="flex items-baseline gap-2 border-b border-border px-3 pb-1 text-[12.5px] font-semibold">
                 {g.key}<span className="font-normal text-muted-foreground">{g.rows.length}
                   {(() => { const bad = g.rows.filter((r) => r.state !== "on_track").length; return bad ? ` · ${bad} ${bad === 1 ? "needs" : "need"} attention` : "" })()}</span>
               </p>
-              <ul className="mt-0.5 grid gap-0.5">{g.rows.map(row)}</ul>
+              <ul className="mt-0.5 grid grid-cols-1 gap-0.5">{g.rows.map(row)}</ul>
             </li>
           )) : shown.map(row)}
           {(fold || (showCalm && calm.length > 0 && calm.length < rows.length)) && (
@@ -284,7 +283,7 @@ function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage,
           )}
           {rows.length === 0 && (
             <li className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-[13px] text-muted-foreground">
-              {data.rows.length === 0 ? "No active rollouts yet. Create one from a client PO and it appears here."
+              {data.rows.length === 0 ? (partner ? "No rollout is shared with you yet. It appears here once a project manager adds you." : "No active rollouts yet. Create one from a client PO and it appears here.")
                 : stage ? `No rollout in ${stage} matches this filter.`
                 : filter === "customer" ? "No rollout is waiting on a customer's approval."
                 : "Nothing needs attention — every rollout is inside its stage SLA and on schedule."}
@@ -379,7 +378,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not move the stage") } finally { setBusy(false) }
   }
   return (
-    <div className="grid gap-5 px-5 py-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="grid grid-cols-1 gap-5 px-5 py-4 xl:grid-cols-[minmax(0,1fr)_280px]">
       <div className="min-w-0 xl:col-start-1 xl:row-start-1">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -470,7 +469,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
       </div>
 
       {/* right rail: what to do next, when it's due, how we got here */}
-      <aside className="grid content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:grid-cols-1">
+      <aside className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:grid-cols-1">
         <section className="panel p-3">
           <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
           {next ? (
@@ -522,14 +521,14 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {d.can_move && d.next_stage && !d.signoff?.needed && (
           <section className="panel p-3" onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); setConfirming(false) } }}>
             {/* what the move will do, next to the button that does it */}
-            <ul className="mb-2 grid gap-1 text-[12.5px] text-muted-foreground">
+            <ul className="mb-2 grid grid-cols-1 gap-1 text-[12.5px] text-muted-foreground">
               {openHere > 0 && <li className="font-medium text-warn">{openHere} open task{openHere === 1 ? "" : "s"} still in {d.stage}</li>}
               {approvalPending && <li className="font-medium text-warn">The customer has not approved {d.stage} yet</li>}
               <li>Tells {told} {told === 1 ? "person" : "people"} on the team</li>
             </ul>
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the history (optional)" aria-label="Stage change note" maxLength={5000} className="h-8 text-[13px]" />
             {confirming ? (
-              <div className="mt-2 grid gap-1.5" role="group" aria-label={`Confirm the move to ${d.next_stage}`}>
+              <div className="mt-2 grid grid-cols-1 gap-1.5" role="group" aria-label={`Confirm the move to ${d.next_stage}`}>
                 <Button size="sm" onClick={advance} disabled={busy} autoFocus>{busy ? "Moving…" : `Move to ${d.next_stage} now`}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
               </div>
@@ -542,10 +541,10 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
       </aside>
 
       {/* who and what happened: under the flowchart on wide screens, after the rail otherwise */}
-      <div className="grid content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-1 xl:row-start-2">
+      <div className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-1 xl:row-start-2">
         <section>
           <h3 className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><UserRound className="h-3.5 w-3.5" /> Team</h3>
-          <ul className="grid gap-1.5">
+          <ul className="grid grid-cols-1 gap-1.5">
             {d.participants.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-[12.5px]">
                 <UserAvatar name={m.name} url={m.avatar_url} />
@@ -560,7 +559,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           <section className="min-w-0">
             {/* min-w-0 all the way down: a truncated note must not widen the column */}
             <h3 className="mb-1.5 text-[12px] font-semibold text-nav-fg">Recent</h3>
-            <ul className="grid min-w-0 gap-1.5">
+            <ul className="grid grid-cols-1 min-w-0 gap-1.5">
               {d.recent_notes.map((n, i) => (
                 <li key={i} className="min-w-0 text-[12.5px]"><span className="font-medium">{n.author}</span> <span className="text-muted-foreground">· {n.stage} · <Ago iso={n.created_at} /></span><div className="truncate text-nav-fg">{n.note}</div></li>
               ))}
@@ -605,6 +604,7 @@ export default function Flow({ user }: { user: User }) {
   // Three ways to look at the portfolio, kept in the URL: the list, a month, or Kibana.
   const vw = params.get("view")
   const view: "list" | "calendar" | "kibana" = vw === "calendar" || (vw === "kibana" && user.kind !== "external") ? vw : "list"
+  useEffect(() => { document.title = `${view === "calendar" ? "Calendar" : view === "kibana" ? "Kibana" : "Flow"} · Odin` }, [view])   // test report UX-17
   const setView = useCallback((v: "list" | "calendar" | "kibana") => {
     setParams((prev) => { const next = new URLSearchParams(prev); if (v === "list") next.delete("view"); else next.set("view", v); next.delete("month"); next.delete("day"); return next }, { replace: true })
   }, [setParams])
@@ -662,7 +662,7 @@ export default function Flow({ user }: { user: User }) {
     } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "Could not undo the move", bad: true }) }
   }
 
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
 
   const views = (
@@ -684,7 +684,7 @@ export default function Flow({ user }: { user: User }) {
       <div className="panel mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden">{view === "calendar" ? <Calendar wide={wide} /> : <Kibana rollout={selectedId} onRollout={setSelectedId} />}</div>
     </div>
   )
-  const list = <RolloutList data={data} me={user.id} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} tools={views} />
+  const list = <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} tools={views} />
   const pane = selectedId != null && (
     <>
               {!wide && (
@@ -710,7 +710,9 @@ export default function Flow({ user }: { user: User }) {
   if (!wide) return selectedId != null ? <ScrollArea className="panel mx-3 mb-3 min-h-0 flex-1">{pane}</ScrollArea> : <div className="panel mx-3 mb-3 flex min-h-0 flex-1 flex-col overflow-hidden">{list}</div>
 
   return (
-    <ResizablePanelGroup orientation="vertical" className="mx-4 mb-4 min-h-0 flex-1">
+    // the margins sit on a wrapper: the group sets an inline width of 100%, which plus mx-4 ran 32 px past the window (test report UX-2)
+    <div className="mx-4 mb-4 flex min-h-0 min-w-0 flex-1 flex-col">
+    <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
       <ResizablePanel defaultSize={selectedId == null ? 100 : 48} minSize={20}><div className="panel flex h-full min-h-0 flex-col overflow-hidden">{list}</div></ResizablePanel>
       {selectedId != null && (
         <>
@@ -721,5 +723,6 @@ export default function Flow({ user }: { user: User }) {
         </>
       )}
     </ResizablePanelGroup>
+    </div>
   )
 }

@@ -29,7 +29,9 @@ for (const theme of ["light", "dark"] as const) {
       await page.waitForTimeout(400)   // charts and fonts settle
       // relative times and the clock change every minute: mask them
       const mask = [page.locator("time"), page.locator("text=/just now|\\d+ min ago|\\d+ h ago/")]
-      await expect(page).toHaveScreenshot(`${name}-${theme}-${info.project.name}.png`, { fullPage: true, mask, maxDiffPixelRatio: 0.03 })
+      // the project page's plan, timeline and tasks are dated from the seed's today, so they reflow
+      // daily: compare its first screen only (the plan is covered by flows.spec)
+      await expect(page).toHaveScreenshot(`${name}-${theme}-${info.project.name}.png`, { fullPage: name !== "project", mask, maxDiffPixelRatio: 0.03 })
     })
   }
 }

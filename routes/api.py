@@ -15,7 +15,7 @@ from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
-from security import csrf_token, safe_csv_writer
+from security import csrf_token, file_stem, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline
 from services.audit import audit_log
@@ -408,7 +408,7 @@ def rollout_report_pdf(project_id):
     project, audience, words, data, _versions, row = _rollout_report(project_id, audience if audience in ("internal", "customer") else "internal", request.args.get("v", type=int))
     if data is None:
         abort(404)            # an old plain-text version has no PDF of this kind
-    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in project["name"])[:60]
+    safe = file_stem(project["name"])
     tag = f"-v{row['version']}" if row else ""
     name = f"{safe}-report{tag}{'-customer' if audience == 'customer' else ''}.pdf"
     return Response(render(data, words), mimetype="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
@@ -444,9 +444,10 @@ def api_rollout_report_save(project_id):
 def api_account():
     from constants import NOTIFICATION_KINDS
     from db import get_setting
-    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, notify_via FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, notify_via, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
     return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
+                   has_password=bool(u["password_hash"] and "$" in u["password_hash"]),
                    theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u), home=u["home"],
                    email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
                                 if k != "access" or session.get("role") == "Admin"],   # access requests reach admins only
@@ -513,6 +514,8 @@ def api_person_notify(user_id):
     if not target:
         abort(404)
     project_id = body.get("project_id") if isinstance(body.get("project_id"), int) else None
+    if project_id and not get_db().execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
+        return jsonify(error="That rollout does not exist"), 400   # test report FN-12: it was a 500
     notify_users([user_id], "nudge", project_id, f"{session.get('user_name')} sent you a note", f"<p>{_esc(message)}</p>", link=f"/board?rollout={project_id}" if project_id else "/my-work")
     audit_log("notify_person", "user", user_id, target["name"], message[:80])
     return jsonify(ok=True)
@@ -870,7 +873,7 @@ def project_activity_export(project_id):
     for r in rows:
         writer.writerow([r["timestamp"], r["username"], r["action"], ACTIVITY_LABELS.get(r["action"], r["action"].replace("_", " ")), r["details"] or ""])
     audit_log("export_project_activity", "project", project_id, project["name"], f"{len(rows)} rows")
-    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in project["name"])[:60] or "project"
+    safe = file_stem(project["name"])
     return Response(out.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": f"attachment; filename=odin-activity-{safe}.csv"})
 
@@ -1210,17 +1213,20 @@ def api_notifications():
 def api_notifications_read():
     """Mark one (id) or all of this user's notifications read. Only ever the
     caller's own rows."""
+    from services.notifications import visible_clause
     body = request.get_json(silent=True) or {}
     db = get_db()
     now = datetime.utcnow().isoformat()
+    # what the bell shows, no more (test report FN-14): hidden rows are neither marked nor counted
+    where, vis = visible_clause(session["user_id"], session.get("kind"))
     if body.get("all"):
-        db.execute("UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL", (now, session["user_id"]))
+        db.execute(f"UPDATE notifications AS n SET read_at = ? WHERE n.user_id = ? AND n.read_at IS NULL{where}", (now, session["user_id"], *vis))
     elif isinstance(body.get("id"), int):
         db.execute("UPDATE notifications SET read_at = ? WHERE id = ? AND user_id = ? AND read_at IS NULL", (now, body["id"], session["user_id"]))
     else:
         return jsonify(error="Say which: {id} or {all: true}"), 400
     db.commit()
-    return jsonify(ok=True, unread=db.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (session["user_id"],)).fetchone()[0])
+    return jsonify(ok=True, unread=db.execute(f"SELECT COUNT(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL{where}", (session["user_id"], *vis)).fetchone()[0])
 
 
 @app.route("/api/search")

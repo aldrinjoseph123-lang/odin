@@ -200,9 +200,10 @@ def issue_login_link(user_id, created_by=None, purpose="signin"):
     # value the audit trail does not already hold
     get_db().execute("DELETE FROM login_links WHERE expires_at < ?", ((now - timedelta(days=7)).isoformat(),))
     get_db().execute(
-        "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address, purpose) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address, purpose, epoch) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT session_epoch FROM users WHERE id = ?))",
         (user_id, hashlib.sha256(raw.encode()).hexdigest(), now.isoformat(),
-         (now + timedelta(minutes=policy("link_minutes"))).isoformat(), created_by, request.remote_addr, purpose),
+         (now + timedelta(minutes=policy("link_minutes"))).isoformat(), created_by, request.remote_addr, purpose, user_id),
     )
     get_db().commit()
     return raw
@@ -214,11 +215,11 @@ def consume_login_link(raw):
     import hashlib
     db = get_db()
     row = db.execute(
-        "SELECT l.*, u.active, u.kind FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
+        "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
         (hashlib.sha256((raw or "").encode()).hexdigest(),),
     ).fetchone()
-    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat():
-        return None
+    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
+        return None   # epoch: the password, role or active state changed since the link was issued
     if not row["active"] or row["kind"] != "external" or row["purpose"] != "signin":
         return None
     db.execute("UPDATE login_links SET used_at = ? WHERE id = ?", (datetime.utcnow().isoformat(), row["id"]))
@@ -231,14 +232,22 @@ def reset_link_row(raw):
     unexpired, purpose 'reset', for an active staff account."""
     import hashlib
     row = get_db().execute(
-        "SELECT l.*, u.active, u.kind FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
+        "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
         (hashlib.sha256((raw or "").encode()).hexdigest(),),
     ).fetchone()
-    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat():
-        return None
+    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
+        return None   # epoch: the password, role or active state changed since the link was issued
     if row["purpose"] != "reset" or not row["active"] or row["kind"] != "internal":
         return None
     return row
+
+
+def file_stem(name, fallback="project"):
+    """A project name as a download file name: ASCII letters, digits, - and _
+    only (HTTP headers carry Latin-1 at most; a Chinese or Arabic name hung the
+    download), at most 60 characters."""
+    stem = re.sub(r"-{2,}", "-", "".join(ch if ch.isascii() and (ch.isalnum() or ch in "-_") else "-" for ch in name or "")).strip("-")[:60]
+    return stem or fallback
 
 
 # Deliberately loose — one @, a dot in the domain, no whitespace. Enough to
@@ -306,10 +315,15 @@ def _validate_csrf():
 
 # --- transport/browser: response headers ------------------------------------
 
-# 'unsafe-inline' is required for now: the templates carry ~30 inline event
-# handlers (onchange/onclick/onsubmit) and ~145 inline style attributes.
-# Everything else is locked down — no third-party scripts, no framing, no
-# plugins, and forms can only post back to this origin.
+# Scripts run from this origin, or inline with this response's nonce (system
+# map #19): the React shell's theme snippet and the Jinja pages' small scripts
+# carry it. Only the old Jinja twins of ported pages, which still use inline
+# event handlers (onclick=…), get 'unsafe-inline' (LEGACY_TEMPLATES); in
+# production React serves those pages. Styles keep 'unsafe-inline' (React
+# style attributes). No third-party scripts, no framing, no plugins, and forms
+# post back to this origin only.
+LEGACY_TEMPLATES = {"project_detail.html", "project_form.html", "report_all.html", "report_single.html",
+                    "settings.html", "settings_contacts.html", "users.html"}
 CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "
@@ -325,16 +339,34 @@ CSP = (
 )
 
 
+def csp_nonce():
+    """This response's script nonce (made on first use)."""
+    from flask import g
+    if "csp_nonce" not in g:
+        g.csp_nonce = secrets.token_urlsafe(16)
+    return g.csp_nonce
+
+
+def _note_legacy(sender, template, context, **extra):
+    from flask import g
+    if template.name in LEGACY_TEMPLATES:
+        g.legacy_inline = True
+
+
 def _csp():
-    """The policy above; the Flow page (which draws the Kibana view) may
+    """The policy above, strict unless an old template with inline handlers
+    was rendered; the Flow page (which draws the Kibana view) may
     additionally frame the origins of the configured Kibana dashboards."""
-    from flask import request
+    from flask import g, request
+    policy = CSP
+    if not g.get("legacy_inline"):
+        policy = CSP.replace("script-src 'self' 'unsafe-inline'; ", "script-src 'self'%s; " % (f" 'nonce-{g.csp_nonce}'" if "csp_nonce" in g else ""))
     if request.endpoint != "board":
-        return CSP
+        return policy
     from urllib.parse import urlsplit
     from policies import kibana_dashboards
     origins = sorted({f"{urlsplit(d['url']).scheme}://{urlsplit(d['url']).netloc}" for d in kibana_dashboards()})
-    return CSP + (f" {' '.join(origins)}" if origins else "")   # extends the frame-src directive at the end of CSP
+    return policy + (f" {' '.join(origins)}" if origins else "")   # extends the frame-src directive at the end of CSP
 
 
 def _security_headers(response):
@@ -381,9 +413,12 @@ def init_security(app):
         # Idle cap: set from policy on every request (core._auth_gate); the
         # absolute cap is checked there too, since Flask only refreshes this one.
         PERMANENT_SESSION_LIFETIME=timedelta(minutes=60),
-        MAX_CONTENT_LENGTH=UPLOAD_CEILING_MB * 1024 * 1024,  # the per-file policy is checked by upload_problem
+        MAX_CONTENT_LENGTH=(UPLOAD_CEILING_MB + 1) * 1024 * 1024,  # +1 MB for the multipart framing (a file of exactly the ceiling was refused); the per-file policy is checked by upload_problem
     )
     app.before_request(_validate_csrf)
     app.after_request(_security_headers)
     app.jinja_env.globals["csrf_token"] = csrf_token
+    app.jinja_env.globals["csp_nonce"] = csp_nonce
+    from flask import template_rendered
+    template_rendered.connect(_note_legacy, app)
     return app

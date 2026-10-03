@@ -27,6 +27,9 @@ from services.audit import audit_log
 from spa import spa_index, spa_serves
 
 
+_NO_ACCOUNT_HASH = generate_password_hash("no account has this password", method="pbkdf2:sha256")
+
+
 def attempt_login(username, password):
     """The one login path, shared by the HTML form and /api/login.
 
@@ -39,9 +42,17 @@ def attempt_login(username, password):
         from policies import policy
         return False, f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
     user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    if user and not user["active"] and user["pending"] and "$" in user["password_hash"] and check_password_hash(user["password_hash"], password):
+    # One password hash on every path, so the answer takes as long whether or not
+    # the name exists, and an account's state shows only to its password (test report SEC-7).
+    has_hash = bool(user) and "$" in user["password_hash"]
+    pw_ok = check_password_hash(user["password_hash"] if has_hash else _NO_ACCOUNT_HASH, password) and has_hash
+    if user and not user["active"] and user["pending"] and pw_ok:
         audit_log("login_failure", "user", user["id"], username, "pending approval", actor=username)
         return False, "Your request is waiting for an admin's approval; you can sign in once it is approved"
+    if user and not user["active"] and not pw_ok:
+        record_login_attempt(username, success=False)
+        audit_log("login_failure", "user", user["id"], username, "account deactivated, wrong password", actor=username)
+        return False, "Bad username or password"
     if user and not user["active"]:
         record_login_attempt(username, success=False)
         audit_log("login_failure", "user", user["id"], username, "account deactivated", actor=username)
@@ -53,7 +64,7 @@ def attempt_login(username, password):
         audit_log("login_failure", "user", user["id"], username, "external account: sign-in links only", actor=username)
         return False, "Bad username or password"
     # A Microsoft-created account has no password hash at all ("microsoft:no-password").
-    if not (user and "$" in user["password_hash"] and check_password_hash(user["password_hash"], password)):
+    if not pw_ok:
         record_login_attempt(username, success=False)
         # Failed attempts are evidence too — login_attempts is purged after
         # a week, the audit trail is not.
@@ -219,6 +230,9 @@ def auth_reset_form(token):
     password is actually accepted, then dies; every existing session of the
     account ends, as after an admin reset."""
     if request.method == "GET":
+        if reset_link_row(token) is None:   # say so before anyone types a password (test report UX-27)
+            flash("That reset link is invalid or has expired — request a new one")
+            return redirect(url_for("auth_reset_request"))
         return spa_index() if spa_serves("auth_reset_form") else redirect(url_for("login"))
     row = reset_link_row(token)
     if row is None:
@@ -570,6 +584,11 @@ def account_email():
     db = get_db()
     if session.get("kind") == "external":
         flash("Your email address is how you sign in; ask the project manager to change it")
+        return redirect(url_for("account"))
+    me = db.execute("SELECT password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    if me["password_hash"] and "$" in me["password_hash"] and not check_password_hash(me["password_hash"], request.form.get("password", "")):
+        # reset links go to this address, so changing it is as sensitive as the password (test report SEC-5)
+        flash("Enter your current password to change your email")
         return redirect(url_for("account"))
     if email and db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND id != ?", (email.lower(), session["user_id"])).fetchone():
         flash("That address belongs to another account")

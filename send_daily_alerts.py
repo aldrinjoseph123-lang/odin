@@ -23,6 +23,7 @@ import graph
 
 
 def _format_alerts_html(alerts):
+    from markupsafe import escape
     lines = []
     labels = {
         "project_overdue": "Projects overdue",
@@ -34,7 +35,7 @@ def _format_alerts_html(alerts):
         items = alerts.get(key) or []
         if not items:
             continue
-        names = ", ".join(p["name"] for p in items)
+        names = ", ".join(str(escape(p["name"])) for p in items)   # names are user input; the digest is HTML
         lines.append(f"<b>{label} ({len(items)}):</b> {names}")
     return "<br>".join(lines) if lines else None
 

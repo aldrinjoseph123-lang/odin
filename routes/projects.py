@@ -186,13 +186,11 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
     elif stage_filter:
         query += " AND p.stage = ?"
         params.append(stage_filter)
-    elif delivery_mode_filter:
-        query += " AND p.delivery_mode = ?"
-        params.append(delivery_mode_filter)
-        if not show_closed:
-            query += f" AND {PROJECT_OPEN_SQL}"
     elif not show_closed:
         query += f" AND {PROJECT_OPEN_SQL}"
+    if delivery_mode_filter:   # combines with every view and stage (test report FN-13: a stage silently dropped it)
+        query += " AND p.delivery_mode = ?"
+        params.append(delivery_mode_filter)
     if search:
         # free-text across the fields a user searches by. LIKE is parameterised;
         # the % wrapping is on the value, never interpolated into the SQL.
@@ -341,6 +339,12 @@ def project_new():
             flash(f"Template '{template['name']}' has no stages yet")
             return redirect(url_for("project_new"))
 
+        if not request.form.get("name", "").strip() or not request.form.get("client", "").strip():
+            flash("Project name and client are required")   # test report FN-5: edit refused this, create did not
+            return redirect(url_for("project_new"))
+        if request.form.get("delivery_mode", DELIVERY_MODES[0]) not in DELIVERY_MODES:
+            flash("Pick a delivery mode")
+            return redirect(url_for("project_new"))
         if problem := _date_problem(request.form):
             flash(problem)
             return redirect(url_for("project_new"))
@@ -409,6 +413,9 @@ def project_new():
         joined = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Coordinator'", (project_id,))]
         notify_users(joined, "assigned", project_id, f"You are on {escape(name)}",
                      f"{escape(session['user_name'])} added you to <b>{escape(name)}</b> as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
+        if lead_id != session["user_id"]:   # test report FN-7: a PM named by someone else heard only by mail, which may be off
+            notify_users([lead_id], "assigned", project_id, f"You manage {escape(name)}",
+                         f"{escape(session['user_name'])} created <b>{escape(name)}</b> and made you its project manager.", link=f"/projects/{project_id}")
         audit_log("create_project", "project", project_id, name, f"client={request.form['client']}" + (f" manager_id={lead_id}" if lead_id != session["user_id"] else ""))
         notify_event(
             {"owner_id": lead_id},
@@ -604,6 +611,8 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     actor_id = None if guest else session["user_id"]
     if new_stage not in get_stage_names(project_id):
         return "Invalid stage"
+    if new_stage == project["stage"]:   # test report FN-8: it reset the SLA clock and re-notified everyone
+        return f"The project is already in {new_stage}"
     from services.signoff import gate
     if blocked := gate(project, new_stage):
         return blocked
@@ -756,6 +765,9 @@ def _date_problem(form):
                 _date.fromisoformat(value)
             except ValueError:
                 return f"{label} must be a date (YYYY-MM-DD)"
+    start, end = (form.get("start_date") or "").strip(), (form.get("target_end_date") or "").strip()
+    if start and end and end < start:
+        return "The target end date is before the start date"
     return None
 
 
@@ -763,8 +775,11 @@ def save_document(project_id, file, category, uploaded_by):
     """Save an uploaded file to disk + documents table (+ OneDrive mirror if
     enabled). Assumes the caller already validated file/category — shared by
     the Documents panel upload and project creation's bundled PO upload."""
-    original_name = secure_filename(file.filename)
-    stored_name = f"{uuid.uuid4().hex}_{original_name}"
+    # the name people gave the file, in any script (secure_filename kept only ASCII:
+    # "日本語の報告.pdf" became "pdf"); on disk it is a random id with a plain extension
+    original_name = "".join(ch for ch in os.path.basename(file.filename.replace("\\", "/")) if ch.isprintable()).strip()[:200] or "document"
+    ext = os.path.splitext(original_name)[1].lower()
+    stored_name = uuid.uuid4().hex + (ext if ext[1:].isascii() and ext[1:].isalnum() else "")
     project_dir = os.path.join(UPLOAD_DIR, str(project_id))
     os.makedirs(project_dir, exist_ok=True)
     file.save(os.path.join(project_dir, stored_name))
@@ -780,7 +795,7 @@ def save_document(project_id, file, category, uploaded_by):
 
     if get_setting("onedrive_mirror_uploads_enabled") == "1":
         project = db.execute("SELECT name FROM projects WHERE id = ?", (project_id,)).fetchone()
-        remote_path = f"Odin-Documents/{project_id}-{secure_filename(project['name'])}/{category}/{original_name}"
+        remote_path = f"Odin-Documents/{project_id}-{secure_filename(project['name'])}/{category}/{secure_filename(original_name) or stored_name}"
         ok, error = graph.upload_file(os.path.join(project_dir, stored_name), remote_path)
         if not ok:
             print(f"[save_document] OneDrive mirror failed: {error}")
@@ -910,6 +925,14 @@ def _chosen_template(db, raw_id):
 
 # ---- participants: who is on the project, and as what ------------------------
 
+_WRONG_KIND = "Customer is for the customer's own account; partners take Customer, Reseller or Contractor"
+
+
+def _wrong_kind_for_role(user, role):
+    # staff never stand in for the customer (stage approvals); partners never hold a staff role (tasks, documents)
+    return (role == "Customer" and user["kind"] != "external") or (user["kind"] == "external" and role not in EXTERNAL_PROJECT_ROLES)
+
+
 @app.route("/projects/<int:project_id>/participants/add", methods=["POST"])
 @permission_required("edit_project")
 @project_role_required("manage_project")
@@ -923,9 +946,8 @@ def participant_add(project_id):
         flash("Pick an active user")
     elif role not in PROJECT_ROLES:
         flash("Pick a role")
-    elif (role == "Customer" and user["kind"] != "external") or (user["kind"] == "external" and role not in EXTERNAL_PROJECT_ROLES):
-        # staff never stand in for the customer (stage approvals); partners never hold a staff role (tasks, documents)
-        flash("Customer is for the customer's own account; partners take Customer, Reseller or Contractor")
+    elif _wrong_kind_for_role(user, role):
+        flash(_WRONG_KIND)
     elif role == PROJECT_MANAGER and user["id"] != project["owner_id"]:
         flash("The project manager is the owner — change the owner on Edit")
     elif user["id"] == project["owner_id"] and role != PROJECT_MANAGER:
@@ -977,6 +999,9 @@ def participant_invite(project_id):
             audit_log("create_user", "user", user["id"], email, "external, invited")
         if user["id"] == project["owner_id"]:
             flash("That is the project manager")
+            return redirect(url_for("project_detail", project_id=project_id) + "#team")
+        if _wrong_kind_for_role(user, role):   # the invite is a second way onto the team (system map #14)
+            flash(_WRONG_KIND)
             return redirect(url_for("project_detail", project_id=project_id) + "#team")
         db.execute(
             "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) "
@@ -1274,6 +1299,28 @@ def _task_stage(project_id, requested):
     return requested if requested and requested in get_stage_names(project_id) else None
 
 
+def _assignee(db, project_id, raw):
+    """The assignee, or None: an active staff account (staff see every
+    project), or a partner on this project — never a partner from elsewhere,
+    who would be told the name of a project they cannot open (test report FN-4)."""
+    if not raw:
+        return None
+    ok = db.execute("SELECT 1 FROM users u WHERE u.id = ? AND u.active = 1 AND (u.kind = 'internal' OR EXISTS "
+                    "(SELECT 1 FROM project_participants pp WHERE pp.project_id = ? AND pp.user_id = u.id))", (raw, project_id)).fetchone()
+    return raw if ok else None
+
+
+def _due_problem(form):
+    """A due date the reports can do arithmetic on (test report FN-3)."""
+    from datetime import date as _date
+    value = (form.get("due_date") or "").strip()
+    try:
+        value and _date.fromisoformat(value)
+    except ValueError:
+        return "Due date must be a date (YYYY-MM-DD)"
+    return None
+
+
 @app.route("/projects/<int:project_id>/tasks", methods=["POST"])
 @permission_required("edit_project")
 @project_role_required("manage_tasks")
@@ -1285,11 +1332,9 @@ def task_add(project_id):
     title = (form.get("title") or "").strip()[:200]
     if not title:
         return _task_reply(project_id, "Task needs a title")
-    assignee_id = form.get("assignee_id") or None
-    # must be a real, still-active user: the dropdown only offers active ones,
-    # but a hand-crafted POST could name a deactivated account.
-    if assignee_id and not db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (assignee_id,)).fetchone():
-        assignee_id = None
+    assignee_id = _assignee(db, project_id, form.get("assignee_id"))
+    if problem := _due_problem(form):
+        return _task_reply(project_id, problem)
     cur = db.execute(
         "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (project_id, title, assignee_id, form.get("due_date") or None,
@@ -1353,11 +1398,9 @@ def task_edit(project_id, task_id):
     title = (form.get("title") or "").strip()[:200]
     if not title:
         return _task_reply(project_id, "Task needs a title")
-    assignee_id = form.get("assignee_id") or None
-    # must be a real, still-active user: the dropdown only offers active ones,
-    # but a hand-crafted POST could name a deactivated account.
-    if assignee_id and not db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (assignee_id,)).fetchone():
-        assignee_id = None
+    assignee_id = _assignee(db, project_id, form.get("assignee_id"))
+    if problem := _due_problem(form):
+        return _task_reply(project_id, problem)
     stage = _task_stage(project_id, form.get("stage")) if "stage" in form else task["stage"]
     db.execute(
         "UPDATE tasks SET title = ?, assignee_id = ?, due_date = ?, stage = ? WHERE id = ?",

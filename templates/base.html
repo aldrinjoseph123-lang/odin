@@ -48,7 +48,7 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
   // Rewrites every <time class="localdt"> from stored UTC into the reader's own
   // timezone. Server-side isn't an option — it has no idea where the reader is.
   document.querySelectorAll('time.localdt').forEach(function (el) {

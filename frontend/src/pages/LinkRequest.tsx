@@ -35,8 +35,8 @@ export default function LinkRequest() {
         Partners and customers get a link at the address they were invited with. It works once, for {minutes} minutes.
       </AuthHeading>
       {message && <Alert className="mb-5" role="status"><AlertDescription>{message}</AlertDescription></Alert>}
-      <form onSubmit={submit} className="grid gap-4" aria-busy={busy}>
-        <div className="grid gap-1.5">
+      <form onSubmit={submit} className="grid grid-cols-1 gap-4" aria-busy={busy}>
+        <div className="grid grid-cols-1 gap-1.5">
           <Label htmlFor="email" className="text-[13.5px]">Email</Label>
           <Input id="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 text-base" />
         </div>

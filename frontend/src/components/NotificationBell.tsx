@@ -12,6 +12,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<Notification[] | null>(null)
   const box = useRef<HTMLDivElement>(null)
+  const bell = useRef<HTMLButtonElement>(null)
   const navigate = useNavigate()
 
   const refresh = useCallback(async () => {
@@ -26,9 +27,11 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
     if (!open) return
     void refresh()
     function away(e: MouseEvent) { if (box.current && !box.current.contains(e.target as Node)) setOpen(false) }
-    function esc(e: KeyboardEvent) { if (e.key === "Escape") setOpen(false) }
-    document.addEventListener("mousedown", away); document.addEventListener("keydown", esc)
-    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc) }
+    // Escape closes and returns to the bell; tabbing out of the popover closes it (test report UX-11)
+    function esc(e: KeyboardEvent) { if (e.key === "Escape") { setOpen(false); bell.current?.focus() } }
+    function left(e: FocusEvent) { if (box.current && e.target instanceof Node && !box.current.contains(e.target)) setOpen(false) }
+    document.addEventListener("mousedown", away); document.addEventListener("keydown", esc); document.addEventListener("focusin", left)
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); document.removeEventListener("focusin", left) }
   }, [open, refresh])
 
   async function openOne(n: Notification) {
@@ -42,7 +45,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
 
   return (
     <div ref={box} className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-haspopup="dialog" aria-expanded={open}
+      <button ref={bell} type="button" onClick={() => setOpen((v) => !v)} aria-haspopup="dialog" aria-expanded={open}
         aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
         className="relative inline-flex h-8 w-8 items-center justify-center rounded-md text-nav-fg hover:bg-muted hover:text-foreground">
         <Bell className="h-4 w-4" />

@@ -371,7 +371,7 @@ class IntegrationNotificationTestCase(unittest.TestCase):
         settle_seed_admin()
         self.client = app_module.app.test_client()
         self.client.post("/login", data={"username": "admin", "password": "changeme"})
-        self.client.post("/account/email", data={"email": "admin@example.com"})
+        self.client.post("/account/email", data={"email": "admin@example.com", "password": "changeme"})
 
     def tearDown(self):
         os.unlink(db_module.DB_PATH)
@@ -1241,6 +1241,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             anon = app_module.app.test_client()
             for endpoint, path in paths.items():
                 r = (anon if endpoint.startswith("auth_") else c).get(path)   # the sign-in helpers are for the signed out
+                if endpoint == "auth_reset_form":   # a dead link goes back to the request form before anyone types (UX-27)
+                    self.assertIn("/auth/reset", r.headers.get("Location", "")); continue
                 self.assertEqual(r.status_code, 200, path); self.assertIn(b"id=root", r.data, path)
             # form POSTs are not intercepted: the Jinja route still answers them
             self.assertEqual(c.post("/projects/1/note", data={"note": "x"}).status_code, 302)
@@ -1268,7 +1270,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c.post("/settings/integrations", data={"guest_links_enabled": "on"}, headers=h)
         self.assertEqual(anon.get(f"/guest/{tok}").status_code, 200)
 
-    def test_reset_data_wipes_every_project_table_so_ids_start_clean(self):
+    def test_reset_data_wipes_every_project_table_and_keeps_ids_moving(self):
         import reset_data
         self.new_project(name="Demo", client="C", customer_approval="1")
         self._invite(1, "ann@acme.example", "Customer", "Ann")
@@ -1283,10 +1285,13 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 self.assertEqual(db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0], 0, t)
             self.assertEqual(db.execute("SELECT COUNT(*) FROM users").fetchone()[0], 2)      # admin + Ann kept
             self.assertGreater(db.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0], 0)
-        # the next project starts with a clean team, not the demo's
+            self.assertIsNotNone(db.execute("SELECT 1 FROM audit_logs WHERE action = 'reset_data'").fetchone())   # OPS-14
+        # the next project gets a new id (the kept audit log names the old one) and a clean team (OPS-6)
         self.new_project(name="Real", client="C")
         with self.raw_db() as db:
-            self.assertEqual([r[0] for r in db.execute("SELECT role FROM project_participants WHERE project_id=1")], ["Project manager"])
+            pid = db.execute("SELECT id FROM projects WHERE name = 'Real'").fetchone()["id"]
+            self.assertNotEqual(pid, 1)
+            self.assertEqual([r[0] for r in db.execute("SELECT role FROM project_participants WHERE project_id=?", (pid,))], ["Project manager"])
 
     @patch("graph.send_mail", return_value=(True, None))
     @patch("graph.send_teams_message", return_value=(True, None))
@@ -1819,7 +1824,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         a = c.get("/api/account").get_json()
         self.assertEqual((a["username"], a["kind"], a["must_change_password"]), ("admin", "internal", False))
-        self.assertEqual(c.post("/account/email", data={"email": "admin@odin.example"}, headers=h).get_json()["messages"], ["Email updated"])
+        self.assertEqual(c.post("/account/email", data={"email": "admin@odin.example", "password": "changeme"}, headers=h).get_json()["messages"], ["Email updated"])
         self.assertEqual(c.post("/account", data={"current_password": "wrong", "new_password": STRONG_PASSWORD}, headers=h).get_json()["messages"], ["Current password is wrong"])
         w = c.get("/api/my-work").get_json()
         self.assertEqual([t["title"] for t in w["tasks"]], ["Late one"]); self.assertLess(w["tasks"][0]["due_date"], w["today"])
@@ -2843,6 +2848,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             rows = db.execute("SELECT id, name, position FROM project_stages WHERE project_id = 1 ORDER BY position").fetchall()
             db.execute("UPDATE projects SET stage_entered_at = ?, created_at = ? WHERE id = 1", (iso(-20) + "T09:00:00", iso(-20) + "T09:00:00"))
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.count_working_days', '0')")   # calendar days: the forecast chains from today, so a weekend would move it
             db.commit()
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf}
@@ -3144,6 +3150,210 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("INSERT INTO settings (key, value) VALUES ('policy.signoff_required', '0')"); db.commit()
         self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[-1]}, headers=h).status_code, 200)
 
+    def test_a_stage_list_edit_cannot_close_an_unsigned_project(self):
+        # test report FN-1: reordering or deleting stages made the current stage terminal, closing it unsigned
+        c, h, _, stages = self._signoff_setup()
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": "Sign-off"}, headers=h).status_code, 200)
+        with self.raw_db() as db:
+            closed_id = db.execute("SELECT id FROM project_stages WHERE project_id = 1 AND name = 'Closed'").fetchone()["id"]
+        hj = {**h, "Accept": "application/json"}
+        r = c.post(f"/projects/1/stages/{closed_id}/move", data={"direction": "up"}, headers=hj).get_json()
+        self.assertIn("sign-off", " ".join(r["messages"]))
+        r = c.post(f"/projects/1/stages/{closed_id}/delete", headers=hj).get_json()
+        self.assertIn("sign-off", " ".join(r["messages"]))
+        with self.raw_db() as db:
+            self.assertEqual([x["name"] for x in db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position")], stages)
+        # once the sign-off is not required, the same edit goes through
+        with self.raw_db() as db:
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.signoff_required', '0')"); db.commit()
+        c.post(f"/projects/1/stages/{closed_id}/delete", headers=hj)
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM project_stages WHERE id = ?", (closed_id,)).fetchone())
+
+    def test_names_in_any_script_download_and_upload(self):
+        # test report FN-2 (a Chinese or Arabic project name hung the PDF and CSV) and FN-15 (upload names reduced to "pdf")
+        self.new_project(name="日本語プロジェクト", client="Globex")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        for url in ("/projects/1/report.pdf", "/projects/1/activity.csv"):
+            r = c.get(url)
+            self.assertEqual(r.status_code, 200, url)
+            r.headers["Content-Disposition"].encode("latin-1")   # a header must be Latin-1
+        c.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"%PDF-1.4 x"), "报告 final.pdf")}, headers=h)
+        doc = c.get("/api/projects/1").get_json()["documents"][0]
+        self.assertEqual(doc["filename"], "报告 final.pdf")
+        r = c.get(f"/projects/1/documents/{doc['id']}/download")
+        self.assertEqual(r.status_code, 200); self.assertIn("filename*=UTF-8''", r.headers["Content-Disposition"])
+
+    def test_the_server_refuses_data_the_pages_cannot_use(self):
+        # test report FN-3, FN-4, FN-5, FN-6, FN-9, FN-10, FN-11
+        self.new_project(name="Mine", client="Globex")
+        self.new_project(name="Other", client="Initech")
+        self._invite(2, "ann@initech.example", "Customer", "Ann")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        with self.raw_db() as db:
+            ann = db.execute("SELECT id FROM users WHERE email = 'ann@initech.example'").fetchone()["id"]
+        r = c.post("/projects/1/tasks", data={"title": "Bad", "due_date": "not-a-date"}, headers=h).get_json()
+        self.assertIn("Due date must be a date", " ".join(r["messages"]))
+        c.post("/projects/1/tasks", data={"title": "Outsider", "assignee_id": str(ann)}, headers=h)
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT assignee_id FROM tasks WHERE title = 'Outsider'").fetchone()["assignee_id"])
+            self.assertIsNone(db.execute("SELECT 1 FROM notifications WHERE user_id = ? AND project_id = 1", (ann,)).fetchone())
+        po = lambda: (io.BytesIO(b"%PDF-1.4 po"), "po.pdf")   # noqa: E731
+        for form, says in (({"name": " ", "client": "C"}, "name and client are required"),
+                           ({"name": "N", "client": "C", "delivery_mode": "Telepathy"}, "Pick a delivery mode"),
+                           ({"name": "N", "client": "C", "start_date": "2026-12-31", "target_end_date": "2026-10-01"}, "before the start date")):
+            r = c.post("/projects/new", data={**form, "po_document": po()}, headers=h).get_json()
+            self.assertIn(says, " ".join(r["messages"]), form)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0], 2)
+        # users: one account per address and per username (any case); unknown ids are 404s
+        col = self._make_user("col", "Member")
+        r = c.post(f"/users/{col}/email", data={"email": "ANN@initech.example"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["That address belongs to another account"])
+        r = c.post("/users", data={"username": "COL", "name": "Twin", "password": STRONG_PASSWORD}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Username already exists"])
+        r = c.post("/users", data={"username": " ", "name": "Blank", "password": STRONG_PASSWORD}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Username and name are required"])
+        for url in ("/users/9999/active", "/users/9999/reset-password", "/users/9999/email", "/users/9999/role"):
+            self.assertEqual(c.post(url, data={"active": "0", "new_password": STRONG_PASSWORD, "role": "Member"}, headers=h).status_code, 404, url)
+
+    def test_the_report_low_findings_stay_fixed(self):
+        # FN-7, FN-8, FN-12, FN-13, FN-14, FN-16, SEC-6, SEC-7, SEC-8 of the 2 Oct test report
+        self.new_project(name="Mine", client="Globex", delivery_mode="Distribution/MSSP")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        with self.raw_db() as db:
+            stage = db.execute("SELECT stage FROM projects WHERE id = 1").fetchone()["stage"]
+        self.assertIn("already in", c.post("/api/projects/1/stage", json={"stage": stage}, headers=h).get_json()["error"])        # FN-8
+        col = self._make_user("col", "Member")
+        self.assertEqual(c.post(f"/api/people/{col}/notify", json={"message": "hi", "project_id": 999}, headers=h).status_code, 400)   # FN-12
+        both = lambda mode: len(c.get("/api/projects", query_string={"stage": stage, "delivery_mode": mode}).get_json()["rows"])   # noqa: E731  FN-13
+        self.assertEqual((both("Distribution/MSSP"), both("Direct")), (1, 0))
+        r = c.post("/api/signup-links", json={"label": "x", "role": "Member", "days": "soon"}, headers=h).get_json()              # FN-16
+        self.assertIn(r.get("error"), ("Days and uses are whole numbers", "Sign-up links are switched off (Settings → Sign-up & activity)"))
+        # FN-7: a Contributor names the PM, who hears it in the bell
+        eng = self._make_user("eng", "Contributor")
+        e, ecsrf = self._api_client("eng", STRONG_PASSWORD)
+        e.post("/projects/new", data={"name": "Theirs", "client": "C", "owner_id": str(col), "po_document": (io.BytesIO(b"%PDF-1.4 po"), "po.pdf")},
+               headers={"X-CSRF-Token": ecsrf, "Accept": "application/json"})
+        with self.raw_db() as db:
+            self.assertIsNotNone(db.execute("SELECT 1 FROM notifications WHERE user_id = ? AND title LIKE 'You manage%'", (col,)).fetchone())
+        # FN-14: mark-all-read counts only what the bell shows
+        self.assertEqual(c.post("/api/notifications/read", json={"all": True}, headers=h).get_json()["unread"], 0)
+        # SEC-7: a deactivated account says so only to its own password
+        c.post(f"/users/{eng}/active", data={"active": "0"}, headers=h)
+        anon = app_module.app.test_client(); acsrf = anon.get("/api/session").get_json()["csrf"]
+        r = anon.post("/api/login", json={"username": "eng", "password": "wrong-password-here"}, headers={"X-CSRF-Token": acsrf}).get_json()
+        self.assertEqual(r["error"], "Bad username or password")
+        # SEC-6: requiring two-step ends the sessions of those who have not set it up
+        p1, _ = self._api_client("col", STRONG_PASSWORD)
+        self.assertIsNotNone(p1.get("/api/session").get_json()["user"])
+        c.post("/settings/policies/security", data={**{k: v for k, v in self._security_form().items()}, "mfa_required": "everyone"}, headers=h)
+        self.assertIsNone(p1.get("/api/session").get_json()["user"])
+        # SEC-8: the legacy dismiss link is a 404 for a project the caller cannot see
+        self._invite(1, "ann@globex.example", "Customer", "Ann")
+        ann = self._external_client("ann@globex.example")
+        self.assertEqual(ann.get("/alerts/2/dismiss/stale").status_code, 404)
+
+    def _security_form(self):
+        from policies import POLICIES, policy
+        with app_module.app.app_context():
+            return {k: ("1" if policy(k) is True else "" if policy(k) is False else ",".join(policy(k)) if isinstance(policy(k), (list, tuple)) else str(policy(k)))
+                    for k, e in POLICIES.items() if e["area"] == "security"}
+
+    def test_pdfs_print_arabic_greek_and_cyrillic(self):
+        # test report OPS-7: they printed as "?" (Windows-1252 Helvetica only)
+        from services.pdf import _shape, report_pdf
+        self.assertEqual(_shape("\u0633\u0644\u0627\u0645"), "\ufee1\ufefc\ufeb3")   # سلام: initial seen, lam-alef, isolated meem, drawn right to left
+        plain = report_pdf("Plain", ["Only Windows-1252: café"])
+        self.assertNotIn(b"/Type0", plain)                                    # Latin text keeps the standard fonts, nothing embedded
+        self.new_project(name="\u0634\u0631\u0643\u0629 \u0394\u03ad\u03bb\u03c4\u03b1 \u0414\u0435\u043b\u044c\u0442\u0430", client="C")
+        c, _ = self._api_client()
+        pdf = c.get("/projects/1/report.pdf").data
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertIn(b"/Subtype /Type0", pdf); self.assertIn(b"/FontFile2", pdf); self.assertIn(b"/ToUnicode", pdf)
+        self.assertIn(b"NotoSansArabic", pdf); self.assertIn(b"NotoSans-", pdf)
+
+    def test_scripts_run_only_from_odin_or_with_the_response_nonce(self):
+        # system map #19: script-src 'unsafe-inline' is gone wherever no inline handler needs it
+        import re
+        dist = tempfile.mkdtemp(); os.makedirs(os.path.join(dist, "assets"))
+        open(os.path.join(dist, "index.html"), "w").write("<title>Odin</title><script>document.documentElement.dataset.theme='light'</script><div id=root></div>")
+        script_src = lambda r: re.search(r"script-src ([^;]*);", r.headers["Content-Security-Policy"]).group(1)   # noqa: E731
+        with patch.dict(app_module.app.config, {"SERVE_SPA": True, "SPA_DIST": dist}):
+            r = app_module.app.test_client().get("/login")
+            nonce = re.search(rb'<script nonce="([^"]+)">', r.data).group(1).decode()
+            self.assertEqual(script_src(r), f"'self' 'nonce-{nonce}'")
+            self.assertNotEqual(nonce, re.search(rb'nonce="([^"]+)"', app_module.app.test_client().get("/login").data).group(1).decode())   # one per response
+        r = self.client.get("/no-such-page")                                     # the Jinja error page: its script carries the nonce
+        self.assertIn("'nonce-", script_src(r)); self.assertNotIn("unsafe-inline", script_src(r))
+        self.new_project(name="P", client="C")
+        r = self.client.get("/projects/1")                                       # an old Jinja twin with onclick=: still allowed, for now
+        self.assertIn("'unsafe-inline'", script_src(r))
+
+    def test_staff_cannot_be_invited_as_the_customer(self):
+        # test report SEC-1: the email invite skipped the rule participant_add enforces (system map #14)
+        self.new_project(name="P", client="Globex")
+        col = self._make_user("col", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'col@corp.example' WHERE id = ?", (col,)); db.commit()
+        self.client.post("/projects/1/participants/invite", data={"email": "col@corp.example", "name": "Col", "role": "Customer"})
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM project_participants WHERE user_id = ?", (col,)).fetchone())
+
+    def test_a_partner_opening_the_board_does_not_resolve_the_teams_alerts(self):
+        # test report OPS-1: the board synced alerts from the viewer's narrow project list
+        self.new_project(name="Theirs", client="Initech", target_end_date="2020-01-01")
+        self.new_project(name="Mine", client="Globex")
+        c, _ = self._api_client()
+        c.get("/api/board")
+        open_alerts = "SELECT COUNT(*) FROM alerts WHERE resolved = 0"
+        with self.raw_db() as db:
+            before = db.execute(open_alerts).fetchone()[0]
+        self.assertGreater(before, 0)
+        self._invite(2, "ann@globex.example", "Customer", "Ann")
+        self._external_client("ann@globex.example").get("/api/board")
+        with self.raw_db() as db:
+            self.assertEqual(db.execute(open_alerts).fetchone()[0], before)
+
+    def test_the_daily_digest_escapes_project_names(self):
+        # test report SEC-2
+        from send_daily_alerts import _format_alerts_html
+        html = _format_alerts_html({"project_overdue": [{"name": '<a href="https://evil.example">Re-auth</a>'}]})
+        self.assertNotIn("<a href", html); self.assertIn("&lt;a href", html)
+
+    @patch("graph.send_mail", return_value=(True, None))
+    def test_a_password_change_kills_outstanding_reset_links(self, mail):
+        # test report SEC-3: an older reset link outlived the password it was meant to replace
+        import re
+        self._mail_on()
+        pm = self._make_user("pm", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'pm@odin.example' WHERE id = ?", (pm,)); db.commit()
+        anon = app_module.app.test_client()
+        h = {"X-CSRF-Token": anon.get("/api/session").get_json()["csrf"], "Accept": "application/json"}
+        tokens = []
+        for _ in range(2):
+            anon.post("/auth/reset", data={"email": "pm@odin.example"}, headers=h)
+            tokens.append(re.search(r"/auth/reset/([A-Za-z0-9_-]+)", mail.call_args.args[2]).group(1))
+        self.assertEqual(anon.post(f"/auth/reset/{tokens[1]}", data={"new_password": "Granite-Harbour-Lantern-7"}, headers=h).get_json()["location"], "/login")
+        r = anon.post(f"/auth/reset/{tokens[0]}", data={"new_password": "Attacker-Harbour-Lantern-1"}, headers=h).get_json()
+        self.assertIn("invalid or has expired", " ".join(r["messages"]))
+        c, _ = self._api_client("pm", "Granite-Harbour-Lantern-7")
+        self.assertEqual(c.get("/api/session").get_json()["user"]["name"], "pm")
+
+    def test_changing_the_email_takes_the_password(self):
+        # test report SEC-5: reset links go to this address
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        self.assertTrue(c.get("/api/account").get_json()["has_password"])
+        r = c.post("/account/email", data={"email": "thief@evil.example"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Enter your current password to change your email"])
+        r = c.post("/account/email", data={"email": "admin@odin.example", "password": "changeme"}, headers=h).get_json()
+        self.assertEqual(r["messages"], ["Email updated"])
+
     # ---- production review, 30 Sep 2026 ---------------------------------------
 
     def test_partners_see_only_their_projects_and_only_what_is_meant_for_them(self):
@@ -3202,7 +3412,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.get("/api/projects/1/signoff").get_json()["candidates"]["signers"], [])   # a staff "Customer" cannot sign
         self._invite(1, "ann@globex.example", "Customer", "Ann")
         c2, csrf = self._api_client("col", STRONG_PASSWORD)
-        r = c2.post("/account/email", data={"email": "ANN@globex.example"}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()
+        r = c2.post("/account/email", data={"email": "ANN@globex.example", "password": STRONG_PASSWORD}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()
         self.assertIn("another account", " ".join(r["messages"]))
         ann = self._external_client("ann@globex.example")
         acsrf = ann.get("/api/session").get_json()["csrf"]
@@ -3554,6 +3764,28 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         runs = c.get("/api/settings?section=backups").get_json()["backups"]["runs"]
         self.assertEqual([r["ok"] for r in runs], [False, True])
 
+    def test_a_failing_backup_destination_is_its_own_failure_and_runs_do_not_overlap(self):
+        # test report OPS-5, OPS-9, OPS-2
+        import backup, fcntl
+        share = tempfile.mkdtemp()
+        with self.raw_db() as db:
+            for k, v in (("dest_share", "1"), ("share_path", share), ("dest_onedrive", "1")):
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (f"policy.{k}", v))
+            db.commit()
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()), patch("backup._copy_graph", side_effect=RuntimeError("token expired")):
+            ok, message = backup.run_backup()
+            self.assertFalse(ok); self.assertIn("OneDrive failed: token expired", message)
+            self.assertEqual(len([f for f in os.listdir(share) if f.endswith(".zip")]), 1)   # the share still got its copy
+            with self.raw_db() as db:
+                self.assertIsNotNone(db.execute("SELECT size_bytes FROM backup_runs ORDER BY id DESC").fetchone()[0])   # the local copy is recorded
+            # the updater's backup stays on this server
+            ok, message = backup.run_backup(local_only=True)
+            self.assertTrue(ok, message); self.assertEqual(message, "local")
+            # one run at a time
+            with open(os.path.join(db_module.DATA_DIR, "backups", ".lock"), "w") as held:
+                fcntl.flock(held, fcntl.LOCK_EX)
+                self.assertEqual(backup.run_backup(), (False, "another backup is running; try again in a minute"))
+
     def test_weekly_report_goes_to_chosen_roles_with_pdfs_and_a_teams_summary(self):
         from services import weekly_report
         self.new_project(name="Late one", client="Acme", target_end_date="2020-01-01")
@@ -3664,6 +3896,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=9), {}, times, days), ["digest", "backup", "report", "housekeeping"])
         done = {j: "2026-09-28" for j in ("digest", "backup", "housekeeping")}
         self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=9), done, times, days), ["report"])
+        # a time zone moved west makes "today" yesterday: what ran on the later date is not run again (OPS-17)
+        later = {j: (mon_0730.date() + timedelta(days=1)).isoformat() for j in ("digest", "backup", "report", "housekeeping")}
+        self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=9), later, times, days), [])
         self.assertEqual(scheduler.due_jobs(sat_0900, {}, times, days), ["backup", "housekeeping"])       # no digest or report on a Saturday
         self.assertEqual(scheduler.next_run(mon_0730, "02:00", ["Wed"]).strftime("%a %H:%M"), "Wed 02:00")
         # one pass: heartbeat written, the job marked done for the day even if it fails
@@ -4831,7 +5066,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     @patch("app.graph.send_mail", return_value=(True, None))
     def test_new_alert_fires_email_when_type_channel_enabled(self, mock_send_mail):
-        self.client.post("/account/email", data={"email": "admin@example.com"})
+        self.client.post("/account/email", data={"email": "admin@example.com", "password": "changeme"})
         self.client.post("/settings/alerts", data={
             "threshold::stale": "7",
             "severity::stale": "warning",

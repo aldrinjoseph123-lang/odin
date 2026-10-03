@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { Download, Printer } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { PrintBrand } from "@/components/Brand"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { RagPill } from "@/components/PlanGantt"
 import { RAID_KIND } from "@/components/RaidPanel"
 import { Section, Table } from "@/components/ReportParts"
@@ -31,7 +30,7 @@ function Roadmap({ rows, today }: { rows: PortfolioRow[]; today: string }) {
   const pct = (iso: string) => ((dayOf(iso) - t0) / (t1 - t0)) * 100
   const span = (a: string, b: string) => ({ left: `${pct(a)}%`, width: `max(3px, ${Math.max(0, pct(b) - pct(a))}%)` })
   return (
-    <div className="text-[12px]">
+    <div className="overflow-x-clip text-[12px]">
       <div className="grid grid-cols-[minmax(120px,220px)_minmax(0,1fr)] gap-x-3">
         <span />
         <div className="relative h-5 text-[11px] text-muted-foreground">
@@ -81,7 +80,7 @@ export default function ReportAll(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [template, setTemplate] = useState<number | null>(null)
   useEffect(() => { document.title = "Portfolio report · Odin"; reportAll(template).then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [template])
-  if (error) return <div className="p-5"><Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert></div>
+  if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const s = d.summary
   const internal = d.audience === "internal"
@@ -130,7 +129,7 @@ export default function ReportAll(_props: { user: User }) {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4">
+      <div className="mt-4 grid grid-cols-1 gap-4">
         {d.rows.length > 0 && <Section n title="Roadmap" sub="start to forecast finish, worst health first; open a rollout for its report" className={hide("roadmap")}><Roadmap rows={d.rows} today={d.today} /></Section>}
 
         <div className={cn("grid gap-4", league.length > 0 && "lg:grid-cols-2")}>

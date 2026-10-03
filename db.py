@@ -332,6 +332,11 @@ def migrate_db(db):
         read_at TEXT
     )""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, read_at, id)")
+    # the board and the flow count each project's tasks and notes: without these
+    # every project scanned the whole table (test report OPS-11: 4.3 s at 2,000 projects, 96 ms with them)
+    db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks (project_id, done)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_status_notes_project ON status_notes (project_id, created_at)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_documents_project ON documents (project_id, category)")
     # Customer approval of a stage change, when the project asks for it.
     # One row per change; a newer change supersedes an undecided older one.
     db.execute("""CREATE TABLE IF NOT EXISTS stage_approvals (
@@ -374,6 +379,11 @@ def migrate_db(db):
     # only ever accepted by its own route.
     if "purpose" not in {row[1] for row in db.execute("PRAGMA table_info(login_links)")}:
         db.execute("ALTER TABLE login_links ADD COLUMN purpose TEXT NOT NULL DEFAULT 'signin'")
+    # The account's session_epoch when the link was issued: a password change,
+    # deactivation, role change or two-step reset bumps it and so kills every
+    # link issued before (system map test SEC-3). Older links (NULL) are dead.
+    if "epoch" not in {row[1] for row in db.execute("PRAGMA table_info(login_links)")}:
+        db.execute("ALTER TABLE login_links ADD COLUMN epoch INTEGER")
 
     # Which document kinds partners and customers may see (Settings → Projects &
     # workflow). The client's PO is internal from the start.
