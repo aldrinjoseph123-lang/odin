@@ -40,7 +40,7 @@ export default function Contacts(_props: { user: User }) {
   const load = useCallback(async () => {
     try { setData(await contacts()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load contacts") }
   }, [])
-  useEffect(() => { document.title = "Contacts & partners · Odin"; void load() }, [load])
+  useEffect(() => { document.title = "Contacts & partners · Settings · Odin"; void load() }, [load])
   const send: Send = async (path, fields = {}, confirmText) => {
     if (confirmText && !window.confirm(confirmText)) return null
     setBusy(true)

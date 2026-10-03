@@ -25,7 +25,7 @@ function NavLink({ item, current, onClick }: { item: Item; current: boolean; onC
   const text = (
     <>
       {item.label}
-      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-bad-soft px-1.5 text-[11px] text-bad" variant="secondary">{item.count}</Badge> : null}
+      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-1.5 text-[11px] text-foreground" variant="secondary">{item.count}</Badge> : null}
     </>
   )
   return REACT_PAGES.has(item.href) ? (

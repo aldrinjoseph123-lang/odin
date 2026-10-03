@@ -24,10 +24,11 @@ const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded
 const slip = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--elevation-pop)", fontSize: 12 }, labelStyle: { color: "var(--muted-foreground)" } }
 
-export default function Report(_props: { user: User }) {
+export default function Report({ user }: { user: User }) {
   const id = Number(useParams().id)
   const [params, setParams] = useSearchParams()
-  const audience = params.get("audience") === "customer" ? "customer" : "internal"
+  // partners only ever get the customer copy: asking for the internal one first logged a 404 (test report UX-28)
+  const audience = params.get("audience") === "customer" || user.kind === "external" ? "customer" : "internal"
   const v = Number(params.get("v")) || null
   const template = Number(params.get("template")) || null
   const [r, setR] = useState<RolloutReport | null>(null)
@@ -211,7 +212,7 @@ export default function Report(_props: { user: User }) {
                     <K.icon className={cn("mt-0.5 h-4 w-4 shrink-0", x.kind === "blocker" && x.open ? "text-bad" : "text-muted-foreground")} aria-hidden />
                     <span className="min-w-0 flex-1"><span className={cn("block font-medium", !x.open && "text-muted-foreground")}>{x.title}</span>
                       <span className="block text-[12px] text-muted-foreground">{K.label} · {x.status}{x.owner_name && ` · ${x.owner_name}`}{x.due_date && ` · due ${fmtDate(x.due_date)}`}{x.resolution && ` · ${x.resolution}`}</span></span>
-                    {x.kind !== "decision" && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", x.impact === "high" ? "bg-bad-soft text-bad" : x.impact === "medium" ? "bg-warn-soft text-warn" : "bg-muted text-muted-foreground")}>{x.impact}</span>}
+                    {x.kind !== "decision" && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", x.impact === "high" ? "bg-warn-soft font-semibold text-warn" : x.impact === "medium" ? "bg-muted text-foreground" : "bg-muted text-muted-foreground")}>{x.impact}</span>}
                   </li>
                 )
               })}

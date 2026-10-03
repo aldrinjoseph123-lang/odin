@@ -216,6 +216,12 @@
   select, input[type="file"] {
     max-width: 100%;
     }
+  /* a link inside a sentence is underlined: colour alone does not mark it
+     (WCAG 1.4.1, test report UX-14) */
+  p a:not([data-slot="button"]) {
+    text-decoration-line: underline;
+    text-underline-offset: 2px;
+    }
   html {
     @apply font-sans antialiased;
     /* calt off: Inter turns "24x7" into "24×7", which corrupts addresses

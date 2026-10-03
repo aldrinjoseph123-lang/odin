@@ -33,6 +33,7 @@ type Layout = "table" | "cards"
 const readLayout = (): Layout => { try { return localStorage.getItem("odin.projects.layout") === "cards" ? "cards" : "table" } catch { return "table" } }
 
 export default function Projects({ user }: { user: User }) {
+  useEffect(() => { document.title = "Projects · Odin" }, [])
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<ProjectsData | null>(null)
   const [error, setError] = useState<string | null>(null)

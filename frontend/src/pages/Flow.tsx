@@ -174,8 +174,8 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
   )
 }
 
-function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage, setStage, group, setGroup, tools }: {
-  data: FlowData; me: number; selectedId: number | null; onSelect: (id: number) => void; tools?: ReactNode
+function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilter, stage, setStage, group, setGroup, tools }: {
+  data: FlowData; me: number; partner?: boolean; selectedId: number | null; onSelect: (id: number) => void; tools?: ReactNode
   filter: Filter; setFilter: (f: Filter) => void
   stage: string | null; setStage: (s: string | null) => void
   group: FlowGroupBy | null; setGroup: (g: FlowGroupBy | null) => void
@@ -283,7 +283,7 @@ function RolloutList({ data, me, selectedId, onSelect, filter, setFilter, stage,
           )}
           {rows.length === 0 && (
             <li className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-[13px] text-muted-foreground">
-              {data.rows.length === 0 ? "No active rollouts yet. Create one from a client PO and it appears here."
+              {data.rows.length === 0 ? (partner ? "No rollout is shared with you yet. It appears here once a project manager adds you." : "No active rollouts yet. Create one from a client PO and it appears here.")
                 : stage ? `No rollout in ${stage} matches this filter.`
                 : filter === "customer" ? "No rollout is waiting on a customer's approval."
                 : "Nothing needs attention — every rollout is inside its stage SLA and on schedule."}
@@ -604,6 +604,7 @@ export default function Flow({ user }: { user: User }) {
   // Three ways to look at the portfolio, kept in the URL: the list, a month, or Kibana.
   const vw = params.get("view")
   const view: "list" | "calendar" | "kibana" = vw === "calendar" || (vw === "kibana" && user.kind !== "external") ? vw : "list"
+  useEffect(() => { document.title = `${view === "calendar" ? "Calendar" : view === "kibana" ? "Kibana" : "Flow"} · Odin` }, [view])   // test report UX-17
   const setView = useCallback((v: "list" | "calendar" | "kibana") => {
     setParams((prev) => { const next = new URLSearchParams(prev); if (v === "list") next.delete("view"); else next.set("view", v); next.delete("month"); next.delete("day"); return next }, { replace: true })
   }, [setParams])
@@ -683,7 +684,7 @@ export default function Flow({ user }: { user: User }) {
       <div className="panel mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden">{view === "calendar" ? <Calendar wide={wide} /> : <Kibana rollout={selectedId} onRollout={setSelectedId} />}</div>
     </div>
   )
-  const list = <RolloutList data={data} me={user.id} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} tools={views} />
+  const list = <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} tools={views} />
   const pane = selectedId != null && (
     <>
               {!wide && (

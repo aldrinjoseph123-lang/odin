@@ -17,7 +17,7 @@ type Send = (path: string, fields?: Record<string, string>, confirmText?: string
 function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
   return (
     <section id={id} className="panel p-4">
-      <h3 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h3>
+      <h3 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="sr-only">, </span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h3>
       {children}
     </section>
   )
@@ -523,7 +523,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
       )}
       {editing && (
         <form onSubmit={(e) => { e.preventDefault(); void send("/settings/azure-app", app).then(() => setApp({ ...app, client_secret: "" })) }} className="mb-3 grid grid-cols-1 max-w-md gap-2">
-          {!m.oauth_client_configured && <p className="text-[12.5px] text-muted-foreground">Enter the Azure AD app registration's details (AZURE_SETUP.md explains the one-time step in the Azure portal).</p>}
+          {!m.oauth_client_configured && <p className="text-[12.5px] text-muted-foreground">Enter the details of the app registration made once in the Azure portal (Microsoft Entra ID → App registrations): its tenant ID, client ID and a client secret.</p>}
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[12.5px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[12.5px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[12.5px]" /></label>

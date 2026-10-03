@@ -26,7 +26,7 @@ const LABELS: Record<string, string> = {
 function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
   return (
     <section id={id} className="panel p-4">
-      <h3 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h3>
+      <h3 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="sr-only">, </span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h3>
       {children}
     </section>
   )
@@ -48,7 +48,7 @@ export default function Project(_props: { user: User }) {
     } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This project does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the project") }
   }, [id])
   useEffect(() => { void reload() }, [reload])
-  useEffect(() => { if (x) document.title = `${x.name} · Odin` }, [x])
+  useEffect(() => { document.title = x ? `${x.name} · Odin` : error ? "Project not found · Odin" : "Project · Odin" }, [x, error])
 
   // one door for every form post: show what Flask said, then refetch
   async function send(path: string, fields: Record<string, string> | FormData = {}, confirmText?: string): Promise<FormReply | null> {

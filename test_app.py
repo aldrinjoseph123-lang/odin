@@ -1241,6 +1241,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             anon = app_module.app.test_client()
             for endpoint, path in paths.items():
                 r = (anon if endpoint.startswith("auth_") else c).get(path)   # the sign-in helpers are for the signed out
+                if endpoint == "auth_reset_form":   # a dead link goes back to the request form before anyone types (UX-27)
+                    self.assertIn("/auth/reset", r.headers.get("Location", "")); continue
                 self.assertEqual(r.status_code, 200, path); self.assertIn(b"id=root", r.data, path)
             # form POSTs are not intercepted: the Jinja route still answers them
             self.assertEqual(c.post("/projects/1/note", data={"note": "x"}).status_code, 302)

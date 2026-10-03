@@ -230,6 +230,9 @@ def auth_reset_form(token):
     password is actually accepted, then dies; every existing session of the
     account ends, as after an admin reset."""
     if request.method == "GET":
+        if reset_link_row(token) is None:   # say so before anyone types a password (test report UX-27)
+            flash("That reset link is invalid or has expired — request a new one")
+            return redirect(url_for("auth_reset_request"))
         return spa_index() if spa_serves("auth_reset_form") else redirect(url_for("login"))
     row = reset_link_row(token)
     if row is None:

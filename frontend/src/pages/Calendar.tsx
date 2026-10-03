@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { ArrowRight, CheckSquare, ChevronLeft, ChevronRight, ShieldCheck, Target } from "lucide-react"
+import { AlarmClock, ArrowRight, CheckSquare, ChevronLeft, ChevronRight, ShieldCheck, Target } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, calendar, type CalendarData } from "@/lib/api"
@@ -31,13 +31,15 @@ function items(d: CalendarData, show: Show): Map<string, Item[]> {
 
 const ICON = { task: CheckSquare, target: Target, move: ArrowRight, approval: ShieldCheck }
 function Chip({ it, full }: { it: Item; full?: boolean }) {
-  const Icon = ICON[it.kind]
+  // late is a glyph and a word, not red alone (WCAG 1.4.1, test report UX-19)
+  const late = it.tone === "bad" && !it.done && (it.kind === "task" || it.kind === "target")
+  const Icon = late ? AlarmClock : ICON[it.kind]
   const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
   return (
-    <Link to={it.href} className={cn("flex min-w-0 items-start gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] leading-tight hover:bg-muted", full && "py-1.5 text-[12.5px]")} title={`${it.text}${it.sub ? ` — ${it.sub}` : ""}`}>
+    <Link to={it.href} className={cn("flex min-w-0 items-start gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] leading-tight hover:bg-muted", full && "py-1.5 text-[12.5px]")} title={`${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}`}>
       <Icon className={cn("mt-px h-3 w-3 shrink-0", tone)} aria-hidden />
       <span className="min-w-0">
-        <span className={cn("block truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}>{it.text}</span>
+        <span className={cn("block truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}>{late && <span className="sr-only">Late: </span>}{it.text}</span>
         {full && it.sub && <span className="block truncate text-muted-foreground">{it.sub}</span>}
       </span>
     </Link>

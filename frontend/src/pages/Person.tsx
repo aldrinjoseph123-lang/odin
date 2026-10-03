@@ -86,7 +86,7 @@ export default function Person(_props: { user: User }) {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-[12.5px] text-muted-foreground">In the last 30 days: <span className="font-medium text-foreground">{k.done_30d}</span> tasks finished, <span className="font-medium text-foreground">{d.contribution.notes_30d}</span> notes, <span className="font-medium text-foreground">{d.contribution.moves_30d}</span> stage moves.</p>
+          <p className="mt-3 text-[12.5px] text-muted-foreground">In the last 30 days: <span className="font-medium text-foreground">{k.done_30d}</span> task{k.done_30d === 1 ? "" : "s"} finished, <span className="font-medium text-foreground">{d.contribution.notes_30d}</span> note{d.contribution.notes_30d === 1 ? "" : "s"}, <span className="font-medium text-foreground">{d.contribution.moves_30d}</span> stage move{d.contribution.moves_30d === 1 ? "" : "s"}.</p>
         </section>
 
         <section className="panel p-4" aria-label="Active rollouts">

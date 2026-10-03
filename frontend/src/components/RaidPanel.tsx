@@ -13,7 +13,8 @@ import { fmtDate, lateBy, localToday } from "@/lib/format"
 export const RAID_KIND: Record<RaidKind, { label: string; icon: typeof ShieldAlert }> = {
   risk: { label: "Risk", icon: ShieldAlert }, issue: { label: "Issue", icon: TriangleAlert }, blocker: { label: "Blocker", icon: AlertOctagon }, decision: { label: "Decision", icon: Gavel },
 }
-const IMPACT: Record<string, string> = { high: "bg-bad-soft text-bad", medium: "bg-warn-soft text-warn", low: "bg-muted text-muted-foreground" }
+// amber for high impact, not red: red in Odin means overdue (test report UX-20); the word carries the level
+const IMPACT: Record<string, string> = { high: "bg-warn-soft font-semibold text-warn", medium: "bg-muted text-foreground", low: "bg-muted text-muted-foreground" }
 const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 type Draft = Partial<RaidItem> & { kind: RaidKind; title: string }
 

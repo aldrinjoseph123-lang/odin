@@ -124,7 +124,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           {roles.filter((r) => (r === "External") === (u.kind === "external")).map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </td>
-      <td className="px-3 py-2">{u.active ? "Active" : <span className="text-bad">Deactivated</span>}</td>
+      <td className="px-3 py-2">{u.active ? "Active" : <span className="text-muted-foreground">Deactivated</span>}</td>
       <td className="px-3 py-2 text-[12.5px]">
         {u.kind === "external" ? <span className="text-muted-foreground">Email link</span> : (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

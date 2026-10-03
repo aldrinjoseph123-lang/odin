@@ -44,7 +44,7 @@ function Widget({ title, sub, action, onExpand, children }: { title: string; sub
   return (
     <section className="panel flex h-full min-w-0 flex-col p-4" aria-label={title}>
       <header className="mb-3 flex items-start justify-between gap-3">
-        <h3 className="text-[13.5px] font-semibold">{title}{sub && <span className="ml-1.5 font-normal text-muted-foreground">{sub}</span>}</h3>
+        <h3 className="text-[13.5px] font-semibold">{title}{sub && <span className="sr-only">, </span>}{sub && <span className="ml-1.5 font-normal text-muted-foreground">{sub}</span>}</h3>
         <span className="flex shrink-0 items-center gap-1">
           {action}
           {onExpand && <button type="button" onClick={onExpand} aria-label={`Expand ${title}`} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><Maximize2 className="h-3.5 w-3.5" /></button>}
@@ -119,7 +119,8 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
       {tiles.map((t) => {
         const n = k.counts[t.key], before = k.before?.[t.key] ?? null
         const d = before == null ? 0 : n - before
-        const tone = d === 0 || !t.worseUp ? "bg-muted text-muted-foreground" : d > 0 ? "bg-bad-soft text-bad" : "bg-ok-soft text-ok"
+        // red only when the tile is lateness itself (DESIGN.md; test report UX-20); a worse SLA or waiting count is amber
+        const tone = d === 0 || !t.worseUp ? "bg-muted text-muted-foreground" : d > 0 ? (t.tone === "bad" ? "bg-bad-soft text-bad" : "bg-warn-soft text-warn") : "bg-ok-soft text-ok"
         const series = k.series[t.key]
         return (
           <button key={t.key} type="button" onClick={() => onTile(t.key)} aria-label={`${t.label}: ${n}. Show them`}
@@ -185,7 +186,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
             const fill = r.state === "on_track" ? "bg-primary" : STATE[r.state].dot
             return (
               <Fragment key={r.id}>
-                <Link to={`/board?rollout=${r.id}`} className="truncate py-1.5 font-medium hover:underline">{r.name}<span className="ml-1.5 font-normal text-muted-foreground">{r.client}</span></Link>
+                <Link to={`/board?rollout=${r.id}`} className="truncate py-1.5 font-medium hover:underline">{r.name}{r.state === "overdue" && <span className="ml-1.5 text-[11px] font-semibold text-bad">late</span>}<span className="ml-1.5 font-normal text-muted-foreground">{r.client}</span></Link>
                 <div className="relative py-1.5">
                   <span className="absolute inset-y-0 w-[1.5px] bg-primary/60" style={{ left: pct(now) }} aria-hidden />
                   <Tooltip>
