@@ -238,6 +238,8 @@ def alerts_page_data():
 @app.route("/alerts/<int:project_id>/dismiss/<alert_type>")
 @login_required
 def alert_dismiss(project_id, alert_type):
+    from routes.projects import load_project
+    load_project(project_id)   # 404 unless the caller may see it (test report SEC-8: a redirect told a partner which ids exist)
     dismiss_alert(project_id, alert_type)
     if request.args.get("next") == "board":
         return redirect(url_for("board") + "#alerts")

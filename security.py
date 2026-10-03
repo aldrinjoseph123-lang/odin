@@ -390,7 +390,7 @@ def init_security(app):
         # Idle cap: set from policy on every request (core._auth_gate); the
         # absolute cap is checked there too, since Flask only refreshes this one.
         PERMANENT_SESSION_LIFETIME=timedelta(minutes=60),
-        MAX_CONTENT_LENGTH=UPLOAD_CEILING_MB * 1024 * 1024,  # the per-file policy is checked by upload_problem
+        MAX_CONTENT_LENGTH=(UPLOAD_CEILING_MB + 1) * 1024 * 1024,  # +1 MB for the multipart framing (a file of exactly the ceiling was refused); the per-file policy is checked by upload_problem
     )
     app.before_request(_validate_csrf)
     app.after_request(_security_headers)

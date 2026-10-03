@@ -186,13 +186,11 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
     elif stage_filter:
         query += " AND p.stage = ?"
         params.append(stage_filter)
-    elif delivery_mode_filter:
-        query += " AND p.delivery_mode = ?"
-        params.append(delivery_mode_filter)
-        if not show_closed:
-            query += f" AND {PROJECT_OPEN_SQL}"
     elif not show_closed:
         query += f" AND {PROJECT_OPEN_SQL}"
+    if delivery_mode_filter:   # combines with every view and stage (test report FN-13: a stage silently dropped it)
+        query += " AND p.delivery_mode = ?"
+        params.append(delivery_mode_filter)
     if search:
         # free-text across the fields a user searches by. LIKE is parameterised;
         # the % wrapping is on the value, never interpolated into the SQL.
@@ -415,6 +413,9 @@ def project_new():
         joined = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Coordinator'", (project_id,))]
         notify_users(joined, "assigned", project_id, f"You are on {escape(name)}",
                      f"{escape(session['user_name'])} added you to <b>{escape(name)}</b> as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
+        if lead_id != session["user_id"]:   # test report FN-7: a PM named by someone else heard only by mail, which may be off
+            notify_users([lead_id], "assigned", project_id, f"You manage {escape(name)}",
+                         f"{escape(session['user_name'])} created <b>{escape(name)}</b> and made you its project manager.", link=f"/projects/{project_id}")
         audit_log("create_project", "project", project_id, name, f"client={request.form['client']}" + (f" manager_id={lead_id}" if lead_id != session["user_id"] else ""))
         notify_event(
             {"owner_id": lead_id},
@@ -610,6 +611,8 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     actor_id = None if guest else session["user_id"]
     if new_stage not in get_stage_names(project_id):
         return "Invalid stage"
+    if new_stage == project["stage"]:   # test report FN-8: it reset the SLA clock and re-notified everyone
+        return f"The project is already in {new_stage}"
     from services.signoff import gate
     if blocked := gate(project, new_stage):
         return blocked

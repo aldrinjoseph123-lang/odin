@@ -514,6 +514,8 @@ def api_person_notify(user_id):
     if not target:
         abort(404)
     project_id = body.get("project_id") if isinstance(body.get("project_id"), int) else None
+    if project_id and not get_db().execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
+        return jsonify(error="That rollout does not exist"), 400   # test report FN-12: it was a 500
     notify_users([user_id], "nudge", project_id, f"{session.get('user_name')} sent you a note", f"<p>{_esc(message)}</p>", link=f"/board?rollout={project_id}" if project_id else "/my-work")
     audit_log("notify_person", "user", user_id, target["name"], message[:80])
     return jsonify(ok=True)
@@ -1211,17 +1213,20 @@ def api_notifications():
 def api_notifications_read():
     """Mark one (id) or all of this user's notifications read. Only ever the
     caller's own rows."""
+    from services.notifications import visible_clause
     body = request.get_json(silent=True) or {}
     db = get_db()
     now = datetime.utcnow().isoformat()
+    # what the bell shows, no more (test report FN-14): hidden rows are neither marked nor counted
+    where, vis = visible_clause(session["user_id"], session.get("kind"))
     if body.get("all"):
-        db.execute("UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL", (now, session["user_id"]))
+        db.execute(f"UPDATE notifications AS n SET read_at = ? WHERE n.user_id = ? AND n.read_at IS NULL{where}", (now, session["user_id"], *vis))
     elif isinstance(body.get("id"), int):
         db.execute("UPDATE notifications SET read_at = ? WHERE id = ? AND user_id = ? AND read_at IS NULL", (now, body["id"], session["user_id"]))
     else:
         return jsonify(error="Say which: {id} or {all: true}"), 400
     db.commit()
-    return jsonify(ok=True, unread=db.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (session["user_id"],)).fetchone()[0])
+    return jsonify(ok=True, unread=db.execute(f"SELECT COUNT(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL{where}", (session["user_id"], *vis)).fetchone()[0])
 
 
 @app.route("/api/search")

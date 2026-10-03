@@ -12,6 +12,7 @@ runs later the same day, and never twice in a day.
 It also leaves a heartbeat that Settings shows, so an admin can see whether
 the schedule is really being kept.
 """
+import os
 import sqlite3
 import sys
 import time
@@ -69,6 +70,12 @@ def run_due():
     """One pass: heartbeat, then every due job. Returns the jobs it ran."""
     from zoneinfo import ZoneInfo
     from policies import policy
+    import fcntl
+    # one scheduler at a time decides what is due (test report OPS-8: a second
+    # process on the same minute ran every job twice); the lock covers the
+    # read-and-mark, so whoever comes second finds the jobs marked
+    lock = open(os.path.join(_db.DATA_DIR, "scheduler.lock"), "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
     con = sqlite3.connect(_db.DB_PATH)
     con.row_factory = sqlite3.Row
     try:
@@ -84,6 +91,7 @@ def run_due():
             _set(con, f"job.{job}.last_run", now_local.date().isoformat())
     finally:
         con.close()
+        lock.close()
     for job in todo:
         try:
             if job == "digest":
@@ -100,9 +108,11 @@ def run_due():
                     print(f"[scheduler] weekly report: {weekly_report.send()[2]}")
             elif job == "housekeeping":
                 from services.retention import run_audit_retention
-                removed, path = run_audit_retention()
-                if removed:
-                    print(f"[scheduler] audit retention: {removed} rows archived to {path}")
+
+                def audit_retention():
+                    removed, path = run_audit_retention()
+                    if removed:
+                        print(f"[scheduler] audit retention: {removed} rows archived to {path}")
                 from app import app
                 from db import cleanup_soft_deletes
                 from services.dashboard import record_snapshot
@@ -110,7 +120,8 @@ def run_due():
                 from services.notifications import trim as trim_notifications
                 from services.signup import trim as trim_signup_links
                 with app.app_context():
-                    for step in (cleanup_soft_deletes,   # deleted projects and files past the undo window
+                    for step in (audit_retention,        # a step like the rest: its failure skipped them all (OPS-10)
+                                 cleanup_soft_deletes,   # deleted projects and files past the undo window
                                  trim_activity,          # active-minute rows past activity_keep_days
                                  trim_notifications,     # read bell items past notifications_keep_days
                                  trim_signup_links,      # sign-up links dead for 90 days
@@ -151,8 +162,9 @@ def sync_alerts():
 if __name__ == "__main__":
     if "--healthcheck" in sys.argv:
         sys.exit(0 if healthy() else 1)
-    if "--once" in sys.argv:
+    if "--once" in sys.argv:   # cron mode: alerts too (test report OPS-15)
         print(f"[scheduler] ran: {', '.join(run_due()) or 'nothing due'}")
+        sync_alerts()
         sys.exit(0)
     first = True
     while True:

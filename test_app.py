@@ -3217,6 +3217,50 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         for url in ("/users/9999/active", "/users/9999/reset-password", "/users/9999/email", "/users/9999/role"):
             self.assertEqual(c.post(url, data={"active": "0", "new_password": STRONG_PASSWORD, "role": "Member"}, headers=h).status_code, 404, url)
 
+    def test_the_report_low_findings_stay_fixed(self):
+        # FN-7, FN-8, FN-12, FN-13, FN-14, FN-16, SEC-6, SEC-7, SEC-8 of the 2 Oct test report
+        self.new_project(name="Mine", client="Globex", delivery_mode="Distribution/MSSP")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        with self.raw_db() as db:
+            stage = db.execute("SELECT stage FROM projects WHERE id = 1").fetchone()["stage"]
+        self.assertIn("already in", c.post("/api/projects/1/stage", json={"stage": stage}, headers=h).get_json()["error"])        # FN-8
+        col = self._make_user("col", "Member")
+        self.assertEqual(c.post(f"/api/people/{col}/notify", json={"message": "hi", "project_id": 999}, headers=h).status_code, 400)   # FN-12
+        both = lambda mode: len(c.get("/api/projects", query_string={"stage": stage, "delivery_mode": mode}).get_json()["rows"])   # noqa: E731  FN-13
+        self.assertEqual((both("Distribution/MSSP"), both("Direct")), (1, 0))
+        r = c.post("/api/signup-links", json={"label": "x", "role": "Member", "days": "soon"}, headers=h).get_json()              # FN-16
+        self.assertIn(r.get("error"), ("Days and uses are whole numbers", "Sign-up links are switched off (Settings → Sign-up & activity)"))
+        # FN-7: a Contributor names the PM, who hears it in the bell
+        eng = self._make_user("eng", "Contributor")
+        e, ecsrf = self._api_client("eng", STRONG_PASSWORD)
+        e.post("/projects/new", data={"name": "Theirs", "client": "C", "owner_id": str(col), "po_document": (io.BytesIO(b"%PDF-1.4 po"), "po.pdf")},
+               headers={"X-CSRF-Token": ecsrf, "Accept": "application/json"})
+        with self.raw_db() as db:
+            self.assertIsNotNone(db.execute("SELECT 1 FROM notifications WHERE user_id = ? AND title LIKE 'You manage%'", (col,)).fetchone())
+        # FN-14: mark-all-read counts only what the bell shows
+        self.assertEqual(c.post("/api/notifications/read", json={"all": True}, headers=h).get_json()["unread"], 0)
+        # SEC-7: a deactivated account says so only to its own password
+        c.post(f"/users/{eng}/active", data={"active": "0"}, headers=h)
+        anon = app_module.app.test_client(); acsrf = anon.get("/api/session").get_json()["csrf"]
+        r = anon.post("/api/login", json={"username": "eng", "password": "wrong-password-here"}, headers={"X-CSRF-Token": acsrf}).get_json()
+        self.assertEqual(r["error"], "Bad username or password")
+        # SEC-6: requiring two-step ends the sessions of those who have not set it up
+        p1, _ = self._api_client("col", STRONG_PASSWORD)
+        self.assertIsNotNone(p1.get("/api/session").get_json()["user"])
+        c.post("/settings/policies/security", data={**{k: v for k, v in self._security_form().items()}, "mfa_required": "everyone"}, headers=h)
+        self.assertIsNone(p1.get("/api/session").get_json()["user"])
+        # SEC-8: the legacy dismiss link is a 404 for a project the caller cannot see
+        self._invite(1, "ann@globex.example", "Customer", "Ann")
+        ann = self._external_client("ann@globex.example")
+        self.assertEqual(ann.get("/alerts/2/dismiss/stale").status_code, 404)
+
+    def _security_form(self):
+        from policies import POLICIES, policy
+        with app_module.app.app_context():
+            return {k: ("1" if policy(k) is True else "" if policy(k) is False else ",".join(policy(k)) if isinstance(policy(k), (list, tuple)) else str(policy(k)))
+                    for k, e in POLICIES.items() if e["area"] == "security"}
+
     def test_staff_cannot_be_invited_as_the_customer(self):
         # test report SEC-1: the email invite skipped the rule participant_add enforces (system map #14)
         self.new_project(name="P", client="Globex")

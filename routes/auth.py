@@ -27,6 +27,9 @@ from services.audit import audit_log
 from spa import spa_index, spa_serves
 
 
+_NO_ACCOUNT_HASH = generate_password_hash("no account has this password", method="pbkdf2:sha256")
+
+
 def attempt_login(username, password):
     """The one login path, shared by the HTML form and /api/login.
 
@@ -39,9 +42,17 @@ def attempt_login(username, password):
         from policies import policy
         return False, f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
     user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    if user and not user["active"] and user["pending"] and "$" in user["password_hash"] and check_password_hash(user["password_hash"], password):
+    # One password hash on every path, so the answer takes as long whether or not
+    # the name exists, and an account's state shows only to its password (test report SEC-7).
+    has_hash = bool(user) and "$" in user["password_hash"]
+    pw_ok = check_password_hash(user["password_hash"] if has_hash else _NO_ACCOUNT_HASH, password) and has_hash
+    if user and not user["active"] and user["pending"] and pw_ok:
         audit_log("login_failure", "user", user["id"], username, "pending approval", actor=username)
         return False, "Your request is waiting for an admin's approval; you can sign in once it is approved"
+    if user and not user["active"] and not pw_ok:
+        record_login_attempt(username, success=False)
+        audit_log("login_failure", "user", user["id"], username, "account deactivated, wrong password", actor=username)
+        return False, "Bad username or password"
     if user and not user["active"]:
         record_login_attempt(username, success=False)
         audit_log("login_failure", "user", user["id"], username, "account deactivated", actor=username)
@@ -53,7 +64,7 @@ def attempt_login(username, password):
         audit_log("login_failure", "user", user["id"], username, "external account: sign-in links only", actor=username)
         return False, "Bad username or password"
     # A Microsoft-created account has no password hash at all ("microsoft:no-password").
-    if not (user and "$" in user["password_hash"] and check_password_hash(user["password_hash"], password)):
+    if not pw_ok:
         record_login_attempt(username, success=False)
         # Failed attempts are evidence too — login_attempts is purged after
         # a week, the audit trail is not.
