@@ -45,7 +45,7 @@ def due_jobs(now_local, last_runs, times, days):
     today, weekday, clock = now_local.date().isoformat(), WEEKDAYS[now_local.weekday()], now_local.strftime("%H:%M")
     return [job for job, time_key, days_key in JOBS
             if weekday in (days[days_key] if days_key else EVERY_DAY) and clock >= (times[time_key] if time_key else FIXED_TIME)
-            and last_runs.get(job) != today]
+            and (last_runs.get(job) or "") < today]   # "before today": a time zone moved west must not re-run a day (test report OPS-17)
 
 
 def next_run(now_local, at, days):

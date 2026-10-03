@@ -75,7 +75,7 @@ export default function Person(_props: { user: User }) {
 
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <section className="panel p-4" aria-label="Contribution">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Contribution <span className="font-normal text-muted-foreground">tasks finished per week, 8 weeks</span></h3>
+          <h2 className="mb-2 text-[13.5px] font-semibold">Contribution <span className="font-normal text-muted-foreground">tasks finished per week, 8 weeks</span></h2>
           <ul className="flex h-24 items-end gap-1.5" aria-label="Tasks finished per week">
             {d.contribution.weeks.map((w) => (
               <li key={w.week} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`week of ${fmtDate(w.week)}: ${w.done}`}>
@@ -90,7 +90,7 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4" aria-label="Active rollouts">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Active rollouts <span className="font-normal text-muted-foreground">{d.projects.length}</span></h3>
+          <h2 className="mb-2 text-[13.5px] font-semibold">Active rollouts <span className="font-normal text-muted-foreground">{d.projects.length}</span></h2>
           <ul className="divide-y divide-border text-[13px]">
             {d.projects.map((p) => (
               <li key={p.id} className="py-2">
@@ -111,7 +111,7 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4" aria-label="Pending tasks">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Pending <span className="font-normal text-muted-foreground">{d.pending.length} open, soonest first</span></h3>
+          <h2 className="mb-2 text-[13.5px] font-semibold">Pending <span className="font-normal text-muted-foreground">{d.pending.length} open, soonest first</span></h2>
           <ul className="divide-y divide-border text-[13px]">
             {d.pending.slice(0, 12).map((t) => {
               const late = t.due_date ? lateBy(t.due_date, d.today) : 0
@@ -128,7 +128,7 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4" aria-label="Upcoming tasks">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Upcoming <span className="font-normal text-muted-foreground">due in the next 14 days</span></h3>
+          <h2 className="mb-2 text-[13.5px] font-semibold">Upcoming <span className="font-normal text-muted-foreground">due in the next 14 days</span></h2>
           <ul className="divide-y divide-border text-[13px]">
             {d.upcoming.map((t) => (
               <li key={t.id} className="flex items-center gap-3 py-2">
@@ -141,7 +141,7 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4 xl:col-span-2" aria-label="Recent activity">
-          <h3 className="mb-2 text-[13.5px] font-semibold">Recently <span className="font-normal text-muted-foreground">what {d.user.name.split(" ")[0]} did</span></h3>
+          <h2 className="mb-2 text-[13.5px] font-semibold">Recently <span className="font-normal text-muted-foreground">what {d.user.name.split(" ")[0]} did</span></h2>
           <ul className="grid grid-cols-1 gap-2.5 text-[12.5px] md:grid-cols-2">
             {d.recent.map((a, i) => {
               const K = KIND[a.kind]

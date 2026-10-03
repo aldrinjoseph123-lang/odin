@@ -60,7 +60,7 @@ export function DocTemplates() {
         return (
           <section key={kind} className="panel p-4" aria-label={d.kinds[kind].label}>
             <div className="mb-2 flex items-center gap-2">
-              <h3 data-n className="text-[12px] font-semibold text-nav-fg">{d.kinds[kind].label}</h3>
+              <h2 data-n className="text-[12px] font-semibold text-nav-fg">{d.kinds[kind].label}</h2>
               <Button size="sm" variant="outline" className="ml-auto h-7 rounded-full" onClick={() => startNew(kind)}><Plus className="h-3.5 w-3.5" /> New template</Button>
             </div>
             {list.length === 0 && <p className="text-[12.5px] text-muted-foreground">No templates yet: documents use the built-in layout.</p>}
@@ -106,13 +106,13 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
       <div className="grid grid-cols-1 content-start gap-4">
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Template">
           <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" aria-hidden />
-            <h3 className="text-[13.5px] font-semibold">{edit.id ? "Edit template" : "New template"} · {k.label}</h3></div>
+            <h2 className="text-[13.5px] font-semibold">{edit.id ? "Edit template" : "New template"} · {k.label}</h2></div>
           <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Template name<input className={field} required maxLength={80} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="e.g. Globex customer copy" autoFocus /></label>
           <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Document title<input className={field} maxLength={80} value={c.title} onChange={(e) => set({ title: e.target.value })} /></label>
         </section>
 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Brand">
-          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Brand</h3>
+          <h2 data-n className="text-[12px] font-semibold text-nav-fg">Brand</h2>
           <fieldset><legend className="mb-1.5 text-[12.5px] font-medium">Accent</legend>
             <div className="flex flex-wrap gap-2">
               {d.accents.map((a) => <button key={a} type="button" onClick={() => set({ accent: a })} aria-label={a} aria-pressed={c.accent === a}
@@ -138,7 +138,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
         </section>
 
         <section className="panel p-4" aria-label="Sections">
-          <h3 data-n className="mb-2 text-[12px] font-semibold text-nav-fg">Sections <span className="font-normal text-muted-foreground">which appear, in this order</span></h3>
+          <h2 data-n className="mb-2 text-[12px] font-semibold text-nav-fg">Sections <span className="font-normal text-muted-foreground">which appear, in this order</span></h2>
           <ol className="grid grid-cols-1 gap-1 text-[13px]">
             {c.sections.map((s, i) => (
               <li key={s.key} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted/50">
@@ -153,7 +153,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
         </section>
 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Wording">
-          <h3 data-n className="text-[12px] font-semibold text-nav-fg">Wording</h3>
+          <h2 data-n className="text-[12px] font-semibold text-nav-fg">Wording</h2>
           <p className="-mt-1 text-[11.5px] text-muted-foreground">Placeholders: {Object.entries(d.placeholders).map(([p, what]) => <code key={p} title={what} className="mr-1.5 rounded bg-muted px-1">{`{${p}}`}</code>)}</p>
           {k.texts.map((t) => (
             <label key={t.key} className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">{t.label} <span className="font-normal text-muted-foreground">{t.help}</span>

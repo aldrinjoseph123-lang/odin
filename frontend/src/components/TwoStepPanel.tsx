@@ -49,8 +49,8 @@ export function TwoStepPanel() {
 
   return (
     <section className="grid grid-cols-1 content-start gap-3 panel p-4" aria-label="Two-step sign-in">
-      <h3 data-n className="flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Two-step sign-in
-        <span className="font-normal text-muted-foreground">{s.enabled ? `on since ${fmtDate(s.enabled_at)}` : s.required ? "required by your admin" : "off"}</span></h3>
+      <h2 data-n className="flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Two-step sign-in
+        <span className="font-normal text-muted-foreground">{s.enabled ? `on since ${fmtDate(s.enabled_at)}` : s.required ? "required by your admin" : "off"}</span></h2>
       {s.required && !s.enabled && !codes && <Alert><AlertDescription>Your admin requires two-step sign-in. Set it up to continue using Odin.</AlertDescription></Alert>}
       {err && <p className="text-[12.5px] text-bad" role="alert">{err}</p>}
 

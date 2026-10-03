@@ -30,6 +30,8 @@ cd "$APP" || { log "no $APP"; exit 1; }
 git fetch --quiet --tags origin main 2>/dev/null || { log "fetch failed"; exit 1; }
 target=$(git describe --tags --abbrev=0 --match 'v[0-9]*' origin/main 2>/dev/null) || exit 0
 current=$(git describe --tags --exact-match HEAD 2>/dev/null || echo none)
+# off a tag (a checkout by hand): roll back to this exact commit if the update fails
+previous=$current; [ "$current" = none ] && previous=$(git rev-parse HEAD)
 [ "$target" = "$current" ] && exit 0
 [ "$(cat "$STATE/failed" 2>/dev/null)" = "$target" ] && exit 0     # tried and rolled back already
 # forward only: never "update" to an older release
@@ -69,10 +71,10 @@ if deploy "$target"; then
   exit 0
 fi
 
-log "$target failed (build or preflight); going back to $current"
+log "$target failed (build or preflight); going back to $previous"
 echo "$target" > "$STATE/failed"
-if [ "$current" != none ] && deploy "$current"; then
-  log "back on $current"
+if deploy "$previous"; then
+  log "back on $previous"
 else
   log "ROLLBACK FAILED: check the server by hand (docker compose ps, docker compose logs app)"
 fi

@@ -48,3 +48,8 @@ touch "$CFG/app_down"; : > "$CFG/build_fail"
 release v1.4.1; run;                                                    on v1.4.1 "a fixed release recovers a server left down by a failed rollback"
 ( cd "$S/work" && echo 'if then fi' >> deploy/odin-update.sh ); release v1.5.0; run
 release v1.6.0; run;                                                    on v1.6.0 "a release whose updater does not parse cannot break the next update"
+( cd "$S/work" && echo hotfix > hotfix && git add -A && git commit -qm "untagged" && git push -q origin main )
+( cd "$S/app" && git fetch -q origin && git checkout -q origin/main )   # a checkout by hand, off any tag
+here=$(cd "$S/app" && git rev-parse HEAD)
+release v1.7.0; echo v1.7.0 > "$CFG/build_fail"; run
+[ "$(cd "$S/app" && git rev-parse HEAD)" = "$here" ] || { echo "FAIL a failed update off a tag returns to that commit"; cat "$S/log"; exit 1; }; echo "ok   a failed update off a tag returns to that exact commit"

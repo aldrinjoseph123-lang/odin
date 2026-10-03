@@ -52,7 +52,7 @@ keyctl workarounds and Proxmox's own guidance is a VM. Sizing for a team of
 |---|---|---|
 | vCPU | 1 | 2 |
 | RAM | 1 GB | 2 GB |
-| Disk | 10 GB | 20 GB + uploads (25 MB max per file) |
+| Disk | 10 GB | 20 GB + uploads (up to 100 MB per file; the upload policy sets the limit) |
 | OS | Debian 12 (bookworm) | same |
 
 The whole stack idles under 300 MB RAM: gunicorn ≈ 120 MB, nginx ≈ 10 MB,
@@ -140,7 +140,7 @@ docker compose start app scheduler
 docker compose exec app python preflight.py
 ```
 
-The archive holds `odin.db` and `uploads/`. `init_db()` runs on boot and
+The archive holds `odin.db`, `uploads/`, `avatars/`, `brand/` (document template logos), `audit-archive/` and `manifest.json`. `init_db()` runs on boot and
 applies any migrations the archive predates.
 
 ### Upgrades
@@ -222,7 +222,7 @@ first deploy deterministic:
 ./venv/bin/python -c "from db import init_db; init_db()"
 ```
 
-This creates `pms.db`, runs migrations, and seeds the default admin
+This creates `odin.db`, runs migrations, and seeds the default admin
 (`admin` / `changeme` — **change this password immediately after first login**).
 
 ## 5. Run it with gunicorn (not the dev server)
@@ -270,12 +270,12 @@ ReadWritePaths=/opt/pms
 WantedBy=multi-user.target
 ```
 
-`pms.db` and the `uploads/` folder must be writable by the service user and must
+`odin.db` and the `uploads/` folder must be writable by the service user and must
 persist across restarts (they already live in the project dir — just fix
 ownership):
 
 ```bash
-sudo chown -R www-data:www-data /opt/pms/pms.db /opt/pms/uploads
+sudo chown -R www-data:www-data /opt/pms/odin.db /opt/pms/uploads
 sudo systemctl daemon-reload
 sudo systemctl enable --now pms
 sudo systemctl status pms
@@ -291,7 +291,7 @@ server {
     listen 80;
     server_name pms.example.com;
 
-    client_max_body_size 25M;   # matches the app's 25 MB upload limit
+    client_max_body_size 101m;  # the app's 100 MB upload ceiling plus the multipart framing; the policy sets the real limit
 
     location /static/ {
         alias /opt/pms/static/;
@@ -330,8 +330,9 @@ Then browse to the server, log in as `admin`, and change the password.
 
 ### Notes
 
-- **Backups**: the entire state is one file (`pms.db`) plus `uploads/`. Copy
-  both to back up; the OneDrive job in step 8 automates this.
+- **Backups**: the state is `odin.db` plus `uploads/`, `avatars/`, `brand/` and
+  `audit-archive/` in the data directory. `python backup.py` archives all of it
+  (with a manifest and a restore test); Settings → Backups schedules it.
 - **Updates**: pull new code, `pip install -r requirements.txt`,
   `sudo systemctl restart pms`. Migrations run automatically on start.
 - **Reverse-proxy note**: the app reads the client IP for the audit log from the

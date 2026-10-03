@@ -38,4 +38,7 @@ import routes.users  # noqa: E402,F401
 if __name__ == "__main__":
     init_db()
     import os
-    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", "5050")))
+    # ODIN_DEBUGGER=0 keeps the reloader but drops the interactive debugger, which
+    # otherwise answers anyone on the network (test report FN-17; UAT sets it)
+    app.run(debug=True, use_debugger=os.environ.get("ODIN_DEBUGGER", "1") == "1",
+            host="0.0.0.0", port=int(os.environ.get("PORT", "5050")))

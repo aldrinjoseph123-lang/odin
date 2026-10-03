@@ -3866,6 +3866,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=9), {}, times, days), ["digest", "backup", "report", "housekeeping"])
         done = {j: "2026-09-28" for j in ("digest", "backup", "housekeeping")}
         self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=9), done, times, days), ["report"])
+        # a time zone moved west makes "today" yesterday: what ran on the later date is not run again (OPS-17)
+        later = {j: (mon_0730.date() + timedelta(days=1)).isoformat() for j in ("digest", "backup", "report", "housekeeping")}
+        self.assertEqual(scheduler.due_jobs(mon_0730.replace(hour=9), later, times, days), [])
         self.assertEqual(scheduler.due_jobs(sat_0900, {}, times, days), ["backup", "housekeeping"])       # no digest or report on a Saturday
         self.assertEqual(scheduler.next_run(mon_0730, "02:00", ["Wed"]).strftime("%a %H:%M"), "Wed 02:00")
         # one pass: heartbeat written, the job marked done for the day even if it fails

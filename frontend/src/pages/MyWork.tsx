@@ -79,7 +79,7 @@ export default function MyWork({ user }: { user: User }) {
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <section className="panel p-4" aria-label="My tasks">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h3 className="text-[13.5px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h3>
+            <h2 className="text-[13.5px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h2>
             {d.projects.length > 1 && (
               <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className="ml-auto h-7 rounded-md border border-input bg-background px-2 text-[12.5px]">
                 <option value="">Every rollout</option>
@@ -90,7 +90,7 @@ export default function MyWork({ user }: { user: User }) {
           {groups.length === 0 && <p className="py-4 text-center text-[13px] text-muted-foreground">Nothing open{project ? " on this rollout" : ""}. Enjoy it.</p>}
           {groups.map((g) => (
             <div key={g.key} className="mb-3 last:mb-0">
-              <h4 className={cn("mb-1 flex items-baseline gap-2 text-[12px] font-semibold", g.tone === "bad" ? "text-bad" : g.tone === "warn" ? "text-warn" : "text-nav-fg")}>{g.title}<span className="font-normal text-muted-foreground">{g.tasks.length} · {g.hint}</span></h4>
+              <h3 className={cn("mb-1 flex items-baseline gap-2 text-[12px] font-semibold", g.tone === "bad" ? "text-bad" : g.tone === "warn" ? "text-warn" : "text-nav-fg")}>{g.title}<span className="font-normal text-muted-foreground">{g.tasks.length} · {g.hint}</span></h3>
               <ul className="divide-y divide-border text-[13px]">
                 {g.tasks.map((t) => {
                   const late = t.due_date ? lateBy(t.due_date, d.today) : 0
@@ -115,7 +115,7 @@ export default function MyWork({ user }: { user: User }) {
 
         <div className="grid grid-cols-1 content-start gap-4">
           <section className="panel p-4" aria-label="Done, the last 14 days">
-            <h3 className="mb-2 text-[13.5px] font-semibold">Done <span className="font-normal text-muted-foreground">the last 14 days</span></h3>
+            <h2 className="mb-2 text-[13.5px] font-semibold">Done <span className="font-normal text-muted-foreground">the last 14 days</span></h2>
             <ul className="flex h-20 items-end gap-1" aria-label="Tasks done per day">
               {d.done_by_day.map((x) => (
                 <li key={x.day} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
@@ -128,7 +128,7 @@ export default function MyWork({ user }: { user: User }) {
           </section>
 
           <section className="panel p-4" aria-label="My rollouts">
-            <h3 className="mb-2 text-[13.5px] font-semibold">My rollouts <span className="font-normal text-muted-foreground">{d.projects.length} active</span></h3>
+            <h2 className="mb-2 text-[13.5px] font-semibold">My rollouts <span className="font-normal text-muted-foreground">{d.projects.length} active</span></h2>
             <ul className="divide-y divide-border text-[13px]">
               {d.projects.map((p) => (
                 <li key={p.id} className="py-2">

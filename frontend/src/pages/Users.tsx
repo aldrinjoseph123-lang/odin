@@ -83,7 +83,7 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
   const [role, setRole] = useState<Record<number, string>>({})
   return (
     <section className="mt-3 rounded-lg border border-warn-line bg-warn-soft/40 p-4" aria-label="Waiting for approval">
-      <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Waiting for approval <span className="font-normal text-muted-foreground">asked to use Odin, not yet allowed in</span></h3>
+      <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Waiting for approval <span className="font-normal text-muted-foreground">asked to use Odin, not yet allowed in</span></h2>
       <ul className="grid grid-cols-1 gap-2">
         {people.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-2 text-[13px]">
@@ -166,7 +166,7 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
   }
   return (
     <form onSubmit={submit} className="grid grid-cols-1 content-start gap-2 panel p-4">
-      <h3 className="text-[12px] font-semibold text-nav-fg">Add a team member</h3>
+      <h2 className="text-[12px] font-semibold text-nav-fg">Add a team member</h2>
       <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Full name<Input value={f.name} onChange={set("name")} required aria-label="Full name" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Username<Input value={f.username} onChange={set("username")} required aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" aria-label="Email" className="h-8 text-[13px]" /></label>
@@ -206,7 +206,7 @@ function SignupLinksPanel() {
   const open = d.links.filter((l) => l.state === "open")
   return (
     <section className="panel p-4" aria-label="Sign-up links">
-      <h3 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h3>
+      <h2 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
       <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
       {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-2.5 text-[12.5px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
       {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[12.5px]">
