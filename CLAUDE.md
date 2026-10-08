@@ -100,6 +100,34 @@ every stage-move path (`change_stage`, the vendor guest link) calls
 `signoff.gate()`; a new path must too. A sent version is frozen (canonical JSON +
 SHA-256); never edit `signoffs.content` after sending — withdraw and send anew.
 
+# AI framework (8 Oct 2026, the user's call)
+
+Odin's AI is a framework in `services/ai/`, Settings → AI (`/settings/ai`,
+routes in `routes/ai.py`). The server is shared with Zeus and managed outside
+this repo: an Ollama container on the office LAN serving the alias **P24-AI**.
+Odin depends on the contract, never on that server:
+- **One protocol:** the OpenAI-compatible API (`{base}/models`,
+  `{base}/chat/completions` with `response_format` JSON schema), standard
+  fields only. Never Ollama's own `/api/*`, never `num_ctx`/`num_thread`/
+  `keep_alive` in a request (tuning lives on the server).
+- **Everything about the server is a policy** (areas `ai` and `ai_schedule`);
+  the key is sealed (`ai.api_key`). Addresses outside the private network are
+  refused unless `ai_allow_external` is on.
+- **A feature is one `AIFeature` spec** registered in `services.ai.FEATURES`
+  (`services/ai/features/<key>.py`, prompt in `services/ai/prompts/<key>.vN.txt`):
+  gather (scope applied), JSON schema, fallback, and a synthetic fixture with
+  graders (`services/ai/graders.py`). `register()` refuses a spec without them.
+- **The gate:** a feature runs only when AI is on, the heartbeat says up, the
+  feature is switched on, and it passed validation on the current model
+  fingerprint (`id@created` from `/models`) with the current prompt hash — or an
+  admin forced it (audited). Otherwise the caller uses the fallback.
+- **Never call the model from a web request.** Queue an `ai_jobs` row; the
+  scheduler's AI worker thread (`scheduler.ai_worker`, `services/ai/health.tick`)
+  runs heartbeats, the daily validation and jobs. Model output lands as a
+  suggestion a person accepts through the normal audited route.
+- **One door:** nothing outside `services/ai/` calls the server; a meta-test
+  enforces it. Tests use `FakeAIServer` in test_app.py, never a real model.
+
 # Front end migration — React + shadcn/ui (in progress)
 
 Decision (8 Sep 2026): the UI moves to **Vite + React + TypeScript + shadcn/ui**

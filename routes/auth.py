@@ -11,7 +11,7 @@ from flask import abort, flash, redirect, render_template, request, send_from_di
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from core import app, login_required
-from constants import ACCENTS, AVATAR_EXTENSIONS, AVATAR_MAX_BYTES, NOTIFICATION_KINDS, THEMES
+from constants import ACCENTS, ADMIN_KINDS, AVATAR_EXTENSIONS, AVATAR_MAX_BYTES, NOTIFICATION_KINDS, THEMES
 from db import AVATAR_DIR, get_db
 from security import (
     consume_login_link,
@@ -455,7 +455,7 @@ def account_sign_out_others():
 def account_notifications():
     """Which kinds this user wants by email. Ticked = on; the form sends only
     the ticked ones. In-app notifications always arrive."""
-    off = [k for k in NOTIFICATION_KINDS if request.form.get(k) != "on" and (k != "access" or session.get("role") == "Admin")]
+    off = [k for k in NOTIFICATION_KINDS if request.form.get(k) != "on" and (k not in ADMIN_KINDS or session.get("role") == "Admin")]
     db = get_db()
     db.execute("UPDATE users SET email_off = ? WHERE id = ?", (",".join(off), session["user_id"]))
     db.commit()

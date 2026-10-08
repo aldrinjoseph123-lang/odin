@@ -19,6 +19,7 @@ from db import (  # noqa: F401 — re-exported for tests + backup.py
 )
 
 # Importing each submodule registers its @app.route handlers on the shared app.
+import routes.ai  # noqa: E402,F401
 import routes.api  # noqa: E402,F401
 import routes.auth  # noqa: E402,F401
 import routes.board  # noqa: E402,F401

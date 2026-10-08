@@ -442,7 +442,7 @@ def api_rollout_report_save(project_id):
 @app.route("/api/account")
 @login_required
 def api_account():
-    from constants import NOTIFICATION_KINDS
+    from constants import ADMIN_KINDS, NOTIFICATION_KINDS
     from db import get_setting
     u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, notify_via, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
@@ -450,7 +450,7 @@ def api_account():
                    has_password=bool(u["password_hash"] and "$" in u["password_hash"]),
                    theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u), home=u["home"],
                    email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
-                                if k != "access" or session.get("role") == "Admin"],   # access requests reach admins only
+                                if k not in ADMIN_KINDS or session.get("role") == "Admin"],   # access requests and AI health reach admins only
                    mail_enabled=get_setting("notify_email_enabled") == "1",
                    activity=activity_summary(session["user_id"]) if activity_enabled() else None,
                    activity_viewers=policy("activity_roles"), notify_via=u["notify_via"],

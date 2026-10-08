@@ -119,12 +119,14 @@ def run_due():
                 from services.activity import trim as trim_activity
                 from services.notifications import trim as trim_notifications
                 from services.signup import trim as trim_signup_links
+                from services.ai.health import trim as trim_ai
                 with app.app_context():
                     for step in (audit_retention,        # a step like the rest: its failure skipped them all (OPS-10)
                                  cleanup_soft_deletes,   # deleted projects and files past the undo window
                                  trim_activity,          # active-minute rows past activity_keep_days
                                  trim_notifications,     # read bell items past notifications_keep_days
                                  trim_signup_links,      # sign-up links dead for 90 days
+                                 trim_ai,                # AI checks past 180 days, finished AI jobs past 30
                                  record_snapshot):       # the day's portfolio counts, for the Dashboard's deltas
                         try:   # one failing step must not skip the others
                             step()
@@ -159,13 +161,39 @@ def sync_alerts():
         sync_alerts_to_db(build_alerts(rows))
 
 
+def ai_pass():
+    """One pass of the AI worker (services/ai/health.tick): heartbeat when
+    due, the daily validation when due, one queued job."""
+    from app import app
+    from db import get_db
+    from services.ai.health import tick
+    with app.app_context():
+        return tick(get_db())
+
+
+def ai_worker():
+    """The AI worker, a thread beside the clock: a validation can take ten
+    minutes and must not hold up a backup or the digest. Idle passes are
+    cheap (a heartbeat is one GET every few minutes)."""
+    while True:
+        try:
+            busy = ai_pass()
+        except Exception as exc:  # noqa: BLE001 — the worker outlives a bad pass
+            print(f"[scheduler] AI worker pass failed: {exc}", file=sys.stderr)
+            busy = None
+        time.sleep(1 if busy else 15)
+
+
 if __name__ == "__main__":
     if "--healthcheck" in sys.argv:
         sys.exit(0 if healthy() else 1)
     if "--once" in sys.argv:   # cron mode: alerts too (test report OPS-15)
         print(f"[scheduler] ran: {', '.join(run_due()) or 'nothing due'}")
         sync_alerts()
+        ai_pass()
         sys.exit(0)
+    import threading
+    threading.Thread(target=ai_worker, name="ai-worker", daemon=True).start()
     first = True
     while True:
         try:

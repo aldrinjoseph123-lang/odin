@@ -175,7 +175,9 @@ def settings():
 
 
 # Settings is one page with a side menu; each area has its own address.
-SETTINGS_SECTIONS = ("general", "security", "people", "workflow", "notifications", "integrations", "reports", "documents", "backups", "api", "audit", "map")
+SETTINGS_SECTIONS = ("general", "security", "people", "workflow", "notifications", "integrations", "ai", "reports", "documents", "backups", "api", "audit", "map")
+# A policy area drawn inside another area's page.
+AREA_SECTION = {"ai_schedule": "ai"}
 
 
 @app.route("/settings/map/page")
@@ -211,6 +213,18 @@ def settings_policies(area):
     from policies import POLICIES, save_policies
     if area not in {e["area"] for e in POLICIES.values()}:
         abort(404)
+    if area == "ai":
+        # the address guard, before anything is stored (services/ai/client.py)
+        from policies import POLICIES as P, _parse
+        from services.ai.client import address_problem
+        try:
+            url = _parse(P["ai_base_url"], request.form.get("ai_base_url", ""))
+        except ValueError:
+            url = ""   # save_policies reports the format
+        problem = url and address_problem(url, request.form.get("ai_allow_external") == "on")
+        if problem:
+            flash("Not saved. " + problem)
+            return redirect(url_for("settings_section", section="ai"))
     changed, errors = save_policies(area, request.form)
     if errors:
         flash("Not saved. " + "; ".join(errors))
@@ -229,10 +243,22 @@ def settings_policies(area):
                 db.commit()
                 if n:
                     audit_log("end_sessions_for_two_step", "settings", None, area, f"{n} account(s) must set up two-step sign-in")
-        flash("Saved")
+        if area == "ai" and any(c.split("=")[0] in ("ai_enabled", "ai_base_url", "ai_model") for c in changed):
+            from services.ai import STATUS_SETTING, status
+            from services.ai.health import heartbeat, queue
+            db = get_db()
+            db.execute("DELETE FROM settings WHERE key = ?", (STATUS_SETTING,))   # a new server starts unknown
+            db.commit()
+            if status(db)["state"] != "off":
+                queue(db, "validate", payload={"reason": "the AI settings changed"}, actor=session.get("user_name"))
+                flash("Saved. Every AI feature is now being validated on this server; this page updates as it goes.")
+            else:
+                flash("Saved")
+        else:
+            flash("Saved")
     else:
         flash("Nothing changed")
-    return redirect(url_for("settings_section", section=area))
+    return redirect(url_for("settings_section", section=AREA_SECTION.get(area, area)))
 
 
 @app.route("/settings/rbac")

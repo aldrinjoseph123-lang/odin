@@ -123,7 +123,7 @@ def cleanup_soft_deletes(db=None):
     if doomed:
         # a sign-up link that named the project keeps working, without the project
         db.execute(f"UPDATE signup_links SET project_id = NULL, project_role = NULL WHERE project_id IN ({marks})", doomed)
-        for table in ("signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items"):
+        for table in ("signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
@@ -314,6 +314,20 @@ def migrate_db(db):
         started_at TEXT NOT NULL, finished_at TEXT, trigger TEXT, actor TEXT,
         file TEXT, size_bytes INTEGER, ok INTEGER NOT NULL DEFAULT 0,
         restore_ok INTEGER, restore_detail TEXT, destinations TEXT)""")
+    # The AI framework (services/ai): jobs the web app queues for the
+    # scheduler's AI worker, and every validation result per feature and
+    # model. A job may name a project (purged with it); checks are trimmed
+    # after 180 days, finished jobs after 30.
+    db.execute("""CREATE TABLE IF NOT EXISTS ai_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL, feature TEXT, project_id INTEGER REFERENCES projects(id),
+        payload TEXT, status TEXT NOT NULL DEFAULT 'queued', requested_by TEXT,
+        created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, result TEXT, error TEXT)""")
+    db.execute("""CREATE TABLE IF NOT EXISTS ai_checks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER, kind TEXT NOT NULL, feature TEXT, model TEXT, fingerprint TEXT, prompt_hash TEXT,
+        state TEXT NOT NULL, seconds REAL, detail TEXT, output TEXT, created_at TEXT NOT NULL)""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_ai_checks_feature ON ai_checks (feature, fingerprint, prompt_hash)")
     # The old "Allow scheduled full backups to OneDrive" switch is now the
     # OneDrive destination in Settings → Backups.
     db.execute("INSERT OR IGNORE INTO settings (key, value) SELECT 'policy.dest_onedrive', '1' FROM settings WHERE key = 'onedrive_backup_enabled' AND value = '1'")

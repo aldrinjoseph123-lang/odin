@@ -479,7 +479,7 @@ details.change .also { margin: 6px 0 0 14px; display: flex; gap: 6px; flex-wrap:
 <!-- REPO-DATA:END -->
 <script>
 // ---------- what this map describes: bump on every update ----------
-const MAP_STAMP = { date: "3 Oct 2026" };   // the date the hand-written views were last reviewed
+const MAP_STAMP = { date: "8 Oct 2026" };   // the date the hand-written views were last reviewed
 
 // ---------- data: loopholes. A fixed one keeps its number: add fixed: "v1.x.y" ----------
 const LOOPS = [
@@ -649,6 +649,11 @@ const LOOPS = [
     impact: "A convincing phishing link inside an Odin email.",
     fix: "Escape every user-supplied value in mail HTML.",
     ref: "send_daily_alerts.py _format_alerts_html()", on: [] },
+  { id: 34, sev: "medium", area: "AI", title: "The AI server answers anyone on the office network",
+    what: "The local AI server (Ollama in Proxmox container 110, 192.168.1.238:11434) has no sign-in of its own, and its firewall admits the whole 192.168.1.0/24 so that Odin, Zeus and admins' machines can use it.",
+    impact: "Any device on the office network can use the model, and can also delete or replace the model behind P24-AI, which stops every AI feature until it is rebuilt (Odin notices within one heartbeat and falls back to its usual behaviour). Nothing Odin stores is on that server.",
+    fix: "Put a small password-checking proxy in front of Ollama and set the key in Settings → AI, or narrow the firewall to the Odin and Zeus VMs.",
+    ref: "Proxmox CT 110 firewall (110.fw); services/ai/client.py", on: ["ai"] },
 ];
 const SEV_ORDER = { high: 0, medium: 1, low: 2, decision: 3 };
 const byId = Object.fromEntries(LOOPS.map((l) => [l.id, l]));
@@ -759,12 +764,13 @@ const ARCH = {
   cloudflared: { kind: "Service", title: "cloudflared (tunnel)", text: "Runs on the host, not in Docker. Carries traffic from Cloudflare to nginx on 127.0.0.1:8080.", refs: ["systemd: cloudflared", "docker-compose.host-tunnel.yml"] },
   nginx: { kind: "Container", title: "nginx", text: "Listens on 127.0.0.1:8080 only. Passes the visitor's real address (CF-Connecting-IP), forces https, serves the legacy stylesheet and proxies everything else to the app.", refs: ["deploy/nginx.cloudflare.conf"] },
   app: { kind: "Container", title: "Odin app (gunicorn + Flask)", text: "Two workers × four threads. One application serves the React screens, the JSON API behind them, and the few pages still in Jinja (guest pages, the fallback sign-in form, the error page).", points: ["Every request: session age, idle time, account epoch; every change: CSRF token", "Decorators check the workspace permission, then the project role, then that the project is visible", "Every change writes an audit row (a test enforces it)"], refs: ["core.py", "routes/api.py", "spa.py", "security.py"] },
-  scheduler: { kind: "Container", title: "Scheduler", text: "Its own process on the same data volume; wakes every minute and runs each job at the time set in Settings, in the workspace time zone.", points: ["Daily digest and task reminders (working days, not holidays)", "Backups with a restore test; copies off the server when set up", "Weekly report when switched on", "03:30 housekeeping: audit retention, purge of deleted projects, trim time on Odin, dashboard snapshot", "Every 15 minutes: alert sync"], refs: ["scheduler.py", "backup.py", "services/weekly_report.py"] },
+  scheduler: { kind: "Container", title: "Scheduler", text: "Its own process on the same data volume; wakes every minute and runs each job at the time set in Settings, in the workspace time zone.", points: ["Daily digest and task reminders (working days, not holidays)", "Backups with a restore test; copies off the server when set up", "Weekly report when switched on", "03:30 housekeeping: audit retention, purge of deleted projects, trim time on Odin and AI history, dashboard snapshot", "Every 15 minutes: alert sync", "AI worker (a thread beside the clock): heartbeat, daily validation, queued AI jobs"], refs: ["scheduler.py", "backup.py", "services/weekly_report.py", "services/ai/health.py"] },
   data: { kind: "Storage", title: "Data volume /data", text: "Everything Odin knows: the SQLite database (WAL mode, foreign keys on) and the files beside it.", points: ["odin.db: ~45 tables (identity, projects, work, reports, sign-off, signals, settings, audit)", "uploads/<project>/, avatars/, brand/ (template logos)", "backups/ (local copies), audit-archive/ (CSV before audit rows are removed)", "Audit log is append-only by database trigger"], refs: ["db.py", "schema.sql", "constants.py"] },
   m365: { kind: "External · not connected", title: "Microsoft 365 (Graph)", text: "One Azure app, connected by an admin, for mail, Teams channel posts, and OneDrive/SharePoint document mirror and backups.", points: ["Not connected in production: all of these are off", "Tokens and client secrets are stored sealed with a key from SECRET_KEY"], refs: ["graph.py", "routes/integrations.py"] },
   entra: { kind: "External · not configured", title: "Microsoft sign-in (Entra)", text: "Its own app registration. Microsoft proves who someone is; Odin decides their role. A newcomer waits for an admin's approval.", refs: ["routes/sso.py"] },
   webhook: { kind: "External · optional", title: "Teams Workflows webhook", text: "A plain HTTPS post into a Teams channel. Works without Microsoft 365: stage changes, decisions and the weekly summary can arrive here today.", refs: ["graph.py:337"] },
   kibana: { kind: "External · optional", title: "Kibana dashboards", text: "Framed by the staff member's own browser on the Flow page; Odin only fills the project, client and PO into the address. Odin's server never talks to Kibana.", refs: ["routes/api.py:538"] },
+  ai: { kind: "External · optional", title: "Local AI server (P24-AI)", text: "An OpenAI-compatible model server on the office network (Ollama in a Proxmox container at 192.168.1.238, shared with Zeus). Odin talks to it only through services/ai, only from the scheduler's AI worker, and only when Settings → AI switches it on.", points: ["Heartbeat every few minutes; down after two misses, one bell each way", "Every feature is validated on its test project before it runs, daily and whenever the model changes", "Addresses outside the private network are refused unless an admin allows an external provider", "No sign-in on the server itself (loophole #34)"], refs: ["services/ai/", "routes/ai.py", "scheduler.py ai_worker()"] },
   offsite: { kind: "External · not set up", title: "Off-host backup copies", text: "OneDrive, a SharePoint site folder, or a network share mounted into the scheduler and the app. Each copy fails on its own; one backup runs at a time. Today backups stay on the VM only.", refs: ["backup.py"] },
 };
 (function arch() {
@@ -789,7 +795,7 @@ const ARCH = {
     ${box("cloudflared", 460, 80, 160, 56, "cloudflared", ["systemd, on the host"])}
     ${box("nginx", 460, 180, 160, 56, "nginx", ["127.0.0.1:8080"])}
     ${box("app", 660, 80, 200, 250, "Odin app", ["gunicorn · Flask", "", "React screens", "JSON API", "legacy Jinja pages", "sign-in, sessions, CSRF", "permission checks", "audit trail"])}
-    ${box("scheduler", 660, 356, 200, 118, "Scheduler", ["digest · reminders", "backups · weekly report", "housekeeping 03:30", "alert sync / 15 min"])}
+    ${box("scheduler", 660, 356, 200, 118, "Scheduler", ["digest · reminders", "backups · weekly report", "housekeeping 03:30", "alerts / 15 min · AI worker"])}
     ${box("data", 460, 500, 400, 118, "Data volume /data", ["odin.db (SQLite, WAL)", "uploads · avatars · brand", "backups · audit-archive"])}
     <rect x="460" y="356" width="160" height="118" rx="9" class="zone-dash"/>
     <text x="472" y="380" class="t-small t-muted">Docker Compose:</text>
@@ -802,6 +808,7 @@ const ARCH = {
     ${box("webhook", 912, 244, 190, 64, "Teams webhook", ["works without M365"], { pill: ["ready", "ok"] })}
     ${box("kibana", 912, 328, 190, 64, "Kibana", ["framed by the browser"])}
     ${box("offsite", 912, 412, 190, 80, "Off-host backups", ["OneDrive · SharePoint", "network share"], { off: true, pill: ["none", "warn"] })}
+    ${box("ai", 912, 512, 190, 80, "Local AI (P24-AI)", ["OpenAI-compatible", "192.168.1.238 · shared"], { off: true, pill: ["off", "warn"] })}
     ${e("M210 76 H246")} ${e("M210 182 H246")} ${e("M210 288 H246")} ${e("M210 394 H246")}
     ${e("M408 108 H458", "accent", "aa")}
     <text x="414" y="100" class="t-small t-muted">tunnel</text>
@@ -812,6 +819,7 @@ const ARCH = {
     ${e("M860 120 H910", "dash")} ${e("M860 190 H910", "dash")} ${e("M860 276 H910")}
     ${e("M860 440 H880 V452 H910", "dash")}
     ${e("M860 400 H886 V110 H910", "dash")}
+    ${e("M860 466 H896 V552 H910", "dash")}
   </svg>`;
   const host = $("#arch-diagram");
   host.innerHTML = svg + `<div class="legend"><span><i class="sw" style="background:var(--surface)"></i>running</span><span><i class="sw" style="background:var(--sunk);border-style:dashed"></i>not connected</span><span><i class="dot" style="background:var(--bad)">n</i>high</span><span><i class="dot" style="background:var(--warn)">n</i>medium</span><span><i class="dot" style="background:var(--faint)">n</i>low</span></div>`;
@@ -902,6 +910,8 @@ const NOTIF = [
   ["Access", "Access approved", "The person let in", "B", "E", "-", "", null],
   ["Work", "Added to a project / made its manager", "The person added; the previous manager", "B", "E", "-", "", null],
   ["Sign-off", "Sign-off withdrawn", "The signer", "B", "E", "-", "", null],
+  ["AI", "AI server stops answering / answers again", "All Admins, once each way", "B", "E", "-", "Its own kind (ai), admins only", null],
+  ["AI", "AI features fail validation", "All Admins", "B", "E", "-", "The features switch themselves off until they pass", null],
 ];
 const SILENT = ["An access request declined (the account stays inactive, so there is no bell to reach)", "An alert clears (the Alerts page shows it)"];
 let notifGroup = "All";
@@ -926,7 +936,7 @@ function renderNotif() {
   $("#notif-table").innerHTML = `<thead><tr><th>Event</th><th>Who hears</th><th class="c">Bell</th><th class="c">Email</th><th class="c">Teams</th><th>Notes</th></tr></thead><tbody>${rows}</tbody>`;
 }
 (function notif() {
-  const groups = ["All", "Project", "Work", "Sign-off", "Schedules", "Access"];
+  const groups = ["All", "Project", "Work", "Sign-off", "Schedules", "Access", "AI"];
   $("#notif-filter").innerHTML = groups.map((g) => `<button class="chip" aria-pressed="${g === "All"}" data-g="${g}">${g}</button>`).join("");
   $("#notif-filter").addEventListener("click", (e) => {
     const b = e.target.closest("[data-g]"); if (!b) return; notifGroup = b.dataset.g;

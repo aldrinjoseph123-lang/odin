@@ -5299,5 +5299,296 @@ class SecurityTestCase(unittest.TestCase):
         self.assertIn("attachment", resp.headers.get("Content-Disposition", ""))
 
 
+class FakeAIServer:
+    """A stand-in OpenAI-compatible server: tests never touch a real model.
+    `answers` is a list of replies to /chat/completions, used in turn (a str
+    is sent as the message content, an exception is raised); `models` is what
+    /models lists."""
+
+    def __init__(self, models=None, answers=None):
+        self.models = models if models is not None else [{"id": "P24-AI:latest", "created": 100}]
+        self.answers = list(answers or [])
+        self.calls = []
+        self.down = False
+        self.status = 200
+
+    def __call__(self, method, url, headers=None, timeout=None, json=None, **_):
+        import requests
+        self.calls.append((method, url, headers, json))
+        if self.down:
+            raise requests.ConnectionError("refused")
+
+        class R:
+            pass
+        r = R()
+        r.status_code, r.text = self.status, "error"
+        if url.endswith("/models"):
+            body = {"object": "list", "data": [{"object": "model", **m} for m in self.models]}
+        else:
+            answer = self.answers.pop(0) if self.answers else '{"status": "ready", "echo": 7}'
+            if isinstance(answer, Exception):
+                raise answer
+            body = {"model": "P24-AI", "choices": [{"message": {"role": "assistant", "content": answer}}], "usage": {"total_tokens": 10}}
+        r.json = lambda: body
+        return r
+
+
+class AIFrameworkTestCase(unittest.TestCase):
+    """services/ai: the address guard, the client, the gate, validation, the
+    heartbeat and Settings → AI, all against FakeAIServer."""
+
+    def setUp(self):
+        fd, db_module.DB_PATH = tempfile.mkstemp()
+        os.close(fd)
+        os.remove(db_module.DB_PATH)
+        isolate_uploads(self)
+        app_module.init_db()
+        settle_seed_admin()
+        self.client = app_module.app.test_client()
+        self.client.post("/login", data={"username": "admin", "password": "changeme"})
+        self.server = FakeAIServer()
+        p = patch("services.ai.client.requests.request", self.server)
+        p.start()
+        self.addCleanup(p.stop)
+        self.addCleanup(self._unregister)
+
+    def tearDown(self):
+        os.unlink(db_module.DB_PATH)
+
+    def _unregister(self):
+        from services.ai import FEATURES
+        FEATURES.pop("test_feature", None)
+
+    def _db(self):
+        con = sqlite3.connect(db_module.DB_PATH)
+        con.row_factory = sqlite3.Row
+        return con
+
+    def _enable(self, url="http://192.168.1.238:11434/v1"):
+        with self._db() as con:
+            for k, v in (("ai_enabled", "1"), ("ai_base_url", url), ("ai_model", "P24-AI")):
+                con.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (f"policy.{k}", v))
+
+    def _feature(self, graders=None, budget_s=None):
+        from services.ai import AIFeature, register
+        from services.ai.graders import facts_kept
+        return register(AIFeature(
+            key="test_feature", label="Test feature", description="A feature for the tests.", prompt="_smoke.v1.txt",
+            schema={"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]},
+            gather=lambda **c: {"facts": c}, fixture=lambda: {"facts": "Site B blocked"},
+            graders=tuple(graders or (facts_kept("Site B"),)), budget_s=budget_s))
+
+    def _ctx(self):
+        return app_module.app.test_request_context()
+
+    def test_address_guard_keeps_customer_text_on_the_private_network(self):
+        from services.ai.client import address_problem, is_local
+        for url in ("http://192.168.1.238:11434/v1", "http://10.0.0.5/v1", "http://localhost:11434/v1", "http://ai.p24.lan:11434/v1", "http://ollama:11434/v1"):
+            self.assertTrue(is_local(url), url)
+        with patch("services.ai.client.socket.getaddrinfo", return_value=[(None, None, None, None, ("104.18.6.192", 443))]):
+            self.assertFalse(is_local("https://api.example.com/v1"))
+            self.assertIn("outside the private network", address_problem("https://api.example.com/v1", False))
+            self.assertIsNone(address_problem("https://api.example.com/v1", True))
+        with patch("services.ai.client.socket.getaddrinfo", return_value=[(None, None, None, None, ("192.168.1.9", 443))]):
+            self.assertTrue(is_local("https://ai.protect24x7.com/v1"))   # a public-looking name that resolves inside
+
+    def test_saving_an_outside_address_needs_the_external_switch(self):
+        with patch("services.ai.client.socket.getaddrinfo", return_value=[(None, None, None, None, ("104.18.6.192", 443))]):
+            self.client.post("/settings/policies/ai", data={"ai_enabled": "on", "ai_base_url": "https://api.example.com/v1", "ai_model": "gpt-x"})
+            with self._db() as con:
+                self.assertIsNone(con.execute("SELECT 1 FROM settings WHERE key = 'policy.ai_base_url'").fetchone())
+            self.client.post("/settings/policies/ai", data={"ai_enabled": "on", "ai_base_url": "https://api.example.com/v1", "ai_model": "gpt-x", "ai_allow_external": "on"})
+            with self._db() as con:
+                self.assertEqual(con.execute("SELECT value FROM settings WHERE key = 'policy.ai_base_url'").fetchone()[0], "https://api.example.com/v1")
+
+    def test_check_before_saving_names_the_problem(self):
+        form = {"ai_base_url": "http://192.168.1.238:11434/v1", "ai_model": "P24-AI"}
+        r = self.client.post("/settings/ai/check", data=form).get_json()["result"]
+        self.assertEqual((r["ok"], r["model"]), (True, "P24-AI:latest"))
+        self.server.models = [{"id": "phi4-mini:latest", "created": 1}]
+        r = self.client.post("/settings/ai/check", data=form).get_json()["result"]
+        self.assertFalse(r["ok"])
+        self.assertIn("no model named P24-AI", r["reason"])
+        self.server.down = True
+        self.assertIn("Cannot reach 192.168.1.238:11434", self.client.post("/settings/ai/check", data=form).get_json()["result"]["reason"])
+        self.server.down, self.server.status = False, 401
+        self.assertIn("refused the API key", self.client.post("/settings/ai/check", data=form).get_json()["result"]["reason"])
+        with self._db() as con:
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'check_ai_server'").fetchone()[0], 4)
+
+    def test_answers_must_match_their_form_with_one_retry(self):
+        from services.ai import run
+        from services.ai.client import AIError, schema_problems
+        schema = {"type": "object", "properties": {"risks": {"type": "array", "maxItems": 2, "items": {"type": "object",
+                  "properties": {"impact": {"type": "string", "enum": ["low", "high"]}}, "required": ["impact"]}}}, "required": ["risks"]}
+        self.assertEqual(schema_problems(schema, {"risks": [{"impact": "low"}]}), [])
+        self.assertEqual(schema_problems(schema, {"risks": [{"impact": "huge"}]}), ["answer.risks[0].impact should be one of low, high"])
+        self.assertEqual(schema_problems(schema, {}), ["answer.risks is missing"])
+        self._enable()
+        feature = self._feature()
+        with self._ctx():
+            self.server.answers = ["not json", '```json\n{"summary": "Site B blocked"}\n```']   # one bad answer, then a fenced good one
+            out, meta = run(feature, {"x": 1})
+            self.assertEqual(out, {"summary": "Site B blocked"})
+            self.assertTrue(meta["prompt_hash"])
+            self.server.answers = ['{"wrong": 1}', '{"wrong": 2}']
+            with self.assertRaises(AIError) as e:
+                run(feature, {"x": 1})
+            self.assertEqual(e.exception.kind, "invalid")
+
+    def test_a_feature_runs_only_after_passing_on_the_current_model(self):
+        from services.ai import complete, gate
+        from services.ai.client import AIError
+        from services.ai.health import heartbeat, validate_all
+        self._feature()
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            self.assertEqual(gate("test_feature"), "AI is switched off (Settings → AI)")
+            self._enable()
+            self.assertEqual(gate("test_feature"), "The AI server is not answering")   # no heartbeat yet
+            heartbeat(db)
+            self.assertEqual(gate("test_feature"), "Not yet validated on the current model")
+            with self.assertRaises(AIError):
+                complete("test_feature", project_id=1)
+            self.server.answers = ['{"status": "ready", "echo": 7}', '{"summary": "Site B is blocked"}']
+            summary = validate_all(db)
+            self.assertEqual(summary["features"], {"test_feature": "passed"})
+            self.assertIsNone(gate("test_feature"))
+            self.server.answers = ['{"summary": "Site B still blocked"}']
+            self.assertEqual(complete("test_feature", project_id=1)[0]["summary"], "Site B still blocked")
+            # the model behind the name is rebuilt: closed again until it passes, and a validation is queued
+            self.server.models = [{"id": "P24-AI:latest", "created": 200}]
+            heartbeat(db)
+            self.assertEqual(gate("test_feature"), "Not yet validated on the current model")
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_jobs WHERE kind = 'validate' AND status = 'queued'").fetchone()[0], 1)
+
+    def test_a_feature_that_fails_its_graders_stays_off_and_admins_hear(self):
+        from services.ai import gate
+        from services.ai.health import heartbeat, validate_all
+        self._feature()
+        self._enable()
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            heartbeat(db)
+            self.server.answers = ['{"status": "ready", "echo": 7}', '{"summary": "All on track"}']
+            self.assertEqual(validate_all(db)["features"], {"test_feature": "failed"})
+            self.assertEqual(gate("test_feature"), "Failed validation on the current model")
+            row = db.execute("SELECT detail FROM ai_checks WHERE feature = 'test_feature'").fetchone()
+            self.assertEqual(row[0], "left out Site B")
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notifications WHERE kind = 'ai' AND title = 'AI features failed validation'").fetchone()[0], 1)
+            # an admin may force it on (audited); then it runs regardless
+            self.client.post("/settings/ai/features/test_feature", data={"on": "on", "force": "on"})
+            self.assertIsNone(gate("test_feature"))
+        with self._db() as con:
+            self.assertIsNotNone(con.execute("SELECT 1 FROM audit_logs WHERE action = 'set_ai_feature'").fetchone())
+
+    def test_slow_answers_pass_with_a_warning(self):
+        from services.ai import gate
+        from services.ai.health import heartbeat, validate_feature
+        from services.ai.client import config
+        feature = self._feature(budget_s=10)
+        self._enable()
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            st = heartbeat(db)
+            ticks = iter([0.0, 45.0])
+            self.server.answers = ['{"summary": "Site B blocked"}']
+            with patch("services.ai.client.time.monotonic", lambda: next(ticks)):
+                self.assertEqual(validate_feature(db, feature, config(db), st["fingerprint"]), "slow")
+            self.assertIsNone(gate("test_feature"))
+
+    def test_heartbeat_tells_admins_once_when_down_and_once_when_back(self):
+        from services.ai import status
+        from services.ai.health import heartbeat
+        self._enable()
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            heartbeat(db)
+            self.server.down = True
+            heartbeat(db)
+            self.assertEqual(status(db)["state"], "up")            # one miss is not down (policy: 2)
+            heartbeat(db)
+            heartbeat(db)
+            self.assertEqual(status(db)["state"], "down")
+            self.server.down = False
+            heartbeat(db)
+            self.assertEqual(status(db)["state"], "up")
+            titles = [r[0] for r in db.execute("SELECT title FROM notifications WHERE kind = 'ai' ORDER BY id")]
+            self.assertEqual(titles, ["The AI server is not answering", "The AI server is answering again"])
+
+    def test_saving_the_server_queues_validation_and_the_worker_runs_it(self):
+        from services.ai.health import tick
+        self._feature()
+        self.client.post("/settings/policies/ai", data={"ai_enabled": "on", "ai_base_url": "http://192.168.1.238:11434/v1", "ai_model": "P24-AI"})
+        with self._db() as con:
+            job = con.execute("SELECT * FROM ai_jobs").fetchone()
+            self.assertEqual((job["kind"], job["status"]), ("validate", "queued"))
+            self.assertIsNotNone(con.execute("SELECT 1 FROM audit_logs WHERE action = 'update_policies' AND resource_name = 'ai'").fetchone())
+        self.server.answers = ['{"status": "ready", "echo": 7}', '{"summary": "Site B blocked"}']
+        with self._ctx():
+            from db import get_db
+            from datetime import datetime
+            tick(get_db(), now_local=datetime(2026, 10, 8, 10, 0))
+        view = self.client.get("/api/settings/ai").get_json()
+        self.assertEqual(view["status"]["state"], "up")
+        self.assertEqual(view["jobs"][0]["status"], "done")
+        self.assertEqual([(f["key"], f["state"], f["current"]) for f in view["features"]], [("test_feature", "passed", True)])
+        self.assertEqual([c["kind"] for c in view["run_checks"]], ["connect", "smoke"])
+
+    def test_daily_validation_is_queued_once_a_day(self):
+        from datetime import datetime
+        from services.ai.health import tick
+        self._enable()
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            tick(db, now_local=datetime(2026, 10, 8, 2, 59))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_jobs").fetchone()[0], 0)
+            with patch("services.ai.health.work_once", return_value=None):
+                tick(db, now_local=datetime(2026, 10, 8, 3, 0))
+                tick(db, now_local=datetime(2026, 10, 8, 3, 1))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_jobs WHERE kind = 'validate'").fetchone()[0], 1)
+
+    def test_api_key_is_sealed_and_sent_as_a_bearer_token(self):
+        self.client.post("/settings/ai/key", data={"api_key": "sk-test-123"})
+        with self._db() as con:
+            stored = con.execute("SELECT value FROM settings WHERE key = 'ai.api_key'").fetchone()[0]
+        self.assertTrue(stored.startswith("sealed:"))
+        self.assertNotIn("sk-test-123", stored)
+        self._enable()
+        with self._ctx():
+            from services.ai.client import config, list_models
+            list_models(config())
+        self.assertEqual(self.server.calls[-1][2]["Authorization"], "Bearer sk-test-123")
+
+    def test_nothing_outside_the_framework_calls_the_ai_server(self):
+        """The one-door rule, like load_project: a feature that calls the
+        server itself skips the gate, the validation and the audit trail."""
+        import glob
+        here = os.path.dirname(os.path.abspath(app_module.__file__))
+        offenders = []
+        for path in glob.glob(os.path.join(here, "**", "*.py"), recursive=True):
+            rel = os.path.relpath(path, here)
+            if rel.startswith(("services" + os.sep + "ai" + os.sep, "venv", "test_app.py", "node_modules", "frontend")):
+                continue
+            with open(path, encoding="utf-8") as fh:
+                src = fh.read()
+            if "chat/completions" in src or "services.ai.client import chat" in src or "from services.ai import run" in src:
+                offenders.append(rel)
+        self.assertEqual(offenders, [])
+        from services.ai import FEATURES, PROMPTS
+        for f in FEATURES.values():
+            self.assertTrue(f.graders and callable(f.fixture), f.key)
+            self.assertTrue(os.path.exists(os.path.join(PROMPTS, f.prompt)), f.key)
+
+    def test_ai_notices_reach_admins_only_on_the_account_page(self):
+        kinds = [k["key"] for k in self.client.get("/api/account").get_json()["email_kinds"]]
+        self.assertIn("ai", kinds)
+
+
 if __name__ == "__main__":
     unittest.main()

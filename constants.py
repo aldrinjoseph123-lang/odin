@@ -79,11 +79,15 @@ NOTIFICATION_KINDS = {
     "activity": "Notes, finished tasks and documents on projects I manage",
     "assigned": "Tasks assigned to me",
     "access": "Sign-in requests and emergency password sign-ins (admins)",
+    "ai": "AI server down or back, and AI features that failed validation (admins)",
     "mention": "When someone mentions me in a note",
     "due": "A daily reminder of my tasks due today or overdue",
     "nudge": "A note a colleague sends me from the People page",
     "alert": "Alerts on projects I am on (overdue, due soon, over SLA, idle), and my daily digest",
 }
+
+# Kinds only admins receive, so only admins see them on the Account page.
+ADMIN_KINDS = ("access", "ai")
 
 THEMES = ("system", "light", "dark")
 # No red or amber accent: in the UI those mean overdue and warning (27 Sep 2026).

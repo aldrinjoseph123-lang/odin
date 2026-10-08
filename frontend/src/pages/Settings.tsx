@@ -9,6 +9,7 @@ import { Ago } from "@/components/Ago"
 import { cn } from "@/lib/utils"
 import { isDark } from "@/lib/theme"
 import { DocTemplates } from "@/components/DocTemplates"
+import { AISettings } from "@/components/AISettings"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
@@ -33,6 +34,7 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   workflow: { title: "Projects & workflow", lede: "What new projects start with, their stages and the alerts they raise." },
   notifications: { title: "Notifications", lede: "Which channels carry project events. Each person also picks what they get by email on their Account page." },
   integrations: { title: "Integrations", lede: "Microsoft 365 (mail, Teams and OneDrive through one Azure app) and the Kibana dashboards shown on the Flow page." },
+  ai: { title: "AI", lede: "The AI server Odin's AI features use, how Odin watches it, and whether each feature works on the model it runs today. A feature runs only after it passes its own test on the current model; otherwise Odin does what it did before." },
   reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
   documents: { title: "Documents", lede: "Templates for the rollout report, the portfolio report and the sign-off: brand, sections and wording. Documents already issued keep the template they were issued with." },
   api: { title: "API tokens", lede: "Read-only access for scripts and other tools: projects, their stages and tasks, and saved reports." },
@@ -147,6 +149,11 @@ export default function Settings(_props: { user: User }) {
             ]} />
             {policyForm("integrations", "Kibana")}
           </>
+        )}
+        {section === "ai" && (
+          <AISettings key={JSON.stringify(data.policies.filter((p) => p.area === "ai").map((p) => p.value))}
+            policies={data.policies.filter((p) => p.area === "ai")} busy={busy} send={send}
+            schedule={policyForm("ai_schedule", "Watching the server", "applies from the next heartbeat")} />
         )}
         {section === "documents" && <DocTemplates />}
         {section === "reports" && (

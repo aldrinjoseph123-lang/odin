@@ -385,7 +385,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 
 // ---- settings ----
 export type Policy = {
-  key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "backups" | "reports" | "audit"
+  key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "ai" | "ai_schedule" | "backups" | "reports" | "audit"
   kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines" | "dates"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
 }
@@ -411,6 +411,24 @@ export type SettingsData = {
   policies: Policy[]
   sso: { client_id: string | null; tenant_id: string | null; has_secret: boolean; configured: boolean; enforced: boolean; redirect_uri: string; password_admins: number }
 }
+// Settings → AI (routes/ai.py): the server's state, each feature's latest
+// validation and the last validation runs.
+export type AIState = "off" | "unknown" | "up" | "down"
+export type AIFeatureView = {
+  key: string; label: string; description: string; runs: string; on: boolean; forced: boolean
+  state: "passed" | "slow" | "failed" | "pending"; current: boolean; checked_at: string | null; model: string | null
+  seconds: number | null; detail: string | null; output: unknown; prompt: string; prompt_hash: string
+}
+export type AIView = {
+  status: { state: AIState; since?: string; checked_at?: string; misses?: number; fingerprint?: string; model?: string; error?: string | null; seconds?: number | null }
+  has_key: boolean; scheduler_alive: boolean
+  features: AIFeatureView[]
+  jobs: { id: number; status: "queued" | "running" | "done" | "failed"; requested_by: string | null; created_at: string; started_at: string | null; finished_at: string | null
+    result: { ok: boolean; reason?: string; model?: string; seconds?: number; features?: Record<string, string> } | null; error: string | null; payload: { reason?: string } | null }[]
+  run_checks: { kind: "connect" | "smoke"; state: string; seconds: number | null; detail: string | null; model: string | null; created_at: string }[]
+}
+export type AICheck = { ok: boolean; reason?: string | null; model?: string; fingerprint?: string; models?: string[] }
+export const aiSettings = () => getJson<AIView>("/api/settings/ai")
 export const settingsData = (section: string, teamId = "") =>
   getJson<SettingsData>(`/api/settings?section=${encodeURIComponent(section)}${teamId ? `&team_id=${encodeURIComponent(teamId)}` : ""}`)
 

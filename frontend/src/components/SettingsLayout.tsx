@@ -12,6 +12,7 @@ const SETTINGS_GROUPS: { label: string; items: { href: string; label: string }[]
   { label: "Delivery", items: [{ href: "/settings/workflow", label: "Projects & workflow" }, { href: "/settings/contacts", label: "Contacts & partners" },
     { href: "/settings/documents", label: "Documents" }] },
   { label: "Connections", items: [{ href: "/settings/notifications", label: "Notifications" }, { href: "/settings/integrations", label: "Integrations" },
+    { href: "/settings/ai", label: "AI" },
     { href: "/settings/reports", label: "Reports" }, { href: "/settings/backups", label: "Backups" }, { href: "/settings/api", label: "API tokens" }] },
   { label: "Compliance", items: [{ href: "/audit-logs", label: "Audit log" }, { href: "/settings/audit", label: "Retention" },
     { href: "/settings/map", label: "System map & changes" }] },
