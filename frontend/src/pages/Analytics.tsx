@@ -39,7 +39,7 @@ export default function Analytics(_props: { user: User }) {
             <StatTile label="Lead time (median)" value={d1(s.lead_median)} sub="days, start to closed" />
             <StatTile label="Oldest open stage" value={s.aging[0] ? String(Math.round(s.aging[0].days)) : "—"} sub={s.aging[0]?.project_name ?? "nothing ageing"} tone="bad" />
           </div>
-          <div className="mt-4 overflow-auto panel">
+          <div className="mt-4 overflow-auto panel" tabIndex={0} role="region" aria-label="Time per stage">
             <table className="w-full border-collapse text-[13px]">
               <thead><tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">{["Stage", "SLA", "Completed visits", "Avg days", "Median", "Longest", "In stage now"].map((h) => <th key={h} className="px-3 py-2 font-normal">{h}</th>)}</tr></thead>
               <tbody>
