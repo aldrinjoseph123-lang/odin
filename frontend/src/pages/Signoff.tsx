@@ -237,7 +237,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
             <ScopeTable items={draft.scope} />
           </Section>
         ) : (
-          <Section n title="What was delivered" sub="one per line; no scope was recorded, so this is drafted from the stages and deliverables">
+          <Section n title="What was delivered" sub="one per line; drafted from the stages, as no scope was recorded">
             <textarea aria-label="What was delivered" rows={6} value={delivered} onChange={(e) => setDelivered(e.target.value)} className={area} />
           </Section>
         )}

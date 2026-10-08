@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
@@ -8,7 +8,6 @@ import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const fmt = (iso: string) => fmtWhen(iso, true)
-const SEV = { critical: "bg-bad-soft text-bad", warning: "bg-warn-soft text-warn", info: "bg-muted text-muted-foreground" }
 const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[13px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
 
 export default function Alerts(_props: { user: User }) {
@@ -39,19 +38,25 @@ export default function Alerts(_props: { user: User }) {
       </div>
       <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
         <table className="w-full border-collapse text-[13px]">
-          <thead className="sticky top-0 bg-card"><tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Project", "Severity", "Raised", "Status"].map((h, i) => <th key={h} className={cn("px-3 py-2 font-normal", i > 1 && "text-right")}>{h}</th>)}</tr></thead>
+          <thead className="sticky top-0 bg-card"><tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Project", "Raised", "Status"].map((h, i) => <th key={h} className={cn("px-3 py-2 font-normal", i > 1 && "text-right")}>{h}</th>)}</tr></thead>
           <tbody>
-            {d.rows.map((a) => (
-              <tr key={a.id} className={cn("border-b border-border last:border-0 hover:bg-muted", a.resolved && "text-muted-foreground")}>
+            {d.rows.map((a, i) => {
+              // chunked the way the list is sorted: open alerts by severity, then the resolved ones
+              const group = (x: typeof a) => (x.resolved ? "resolved" : x.severity)
+              const age = group(a), head = i === 0 || group(d.rows[i - 1]) !== age
+              return (<Fragment key={a.id}>
+              {head && <tr className="bg-muted/50"><th scope="rowgroup" colSpan={4} className="px-3 py-1 text-left text-[12px] font-semibold capitalize text-nav-fg">
+                <span className={cn("mr-2 inline-block h-2 w-2 rounded-full", age === "critical" ? "bg-bad-line" : age === "warning" ? "bg-warn-line" : "bg-input")} aria-hidden />{age}</th></tr>}
+              <tr className={cn("border-b border-border last:border-0 hover:bg-muted", a.resolved && "text-muted-foreground")}>
                 {/* the receipt: what happened on the left, its weight, age and state on the right */}
                 <td className="px-3 py-2"><div className="font-medium">{a.title}</div>{a.description && <div className="text-[12px] text-muted-foreground">{a.description}</div>}</td>
                 <td className="px-3 py-2">{a.project_id && a.project_name ? <a href={`/board?rollout=${a.project_id}`} className="hover:underline">{a.project_name}</a> : "—"}</td>
-                <td className="px-3 py-2 text-right"><span className={cn("rounded-md px-2 py-1 text-[12px] font-medium capitalize", SEV[a.severity])}>{a.severity}</span></td>
                 <td className="whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground">{fmt(a.created_at)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground">{a.resolved ? `Resolved ${a.resolved_at ? fmt(a.resolved_at) : ""}` : "Open"}</td>
               </tr>
-            ))}
-            {d.rows.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">No alerts — every rollout is inside its dates and SLAs.</td></tr>}
+              </Fragment>)
+            })}
+            {d.rows.length === 0 && <tr><td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">No alerts — every rollout is inside its dates and SLAs.</td></tr>}
           </tbody>
         </table>
       </div>

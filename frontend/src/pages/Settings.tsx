@@ -31,17 +31,17 @@ function Panel({ title, hint, children, id }: { title: string; hint?: string; ch
 const TITLES: Record<string, { title: string; lede: string }> = {
   general: { title: "General", lede: "How the workspace reads for everyone." },
   security: { title: "Sign-in & security", lede: "Sessions, passwords, uploads and outside access." },
-  people: { title: "Sign-up & activity", lede: "Whether sign-up links work and what they allow, and whether Odin records each person's active time and who may see it." },
+  people: { title: "Sign-up & activity", lede: "Sign-up links, and whether Odin records each person's active time." },
   workflow: { title: "Projects & workflow", lede: "What new projects start with, their stages and the alerts they raise." },
-  notifications: { title: "Notifications", lede: "Which channels carry project events. Each person also picks what they get by email on their Account page." },
-  integrations: { title: "Integrations", lede: "Microsoft 365 (mail, Teams and OneDrive through one Azure app) and the Kibana dashboards shown on the Flow page." },
-  ai: { title: "AI", lede: "The AI server Odin's AI features use, how Odin watches it, and whether each feature works on the model it runs today. A feature runs only after it passes its own test on the current model; otherwise Odin does what it did before." },
+  notifications: { title: "Notifications", lede: "Which channels carry project events; each person tunes their own email." },
+  integrations: { title: "Integrations", lede: "Microsoft 365 mail, Teams and OneDrive, and the Kibana dashboards." },
+  ai: { title: "AI", lede: "The AI server, its health, and which features pass on today's model." },
   reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
-  documents: { title: "Documents", lede: "Templates for the rollout report, the portfolio report and the sign-off: brand, sections and wording. Documents already issued keep the template they were issued with." },
-  api: { title: "API tokens", lede: "Read-only access for scripts and other tools: projects, their stages and tasks, and saved reports." },
-  audit: { title: "Retention", lede: "How long the audit trail, read notifications and time on Odin are kept, and where older audit rows go." },
-  map: { title: "System map & changes", lede: "How Odin works, what changed in each version, and the known gaps. It describes the version this server runs and is updated with every release." },
-  backups: { title: "Backups", lede: "Copies of the database, documents and pictures: made on schedule, tested by restoring them, copied off the server, pruned by age." },
+  documents: { title: "Documents", lede: "Brand, sections and wording for reports and the sign-off." },
+  api: { title: "API tokens", lede: "Read-only access for scripts: projects, stages, tasks and saved reports." },
+  audit: { title: "Retention", lede: "How long the audit trail, notifications and activity are kept." },
+  map: { title: "System map & changes", lede: "How this version of Odin works, what changed, and the known gaps." },
+  backups: { title: "Backups", lede: "Scheduled, restore-tested copies of the database, documents and pictures." },
 }
 
 export default function Settings(_props: { user: User }) {

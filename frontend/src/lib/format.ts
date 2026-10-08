@@ -286,3 +286,15 @@ export function viewersText(roles: string[]) {
   const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]
   return `${list} can also see them on your People page.`
 }
+
+// A long, newest-first list read in chunks (UI/UX plan 3.1). A stored naive-UTC
+// timestamp's local calendar day: "Today", "Yesterday", or the date.
+export function dayBucket(iso: string, now: Date = new Date()): string {
+  const d = new Date(/Z$|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`)
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
+  const day = localToday(d), today = localToday(now)
+  if (day === today) return "Today"
+  if (day === localToday(new Date(now.getTime() - 864e5))) return "Yesterday"
+  return fmtWhen(iso)
+}
+

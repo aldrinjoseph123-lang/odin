@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, audit, type AuditData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { fmtWhen } from "@/lib/format"
+import { dayBucket, fmtWhen } from "@/lib/format"
+import { UserAvatar } from "@/components/UserAvatar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const fmt = (iso: string) => fmtWhen(iso, true)
@@ -64,10 +65,14 @@ export default function Audit(_props: { user: User }) {
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((r) => (
-              <tr key={r.id} className="border-b border-border align-top last:border-0 hover:bg-muted">
+            {data.rows.map((r, i) => {
+              // one header per day, so a long log reads in chunks (Today, Yesterday, 6 Oct 2026…)
+              const day = dayBucket(r.timestamp), head = i === 0 || dayBucket(data.rows[i - 1].timestamp) !== day
+              return (<Fragment key={r.id}>
+              {head && <tr className="bg-muted/50"><th scope="rowgroup" colSpan={6} className="px-3 py-1 text-left text-[12px] font-semibold text-nav-fg">{day}</th></tr>}
+              <tr className="border-b border-border align-top last:border-0 hover:bg-muted">
                 <td className="whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground">{fmt(r.timestamp)}</td>
-                <td className="px-3 py-2">{r.username}</td>
+                <td className="px-3 py-2"><span className="inline-flex items-center gap-2"><UserAvatar name={r.username || "?"} className="h-5 w-5" />{r.username}</span></td>
                 <td className="px-3 py-2"><span className="rounded-md bg-muted px-2 py-1 font-mono text-[12px]">{r.action}</span></td>
                 <td className="px-3 py-2">
                   {r.resource_type && <span className="text-[12px] text-muted-foreground">{r.resource_type} </span>}
@@ -77,7 +82,8 @@ export default function Audit(_props: { user: User }) {
                 <td className="max-w-md break-words px-3 py-2 text-[13px]">{r.details}</td>
                 <td className="hidden whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground lg:table-cell">{r.ip_address}</td>
               </tr>
-            ))}
+              </Fragment>)
+            })}
             {data.rows.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-[13px] text-muted-foreground">Nothing matches this filter.</td></tr>}
           </tbody>
         </table>

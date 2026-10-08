@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -226,5 +226,15 @@ describe("activity", () => {
 describe("fillPlaceholders", () => {
   it("fills the known ones and leaves the rest", () => {
     expect(fillPlaceholders("For {client}: {project} ({unknown})", { client: "Globex", project: "EDR" })).toBe("For Globex: EDR ({unknown})")
+  })
+})
+
+describe("dayBucket", () => {
+  const now = new Date(2026, 9, 9, 15, 0)          // 9 Oct 2026, 15:00 local
+  const iso = (d: Date) => d.toISOString().slice(0, 19)   // naive UTC, as stored
+  it("names today and yesterday by the reader's calendar, else the date", () => {
+    expect(dayBucket(iso(new Date(2026, 9, 9, 0, 30)), now)).toBe("Today")
+    expect(dayBucket(iso(new Date(2026, 9, 8, 23, 59)), now)).toBe("Yesterday")
+    expect(dayBucket(iso(new Date(2026, 9, 6, 12, 0)), now)).toBe(fmtWhen(iso(new Date(2026, 9, 6, 12, 0))))
   })
 })

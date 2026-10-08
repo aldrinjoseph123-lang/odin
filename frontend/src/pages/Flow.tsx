@@ -476,7 +476,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             <>
               <p className="font-medium">{next.title}</p>
               <p className="mt-1 flex items-center gap-3 text-muted-foreground">
-                <span className="flex items-center gap-1"><UserRound className="h-3.5 w-3.5" />{next.assignee ?? "Unassigned"}</span>
+                <span className="flex items-center gap-1">{next.assignee ? <UserAvatar name={next.assignee} url={next.assignee_avatar_url} className="h-5 w-5" /> : <UserRound className="h-3.5 w-3.5" />}{next.assignee ?? "Unassigned"}</span>
                 {next.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /><DueDate due={next.due_date} today={d.today} className="inline text-[13px]" /></span>}
               </p>
             </>
