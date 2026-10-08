@@ -5,6 +5,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { Stepper } from "@/components/Stepper"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
+import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
 import { fmtDate, lateBy, stateText } from "@/lib/format"
@@ -51,7 +52,7 @@ export default function MyWork({ user }: { user: User }) {
   const peak = Math.max(1, ...d.done_by_day.map((x) => x.count))
   async function tick(t: WorkTask) {
     setBusy(t.id)
-    try { await toggleTask(t.project_id, t.id); await load() } catch (e) { setError(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(null) }
+    try { await toggleTask(t.project_id, t.id); toast(t.done ? `Reopened ${t.title}` : `Done: ${t.title}`); await load() } catch (e) { setError(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(null) }
   }
   const tiles: { label: string; value: number; sub: string; icon: typeof Layers; tone?: "bad" | "warn" }[] = [
     { label: "Open tasks", value: c.open, sub: `${c.due_week} due this week`, icon: CheckSquare },

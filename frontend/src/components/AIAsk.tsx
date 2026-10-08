@@ -44,7 +44,7 @@ export function AIAsk({ projectId }: { projectId: number }) {
           <Input value={q} onChange={(e) => setQ(e.target.value)} maxLength={300} placeholder="e.g. Why did Design slip? What did the customer decide about phase 2?"
             aria-label="Question about this rollout" disabled={working} className="h-8 min-w-0 flex-1 text-[13px]" />
           {working && s.job ? <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load)}>Cancel</Button>
-            : <Button type="submit" size="sm" className="h-8" disabled={busy || q.trim().length < 5}>Ask</Button>}
+            : <Button type="submit" size="sm" className="h-8" loading={busy} disabled={q.trim().length < 5}>Ask</Button>}
         </form>
       )}
       <div aria-live="polite" className="text-[13px]">

@@ -84,7 +84,7 @@ export default function Account(_props: { user: User }) {
             <div className="grid grid-cols-1 gap-2">
               <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="text-[13px] file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-[13px] file:font-medium" />
               <div className="flex gap-2">
-                <Button type="submit" size="sm" variant="outline" disabled={busy}>Upload</Button>
+                <Button type="submit" size="sm" variant="outline" loading={busy}>Upload</Button>
                 {me.avatar_url && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => send("/account/avatar/remove", {})}>Remove</Button>}
               </div>
               <p className="text-[12px] text-muted-foreground">PNG, JPG, GIF or WebP, up to 2 MB. Square images look best.</p>
@@ -94,7 +94,7 @@ export default function Account(_props: { user: User }) {
         <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (name.trim()) void send("/account/name", { name: name.trim() }, () => window.setTimeout(() => window.location.reload(), 400)) }} className="grid grid-cols-1 content-start gap-2 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Name <span className="font-normal text-muted-foreground">as others see it</span></h2>
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} aria-label="Your name" className="h-8 text-[13px]" />
-          <div><Button type="submit" size="sm" variant="outline" disabled={busy || !name.trim() || name.trim() === me.name}>Save name</Button></div>
+          <div><Button type="submit" size="sm" variant="outline" loading={busy} disabled={!name.trim() || name.trim() === me.name}>Save name</Button></div>
           <p className="text-[12px] text-muted-foreground">Notes you already wrote keep the name they were written under.</p>
         </form>
         <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email, password: emailPw }, () => setEmailPw("")) }} className="grid grid-cols-1 content-start gap-2 panel p-4">
@@ -104,7 +104,7 @@ export default function Account(_props: { user: User }) {
           {me.has_password && email !== (me.email ?? "") && (
             <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Current password<Input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} required autoComplete="current-password" className="h-8 text-[13px]" /></label>
           )}
-          <div><Button type="submit" size="sm" variant="outline" disabled={busy || email === (me.email ?? "") || (me.has_password && !emailPw)}>Save email</Button></div>
+          <div><Button type="submit" size="sm" variant="outline" loading={busy} disabled={email === (me.email ?? "") || (me.has_password && !emailPw)}>Save email</Button></div>
         </form>
         {me.kind === "internal" && (
           <section className="grid grid-cols-1 content-start gap-2 panel p-4" aria-label="How Odin reaches you">
@@ -123,7 +123,7 @@ export default function Account(_props: { user: User }) {
             <h2 data-n className="text-[12px] font-semibold text-nav-fg">Change password</h2>
             <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Current password<Input autoFocus={me.must_change_password} type="password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required autoComplete="current-password" aria-label="Current password" className="h-8 text-[13px]" /></label>
             <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">New password<Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={8} autoComplete="new-password" aria-label="New password" className="h-8 text-[13px]" /><span className="text-[12px]">Use a few unrelated words: at least 12 characters, unless your admin set another length.</span></label>
-            <div><Button type="submit" size="sm" disabled={busy || !pw.current_password || pw.new_password.length < 8}>Update password</Button></div>
+            <div><Button type="submit" size="sm" loading={busy}>Update password</Button></div>
           </form>
         ) : (
           <p className="panel p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
@@ -139,7 +139,7 @@ export default function Account(_props: { user: User }) {
             </label>
           ))}
           {!me.mail_enabled && <p className="text-[12px] text-muted-foreground">Email is not connected on this installation yet, so for now only the bell is used.</p>}
-          <div><Button type="submit" size="sm" variant="outline" disabled={busy}>Save</Button></div>
+          <div><Button type="submit" size="sm" variant="outline" loading={busy}>Save</Button></div>
         </form>
         {me.kind !== "external" && <TwoStepPanel />}
         {me.activity && <ActivityPanel a={me.activity} note={`Odin counts the minutes it is open, visible and in use (idle time never counts) and when you were last seen. ${viewersText(me.activity_viewers)}`} />}

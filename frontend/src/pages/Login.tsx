@@ -108,7 +108,7 @@ export default function Login() {
             <Input id="code" name="code" autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} autoCapitalize="none"
               maxLength={recovery ? 12 : 7} value={code} onChange={(e) => { setCode(e.target.value); if (error) setError(null) }} className={`${field} tracking-[0.2em] tabular-nums`} />
           </div>
-          <Button type="submit" disabled={busy} className="mt-1 h-11 text-sm">
+          <Button type="submit" loading={busy} className="mt-1 h-11 text-sm">
             {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Checking…</> : "Continue"}
           </Button>
           <div className="flex flex-wrap justify-between gap-2 text-[13px]">
@@ -148,7 +148,7 @@ export default function Login() {
             {caps && <p id="caps-warning" className="text-[13px] text-warn">Caps Lock is on</p>}
             {error?.field === "password" && <p id="password-error" role="alert" className="text-[13px] text-bad">{error.text}</p>}
           </div>
-          <Button type="submit" disabled={busy} className="mt-1 h-11 text-sm">
+          <Button type="submit" loading={busy} className="mt-1 h-11 text-sm">
             {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Signing in…</> : "Sign in"}
           </Button>
         </form>

@@ -48,7 +48,7 @@ export default function ForgotPassword() {
             <div className="grid grid-cols-1 gap-2"><Label htmlFor="email" className="text-[14px]">Email</Label>
               <Input id="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 text-base" /></div>
           )}
-          <Button type="submit" className="mt-1 h-11 text-sm" disabled={busy}>
+          <Button type="submit" className="mt-1 h-11 text-sm" loading={busy}>
             {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Working…</> : token ? "Set password" : "Email me a reset link"}
           </Button>
         </form>

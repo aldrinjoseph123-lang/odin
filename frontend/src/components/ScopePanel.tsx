@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, FileSignature, Plus } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ApiError, deleteScope, saveScope, scopeItems, type ScopeData, type ScopeItem, type ScopeStatus, type SignoffState } from "@/lib/api"
+import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { signoffText } from "@/lib/format"
 import { AISowPlan } from "@/components/AISowPlan"
@@ -31,7 +32,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
     e.preventDefault()
     if (!edit) return
     setBusy(true); setError(null)
-    try { await saveScope(projectId, { title: edit.title, detail: edit.detail ?? "", status: edit.status, note: edit.note ?? "" }, edit.id); setEdit(null); await load() }
+    try { await saveScope(projectId, { title: edit.title, detail: edit.detail ?? "", status: edit.status, note: edit.note ?? "" }, edit.id); toast(edit.id ? "Scope item saved" : "Added to the scope"); setEdit(null); await load() }
     catch (err) { setError(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
   }
   async function act(fn: () => Promise<unknown>) {
@@ -94,8 +95,8 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
                 <input className={field} maxLength={1000} required={edit.status === "partial" || edit.status === "descoped"} value={edit.note ?? ""} onChange={(e) => set({ note: e.target.value })} /></label>
               {error && <p className="text-[13px] text-bad" role="alert">{error}</p>}
               <div className="flex gap-2">
-                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-bad" disabled={busy} onClick={() => { if (confirm("Remove this scope item?")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null) }) }}>Remove</Button>}
-                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" disabled={busy || !edit.title.trim()}>Save</Button></span>
+                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-bad" disabled={busy} onClick={() => { if (confirm("Remove this scope item?")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item removed") }) }}>Remove</Button>}
+                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
               </div>
             </form>
           )}

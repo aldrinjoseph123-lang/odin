@@ -41,7 +41,7 @@ export function AICatchUp({ projectId }: { projectId: number }) {
           </span>
         </h2>
         {sug && !working && <Button size="sm" variant="ghost" className="h-7" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide" : "Show"}</Button>}
-        {s.available && !working && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void ask()}>{sug ? "Brief me again" : "Brief me"}</Button>}
+        {s.available && !working && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void ask()}>{sug ? "Brief me again" : "Brief me"}</Button>}
         {working && s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load)}>Cancel</Button>}
       </div>
       {sug && open && !working && (

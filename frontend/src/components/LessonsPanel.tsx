@@ -61,7 +61,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
             <span className="min-w-0 flex-1" aria-live="polite">{drafting ? "Reading the rollout's history… about a minute." : sug ? "AI draft: tick the lessons worth keeping, then save them to the library." : "Draft this rollout's lessons with AI from its plan changes, overruns, risks, scope and notes."}</span>
-            {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void act(() => requestProjectAI(projectId, "lessons"))}>{sug ? "Draft again" : "Draft lessons"}</Button>}
+            {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void act(() => requestProjectAI(projectId, "lessons"))}>{sug ? "Draft again" : "Draft lessons"}</Button>}
             {drafting && s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void act(() => cancelAIJob(projectId, s.job!.id))}>Cancel</Button>}
           </div>
           {sug && !drafting && (
@@ -75,7 +75,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
                 ))}
               </ul>
               <div className="mt-2 flex flex-wrap gap-2">
-                <Button size="sm" className="h-7" disabled={busy || picked.size === 0} onClick={() => void act(() => saveLessons(projectId, sug.payload.lessons.filter((_, i) => picked.has(i)), sug.id), "Saved to the lessons library.")}>Save {picked.size} to the library</Button>
+                <Button size="sm" className="h-7" loading={busy} disabled={picked.size === 0} onClick={() => void act(() => saveLessons(projectId, sug.payload.lessons.filter((_, i) => picked.has(i)), sug.id), "Saved to the lessons library.")}>Save {picked.size} to the library</Button>
                 <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void act(() => dismissAISuggestion(projectId, sug.id))}>Dismiss</Button>
               </div>
             </div>

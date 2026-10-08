@@ -491,3 +491,27 @@ test("@flow document templates: brand, sections and wording; previewed, saved, p
   await expect(page.getByRole("status")).toHaveText(/Template deleted/)
   expectClean(errors)
 })
+
+test("@flow feedback: a missing field is named under it, a finished task says so", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/new")
+  await page.getByRole("button", { name: "Create project" }).click()
+  const name = page.getByRole("textbox", { name: "Project name" })
+  await expect(name).toHaveAttribute("aria-invalid", "true")
+  await expect(name).toBeFocused()
+  await expect(page.getByRole("alert")).toHaveText(/./)              // the browser's own words, under the field
+  await name.fill("x")
+  await expect(page.getByRole("alert")).toHaveCount(0)
+  await expect(name).not.toHaveAttribute("aria-invalid", "true")
+  // a state change answers with a toast, and putting it back answers too
+  await page.goto("/board?rollout=1")
+  const toggles = page.locator('button[aria-label^="Complete "], button[aria-label^="Reopen "]')
+  const labels = await toggles.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""))
+  const bare = (l: string) => l.replace(/^(Complete|Reopen) /, "")
+  const title = bare(labels.find((l) => l.startsWith("Complete ") && labels.filter((x) => bare(x) === bare(l)).length === 1)!)   // a task named once
+  await page.getByRole("button", { name: `Complete ${title}` }).click()
+  await expect(page.getByText(`Done: ${title}`)).toBeVisible()
+  await page.getByRole("button", { name: `Reopen ${title}` }).click()
+  await expect(page.getByText(`Reopened ${title}`)).toBeVisible()
+  expectClean(errors)
+})

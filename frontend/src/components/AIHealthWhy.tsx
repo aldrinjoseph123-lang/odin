@@ -42,7 +42,7 @@ export function AIHealthWhy({ projectId, rag }: { projectId: number; rag: string
             </>
             : <span className="text-muted-foreground">Have the AI explain this in plain words, with a first move.</span>}
       </div>
-      {s.available && !working && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void explain()}>{sug ? "Explain again" : "Explain"}</Button>}
+      {s.available && !working && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void explain()}>{sug ? "Explain again" : "Explain"}</Button>}
     </div>
   )
 }

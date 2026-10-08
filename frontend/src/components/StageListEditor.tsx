@@ -31,7 +31,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
           <button type="button" disabled={busy || i === rows.length - 1} onClick={() => send(paths.move(s.id), { direction: "down" })} aria-label={`Move ${s.name} down`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-7 w-7 px-0")}><ArrowDown className="h-3.5 w-3.5" /></button>
           <form onSubmit={(e) => { e.preventDefault(); if ((names[s.id] ?? "").trim() && names[s.id] !== s.name) void send(paths.rename(s.id), { name: names[s.id] }) }} className="flex min-w-0 flex-1 items-center gap-2">
             <Input value={names[s.id] ?? ""} onChange={(e) => setNames({ ...names, [s.id]: e.target.value })} aria-label={`Rename stage ${s.name}`} maxLength={80} className={cn("h-7 min-w-32 flex-1 text-[13px]", s.name === current && "font-medium")} />
-            {names[s.id] !== undefined && names[s.id] !== s.name && <Button type="submit" size="sm" variant="outline" className="h-7" disabled={busy}>Rename</Button>}
+            {names[s.id] !== undefined && names[s.id] !== s.name && <Button type="submit" size="sm" variant="outline" className="h-7" loading={busy}>Rename</Button>}
           </form>
           <span className="w-16 text-right text-[12px] text-muted-foreground">{s.name === current ? "current" : i === rows.length - 1 ? "closed" : ""}</span>
           <button type="button" disabled={busy || s.name === current || rows.length <= 1} onClick={() => send(paths.remove(s.id), {}, `Delete stage ${s.name} from ${label}?`)} aria-label={`Delete ${s.name}`} className="text-muted-foreground hover:text-bad disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -39,7 +39,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
       ))}
       <form onSubmit={(e) => { e.preventDefault(); if (newName.trim()) void send(paths.add, { name: newName.trim() }).then(() => setNewName("")) }} className="mt-1 flex flex-wrap items-center gap-2 border-t border-border pt-3">
         <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New stage name" aria-label={`New stage for ${label}`} maxLength={80} className="h-8 w-full text-[13px] sm:w-56" />
-        <Button type="submit" size="sm" variant="outline" disabled={busy || !newName.trim()}>Add stage</Button>
+        <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!newName.trim()}>Add stage</Button>
         <span className="text-[12px] text-muted-foreground">Added before the last stage.</span>
       </form>
       <form onSubmit={saveSlas} className="mt-1 border-t border-border pt-3">
@@ -52,7 +52,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
             </label>
           ))}
         </div>
-        <Button type="submit" size="sm" variant="outline" className="mt-2" disabled={busy}>Save SLAs</Button>
+        <Button type="submit" size="sm" variant="outline" className="mt-2" loading={busy}>Save SLAs</Button>
       </form>
     </div>
   )

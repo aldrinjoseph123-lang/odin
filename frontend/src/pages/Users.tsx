@@ -114,7 +114,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
       <td className="px-3 py-2">
         <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="flex items-center gap-1">
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" aria-label={`Email for ${u.name}`} className="h-7 w-40 text-[13px]" />
-          {email !== (u.email ?? "") && <Button type="submit" size="sm" variant="outline" className="h-7" disabled={busy}>Save</Button>}
+          {email !== (u.email ?? "") && <Button type="submit" size="sm" variant="outline" className="h-7" loading={busy}>Save</Button>}
         </form>
       </td>
       <td className="px-3 py-2">
@@ -147,7 +147,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           {u.kind !== "external" && (!microsoftOnly || u.password_login) && (resetting ? (
             <form onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then(() => { setPw(""); setResetting(false) }) }} className="flex items-center gap-1">
               <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password" aria-label={`New password for ${u.name}`} minLength={12} required className="h-7 w-36 text-[13px]" />
-              <Button type="submit" size="sm" className="h-7" disabled={busy || pw.length < 12}>Set</Button>
+              <Button type="submit" size="sm" className="h-7" loading={busy} disabled={pw.length < 12}>Set</Button>
               <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setResetting(false)}>Cancel</Button>
             </form>
           ) : <Button size="sm" variant="ghost" className="h-7" onClick={() => setResetting(true)}>Reset password</Button>)}
@@ -176,7 +176,7 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
           {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </label>
-      <Button type="submit" size="sm" className="mt-1" disabled={busy || !f.name || !f.username || f.password.length < 12}>Create user</Button>
+      <Button type="submit" size="sm" className="mt-1" loading={busy}>Create user</Button>
       <p className="text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
     </form>
   )
@@ -219,7 +219,7 @@ function SignupLinksPanel() {
           <label className="grid grid-cols-1 gap-1 font-medium">Uses<select className={field} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: Number(e.target.value) })}>{[1, 5, 10, 25].map((n) => <option key={n} value={n}>{n === 1 ? "One person" : `Up to ${n}`}</option>)}</select></label>
         </div>
         {err && <p className="text-bad" role="alert">{err}</p>}
-        <Button type="submit" size="sm" disabled={busy || !f.label.trim()}>Create link</Button>
+        <Button type="submit" size="sm" loading={busy} disabled={!f.label.trim()}>Create link</Button>
       </form>}
       {made && (
         <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">

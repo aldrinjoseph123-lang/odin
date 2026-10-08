@@ -182,7 +182,7 @@ export default function Person(_props: { user: User }) {
             )}
             <div className="mt-4 flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" className="rounded-full" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
-              <Button type="submit" size="sm" className="rounded-full" disabled={busy || !message.trim()}><Send className="h-3.5 w-3.5" /> Send</Button>
+              <Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!message.trim()}><Send className="h-3.5 w-3.5" /> Send</Button>
             </div>
           </form>
         </DialogContent>

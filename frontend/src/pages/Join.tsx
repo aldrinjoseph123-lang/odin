@@ -71,7 +71,7 @@ export default function Join() {
           <p className="mt-2 text-[12px] text-muted-foreground">Always in Odin's bell too. Change it later on your account page.</p>
         </fieldset>
         {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
-        <Button type="submit" className="h-11 text-sm" disabled={busy || !f.name || !f.email || !f.username || !f.password}>{busy ? "Sending…" : "Ask to join"}</Button>
+        <Button type="submit" className="h-11 text-sm" loading={busy}>Ask to join</Button>
       </form>
     </AuthLayout>
   )

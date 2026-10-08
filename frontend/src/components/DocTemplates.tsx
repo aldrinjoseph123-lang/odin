@@ -164,7 +164,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
 
         {notice && <p className={cn("text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
         <div className="flex flex-wrap gap-2">
-          <Button className="rounded-full" disabled={busy || !edit.name.trim()} onClick={onSave}>Save template</Button>
+          <Button className="rounded-full" loading={busy} disabled={!edit.name.trim()} onClick={onSave}>Save template</Button>
           <Button variant="outline" className="rounded-full" disabled={busy} onClick={onPreview}><Eye className="h-4 w-4" /> Preview</Button>
           <Button variant="ghost" className="rounded-full" disabled={busy} onClick={onCancel}>Cancel</Button>
         </div>

@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, twoStep, twoStepCodes, twoStepConfirm, twoStepOff, twoStepSetup, type TwoStep } from "@/lib/api"
+import { toast } from "@/lib/toast"
 import { fmtDate } from "@/lib/format"
 
 // Two-step sign-in on the Account page: set up with an authenticator app (QR
@@ -60,7 +61,7 @@ export function TwoStepPanel() {
           <ul className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[13px]" aria-label="Recovery codes">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={save}>Download as a file</Button>
-            <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(codes.join("\n")).catch(() => {})}>Copy</Button>
+            <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(codes.join("\n")).then(() => toast("Recovery codes copied")).catch(() => toast("Select the codes and copy them", { tone: "bad" }))}>Copy</Button>
             <Button size="sm" onClick={() => { setCodes(null); if (s.required) window.location.assign("/") }}>I have saved them</Button>
           </div>
         </div>
@@ -72,7 +73,7 @@ export function TwoStepPanel() {
           {!asking ? <div><Button size="sm" disabled={busy} onClick={() => setAsking(true)}>Set up two-step sign-in</Button></div> : (
             <form onSubmit={start} className="flex flex-wrap items-end gap-2">
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Your password<Input type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 w-56" /></label>
-              <Button type="submit" size="sm" disabled={busy || !password}>Continue</Button>
+              <Button type="submit" size="sm" loading={busy} disabled={!password}>Continue</Button>
               <Button type="button" size="sm" variant="ghost" onClick={() => { setAsking(false); setPassword("") }}>Cancel</Button>
             </form>
           )}
@@ -86,7 +87,7 @@ export function TwoStepPanel() {
           <div className="w-fit rounded-lg bg-white p-2" role="img" aria-label="QR code for your authenticator app" dangerouslySetInnerHTML={{ __html: setup.qr_svg }} />
           <p className="text-[13px] text-muted-foreground">Can't scan? Type this key instead: <code className="select-all break-all rounded bg-muted px-1 font-mono text-[12px] text-foreground">{setup.secret.match(/.{1,4}/g)!.join(" ")}</code></p>
           <p className="text-[13px] text-muted-foreground">2. Enter the 6-digit code the app shows.</p>
-          <div className="flex flex-wrap items-end gap-2">{codeField("Code")}<Button type="submit" size="sm" disabled={busy || code.replace(/\D/g, "").length !== 6}>Turn on</Button>
+          <div className="flex flex-wrap items-end gap-2">{codeField("Code")}<Button type="submit" size="sm" loading={busy} disabled={code.replace(/\D/g, "").length !== 6}>Turn on</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setSetup(null)}>Cancel</Button></div>
         </form>
       )}
@@ -105,7 +106,7 @@ export function TwoStepPanel() {
               <p className="text-[13px] text-muted-foreground">{mode === "off" ? "Confirm it is you to turn two-step sign-in off." : "Confirm it is you. The old codes stop working."}</p>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Password<Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 max-w-xs" /></label>
               {codeField("Authenticator or recovery code")}
-              <div className="flex gap-2"><Button type="submit" size="sm" variant={mode === "off" ? "destructive" : "default"} disabled={busy || !password || !code}>{mode === "off" ? "Turn off" : "Make new codes"}</Button>
+              <div className="flex gap-2"><Button type="submit" size="sm" variant={mode === "off" ? "destructive" : "default"} loading={busy} disabled={!password || !code}>{mode === "off" ? "Turn off" : "Make new codes"}</Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => { setMode(null); setErr(null) }}>Cancel</Button></div>
             </form>
           )}

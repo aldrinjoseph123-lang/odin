@@ -161,7 +161,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
         <span>{counter ? "I confirm the work above is complete and countersign on our behalf." : `I have read this document and accept it on behalf of ${client}.`}</span>
       </label>
       {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
-      <Button type="submit" className="rounded-full" disabled={busy || !accept || !sig || !name.trim()}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
+      <Button type="submit" className="rounded-full" loading={busy} disabled={!accept || !sig || !name.trim()}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
       {canReject && <button type="button" onClick={() => setRejecting(true)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">I can't sign this yet</button>}
     </form>
   )
@@ -269,7 +269,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
           {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
           {confirming ? (
             <div className="grid grid-cols-1 gap-2" role="group" aria-label="Confirm sending">
-              <Button onClick={send} disabled={busy} autoFocus className="rounded-full">{busy ? "Sending…" : `Send to ${who?.name ?? "the customer"} now`}</Button>
+              <Button onClick={send} loading={busy} autoFocus className="rounded-full">{`Send to ${who?.name ?? "the customer"} now`}</Button>
               <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy} className="rounded-full">Cancel</Button>
             </div>
           ) : (
@@ -400,7 +400,7 @@ export default function Signoff(_props: { user: User }) {
             </div>
             <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed on<input name="signed_on" type="date" required className={input} /></label>
             {dialogErr && <p className="text-[13px] text-bad" role="alert">{dialogErr}</p>}
-            <div className="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" disabled={busy}>Upload</Button></div>
+            <div className="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy}>Upload</Button></div>
           </form>
         </DialogContent>
       </Dialog>

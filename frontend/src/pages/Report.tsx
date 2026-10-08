@@ -78,7 +78,7 @@ export default function Report({ user }: { user: User }) {
         {r.is_live && r.can_edit && <TemplatePicker kind="rollout" value={template} onChange={(t) => set("template", t ? String(t) : null)} />}
         {r.data && <a href={pdf} target="_blank" rel="noreferrer" className={pill}><Download className="h-3.5 w-3.5" /> PDF</a>}
         <button type="button" onClick={() => window.print()} className={pill}><Printer className="h-3.5 w-3.5" /> Print</button>
-        {editable && <Button size="sm" className="h-8 rounded-full" disabled={busy || !words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
+        {editable && <Button size="sm" className="h-8 rounded-full" loading={busy} disabled={!words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
       </span>
     </div>
   )

@@ -10,6 +10,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
+import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
 import { days, fitStages, fmtDate, groupRows, signoffText, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
@@ -48,14 +49,14 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
   const [assignee, setAssignee] = useState<string>("")
   const [busy, setBusy] = useState(false)
   const canTick = (t: FlowTask) => d.can_edit || t.assignee_id === d.me
-  async function run(fn: () => Promise<unknown>) {
+  async function run(fn: () => Promise<unknown>, done?: string) {
     setBusy(true); onError(null)
-    try { await fn(); await reload() } catch (e) { onError(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+    try { await fn(); await reload(); if (done) toast(done) } catch (e) { onError(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
   async function submit() {
     const t = title.trim()
     if (!t) return
-    await run(() => addTask(d.id, { title: t, stage, assignee_id: assignee ? Number(assignee) : null }))
+    await run(() => addTask(d.id, { title: t, stage, assignee_id: assignee ? Number(assignee) : null }), `Task added to ${stage}`)
     setTitle("")
   }
   return (
@@ -64,7 +65,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
         <ul className="divide-y divide-border border-t border-border">
           {tasks.map((t) => (
             <li key={t.id} className={cn("group flex items-center gap-2 py-2", t.done && "text-muted-foreground")}>
-              <button type="button" disabled={!canTick(t) || busy} onClick={() => run(() => toggleTask(d.id, t.id))}
+              <button type="button" disabled={!canTick(t) || busy} onClick={() => run(() => toggleTask(d.id, t.id), t.done ? `Reopened ${t.title}` : `Done: ${t.title}`)}
                 aria-label={t.done ? `Reopen ${t.title}` : `Complete ${t.title}`}
                 className={cn("relative flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border before:absolute before:-inset-[5px] before:content-['']", t.done ? "border-ok-line bg-ok-line text-background" : "border-input bg-background", canTick(t) ? "hover:border-foreground" : "cursor-default opacity-60")}>
                 {t.done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
@@ -75,7 +76,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
               </span>
               {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[11px]" />}
               {d.can_edit && (
-                <button type="button" disabled={busy} onClick={() => run(() => deleteTask(d.id, t.id))} aria-label={`Delete ${t.title}`}
+                <button type="button" disabled={busy} onClick={() => run(() => deleteTask(d.id, t.id), `Deleted ${t.title}`)} aria-label={`Delete ${t.title}`}
                   className="hidden shrink-0 text-muted-foreground hover:text-bad group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
             </li>
@@ -92,7 +93,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
               <option value="">Unassigned</option>
               {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
-            <Button type="submit" size="sm" className="h-7 px-2" disabled={busy || !title.trim()} aria-label="Add task"><Plus className="h-3.5 w-3.5" /></Button>
+            <Button type="submit" size="sm" className="h-7 px-2" loading={busy} disabled={!title.trim()} aria-label="Add task"><Plus className="h-3.5 w-3.5" /></Button>
             <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => { setAdding(false); setTitle("") }} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
           </div>
         </form>
@@ -529,7 +530,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the history (optional)" aria-label="Stage change note" maxLength={5000} className="h-8 text-[13px]" />
             {confirming ? (
               <div className="mt-2 grid grid-cols-1 gap-2" role="group" aria-label={`Confirm the move to ${d.next_stage}`}>
-                <Button size="sm" onClick={advance} disabled={busy} autoFocus>{busy ? "Moving…" : `Move to ${d.next_stage} now`}</Button>
+                <Button size="sm" onClick={advance} loading={busy} autoFocus>{`Move to ${d.next_stage} now`}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
               </div>
             ) : (

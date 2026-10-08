@@ -49,7 +49,7 @@ export function AIRaidProposals({ projectId, refresh, onAdd }: { projectId: numb
           {lastJob?.status === "failed" && <span className="block text-bad">The last look did not finish: {lastJob.error}</span>}
           {error && <span className="block text-bad">{error}</span>}
         </span>
-        {s.available && !looking && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void look()}>{sug ? "Look again" : "Look with AI"}</Button>}
+        {s.available && !looking && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void look()}>{sug ? "Look again" : "Look with AI"}</Button>}
         {looking && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load)}>Cancel</Button>}
       </div>
       {sug && open.length > 0 && !looking && (

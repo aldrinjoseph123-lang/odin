@@ -57,7 +57,7 @@ export function AIChase({ projectId }: { projectId: number }) {
                 : "Draft a short, polite chase email about these with AI."}
             {note && <span className="block text-muted-foreground" role="status">{note}</span>}
           </span>
-          {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void act(() => requestProjectAI(projectId, "chase_draft"))}>{sug ? "Draft again" : "Draft a chase"}</Button>}
+          {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void act(() => requestProjectAI(projectId, "chase_draft"))}>{sug ? "Draft again" : "Draft a chase"}</Button>}
           {drafting && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void act(() => cancelAIJob(projectId, s.job!.id))}>Cancel</Button>}
         </div>
         {sug && !drafting && (

@@ -65,7 +65,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} maxLength={3500} aria-label="Meeting minutes"
             placeholder={"e.g. Omar to cable the Site B racks by 13 Oct.\nAnn will send the log samples by Friday."}
             className="w-full rounded-md border border-input bg-background p-2 text-[13px] leading-relaxed" />
-          <div><Button size="sm" variant="outline" className="h-7" disabled={busy || text.trim().length < 20} onClick={() => void find()}>Find the actions</Button></div>
+          <div><Button size="sm" variant="outline" className="h-7" loading={busy} disabled={text.trim().length < 20} onClick={() => void find()}>Find the actions</Button></div>
         </div>
       )}
       <div aria-live="polite" className="text-[13px]">
@@ -93,7 +93,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
             </ul>
           )}
           <div className="mt-2 flex flex-wrap gap-2">
-            {sug.payload.tasks.length > 0 && <Button size="sm" className="h-7" disabled={busy || picked.size === 0} onClick={() => void add()}>Add {picked.size} task{picked.size === 1 ? "" : "s"}</Button>}
+            {sug.payload.tasks.length > 0 && <Button size="sm" className="h-7" loading={busy} disabled={picked.size === 0} onClick={() => void add()}>Add {picked.size} task{picked.size === 1 ? "" : "s"}</Button>}
             <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void dismissAISuggestion(projectId, sug.id).then(load)}>{sug.payload.tasks.length ? "Dismiss" : "Clear"}</Button>
           </div>
         </div>

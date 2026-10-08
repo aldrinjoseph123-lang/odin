@@ -115,8 +115,8 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
           </p>
         )}
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" disabled={busy || checking || !f.ai_base_url} onClick={() => void runCheck()}>{checking ? "Checking…" : "Check"}</Button>
-          <Button type="submit" size="sm" disabled={busy}>Save</Button>
+          <Button type="button" size="sm" variant="outline" loading={checking} disabled={busy || !f.ai_base_url} onClick={() => void runCheck()}>Check</Button>
+          <Button type="submit" size="sm" loading={busy}>Save</Button>
         </div>
       </form>
     </Panel>

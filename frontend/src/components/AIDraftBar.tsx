@@ -52,7 +52,7 @@ export function AIDraftBar<T>({ projectId, feature, idle, working, note, onUse, 
           <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void dismiss(sug.id)}>Dismiss</Button>
         </>
       )}
-      {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void draft()}>{sug ? again : ask}</Button>}
+      {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void draft()}>{sug ? again : ask}</Button>}
       {drafting && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load)}>Cancel</Button>}
     </div>
   )

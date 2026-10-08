@@ -68,7 +68,7 @@ export default function Rbac(_props: { user: User }) {
           </table>
         </div>
         <div className="mt-3 flex items-center gap-3">
-          <Button type="submit" size="sm" disabled={busy || !dirty}>Save permissions</Button>
+          <Button type="submit" size="sm" loading={busy} disabled={!dirty}>Save permissions</Button>
           <span className="text-[12px] text-muted-foreground">Admin always keeps Manage settings, Manage users and every view right, so this page cannot lock everyone out.</span>
         </div>
       </form>

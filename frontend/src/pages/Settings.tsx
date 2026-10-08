@@ -284,7 +284,7 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
             </div>
           ))}
         </div>
-        <div><Button type="submit" size="sm" disabled={busy || !dirty}>Save</Button></div>
+        <div><Button type="submit" size="sm" loading={busy} disabled={!dirty}>Save</Button></div>
       </form>
     </Panel>
   )
@@ -304,7 +304,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Valid for
             <select value={days} onChange={(e) => setDays(e.target.value)} className={selectClass}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
           </label>
-          <Button type="submit" size="sm" disabled={busy || !name.trim()}>Create token</Button>
+          <Button type="submit" size="sm" loading={busy} disabled={!name.trim()}>Create token</Button>
         </form>
         <p className="mt-3 text-[12px] text-muted-foreground">
           Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code> to <code className="font-mono">/api/v1/projects</code>, <code className="font-mono">/api/v1/projects/&lt;id&gt;</code> and <code className="font-mono">/api/v1/projects/&lt;id&gt;/report</code>. It can read every project and change nothing. Behind Cloudflare Access, /api/v1 needs its own Access policy (a service token).
@@ -405,7 +405,7 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
           <span>Staff must sign in with Microsoft <span className="block text-[12px] text-muted-foreground">The password form disappears. Accounts ticked "Password" on the Users page ({sso.password_admins} admin{sso.password_admins === 1 ? "" : "s"} now) keep an emergency form at /login/password; each use is recorded and the admins are told.</span></span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="sm" disabled={busy}>Save</Button>
+          <Button type="submit" size="sm" loading={busy}>Save</Button>
           {sso.configured && <a href="/auth/microsoft" className={buttonVariants({ size: "sm", variant: "outline" })}>Try Microsoft sign-in</a>}
           {sso.configured && <Button type="button" size="sm" variant="ghost" className="ml-auto text-bad hover:text-bad" disabled={busy}
             onClick={() => send("/settings/sso", { clear: "1" }, "Remove Microsoft sign-in? Staff go back to passwords; anyone who only ever used Microsoft will need a password reset.")}>Remove</Button>}
@@ -435,7 +435,7 @@ function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData;
             <span>{i.label}</span>
           </label>
         ))}
-        <div><Button type="submit" size="sm" variant="outline" disabled={busy || !dirty}>Save</Button></div>
+        <div><Button type="submit" size="sm" variant="outline" loading={busy} disabled={!dirty}>Save</Button></div>
       </form>
       {extra && <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">{extra}</div>}
     </Panel>
@@ -447,7 +447,7 @@ function AddForm({ placeholder, label, button, busy, onSubmit }: { placeholder: 
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void onSubmit(name.trim()).then(() => setName("")) }} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} aria-label={label} maxLength={80} className="h-8 w-full text-[13px] sm:w-72" />
-      <Button type="submit" size="sm" variant="outline" disabled={busy || !name.trim()}>{button}</Button>
+      <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!name.trim()}>{button}</Button>
     </form>
   )
 }
@@ -460,7 +460,7 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim() && name !== t.name) void send(`${base}/rename`, { name }) }} className="flex min-w-0 flex-1 items-center gap-2">
           <Input value={name} onChange={(e) => setName(e.target.value)} aria-label={`Rename template ${t.name}`} maxLength={80} className="h-8 min-w-40 flex-1 text-[14px] font-semibold" />
-          {name !== t.name && <Button type="submit" size="sm" variant="outline" disabled={busy}>Rename</Button>}
+          {name !== t.name && <Button type="submit" size="sm" variant="outline" loading={busy}>Rename</Button>}
         </form>
         <span className="whitespace-nowrap text-[12px] text-muted-foreground">{t.projects} project{t.projects === 1 ? "" : "s"}</span>
         <button type="button" disabled={busy || onlyOne} onClick={() => send(`${base}/delete`, {}, `Delete template ${t.name}? Projects keep their own copies.`)} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-bad disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -513,7 +513,7 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
             ))}
           </tbody>
         </table></div>
-        <Button type="submit" size="sm" variant="outline" className="mt-3" disabled={busy}>Save alert settings</Button>
+        <Button type="submit" size="sm" variant="outline" className="mt-3" loading={busy}>Save alert settings</Button>
       </form>
     </Panel>
   )
@@ -537,7 +537,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[13px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[13px]" /></label>
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={busy || !app.client_id || !app.tenant_id}>Save</Button>
+            <Button type="submit" size="sm" loading={busy} disabled={!app.client_id || !app.tenant_id}>Save</Button>
             {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>}
             {m.oauth_client_configured && <Button type="button" size="sm" variant="outline" className="ml-auto text-bad hover:text-bad" disabled={busy} onClick={() => send("/settings/azure-app/clear", {}, "Clear Azure credentials and disconnect Microsoft 365?")}>Clear & disconnect</Button>}
           </div>

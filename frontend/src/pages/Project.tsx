@@ -246,7 +246,7 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={5000} aria-label="Edit note" autoFocus
             className="w-full rounded-md border border-input bg-background p-2 text-[13px]" onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={busy || !text.trim() || text.trim() === n.note}>Save</Button>
+            <Button type="submit" size="sm" loading={busy} disabled={!text.trim() || text.trim() === n.note}>Save</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(false); setText(n.note) }}>Cancel</Button>
             {n.stage_entry && <span className="self-center text-[12px] text-muted-foreground">Records a stage change: it can be corrected, not deleted.</span>}
           </div>
@@ -267,7 +267,7 @@ function NoteForm({ busy, people, onSubmit }: { busy: boolean; people: string[];
       <div className="flex gap-2">
         <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note — type @ to notify someone on the team" aria-label="Add a note" maxLength={5000} className="h-8 text-[13px]"
           onKeyDown={(e) => { if (e.key === "Enter" && matches.length) { e.preventDefault(); pick(matches[0]) } }} />
-        <Button type="submit" size="sm" disabled={busy || !note.trim()}>Add</Button>
+        <Button type="submit" size="sm" loading={busy} disabled={!note.trim()}>Add</Button>
       </div>
       {matches.length > 0 && (
         <ul role="listbox" aria-label="Mention someone" className="absolute left-0 top-9 z-20 w-64 overflow-hidden panel bg-popover py-1 text-[13px] shadow-pop">
@@ -291,7 +291,7 @@ function TeamAddForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; o
       <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role" className={selectClass}>
         {x.roles.map((r) => <option key={r} value={r}>{r}</option>)}
       </select>
-      <Button type="submit" size="sm" variant="outline" disabled={busy || !userId}>Add</Button>
+      <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!userId}>Add</Button>
     </form>
   )
 }
@@ -307,7 +307,7 @@ function InviteForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; on
       <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Their role" className={selectClass}>
         {x.external_roles.map((r) => <option key={r} value={r}>{r}</option>)}
       </select>
-      <Button type="submit" size="sm" variant="outline" disabled={busy || !email}>Invite</Button>
+      <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!email}>Invite</Button>
     </form>
   )
 }

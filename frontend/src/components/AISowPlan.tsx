@@ -107,7 +107,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
               ))}
             </ul>
           )}
-          {s.available && <Button size="sm" variant="outline" className="mt-2 h-7" disabled={busy || !docs?.length} onClick={() => void ask()}>Suggest a plan with AI</Button>}
+          {s.available && <Button size="sm" variant="outline" className="mt-2 h-7" loading={busy} disabled={!docs?.length} onClick={() => void ask()}>Suggest a plan with AI</Button>}
         </div>
       )}
       {sug && !reading && (
@@ -122,7 +122,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
             </section>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" className="h-7" disabled={busy || picked.size === 0} onClick={() => void take()}>Add {picked.size} selected</Button>
+            <Button size="sm" className="h-7" loading={busy} disabled={picked.size === 0} onClick={() => void take()}>Add {picked.size} selected</Button>
             <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void dismissAISuggestion(projectId, sug.id).then(load)}>Dismiss</Button>
           </div>
         </div>

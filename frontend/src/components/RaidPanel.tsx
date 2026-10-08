@@ -3,6 +3,7 @@ import { AlertOctagon, Eye, Gavel, Plus, ShieldAlert, TriangleAlert } from "luci
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ApiError, decideAIProposal, deleteRaid, raid, saveRaid, type RaidData, type RaidItem, type RaidKind } from "@/lib/api"
+import { toast } from "@/lib/toast"
 import { AIRaidProposals } from "@/components/AIRaidProposals"
 import { cn } from "@/lib/utils"
 import { fmtDate, lateBy, localToday } from "@/lib/format"
@@ -42,6 +43,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
       const r = await saveRaid(projectId, edit, edit.id)
       const newId = (r as { id?: number }).id
       if (fromAI && !edit.id && newId) { await decideAIProposal(projectId, fromAI.suggestion, fromAI.index, "accepted", newId); setAiRefresh((n) => n + 1) }
+      toast(edit.id ? "Saved to the log" : `${RAID_KIND[edit.kind]?.label ?? "Item"} logged`)
       setEdit(null); setFromAI(null); await load(); onChanged?.()
     } catch (err) { setError(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
   }
@@ -114,7 +116,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
               {error && <p className="text-[13px] text-bad" role="alert">{error}</p>}
               <div className="flex gap-2">
                 {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-bad" disabled={busy} onClick={remove}>Delete</Button>}
-                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" disabled={busy || !edit.title.trim()}>Save</Button></span>
+                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
               </div>
             </form>
           )}

@@ -104,7 +104,7 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
           {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="h-8 min-w-60 flex-1 rounded-md border border-input bg-background px-2 text-[13px]" />}
           <span className="ml-auto flex gap-2">
             {dirty && <Button size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={() => load()}>Discard</Button>}
-            <Button size="sm" className="rounded-full" disabled={busy || !dirty} onClick={save}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
+            <Button size="sm" className="rounded-full" loading={busy} disabled={!dirty} onClick={save}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
             {d.baseline_at && <Button size="sm" variant="outline" className="rounded-full" disabled={busy || dirty} onClick={() => setRebase("")}>Re-baseline</Button>}
           </span>
         </div>
