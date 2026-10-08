@@ -41,6 +41,8 @@ both set before first paint by the script in `frontend/index.html` and kept in
 user row (`users.theme`, `users.accent`). Never hard-code a colour: every
 component must read tokens so both themes and every accent follow.
 
+**UI/UX rules (9 Oct 2026, the user's refactoring plan):** six type sizes (11–24 px), spacing on the 4/8 px grid, no card inside a card (tone instead), dark depth by tone not shadow, buttons with a `loading` state, inline field errors (`lib/fieldErrors.ts`), toasts for silent saves (`lib/toast.ts`), receipt rows and chunked lists. Details in DESIGN.md.
+
 **Jinja pages keep `static/style.css` (the legacy look) until each is ported.**
 That stylesheet is frozen: fix defects only, no new components, no re-theming —
 the port replaces it page by page.
