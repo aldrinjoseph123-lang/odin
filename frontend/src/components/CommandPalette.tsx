@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { CornerDownLeft, FileText, FolderKanban, Search, SquareCheck } from "lucide-react"
+import { CornerDownLeft, FileText, FolderKanban, Search, SquareCheck, TextSearch } from "lucide-react"
 import { search, type SearchResults } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-export type PaletteItem = { kind: "page" | "project" | "task" | "all"; label: string; hint?: string; href: string }
+export type PaletteItem = { kind: "page" | "project" | "task" | "mention" | "all"; label: string; hint?: string; href: string }
 
 // Ctrl/⌘ K anywhere, or the header search button. A native <dialog> gives
 // focus trapping, Escape and the backdrop for free.
@@ -12,7 +12,7 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
   const ref = useRef<HTMLDialogElement>(null)
   const navigate = useNavigate()
   const [q, setQ] = useState("")
-  const [results, setResults] = useState<SearchResults>({ projects: [], tasks: [] })
+  const [results, setResults] = useState<SearchResults>({ projects: [], tasks: [], mentions: [] })
   const [active, setActive] = useState(0)
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
 
   useEffect(() => {
     const term = q.trim()
-    if (term.length < 2) { setResults({ projects: [], tasks: [] }); return }
+    if (term.length < 2) { setResults({ projects: [], tasks: [], mentions: [] }); return }
     const timer = setTimeout(() => { search(term).then(setResults).catch(() => {}) }, 150)
     return () => clearTimeout(timer)
   }, [q])
@@ -34,8 +34,10 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
     const pageItems = pages.filter((p) => !term || p.label.toLowerCase().includes(term)).map((p) => ({ kind: "page" as const, label: p.label, href: p.href }))
     const projectItems = results.projects.map((p) => ({ kind: "project" as const, label: p.name, hint: `${p.client} · ${p.stage}`, href: `/projects/${p.id}` }))
     const taskItems = results.tasks.map((t) => ({ kind: "task" as const, label: t.title, hint: `${t.project_name}${t.done ? " · done" : ""}`, href: `/board?rollout=${t.project_id}` }))
+    const where = { note: "note", risk: "RAID", scope: "scope", document: "document" } as const
+    const mentionItems = (results.mentions ?? []).map((m) => ({ kind: "mention" as const, label: m.snippet, hint: `${where[m.kind]} · ${m.project_name}`, href: m.href }))
     const all = term.length >= 2 ? [{ kind: "all" as const, label: `Search all projects for “${q.trim()}”`, href: `/projects?q=${encodeURIComponent(q.trim())}` }] : []
-    return [...projectItems, ...taskItems, ...pageItems, ...all]
+    return [...projectItems, ...taskItems, ...mentionItems, ...pageItems, ...all]
   }, [q, pages, results])
 
   function go(item: PaletteItem | undefined) {
@@ -48,7 +50,7 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
     else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
     else if (e.key === "Enter") { e.preventDefault(); go(items[active]) }
   }
-  const icon = { page: FileText, project: FolderKanban, task: SquareCheck, all: Search }
+  const icon = { page: FileText, project: FolderKanban, task: SquareCheck, mention: TextSearch, all: Search }
 
   return (
     <dialog ref={ref} onClose={onClose} onClick={(e) => { if (e.target === ref.current) onClose() }} aria-label="Search and jump"
@@ -56,7 +58,7 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
       <div className="flex items-center gap-2 border-b border-border px-3">
         <Search className="h-4 w-4 text-muted-foreground" />
         <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setActive(0) }} onKeyDown={onKey}
-          placeholder="Search projects and tasks, or jump to a page" aria-label="Search" role="combobox" aria-expanded aria-controls="palette-list"
+          placeholder="Search projects, tasks, notes and documents, or jump to a page" aria-label="Search" role="combobox" aria-expanded aria-controls="palette-list"
           aria-activedescendant={items[active] ? `palette-${active}` : undefined}
           className="h-11 w-full bg-transparent text-[14px] outline-none placeholder:text-muted-foreground" />
         <kbd className="rounded border border-border px-1.5 text-[11px] text-muted-foreground">Esc</kbd>

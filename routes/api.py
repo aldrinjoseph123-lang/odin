@@ -1234,11 +1234,13 @@ def api_notifications_read():
 @app.route("/api/search")
 @permission_required("view_projects")
 def api_search():
-    """The command palette: projects by name, client or PO, and tasks by
-    title, within what this session may see (externals: their projects)."""
+    """The command palette: projects by name, client or PO, tasks by title,
+    and the words inside notes, RAID items, scope items and uploaded
+    documents (services/doctext), within what this session may see:
+    externals only their projects, and of those only what is shown to them."""
     q = request.args.get("q", "").strip()[:100]
     if len(q) < 2:
-        return jsonify(projects=[], tasks=[])
+        return jsonify(projects=[], tasks=[], mentions=[])
     db = get_db()
     like = f"%{q}%"
     scope_sql, scope_params = project_scope()
@@ -1252,7 +1254,30 @@ def api_search():
         f"WHERE p.deleted_at IS NULL{scope_sql} AND t.title LIKE ? ORDER BY t.done, t.id DESC LIMIT 8",
         (*scope_params, like),
     ).fetchall()
-    return jsonify(projects=[dict(r) for r in projects], tasks=[dict(r) | {"done": bool(r["done"])} for r in tasks])
+    external = session.get("kind") == "external"
+    sources = (
+        ("note", "/projects/{pid}", f"SELECT n.project_id, p.name AS project_name, n.note AS text, n.created_at AS at FROM status_notes n JOIN projects p ON p.id = n.project_id "
+                                    f"WHERE p.deleted_at IS NULL{scope_sql} AND n.prev_stage IS NULL AND n.note LIKE ?{' AND n.guest_visible = 1' if external else ''}"),
+        ("risk", "/projects/{pid}#raid", f"SELECT r.project_id, p.name AS project_name, r.title || ': ' || COALESCE(r.detail, '') || ' ' || COALESCE(r.resolution, '') AS text, r.updated_at AS at "
+                                         f"FROM raid_items r JOIN projects p ON p.id = r.project_id WHERE p.deleted_at IS NULL{scope_sql} "
+                                         f"AND (r.title LIKE ? OR r.detail LIKE ? OR r.resolution LIKE ?){' AND r.customer_visible = 1' if external else ''}"),
+        ("scope", "/projects/{pid}#scope", f"SELECT s.project_id, p.name AS project_name, s.title || ': ' || COALESCE(s.detail, '') || ' ' || COALESCE(s.note, '') AS text, p.updated_at AS at "
+                                           f"FROM scope_items s JOIN projects p ON p.id = s.project_id WHERE p.deleted_at IS NULL{scope_sql} AND (s.title LIKE ? OR s.detail LIKE ? OR s.note LIKE ?)"),
+        ("document", "/projects/{pid}", f"SELECT d.project_id, p.name AS project_name, d.filename || ': ' || t.text AS text, d.uploaded_at AS at FROM doc_text t "
+                                        f"JOIN documents d ON d.id = t.document_id AND d.deleted_at IS NULL JOIN projects p ON p.id = d.project_id "
+                                        f"LEFT JOIN doc_categories c ON c.name = d.category WHERE p.deleted_at IS NULL{scope_sql} AND t.text LIKE ?"
+                                        f"{' AND COALESCE(c.partners, 0) = 1' if external else ''}"),
+    )
+    mentions = []
+    for kind, link, sql in sources:
+        for r in db.execute(sql + " ORDER BY at DESC LIMIT 6", (*scope_params, *([like] * sql.count("LIKE ?")))):
+            text = r["text"] or ""
+            at = text.lower().find(q.lower())
+            start = max(0, at - 70)
+            snippet = ("…" if start else "") + " ".join(text[start:at + len(q) + 90].split()) + ("…" if at + len(q) + 90 < len(text) else "")
+            mentions.append({"kind": kind, "project_id": r["project_id"], "project_name": r["project_name"], "snippet": snippet,
+                             "href": link.format(pid=r["project_id"])})
+    return jsonify(projects=[dict(r) for r in projects], tasks=[dict(r) | {"done": bool(r["done"])} for r in tasks], mentions=mentions[:16])
 
 
 # The brand files at the site root: favicon, home-screen icon, link preview.

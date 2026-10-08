@@ -17,7 +17,9 @@ READABLE = ("pdf", "docx", "xlsx", "txt", "csv", "eml")
 
 
 def _pdf(path):
+    import logging
     from pypdf import PdfReader
+    logging.getLogger("pypdf").setLevel(logging.ERROR)   # a damaged upload is a document without text, not a log line per page
     reader = PdfReader(path)
     return "\n\n".join((page.extract_text() or "") for page in reader.pages[:MAX_PAGES])
 
@@ -95,6 +97,18 @@ def extract_file(path, ext):
     if not text:
         return "", "no text in it (a scan or a picture?)"
     return text, None
+
+
+def extract_pending(db=None, limit=200):
+    """Read the text of documents not read yet, so search finds words in them.
+    Nightly (scheduler housekeeping), a few hundred at a time."""
+    from db import get_db
+    db = db or get_db()
+    ids = [r[0] for r in db.execute("SELECT d.id FROM documents d LEFT JOIN doc_text t ON t.document_id = d.id "
+                                    "WHERE d.deleted_at IS NULL AND t.document_id IS NULL ORDER BY d.id DESC LIMIT ?", (limit,))]
+    for i in ids:
+        text_of(i, db)
+    return len(ids)
 
 
 def text_of(document_id, db=None):

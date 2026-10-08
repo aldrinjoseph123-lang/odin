@@ -1555,11 +1555,29 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual([p["name"] for p in r["projects"]], ["Firewall Globex"])
         self.assertEqual([(t["title"], t["project_name"]) for t in r["tasks"]], [("Onboard firewall logs", "SIEM Acme")])
         self.assertEqual(c.get("/api/search?q=PO-77").get_json()["projects"][0]["client"], "Globex")
-        self.assertEqual(c.get("/api/search?q=f").get_json(), {"projects": [], "tasks": []})
+        self.assertEqual(c.get("/api/search?q=f").get_json(), {"projects": [], "tasks": [], "mentions": []})
+        # the words inside notes, RAID, scope and documents (read nightly)
+        self.client.post("/projects/1/note", data={"note": "Change window for the cut-over agreed with Globex"})
+        self.client.post("/projects/1/note", data={"note": "Internal: cut-over margin is thin"})
+        with self.raw_db() as db:
+            db.execute("UPDATE status_notes SET guest_visible = 1 WHERE note LIKE 'Change window%'")
+        c.post("/api/projects/2/raid", json={"kind": "risk", "title": "Cut-over may slip", "impact": "high"}, headers={"X-CSRF-Token": _})
+        c.post("/api/projects/2/scope", json={"title": "Cut-over runbook"}, headers={"X-CSRF-Token": _})
+        self.client.post("/projects/2/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"Plan for the cut-over weekend"), "plan.txt")},
+                         content_type="multipart/form-data")
+        with app_module.app.app_context():
+            from services.doctext import extract_pending
+            self.assertEqual(extract_pending(), 3)                       # the two POs (no text) and the plan
+        kinds = sorted(m["kind"] for m in c.get("/api/search?q=cut-over").get_json()["mentions"])
+        self.assertEqual(kinds, ["document", "note", "note", "risk", "scope"])
+        doc = next(m for m in c.get("/api/search?q=cut-over").get_json()["mentions"] if m["kind"] == "document")
+        self.assertEqual((doc["href"], doc["snippet"]), ("/projects/2", "plan.txt: Plan for the cut-over weekend"))
         self._invite(1, "ann@globex.example", "Customer", "Ann")
         ann = self._external_client("ann@globex.example")
         r = ann.get("/api/search?q=firewall").get_json()
         self.assertEqual(([p["name"] for p in r["projects"]], r["tasks"]), (["Firewall Globex"], []))   # Acme's task is not hers
+        theirs = ann.get("/api/search?q=cut-over").get_json()["mentions"]
+        self.assertEqual([m["snippet"] for m in theirs], ["Change window for the cut-over agreed with Globex"])   # only what is shown to her
         self.assertEqual(app_module.app.test_client().get("/api/search?q=firewall").status_code, 302)
 
     def test_favicon_is_served(self):

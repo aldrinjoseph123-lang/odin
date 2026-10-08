@@ -120,6 +120,7 @@ def run_due():
                 from services.notifications import trim as trim_notifications
                 from services.signup import trim as trim_signup_links
                 from services.ai.health import trim as trim_ai
+                from services.doctext import extract_pending as read_documents
                 with app.app_context():
                     for step in (audit_retention,        # a step like the rest: its failure skipped them all (OPS-10)
                                  cleanup_soft_deletes,   # deleted projects and files past the undo window
@@ -127,6 +128,7 @@ def run_due():
                                  trim_notifications,     # read bell items past notifications_keep_days
                                  trim_signup_links,      # sign-up links dead for 90 days
                                  trim_ai,                # AI checks past 180 days, finished AI jobs past 30
+                                 read_documents,         # the text of new uploads, for search and the AI
                                  record_snapshot):       # the day's portfolio counts, for the Dashboard's deltas
                         try:   # one failing step must not skip the others
                             step()

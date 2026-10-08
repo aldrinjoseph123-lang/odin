@@ -594,7 +594,8 @@ export const analytics = (templateId?: number | null) => getJson<AnalyticsData>(
 export type ActivityRow = { when: string; who: string; action: string; label: string; details: string }
 export const projectActivity = (id: number) => getJson<{ rows: ActivityRow[] }>(`/api/projects/${id}/activity`)
 
-export type SearchResults = { projects: { id: number; name: string; client: string; stage: string }[]; tasks: { id: number; title: string; done: boolean; project_id: number; project_name: string }[] }
+export type SearchMention = { kind: "note" | "risk" | "scope" | "document"; project_id: number; project_name: string; snippet: string; href: string }
+export type SearchResults = { projects: { id: number; name: string; client: string; stage: string }[]; tasks: { id: number; title: string; done: boolean; project_id: number; project_name: string }[]; mentions?: SearchMention[] }
 export const search = (q: string) => getJson<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`)
 
 // ---- notifications ----
