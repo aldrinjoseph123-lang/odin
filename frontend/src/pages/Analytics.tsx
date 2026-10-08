@@ -6,7 +6,7 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { StatTile } from "@/components/StatTile"
 
 const d1 = (n: number | null | undefined) => (n == null ? "—" : n > 0 && n < 0.05 ? "<0.1" : n.toFixed(1))   // a same-day close is not "0.0 days" (UX-23)
-const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
+const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[13px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
 
 export default function Analytics(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
@@ -32,7 +32,7 @@ export default function Analytics(_props: { user: User }) {
       </div>
       {!s ? <p className="mt-4 text-[13px] text-muted-foreground">No stage template yet — create one in Settings.</p> : (
         <>
-          <p className="mt-3 max-w-3xl text-[12.5px] text-muted-foreground">Timings compare only projects that share a stage list, so this is <span className="font-medium text-foreground">{tname}</span> across {s.measured_projects} project{s.measured_projects === 1 ? "" : "s"}. Averages count stages a project has already left; the stage it sits in now is under Aging.</p>
+          <p className="mt-3 max-w-3xl text-[13px] text-muted-foreground">Timings compare only projects that share a stage list, so this is <span className="font-medium text-foreground">{tname}</span> across {s.measured_projects} project{s.measured_projects === 1 ? "" : "s"}. Averages count stages a project has already left; the stage it sits in now is under Aging.</p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile label="Slowest stage" value={s.slowest?.stage ?? "—"} sub={s.slowest ? `${d1(s.slowest.avg_days)} days avg` : undefined} tone="warn" />
             <StatTile label="Lead time (avg)" value={d1(s.lead_avg)} sub={`${s.completed_count} completed project${s.completed_count === 1 ? "" : "s"}`} />
@@ -41,7 +41,7 @@ export default function Analytics(_props: { user: User }) {
           </div>
           <div className="mt-4 overflow-auto panel">
             <table className="w-full border-collapse text-[13px]">
-              <thead><tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">{["Stage", "SLA", "Completed visits", "Avg days", "Median", "Longest", "In stage now"].map((h) => <th key={h} className="px-3 py-2 font-normal">{h}</th>)}</tr></thead>
+              <thead><tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">{["Stage", "SLA", "Completed visits", "Avg days", "Median", "Longest", "In stage now"].map((h) => <th key={h} className="px-3 py-2 font-normal">{h}</th>)}</tr></thead>
               <tbody>
                 {s.stages.map((r) => {
                   const target = d.slas[r.stage]
@@ -69,7 +69,7 @@ export default function Analytics(_props: { user: User }) {
                 {s.aging.map((a) => (
                   <li key={`${a.project_id}-${a.stage}`} className="flex items-center gap-3 py-1.5">
                     <a href={`/board?rollout=${a.project_id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{a.project_name}</a>
-                    <span className="truncate text-[12.5px] text-muted-foreground">{a.stage}</span>
+                    <span className="truncate text-[13px] text-muted-foreground">{a.stage}</span>
                     <span className={cn("w-10 text-right", a.days >= 30 ? "font-medium text-bad" : a.days >= 14 ? "font-medium text-warn" : "")}>{Math.round(a.days)}</span>
                   </li>
                 ))}

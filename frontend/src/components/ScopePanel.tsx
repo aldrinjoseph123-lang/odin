@@ -42,7 +42,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
   return (
     <div>
       {signoff && (
-        <div className={cn("mb-3 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-[12.5px]", signoffDone ? "bg-ok-soft" : signoff.in_stage ? "bg-warn-soft/60" : "bg-muted/60")}>
+        <div className={cn("mb-3 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-[13px]", signoffDone ? "bg-ok-soft" : signoff.in_stage ? "bg-warn-soft/60" : "bg-muted/60")}>
           <FileSignature className={cn("h-4 w-4", signoffDone ? "text-ok" : "text-muted-foreground")} aria-hidden />
           <span><span className="font-medium">Sign-off{signoff.version ? ` v${signoff.version}` : ""}:</span> {signoffText(signoff.status)}</span>
           <Link to={`/projects/${projectId}/signoff`} className={cn(buttonVariants({ variant: signoff.in_stage && !signoffDone ? "default" : "outline", size: "sm" }), "ml-auto h-7 rounded-full")}>
@@ -57,7 +57,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
         {d.can_edit && <Button size="sm" className="ml-auto rounded-full" onClick={() => { setError(null); setEdit({ title: "", status: "agreed" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
       {d.can_edit && <AISowPlan projectId={projectId} onAdded={() => void load()} />}
-      {error && !edit && <p className="mt-2 text-[12.5px] text-bad" role="alert">{error}</p>}
+      {error && !edit && <p className="mt-2 text-[13px] text-bad" role="alert">{error}</p>}
       <ol className="mt-2 divide-y divide-border text-[13px]">
         {d.items.map((i, n) => (
           <li key={i.id} className="flex items-start gap-2 py-2">
@@ -75,7 +75,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
             )}
           </li>
         ))}
-        {d.items.length === 0 && d.can_edit && <li className="py-3 text-[12.5px] text-muted-foreground">No scope recorded. Add the deliverables agreed at kickoff; without them the sign-off is drafted from the stages, tasks and deliverables.</li>}
+        {d.items.length === 0 && d.can_edit && <li className="py-3 text-[13px] text-muted-foreground">No scope recorded. Add the deliverables agreed at kickoff; without them the sign-off is drafted from the stages, tasks and deliverables.</li>}
       </ol>
 
       <Dialog open={edit !== null} onOpenChange={(o) => { if (!o) setEdit(null) }}>
@@ -84,15 +84,15 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
             <form onSubmit={submit} className="grid grid-cols-1 gap-3">
               <DialogHeader><DialogTitle>{edit.id ? "Scope item" : "Add to the scope"}</DialogTitle>
                 <DialogDescription>Before sign-off, mark each item delivered, partly delivered or descoped; the last two need a reason.</DialogDescription></DialogHeader>
-              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Deliverable<input className={field} required maxLength={300} value={edit.title} onChange={(e) => set({ title: e.target.value })} autoFocus /></label>
-              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Detail<textarea rows={2} maxLength={2000} className="w-full rounded-md border border-input bg-background p-2 text-[13px]" value={edit.detail ?? ""} onChange={(e) => set({ detail: e.target.value })} placeholder="Quantities, sites, acceptance criteria" /></label>
+              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Deliverable<input className={field} required maxLength={300} value={edit.title} onChange={(e) => set({ title: e.target.value })} autoFocus /></label>
+              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Detail<textarea rows={2} maxLength={2000} className="w-full rounded-md border border-input bg-background p-2 text-[13px]" value={edit.detail ?? ""} onChange={(e) => set({ detail: e.target.value })} placeholder="Quantities, sites, acceptance criteria" /></label>
               <div className="flex rounded-full bg-muted p-0.5" role="radiogroup" aria-label="Status">
                 {(Object.keys(SCOPE_WORD) as ScopeStatus[]).map((s) => <button key={s} type="button" role="radio" aria-checked={edit.status === s} onClick={() => set({ status: s })}
                   className={cn("h-7 flex-1 rounded-full text-[12px]", edit.status === s ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{SCOPE_WORD[s]}</button>)}
               </div>
-              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">{edit.status === "descoped" ? "Why it was descoped" : edit.status === "partial" ? "What was left out, and why" : "Note"}
+              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">{edit.status === "descoped" ? "Why it was descoped" : edit.status === "partial" ? "What was left out, and why" : "Note"}
                 <input className={field} maxLength={1000} required={edit.status === "partial" || edit.status === "descoped"} value={edit.note ?? ""} onChange={(e) => set({ note: e.target.value })} /></label>
-              {error && <p className="text-[12.5px] text-bad" role="alert">{error}</p>}
+              {error && <p className="text-[13px] text-bad" role="alert">{error}</p>}
               <div className="flex gap-2">
                 {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-bad" disabled={busy} onClick={() => { if (confirm("Remove this scope item?")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null) }) }}>Remove</Button>}
                 <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" disabled={busy || !edit.title.trim()}>Save</Button></span>

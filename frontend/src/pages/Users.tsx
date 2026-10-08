@@ -11,7 +11,7 @@ import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const fmt = (iso: string | null, withTime = false) => fmtWhen(iso, withTime)
-const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-[12.5px] disabled:opacity-60"
+const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-[13px] disabled:opacity-60"
 
 export default function Users(_props: { user: User }) {
   const [data, setData] = useState<UsersData | null>(null)
@@ -48,7 +48,7 @@ export default function Users(_props: { user: User }) {
         </div>
       </div>
       {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status">
           <span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
       )}
@@ -59,7 +59,7 @@ export default function Users(_props: { user: User }) {
         <div className="min-w-0 overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
             <thead className="bg-card">
-              <tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">
+              <tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">
                 {["Name", "Username", "Email", "Role", "Status", "Sign-in", "Last sign-in", "Created", ""].map((h, i) => <th key={i} className={cn("px-3 py-2 font-normal", (i === 1 || i >= 6) && i !== 8 && "hidden xl:table-cell")}>{h}</th>)}
               </tr>
             </thead>
@@ -109,11 +109,11 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
   const self = u.id === me
   return (
     <tr className={cn("border-b border-border last:border-0", !u.active && "text-muted-foreground")}>
-      <td className="px-3 py-2 font-medium"><span className="inline-flex items-center gap-2"><UserAvatar name={u.name} url={u.avatar_url} className="h-6 w-6" /><span title={u.username}>{u.name}</span></span>{u.kind === "external" && <Badge variant="secondary" className="ml-1.5">External</Badge>}{self && <span className="ml-1.5 text-[11.5px] font-normal text-muted-foreground">you</span>}</td>
+      <td className="px-3 py-2 font-medium"><span className="inline-flex items-center gap-2"><UserAvatar name={u.name} url={u.avatar_url} className="h-6 w-6" /><span title={u.username}>{u.name}</span></span>{u.kind === "external" && <Badge variant="secondary" className="ml-1.5">External</Badge>}{self && <span className="ml-1.5 text-[12px] font-normal text-muted-foreground">you</span>}</td>
       <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{u.username}</td>
       <td className="px-3 py-2">
         <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="flex items-center gap-1">
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" aria-label={`Email for ${u.name}`} className="h-7 w-40 text-[12.5px]" />
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" aria-label={`Email for ${u.name}`} className="h-7 w-40 text-[13px]" />
           {email !== (u.email ?? "") && <Button type="submit" size="sm" variant="outline" className="h-7" disabled={busy}>Save</Button>}
         </form>
       </td>
@@ -125,7 +125,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
         </select>
       </td>
       <td className="px-3 py-2">{u.active ? "Active" : <span className="text-muted-foreground">Deactivated</span>}</td>
-      <td className="px-3 py-2 text-[12.5px]">
+      <td className="px-3 py-2 text-[13px]">
         {u.kind === "external" ? <span className="text-muted-foreground">Email link</span> : (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {u.microsoft && <Badge variant="secondary">Microsoft</Badge>}
@@ -146,7 +146,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           {!self && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined)}>{u.active ? "Deactivate" : "Reactivate"}</Button>}
           {u.kind !== "external" && (!microsoftOnly || u.password_login) && (resetting ? (
             <form onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then(() => { setPw(""); setResetting(false) }) }} className="flex items-center gap-1">
-              <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password" aria-label={`New password for ${u.name}`} minLength={12} required className="h-7 w-36 text-[12.5px]" />
+              <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password" aria-label={`New password for ${u.name}`} minLength={12} required className="h-7 w-36 text-[13px]" />
               <Button type="submit" size="sm" className="h-7" disabled={busy || pw.length < 12}>Set</Button>
               <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setResetting(false)}>Cancel</Button>
             </form>
@@ -177,14 +177,14 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
         </select>
       </label>
       <Button type="submit" size="sm" className="mt-1" disabled={busy || !f.name || !f.username || f.password.length < 12}>Create user</Button>
-      <p className="text-[11.5px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
+      <p className="text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
     </form>
   )
 }
 
 // Sign-up links: a link for a new colleague to request an account themselves.
 // Requests land in "Waiting for approval" above; nothing is active until approved.
-const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[12.5px]"
+const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 function SignupLinksPanel() {
   const [d, setD] = useState<SignupLinks | null>(null)
   const [f, setF] = useState({ label: "", role: "Contributor", project_id: "", project_role: "Coordinator", days: 0, max_uses: 1 })
@@ -208,8 +208,8 @@ function SignupLinksPanel() {
     <section className="panel p-4" aria-label="Sign-up links">
       <h2 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
       <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
-      {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-2.5 text-[12.5px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
-      {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[12.5px]">
+      {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-2.5 text-[13px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
+      {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[13px]">
         <label className="grid grid-cols-1 gap-1 font-medium">For<input className={field} required maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Omar, field engineer" /></label>
         <div className="grid grid-cols-2 gap-2">
           <label className="grid grid-cols-1 gap-1 font-medium">Role<select className={field} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{d.roles.map((r) => <option key={r}>{r}</option>)}</select></label>
@@ -223,23 +223,23 @@ function SignupLinksPanel() {
       </form>}
       {made && (
         <div className="mt-3 grid grid-cols-1 gap-1.5 rounded-lg bg-muted/60 p-2.5">
-          <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[11.5px]" />
+          <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
           <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => {})}>{copied ? "Copied" : "Copy the link"}</Button>
-          <p className="text-[11.5px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
+          <p className="text-[12px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
         </div>
       )}
       {d.links.length > 0 && (
-        <ul className="mt-3 divide-y divide-border text-[12.5px]">
+        <ul className="mt-3 divide-y divide-border text-[13px]">
           {d.links.slice(0, 12).map((l) => (
             <li key={l.id} className="flex items-center gap-2 py-1.5">
               <span className="min-w-0 flex-1"><span className="block truncate font-medium">{l.label}</span>
-                <span className="block truncate text-[11.5px] text-muted-foreground">{l.role}{l.project ? ` · ${l.project}` : ""} · {l.uses}/{l.max_uses} used · {l.state === "open" ? `until ${fmtWhen(l.expires_at)}` : l.state}</span></span>
+                <span className="block truncate text-[12px] text-muted-foreground">{l.role}{l.project ? ` · ${l.project}` : ""} · {l.uses}/{l.max_uses} used · {l.state === "open" ? `until ${fmtWhen(l.expires_at)}` : l.state}</span></span>
               {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={() => { if (confirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load) }}>Revoke</Button>}
             </li>
           ))}
         </ul>
       )}
-      {open.length === 0 && d.links.length > 0 && <p className="mt-2 text-[11.5px] text-muted-foreground">No open links.</p>}
+      {open.length === 0 && d.links.length > 0 && <p className="mt-2 text-[12px] text-muted-foreground">No open links.</p>}
       {open.length > 1 && <Button size="sm" variant="ghost" className="mt-2 h-7 text-bad" disabled={busy}
         onClick={() => { if (confirm(`Revoke all ${open.length} open links? Anyone holding one can no longer sign up with it.`)) void revokeAllSignupLinks().then(load) }}>Revoke all open links</Button>}
     </section>

@@ -37,14 +37,14 @@ export default function LinkRequest() {
       {message && <Alert className="mb-5" role="status"><AlertDescription>{message}</AlertDescription></Alert>}
       <form onSubmit={submit} className="grid grid-cols-1 gap-4" aria-busy={busy}>
         <div className="grid grid-cols-1 gap-1.5">
-          <Label htmlFor="email" className="text-[13.5px]">Email</Label>
+          <Label htmlFor="email" className="text-[14px]">Email</Label>
           <Input id="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} className="h-11 text-base" />
         </div>
         <Button type="submit" className="mt-1 h-11 text-sm" disabled={busy}>
           {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Sending…</> : "Email me a sign-in link"}
         </Button>
       </form>
-      <a href="/login" className="mt-6 inline-flex min-h-11 items-center gap-1.5 text-[13.5px] text-primary-text hover:underline"><ArrowLeft className="h-4 w-4" aria-hidden /> Staff sign-in</a>
+      <a href="/login" className="mt-6 inline-flex min-h-11 items-center gap-1.5 text-[14px] text-primary-text hover:underline"><ArrowLeft className="h-4 w-4" aria-hidden /> Staff sign-in</a>
     </AuthLayout>
   )
 }

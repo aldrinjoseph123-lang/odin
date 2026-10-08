@@ -56,7 +56,7 @@ export default function Contacts(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">the pick-lists the project form offers</p>
       </div>
       {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status">
           <span>{notice.text}{notice.undo && <button type="button" onClick={() => notice.undo && send(notice.undo)} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}</span>
           <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
@@ -81,7 +81,7 @@ export default function Contacts(_props: { user: User }) {
                 </div>
                 <ul className="mt-1.5 grid grid-cols-1 gap-1.5 pl-3">
                   {p.managers.map((m) => <Line key={m.id} name={m.name} email={m.email} busy={busy} onDelete={() => send(`/settings/contacts/partner-managers/${m.id}/delete`, {}, `Delete ${m.name}?`)} />)}
-                  {p.managers.length === 0 && <li className="text-[12.5px] text-muted-foreground">No account managers yet.</li>}
+                  {p.managers.length === 0 && <li className="text-[13px] text-muted-foreground">No account managers yet.</li>}
                 </ul>
                 <div className="pl-3"><AddRow withEmail placeholder="Account manager name" button="Add account manager" busy={busy} onSubmit={(f) => send(`/settings/contacts/partners/${p.id}/managers/add`, f)} /></div>
               </div>

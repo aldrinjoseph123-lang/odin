@@ -80,7 +80,7 @@ export default function Settings(_props: { user: User }) {
       <h1 className="text-[17px] font-semibold tracking-tight">{TITLES[section].title}</h1>
       <p className="mt-0.5 text-[13px] text-muted-foreground">{TITLES[section].lede}</p>
       {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status">
           <span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
       )}
@@ -107,7 +107,7 @@ export default function Settings(_props: { user: User }) {
                 {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
               </div>
               <AddForm placeholder="New template name (e.g. EDR rollout)" label="New template name" button="Add template" busy={busy} onSubmit={(name) => send("/settings/templates/add", { name })} />
-              <p className="mt-2 text-[11.5px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
+              <p className="mt-2 text-[12px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
               <SlaCheck templates={data.templates} busy={busy} send={send} />
             </Panel>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
@@ -138,7 +138,7 @@ export default function Settings(_props: { user: User }) {
             { key: "notify_email_enabled", label: "Email notifications on project events (stage changes, approvals, assignments, mentions, due tasks)" },
             { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
           ]} extra={<>
-            {!data.m365.connected && <p className="basis-full text-[12.5px] text-warn" role="note">Microsoft 365 is not connected (Settings → Integrations), so email and Teams channel posts cannot be delivered. The bell and the Teams webhook still work.</p>}
+            {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings → Integrations), so email and Teams channel posts cannot be delivered. The bell and the Teams webhook still work.</p>}
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-email")}>Send test email</Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send test Teams message</Button>
           </>} />
@@ -254,11 +254,11 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               )}
               {p.kind === "dates" && (
                 <textarea id={`pol-${p.key}`} rows={5} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
-                  placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[12.5px]" />
+                  placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[13px]" />
               )}
               {p.kind === "lines" && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
-                  placeholder={"SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[12.5px]" />
+                  placeholder={"SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[13px]" />
               )}
               {p.kind === "choice" && (
                 <select id={`pol-${p.key}`} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className={cn(selectClass, "max-w-sm")}>
@@ -272,7 +272,7 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
                     const list = (v[p.key] as string[]) ?? []
                     const on = list.includes(c)
                     return (
-                      <label key={c} className={cn("flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[12.5px] has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50",
+                      <label key={c} className={cn("flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[13px] has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50",
                         on ? "border-primary bg-accent text-accent-foreground" : "border-border text-nav-fg hover:bg-muted")}>
                         <input type="checkbox" className="sr-only" checked={on} onChange={() => setV({ ...v, [p.key]: on ? list.filter((x) => x !== c) : [...list, c] })} />{c}
                       </label>
@@ -313,7 +313,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
       <Panel title="Tokens">
         {tokens.length === 0 ? <p className="text-[13px] text-muted-foreground">No tokens yet.</p> : (
           <div className="overflow-x-auto"><table className="w-full text-[13px]">
-            <thead><tr className="text-left text-[11.5px] text-muted-foreground">{["Name", "Made", "Last used", "Expires", ""].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
+            <thead><tr className="text-left text-[12px] text-muted-foreground">{["Name", "Made", "Last used", "Expires", ""].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
             <tbody>
               {tokens.map((t) => {
                 const dead = !!t.revoked_at || t.expires_at < now
@@ -360,15 +360,15 @@ function BackupHistory({ runs }: { runs: BackupRun[] }) {
     <Panel title="History" hint="the last 20 runs">
       {runs.length === 0 ? <p className="text-[13px] text-muted-foreground">No backups yet. Back up now to make the first one.</p> : (
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
-          <thead><tr className="text-left text-[11.5px] text-muted-foreground">{["When", "Result", "Restore test", "Copies", "Size"].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
+          <thead><tr className="text-left text-[12px] text-muted-foreground">{["When", "Result", "Restore test", "Copies", "Size"].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {runs.map((r) => (
               <tr key={r.id} className="border-t border-border align-top">
-                <td className="whitespace-nowrap py-1.5 pr-3"><Ago iso={r.started_at} /><span className="block text-[11.5px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
+                <td className="whitespace-nowrap py-1.5 pr-3"><Ago iso={r.started_at} /><span className="block text-[12px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
                 <td className="py-1.5 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-bad">Problem</span>}</td>
                 <td className="py-1.5 pr-3">{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-bad">Failed</span>}
-                  {r.restore_detail && <span className="block text-[11.5px] text-muted-foreground">{r.restore_detail}</span>}</td>
-                <td className="py-1.5 pr-3 text-[12.5px]">{r.destinations}</td>
+                  {r.restore_detail && <span className="block text-[12px] text-muted-foreground">{r.restore_detail}</span>}</td>
+                <td className="py-1.5 pr-3 text-[13px]">{r.destinations}</td>
                 <td className="whitespace-nowrap py-1.5 pr-3 text-muted-foreground">{bytes(r.size_bytes)}</td>
               </tr>
             ))}
@@ -390,15 +390,15 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
     <Panel title="Microsoft sign-in" hint="staff; partners keep their email link">
       <form onSubmit={(e) => { e.preventDefault(); void send("/settings/sso", { ...f, ...(enforced ? { enforced: "on" } : {}) }).then(() => setF({ ...f, client_secret: "" })) }} className="grid grid-cols-1 gap-3">
         <p className="text-[13px]">{status}</p>
-        <div className="grid grid-cols-1 gap-1 text-[12.5px]">
+        <div className="grid grid-cols-1 gap-1 text-[13px]">
           <span className="text-muted-foreground">Redirect URI to add to the app registration (Authentication → Web)</span>
           <code className="w-fit max-w-full break-all rounded-md border border-border bg-secondary px-2 py-1 font-mono text-[12px]">{sso.redirect_uri}</code>
           <span className="text-muted-foreground">In Entra ID: a separate app registration, single tenant, ID tokens only; a client secret under Certificates &amp; secrets.</span>
         </div>
         <div className="grid grid-cols-1 max-w-md gap-2">
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="h-8 font-mono text-[12.5px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={f.tenant_id} onChange={(e) => setF({ ...f, tenant_id: e.target.value })} className="h-8 font-mono text-[12.5px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[12.5px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="h-8 font-mono text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={f.tenant_id} onChange={(e) => setF({ ...f, tenant_id: e.target.value })} className="h-8 font-mono text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[13px]" /></label>
         </div>
         <label className="flex items-start gap-2 text-[13px]">
           <input type="checkbox" checked={enforced} onChange={(e) => setEnforced(e.target.checked)} disabled={!sso.configured} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
@@ -459,7 +459,7 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
     <div className="border-b border-border pb-4 last:border-0 last:pb-0">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim() && name !== t.name) void send(`${base}/rename`, { name }) }} className="flex min-w-0 flex-1 items-center gap-1.5">
-          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label={`Rename template ${t.name}`} maxLength={80} className="h-8 min-w-40 flex-1 text-[13.5px] font-semibold" />
+          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label={`Rename template ${t.name}`} maxLength={80} className="h-8 min-w-40 flex-1 text-[14px] font-semibold" />
           {name !== t.name && <Button type="submit" size="sm" variant="outline" disabled={busy}>Rename</Button>}
         </form>
         <span className="whitespace-nowrap text-[12px] text-muted-foreground">{t.projects} project{t.projects === 1 ? "" : "s"}</span>
@@ -469,7 +469,7 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
         paths={{ add: `${base}/stages/add`, rename: (s) => `${base}/stages/${s}/rename`, move: (s) => `${base}/stages/${s}/move`, remove: (s) => `${base}/stages/${s}/delete`, sla: `${base}/sla` }} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => send(`${base}/sla/from-measured`, {}, "Overwrite this template's SLAs with measured averages?")}>Set SLAs from measured averages</Button>
-        <span className="text-[11.5px] text-muted-foreground">From projects created with this template. Applies to new projects; existing ones keep their own.</span>
+        <span className="text-[12px] text-muted-foreground">From projects created with this template. Applies to new projects; existing ones keep their own.</span>
       </div>
     </div>
   )
@@ -495,14 +495,14 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
     <Panel title="Alert types" hint="In-app is the master switch; email and Teams also need their toggle under Integrations">
       <form onSubmit={submit}>
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
-          <thead><tr className="text-left text-[11.5px] font-normal text-muted-foreground">{["Alert", "Threshold (days)", "Severity", "Email", "Teams", "In-app"].map((h) => <th key={h} className="pb-1.5 pr-2 font-normal">{h}</th>)}</tr></thead>
+          <thead><tr className="text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Threshold (days)", "Severity", "Email", "Teams", "In-app"].map((h) => <th key={h} className="pb-1.5 pr-2 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {rows.map((a) => (
               <tr key={a.key} className="border-t border-border">
                 <td className="py-1.5 pr-2">{a.title}</td>
-                <td className="py-1.5 pr-2">{a.threshold_days != null ? <Input type="number" min={0} value={a.threshold_days} onChange={(e) => set(a.key, { threshold_days: Number(e.target.value) })} aria-label={`Threshold days for ${a.title}`} className="h-7 w-16 text-[12.5px]" /> : <span className="text-muted-foreground">—</span>}</td>
+                <td className="py-1.5 pr-2">{a.threshold_days != null ? <Input type="number" min={0} value={a.threshold_days} onChange={(e) => set(a.key, { threshold_days: Number(e.target.value) })} aria-label={`Threshold days for ${a.title}`} className="h-7 w-16 text-[13px]" /> : <span className="text-muted-foreground">—</span>}</td>
                 <td className="py-1.5 pr-2">
-                  <select value={a.severity} onChange={(e) => set(a.key, { severity: e.target.value as typeof a.severity })} aria-label={`Severity for ${a.title}`} className={cn(selectClass, "h-7 text-[12.5px]")}>
+                  <select value={a.severity} onChange={(e) => set(a.key, { severity: e.target.value as typeof a.severity })} aria-label={`Severity for ${a.title}`} className={cn(selectClass, "h-7 text-[13px]")}>
                     <option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option>
                   </select>
                 </td>
@@ -527,15 +527,15 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
   return (
     <Panel title="Microsoft 365" hint="mail, Teams and OneDrive through one Azure app">
       {m.oauth_client_configured && !editing && (
-        <p className="mb-2 text-[13px]">Azure app <span className="font-mono text-[12.5px]">{m.azure_app.client_id}</span> <span className="text-muted-foreground">({m.azure_app.source})</span>
+        <p className="mb-2 text-[13px]">Azure app <span className="font-mono text-[13px]">{m.azure_app.client_id}</span> <span className="text-muted-foreground">({m.azure_app.source})</span>
           <button type="button" onClick={() => setEditing(true)} className="ml-2 text-[12px] text-primary-text hover:underline">Edit</button></p>
       )}
       {editing && (
         <form onSubmit={(e) => { e.preventDefault(); void send("/settings/azure-app", app).then(() => setApp({ ...app, client_secret: "" })) }} className="mb-3 grid grid-cols-1 max-w-md gap-2">
-          {!m.oauth_client_configured && <p className="text-[12.5px] text-muted-foreground">Enter the details of the app registration made once in the Azure portal (Microsoft Entra ID → App registrations): its tenant ID, client ID and a client secret.</p>}
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[12.5px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[12.5px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[12.5px]" /></label>
+          {!m.oauth_client_configured && <p className="text-[13px] text-muted-foreground">Enter the details of the app registration made once in the Azure portal (Microsoft Entra ID → App registrations): its tenant ID, client ID and a client secret.</p>}
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[13px]" /></label>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={busy || !app.client_id || !app.tenant_id}>Save</Button>
             {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>}
@@ -546,14 +546,14 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
       {m.oauth_client_configured && !m.connected && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <a href="/integrations/connect" className={buttonVariants({ size: "sm" })}>Connect Microsoft 365</a>
-          <span className="text-[12.5px] text-muted-foreground">Sign in with an admin account and grant Outlook, Teams and OneDrive access.</span>
+          <span className="text-[13px] text-muted-foreground">Sign in with an admin account and grant Outlook, Teams and OneDrive access.</span>
         </div>
       )}
       {m.connected && (
         <div className="mt-2 grid grid-cols-1 gap-2 text-[13px]">
           <p>Connected as <span className="font-medium">{m.connected_email ?? "—"}</span> · Teams channel <span className="font-medium">{m.channel_id ? `${m.team_name} / ${m.channel_name}` : "not selected yet"}</span>
             <button type="button" disabled={busy} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-bad hover:underline">Disconnect</button></p>
-          {m.teams_error && <p className="text-[12.5px] text-bad">Could not load teams: {m.teams_error}</p>}
+          {m.teams_error && <p className="text-[13px] text-bad">Could not load teams: {m.teams_error}</p>}
           <div className="flex flex-wrap items-center gap-2">
             <select value={teamId} onChange={(e) => onTeam(e.target.value)} aria-label="Microsoft Teams team" className={selectClass}>
               <option value="">Choose a team…</option>{m.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}

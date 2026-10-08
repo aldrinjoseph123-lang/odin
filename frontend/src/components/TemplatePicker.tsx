@@ -10,7 +10,7 @@ export function TemplatePicker({ kind, value, onChange }: { kind: DocKind; value
   const def = choices.find((c) => c.is_default)
   return (
     <select value={value ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)} aria-label="Document template"
-      className="h-8 rounded-full border border-input bg-card px-3 text-[12.5px]">
+      className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
       <option value="">{def ? `${def.name} (default)` : "Built-in layout"}</option>
       {choices.filter((c) => !c.is_default).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
     </select>

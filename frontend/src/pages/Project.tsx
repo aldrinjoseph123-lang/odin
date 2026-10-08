@@ -79,9 +79,9 @@ export default function Project(_props: { user: User }) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="flex flex-wrap items-center gap-2 px-5 pt-4">
-        <a href="/projects" className="text-[12.5px] text-muted-foreground hover:text-foreground">Projects</a>
-        <span className="text-[12.5px] text-muted-foreground">/</span>
-        <span className="text-[12.5px] font-medium">{x.name}</span>
+        <a href="/projects" className="text-[13px] text-muted-foreground hover:text-foreground">Projects</a>
+        <span className="text-[13px] text-muted-foreground">/</span>
+        <span className="text-[13px] font-medium">{x.name}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a href={`/board?rollout=${id}`} className={buttonVariants({ variant: "ghost", size: "sm" })}>On the flow</a>
           <a href={`/projects/${id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>
@@ -90,7 +90,7 @@ export default function Project(_props: { user: User }) {
         </div>
       </div>
       {notice && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status">
+        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status">
           <span>{notice.text}{notice.undo && <button type="button" onClick={undo} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}</span>
           <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
@@ -153,7 +153,7 @@ export default function Project(_props: { user: User }) {
             <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border pt-3">
               <TeamAddForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/add`, f)} />
               <InviteForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/invite`, f)} />
-              <p className="text-[11.5px] text-muted-foreground">The owner is the project manager; change it on Edit. Invited people get a one-time sign-in link and see only their projects.</p>
+              <p className="text-[12px] text-muted-foreground">The owner is the project manager; change it on Edit. Invited people get a one-time sign-in link and see only their projects.</p>
             </div>
           )}
         </Panel>
@@ -183,7 +183,7 @@ export default function Project(_props: { user: User }) {
         {activity.length > 0 && (
           <Panel title="Activity" hint="everything recorded on this project, newest first">
             <a href={`/projects/${id}/activity.csv`} className="mb-2 inline-block text-[12px] text-primary-text hover:underline">Export CSV</a>
-            <ul className="grid grid-cols-1 gap-1.5 text-[12.5px]">
+            <ul className="grid grid-cols-1 gap-1.5 text-[13px]">
               {activity.map((a, i) => (
                 <li key={i} className="flex gap-2">
                   <Ago iso={a.when} className="w-24 shrink-0 whitespace-nowrap text-muted-foreground" />
@@ -197,7 +197,7 @@ export default function Project(_props: { user: User }) {
           <Panel title="Sharing">
             {x.guest_links.customer && <LinkRow label="Customer link (view and comment, no sign-in)" url={x.guest_links.customer} />}
             {x.guest_links.vendor && <LinkRow label="Vendor link (may advance the stage)" url={x.guest_links.vendor} />}
-            {!x.guest_links_enabled && <p className="text-[12.5px] text-muted-foreground">Anonymous guest links are switched off in Settings. Partners and customers are invited from the Team panel instead.</p>}
+            {!x.guest_links_enabled && <p className="text-[13px] text-muted-foreground">Anonymous guest links are switched off in Settings. Partners and customers are invited from the Team panel instead.</p>}
             {can.manage && (
               <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
                 {x.guest_links_enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => send(`/projects/${id}/rotate-token`, {}, "Rotate both guest links? The current links stop working immediately.")}>Rotate guest links</Button>}
@@ -248,7 +248,7 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={busy || !text.trim() || text.trim() === n.note}>Save</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(false); setText(n.note) }}>Cancel</Button>
-            {n.stage_entry && <span className="self-center text-[11.5px] text-muted-foreground">Records a stage change: it can be corrected, not deleted.</span>}
+            {n.stage_entry && <span className="self-center text-[12px] text-muted-foreground">Records a stage change: it can be corrected, not deleted.</span>}
           </div>
         </form>
       ) : <div className="whitespace-pre-wrap">{n.note}</div>}
@@ -334,7 +334,7 @@ function UploadForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; on
           <option value="">Category…</option>
           {x.doc_categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <label className="cursor-pointer text-[12.5px] font-medium text-primary-text hover:underline">
+        <label className="cursor-pointer text-[13px] font-medium text-primary-text hover:underline">
           Choose files<input type="file" multiple aria-label="Documents to upload" className="sr-only" onChange={(e) => setFiles([...(e.target.files ?? [])])} />
         </label>
         <span className="text-[12px] text-muted-foreground">or drop them here</span>

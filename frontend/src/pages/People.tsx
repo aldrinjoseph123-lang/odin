@@ -31,14 +31,14 @@ export default function People(_props: { user: User }) {
               <div className="flex items-center gap-3">
                 <UserAvatar name={p.name} url={p.avatar_url} className="h-11 w-11" textClass="text-[14px]" />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13.5px] font-semibold">{p.name}{p.id === d.me && <span className="ml-1.5 font-normal text-muted-foreground">you</span>}</div>
+                  <div className="truncate text-[14px] font-semibold">{p.name}{p.id === d.me && <span className="ml-1.5 font-normal text-muted-foreground">you</span>}</div>
                   <div className="truncate text-[12px] text-muted-foreground">{p.role}{p.last_seen_at && <> · seen <Ago iso={p.last_seen_at} /></>}</div>
                 </div>
               </div>
               <dl className="mt-3 grid grid-cols-4 gap-2 text-center">
                 {[["Rollouts", p.projects, ""], ["Open", p.open, ""], ["Late", p.late, p.late ? "text-bad" : ""], ["Done 30 d", p.done_30d, ""]].map(([l, v, cls]) => (
                   <div key={String(l)} className="rounded-xl bg-muted/50 py-2">
-                    <dd className={cn("text-[18px] font-semibold leading-none", String(cls))}>{v}</dd>
+                    <dd className={cn("text-[17px] font-semibold leading-none", String(cls))}>{v}</dd>
                     <dt className="mt-1 text-[11px] text-muted-foreground">{l}</dt>
                   </div>
                 ))}

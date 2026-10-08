@@ -86,18 +86,18 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
           <div className="grid content-start gap-1">
             <label htmlFor="ai-url" className="text-[13px] font-medium">{label("ai_base_url")?.label}</label>
-            <Input id="ai-url" type="url" maxLength={200} placeholder="http://ai.p24.lan:11434/v1" value={f.ai_base_url} onChange={(e) => { setF({ ...f, ai_base_url: e.target.value }); setCheck(null) }} className="h-8 max-w-md font-mono text-[12.5px]" />
+            <Input id="ai-url" type="url" maxLength={200} placeholder="http://ai.p24.lan:11434/v1" value={f.ai_base_url} onChange={(e) => { setF({ ...f, ai_base_url: e.target.value }); setCheck(null) }} className="h-8 max-w-md font-mono text-[13px]" />
             <p className="text-[12px] text-muted-foreground">{label("ai_base_url")?.help}</p>
           </div>
           <div className="grid content-start gap-1">
             <label htmlFor="ai-model" className="text-[13px] font-medium">{label("ai_model")?.label}</label>
-            <Input id="ai-model" required maxLength={120} value={f.ai_model} onChange={(e) => { setF({ ...f, ai_model: e.target.value }); setCheck(null) }} className="h-8 max-w-xs font-mono text-[12.5px]" />
+            <Input id="ai-model" required maxLength={120} value={f.ai_model} onChange={(e) => { setF({ ...f, ai_model: e.target.value }); setCheck(null) }} className="h-8 max-w-xs font-mono text-[13px]" />
             <p className="text-[12px] text-muted-foreground">{label("ai_model")?.help}</p>
           </div>
           <div className="grid content-start gap-1">
             <label htmlFor="ai-key" className="text-[13px] font-medium">API key</label>
             <div className="flex flex-wrap items-center gap-2">
-              <Input id="ai-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "saved; type to replace" : "none (a local server needs none)"} className="h-8 max-w-xs text-[12.5px]" />
+              <Input id="ai-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "saved; type to replace" : "none (a local server needs none)"} className="h-8 max-w-xs text-[13px]" />
               <Button type="button" size="sm" variant="outline" disabled={busy || !key} onClick={() => void send("/settings/ai/key", { api_key: key }).then(() => setKey(""))}>Save key</Button>
               {hasKey && <Button type="button" size="sm" variant="ghost" className="text-bad hover:text-bad" disabled={busy} onClick={() => void send("/settings/ai/key", { clear: "1" }, "Remove the saved API key?")}>Remove</Button>}
             </div>
@@ -142,7 +142,7 @@ function Status({ view, busy, send }: { view: AIView; busy: boolean; send: Send 
         {s.state === "off" && <p className="text-muted-foreground">Odin is not using AI. Set the server above, tick Use AI features, Check, then Save.</p>}
         {s.model && s.state !== "off" && (
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
-            <dt className="text-muted-foreground">Model</dt><dd className="font-mono text-[12.5px]">{s.model}</dd>
+            <dt className="text-muted-foreground">Model</dt><dd className="font-mono text-[13px]">{s.model}</dd>
             <dt className="text-muted-foreground">Fingerprint</dt><dd className="break-all font-mono text-[12px] text-muted-foreground">{s.fingerprint} <span className="font-sans">(changes when the model behind the name is rebuilt or replaced; every feature is then validated again)</span></dd>
             {s.seconds != null && <><dt className="text-muted-foreground">One short answer</dt><dd className="tabular-nums">{s.seconds} s</dd></>}
           </dl>
@@ -155,7 +155,7 @@ function Status({ view, busy, send }: { view: AIView; busy: boolean; send: Send 
         )}
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
           <Button size="sm" variant="outline" disabled={busy || running || s.state === "off"} onClick={() => send("/settings/ai/validate")}>Validate now</Button>
-          {job && <span className="text-[12.5px] text-muted-foreground">{
+          {job && <span className="text-[13px] text-muted-foreground">{
             job.status === "queued" ? <>Validation waiting to start (asked <Ago iso={job.created_at} />)…</>
               : job.status === "running" ? <>Validating every feature on its test project (started {job.started_at ? <Ago iso={job.started_at} /> : "now"})…</>
                 : job.status === "failed" ? <>Last validation stopped: {job.error}</>
@@ -176,7 +176,7 @@ function Features({ features, busy, send }: { features: AIFeatureView[]; busy: b
         <p className="text-[13px] text-muted-foreground">No AI features yet. Each one arrives with its own test project and appears here, validated against the server before it runs.</p>
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
-          <thead><tr className="text-left text-[11.5px] text-muted-foreground">{["Feature", "On the current model", "Last tested", "Answer time", "On", "Forced", ""].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
+          <thead><tr className="text-left text-[12px] text-muted-foreground">{["Feature", "On the current model", "Last tested", "Answer time", "On", "Forced", ""].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {features.map((f) => {
               const [tone, icon, word] = FEATURE_STATE[f.state]
@@ -186,7 +186,7 @@ function Features({ features, busy, send }: { features: AIFeatureView[]; busy: b
                 <tr key={f.key} className="border-t border-border align-top">
                   <td className="py-2 pr-3"><span className="font-medium">{f.label}</span><span className="block text-[12px] text-muted-foreground">{f.description}</span></td>
                   <td className="py-2 pr-3"><Pill tone={tone} icon={icon}>{word}</Pill>{f.detail && <span className="mt-1 block text-[12px] text-muted-foreground">{f.detail}</span>}</td>
-                  <td className="whitespace-nowrap py-2 pr-3">{f.checked_at ? <><Ago iso={f.checked_at} /><span className="block font-mono text-[11.5px] text-muted-foreground">{f.model}</span></> : <span className="text-muted-foreground">never</span>}</td>
+                  <td className="whitespace-nowrap py-2 pr-3">{f.checked_at ? <><Ago iso={f.checked_at} /><span className="block font-mono text-[12px] text-muted-foreground">{f.model}</span></> : <span className="text-muted-foreground">never</span>}</td>
                   <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{f.seconds != null ? `${f.seconds} s` : "—"}</td>
                   <td className="py-2 pr-3"><input type="checkbox" checked={f.on} disabled={busy} onChange={(e) => void post(e.target.checked, f.forced)} aria-label={`${f.label} on`} className="h-3.5 w-3.5 accent-primary" /></td>
                   <td className="py-2 pr-3"><input type="checkbox" checked={f.forced} disabled={busy || !f.on} onChange={(e) => void post(f.on, e.target.checked)} aria-label={`Force ${f.label} on without a passed test`} className="h-3.5 w-3.5 accent-primary" /></td>
@@ -195,7 +195,7 @@ function Features({ features, busy, send }: { features: AIFeatureView[]; busy: b
                 open === f.key && (
                   <tr key={`${f.key}:out`}><td colSpan={7} className="pb-3">
                     <pre className="max-h-72 overflow-auto rounded-md border border-border bg-secondary p-3 font-mono text-[12px] leading-relaxed">{JSON.stringify(f.output, null, 2)}</pre>
-                    <p className="mt-1 text-[11.5px] text-muted-foreground">Prompt {f.prompt} · {f.prompt_hash}</p>
+                    <p className="mt-1 text-[12px] text-muted-foreground">Prompt {f.prompt} · {f.prompt_hash}</p>
                   </td></tr>
                 ),
               ]

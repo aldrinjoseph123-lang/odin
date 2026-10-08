@@ -43,8 +43,8 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
   }
   return (
     <section className="panel p-4" aria-labelledby="lessons-h">
-      <h2 id="lessons-h" className="text-[12.5px] font-semibold text-nav-fg">Lessons<span className="sr-only">, </span><span className="ml-2 font-normal text-muted-foreground">what this rollout taught, and what similar ones did</span></h2>
-      {note && <p className="mt-2 text-[12.5px] text-muted-foreground" role="status">{note}</p>}
+      <h2 id="lessons-h" className="text-[13px] font-semibold text-nav-fg">Lessons<span className="sr-only">, </span><span className="ml-2 font-normal text-muted-foreground">what this rollout taught, and what similar ones did</span></h2>
+      {note && <p className="mt-2 text-[13px] text-muted-foreground" role="status">{note}</p>}
       {d.lessons.length > 0 && (
         <ul className="mt-2 divide-y divide-border text-[13px]">
           {d.lessons.map((l) => (
@@ -57,7 +57,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
         </ul>
       )}
       {showAI && d.can_edit && s && (
-        <div className="mt-3 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[12.5px]">
+        <div className="mt-3 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px]">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
             <span className="min-w-0 flex-1" aria-live="polite">{drafting ? "Reading the rollout's history… about a minute." : sug ? "AI draft: tick the lessons worth keeping, then save them to the library." : "Draft this rollout's lessons with AI from its plan changes, overruns, risks, scope and notes."}</span>
@@ -94,7 +94,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
                   {[...r.lessons.map((l) => ({ label: `${KIND[l.kind]}: ${l.text}`, title: l.text, detail: `Lesson from ${r.name}: ${l.text}` })),
                     ...r.risks.map((x) => ({ label: `Hit them: ${x.title} (${x.kind}${x.resolution ? `; ${x.resolution}` : ""})`, title: x.title, detail: `Hit ${r.name}: ${x.title}${x.resolution ? `. Resolved: ${x.resolution}` : ""}` }))].map((x) => (
                     <li key={x.label} className="flex items-start gap-2">
-                      <span className="min-w-0 flex-1 text-[12.5px]">{x.label}</span>
+                      <span className="min-w-0 flex-1 text-[13px]">{x.label}</span>
                       {d.can_add_risk && <Button size="sm" variant="ghost" className="h-6 px-2 text-[12px]" disabled={busy}
                         onClick={() => void act(() => saveRaid(projectId, { kind: "risk", title: x.title.slice(0, 200), detail: x.detail, impact: "medium", likelihood: "medium" }), "Added to this rollout's RAID register.")}>Add as a risk here</Button>}
                     </li>

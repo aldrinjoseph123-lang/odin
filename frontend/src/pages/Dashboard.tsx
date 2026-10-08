@@ -44,7 +44,7 @@ function Widget({ title, sub, action, onExpand, children }: { title: string; sub
   return (
     <section className="panel flex h-full min-w-0 flex-col p-4" aria-label={title}>
       <header className="mb-3 flex items-start justify-between gap-3">
-        <h2 className="text-[13.5px] font-semibold">{title}{sub && <span className="sr-only">, </span>}{sub && <span className="ml-1.5 font-normal text-muted-foreground">{sub}</span>}</h2>
+        <h2 className="text-[14px] font-semibold">{title}{sub && <span className="sr-only">, </span>}{sub && <span className="ml-1.5 font-normal text-muted-foreground">{sub}</span>}</h2>
         <span className="flex shrink-0 items-center gap-1">
           {action}
           {onExpand && <button type="button" onClick={onExpand} aria-label={`Expand ${title}`} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><Maximize2 className="h-3.5 w-3.5" /></button>}
@@ -64,7 +64,7 @@ function Bars({ rows, link }: { rows: Aggregate; link?: (key: string) => string 
     <ul className="grid grid-cols-1 gap-1.5 text-[13px]">
       {rows.map((r) => (
         <li key={r.key} className="flex items-center gap-3">
-          {link ? <Link to={link(r.key)} className="w-32 truncate text-[12.5px] hover:underline">{r.key}</Link> : <span className="w-32 truncate text-[12.5px]">{r.key}</span>}
+          {link ? <Link to={link(r.key)} className="w-32 truncate text-[13px] hover:underline">{r.key}</Link> : <span className="w-32 truncate text-[13px]">{r.key}</span>}
           <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-primary" style={{ width: `${peak ? (r.count / peak) * 100 : 0}%` }} /></span>
           <span className="w-6 text-right tabular-nums">{r.count}</span>
         </li>
@@ -86,10 +86,10 @@ function Donut({ rows, total, unit, link, large }: { rows: Aggregate; total: num
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[22px] font-semibold leading-none">{total}</span><span className="text-[11px] text-muted-foreground">{unit}</span>
+          <span className="text-[17px] font-semibold leading-none">{total}</span><span className="text-[11px] text-muted-foreground">{unit}</span>
         </div>
       </div>
-      <ul className="min-w-0 flex-1 text-[12.5px]">
+      <ul className="min-w-0 flex-1 text-[13px]">
         {rows.map((r, i) => (
           <li key={r.key} className="flex items-center gap-2 py-1">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary" style={{ opacity: 0.25 + (0.75 * (i + 1)) / rows.length }} aria-hidden />
@@ -127,10 +127,10 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
             className="panel flex min-w-0 flex-col p-4 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50">
             <span className="flex items-center gap-2 text-[12px] text-muted-foreground"><t.icon className="h-3.5 w-3.5" aria-hidden />{t.label}</span>
             <span className="mt-2 flex items-baseline gap-2">
-              <span className={cn("text-[26px] font-semibold leading-none tracking-tight", n > 0 && t.tone === "bad" && "text-bad", n > 0 && t.tone === "warn" && "text-warn")}>{n}</span>
+              <span className={cn("text-[24px] font-semibold leading-none tracking-tight", n > 0 && t.tone === "bad" && "text-bad", n > 0 && t.tone === "warn" && "text-warn")}>{n}</span>
               {before != null && <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-medium", tone)}>{deltaText(n, before)}</span>}
             </span>
-            <span className="mt-1 text-[11.5px] text-muted-foreground">
+            <span className="mt-1 text-[12px] text-muted-foreground">
               {t.key === "active" ? `${k.moved_this_week} stage move${k.moved_this_week === 1 ? "" : "s"} this week` : before != null ? `since ${fmtDate(k.since)}` : "no history yet"}
             </span>
             {trend !== "none" && series.length > 1 && (
@@ -174,7 +174,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
   return (
     <Widget title="Timeline" sub="every active rollout, start to target" action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
       {shown.length === 0 ? <Empty>No active rollouts{s.show === "attention" ? " need attention" : ""}.</Empty> : (
-        <div className="grid grid-cols-[minmax(96px,176px)_minmax(0,1fr)] gap-x-3 overflow-x-clip text-[12.5px]">
+        <div className="grid grid-cols-[minmax(96px,176px)_minmax(0,1fr)] gap-x-3 overflow-x-clip text-[13px]">
           <span />
           <div ref={measure} className={cn("relative text-[11px] text-muted-foreground", crowded ? "h-9" : "h-5")}>
             {months.map((tk) => <span key={tk.t} className="absolute top-0 -translate-x-1/2" style={{ left: pct(tk.t) }}>{tk.label}</span>)}
@@ -218,7 +218,7 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
       {[["Completed", p.done, "bg-primary"], ["In progress", p.current, "bg-primary/40"], ["Pending", p.pending, "bg-muted"]].map(([l, n, c]) => (
         <li key={String(l)} className="rounded-xl bg-muted/50 py-2">
           <span className={cn("mx-auto mb-1 block h-2 w-2 rounded-full", String(c))} aria-hidden />
-          <span className="block text-[15px] font-semibold leading-none">{n}</span>
+          <span className="block text-[14px] font-semibold leading-none">{n}</span>
           <span className="text-muted-foreground">{l}</span>
         </li>
       ))}
@@ -228,7 +228,7 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
     <Widget title="Portfolio progress" sub="stage steps across active rollouts" onExpand={onExpand}>
       {total === 0 ? <Empty>No active rollouts.</Empty> : s.chart === "bar" ? (
         <>
-          <div className="flex items-baseline gap-2"><span className="text-[34px] font-semibold leading-none tracking-tight">{p.pct}%</span><span className="text-[11.5px] text-muted-foreground">of stages done</span></div>
+          <div className="flex items-baseline gap-2"><span className="text-[24px] font-semibold leading-none tracking-tight">{p.pct}%</span><span className="text-[12px] text-muted-foreground">of stages done</span></div>
           <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${p.done} done, ${p.current} in progress, ${p.pending} pending`}>
             <span className="bg-primary" style={{ width: `${(p.done / total) * 100}%` }} /><span className="bg-primary/40" style={{ width: `${(p.current / total) * 100}%` }} />
           </div>
@@ -244,8 +244,8 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
               </RadialBarChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pt-4">
-              <span className="text-[34px] font-semibold leading-none tracking-tight">{p.pct}%</span>
-              <span className="mt-1 text-[11.5px] text-muted-foreground">of stages done</span>
+              <span className="text-[24px] font-semibold leading-none tracking-tight">{p.pct}%</span>
+              <span className="mt-1 text-[12px] text-muted-foreground">of stages done</span>
             </div>
           </div>
           {legend}
@@ -312,9 +312,9 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
   return (
     <Widget title="Tasks completed" sub={`last ${n} days`} onExpand={onExpand}>
       <div className="mb-2 flex items-baseline gap-2">
-        <span className="text-[26px] font-semibold leading-none tracking-tight">{total}</span>
+        <span className="text-[24px] font-semibold leading-none tracking-tight">{total}</span>
         {change && <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-medium", change.startsWith("+") ? "bg-ok-soft text-ok" : change.startsWith("-") ? "bg-warn-soft text-warn" : "bg-muted text-muted-foreground")}>{change}</span>}
-        <span className="text-[11.5px] text-muted-foreground">vs the {n} days before ({prev})</span>
+        <span className="text-[12px] text-muted-foreground">vs the {n} days before ({prev})</span>
       </div>
       <div className={large ? "h-72" : "h-36"}>
         <ResponsiveContainer width="100%" height="100%">
@@ -388,7 +388,7 @@ function ActivityFeed({ rows, s, onExpand, large }: { rows: D["activity"]; s: S;
   const limit = large ? 100 : Number(s.limit ?? 10)
   return (
     <Widget title="Recent activity" sub="across the portfolio" onExpand={onExpand}>
-      <ul className="grid grid-cols-1 gap-2.5 text-[12.5px]">
+      <ul className="grid grid-cols-1 gap-2.5 text-[13px]">
         {rows.slice(0, limit).map((a, i) => {
           const k = KIND[a.kind]
           return (
@@ -458,7 +458,7 @@ function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () =
         <>
           <div className="grid grid-cols-3 gap-2 text-center">
             {[["Lead time avg", d1(c.lead_avg), "days"], ["Median", d1(c.lead_median), "days"], ["Closed", String(c.completed_count), "rollouts"]].map(([l, v, u]) => (
-              <div key={l} className="rounded-xl bg-muted/50 py-2"><span className="block text-[18px] font-semibold leading-none">{v}</span><span className="text-[11px] text-muted-foreground">{u}</span><span className="block text-[11px] text-muted-foreground">{l}</span></div>
+              <div key={l} className="rounded-xl bg-muted/50 py-2"><span className="block text-[17px] font-semibold leading-none">{v}</span><span className="text-[11px] text-muted-foreground">{u}</span><span className="block text-[11px] text-muted-foreground">{l}</span></div>
             ))}
           </div>
           {c.slowest && <p className="mt-2 text-[12px] text-muted-foreground">Slowest stage <span className="font-medium text-foreground">{c.slowest.stage}</span>, {d1(c.slowest.avg_days)} days on average</p>}
@@ -496,8 +496,8 @@ function Custom({ agg, s, onExpand, large }: { agg: D["aggregates"]; s: S; onExp
       {rows.length === 0 ? <Empty>Nothing to count yet.</Empty>
         : chart === "number" ? (
           <div>
-            <div className="flex items-baseline gap-2"><span className="text-[34px] font-semibold leading-none tracking-tight">{total}</span><span className="text-[11.5px] text-muted-foreground">{unit}</span></div>
-            <p className="mt-2 text-[12.5px] text-muted-foreground">Most: <span className="font-medium text-foreground">{rows[0].key}</span> with {rows[0].count}</p>
+            <div className="flex items-baseline gap-2"><span className="text-[24px] font-semibold leading-none tracking-tight">{total}</span><span className="text-[12px] text-muted-foreground">{unit}</span></div>
+            <p className="mt-2 text-[13px] text-muted-foreground">Most: <span className="font-medium text-foreground">{rows[0].key}</span> with {rows[0].count}</p>
           </div>
         ) : chart === "pie" ? <Donut rows={rows} total={total} unit={unit} link={link} large={large} />
         : chart === "list" ? (
@@ -556,7 +556,7 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
   return (
     <Popover>
       <PopoverTrigger render={<button type="button" />} aria-label={`Customise ${title}`} className={tool}><MoreHorizontal className="h-4 w-4" /></PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-3 text-[12.5px]">
+      <PopoverContent align="end" className="w-80 p-3 text-[13px]">
         <div className="mb-2 font-semibold">{title}</div>
         {info.settings.length > 0 && (
           <div className="grid grid-cols-1 gap-2 border-b border-border pb-3">
@@ -577,11 +577,11 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
               return (
                 <label key={s.key} htmlFor={id} className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{s.label}</span>
                   {s.kind === "choice" ? (
-                    <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 max-w-[60%] rounded-md border border-input bg-background px-2 text-[12.5px]">
+                    <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 max-w-[60%] rounded-md border border-input bg-background px-2 text-[13px]">
                       {s.choices?.map((c) => <option key={c} value={c}>{MEASURE_LABEL[c] ?? c}</option>)}
                     </select>
-                  ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 w-40 rounded-md border border-input bg-background px-2 text-[12.5px]" />
-                  : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[12.5px]" />}
+                  ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 w-40 rounded-md border border-input bg-background px-2 text-[13px]" />
+                  : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[13px]" />}
                 </label>
               )
             })}
@@ -592,7 +592,7 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
           <span className="flex rounded-full bg-muted p-0.5" role="group" aria-label={`Width of ${title}`}>
             {WIDTHS.map((x) => (
               <button key={x.w} type="button" onClick={() => onResize(x.w)} aria-pressed={item.w === x.w}
-                className={cn("h-6 rounded-full px-2.5 text-[11.5px] font-medium", item.w === x.w ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground")}>{x.label}</button>
+                className={cn("h-6 rounded-full px-2.5 text-[12px] font-medium", item.w === x.w ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground")}>{x.label}</button>
             ))}
           </span>
         </div>
@@ -704,12 +704,12 @@ export default function Dashboard({ user }: { user: User }) {
         <span className="ml-auto flex items-center gap-2">
           <Popover>
             <PopoverTrigger render={<button type="button" />} className={pill}><Plus className="h-3.5 w-3.5" /> Add widget</PopoverTrigger>
-            <PopoverContent align="end" className="w-80 p-2 text-[12.5px]">
+            <PopoverContent align="end" className="w-80 p-2 text-[13px]">
               <ul className="grid grid-cols-1 gap-0.5">
                 {[...hidden, ...repeatable].map((w) => (
                   <li key={w.id}><button type="button" onClick={() => add(w)} className="grid grid-cols-1 w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
                     <span className="font-medium">{w.title}{w.multiple && <span className="ml-1.5 font-normal text-muted-foreground">add another</span>}</span>
-                    <span className="text-[11.5px] text-muted-foreground">{w.blurb}</span></button></li>
+                    <span className="text-[12px] text-muted-foreground">{w.blurb}</span></button></li>
                 ))}
               </ul>
             </PopoverContent>
@@ -717,18 +717,18 @@ export default function Dashboard({ user }: { user: User }) {
           {(admin || d.is_custom) && (
             <Popover>
               <PopoverTrigger render={<button type="button" />} aria-label="Dashboard layout" className={cn(pill, "px-2")}><MoreHorizontal className="h-4 w-4" /></PopoverTrigger>
-              <PopoverContent align="end" className="w-72 p-2 text-[12.5px]">
+              <PopoverContent align="end" className="w-72 p-2 text-[13px]">
                 {admin && <button type="button" disabled={busy} onClick={saveDefault} className="grid grid-cols-1 w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
-                  <span className="font-medium">Save as workspace default</span><span className="text-[11.5px] text-muted-foreground">Everyone without their own arrangement sees this one</span></button>}
+                  <span className="font-medium">Save as workspace default</span><span className="text-[12px] text-muted-foreground">Everyone without their own arrangement sees this one</span></button>}
                 {d.is_custom && <button type="button" disabled={busy} onClick={reset} className="grid grid-cols-1 w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
-                  <span className="font-medium">Reset to default</span><span className="text-[11.5px] text-muted-foreground">Drop your arrangement and use the workspace's</span></button>}
+                  <span className="font-medium">Reset to default</span><span className="text-[12px] text-muted-foreground">Drop your arrangement and use the workspace's</span></button>}
               </PopoverContent>
             </Popover>
           )}
         </span>
       </div>
       {notice && (
-        <p className="mt-2 text-[12.5px] text-muted-foreground" role="status">{notice}
+        <p className="mt-2 text-[13px] text-muted-foreground" role="status">{notice}
           {undo && <button type="button" onClick={() => { const back = undo; commit(() => back, "Change undone."); setUndo(null) }} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}
         </p>
       )}
@@ -793,8 +793,8 @@ export default function Dashboard({ user }: { user: User }) {
               <div className="max-h-[75vh] overflow-auto">
                 <div className="[&_section]:border-0 [&_section]:p-0 [&_section]:shadow-none [&_section>header_button]:hidden">{renderWidget(expandedItem, d.data, d.today, { tile: setTile }, true)}</div>
                 {table && table.rows.length > 0 && (
-                  <table className="mt-4 w-full border-collapse text-[12.5px]">
-                    <thead><tr className="border-b border-border text-left text-[11.5px] text-muted-foreground">{table.columns.map((c) => <th key={c} className="px-2 py-1.5 font-normal">{c}</th>)}</tr></thead>
+                  <table className="mt-4 w-full border-collapse text-[13px]">
+                    <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">{table.columns.map((c) => <th key={c} className="px-2 py-1.5 font-normal">{c}</th>)}</tr></thead>
                     <tbody>{table.rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn("px-2 py-1.5", typeof c === "number" && "tabular-nums")}>{c}</td>)}</tr>)}</tbody>
                   </table>
                 )}

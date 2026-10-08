@@ -40,15 +40,15 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
       <form onSubmit={(e) => { e.preventDefault(); if (newName.trim()) void send(paths.add, { name: newName.trim() }).then(() => setNewName("")) }} className="mt-1 flex flex-wrap items-center gap-2 border-t border-border pt-3">
         <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New stage name" aria-label={`New stage for ${label}`} maxLength={80} className="h-8 w-full text-[13px] sm:w-56" />
         <Button type="submit" size="sm" variant="outline" disabled={busy || !newName.trim()}>Add stage</Button>
-        <span className="text-[11.5px] text-muted-foreground">Added before the last stage.</span>
+        <span className="text-[12px] text-muted-foreground">Added before the last stage.</span>
       </form>
       <form onSubmit={saveSlas} className="mt-1 border-t border-border pt-3">
         <div className="mb-2 text-[12px] font-semibold text-nav-fg">SLA days per stage</div>
         <div className="flex flex-wrap gap-2">
           {rows.map((s) => (
-            <label key={s.id} className="flex items-center gap-1.5 text-[12.5px]">
+            <label key={s.id} className="flex items-center gap-1.5 text-[13px]">
               <span className="max-w-32 truncate text-muted-foreground">{s.name}</span>
-              <Input type="number" min={1} value={slas[s.id] ?? ""} onChange={(e) => setSlas({ ...slas, [s.id]: e.target.value })} aria-label={`SLA days for ${s.name} in ${label}`} placeholder="—" className="h-7 w-16 text-[12.5px]" />
+              <Input type="number" min={1} value={slas[s.id] ?? ""} onChange={(e) => setSlas({ ...slas, [s.id]: e.target.value })} aria-label={`SLA days for ${s.name} in ${label}`} placeholder="—" className="h-7 w-16 text-[13px]" />
             </label>
           ))}
         </div>

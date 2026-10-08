@@ -39,9 +39,9 @@ export function Kibana({ rollout, onRollout }: { rollout: number | null; onRollo
           ))}
         </div>
         {perRollout && (
-          <label className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
             Rollout
-            <select value={d.rollout ?? ""} onChange={(e) => onRollout(e.target.value ? Number(e.target.value) : null)} aria-label="Rollout shown in Kibana" className="h-7 max-w-64 rounded-md border border-input bg-background px-2 text-[12.5px] text-foreground">
+            <select value={d.rollout ?? ""} onChange={(e) => onRollout(e.target.value ? Number(e.target.value) : null)} aria-label="Rollout shown in Kibana" className="h-7 max-w-64 rounded-md border border-input bg-background px-2 text-[13px] text-foreground">
               <option value="">Pick a rollout</option>
               {d.rollouts.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>

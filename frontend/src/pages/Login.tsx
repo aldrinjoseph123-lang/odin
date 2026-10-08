@@ -101,10 +101,10 @@ export default function Login() {
 
       {codeStep && (
         <form onSubmit={submitCode} className="grid grid-cols-1 gap-4" noValidate aria-busy={busy} aria-label="Two-step sign-in">
-          <p className="text-[13.5px] text-muted-foreground">{recovery ? "Enter one of the recovery codes you saved when you set up two-step sign-in. Each works once." : "Open your authenticator app and enter the 6-digit code for Odin."}</p>
+          <p className="text-[14px] text-muted-foreground">{recovery ? "Enter one of the recovery codes you saved when you set up two-step sign-in. Each works once." : "Open your authenticator app and enter the 6-digit code for Odin."}</p>
           {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
           <div className="grid grid-cols-1 gap-1.5">
-            <Label htmlFor="code" className="text-[13.5px]">{recovery ? "Recovery code" : "Code"}</Label>
+            <Label htmlFor="code" className="text-[14px]">{recovery ? "Recovery code" : "Code"}</Label>
             <Input id="code" name="code" autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} autoCapitalize="none"
               maxLength={recovery ? 12 : 7} value={code} onChange={(e) => { setCode(e.target.value); if (error) setError(null) }} className={`${field} tracking-[0.2em] tabular-nums`} />
           </div>
@@ -123,7 +123,7 @@ export default function Login() {
         <form onSubmit={submit} className="grid grid-cols-1 gap-4" noValidate aria-busy={busy}>
           {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
           <div className="grid grid-cols-1 gap-1.5">
-            <Label htmlFor="username" className="text-[13.5px]">Username</Label>
+            <Label htmlFor="username" className="text-[14px]">Username</Label>
             <Input id="username" ref={userRef} name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus={!microsoft}
               value={username} onChange={(e) => { setUsername(e.target.value); if (error?.field === "username") setError(null) }}
               aria-invalid={error?.field === "username" || undefined} aria-describedby={error?.field === "username" ? "username-error" : undefined} className={field} />
@@ -131,7 +131,7 @@ export default function Login() {
           </div>
           <div className="grid grid-cols-1 gap-1.5">
             <div className="flex items-baseline justify-between gap-3">
-              <Label htmlFor="password" className="text-[13.5px]">Password</Label>
+              <Label htmlFor="password" className="text-[14px]">Password</Label>
               {!emergency && <a href="/auth/reset" className="text-[13px] text-primary-text hover:underline">Forgot password?</a>}
             </div>
             <div className="relative">
@@ -156,7 +156,7 @@ export default function Login() {
 
       {/* Partners and customers have no password: their way in is the email link. */}
       {!emergency && !codeStep && (
-        <a href="/auth/link" className="mt-8 flex min-h-11 items-center justify-between gap-3 panel px-4 py-3 text-[13.5px] outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <a href="/auth/link" className="mt-8 flex min-h-11 items-center justify-between gap-3 panel px-4 py-3 text-[14px] outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
           <span><span className="block font-medium">Partner or customer?</span><span className="text-muted-foreground">Get a one-time sign-in link by email</span></span>
           <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         </a>

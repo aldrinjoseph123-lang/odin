@@ -82,7 +82,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         <Logo byline markClass="h-8 w-8 lg:h-9 lg:w-9" wordClass="h-[18px] lg:h-5" />
         <div>
           <Eyebrow n={1} className="hidden text-brand-muted lg:block">Project lifecycle</Eyebrow>
-          <p className="font-display text-[22px] font-bold uppercase leading-[1.02] tracking-tight sm:text-[28px] lg:mt-3 lg:text-[52px]">
+          <p className="font-display text-[22px] font-bold uppercase leading-[1.1] tracking-tight sm:text-[28px] lg:mt-3 lg:text-[52px]">
             Every project.<br className="hidden lg:block" /><span className="whitespace-nowrap text-brand-red"> On watch.</span>
           </p>
           <p className="mt-4 hidden max-w-sm text-[14px] leading-relaxed text-brand-muted lg:block">Every rollout, stage and deadline, from kickoff to handover. Nothing stalls unseen.</p>
@@ -94,7 +94,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       </aside>
       <div className="flex flex-col px-5 py-8 sm:px-10 lg:px-16">
         <div className="w-full max-w-[400px] sm:mx-auto lg:my-auto">{children}</div>
-        <p className="mt-10 w-full max-w-[400px] text-[12.5px] text-muted-foreground sm:mx-auto lg:mt-0">Trouble signing in? Ask your Odin admin.</p>
+        <p className="mt-10 w-full max-w-[400px] text-[13px] text-muted-foreground sm:mx-auto lg:mt-0">Trouble signing in? Ask your Odin admin.</p>
       </div>
     </main>
   )

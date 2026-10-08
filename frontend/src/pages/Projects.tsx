@@ -27,7 +27,7 @@ const COLUMNS: { key: string; label: string; className?: string }[] = [
   { key: "updated", label: "Updated", className: "hidden md:table-cell" },
 ]
 const fmtDate = (iso: string | null) => fmtWhen(iso)
-const selectClass = "h-7 rounded-md border border-border bg-background px-2 text-[12.5px] font-medium text-nav-fg hover:bg-muted"
+const selectClass = "h-7 rounded-md border border-border bg-background px-2 text-[13px] font-medium text-nav-fg hover:bg-muted"
 // Table or cards: a per-browser convenience, so it lives in localStorage (which may be unavailable).
 type Layout = "table" | "cards"
 const readLayout = (): Layout => { try { return localStorage.getItem("odin.projects.layout") === "cards" ? "cards" : "table" } catch { return "table" } }
@@ -86,7 +86,7 @@ export default function Projects({ user }: { user: User }) {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {VIEWS.map((v) => (
           <button key={v.key} type="button" onClick={() => pickView(v)} aria-pressed={activeView === v.key}
-            className={cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", activeView === v.key ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>
+            className={cn("h-7 rounded-full border px-3 text-[13px] font-medium transition-colors", activeView === v.key ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>
             {v.label}
           </button>
         ))}
@@ -109,7 +109,7 @@ export default function Projects({ user }: { user: User }) {
           </span>
         )}
         <form onSubmit={search} className="ml-auto flex items-center gap-1.5">
-          <Input key={params.get("q") ?? ""} name="q" defaultValue={params.get("q") ?? ""} placeholder="Name, client, PO #" aria-label="Search projects" className="h-7 w-52 text-[12.5px]" />
+          <Input key={params.get("q") ?? ""} name="q" defaultValue={params.get("q") ?? ""} placeholder="Name, client, PO #" aria-label="Search projects" className="h-7 w-52 text-[13px]" />
           <button type="submit" aria-label="Search" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 px-2")}><Search className="h-3.5 w-3.5" /></button>
           {params.get("q") && <button type="button" onClick={() => update({ q: null })} className="text-[12px] text-muted-foreground hover:text-foreground">Clear</button>}
         </form>
@@ -124,14 +124,14 @@ export default function Projects({ user }: { user: User }) {
                 <li key={r.id} className="grid grid-cols-1 content-start gap-2.5 panel p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <a href={`/projects/${r.id}`} className="block truncate text-[13.5px] font-medium hover:underline">{r.name}</a>
+                      <a href={`/projects/${r.id}`} className="block truncate text-[14px] font-medium hover:underline">{r.name}</a>
                       <p className="truncate text-[12px] text-muted-foreground">{r.client} · {r.owner_name}</p>
                     </div>
                     <TeamStack people={r.team} className="flex shrink-0" />
                   </div>
                   <a href={`/board?rollout=${r.id}`} className="grid grid-cols-1 gap-1.5" title="Open on the flow">
                     <Stepper stages={r.stages} index={r.stage_index} state="on_track" selected={false} />
-                    <span className={cn("truncate text-[12.5px] font-medium", r.closed && "text-muted-foreground")}>{r.stage} <span className="font-normal text-muted-foreground">· stage {r.stage_index + 1} of {r.stages.length}</span></span>
+                    <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage} <span className="font-normal text-muted-foreground">· stage {r.stage_index + 1} of {r.stages.length}</span></span>
                   </a>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
                     <span className="h-1.5 w-16 rounded-full bg-muted" aria-hidden><span className="block h-1.5 rounded-full bg-ok-line" style={{ width: `${r.total_tasks ? (done / r.total_tasks) * 100 : 0}%` }} /></span>
@@ -154,7 +154,7 @@ export default function Projects({ user }: { user: User }) {
         <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
             <thead className="sticky top-0 bg-card">
-              <tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">
+              <tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">
                 {COLUMNS.map((c) => (
                   <th key={c.key} className={cn("px-3 py-2 font-normal", c.className)} aria-sort={data.sort === c.key ? (data.dir === "asc" ? "ascending" : "descending") : undefined}>
                     <button type="button" onClick={() => sortBy(c.key)} className={cn("inline-flex items-center gap-1 hover:text-foreground", data.sort === c.key && "font-medium text-foreground")}>
@@ -176,7 +176,7 @@ export default function Projects({ user }: { user: User }) {
                   <td className="px-3 py-2">
                     <a href={`/board?rollout=${r.id}`} className="flex items-center gap-3" title="Open on the flow">
                       <span className="w-24 shrink-0"><Stepper stages={r.stages} index={r.stage_index} state="on_track" selected={false} /></span>
-                      <span className={cn("truncate text-[12.5px] font-medium", r.closed && "text-muted-foreground")}>{r.stage}</span>
+                      <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage}</span>
                     </a>
                   </td>
                   <td className="hidden px-3 py-2 md:table-cell">{r.owner_name}</td>
@@ -197,7 +197,7 @@ export default function Projects({ user }: { user: User }) {
         </div>
       )}
 
-      <div className="mt-2 flex items-center gap-3 text-[12.5px] text-muted-foreground">
+      <div className="mt-2 flex items-center gap-3 text-[13px] text-muted-foreground">
         {data.total_pages > 1 && (
           <>
             <button type="button" disabled={data.page <= 1} onClick={() => { const n = new URLSearchParams(params); n.set("page", String(data.page - 1)); setParams(n) }} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7")} aria-label="Previous page"><ChevronLeft className="h-3.5 w-3.5" /></button>

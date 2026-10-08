@@ -38,7 +38,7 @@ export function AIDraftBar<T>({ projectId, feature, idle, working, note, onUse, 
   const sug = s.suggestion
   const lastJob = s.job && !drafting && s.job.created_at > (sug?.created_at ?? "") ? s.job : null
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[12.5px] print:hidden">
+    <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] print:hidden">
       <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
       <span className="min-w-0 flex-1" aria-live="polite">
         {drafting ? working : sug ? <>AI draft, {fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}. {note}</> : idle}

@@ -56,7 +56,7 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
           )
         })}
       </div>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground" aria-label="Legend">
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
         <li className="flex items-center gap-1.5"><span className="h-3 w-5 rounded-full border-[1.5px] border-primary/70" />Plan</li>
         <li className="flex items-center gap-1.5"><span className="h-2 w-5 rounded-full bg-foreground/70" />Actual</li>
         <li className="flex items-center gap-1.5"><span className="h-2 w-5 rounded-full bg-primary/30" />Forecast</li>

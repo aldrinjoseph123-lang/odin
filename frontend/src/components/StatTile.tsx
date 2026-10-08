@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils"
 export function StatTile({ label, value, sub, tone, className }: { label: string; value: string; sub?: ReactNode; tone?: "warn" | "bad"; className?: string }) {
   return (
     <div className={cn("panel p-3", className)}>
-      <div className="text-[11.5px] text-muted-foreground">{label}</div>
-      <div className={cn("mt-0.5 text-[20px] font-semibold tracking-tight", tone === "warn" && "text-warn", tone === "bad" && "text-bad")}>{value}</div>
+      <div className="text-[12px] text-muted-foreground">{label}</div>
+      <div className={cn("mt-0.5 text-[24px] font-semibold tracking-tight", tone === "warn" && "text-warn", tone === "bad" && "text-bad")}>{value}</div>
       {sub && <div className="text-[12px] text-muted-foreground">{sub}</div>}
     </div>
   )

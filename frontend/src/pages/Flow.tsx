@@ -59,7 +59,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
     setTitle("")
   }
   return (
-    <div className="mt-2 text-[12.5px]">
+    <div className="mt-2 text-[13px]">
       {tasks.length > 0 && (
         <ul className="divide-y divide-border border-t border-border">
           {tasks.map((t) => (
@@ -73,7 +73,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
                 <span className={cn("break-words line-clamp-2", t.done && "line-through")}>{t.title}</span>
                 {t.due_date && !t.done && <DueDate due={t.due_date} today={d.today} />}
               </span>
-              {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[10px]" />}
+              {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[11px]" />}
               {d.can_edit && (
                 <button type="button" disabled={busy} onClick={() => run(() => deleteTask(d.id, t.id))} aria-label={`Delete ${t.title}`}
                   className="hidden shrink-0 text-muted-foreground hover:text-bad group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -85,7 +85,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
       {/* a finished stage keeps its tasks but takes no new ones */}
       {d.can_edit && !done && (adding ? (
         <form className="mt-1.5 grid grid-cols-1 gap-1" onSubmit={(e) => { e.preventDefault(); void submit() }}>
-          <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task" aria-label={`New task in ${stage}`} maxLength={200} className="h-7 px-2 text-[12.5px]"
+          <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task" aria-label={`New task in ${stage}`} maxLength={200} className="h-7 px-2 text-[13px]"
             onKeyDown={(e) => { if (e.key === "Escape") { setAdding(false); setTitle("") } }} />
           <div className="flex items-center gap-1">
             <select value={assignee} onChange={(e) => setAssignee(e.target.value)} aria-label="Assign to" className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[12px]">
@@ -108,7 +108,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
 // ---- top pane: every active rollout, stuck first -------------------------------
 type Filter = "all" | "attention" | "customer" | "mine"
 // Pills share one size: 32 px, 40 px under a finger.
-const pill = "flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 text-[12.5px] font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 pointer-coarse:h-10"
+const pill = "flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 text-[13px] font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 pointer-coarse:h-10"
 const pillOn = "border-foreground bg-foreground text-background"
 const pillOff = "border-border text-nav-fg hover:bg-muted"
 
@@ -149,7 +149,7 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
           selected ? "border-primary bg-accent" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
         <span className="flex min-w-0 items-center gap-2 md:col-start-1 md:row-start-1">
           <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
-          <span className="truncate text-[13.5px] font-medium">{r.name}</span>
+          <span className="truncate text-[14px] font-medium">{r.name}</span>
           <span className="hidden truncate text-[12px] text-muted-foreground sm:inline">{r.client}</span>
         </span>
         <span className="justify-self-end md:hidden">{chip}</span>
@@ -158,7 +158,7 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
         </span>
         {/* phones: the stage and a progress bar in place of the dots */}
         <span className="col-span-2 flex min-w-0 items-center gap-2 pl-4 md:col-span-1 md:col-start-3 md:row-span-2 md:row-start-1 md:grid md:gap-0.5 md:pl-0">
-          <span className="truncate text-[12.5px] font-medium">{r.stage}</span>
+          <span className="truncate text-[13px] font-medium">{r.stage}</span>
           <span className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted md:hidden" aria-hidden>
             <span className="block h-full bg-ok-line" style={{ width: `${((r.stage_index + 1) / Math.max(1, r.stages.length)) * 100}%` }} />
           </span>
@@ -235,10 +235,10 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
               {c.label}{c.n ? <span className={filter === c.key ? "text-background/70" : "text-muted-foreground"}>{c.n}</span> : null}
             </button>
           ))}
-          <label className="flex items-center gap-1.5 pl-1 text-[12.5px] text-muted-foreground">
+          <label className="flex items-center gap-1.5 pl-1 text-[13px] text-muted-foreground">
             Group
             <select aria-label="Group rollouts by" value={group ?? ""} onChange={(e) => setGroup((e.target.value || null) as FlowGroupBy | null)}
-              className="h-8 rounded-md border border-input bg-background px-2 text-[12.5px] text-foreground pointer-coarse:h-10">
+              className="h-8 rounded-md border border-input bg-background px-2 text-[13px] text-foreground pointer-coarse:h-10">
               <option value="">None</option><option value="stage">Stage</option><option value="client">Client</option><option value="owner">Owner</option>
             </select>
           </label>
@@ -259,13 +259,13 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
         })}
       </nav>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-1.5 text-[11.5px] text-muted-foreground md:grid">
+        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-1.5 text-[12px] text-muted-foreground md:grid">
           <span>Rollout · next step</span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid grid-cols-1 gap-0.5 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {group ? groupRows(shown, group).map((g) => (
             <li key={g.key} className="mt-2 first:mt-0">
-              <p className="flex items-baseline gap-2 border-b border-border px-3 pb-1 text-[12.5px] font-semibold">
+              <p className="flex items-baseline gap-2 border-b border-border px-3 pb-1 text-[13px] font-semibold">
                 {g.key}<span className="font-normal text-muted-foreground">{g.rows.length}
                   {(() => { const bad = g.rows.filter((r) => r.state !== "on_track").length; return bad ? ` · ${bad} ${bad === 1 ? "needs" : "need"} attention` : "" })()}</span>
               </p>
@@ -385,7 +385,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             {standalone
               ? <h1 className="truncate text-[17px] font-semibold tracking-tight">{d.name}</h1>
               : <h2 className="truncate text-[17px] font-semibold tracking-tight">{d.name}</h2>}
-            <p className="text-[12.5px] text-muted-foreground">
+            <p className="text-[13px] text-muted-foreground">
               {d.client}{d.vendor_name ? ` · ${d.vendor_name}` : ""}{d.product_name ? ` · ${d.product_name}` : ""}{d.outsourcer_name ? ` · via ${d.outsourcer_name}` : ""} · owner {d.owner_name}
             </p>
           </div>
@@ -425,13 +425,13 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                         title={names.join(" → ")}
                         className={cn("block min-h-[58px] w-full rounded-lg border-[1.5px] px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                           it.kind === "done" ? "border-ok-line bg-ok-soft hover:bg-ok-soft/70" : "border-dashed border-input bg-card hover:bg-muted")}>
-                        <span className={cn("flex items-start gap-1 text-[12.5px] font-semibold leading-tight", it.kind === "later" && "text-nav-fg")}>
+                        <span className={cn("flex items-start gap-1 text-[13px] font-semibold leading-tight", it.kind === "later" && "text-nav-fg")}>
                           {it.kind === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}
                           {it.kind === "done" ? `${names.length} done` : `+${names.length} later`}
                         </span>
-                        <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">{names.join(", ")}</span>
+                        <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{names.join(", ")}</span>
                       </button>
-                      {it.kind === "later" && open > 0 && <p className="mt-2 text-[11.5px] text-muted-foreground">{open} open task{open === 1 ? "" : "s"}</p>}
+                      {it.kind === "later" && open > 0 && <p className="mt-2 text-[12px] text-muted-foreground">{open} open task{open === 1 ? "" : "s"}</p>}
                     </li>
                   )
                 }
@@ -443,16 +443,16 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                       st.status === "done" && "border-ok-line bg-ok-soft",
                       st.status === "current" && cn("ring-[3px]", STATE[d.state].ring),
                       st.status === "next" && "border-dashed border-input")}>
-                      <div className={cn("flex items-start gap-1 text-[12.5px] font-semibold leading-tight", st.status === "next" && "text-nav-fg")}>
+                      <div className={cn("flex items-start gap-1 text-[13px] font-semibold leading-tight", st.status === "next" && "text-nav-fg")}>
                         {st.status === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}<span className="line-clamp-2">{st.name}</span>
                       </div>
-                      <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
+                      <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
                         {st.status === "next" ? (st.sla_days ? `SLA ${st.sla_days} d` : "—") : st.status === "done" ? days(st.days) : `${days(st.days)}${st.sla_days ? ` · SLA ${st.sla_days}` : ""}`}
                       </div>
                     </div>
                     {/* every stage carries its own tasks — work happens here, not on the project page */}
                     <StageTasks d={d} stage={st.name} done={st.status === "done"} reload={reload} onError={setErr} />
-                    {st.status === "current" && openHere > 0 && <p className="mt-1 text-[11.5px] text-muted-foreground">{openHere} open before moving on</p>}
+                    {st.status === "current" && openHere > 0 && <p className="mt-1 text-[12px] text-muted-foreground">{openHere} open before moving on</p>}
                   </li>
                 )
               })}
@@ -493,7 +493,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {d.approval && d.approval.stage === d.stage && d.approval.status === "pending" && d.can_approve && (
           <section className="rounded-lg border border-warn-line bg-warn-soft/40 p-3">
             <h3 className="mb-1 text-[12px] font-semibold text-nav-fg">Your approval</h3>
-            <p className="mb-2 text-[12.5px] text-muted-foreground">The project moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
+            <p className="mb-2 text-[13px] text-muted-foreground">The project moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
             <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (optional)" aria-label="Approval comment" maxLength={2000} className="h-8 text-[13px]" />
             <div className="mt-2 flex gap-2">
               <Button size="sm" className="flex-1" disabled={busy} onClick={() => decide("approved")}>Approve</Button>
@@ -502,26 +502,26 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           </section>
         )}
         {d.approval && d.approval.stage === d.stage && d.approval.status !== "pending" && d.approval.status !== "superseded" && (
-          <p className="text-[12.5px] text-muted-foreground">{d.stage} {d.approval.status} by {d.approval.decided_by}{d.approval.comment ? ` · ${d.approval.comment}` : ""}</p>
+          <p className="text-[13px] text-muted-foreground">{d.stage} {d.approval.status} by {d.approval.decided_by}{d.approval.comment ? ` · ${d.approval.comment}` : ""}</p>
         )}
         {d.signoff?.awaiting_me && (
           <section className="rounded-lg border border-warn-line bg-warn-soft/40 p-3">
             <h3 className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Your signature</h3>
-            <p className="mb-2 text-[12.5px] text-muted-foreground">The sign-off for {d.name} is waiting for you: review what was delivered, then sign.</p>
+            <p className="mb-2 text-[13px] text-muted-foreground">The sign-off for {d.name} is waiting for you: review what was delivered, then sign.</p>
             <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>Review and sign</Link>
           </section>
         )}
         {d.can_move && d.next_stage && d.signoff?.needed && (
           <section className="panel p-3">
             <h3 className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</h3>
-            <p className="mb-2 text-[12.5px] text-muted-foreground">{signoffText(d.signoff.status)}. The project closes once the customer has signed and we have countersigned.</p>
+            <p className="mb-2 text-[13px] text-muted-foreground">{signoffText(d.signoff.status)}. The project closes once the customer has signed and we have countersigned.</p>
             <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>{d.signoff.status ? "Open the sign-off" : "Prepare the sign-off"}</Link>
           </section>
         )}
         {d.can_move && d.next_stage && !d.signoff?.needed && (
           <section className="panel p-3" onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); setConfirming(false) } }}>
             {/* what the move will do, next to the button that does it */}
-            <ul className="mb-2 grid grid-cols-1 gap-1 text-[12.5px] text-muted-foreground">
+            <ul className="mb-2 grid grid-cols-1 gap-1 text-[13px] text-muted-foreground">
               {openHere > 0 && <li className="font-medium text-warn">{openHere} open task{openHere === 1 ? "" : "s"} still in {d.stage}</li>}
               {approvalPending && <li className="font-medium text-warn">The customer has not approved {d.stage} yet</li>}
               <li>Tells {told} {told === 1 ? "person" : "people"} on the team</li>
@@ -546,7 +546,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           <h3 className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><UserRound className="h-3.5 w-3.5" /> Team</h3>
           <ul className="grid grid-cols-1 gap-1.5">
             {d.participants.map((m) => (
-              <li key={m.id} className="flex items-center gap-2 text-[12.5px]">
+              <li key={m.id} className="flex items-center gap-2 text-[13px]">
                 <UserAvatar name={m.name} url={m.avatar_url} />
                 <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
                 <span className="text-muted-foreground">{m.role}</span>
@@ -561,7 +561,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             <h3 className="mb-1.5 text-[12px] font-semibold text-nav-fg">Recent</h3>
             <ul className="grid grid-cols-1 min-w-0 gap-1.5">
               {d.recent_notes.map((n, i) => (
-                <li key={i} className="min-w-0 text-[12.5px]"><span className="font-medium">{n.author}</span> <span className="text-muted-foreground">· {n.stage} · <Ago iso={n.created_at} /></span><div className="truncate text-nav-fg">{n.note}</div></li>
+                <li key={i} className="min-w-0 text-[13px]"><span className="font-medium">{n.author}</span> <span className="text-muted-foreground">· {n.stage} · <Ago iso={n.created_at} /></span><div className="truncate text-nav-fg">{n.note}</div></li>
               ))}
             </ul>
           </section>
@@ -688,12 +688,12 @@ export default function Flow({ user }: { user: User }) {
   const pane = selectedId != null && (
     <>
               {!wide && (
-                <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 items-center gap-1 px-4 text-[13.5px] font-medium text-primary-text">
+                <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 items-center gap-1 px-4 text-[14px] font-medium text-primary-text">
                   <ChevronLeft className="h-4 w-4" aria-hidden /> All rollouts
                 </button>
               )}
               {notice && (
-                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-1.5 text-[12.5px]", notice.bad ? "bg-bad-soft text-bad" : "bg-ok-soft text-ok")} role="status">
+                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-1.5 text-[13px]", notice.bad ? "bg-bad-soft text-bad" : "bg-ok-soft text-ok")} role="status">
                   <span>{notice.text}
                     {/* the mover can put it back for five minutes; the server decides */}
                     {notice.undo && <button type="button" onClick={() => void undoMove(notice.undo!)} className="ml-2 font-semibold underline-offset-2 hover:underline">Undo</button>}

@@ -70,8 +70,8 @@ export default function MyWork({ user }: { user: User }) {
         {tiles.map((t) => (
           <div key={t.label} className="panel p-4">
             <div className="flex items-center gap-2 text-[12px] text-muted-foreground"><t.icon className="h-3.5 w-3.5" aria-hidden />{t.label}</div>
-            <div className={cn("mt-2 text-[26px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
-            <div className="mt-1 text-[11.5px] text-muted-foreground">{t.sub}</div>
+            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
+            <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
           </div>
         ))}
       </div>
@@ -79,9 +79,9 @@ export default function MyWork({ user }: { user: User }) {
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <section className="panel p-4" aria-label="My tasks">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h2 className="text-[13.5px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h2>
+            <h2 className="text-[14px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h2>
             {d.projects.length > 1 && (
-              <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className="ml-auto h-7 rounded-md border border-input bg-background px-2 text-[12.5px]">
+              <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className="ml-auto h-7 rounded-md border border-input bg-background px-2 text-[13px]">
                 <option value="">Every rollout</option>
                 {d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -115,7 +115,7 @@ export default function MyWork({ user }: { user: User }) {
 
         <div className="grid grid-cols-1 content-start gap-4">
           <section className="panel p-4" aria-label="Done, the last 14 days">
-            <h2 className="mb-2 text-[13.5px] font-semibold">Done <span className="font-normal text-muted-foreground">the last 14 days</span></h2>
+            <h2 className="mb-2 text-[14px] font-semibold">Done <span className="font-normal text-muted-foreground">the last 14 days</span></h2>
             <ul className="flex h-20 items-end gap-1" aria-label="Tasks done per day">
               {d.done_by_day.map((x) => (
                 <li key={x.day} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
@@ -128,7 +128,7 @@ export default function MyWork({ user }: { user: User }) {
           </section>
 
           <section className="panel p-4" aria-label="My rollouts">
-            <h2 className="mb-2 text-[13.5px] font-semibold">My rollouts <span className="font-normal text-muted-foreground">{d.projects.length} active</span></h2>
+            <h2 className="mb-2 text-[14px] font-semibold">My rollouts <span className="font-normal text-muted-foreground">{d.projects.length} active</span></h2>
             <ul className="divide-y divide-border text-[13px]">
               {d.projects.map((p) => (
                 <li key={p.id} className="py-2">
@@ -139,7 +139,7 @@ export default function MyWork({ user }: { user: User }) {
                   </div>
                   <div className="mt-1 flex items-center gap-3 pl-4">
                     <span className="w-24 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
-                    <span className="truncate text-[12.5px]">{p.stage}</span>
+                    <span className="truncate text-[13px]">{p.stage}</span>
                     <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "overdue" ? "font-medium text-bad" : p.state === "on_track" ? "text-muted-foreground" : "font-medium text-warn")}>
                       {p.state === "on_track" ? (p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target") : stateText({ state: p.state, days_in_stage: null, over_by: null, target_end_date: p.target_end_date })}
                     </span>

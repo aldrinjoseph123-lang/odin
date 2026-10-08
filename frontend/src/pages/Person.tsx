@@ -50,23 +50,23 @@ export default function Person(_props: { user: User }) {
   ]
   return (
     <div className="px-5 pb-8 pt-2">
-      <Link to="/people" className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" /> People</Link>
+      <Link to="/people" className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" /> People</Link>
       <div className="mt-2 flex flex-wrap items-center gap-4">
-        <UserAvatar name={d.user.name} url={d.user.avatar_url} className="h-14 w-14" textClass="text-[18px]" />
+        <UserAvatar name={d.user.name} url={d.user.avatar_url} className="h-14 w-14" textClass="text-[17px]" />
         <div className="min-w-0 flex-1">
           <h1 className="text-[17px] font-semibold tracking-tight">{d.user.name}</h1>
           <p className="text-[13px] text-muted-foreground">{d.user.role}{d.user.email && ` · ${d.user.email}`}{(d.activity?.last_seen_at ?? d.user.last_login_at) && <> · seen <Ago iso={(d.activity?.last_seen_at ?? d.user.last_login_at)!} /></>}</p>
         </div>
         {d.can_notify && <Button size="sm" className="rounded-full" onClick={() => setOpen(true)}><Send className="h-3.5 w-3.5" /> Notify {d.user.name.split(" ")[0]}</Button>}
       </div>
-      {notice && <p className="mt-2 text-[12.5px] text-muted-foreground" role="status">{notice}</p>}
+      {notice && <p className="mt-2 text-[13px] text-muted-foreground" role="status">{notice}</p>}
 
       <div className="mt-4 grid grid-cols-2 gap-4 xl:grid-cols-4">
         {tiles.map((t) => (
           <div key={t.label} className="panel p-4">
             <div className="text-[12px] text-muted-foreground">{t.label}</div>
-            <div className={cn("mt-2 text-[26px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
-            <div className="mt-1 text-[11.5px] text-muted-foreground">{t.sub}</div>
+            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
+            <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
           </div>
         ))}
       </div>
@@ -75,7 +75,7 @@ export default function Person(_props: { user: User }) {
 
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <section className="panel p-4" aria-label="Contribution">
-          <h2 className="mb-2 text-[13.5px] font-semibold">Contribution <span className="font-normal text-muted-foreground">tasks finished per week, 8 weeks</span></h2>
+          <h2 className="mb-2 text-[14px] font-semibold">Contribution <span className="font-normal text-muted-foreground">tasks finished per week, 8 weeks</span></h2>
           <ul className="flex h-24 items-end gap-1.5" aria-label="Tasks finished per week">
             {d.contribution.weeks.map((w) => (
               <li key={w.week} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`week of ${fmtDate(w.week)}: ${w.done}`}>
@@ -86,11 +86,11 @@ export default function Person(_props: { user: User }) {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-[12.5px] text-muted-foreground">In the last 30 days: <span className="font-medium text-foreground">{k.done_30d}</span> task{k.done_30d === 1 ? "" : "s"} finished, <span className="font-medium text-foreground">{d.contribution.notes_30d}</span> note{d.contribution.notes_30d === 1 ? "" : "s"}, <span className="font-medium text-foreground">{d.contribution.moves_30d}</span> stage move{d.contribution.moves_30d === 1 ? "" : "s"}.</p>
+          <p className="mt-3 text-[13px] text-muted-foreground">In the last 30 days: <span className="font-medium text-foreground">{k.done_30d}</span> task{k.done_30d === 1 ? "" : "s"} finished, <span className="font-medium text-foreground">{d.contribution.notes_30d}</span> note{d.contribution.notes_30d === 1 ? "" : "s"}, <span className="font-medium text-foreground">{d.contribution.moves_30d}</span> stage move{d.contribution.moves_30d === 1 ? "" : "s"}.</p>
         </section>
 
         <section className="panel p-4" aria-label="Active rollouts">
-          <h2 className="mb-2 text-[13.5px] font-semibold">Active rollouts <span className="font-normal text-muted-foreground">{d.projects.length}</span></h2>
+          <h2 className="mb-2 text-[14px] font-semibold">Active rollouts <span className="font-normal text-muted-foreground">{d.projects.length}</span></h2>
           <ul className="divide-y divide-border text-[13px]">
             {d.projects.map((p) => (
               <li key={p.id} className="py-2">
@@ -101,7 +101,7 @@ export default function Person(_props: { user: User }) {
                 </div>
                 <div className="mt-1 flex items-center gap-3 pl-4">
                   <span className="w-20 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
-                  <span className="truncate text-[12.5px]">{p.stage}</span>
+                  <span className="truncate text-[13px]">{p.stage}</span>
                   <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "on_track" ? "text-muted-foreground" : STATE[p.state].chip.split(" ")[1])}>{STATE[p.state].label}</span>
                 </div>
               </li>
@@ -111,7 +111,7 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4" aria-label="Pending tasks">
-          <h2 className="mb-2 text-[13.5px] font-semibold">Pending <span className="font-normal text-muted-foreground">{d.pending.length} open, soonest first</span></h2>
+          <h2 className="mb-2 text-[14px] font-semibold">Pending <span className="font-normal text-muted-foreground">{d.pending.length} open, soonest first</span></h2>
           <ul className="divide-y divide-border text-[13px]">
             {d.pending.slice(0, 12).map((t) => {
               const late = t.due_date ? lateBy(t.due_date, d.today) : 0
@@ -128,7 +128,7 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4" aria-label="Upcoming tasks">
-          <h2 className="mb-2 text-[13.5px] font-semibold">Upcoming <span className="font-normal text-muted-foreground">due in the next 14 days</span></h2>
+          <h2 className="mb-2 text-[14px] font-semibold">Upcoming <span className="font-normal text-muted-foreground">due in the next 14 days</span></h2>
           <ul className="divide-y divide-border text-[13px]">
             {d.upcoming.map((t) => (
               <li key={t.id} className="flex items-center gap-3 py-2">
@@ -141,8 +141,8 @@ export default function Person(_props: { user: User }) {
         </section>
 
         <section className="panel p-4 xl:col-span-2" aria-label="Recent activity">
-          <h2 className="mb-2 text-[13.5px] font-semibold">Recently <span className="font-normal text-muted-foreground">what {d.user.name.split(" ")[0]} did</span></h2>
-          <ul className="grid grid-cols-1 gap-2.5 text-[12.5px] md:grid-cols-2">
+          <h2 className="mb-2 text-[14px] font-semibold">Recently <span className="font-normal text-muted-foreground">what {d.user.name.split(" ")[0]} did</span></h2>
+          <ul className="grid grid-cols-1 gap-2.5 text-[13px] md:grid-cols-2">
             {d.recent.map((a, i) => {
               const K = KIND[a.kind]
               return (
@@ -168,12 +168,12 @@ export default function Person(_props: { user: User }) {
               <DialogTitle>Notify {d.user.name}</DialogTitle>
               <DialogDescription>A note that lands in their bell{d.user.email ? " and their inbox" : ""}, with a link back to the rollout you pick.</DialogDescription>
             </DialogHeader>
-            <label htmlFor="notify-message" className="mt-3 block text-[12.5px] font-medium">Message</label>
+            <label htmlFor="notify-message" className="mt-3 block text-[13px] font-medium">Message</label>
             <textarea id="notify-message" value={message} onChange={(e) => setMessage(e.target.value)} rows={4} maxLength={1000} required autoFocus
               className="mt-1 w-full rounded-md border border-input bg-background p-2 text-[13px]" placeholder="Could you look at the pilot sign-off today?" />
             {d.projects.length > 0 && (
               <>
-                <label htmlFor="notify-about" className="mt-3 block text-[12.5px] font-medium">About <span className="font-normal text-muted-foreground">(optional)</span></label>
+                <label htmlFor="notify-about" className="mt-3 block text-[13px] font-medium">About <span className="font-normal text-muted-foreground">(optional)</span></label>
                 <select id="notify-about" value={about ?? ""} onChange={(e) => setAbout(e.target.value ? Number(e.target.value) : null)} className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]">
                   <option value="">No particular rollout</option>
                   {d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}

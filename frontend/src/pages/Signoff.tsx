@@ -24,9 +24,9 @@ import { fmtDate, fmtWhen, signoffText, toLines } from "@/lib/format"
 // The customer's named signatory reviews, then signs or says what must change;
 // we countersign; then the project can close. A signed paper copy can stand in,
 // and an admin can waive it with a reason. The server decides who may do what.
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[12.5px]")
-const area = "w-full rounded-lg border border-input bg-background p-2.5 text-[13.5px] leading-relaxed"
-const input = "h-9 w-full rounded-md border border-input bg-background px-2 text-[13.5px]"
+const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[13px]")
+const area = "w-full rounded-lg border border-input bg-background p-2.5 text-[14px] leading-relaxed"
+const input = "h-9 w-full rounded-md border border-input bg-background px-2 text-[14px]"
 const TONE: Record<SignoffStatus, string> = {
   sent: "bg-warn-soft text-warn", signed: "bg-warn-soft text-warn", countersigned: "bg-ok-soft text-ok", uploaded: "bg-ok-soft text-ok",
   waived: "bg-muted text-muted-foreground", rejected: "bg-bad-soft text-bad", withdrawn: "bg-muted text-muted-foreground",
@@ -65,11 +65,11 @@ function ScopeTable({ items }: { items: { title: string; detail: string | null; 
 function SignatureBlock({ label, sig, name, title, when, pending, paper }: { label: string; sig: Signature | null; name: string | null; title: string | null; when: string | null; pending?: string | null; paper?: boolean }) {
   return (
     <div className="min-w-0">
-      <div className="text-[12.5px] font-semibold">{label}</div>
+      <div className="text-[13px] font-semibold">{label}</div>
       <div className="mt-1.5 flex h-24 items-center rounded-lg border border-border bg-card px-3 text-foreground">
-        {sig ? <SignatureView sig={sig} /> : <span className="text-[12.5px] text-muted-foreground">{paper ? "Signed on paper; the copy is on file" : pending ? `Waiting for ${pending}` : "—"}</span>}
+        {sig ? <SignatureView sig={sig} /> : <span className="text-[13px] text-muted-foreground">{paper ? "Signed on paper; the copy is on file" : pending ? `Waiting for ${pending}` : "—"}</span>}
       </div>
-      <dl className="mt-2 grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[12.5px]">
+      <dl className="mt-2 grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[13px]">
         <dt className="text-muted-foreground">Name</dt><dd>{name ?? "—"}</dd>
         <dt className="text-muted-foreground">Title</dt><dd>{title || "—"}</dd>
         <dt className="text-muted-foreground">Date</dt><dd>{when ? fmtDate(when) : "—"}</dd>
@@ -83,16 +83,16 @@ function Document({ v }: { v: SignoffVersion }) {
   return (
     <div className="grid grid-cols-1 gap-4">
       <Section n title="The project"><Facts p={c.project} /></Section>
-      <Section n title="Summary"><p className="whitespace-pre-line text-[13.5px] leading-relaxed">{c.summary}</p></Section>
+      <Section n title="Summary"><p className="whitespace-pre-line text-[14px] leading-relaxed">{c.summary}</p></Section>
       {c.scope.length > 0
         ? <Section n title="Agreed scope and what was delivered" sub={`${c.scope.filter((x) => x.status === "delivered").length} of ${c.scope.length} in full`}><ScopeTable items={c.scope} /></Section>
-        : <Section n title="What was delivered"><ul className="list-disc pl-5 text-[13.5px]">{c.delivered.map((x, i) => <li key={i}>{x}</li>)}</ul></Section>}
+        : <Section n title="What was delivered"><ul className="list-disc pl-5 text-[14px]">{c.delivered.map((x, i) => <li key={i}>{x}</li>)}</ul></Section>}
       <Section n title="Outstanding items" sub="recorded here; they do not hold up acceptance">
-        {c.outstanding.length ? <ul className="list-disc pl-5 text-[13.5px]">{c.outstanding.map((x, i) => <li key={i}>{x}</li>)}</ul> : <p className="text-[13.5px] text-muted-foreground">None.</p>}
+        {c.outstanding.length ? <ul className="list-disc pl-5 text-[14px]">{c.outstanding.map((x, i) => <li key={i}>{x}</li>)}</ul> : <p className="text-[14px] text-muted-foreground">None.</p>}
       </Section>
-      {c.terms.length > 0 && <Section n title="Handover and support"><ul className="list-disc pl-5 text-[13.5px]">{c.terms.map((x, i) => <li key={i}>{x}</li>)}</ul></Section>}
+      {c.terms.length > 0 && <Section n title="Handover and support"><ul className="list-disc pl-5 text-[14px]">{c.terms.map((x, i) => <li key={i}>{x}</li>)}</ul></Section>}
       <Section n title="Acceptance">
-        <p className="rounded-lg bg-muted/60 p-3 text-[13.5px] leading-relaxed">{c.statement}</p>
+        <p className="rounded-lg bg-muted/60 p-3 text-[14px] leading-relaxed">{c.statement}</p>
         <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
           <SignatureBlock label={`For ${c.project.client}`} sig={v.signature} name={v.signer_name ?? c.signer?.name ?? null} title={v.signer_title} when={v.signed_at}
             pending={v.status === "sent" ? c.signer?.name : null} paper={v.status === "uploaded"} />
@@ -101,9 +101,9 @@ function Document({ v }: { v: SignoffVersion }) {
         </div>
       </Section>
       <Section title="Signing record">
-        <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px]">
+        <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px]">
           <dt className="text-muted-foreground">Version</dt><dd>{v.version}, prepared by {v.created_by}, {fmtWhen(v.created_at, true)}</dd>
-          <dt className="text-muted-foreground">Fingerprint</dt><dd className="break-all font-mono text-[11.5px]">SHA-256 {v.content_hash}</dd>
+          <dt className="text-muted-foreground">Fingerprint</dt><dd className="break-all font-mono text-[12px]">SHA-256 {v.content_hash}</dd>
           <dt className="text-muted-foreground">Integrity</dt>
           <dd className={cn("flex items-center gap-1.5", v.intact ? "text-ok" : "font-medium text-bad")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{v.intact ? "The content matches its fingerprint." : "The content no longer matches its fingerprint."}</dd>
           {v.signed_at && v.status !== "uploaded" && <><dt className="text-muted-foreground">Customer</dt><dd>{v.signer_name} ({v.signer_email}) signed {fmtWhen(v.signed_at, true)} in Odin, after a one-time sign-in link sent to that address{v.signed_ip ? `; from ${v.signed_ip}` : ""}</dd></>}
@@ -142,9 +142,9 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
   }
   if (rejecting) return (
     <div className="grid grid-cols-1 gap-2">
-      <label htmlFor="reject-comment" className="text-[12.5px] font-medium">What needs to change before you can sign?</label>
+      <label htmlFor="reject-comment" className="text-[13px] font-medium">What needs to change before you can sign?</label>
       <textarea id="reject-comment" rows={4} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} className={area} autoFocus />
-      {err && <p className="text-[12.5px] text-bad" role="alert">{err}</p>}
+      {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
       <div className="flex gap-2"><Button size="sm" variant="ghost" className="rounded-full" onClick={() => setRejecting(false)} disabled={busy}>Back</Button>
         <Button size="sm" variant="outline" className="ml-auto rounded-full" onClick={reject} disabled={busy || !comment.trim()}>Send back</Button></div>
     </div>
@@ -152,17 +152,17 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
   return (
     <form onSubmit={submit} className="grid grid-cols-1 gap-3">
       <div className="grid grid-cols-2 gap-2">
-        <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Full name<input className={input} required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>
-        <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Title<input className={input} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" placeholder="e.g. IT Director" /></label>
+        <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Full name<input className={input} required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>
+        <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Title<input className={input} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" placeholder="e.g. IT Director" /></label>
       </div>
       <SignaturePad value={sig} onChange={setSig} typedDefault={name} />
-      <label className="flex items-start gap-2 text-[12.5px] leading-snug">
+      <label className="flex items-start gap-2 text-[13px] leading-snug">
         <input type="checkbox" className="mt-0.5 accent-primary" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
         <span>{counter ? "I confirm the work above is complete and countersign on our behalf." : `I have read this document and accept it on behalf of ${client}.`}</span>
       </label>
-      {err && <p className="text-[12.5px] text-bad" role="alert">{err}</p>}
+      {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
       <Button type="submit" className="rounded-full" disabled={busy || !accept || !sig || !name.trim()}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
-      {canReject && <button type="button" onClick={() => setRejecting(true)} className="text-[12.5px] text-muted-foreground hover:text-foreground hover:underline">I can't sign this yet</button>}
+      {canReject && <button type="button" onClick={() => setRejecting(true)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">I can't sign this yet</button>}
     </form>
   )
 }
@@ -185,9 +185,9 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
       <p className="text-[12px] text-muted-foreground">If {name} did not get the email, give them a one-time sign-in link that opens this sign-off.</p>
       {link ? (
         <>
-          <input readOnly value={link.link} aria-label="Sign-in link for the signatory" onFocus={(e) => e.currentTarget.select()} className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-[11.5px]" />
+          <input readOnly value={link.link} aria-label="Sign-in link for the signatory" onFocus={(e) => e.currentTarget.select()} className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
           <Button size="sm" variant="outline" className="rounded-full" onClick={copy}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy the link"}</Button>
-          <p className="text-[11.5px] text-muted-foreground">For {link.email} only. It works once and expires in {link.minutes} minutes; make a new one if it lapses.</p>
+          <p className="text-[12px] text-muted-foreground">For {link.email} only. It works once and expires in {link.minutes} minutes; make a new one if it lapses.</p>
         </>
       ) : <Button size="sm" variant="outline" className="rounded-full" onClick={get}><Link2 className="h-3.5 w-3.5" /> Get a sign-in link</Button>}
       {err && <p className="text-[12px] text-bad" role="alert">{err}</p>}
@@ -233,7 +233,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
         </Section>
         {draft.scope.length > 0 ? (
           <Section n title="Agreed scope and what was delivered" sub={unmarked ? `${unmarked} still marked agreed` : "from the Scope panel"}>
-            {unmarked > 0 && <p className="mb-2 rounded-lg bg-warn-soft px-3 py-2 text-[12.5px] text-warn">Mark every item delivered, partly delivered or descoped on the <Link to={`/projects/${id}#scope`} className="font-medium underline">project page</Link> before sending.</p>}
+            {unmarked > 0 && <p className="mb-2 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn">Mark every item delivered, partly delivered or descoped on the <Link to={`/projects/${id}#scope`} className="font-medium underline">project page</Link> before sending.</p>}
             <ScopeTable items={draft.scope} />
           </Section>
         ) : (
@@ -247,26 +247,26 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
         <Section n title="Handover and support" sub="one per line">
           <textarea aria-label="Handover and support" rows={3} value={terms} onChange={(e) => setTerms(e.target.value)} className={area} />
         </Section>
-        <Section n title="Acceptance" sub="set by an admin in Settings → Workflow"><p className="rounded-lg bg-muted/60 p-3 text-[13.5px] leading-relaxed">{draft.statement}</p></Section>
+        <Section n title="Acceptance" sub="set by an admin in Settings → Workflow"><p className="rounded-lg bg-muted/60 p-3 text-[14px] leading-relaxed">{draft.statement}</p></Section>
       </div>
       <aside className="grid grid-cols-1 content-start gap-3 lg:sticky lg:top-4">
         <section className="panel grid grid-cols-1 gap-3 p-4">
           <h2 className="text-[14px] font-semibold">Send for signature</h2>
           <TemplatePicker kind="signoff" value={template} onChange={onTemplate} />
-          <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Customer's signatory
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Customer's signatory
             <select className={input} value={signer} onChange={(e) => setSigner(e.target.value ? Number(e.target.value) : "")}>
               {cand.signers.length === 0 && <option value="">Nobody yet</option>}
               {cand.signers.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
           </label>
           {cand.signers.length === 0 && <p className="text-[12px] text-muted-foreground">Invite the customer's contact on the <Link to={`/projects/${id}`} className="underline">project page</Link> (Team → Invite, role Customer). They sign with a one-time link sent to their email.</p>}
-          <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Countersigns for us
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Countersigns for us
             <select className={input} value={counter} onChange={(e) => setCounter(e.target.value ? Number(e.target.value) : "")}>
               {cand.countersigners.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
           </label>
           <p className="text-[12px] text-muted-foreground">Sending freezes this version and its fingerprint. To change it later, withdraw it and send a new one.</p>
-          {err && <p className="text-[12.5px] text-bad" role="alert">{err}</p>}
+          {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
           {confirming ? (
             <div className="grid grid-cols-1 gap-1.5" role="group" aria-label="Confirm sending">
               <Button onClick={send} disabled={busy} autoFocus className="rounded-full">{busy ? "Sending…" : `Send to ${who?.name ?? "the customer"} now`}</Button>
@@ -323,10 +323,10 @@ export default function Signoff(_props: { user: User }) {
     <div className="mx-auto w-full max-w-6xl px-5 pb-10 pt-2 print:max-w-none print:px-0">
       <PrintBrand />
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{d.project.name}</Link>
+        <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{d.project.name}</Link>
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {d.versions.length > 0 && (
-            <select value={v ?? ""} onChange={(e) => setParams(e.target.value ? { v: e.target.value } : {}, { replace: true })} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[12.5px]">
+            <select value={v ?? ""} onChange={(e) => setParams(e.target.value ? { v: e.target.value } : {}, { replace: true })} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
               <option value="">Latest</option>
               {d.versions.map((x) => <option key={x.version} value={x.version}>v{x.version} · {signoffText(x.status).split(";")[0].split(",")[0]} · {fmtDate(x.created_at)}</option>)}
             </select>
@@ -338,11 +338,11 @@ export default function Signoff(_props: { user: User }) {
       </div>
 
       <header className="mt-3">
-        <h1 className="text-[22px] font-semibold tracking-tight">Sign-off</h1>
+        <h1 className="text-[24px] font-semibold tracking-tight">Sign-off</h1>
         <p className="mt-0.5 text-[13px] text-muted-foreground">{d.project.name} · {d.project.client} · now in {d.project.stage}</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <StatusPill status={composing ? null : cur?.status ?? null} />
-          {cur && !composing && <span className="text-[12.5px] text-muted-foreground">Version {cur.version}, sent {fmtWhen(cur.created_at, true)}</span>}
+          {cur && !composing && <span className="text-[13px] text-muted-foreground">Version {cur.version}, sent {fmtWhen(cur.created_at, true)}</span>}
         </div>
       </header>
       {notice && <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-[13px]" role="status">{notice}</p>}
@@ -364,12 +364,12 @@ export default function Signoff(_props: { user: User }) {
               {(d.can.sign || d.can.countersign) && (
                 <section className="panel p-4">
                   <h2 className="mb-1 text-[14px] font-semibold">{d.can.sign ? "Your signature" : "Countersign"}</h2>
-                  <p className="mb-3 text-[12.5px] text-muted-foreground">{d.can.sign ? "Read the document, then sign. You can send it back with comments instead." : `${cur.signer_name} signed for ${cur.content.project.client}. Countersign to complete it.`}</p>
+                  <p className="mb-3 text-[13px] text-muted-foreground">{d.can.sign ? "Read the document, then sign. You can send it back with comments instead." : `${cur.signer_name} signed for ${cur.content.project.client}. Countersign to complete it.`}</p>
                   <SignForm who={d.me.name} client={cur.content.project.client} counter={d.can.countersign} onDone={done} busy={busy} setBusy={setBusy} id={id} version={cur.version} canReject={d.can.sign} />
                 </section>
               )}
               {!d.can.sign && !d.can.countersign && (cur.status === "sent" || cur.status === "signed") && (
-                <section className="panel p-4 text-[12.5px] text-muted-foreground">
+                <section className="panel p-4 text-[13px] text-muted-foreground">
                   {cur.status === "sent" ? `Waiting for ${cur.content.signer?.name} to sign.` : `Waiting for ${cur.content.countersigner?.name} to countersign.`}
                 </section>
               )}
@@ -385,7 +385,7 @@ export default function Signoff(_props: { user: User }) {
             </aside>
           </div>
         ) : (
-          <p className="text-[13.5px] text-muted-foreground">{d.state.complete ? "Signed off." : "The project manager has not sent the sign-off yet."}</p>
+          <p className="text-[14px] text-muted-foreground">{d.state.complete ? "Signed off." : "The project manager has not sent the sign-off yet."}</p>
         )}
       </div>
 
@@ -393,13 +393,13 @@ export default function Signoff(_props: { user: User }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Upload the signed copy</DialogTitle><DialogDescription>For version {cur?.version}. It completes the sign-off and is filed under the project's documents.</DialogDescription></DialogHeader>
           <form onSubmit={upload} className="grid grid-cols-1 gap-3">
-            <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Signed copy (PDF or image)<input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg" className="text-[13px]" /></label>
+            <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed copy (PDF or image)<input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg" className="text-[13px]" /></label>
             <div className="grid grid-cols-2 gap-2">
-              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Signed by<input name="signer_name" required maxLength={120} defaultValue={cur?.content.signer?.name ?? ""} className={input} /></label>
-              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Title<input name="signer_title" maxLength={120} className={input} /></label>
+              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed by<input name="signer_name" required maxLength={120} defaultValue={cur?.content.signer?.name ?? ""} className={input} /></label>
+              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Title<input name="signer_title" maxLength={120} className={input} /></label>
             </div>
-            <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Signed on<input name="signed_on" type="date" required className={input} /></label>
-            {dialogErr && <p className="text-[12.5px] text-bad" role="alert">{dialogErr}</p>}
+            <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed on<input name="signed_on" type="date" required className={input} /></label>
+            {dialogErr && <p className="text-[13px] text-bad" role="alert">{dialogErr}</p>}
             <div className="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" disabled={busy}>Upload</Button></div>
           </form>
         </DialogContent>
@@ -407,9 +407,9 @@ export default function Signoff(_props: { user: User }) {
       <Dialog open={dialog === "waive"} onOpenChange={(o) => { if (!o) setDialog(null) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Close without signatures</DialogTitle><DialogDescription>An admin's exception: the project can close without the customer's signature. The reason is kept on the record and in the audit log.</DialogDescription></DialogHeader>
-          <label htmlFor="waive-reason" className="text-[12.5px] font-medium">Why</label>
+          <label htmlFor="waive-reason" className="text-[13px] font-medium">Why</label>
           <textarea id="waive-reason" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} className={area} placeholder="Customer confirmed acceptance by email on 3 Oct; reference attached to the project." />
-          {dialogErr && <p className="text-[12.5px] text-bad" role="alert">{dialogErr}</p>}
+          {dialogErr && <p className="text-[13px] text-bad" role="alert">{dialogErr}</p>}
           <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button size="sm" className="rounded-full" disabled={busy || reason.trim().length < 10} onClick={waive}>Waive the sign-off</Button></div>
         </DialogContent>
       </Dialog>

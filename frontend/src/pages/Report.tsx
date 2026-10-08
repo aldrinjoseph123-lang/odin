@@ -22,7 +22,7 @@ import { TemplatePicker } from "@/components/TemplatePicker"
 // to the customer's copy; the project manager's words are edited in place and
 // "Save as version" freezes the lot. Partners and customers read saved
 // versions only (the server enforces it). Every version exports to PDF.
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[12.5px]")
+const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[13px]")
 const slip = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--elevation-pop)", fontSize: 12 }, labelStyle: { color: "var(--muted-foreground)" } }
 
@@ -61,16 +61,16 @@ export default function Report({ user }: { user: User }) {
   const pdf = `/projects/${id}/report.pdf?audience=${r.audience}${r.version ? `&v=${r.version.version}` : template ? `&template=${template}` : ""}`
   const toolbar = (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
-      <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{r.project.name}</Link>
+      <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{r.project.name}</Link>
       <span className="ml-auto flex flex-wrap items-center gap-2">
         {r.can_edit && (
           <span className="flex rounded-full bg-muted p-0.5" role="group" aria-label="Audience">
             {(["internal", "customer"] as const).map((a) => <button key={a} type="button" aria-pressed={r.audience === a} onClick={() => set("audience", a === "internal" ? null : a)}
-              className={cn("h-7 rounded-full px-3 text-[12.5px] font-medium", r.audience === a ? "bg-card shadow-card" : "text-muted-foreground")}>{a === "internal" ? "Internal" : "Customer copy"}</button>)}
+              className={cn("h-7 rounded-full px-3 text-[13px] font-medium", r.audience === a ? "bg-card shadow-card" : "text-muted-foreground")}>{a === "internal" ? "Internal" : "Customer copy"}</button>)}
           </span>
         )}
         {r.versions.length > 0 && (
-          <select value={r.version?.version ?? ""} onChange={(e) => set("v", e.target.value || null)} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[12.5px]">
+          <select value={r.version?.version ?? ""} onChange={(e) => set("v", e.target.value || null)} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
             {r.can_edit && <option value="">Live — today's data</option>}
             {r.versions.map((x) => <option key={x.version} value={x.version}>v{x.version} · {x.created_by} · {fmtWhen(x.created_at)}{x.kind === "text" ? " (text)" : ""}</option>)}
           </select>
@@ -116,16 +116,16 @@ export default function Report({ user }: { user: User }) {
     { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
     { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", bad: d.work.late > 0 },
   ]
-  const textarea = "w-full rounded-lg border border-input bg-background p-2.5 text-[13.5px] leading-relaxed"
+  const textarea = "w-full rounded-lg border border-input bg-background p-2.5 text-[14px] leading-relaxed"
   const wordBlock = (key: "summary" | "next_steps" | "asks", label: string, rows: number, hint: string) => (
     <div>
-      <div className="mb-1 flex items-center gap-2"><h3 className="text-[12.5px] font-semibold text-nav-fg">{label}</h3>
+      <div className="mb-1 flex items-center gap-2"><h3 className="text-[13px] font-semibold text-nav-fg">{label}</h3>
         {editable && r.words.suggested && r.words.suggested[key] && words[key] !== r.words.suggested[key] && (
           <button type="button" onClick={() => setWords({ ...words, [key]: r.words.suggested![key] })} className="inline-flex items-center gap-1 text-[12px] text-primary-text hover:underline print:hidden"><Sparkles className="h-3 w-3" /> Use the suggestion</button>
         )}
       </div>
       {editable && <textarea aria-label={label} rows={rows} value={words[key]} onChange={(e) => setWords({ ...words, [key]: e.target.value })} placeholder={hint} className={cn(textarea, "print:hidden")} />}
-      <div className={cn("whitespace-pre-line text-[13.5px] leading-relaxed", editable && "hidden print:block")}>{words[key] || <span className="text-muted-foreground">—</span>}</div>
+      <div className={cn("whitespace-pre-line text-[14px] leading-relaxed", editable && "hidden print:block")}>{words[key] || <span className="text-muted-foreground">—</span>}</div>
     </div>
   )
 
@@ -133,7 +133,7 @@ export default function Report({ user }: { user: User }) {
     <div className="mx-auto w-full max-w-6xl px-5 pb-10 pt-2 print:max-w-none print:px-0">
       <PrintBrand />
       {toolbar}
-      {notice && <p className="mt-2 text-[12.5px] text-muted-foreground print:hidden" role="status">{notice}</p>}
+      {notice && <p className="mt-2 text-[13px] text-muted-foreground print:hidden" role="status">{notice}</p>}
       <p className="mt-2 text-[12px] text-muted-foreground print:hidden">
         {r.is_live ? (editable ? "Live: today's numbers. Edit the words, then Save as version — partners and customers see saved versions only." : "Live: today's numbers.")
           : `Saved version ${r.version!.version} by ${r.version!.created_by}, ${fmtWhen(r.version!.created_at, true)} — the numbers as they were then.`}
@@ -141,22 +141,22 @@ export default function Report({ user }: { user: User }) {
       </p>
 
       <header className="mt-3">
-        <h1 className="text-[22px] font-semibold tracking-tight">{d.project.name}</h1>
+        <h1 className="text-[24px] font-semibold tracking-tight">{d.project.name}</h1>
         <p className="mt-0.5 text-[13px] text-muted-foreground">{[d.project.client, `PM ${d.project.owner_name}`, `stage ${d.project.stage_number} of ${d.project.stage_count}: ${d.project.stage}`, d.project.po_number, d.project.vendor_name && `${d.project.vendor_name}${d.project.product_name ? ` ${d.project.product_name}` : ""}`].filter(Boolean).join(" · ")}</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <RagPill rag={d.health.rag} />
-          {!customer && <ul className="text-[12.5px] text-muted-foreground">{d.health.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
+          {!customer && <ul className="text-[13px] text-muted-foreground">{d.health.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
           {!customer && <span className="text-[12px] text-muted-foreground">Forecast confidence: <span className="font-medium text-foreground">{d.health.confidence}</span></span>}
         </div>
       </header>
 
-      {intro && <p className="mt-3 whitespace-pre-line text-[13.5px] leading-relaxed">{intro}</p>}
+      {intro && <p className="mt-3 whitespace-pre-line text-[14px] leading-relaxed">{intro}</p>}
       <div className={cn("mt-4 grid grid-cols-2 gap-3", customer ? "lg:grid-cols-4" : "lg:grid-cols-5", hide("numbers"))}>
         {tiles.map((t) => (
           <div key={t.label} className="panel p-4 print:shadow-none">
-            <div className="text-[11.5px] text-muted-foreground">{t.label}</div>
-            <div className={cn("mt-1.5 text-[22px] font-semibold leading-none tracking-tight", t.bad && "text-bad")}>{t.value}</div>
-            <div className="mt-1 text-[11.5px] text-muted-foreground">{t.sub}</div>
+            <div className="text-[12px] text-muted-foreground">{t.label}</div>
+            <div className={cn("mt-1.5 text-[24px] font-semibold leading-none tracking-tight", t.bad && "text-bad")}>{t.value}</div>
+            <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
           </div>
         ))}
       </div>
@@ -207,7 +207,7 @@ export default function Report({ user }: { user: User }) {
                 <li key={m.stage} className="flex items-center gap-3 rounded-xl bg-muted/50 px-3 py-2 text-[13px]">
                   <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", i === 0 ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}>{i + 1}</span>
                   <span className="min-w-0 flex-1 font-medium">{m.stage}</span>
-                  <span className="text-[12.5px] text-muted-foreground">{fmtDate(m.start)} → <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
+                  <span className="text-[13px] text-muted-foreground">{fmtDate(m.start)} → <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
                   {!customer && m.planned_end && m.end && m.end > m.planned_end && <span className="text-[12px] font-medium text-bad">plan {fmtDate(m.planned_end)}</span>}
                 </li>
               ))}
@@ -248,7 +248,7 @@ export default function Report({ user }: { user: User }) {
                 </ResponsiveContainer>
               </div>
             )}
-            <div className="mt-3 grid grid-cols-1 gap-1.5 text-[12.5px]">
+            <div className="mt-3 grid grid-cols-1 gap-1.5 text-[13px]">
               {d.work.by_stage.filter((b) => b.total).map((b) => (
                 <div key={b.stage} className="flex items-center gap-3">
                   <span className="w-32 truncate">{b.stage}</span>
@@ -264,7 +264,7 @@ export default function Report({ user }: { user: User }) {
               <Table head={["Person", "Role", "Open", "Done", "Late"]} rows={d.people.map((p) => [p.name, p.role ?? "—", p.open, p.done, p.late])} tone={(i, c) => (c === 4 && d.people![i].late ? "font-medium text-bad" : undefined)} />
               {d.work.open && d.work.open.length > 0 && (
                 <>
-                  <h3 className="mb-1 mt-4 text-[12.5px] font-semibold text-nav-fg">Open tasks</h3>
+                  <h3 className="mb-1 mt-4 text-[13px] font-semibold text-nav-fg">Open tasks</h3>
                   <Table head={["Task", "Stage", "Who", "Due"]} rows={d.work.open.slice(0, 12).map((t) => [t.title, t.stage ?? "—", t.who ?? "—", t.due_date ? (t.late ? `${fmtDate(t.due_date)} · late` : fmtDate(t.due_date)) : "—"])}
                     tone={(i, c) => (c === 3 && d.work.open![i].late ? "font-medium text-bad" : undefined)} />
                 </>
@@ -283,7 +283,7 @@ export default function Report({ user }: { user: User }) {
                 tone={(i, c) => (c === 3 && d.history.dwell[i].over ? "font-medium text-warn" : undefined)} />
               {d.history.approvals.length > 0 && (
                 <>
-                  <h3 className="mb-1 mt-4 text-[12.5px] font-semibold text-nav-fg">Customer approvals</h3>
+                  <h3 className="mb-1 mt-4 text-[13px] font-semibold text-nav-fg">Customer approvals</h3>
                   <Table head={["Stage", "Status", "Asked", "Decided"]} rows={d.history.approvals.map((a) => [a.stage, a.status, fmtDate(a.requested_at), a.decided_at ? `${fmtDate(a.decided_at)}${a.decided_by ? ` · ${a.decided_by}` : ""}` : "—"])} />
                 </>
               )}
@@ -291,30 +291,30 @@ export default function Report({ user }: { user: User }) {
             <div className="grid grid-cols-1 content-start gap-4">
               {!customer && d.plan_changes && d.plan_changes.length > 0 && (
                 <div>
-                  <h3 className="mb-1 text-[12.5px] font-semibold text-nav-fg">What moved in the plan</h3>
-                  <ul className="divide-y divide-border text-[12.5px]">{d.plan_changes.slice(0, 10).map((c, i) => (
+                  <h3 className="mb-1 text-[13px] font-semibold text-nav-fg">What moved in the plan</h3>
+                  <ul className="divide-y divide-border text-[13px]">{d.plan_changes.slice(0, 10).map((c, i) => (
                     <li key={i} className="py-1.5">{c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</>}
-                      {c.reason && <span className="text-muted-foreground"> — {c.reason}</span>}<span className="block text-[11.5px] text-muted-foreground">{c.author} · {fmtDate(c.created_at)}</span></li>))}</ul>
+                      {c.reason && <span className="text-muted-foreground"> — {c.reason}</span>}<span className="block text-[12px] text-muted-foreground">{c.author} · {fmtDate(c.created_at)}</span></li>))}</ul>
                 </div>
               )}
               {d.history.notes.length > 0 && (
                 <div>
-                  <h3 className="mb-1 text-[12.5px] font-semibold text-nav-fg">Notes</h3>
-                  <ul className="grid grid-cols-1 gap-2 text-[12.5px]">{d.history.notes.slice(0, 8).map((n, i) => <li key={i}><span className="text-[11.5px] text-muted-foreground">{n.author} · {n.stage} · {fmtDate(n.created_at)}</span><p>{n.note}</p></li>)}</ul>
+                  <h3 className="mb-1 text-[13px] font-semibold text-nav-fg">Notes</h3>
+                  <ul className="grid grid-cols-1 gap-2 text-[13px]">{d.history.notes.slice(0, 8).map((n, i) => <li key={i}><span className="text-[12px] text-muted-foreground">{n.author} · {n.stage} · {fmtDate(n.created_at)}</span><p>{n.note}</p></li>)}</ul>
                 </div>
               )}
               {d.documents && d.documents.length > 0 && (
                 <div>
-                  <h3 className="mb-1 text-[12.5px] font-semibold text-nav-fg">Documents</h3>
-                  <ul className="grid grid-cols-1 gap-0.5 text-[12.5px]">{d.documents.slice(0, 12).map((x, i) => <li key={i} className="flex justify-between gap-3"><span className="truncate">{"filename" in x ? x.filename : x.category}</span><span className="shrink-0 text-muted-foreground">{"filename" in x ? `${x.category} · ${fmtDate(x.uploaded_at)}` : `${x.count} file${x.count === 1 ? "" : "s"}`}</span></li>)}</ul>
+                  <h3 className="mb-1 text-[13px] font-semibold text-nav-fg">Documents</h3>
+                  <ul className="grid grid-cols-1 gap-0.5 text-[13px]">{d.documents.slice(0, 12).map((x, i) => <li key={i} className="flex justify-between gap-3"><span className="truncate">{"filename" in x ? x.filename : x.category}</span><span className="shrink-0 text-muted-foreground">{"filename" in x ? `${x.category} · ${fmtDate(x.uploaded_at)}` : `${x.count} file${x.count === 1 ? "" : "s"}`}</span></li>)}</ul>
                 </div>
               )}
             </div>
           </div>
         </Section>
       </div>
-      {closing && <p className="mt-4 whitespace-pre-line text-[13.5px] leading-relaxed">{closing}</p>}
-      <p className="mt-4 text-[11.5px] text-muted-foreground">Odin · {d.company} · {customer ? "customer copy" : "internal"} · generated {fmtWhen(d.generated_at, true)}</p>
+      {closing && <p className="mt-4 whitespace-pre-line text-[14px] leading-relaxed">{closing}</p>}
+      <p className="mt-4 text-[12px] text-muted-foreground">Odin · {d.company} · {customer ? "customer copy" : "internal"} · generated {fmtWhen(d.generated_at, true)}</p>
     </div>
   )
 }

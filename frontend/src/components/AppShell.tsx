@@ -7,6 +7,7 @@ import { logout, postForm, type User } from "@/lib/api"
 import { Logo } from "@/components/Brand"
 import { UserAvatar } from "@/components/UserAvatar"
 import { CommandPalette } from "@/components/CommandPalette"
+import { Toaster } from "@/components/Toaster"
 import { NotificationBell } from "@/components/NotificationBell"
 import { applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
@@ -122,12 +123,13 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
         </div>
       </header>
       {messages.length > 0 && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-full bg-card px-4 py-2 text-[12.5px] shadow-card print:hidden" role="status">
+        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-full bg-card px-4 py-2 text-[13px] shadow-card print:hidden" role="status">
           <span>{messages.join(" ")}</span>
           <button type="button" className="font-medium" onClick={onDismiss} aria-label="Dismiss">×</button>
         </div>
       )}
       <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">{children}</main>
+      <Toaster />
       <CommandPalette open={palette} onClose={() => setPalette(false)}
         pages={[...items.map((i) => ({ label: i.label, href: i.href })), { label: "Account", href: "/account" },
           ...(user.permissions.includes("create_project") && user.kind !== "external" ? [{ label: "New project", href: "/projects/new" }] : [])]} />

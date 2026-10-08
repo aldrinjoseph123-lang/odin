@@ -49,7 +49,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
         aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
         className="relative inline-flex h-8 w-8 items-center justify-center rounded-md text-nav-fg hover:bg-muted hover:text-foreground">
         <Bell className="h-4 w-4" />
-        {unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-semibold leading-4 text-primary-foreground">{unread > 99 ? "99+" : unread}</span>}
+        {unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[11px] font-semibold leading-4 text-primary-foreground">{unread > 99 ? "99+" : unread}</span>}
       </button>
       {open && (
         <div role="dialog" aria-label="Notifications" className="absolute right-0 top-10 z-50 w-[min(380px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground">
@@ -67,7 +67,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
                   <span className="min-w-0 flex-1">
                     <span className={cn("block text-[13px]", !n.read && "font-medium")}>{n.title}</span>
                     {n.body && <span className="mt-0.5 line-clamp-2 block text-[12px] text-muted-foreground">{n.body}</span>}
-                    <span className="mt-0.5 block text-[11.5px] text-muted-foreground"><Ago iso={n.created_at} />{n.actor ? ` · ${n.actor}` : ""}</span>
+                    <span className="mt-0.5 block text-[12px] text-muted-foreground"><Ago iso={n.created_at} />{n.actor ? ` · ${n.actor}` : ""}</span>
                   </span>
                 </button>
               </li>

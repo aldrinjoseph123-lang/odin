@@ -39,12 +39,12 @@ export default function Rbac(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">which global role may do what; project roles narrow it further</p>
         <a href="/users" className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Users</a>
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
       <form onSubmit={submit} className="mt-3">
         <div className="overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
             <thead className="bg-card">
-              <tr className="border-b border-border text-[11.5px] font-normal text-muted-foreground">
+              <tr className="border-b border-border text-[12px] font-normal text-muted-foreground">
                 <th className="px-3 py-2 text-left font-normal">Permission</th>
                 {data.roles.map((r) => <th key={r} className="px-3 py-2 text-center font-normal">{r}</th>)}
               </tr>
@@ -69,7 +69,7 @@ export default function Rbac(_props: { user: User }) {
         </div>
         <div className="mt-3 flex items-center gap-3">
           <Button type="submit" size="sm" disabled={busy || !dirty}>Save permissions</Button>
-          <span className="text-[11.5px] text-muted-foreground">Admin always keeps Manage settings, Manage users and every view right, so this page cannot lock everyone out.</span>
+          <span className="text-[12px] text-muted-foreground">Admin always keeps Manage settings, Manage users and every view right, so this page cannot lock everyone out.</span>
         </div>
       </form>
     </div>

@@ -35,7 +35,7 @@ export function AIAsk({ projectId }: { projectId: number }) {
   const lastJob = s.job && !working && s.job.created_at > (a?.created_at ?? "") ? s.job : null
   return (
     <section className="panel p-4" aria-labelledby="ask-h">
-      <h2 id="ask-h" className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] font-semibold text-nav-fg">
+      <h2 id="ask-h" className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] font-semibold text-nav-fg">
         <Sparkles className="h-3.5 w-3.5 text-primary-text" aria-hidden />Ask this rollout<span className="sr-only">, </span>
         <span className="font-normal text-muted-foreground">answered from its notes, risks, scope, tasks, plan changes and documents</span>
       </h2>

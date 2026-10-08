@@ -82,7 +82,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
     )
   }
   return (
-    <div className="mt-3 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[12.5px]">
+    <div className="mt-3 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
         <span className="min-w-0 flex-1" aria-live="polite">

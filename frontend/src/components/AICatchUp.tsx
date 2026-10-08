@@ -34,7 +34,7 @@ export function AICatchUp({ projectId }: { projectId: number }) {
     <section className="panel p-4" aria-labelledby="catchup-h">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
-        <h2 id="catchup-h" className="min-w-0 flex-1 basis-56 text-[12.5px] font-semibold text-nav-fg">
+        <h2 id="catchup-h" className="min-w-0 flex-1 basis-56 text-[13px] font-semibold text-nav-fg">
           Catch me up<span className="sr-only">, </span>
           <span className="ml-2 font-normal text-muted-foreground" aria-live="polite">
             {working ? "Reading the rollout… about two minutes." : sug ? <>AI brief, <Ago iso={sug.created_at} /></> : "a one-page brief on this rollout, for whoever takes it over or joins"}
@@ -55,7 +55,7 @@ export function AICatchUp({ projectId }: { projectId: number }) {
             {list("Waiting", sug.payload.waiting)}
             {list("Watch out", sug.payload.watch_out)}
           </div>
-          <p className="text-[11.5px] text-muted-foreground lg:col-span-2">Written by AI from this rollout's facts{sug.model ? ` (${sug.model})` : ""}; the waiting list is Odin's own. Check anything you act on.</p>
+          <p className="text-[12px] text-muted-foreground lg:col-span-2">Written by AI from this rollout's facts{sug.model ? ` (${sug.model})` : ""}; the waiting list is Odin's own. Check anything you act on.</p>
         </div>
       )}
     </section>

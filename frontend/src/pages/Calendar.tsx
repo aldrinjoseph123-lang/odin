@@ -36,7 +36,7 @@ function Chip({ it, full }: { it: Item; full?: boolean }) {
   const Icon = late ? AlarmClock : ICON[it.kind]
   const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
   return (
-    <Link to={it.href} className={cn("flex min-w-0 items-start gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] leading-tight hover:bg-muted", full && "py-1.5 text-[12.5px]")} title={`${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}`}>
+    <Link to={it.href} className={cn("flex min-w-0 items-start gap-1.5 rounded-md px-1.5 py-0.5 text-[12px] leading-tight hover:bg-muted", full && "py-1.5 text-[13px]")} title={`${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}`}>
       <Icon className={cn("mt-px h-3 w-3 shrink-0", tone)} aria-hidden />
       <span className="min-w-0">
         <span className={cn("block truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}>{late && <span className="sr-only">Late: </span>}{it.text}</span>
@@ -70,7 +70,7 @@ export function Calendar({ wide }: { wide: boolean }) {
         <button type="button" onClick={() => setMonth(addMonths(month, 1))} className={cn(pill, "w-7 px-0")} aria-label="Next month"><ChevronRight className="h-3.5 w-3.5" /></button>
         <button type="button" onClick={() => setMonth(today.slice(0, 7))} className={pill}>Today</button>
       </div>
-      <h2 className="text-[13.5px] font-semibold tracking-tight">{monthTitle(month)}</h2>
+      <h2 className="text-[14px] font-semibold tracking-tight">{monthTitle(month)}</h2>
       <div className="ml-auto flex flex-wrap gap-1.5" role="group" aria-label="Show">
         {toggles.map((t) => (
           <button key={t.key} type="button" aria-pressed={show[t.key]} onClick={() => setShow({ ...show, [t.key]: !show[t.key] })}
@@ -103,7 +103,7 @@ export function Calendar({ wide }: { wide: boolean }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {header}
-      <div className="grid grid-cols-7 border-y border-border text-center text-[11.5px] text-muted-foreground">
+      <div className="grid grid-cols-7 border-y border-border text-center text-[12px] text-muted-foreground">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((w) => <div key={w} className="py-1.5">{w}</div>)}
       </div>
       <div className="min-h-0 flex-1 overflow-auto">

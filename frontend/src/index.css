@@ -137,18 +137,21 @@
     --foreground: #E7E8EC;
     --card: #171A21;
     --card-foreground: #E7E8EC;
-    --popover: #1B1F27;
+    --popover: #1D2129;
     --popover-foreground: #E7E8EC;
     --primary-foreground: #FFFFFF;
     --secondary: #1E222A;
     --secondary-foreground: #E7E8EC;
-    --muted: #222731;
+    --muted: #252A34;
     --muted-foreground: #9AA0AB;
     --destructive: #F27C75;
     --border: #262B34;
     --input: #363C48;
-    --elevation-card: 0 0 0 1px rgb(255 255 255 / 0.03), 0 10px 28px -14px rgb(0 0 0 / 0.6);
-    --elevation-pop: 0 0 0 1px rgb(255 255 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.7);
+    /* Depth in dark is tone, not shadow: ground #0E1014 → card #171A21 →
+       popover #1D2129 (hover #252A34), each with a faint light edge. A drop shadow vanishes
+       on ink and only muddies the ground. */
+    --elevation-card: 0 0 0 1px rgb(255 255 255 / 0.03);
+    --elevation-pop: 0 0 0 1px rgb(255 255 255 / 0.07);
     --chart-2: #E7E8EC;
     --chart-3: #9AA0AB;
     --chart-4: #363C48;
@@ -221,6 +224,14 @@
   p a:not([data-slot="button"]) {
     text-decoration-line: underline;
     text-underline-offset: 2px;
+    }
+  /* every control says what it is under the pointer: a hand when it acts,
+     not-allowed when it is switched off (Base UI buttons set the same) */
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]), summary, select:not(:disabled), label:has(> input[type="checkbox"], > input[type="radio"]) {
+    cursor: pointer;
+    }
+  button:disabled, [aria-disabled="true"], select:disabled, input:disabled, textarea:disabled {
+    cursor: not-allowed;
     }
   /* on a touch screen every button is at least 24 x 24 px to hit (WCAG 2.5.8,
      test report UX-21: delete, remove and copy icons were 14 px) */

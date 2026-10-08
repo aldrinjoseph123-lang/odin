@@ -10,7 +10,7 @@ const W = 1000, H = 300
 
 export function SignatureView({ sig, className }: { sig: Signature | null; className?: string }) {
   if (!sig) return null
-  if (sig.kind === "typed") return <span className={cn("block truncate pr-2 text-[28px] italic leading-tight tracking-tight", className)}>{sig.text}</span>
+  if (sig.kind === "typed") return <span className={cn("block truncate pr-2 text-[24px] italic leading-tight tracking-tight", className)}>{sig.text}</span>
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className={cn("h-full w-full", className)} role="img" aria-label="Drawn signature">
       {sig.strokes.map((st, i) => <polyline key={i} points={st.map((p) => p.join(",")).join(" ")} fill="none" stroke="currentColor" strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" />)}

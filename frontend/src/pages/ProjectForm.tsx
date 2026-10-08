@@ -11,7 +11,7 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 const selectClass = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">{label}{hint && <span className="ml-1 text-[11.5px]">({hint})</span>}{children}</label>
+  return <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">{label}{hint && <span className="ml-1 text-[12px]">({hint})</span>}{children}</label>
 }
 
 export default function ProjectForm(_props: { user: User }) {
@@ -76,11 +76,11 @@ export default function ProjectForm(_props: { user: User }) {
   return (
     <div className="px-5 pb-8 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <a href="/projects" className="text-[12.5px] text-muted-foreground hover:text-foreground">Projects</a><span className="text-[12.5px] text-muted-foreground">/</span>
+        <a href="/projects" className="text-[13px] text-muted-foreground hover:text-foreground">Projects</a><span className="text-[13px] text-muted-foreground">/</span>
         <h1 className="text-[17px] font-semibold tracking-tight">{title}</h1>
         {editing && <a href={`/projects/${d.id}`} className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Cancel</a>}
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-1.5 text-[12.5px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-1.5 text-[13px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
 
       <p className="mt-3 text-[12px] text-muted-foreground">Fields marked * are required.</p>   {/* test report UX-26 */}
       <form onSubmit={submit} className="mt-2 grid grid-cols-1 max-w-3xl gap-4 lg:grid-cols-2">
@@ -109,9 +109,9 @@ export default function ProjectForm(_props: { user: User }) {
           <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} className="h-3.5 w-3.5 accent-primary" /> Ask the customer contact to approve each stage change</label>
           <Field label="PO number"><Input value={f.po_number} onChange={set("po_number")} maxLength={100} aria-label="PO number" className="h-8 text-[13px]" /></Field>
           <div className="grid grid-cols-3 gap-2">
-            <Field label="PO date"><Input type="date" value={f.po_date} onChange={(e) => setF({ ...f, po_date: e.target.value, start_date: f.start_date || e.target.value })} aria-label="PO date" className="h-8 text-[12.5px]" /></Field>
-            <Field label="Start date"><Input type="date" value={f.start_date} onChange={set("start_date")} aria-label="Start date" className="h-8 text-[12.5px]" /></Field>
-            <Field label="Target end"><Input type="date" value={f.target_end_date} onChange={set("target_end_date")} aria-label="Target end date" className="h-8 text-[12.5px]" /></Field>
+            <Field label="PO date"><Input type="date" value={f.po_date} onChange={(e) => setF({ ...f, po_date: e.target.value, start_date: f.start_date || e.target.value })} aria-label="PO date" className="h-8 text-[13px]" /></Field>
+            <Field label="Start date"><Input type="date" value={f.start_date} onChange={set("start_date")} aria-label="Start date" className="h-8 text-[13px]" /></Field>
+            <Field label="Target end"><Input type="date" value={f.target_end_date} onChange={set("target_end_date")} aria-label="Target end date" className="h-8 text-[13px]" /></Field>
           </div>
           {!editing && (
             <>
@@ -119,7 +119,7 @@ export default function ProjectForm(_props: { user: User }) {
                 <select name="stage_template_id" value={f.stage_template_id} onChange={set("stage_template_id")} aria-label="Stage template" className={selectClass}>{d.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
               </Field>
               <Field label="Client PO document *" hint="required — no project without the PO on file">
-                <input type="file" name="po_document" required aria-label="Client PO document" className="text-[12.5px] file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-[12.5px] file:font-medium" />
+                <input type="file" name="po_document" required aria-label="Client PO document" className="text-[13px] file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-[13px] file:font-medium" />
               </Field>
             </>
           )}
@@ -172,7 +172,7 @@ export default function ProjectForm(_props: { user: User }) {
 
         <div className="flex items-center gap-3 lg:col-span-2">
           <Button type="submit" size="sm" disabled={busy || !f.name?.trim() || !f.client?.trim()}>{busy ? "Saving…" : editing ? "Save changes" : "Create project"}</Button>
-          {!editing && <span className="text-[11.5px] text-muted-foreground">Pick-lists are managed under Settings → Contacts & partners.</span>}
+          {!editing && <span className="text-[12px] text-muted-foreground">Pick-lists are managed under Settings → Contacts & partners.</span>}
         </div>
       </form>
     </div>

@@ -30,7 +30,7 @@ export function SettingsLayout({ user, children }: { user: User; children: React
         <div className="flex gap-1 overflow-x-auto px-3 py-2 md:sticky md:top-0 md:grid md:gap-4 md:overflow-visible md:px-3 md:py-4">
           {SETTINGS_GROUPS.map((g) => (
             <div key={g.label} className="flex shrink-0 gap-1 md:grid md:gap-0.5">
-              <p className="hidden px-2 pb-1 text-[11.5px] text-muted-foreground md:block">{g.label}</p>
+              <p className="hidden px-2 pb-1 text-[12px] text-muted-foreground md:block">{g.label}</p>
               {g.items.map((i) => {
                 const on = pathname === i.href
                 return (

@@ -9,7 +9,7 @@ import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const fmt = (iso: string) => fmtWhen(iso, true)
-const selectClass = "h-7 max-w-48 rounded-md border border-border bg-background px-2 text-[12.5px] font-medium text-nav-fg hover:bg-muted"
+const selectClass = "h-7 max-w-48 rounded-md border border-border bg-background px-2 text-[13px] font-medium text-nav-fg hover:bg-muted"
 
 export default function Audit(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
@@ -51,15 +51,15 @@ export default function Audit(_props: { user: User }) {
         <select value={params.get("project_id") ?? ""} onChange={(e) => update({ project_id: e.target.value || null })} aria-label="Filter by project" className={selectClass}>
           <option value="">All projects</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <Input type="date" value={params.get("from") ?? ""} onChange={(e) => update({ from: e.target.value || null })} aria-label="From date" className="h-7 w-36 text-[12.5px]" />
-        <Input type="date" value={params.get("to") ?? ""} onChange={(e) => update({ to: e.target.value || null })} aria-label="To date" className="h-7 w-36 text-[12.5px]" />
+        <Input type="date" value={params.get("from") ?? ""} onChange={(e) => update({ from: e.target.value || null })} aria-label="From date" className="h-7 w-36 text-[13px]" />
+        <Input type="date" value={params.get("to") ?? ""} onChange={(e) => update({ to: e.target.value || null })} aria-label="To date" className="h-7 w-36 text-[13px]" />
         {filtered && <button type="button" onClick={() => setParams({})} className="text-[12px] text-muted-foreground hover:text-foreground">Clear</button>}
       </div>
 
       <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
         <table className="w-full border-collapse text-[13px]">
           <thead className="sticky top-0 bg-card">
-            <tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">
+            <tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">
               {["When", "User", "Action", "Resource", "Details", "IP"].map((h, i) => <th key={h} className={cn("px-3 py-2 font-normal", i === 5 && "hidden lg:table-cell")}>{h}</th>)}
             </tr>
           </thead>
@@ -68,13 +68,13 @@ export default function Audit(_props: { user: User }) {
               <tr key={r.id} className="border-b border-border align-top last:border-0 hover:bg-muted">
                 <td className="whitespace-nowrap px-3 py-1.5 text-[12px] text-muted-foreground">{fmt(r.timestamp)}</td>
                 <td className="px-3 py-1.5">{r.username}</td>
-                <td className="px-3 py-1.5"><span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11.5px]">{r.action}</span></td>
+                <td className="px-3 py-1.5"><span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[12px]">{r.action}</span></td>
                 <td className="px-3 py-1.5">
                   {r.resource_type && <span className="text-[12px] text-muted-foreground">{r.resource_type} </span>}
                   {r.resource_type === "project" && r.resource_id ? <a href={`/projects/${r.resource_id}`} className="font-medium hover:underline">{r.resource_name ?? `#${r.resource_id}`}</a>
                     : r.resource_name ? <span>{r.resource_name}</span> : r.resource_id ? <span className="text-muted-foreground">#{r.resource_id}</span> : null}
                 </td>
-                <td className="max-w-md break-words px-3 py-1.5 text-[12.5px]">{r.details}</td>
+                <td className="max-w-md break-words px-3 py-1.5 text-[13px]">{r.details}</td>
                 <td className="hidden whitespace-nowrap px-3 py-1.5 text-[12px] text-muted-foreground lg:table-cell">{r.ip_address}</td>
               </tr>
             ))}
@@ -82,7 +82,7 @@ export default function Audit(_props: { user: User }) {
           </tbody>
         </table>
       </div>
-      <div className="mt-2 flex items-center gap-3 text-[12.5px] text-muted-foreground">
+      <div className="mt-2 flex items-center gap-3 text-[13px] text-muted-foreground">
         {data.total_pages > 1 && (
           <>
             <button type="button" disabled={data.page <= 1} onClick={() => goto(data.page - 1)} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7")} aria-label="Previous page"><ChevronLeft className="h-3.5 w-3.5" /></button>

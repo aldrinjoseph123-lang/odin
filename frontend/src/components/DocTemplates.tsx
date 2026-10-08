@@ -54,7 +54,7 @@ export function DocTemplates() {
 
   return (
     <div className="grid grid-cols-1 gap-4">
-      {notice && <p className={cn("text-[12.5px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <p className={cn("text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
       {KINDS.map((kind) => {
         const list = d.templates.filter((t) => t.kind === kind)
         return (
@@ -63,7 +63,7 @@ export function DocTemplates() {
               <h2 data-n className="text-[12px] font-semibold text-nav-fg">{d.kinds[kind].label}</h2>
               <Button size="sm" variant="outline" className="ml-auto h-7 rounded-full" onClick={() => startNew(kind)}><Plus className="h-3.5 w-3.5" /> New template</Button>
             </div>
-            {list.length === 0 && <p className="text-[12.5px] text-muted-foreground">No templates yet: documents use the built-in layout.</p>}
+            {list.length === 0 && <p className="text-[13px] text-muted-foreground">No templates yet: documents use the built-in layout.</p>}
             <ul className="divide-y divide-border text-[13px]">
               {list.map((t) => <Row key={t.id} t={t} busy={busy}
                 onEdit={() => { setPreview(null); setEdit({ id: t.id, kind: t.kind, name: t.name, config: structuredClone(t.config) }) }}
@@ -84,7 +84,7 @@ function Row({ t, busy, onEdit, onCopy, onDefault, onDelete }: { t: DocTemplate;
       <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: SWATCH[t.config.accent] }} aria-hidden />
       <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left"><span className="font-medium hover:underline">{t.name}</span>
         {t.is_default && <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium text-primary-text">Default</span>}
-        <span className="block text-[11.5px] text-muted-foreground">{t.config.title} · edited by {t.updated_by}, {fmtWhen(t.updated_at)}</span></button>
+        <span className="block text-[12px] text-muted-foreground">{t.config.title} · edited by {t.updated_by}, {fmtWhen(t.updated_at)}</span></button>
       {!t.is_default && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={onDefault}><Star className="h-3.5 w-3.5" /> Make default</Button>}
       <Button size="sm" variant="ghost" className="h-7" onClick={onCopy} aria-label={`Duplicate ${t.name}`}><Copy className="h-3.5 w-3.5" /></Button>
       <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={onDelete} aria-label={`Delete ${t.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -106,21 +106,21 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
       <div className="grid grid-cols-1 content-start gap-4">
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Template">
           <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" aria-hidden />
-            <h2 className="text-[13.5px] font-semibold">{edit.id ? "Edit template" : "New template"} · {k.label}</h2></div>
-          <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Template name<input className={field} required maxLength={80} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="e.g. Globex customer copy" autoFocus /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Document title<input className={field} maxLength={80} value={c.title} onChange={(e) => set({ title: e.target.value })} /></label>
+            <h2 className="text-[14px] font-semibold">{edit.id ? "Edit template" : "New template"} · {k.label}</h2></div>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Template name<input className={field} required maxLength={80} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="e.g. Globex customer copy" autoFocus /></label>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Document title<input className={field} maxLength={80} value={c.title} onChange={(e) => set({ title: e.target.value })} /></label>
         </section>
 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Brand">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Brand</h2>
-          <fieldset><legend className="mb-1.5 text-[12.5px] font-medium">Accent</legend>
+          <fieldset><legend className="mb-1.5 text-[13px] font-medium">Accent</legend>
             <div className="flex flex-wrap gap-2">
               {d.accents.map((a) => <button key={a} type="button" onClick={() => set({ accent: a })} aria-label={a} aria-pressed={c.accent === a}
                 className={cn("h-7 w-7 rounded-full ring-offset-2 ring-offset-card", c.accent === a && "ring-2 ring-foreground")} style={{ background: SWATCH[a] }} />)}
             </div>
           </fieldset>
           {(["logo", "co_logo"] as const).map((key) => (
-            <div key={key} className="grid grid-cols-1 gap-1 text-[12.5px]">
+            <div key={key} className="grid grid-cols-1 gap-1 text-[13px]">
               <span className="font-medium">{key === "logo" ? "Our logo" : "Customer's logo (co-brand)"} <span className="font-normal text-muted-foreground">{key === "logo" ? "replaces the Odin wordmark in the header" : "beside ours, on the right"}</span></span>
               <div className="flex items-center gap-2">
                 {c[key] ? <img src={`/api/doc-templates/logo/${c[key]}`} alt="" className="h-9 max-w-40 rounded border border-border bg-white object-contain p-1" /> : <span className="text-muted-foreground">none</span>}
@@ -130,10 +130,10 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
               </div>
             </div>
           ))}
-          <p className="-mt-1 text-[11.5px] text-muted-foreground">PNG or JPEG, up to 1 MB. A wide logo on a transparent or dark background reads best on the black header.</p>
-          <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Company line <span className="font-normal text-muted-foreground">under the title, e.g. address and registration</span>
+          <p className="-mt-1 text-[12px] text-muted-foreground">PNG or JPEG, up to 1 MB. A wide logo on a transparent or dark background reads best on the black header.</p>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Company line <span className="font-normal text-muted-foreground">under the title, e.g. address and registration</span>
             <input className={field} maxLength={160} value={c.company_line} onChange={(e) => set({ company_line: e.target.value })} /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Footer <span className="font-normal text-muted-foreground">on every page, e.g. "Confidential"</span>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Footer <span className="font-normal text-muted-foreground">on every page, e.g. "Confidential"</span>
             <input className={field} maxLength={200} value={c.footer} onChange={(e) => set({ footer: e.target.value })} /></label>
         </section>
 
@@ -149,20 +149,20 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
               </li>
             ))}
           </ol>
-          {edit.kind === "signoff" && <p className="mt-2 text-[11.5px] text-muted-foreground">The acceptance statement, the signatures and the signing record always appear.</p>}
+          {edit.kind === "signoff" && <p className="mt-2 text-[12px] text-muted-foreground">The acceptance statement, the signatures and the signing record always appear.</p>}
         </section>
 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Wording">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Wording</h2>
-          <p className="-mt-1 text-[11.5px] text-muted-foreground">Placeholders: {Object.entries(d.placeholders).map(([p, what]) => <code key={p} title={what} className="mr-1.5 rounded bg-muted px-1">{`{${p}}`}</code>)}</p>
+          <p className="-mt-1 text-[12px] text-muted-foreground">Placeholders: {Object.entries(d.placeholders).map(([p, what]) => <code key={p} title={what} className="mr-1.5 rounded bg-muted px-1">{`{${p}}`}</code>)}</p>
           {k.texts.map((t) => (
-            <label key={t.key} className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">{t.label} <span className="font-normal text-muted-foreground">{t.help}</span>
+            <label key={t.key} className="grid grid-cols-1 gap-1 text-[13px] font-medium">{t.label} <span className="font-normal text-muted-foreground">{t.help}</span>
               <textarea rows={t.key === "terms" ? 3 : 2} maxLength={3000} value={c.texts[t.key] ?? ""} onChange={(e) => set({ texts: { ...c.texts, [t.key]: e.target.value } })}
                 className="w-full rounded-md border border-input bg-background p-2 text-[13px] leading-relaxed" /></label>
           ))}
         </section>
 
-        {notice && <p className={cn("text-[12.5px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
+        {notice && <p className={cn("text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
         <div className="flex flex-wrap gap-2">
           <Button className="rounded-full" disabled={busy || !edit.name.trim()} onClick={onSave}>Save template</Button>
           <Button variant="outline" className="rounded-full" disabled={busy} onClick={onPreview}><Eye className="h-4 w-4" /> Preview</Button>

@@ -13,7 +13,7 @@ import { fmtDate } from "@/lib/format"
 // The rollout's plan on its project page: health up top, the Gantt, then the
 // dates per stage (editable for the project manager), the baseline controls
 // and the log of what moved. Saving the first plan freezes it as the baseline.
-const input = "h-8 w-[8.5rem] rounded-md border border-input bg-background px-2 text-[12.5px] tabular-nums disabled:opacity-60"
+const input = "h-8 w-[8.5rem] rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-60"
 const slipText = (n: number | null) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 
 export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?: () => void }) {
@@ -54,15 +54,15 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
     <div>
       <div className="flex flex-wrap items-start gap-3">
         <RagPill rag={d.health.rag} />
-        <ul className="min-w-0 flex-1 text-[12.5px] text-muted-foreground">{d.health.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+        <ul className="min-w-0 flex-1 text-[13px] text-muted-foreground">{d.health.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
       </div>
       <AIHealthWhy projectId={projectId} rag={d.health.rag} />
       <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {tiles.map((t) => (
           <div key={t.label} className="rounded-xl bg-muted/50 p-3">
-            <div className="text-[11.5px] text-muted-foreground">{t.label}</div>
-            <div className={cn("mt-1 text-[18px] font-semibold leading-none", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
-            {t.sub && <div className="mt-1 text-[11.5px] text-muted-foreground">{t.sub}</div>}
+            <div className="text-[12px] text-muted-foreground">{t.label}</div>
+            <div className={cn("mt-1 text-[17px] font-semibold leading-none", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
+            {t.sub && <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>}
           </div>
         ))}
       </div>
@@ -70,8 +70,8 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
       <div className="mt-4"><PlanGantt stages={d.stages} today={d.today} target={f.target} /></div>
 
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
-          <thead><tr className="border-b border-border text-left text-[11.5px] text-muted-foreground">
+        <table className="w-full min-w-[720px] border-collapse text-[13px]">
+          <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">
             {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", "SLA", "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className="px-2 py-1.5 font-normal">{h}</th>)}
           </tr></thead>
           <tbody>
@@ -100,8 +100,8 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
       {d.can_edit && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Fill the gaps from SLAs</Button>
-          <label className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
-          {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="h-8 min-w-60 flex-1 rounded-md border border-input bg-background px-2 text-[12.5px]" />}
+          <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
+          {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="h-8 min-w-60 flex-1 rounded-md border border-input bg-background px-2 text-[13px]" />}
           <span className="ml-auto flex gap-2">
             {dirty && <Button size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={() => load()}>Discard</Button>}
             <Button size="sm" className="rounded-full" disabled={busy || !dirty} onClick={save}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
@@ -109,18 +109,18 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
           </span>
         </div>
       )}
-      {notice && <p className={cn("mt-2 text-[12.5px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <p className={cn("mt-2 text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
 
       {d.changes.length > 0 && (
         <div className="mt-3">
-          <button type="button" onClick={() => setLog(!log)} aria-expanded={log} className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground"><History className="h-3.5 w-3.5" />{log ? "Hide" : "Show"} what moved ({d.changes.length})</button>
+          <button type="button" onClick={() => setLog(!log)} aria-expanded={log} className="flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"><History className="h-3.5 w-3.5" />{log ? "Hide" : "Show"} what moved ({d.changes.length})</button>
           {log && (
-            <ul className="mt-2 divide-y divide-border text-[12.5px]">
+            <ul className="mt-2 divide-y divide-border text-[13px]">
               {d.changes.map((c, i) => (
                 <li key={i} className="flex flex-wrap items-baseline gap-x-2 py-1.5">
                   {c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <span><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</span>}
                   {c.reason && <span className="text-muted-foreground">— {c.reason}</span>}
-                  <span className="ml-auto text-[11.5px] text-muted-foreground">{c.author} · <Ago iso={c.created_at} /></span>
+                  <span className="ml-auto text-[12px] text-muted-foreground">{c.author} · <Ago iso={c.created_at} /></span>
                 </li>
               ))}
             </ul>
@@ -131,7 +131,7 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
       <Dialog open={rebase !== null} onOpenChange={(o) => { if (!o) setRebase(null) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Re-baseline the plan</DialogTitle><DialogDescription>The current plan becomes what the rollout is measured against from now on. The old baseline stays in the log.</DialogDescription></DialogHeader>
-          <label htmlFor="rebase-reason" className="text-[12.5px] font-medium">Why</label>
+          <label htmlFor="rebase-reason" className="text-[13px] font-medium">Why</label>
           <input id="rebase-reason" autoFocus value={rebase ?? ""} onChange={(e) => setRebase(e.target.value)} maxLength={300} placeholder="Scope change agreed with the customer on 3 Oct" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]" />
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setRebase(null)}>Cancel</Button>

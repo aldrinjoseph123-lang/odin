@@ -39,8 +39,8 @@ export default function Join() {
   if (done) return (
     <AuthLayout>
       <AuthHeading title="Request sent"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-ok" aria-hidden /> An admin will review it.</span></AuthHeading>
-      <p className="text-[13.5px] text-muted-foreground">Once approved, sign in with <b className="text-foreground">{f.username}</b> and the password you chose{info.project ? `; you will already be on ${info.project}` : ""}.</p>
-      <a href="/login" className="mt-6 inline-block text-[13.5px] text-primary-text hover:underline">Go to sign-in</a>
+      <p className="text-[14px] text-muted-foreground">Once approved, sign in with <b className="text-foreground">{f.username}</b> and the password you chose{info.project ? `; you will already be on ${info.project}` : ""}.</p>
+      <a href="/login" className="mt-6 inline-block text-[14px] text-primary-text hover:underline">Go to sign-in</a>
     </AuthLayout>
   )
   const label = "grid gap-1.5 text-[13px] font-medium"
