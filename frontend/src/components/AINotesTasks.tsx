@@ -56,7 +56,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
   }
   return (
     <section className="panel p-4" aria-labelledby="minutes-h">
-      <h2 id="minutes-h" className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] font-semibold text-nav-fg">
+      <h2 id="minutes-h" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-nav-fg">
         <Sparkles className="h-3.5 w-3.5 text-primary-text" aria-hidden />Tasks from meeting notes<span className="sr-only">, </span>
         <span className="font-normal text-muted-foreground">paste the minutes; the AI lists the actions agreed in them</span>
       </h2>
@@ -80,7 +80,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
           {sug.payload.tasks.length === 0 ? <p className="text-[13px] text-muted-foreground">No actions found in those minutes.</p> : (
             <ul className="divide-y divide-border text-[13px]">
               {sug.payload.tasks.map((t, i) => (
-                <li key={i} className="flex items-start gap-2 py-1.5">
+                <li key={i} className="flex items-start gap-2 py-2">
                   <input type="checkbox" className="mt-1 h-3.5 w-3.5 accent-primary" checked={picked.has(i)} aria-label={`Add ${t.title}`}
                     onChange={() => setPicked((p) => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n })} />
                   <span className="min-w-0 flex-1">

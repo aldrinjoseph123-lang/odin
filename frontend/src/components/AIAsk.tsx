@@ -35,7 +35,7 @@ export function AIAsk({ projectId }: { projectId: number }) {
   const lastJob = s.job && !working && s.job.created_at > (a?.created_at ?? "") ? s.job : null
   return (
     <section className="panel p-4" aria-labelledby="ask-h">
-      <h2 id="ask-h" className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] font-semibold text-nav-fg">
+      <h2 id="ask-h" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-nav-fg">
         <Sparkles className="h-3.5 w-3.5 text-primary-text" aria-hidden />Ask this rollout<span className="sr-only">, </span>
         <span className="font-normal text-muted-foreground">answered from its notes, risks, scope, tasks, plan changes and documents</span>
       </h2>
@@ -57,8 +57,8 @@ export function AIAsk({ projectId }: { projectId: number }) {
             <p className="text-[12px] text-muted-foreground">“{a.payload.question}”, <Ago iso={a.created_at} /></p>
             <p className="mt-1 leading-relaxed">{a.payload.answer}</p>
             {a.payload.sources.length > 0 && (
-              <ul className="mt-2 flex flex-wrap gap-1.5 text-[12px]">
-                {a.payload.sources.map((src) => <li key={src.n}><Link to={src.href} className="rounded-full border border-border px-2 py-0.5 hover:bg-muted">[{src.n}] {src.from}</Link></li>)}
+              <ul className="mt-2 flex flex-wrap gap-2 text-[12px]">
+                {a.payload.sources.map((src) => <li key={src.n}><Link to={src.href} className="rounded-full border border-border px-2 py-1 hover:bg-muted">[{src.n}] {src.from}</Link></li>)}
               </ul>
             )}
             {!a.payload.found && <p className="mt-1 text-[12px] text-muted-foreground">The records do not answer this; nothing was guessed.</p>}

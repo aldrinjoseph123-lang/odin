@@ -64,7 +64,7 @@ export default function Report({ user }: { user: User }) {
       <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{r.project.name}</Link>
       <span className="ml-auto flex flex-wrap items-center gap-2">
         {r.can_edit && (
-          <span className="flex rounded-full bg-muted p-0.5" role="group" aria-label="Audience">
+          <span className="flex rounded-full bg-muted p-1" role="group" aria-label="Audience">
             {(["internal", "customer"] as const).map((a) => <button key={a} type="button" aria-pressed={r.audience === a} onClick={() => set("audience", a === "internal" ? null : a)}
               className={cn("h-7 rounded-full px-3 text-[13px] font-medium", r.audience === a ? "bg-card shadow-card" : "text-muted-foreground")}>{a === "internal" ? "Internal" : "Customer copy"}</button>)}
           </span>
@@ -91,8 +91,8 @@ export default function Report({ user }: { user: User }) {
         <h1 className="mt-3 text-[17px] font-semibold tracking-tight">Report, version {r.version?.version}</h1>
         <Section title={`Written by ${r.version?.created_by}, ${fmtWhen(r.version?.created_at, true)}`} className="mt-3">
           <div className="text-[13px] leading-relaxed">
-            {groupBlocks(r.words.blocks ?? []).map((b, i) => b.kind === "ul" ? <ul key={i} className="my-1.5 list-disc pl-5">{b.items.map((t, j) => <li key={j}>{t}</li>)}</ul>
-              : b.kind === "h" ? <h3 key={i} className="mt-4 border-b border-border pb-1 text-[13px] font-semibold first:mt-0">{b.text}</h3> : <p key={i} className="my-1.5">{b.text}</p>)}
+            {groupBlocks(r.words.blocks ?? []).map((b, i) => b.kind === "ul" ? <ul key={i} className="my-2 list-disc pl-5">{b.items.map((t, j) => <li key={j}>{t}</li>)}</ul>
+              : b.kind === "h" ? <h3 key={i} className="mt-4 border-b border-border pb-1 text-[13px] font-semibold first:mt-0">{b.text}</h3> : <p key={i} className="my-2">{b.text}</p>)}
           </div>
         </Section>
       </div>
@@ -116,7 +116,7 @@ export default function Report({ user }: { user: User }) {
     { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
     { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", bad: d.work.late > 0 },
   ]
-  const textarea = "w-full rounded-lg border border-input bg-background p-2.5 text-[14px] leading-relaxed"
+  const textarea = "w-full rounded-lg border border-input bg-background p-3 text-[14px] leading-relaxed"
   const wordBlock = (key: "summary" | "next_steps" | "asks", label: string, rows: number, hint: string) => (
     <div>
       <div className="mb-1 flex items-center gap-2"><h3 className="text-[13px] font-semibold text-nav-fg">{label}</h3>
@@ -142,7 +142,7 @@ export default function Report({ user }: { user: User }) {
 
       <header className="mt-3">
         <h1 className="text-[24px] font-semibold tracking-tight">{d.project.name}</h1>
-        <p className="mt-0.5 text-[13px] text-muted-foreground">{[d.project.client, `PM ${d.project.owner_name}`, `stage ${d.project.stage_number} of ${d.project.stage_count}: ${d.project.stage}`, d.project.po_number, d.project.vendor_name && `${d.project.vendor_name}${d.project.product_name ? ` ${d.project.product_name}` : ""}`].filter(Boolean).join(" · ")}</p>
+        <p className="mt-1 text-[13px] text-muted-foreground">{[d.project.client, `PM ${d.project.owner_name}`, `stage ${d.project.stage_number} of ${d.project.stage_count}: ${d.project.stage}`, d.project.po_number, d.project.vendor_name && `${d.project.vendor_name}${d.project.product_name ? ` ${d.project.product_name}` : ""}`].filter(Boolean).join(" · ")}</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <RagPill rag={d.health.rag} />
           {!customer && <ul className="text-[13px] text-muted-foreground">{d.health.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
@@ -155,7 +155,7 @@ export default function Report({ user }: { user: User }) {
         {tiles.map((t) => (
           <div key={t.label} className="panel p-4 print:shadow-none">
             <div className="text-[12px] text-muted-foreground">{t.label}</div>
-            <div className={cn("mt-1.5 text-[24px] font-semibold leading-none tracking-tight", t.bad && "text-bad")}>{t.value}</div>
+            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.bad && "text-bad")}>{t.value}</div>
             <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
           </div>
         ))}
@@ -220,11 +220,11 @@ export default function Report({ user }: { user: User }) {
               {d.raid.map((x) => {
                 const K = RAID_KIND[x.kind]
                 return (
-                  <li key={x.id} className="flex items-start gap-2.5 py-2">
-                    <K.icon className={cn("mt-0.5 h-4 w-4 shrink-0", x.kind === "blocker" && x.open ? "text-bad" : "text-muted-foreground")} aria-hidden />
+                  <li key={x.id} className="flex items-start gap-3 py-2">
+                    <K.icon className={cn("mt-1 h-4 w-4 shrink-0", x.kind === "blocker" && x.open ? "text-bad" : "text-muted-foreground")} aria-hidden />
                     <span className="min-w-0 flex-1"><span className={cn("block font-medium", !x.open && "text-muted-foreground")}>{x.title}</span>
                       <span className="block text-[12px] text-muted-foreground">{K.label} · {x.status}{x.owner_name && ` · ${x.owner_name}`}{x.due_date && ` · due ${fmtDate(x.due_date)}`}{x.resolution && ` · ${x.resolution}`}</span></span>
-                    {x.kind !== "decision" && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", x.impact === "high" ? "bg-warn-soft font-semibold text-warn" : x.impact === "medium" ? "bg-muted text-foreground" : "bg-muted text-muted-foreground")}>{x.impact}</span>}
+                    {x.kind !== "decision" && <span className={cn("shrink-0 rounded-full px-2 py-1 text-[11px] font-medium", x.impact === "high" ? "bg-warn-soft font-semibold text-warn" : x.impact === "medium" ? "bg-muted text-foreground" : "bg-muted text-muted-foreground")}>{x.impact}</span>}
                   </li>
                 )
               })}
@@ -248,7 +248,7 @@ export default function Report({ user }: { user: User }) {
                 </ResponsiveContainer>
               </div>
             )}
-            <div className="mt-3 grid grid-cols-1 gap-1.5 text-[13px]">
+            <div className="mt-3 grid grid-cols-1 gap-2 text-[13px]">
               {d.work.by_stage.filter((b) => b.total).map((b) => (
                 <div key={b.stage} className="flex items-center gap-3">
                   <span className="w-32 truncate">{b.stage}</span>
@@ -293,7 +293,7 @@ export default function Report({ user }: { user: User }) {
                 <div>
                   <h3 className="mb-1 text-[13px] font-semibold text-nav-fg">What moved in the plan</h3>
                   <ul className="divide-y divide-border text-[13px]">{d.plan_changes.slice(0, 10).map((c, i) => (
-                    <li key={i} className="py-1.5">{c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</>}
+                    <li key={i} className="py-2">{c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</>}
                       {c.reason && <span className="text-muted-foreground"> — {c.reason}</span>}<span className="block text-[12px] text-muted-foreground">{c.author} · {fmtDate(c.created_at)}</span></li>))}</ul>
                 </div>
               )}
@@ -306,7 +306,7 @@ export default function Report({ user }: { user: User }) {
               {d.documents && d.documents.length > 0 && (
                 <div>
                   <h3 className="mb-1 text-[13px] font-semibold text-nav-fg">Documents</h3>
-                  <ul className="grid grid-cols-1 gap-0.5 text-[13px]">{d.documents.slice(0, 12).map((x, i) => <li key={i} className="flex justify-between gap-3"><span className="truncate">{"filename" in x ? x.filename : x.category}</span><span className="shrink-0 text-muted-foreground">{"filename" in x ? `${x.category} · ${fmtDate(x.uploaded_at)}` : `${x.count} file${x.count === 1 ? "" : "s"}`}</span></li>)}</ul>
+                  <ul className="grid grid-cols-1 gap-1 text-[13px]">{d.documents.slice(0, 12).map((x, i) => <li key={i} className="flex justify-between gap-3"><span className="truncate">{"filename" in x ? x.filename : x.category}</span><span className="shrink-0 text-muted-foreground">{"filename" in x ? `${x.category} · ${fmtDate(x.uploaded_at)}` : `${x.count} file${x.count === 1 ? "" : "s"}`}</span></li>)}</ul>
                 </div>
               )}
             </div>

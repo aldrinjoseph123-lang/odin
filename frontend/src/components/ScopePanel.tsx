@@ -52,7 +52,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
       )}
       <div className="flex flex-wrap items-center gap-2 text-[12px]">
         {d.items.length > 0 ? (["delivered", "partial", "descoped", "agreed"] as ScopeStatus[]).filter(count).map((s) =>
-          <span key={s} className={cn("rounded-full px-2 py-0.5", SCOPE_TONE[s].replace("line-through", ""))}>{count(s)} {SCOPE_WORD[s].toLowerCase()}</span>)
+          <span key={s} className={cn("rounded-full px-2 py-1", SCOPE_TONE[s].replace("line-through", ""))}>{count(s)} {SCOPE_WORD[s].toLowerCase()}</span>)
           : <span className="text-muted-foreground">What the customer agreed to, item by item. The sign-off lists it.</span>}
         {d.can_edit && <Button size="sm" className="ml-auto rounded-full" onClick={() => { setError(null); setEdit({ title: "", status: "agreed" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
@@ -61,12 +61,12 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
       <ol className="mt-2 divide-y divide-border text-[13px]">
         {d.items.map((i, n) => (
           <li key={i.id} className="flex items-start gap-2 py-2">
-            <span className="w-5 shrink-0 pt-0.5 text-right text-[12px] tabular-nums text-muted-foreground">{n + 1}</span>
+            <span className="w-5 shrink-0 pt-1 text-right text-[12px] tabular-nums text-muted-foreground">{n + 1}</span>
             <button type="button" disabled={!d.can_edit} onClick={() => { setError(null); setEdit({ ...i }) }} className="min-w-0 flex-1 text-left enabled:hover:underline">
               <span className={cn("block font-medium", i.status === "descoped" && "text-muted-foreground line-through")}>{i.title}</span>
               {(i.detail || i.note) && <span className="block text-[12px] text-muted-foreground">{[i.detail, i.note].filter(Boolean).join(" · ")}</span>}
             </button>
-            <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", SCOPE_TONE[i.status].replace("line-through", ""))}>{SCOPE_WORD[i.status]}</span>
+            <span className={cn("shrink-0 rounded-full px-2 py-1 text-[11px] font-medium", SCOPE_TONE[i.status].replace("line-through", ""))}>{SCOPE_WORD[i.status]}</span>
             {d.can_edit && (
               <span className="flex shrink-0">
                 <button type="button" aria-label={`Move ${i.title} up`} disabled={busy || n === 0} onClick={() => act(() => saveScope(projectId, { move: -1 }, i.id))} className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
@@ -86,7 +86,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
                 <DialogDescription>Before sign-off, mark each item delivered, partly delivered or descoped; the last two need a reason.</DialogDescription></DialogHeader>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Deliverable<input className={field} required maxLength={300} value={edit.title} onChange={(e) => set({ title: e.target.value })} autoFocus /></label>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Detail<textarea rows={2} maxLength={2000} className="w-full rounded-md border border-input bg-background p-2 text-[13px]" value={edit.detail ?? ""} onChange={(e) => set({ detail: e.target.value })} placeholder="Quantities, sites, acceptance criteria" /></label>
-              <div className="flex rounded-full bg-muted p-0.5" role="radiogroup" aria-label="Status">
+              <div className="flex rounded-full bg-muted p-1" role="radiogroup" aria-label="Status">
                 {(Object.keys(SCOPE_WORD) as ScopeStatus[]).map((s) => <button key={s} type="button" role="radio" aria-checked={edit.status === s} onClick={() => set({ status: s })}
                   className={cn("h-7 flex-1 rounded-full text-[12px]", edit.status === s ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{SCOPE_WORD[s]}</button>)}
               </div>

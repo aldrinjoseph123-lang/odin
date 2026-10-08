@@ -51,7 +51,7 @@ export function Byline({ className }: { className?: string }) {
 
 export function Logo({ byline, className, markClass, wordClass }: { byline?: boolean; className?: string; markClass?: string; wordClass?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
+    <span className={cn("inline-flex items-center gap-3", className)}>
       <RavenMark className={markClass} />
       <Wordmark className={wordClass} />
       {byline && <><span className="h-[1.1em] w-px bg-current opacity-30" aria-hidden /><Byline className="text-current/70" /></>}
@@ -105,7 +105,7 @@ export function AuthHeading({ title, children }: { title: string; children?: Rea
   return (
     <div className="mb-6">
       <h1 className="text-2xl font-semibold leading-tight tracking-tight">{title}</h1>
-      {children && <p className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground">{children}</p>}
+      {children && <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">{children}</p>}
     </div>
   )
 }

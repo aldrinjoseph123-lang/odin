@@ -61,15 +61,15 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
           placeholder="Search projects, tasks, notes and documents, or jump to a page" aria-label="Search" role="combobox" aria-expanded aria-controls="palette-list"
           aria-activedescendant={items[active] ? `palette-${active}` : undefined}
           className="h-11 w-full bg-transparent text-[14px] outline-none placeholder:text-muted-foreground" />
-        <kbd className="rounded border border-border px-1.5 text-[11px] text-muted-foreground">Esc</kbd>
+        <kbd className="rounded border border-border px-2 text-[11px] text-muted-foreground">Esc</kbd>
       </div>
-      <ul id="palette-list" role="listbox" className="max-h-[50vh] overflow-y-auto p-1.5">
+      <ul id="palette-list" role="listbox" className="max-h-[50vh] overflow-y-auto p-2">
         {items.map((it, i) => {
           const Icon = icon[it.kind]
           return (
             <li key={`${it.kind}-${it.href}-${i}`} id={`palette-${i}`} role="option" aria-selected={i === active}
               onMouseEnter={() => setActive(i)} onClick={() => go(it)}
-              className={cn("flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px]", i === active && "bg-accent text-accent-foreground")}>
+              className={cn("flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-[13px]", i === active && "bg-accent text-accent-foreground")}>
               <Icon className="h-4 w-4 shrink-0 opacity-70" />
               <span className="min-w-0 flex-1 truncate">{it.label}</span>
               {it.hint && <span className="shrink-0 truncate text-[12px] text-muted-foreground">{it.hint}</span>}

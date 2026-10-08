@@ -38,12 +38,12 @@ export default function Join() {
   if (!info) return <AuthLayout><p className="text-sm text-muted-foreground">Opening your invitation…</p></AuthLayout>
   if (done) return (
     <AuthLayout>
-      <AuthHeading title="Request sent"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-ok" aria-hidden /> An admin will review it.</span></AuthHeading>
+      <AuthHeading title="Request sent"><span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-ok" aria-hidden /> An admin will review it.</span></AuthHeading>
       <p className="text-[14px] text-muted-foreground">Once approved, sign in with <b className="text-foreground">{f.username}</b> and the password you chose{info.project ? `; you will already be on ${info.project}` : ""}.</p>
       <a href="/login" className="mt-6 inline-block text-[14px] text-primary-text hover:underline">Go to sign-in</a>
     </AuthLayout>
   )
-  const label = "grid gap-1.5 text-[13px] font-medium"
+  const label = "grid gap-2 text-[13px] font-medium"
   return (
     <AuthLayout>
       <AuthHeading title={`Join ${info.company} on Odin`}>
@@ -60,7 +60,7 @@ export default function Join() {
         </div>
         <p className="-mt-2 text-[12px] text-muted-foreground">At least 12 characters, mixing letters with numbers or symbols.</p>
         <fieldset>
-          <legend className="mb-1.5 text-[13px] font-medium">How should Odin reach you?</legend>
+          <legend className="mb-2 text-[13px] font-medium">How should Odin reach you?</legend>
           <div className="grid grid-cols-2 gap-2" role="radiogroup">
             {([["email", "Email", Mail], ["teams", "Microsoft Teams", MessageSquare]] as const).map(([v, text, Icon]) => (
               <button key={v} type="button" role="radio" aria-checked={f.notify_via === v} onClick={() => setF({ ...f, notify_via: v })}
@@ -68,7 +68,7 @@ export default function Join() {
                 <Icon className="h-4 w-4" aria-hidden />{text}</button>
             ))}
           </div>
-          <p className="mt-1.5 text-[12px] text-muted-foreground">Always in Odin's bell too. Change it later on your account page.</p>
+          <p className="mt-2 text-[12px] text-muted-foreground">Always in Odin's bell too. Change it later on your account page.</p>
         </fieldset>
         {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
         <Button type="submit" className="h-11 text-sm" disabled={busy || !f.name || !f.email || !f.username || !f.password}>{busy ? "Sending…" : "Ask to join"}</Button>

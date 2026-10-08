@@ -104,7 +104,7 @@ export default function MyWork({ user }: { user: User }) {
                         <span className="block truncate font-medium">{t.title}</span>
                         <Link to={`/board?rollout=${t.project_id}`} className="block truncate text-[12px] text-muted-foreground hover:underline">{t.project} · {t.stage || t.project_stage}</Link>
                       </span>
-                      <span className={cn("shrink-0 whitespace-nowrap text-[12px]", late > 0 ? "rounded-md bg-bad-soft px-1.5 py-0.5 font-medium text-bad" : "text-muted-foreground")}>{t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "no date"}</span>
+                      <span className={cn("shrink-0 whitespace-nowrap text-[12px]", late > 0 ? "rounded-md bg-bad-soft px-2 py-1 font-medium text-bad" : "text-muted-foreground")}>{t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "no date"}</span>
                     </li>
                   )
                 })}
@@ -135,7 +135,7 @@ export default function MyWork({ user }: { user: User }) {
                   <div className="flex items-center gap-2">
                     <span className={cn("h-2 w-2 shrink-0 rounded-full", p.state === "on_track" ? "bg-transparent" : STATE[p.state].dot)} aria-hidden />
                     <Link to={`/board?rollout=${p.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{p.role}</span>
+                    <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
                   </div>
                   <div className="mt-1 flex items-center gap-3 pl-4">
                     <span className="w-24 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>

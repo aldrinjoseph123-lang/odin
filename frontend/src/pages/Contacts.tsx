@@ -56,7 +56,7 @@ export default function Contacts(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">the pick-lists the project form offers</p>
       </div>
       {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
           <span>{notice.text}{notice.undo && <button type="button" onClick={() => notice.undo && send(notice.undo)} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}</span>
           <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
@@ -64,7 +64,7 @@ export default function Contacts(_props: { user: User }) {
       <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {data.lists.map((l) => (
           <Panel key={l.key} title={l.label}>
-            <ul className="grid grid-cols-1 gap-1.5">
+            <ul className="grid grid-cols-1 gap-2">
               {l.items.map((it) => <Line key={it.id} name={it.name} email={it.email} busy={busy} onDelete={() => send(`/settings/contacts/${l.key}/${it.id}/delete`, {}, `Delete ${it.name}?`)} />)}
               {l.items.length === 0 && <li className="text-[13px] text-muted-foreground">None yet.</li>}
             </ul>
@@ -79,7 +79,7 @@ export default function Contacts(_props: { user: User }) {
                   <span className="flex-1 font-medium">{p.name}</span>
                   <button type="button" disabled={busy} onClick={() => send(`/settings/contacts/partners/${p.id}/delete`, {}, `Delete partner ${p.name}? Its account managers go too.`)} aria-label={`Delete partner ${p.name}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
-                <ul className="mt-1.5 grid grid-cols-1 gap-1.5 pl-3">
+                <ul className="mt-2 grid grid-cols-1 gap-2 pl-3">
                   {p.managers.map((m) => <Line key={m.id} name={m.name} email={m.email} busy={busy} onDelete={() => send(`/settings/contacts/partner-managers/${m.id}/delete`, {}, `Delete ${m.name}?`)} />)}
                   {p.managers.length === 0 && <li className="text-[13px] text-muted-foreground">No account managers yet.</li>}
                 </ul>

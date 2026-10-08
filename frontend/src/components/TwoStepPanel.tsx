@@ -49,7 +49,7 @@ export function TwoStepPanel() {
 
   return (
     <section className="grid grid-cols-1 content-start gap-3 panel p-4" aria-label="Two-step sign-in">
-      <h2 data-n className="flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Two-step sign-in
+      <h2 data-n className="flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Two-step sign-in
         <span className="font-normal text-muted-foreground">{s.enabled ? `on since ${fmtDate(s.enabled_at)}` : s.required ? "required by your admin" : "off"}</span></h2>
       {s.required && !s.enabled && !codes && <Alert><AlertDescription>Your admin requires two-step sign-in. Set it up to continue using Odin.</AlertDescription></Alert>}
       {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
@@ -57,7 +57,7 @@ export function TwoStepPanel() {
       {codes && (
         <div className="grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
           <p className="text-[13px] font-medium">Your recovery codes: keep them somewhere safe. Each works once if you lose your phone; they are not shown again.</p>
-          <ul className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-[13px]" aria-label="Recovery codes">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
+          <ul className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[13px]" aria-label="Recovery codes">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={save}>Download as a file</Button>
             <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(codes.join("\n")).catch(() => {})}>Copy</Button>

@@ -64,11 +64,11 @@ function Roadmap({ rows, today }: { rows: PortfolioRow[]; today: string }) {
         })}
       </div>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
-        <li className="flex items-center gap-1.5"><span className="h-2.5 w-5 rounded-full bg-foreground/60" />Done so far</li>
-        <li className="flex items-center gap-1.5"><span className="h-2.5 w-5 rounded-full border border-border bg-muted" />Forecast</li>
-        {rows.some((r) => r.baseline) && <li className="flex items-center gap-1.5"><span className="h-3 w-[2px] rounded-full bg-foreground/50" />Baseline finish</li>}
-        <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-[1.5px] border-dashed border-bad-line" />Target</li>
-        <li className="flex items-center gap-1.5"><span className="h-3 w-[1.5px] bg-primary/60" />Today</li>
+        <li className="flex items-center gap-2"><span className="h-2.5 w-5 rounded-full bg-foreground/60" />Done so far</li>
+        <li className="flex items-center gap-2"><span className="h-2.5 w-5 rounded-full border border-border bg-muted" />Forecast</li>
+        {rows.some((r) => r.baseline) && <li className="flex items-center gap-2"><span className="h-3 w-[2px] rounded-full bg-foreground/50" />Baseline finish</li>}
+        <li className="flex items-center gap-2"><span className="h-3 w-0 border-l-[1.5px] border-dashed border-bad-line" />Target</li>
+        <li className="flex items-center gap-2"><span className="h-3 w-[1.5px] bg-primary/60" />Today</li>
         <li>Bar colour is the rollout's health</li>
       </ul>
     </div>
@@ -98,7 +98,7 @@ export default function ReportAll(_props: { user: User }) {
       <header className="flex flex-wrap items-end gap-x-4 gap-y-2">
         <div>
           <h1 className="text-[24px] font-semibold tracking-tight">Portfolio report</h1>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{s.count} active rollout{s.count === 1 ? "" : "s"} · as of {fmtDate(d.today)} · generated {fmtWhen(d.generated_at, true)}</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{s.count} active rollout{s.count === 1 ? "" : "s"} · as of {fmtDate(d.today)} · generated {fmtWhen(d.generated_at, true)}</p>
         </div>
         <span className="ml-auto flex gap-2 print:hidden">
           {internal && <TemplatePicker kind="portfolio" value={template} onChange={setTemplate} />}
@@ -110,11 +110,11 @@ export default function ReportAll(_props: { user: User }) {
       <div className={cn("mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)]", hide("health"))}>
         <section className="panel p-4 print:shadow-none" aria-label="Health">
           <div className="text-[12px] text-muted-foreground">Health</div>
-          <div className="mt-2 flex h-3 gap-[2px] overflow-hidden rounded-full bg-muted" role="img" aria-label={RAGS.filter((g) => s.health[g]).map((g) => `${s.health[g]} ${WORD[g].toLowerCase()}`).join(", ") || "no rollouts"}>
+          <div className="mt-2 flex h-3 gap-1 overflow-hidden rounded-full bg-muted" role="img" aria-label={RAGS.filter((g) => s.health[g]).map((g) => `${s.health[g]} ${WORD[g].toLowerCase()}`).join(", ") || "no rollouts"}>
             {RAGS.map((g) => s.health[g] ? <span key={g} className={SOLID[g]} style={{ flexGrow: s.health[g] }} /> : null)}
           </div>
-          <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
-            {RAGS.map((g) => <li key={g} className={cn("flex items-center gap-1.5", !s.health[g] && "text-muted-foreground")}><span className={cn("h-2 w-2 rounded-full", SOLID[g])} aria-hidden /><span className="font-semibold tabular-nums">{s.health[g] ?? 0}</span> {WORD[g].toLowerCase()}</li>)}
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+            {RAGS.map((g) => <li key={g} className={cn("flex items-center gap-2", !s.health[g] && "text-muted-foreground")}><span className={cn("h-2 w-2 rounded-full", SOLID[g])} aria-hidden /><span className="font-semibold tabular-nums">{s.health[g] ?? 0}</span> {WORD[g].toLowerCase()}</li>)}
           </ul>
           {internal && s.no_plan > 0 && <p className="mt-2 text-[12px] text-muted-foreground">{s.no_plan} without a plan: their forecast runs on stage SLAs.</p>}
         </section>
@@ -122,7 +122,7 @@ export default function ReportAll(_props: { user: User }) {
           {tiles.map((t) => (
             <div key={t.label} className="panel p-4 print:shadow-none">
               <div className="text-[12px] text-muted-foreground">{t.label}</div>
-              <div className={cn("mt-1.5 text-[24px] font-semibold leading-none tracking-tight tabular-nums", t.bad && "text-bad")}>{t.value}</div>
+              <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight tabular-nums", t.bad && "text-bad")}>{t.value}</div>
               <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
             </div>
           ))}
@@ -145,8 +145,8 @@ export default function ReportAll(_props: { user: User }) {
               {d.risks.map((x, i) => {
                 const K = RAID_KIND[x.kind]
                 return (
-                  <li key={i} className="flex items-start gap-2.5 py-2">
-                    <K.icon className={cn("mt-0.5 h-4 w-4 shrink-0", x.kind === "blocker" ? "text-bad" : "text-muted-foreground")} aria-hidden />
+                  <li key={i} className="flex items-start gap-3 py-2">
+                    <K.icon className={cn("mt-1 h-4 w-4 shrink-0", x.kind === "blocker" ? "text-bad" : "text-muted-foreground")} aria-hidden />
                     <span className="min-w-0 flex-1">
                       <span className="block font-medium">{x.title}</span>
                       <span className="block text-[12px] text-muted-foreground"><Link to={`/projects/${x.project_id}`} className="hover:underline">{x.project}</Link> · {K.label}{x.owner_name && ` · ${x.owner_name}`}{x.due_date && ` · due ${fmtDate(x.due_date)}`}</span>

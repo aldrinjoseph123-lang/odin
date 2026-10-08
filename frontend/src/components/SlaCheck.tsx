@@ -24,19 +24,19 @@ export function SlaCheck({ templates, busy, send }: { templates: SettingsData["t
     <div className="mt-4 border-t border-border pt-3">
       <h3 className="text-[13px] font-semibold text-nav-fg">SLA check <span className="font-normal text-muted-foreground">stages whose SLA disagrees with how long they really took (80% of finished rollouts within the proposal)</span></h3>
       <div className="mt-2 overflow-x-auto"><table className="w-full min-w-[680px] text-[13px]">
-        <thead><tr className="text-left text-[12px] text-muted-foreground">{["Template", "Stage", "Today", "Proposed", "History", ""].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
+        <thead><tr className="text-left text-[12px] text-muted-foreground">{["Template", "Stage", "Today", "Proposed", "History", ""].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
         <tbody>
           {rows.map((p) => (
             <tr key={p.key} className="border-t border-border align-top">
-              <td className="py-1.5 pr-3">{p.template}</td>
-              <td className="py-1.5 pr-3 font-medium">{p.stage}</td>
-              <td className="whitespace-nowrap py-1.5 pr-3 tabular-nums">{p.current == null ? "none" : `${p.current} d`}</td>
-              <td className="whitespace-nowrap py-1.5 pr-3 font-medium tabular-nums">{p.proposed} d</td>
-              <td className="py-1.5 pr-3 text-[13px] text-muted-foreground">
+              <td className="py-2 pr-3">{p.template}</td>
+              <td className="py-2 pr-3 font-medium">{p.stage}</td>
+              <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{p.current == null ? "none" : `${p.current} d`}</td>
+              <td className="whitespace-nowrap py-2 pr-3 font-medium tabular-nums">{p.proposed} d</td>
+              <td className="py-2 pr-3 text-[13px] text-muted-foreground">
                 {p.visits} rollouts, median {p.median}, 80% within {p.p80} {p.unit}
-                {p.reason && <span className="mt-0.5 flex items-start gap-1 text-foreground"><Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary-text" aria-label="Written by AI" />{p.reason}</span>}
+                {p.reason && <span className="mt-1 flex items-start gap-1 text-foreground"><Sparkles className="mt-1 h-3 w-3 shrink-0 text-primary-text" aria-label="Written by AI" />{p.reason}</span>}
               </td>
-              <td className="py-1.5 text-right"><Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => apply(p)}>Apply</Button></td>
+              <td className="py-2 text-right"><Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => apply(p)}>Apply</Button></td>
             </tr>
           ))}
         </tbody>

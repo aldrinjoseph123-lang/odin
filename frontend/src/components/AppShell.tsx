@@ -20,13 +20,13 @@ type Item = { href: string; label: string; count?: number; match: (path: string)
 
 function NavLink({ item, current, onClick }: { item: Item; current: boolean; onClick?: () => void }) {
   const className = cn(
-    "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-medium transition-colors",
+    "inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-full px-3 text-[13px] font-medium transition-colors",
     current ? "bg-primary text-primary-foreground" : "text-nav-fg hover:bg-muted hover:text-foreground",
   )
   const text = (
     <>
       {item.label}
-      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-1.5 text-[11px] text-foreground" variant="secondary">{item.count}</Badge> : null}
+      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-2 text-[11px] text-foreground" variant="secondary">{item.count}</Badge> : null}
     </>
   )
   return REACT_PAGES.has(item.href) ? (
@@ -109,7 +109,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           {user.kind === "external" && <Badge variant="secondary">Partner access</Badge>}
           <button type="button" onClick={signOut} className="text-left text-[13px] font-medium text-nav-fg hover:text-foreground xl:hidden">Log out</button>
         </nav>
-        <div className="ml-auto flex items-center gap-1.5 xl:ml-0 xl:gap-3">
+        <div className="ml-auto flex items-center gap-2 xl:ml-0 xl:gap-3">
           <NotificationBell initialUnread={user.nav.unread_notifications ?? 0} />
           <button type="button" onClick={cycleTheme} aria-label={`Theme: ${theme}. Switch`} title={`Theme: ${theme}`}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-nav-fg hover:bg-muted hover:text-foreground">
@@ -118,7 +118,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           <a href="/account" className="flex items-center text-[13px] text-nav-fg hover:text-foreground" title={user.name} aria-label="Your account">
             <UserAvatar name={user.name} url={user.avatar_url} className="h-7 w-7" textClass="text-[11px] bg-accent text-accent-foreground" />
           </a>
-          <button type="button" onClick={signOut} className="hidden whitespace-nowrap text-[13px] font-medium text-nav-fg hover:text-foreground xl:ml-1.5 xl:inline">Log out</button>
+          <button type="button" onClick={signOut} className="hidden whitespace-nowrap text-[13px] font-medium text-nav-fg hover:text-foreground xl:ml-2 xl:inline">Log out</button>
           <button ref={menuButton} type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted xl:hidden"><Menu className="h-5 w-5" /></button>
         </div>
       </header>

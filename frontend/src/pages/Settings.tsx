@@ -78,9 +78,9 @@ export default function Settings(_props: { user: User }) {
   return (
     <div className="px-5 pb-6 pt-4">
       <h1 className="text-[17px] font-semibold tracking-tight">{TITLES[section].title}</h1>
-      <p className="mt-0.5 text-[13px] text-muted-foreground">{TITLES[section].lede}</p>
+      <p className="mt-1 text-[13px] text-muted-foreground">{TITLES[section].lede}</p>
       {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
           <span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
       )}
@@ -112,11 +112,11 @@ export default function Settings(_props: { user: User }) {
             </Panel>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
               <Panel title="Document categories" hint="untick to keep a kind from partners and customers">
-                <ul className="grid grid-cols-1 gap-1.5 text-[13px]">
+                <ul className="grid grid-cols-1 gap-2 text-[13px]">
                   {data.doc_categories.map((c) => (
                     <li key={c.id} className="flex items-center gap-2">
                       <span className="flex-1">{c.name}</span>
-                      <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground" title="Partners and customers on the project can see and download these">
+                      <label className="flex items-center gap-2 text-[12px] text-muted-foreground" title="Partners and customers on the project can see and download these">
                         <input type="checkbox" checked={c.partners} disabled={busy} onChange={(e) => send(`/settings/doc-categories/${c.id}/partners`, e.target.checked ? { partners: "on" } : {})}
                           aria-label={`Partners see ${c.name}`} className="h-3.5 w-3.5 accent-primary" />partners</label>
                       <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -160,7 +160,7 @@ export default function Settings(_props: { user: User }) {
         {section === "documents" && <DocTemplates />}
         {section === "reports" && (
           <>
-            {!data.public_url_set && <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-[13px] text-warn">Set the public web address under General, so the links in scheduled mail point at Odin and not at the server's own name.</p>}
+            {!data.public_url_set && <p className="rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn">Set the public web address under General, so the links in scheduled mail point at Odin and not at the server's own name.</p>}
             {policyForm("reports", "Weekly report")}
             <div><Button size="sm" variant="outline" disabled={busy} onClick={() => send("/settings/reports/send-test")}>Send this week's report to me now</Button></div>
           </>
@@ -230,7 +230,7 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
             <div key={p.key} className={cn("grid content-start gap-1", (p.kind === "multi" || p.kind === "dates") && "md:col-span-2")}>
               {p.kind === "bool" ? (
                 <label className="flex items-start gap-2 text-[13px] font-medium">
-                  <input type="checkbox" checked={!!v[p.key]} onChange={(e) => setV({ ...v, [p.key]: e.target.checked })} className="mt-0.5 h-3.5 w-3.5 accent-primary" />{p.label}
+                  <input type="checkbox" checked={!!v[p.key]} onChange={(e) => setV({ ...v, [p.key]: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />{p.label}
                 </label>
               ) : (
                 <label htmlFor={`pol-${p.key}`} className="text-[13px] font-medium">{p.label}</label>
@@ -267,12 +267,12 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
                 </select>
               )}
               {p.kind === "multi" && (
-                <fieldset className="flex flex-wrap gap-1.5" aria-label={p.label}>
+                <fieldset className="flex flex-wrap gap-2" aria-label={p.label}>
                   {(p.choices ?? []).map((c) => {
                     const list = (v[p.key] as string[]) ?? []
                     const on = list.includes(c)
                     return (
-                      <label key={c} className={cn("flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[13px] has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50",
+                      <label key={c} className={cn("flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-[13px] has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50",
                         on ? "border-primary bg-accent text-accent-foreground" : "border-border text-nav-fg hover:bg-muted")}>
                         <input type="checkbox" className="sr-only" checked={on} onChange={() => setV({ ...v, [p.key]: on ? list.filter((x) => x !== c) : [...list, c] })} />{c}
                       </label>
@@ -313,17 +313,17 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
       <Panel title="Tokens">
         {tokens.length === 0 ? <p className="text-[13px] text-muted-foreground">No tokens yet.</p> : (
           <div className="overflow-x-auto"><table className="w-full text-[13px]">
-            <thead><tr className="text-left text-[12px] text-muted-foreground">{["Name", "Made", "Last used", "Expires", ""].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
+            <thead><tr className="text-left text-[12px] text-muted-foreground">{["Name", "Made", "Last used", "Expires", ""].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
             <tbody>
               {tokens.map((t) => {
                 const dead = !!t.revoked_at || t.expires_at < now
                 return (
                   <tr key={t.id} className={cn("border-t border-border", dead && "text-muted-foreground")}>
-                    <td className="py-1.5 pr-3 font-medium">{t.name}</td>
-                    <td className="whitespace-nowrap py-1.5 pr-3"><Ago iso={t.created_at} /> · {t.created_by}</td>
-                    <td className="whitespace-nowrap py-1.5 pr-3">{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
-                    <td className="whitespace-nowrap py-1.5 pr-3">{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : t.expires_at.slice(0, 10)}</td>
-                    <td className="py-1.5 text-right">{!dead && <Button size="sm" variant="ghost" className="h-7 text-bad hover:text-bad" disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
+                    <td className="py-2 pr-3 font-medium">{t.name}</td>
+                    <td className="whitespace-nowrap py-2 pr-3"><Ago iso={t.created_at} /> · {t.created_by}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : t.expires_at.slice(0, 10)}</td>
+                    <td className="py-2 text-right">{!dead && <Button size="sm" variant="ghost" className="h-7 text-bad hover:text-bad" disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
                   </tr>
                 )
               })}
@@ -342,7 +342,7 @@ function Scheduler({ view, busy, send }: { view: BackupsView; busy: boolean; sen
     <Panel title="Status">
       {view.scheduler_alive
         ? <p className="text-[13px]">The scheduler is running. Next backup: <span className="font-medium">{view.next_run ?? "no day selected"}</span>.</p>
-        : <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-[13px] text-warn">
+        : <p className="rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn">
             {view.scheduler_seen ? <>The scheduler was last seen <Ago iso={view.scheduler_seen} />.</> : "The scheduler has never run."} Backups and the daily digest only happen on their own while it runs:
             start the <code className="font-mono text-[12px]">scheduler</code> service (docker compose up -d), or have cron run <code className="font-mono text-[12px]">python scheduler.py --once</code> every few minutes.
           </p>}
@@ -360,16 +360,16 @@ function BackupHistory({ runs }: { runs: BackupRun[] }) {
     <Panel title="History" hint="the last 20 runs">
       {runs.length === 0 ? <p className="text-[13px] text-muted-foreground">No backups yet. Back up now to make the first one.</p> : (
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
-          <thead><tr className="text-left text-[12px] text-muted-foreground">{["When", "Result", "Restore test", "Copies", "Size"].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
+          <thead><tr className="text-left text-[12px] text-muted-foreground">{["When", "Result", "Restore test", "Copies", "Size"].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {runs.map((r) => (
               <tr key={r.id} className="border-t border-border align-top">
-                <td className="whitespace-nowrap py-1.5 pr-3"><Ago iso={r.started_at} /><span className="block text-[12px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
-                <td className="py-1.5 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-bad">Problem</span>}</td>
-                <td className="py-1.5 pr-3">{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-bad">Failed</span>}
+                <td className="whitespace-nowrap py-2 pr-3"><Ago iso={r.started_at} /><span className="block text-[12px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
+                <td className="py-2 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-bad">Problem</span>}</td>
+                <td className="py-2 pr-3">{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-bad">Failed</span>}
                   {r.restore_detail && <span className="block text-[12px] text-muted-foreground">{r.restore_detail}</span>}</td>
-                <td className="py-1.5 pr-3 text-[13px]">{r.destinations}</td>
-                <td className="whitespace-nowrap py-1.5 pr-3 text-muted-foreground">{bytes(r.size_bytes)}</td>
+                <td className="py-2 pr-3 text-[13px]">{r.destinations}</td>
+                <td className="whitespace-nowrap py-2 pr-3 text-muted-foreground">{bytes(r.size_bytes)}</td>
               </tr>
             ))}
           </tbody>
@@ -401,7 +401,7 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[13px]" /></label>
         </div>
         <label className="flex items-start gap-2 text-[13px]">
-          <input type="checkbox" checked={enforced} onChange={(e) => setEnforced(e.target.checked)} disabled={!sso.configured} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
+          <input type="checkbox" checked={enforced} onChange={(e) => setEnforced(e.target.checked)} disabled={!sso.configured} className="mt-1 h-3.5 w-3.5 accent-primary" />
           <span>Staff must sign in with Microsoft <span className="block text-[12px] text-muted-foreground">The password form disappears. Accounts ticked "Password" on the Users page ({sso.password_admins} admin{sso.password_admins === 1 ? "" : "s"} now) keep an emergency form at /login/password; each use is recorded and the admins are told.</span></span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
@@ -458,7 +458,7 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
   return (
     <div className="border-b border-border pb-4 last:border-0 last:pb-0">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <form onSubmit={(e) => { e.preventDefault(); if (name.trim() && name !== t.name) void send(`${base}/rename`, { name }) }} className="flex min-w-0 flex-1 items-center gap-1.5">
+        <form onSubmit={(e) => { e.preventDefault(); if (name.trim() && name !== t.name) void send(`${base}/rename`, { name }) }} className="flex min-w-0 flex-1 items-center gap-2">
           <Input value={name} onChange={(e) => setName(e.target.value)} aria-label={`Rename template ${t.name}`} maxLength={80} className="h-8 min-w-40 flex-1 text-[14px] font-semibold" />
           {name !== t.name && <Button type="submit" size="sm" variant="outline" disabled={busy}>Rename</Button>}
         </form>
@@ -495,19 +495,19 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
     <Panel title="Alert types" hint="In-app is the master switch; email and Teams also need their toggle under Integrations">
       <form onSubmit={submit}>
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
-          <thead><tr className="text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Threshold (days)", "Severity", "Email", "Teams", "In-app"].map((h) => <th key={h} className="pb-1.5 pr-2 font-normal">{h}</th>)}</tr></thead>
+          <thead><tr className="text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Threshold (days)", "Severity", "Email", "Teams", "In-app"].map((h) => <th key={h} className="pb-2 pr-2 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {rows.map((a) => (
               <tr key={a.key} className="border-t border-border">
-                <td className="py-1.5 pr-2">{a.title}</td>
-                <td className="py-1.5 pr-2">{a.threshold_days != null ? <Input type="number" min={0} value={a.threshold_days} onChange={(e) => set(a.key, { threshold_days: Number(e.target.value) })} aria-label={`Threshold days for ${a.title}`} className="h-7 w-16 text-[13px]" /> : <span className="text-muted-foreground">—</span>}</td>
-                <td className="py-1.5 pr-2">
+                <td className="py-2 pr-2">{a.title}</td>
+                <td className="py-2 pr-2">{a.threshold_days != null ? <Input type="number" min={0} value={a.threshold_days} onChange={(e) => set(a.key, { threshold_days: Number(e.target.value) })} aria-label={`Threshold days for ${a.title}`} className="h-7 w-16 text-[13px]" /> : <span className="text-muted-foreground">—</span>}</td>
+                <td className="py-2 pr-2">
                   <select value={a.severity} onChange={(e) => set(a.key, { severity: e.target.value as typeof a.severity })} aria-label={`Severity for ${a.title}`} className={cn(selectClass, "h-7 text-[13px]")}>
                     <option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option>
                   </select>
                 </td>
                 {(["notify_email", "notify_teams", "notify_inapp"] as const).map((k) => (
-                  <td key={k} className="py-1.5 pr-2"><input type="checkbox" checked={a[k]} onChange={(e) => set(a.key, { [k]: e.target.checked })} aria-label={`${k.replace("notify_", "")} notification for ${a.title}`} className="h-3.5 w-3.5 accent-primary" /></td>
+                  <td key={k} className="py-2 pr-2"><input type="checkbox" checked={a[k]} onChange={(e) => set(a.key, { [k]: e.target.checked })} aria-label={`${k.replace("notify_", "")} notification for ${a.title}`} className="h-3.5 w-3.5 accent-primary" /></td>
                 ))}
               </tr>
             ))}

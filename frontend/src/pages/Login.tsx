@@ -91,7 +91,7 @@ export default function Login() {
 
       {microsoft && (
         <a href={`/auth/microsoft${next ? `?next=${encodeURIComponent(next)}` : ""}`}
-          className="flex h-11 w-full items-center justify-center gap-2.5 rounded-lg border border-input bg-background text-sm font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
+          className="flex h-11 w-full items-center justify-center gap-3 rounded-lg border border-input bg-background text-sm font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
           {/* the four-square Microsoft logo, in Microsoft's colours per their sign-in button rules */}
           <svg viewBox="0 0 21 21" className="h-[18px] w-[18px]" aria-hidden><path fill="#F25022" d="M1 1h9v9H1z" /><path fill="#7FBA00" d="M11 1h9v9h-9z" /><path fill="#00A4EF" d="M1 11h9v9H1z" /><path fill="#FFB900" d="M11 11h9v9h-9z" /></svg>
           Sign in with Microsoft
@@ -103,7 +103,7 @@ export default function Login() {
         <form onSubmit={submitCode} className="grid grid-cols-1 gap-4" noValidate aria-busy={busy} aria-label="Two-step sign-in">
           <p className="text-[14px] text-muted-foreground">{recovery ? "Enter one of the recovery codes you saved when you set up two-step sign-in. Each works once." : "Open your authenticator app and enter the 6-digit code for Odin."}</p>
           {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
-          <div className="grid grid-cols-1 gap-1.5">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="code" className="text-[14px]">{recovery ? "Recovery code" : "Code"}</Label>
             <Input id="code" name="code" autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} autoCapitalize="none"
               maxLength={recovery ? 12 : 7} value={code} onChange={(e) => { setCode(e.target.value); if (error) setError(null) }} className={`${field} tracking-[0.2em] tabular-nums`} />
@@ -122,14 +122,14 @@ export default function Login() {
       {showPassword && !codeStep && (
         <form onSubmit={submit} className="grid grid-cols-1 gap-4" noValidate aria-busy={busy}>
           {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
-          <div className="grid grid-cols-1 gap-1.5">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="username" className="text-[14px]">Username</Label>
             <Input id="username" ref={userRef} name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus={!microsoft}
               value={username} onChange={(e) => { setUsername(e.target.value); if (error?.field === "username") setError(null) }}
               aria-invalid={error?.field === "username" || undefined} aria-describedby={error?.field === "username" ? "username-error" : undefined} className={field} />
             {error?.field === "username" && <p id="username-error" role="alert" className="text-[13px] text-bad">{error.text}</p>}
           </div>
-          <div className="grid grid-cols-1 gap-1.5">
+          <div className="grid grid-cols-1 gap-2">
             <div className="flex items-baseline justify-between gap-3">
               <Label htmlFor="password" className="text-[14px]">Password</Label>
               {!emergency && <a href="/auth/reset" className="text-[13px] text-primary-text hover:underline">Forgot password?</a>}

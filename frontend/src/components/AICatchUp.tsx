@@ -28,7 +28,7 @@ export function AICatchUp({ projectId }: { projectId: number }) {
     try { await requestProjectAI(projectId, "catch_up"); await load() } finally { setBusy(false) }
   }
   const list = (title: string, items: string[]) => items.length > 0 && (
-    <section><h3 className="text-[12px] font-semibold text-nav-fg">{title}</h3><ul className="mt-0.5 list-disc pl-5">{items.map((x) => <li key={x}>{x}</li>)}</ul></section>
+    <section><h3 className="text-[12px] font-semibold text-nav-fg">{title}</h3><ul className="mt-1 list-disc pl-5">{items.map((x) => <li key={x}>{x}</li>)}</ul></section>
   )
   return (
     <section className="panel p-4" aria-labelledby="catchup-h">

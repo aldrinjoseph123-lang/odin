@@ -48,7 +48,7 @@ export default function Users(_props: { user: User }) {
         </div>
       </div>
       {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
           <span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
       )}
@@ -82,7 +82,7 @@ export default function Users(_props: { user: User }) {
 function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<void> }) {
   const [role, setRole] = useState<Record<number, string>>({})
   return (
-    <section className="mt-3 rounded-lg border border-warn-line bg-warn-soft/40 p-4" aria-label="Waiting for approval">
+    <section className="mt-3 rounded-lg bg-warn-soft/60 p-4" aria-label="Waiting for approval">
       <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Waiting for approval <span className="font-normal text-muted-foreground">asked to use Odin, not yet allowed in</span></h2>
       <ul className="grid grid-cols-1 gap-2">
         {people.map((u) => (
@@ -109,7 +109,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
   const self = u.id === me
   return (
     <tr className={cn("border-b border-border last:border-0", !u.active && "text-muted-foreground")}>
-      <td className="px-3 py-2 font-medium"><span className="inline-flex items-center gap-2"><UserAvatar name={u.name} url={u.avatar_url} className="h-6 w-6" /><span title={u.username}>{u.name}</span></span>{u.kind === "external" && <Badge variant="secondary" className="ml-1.5">External</Badge>}{self && <span className="ml-1.5 text-[12px] font-normal text-muted-foreground">you</span>}</td>
+      <td className="px-3 py-2 font-medium"><span className="inline-flex items-center gap-2"><UserAvatar name={u.name} url={u.avatar_url} className="h-6 w-6" /><span title={u.username}>{u.name}</span></span>{u.kind === "external" && <Badge variant="secondary" className="ml-2">External</Badge>}{self && <span className="ml-2 text-[12px] font-normal text-muted-foreground">you</span>}</td>
       <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{u.username}</td>
       <td className="px-3 py-2">
         <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="flex items-center gap-1">
@@ -130,9 +130,9 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {u.microsoft && <Badge variant="secondary">Microsoft</Badge>}
             {u.two_step && <span className="inline-flex items-center gap-1"><Badge variant="secondary">Two-step</Badge>
-              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" disabled={busy} aria-label={`Reset two-step sign-in for ${u.name}`}
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-[12px]" disabled={busy} aria-label={`Reset two-step sign-in for ${u.name}`}
                 onClick={() => send(`/users/${u.id}/two-step-reset`, {}, `Reset two-step sign-in for ${u.name}? Use this when they lost their phone and recovery codes. Their sessions end.`)}>Reset</Button></span>}
-            <label className="flex items-center gap-1.5 whitespace-nowrap" title="Keeps a password when staff must use Microsoft: the emergency way in">
+            <label className="flex items-center gap-2 whitespace-nowrap" title="Keeps a password when staff must use Microsoft: the emergency way in">
               <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => send(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-3.5 w-3.5 accent-primary" />
               Password
             </label>
@@ -142,7 +142,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
       <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground xl:table-cell">{u.last_login_at ? <Ago iso={u.last_login_at} /> : "—"}</td>
       <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground xl:table-cell">{fmt(u.created_at)}</td>
       <td className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           {!self && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined)}>{u.active ? "Deactivate" : "Reactivate"}</Button>}
           {u.kind !== "external" && (!microsoftOnly || u.password_login) && (resetting ? (
             <form onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then(() => { setPw(""); setResetting(false) }) }} className="flex items-center gap-1">
@@ -208,7 +208,7 @@ function SignupLinksPanel() {
     <section className="panel p-4" aria-label="Sign-up links">
       <h2 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
       <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
-      {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-2.5 text-[13px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
+      {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-3 text-[13px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
       {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[13px]">
         <label className="grid grid-cols-1 gap-1 font-medium">For<input className={field} required maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Omar, field engineer" /></label>
         <div className="grid grid-cols-2 gap-2">
@@ -222,7 +222,7 @@ function SignupLinksPanel() {
         <Button type="submit" size="sm" disabled={busy || !f.label.trim()}>Create link</Button>
       </form>}
       {made && (
-        <div className="mt-3 grid grid-cols-1 gap-1.5 rounded-lg bg-muted/60 p-2.5">
+        <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
           <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
           <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => {})}>{copied ? "Copied" : "Copy the link"}</Button>
           <p className="text-[12px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
@@ -231,7 +231,7 @@ function SignupLinksPanel() {
       {d.links.length > 0 && (
         <ul className="mt-3 divide-y divide-border text-[13px]">
           {d.links.slice(0, 12).map((l) => (
-            <li key={l.id} className="flex items-center gap-2 py-1.5">
+            <li key={l.id} className="flex items-center gap-2 py-2">
               <span className="min-w-0 flex-1"><span className="block truncate font-medium">{l.label}</span>
                 <span className="block truncate text-[12px] text-muted-foreground">{l.role}{l.project ? ` · ${l.project}` : ""} · {l.uses}/{l.max_uses} used · {l.state === "open" ? `until ${fmtWhen(l.expires_at)}` : l.state}</span></span>
               {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={() => { if (confirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load) }}>Revoke</Button>}

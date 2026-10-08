@@ -5,7 +5,7 @@ import { dismissToast, useToasts } from "@/lib/toast"
 export function Toaster() {
   const items = useToasts()
   return (
-    <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex flex-col items-center gap-2 px-4">
+    <div aria-live="polite" aria-relevant="additions" className="pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex flex-col items-center gap-2 px-4">
       {items.map((t) => (
         <div key={t.id} className="pointer-events-auto flex max-w-md items-center gap-2 rounded-lg bg-foreground py-2 pl-3 pr-1 text-[13px] text-background shadow-pop animate-in fade-in slide-in-from-bottom-2 duration-200">
           {t.tone === "bad" ? <CircleAlert className="h-4 w-4 shrink-0 text-bad-line" aria-hidden /> : <CircleCheck className="h-4 w-4 shrink-0 text-ok-line" aria-hidden />}

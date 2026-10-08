@@ -6,9 +6,9 @@ import { cn } from "@/lib/utils"
 export function TeamStack({ people, className, style }: { people: { id: number; name: string; avatar_url: string | null }[]; className?: string; style?: React.CSSProperties }) {
   const shown = people.slice(0, 3)
   return (
-    <span className={cn("items-center -space-x-1.5", className)} style={style} title={people.map((p) => p.name).join(", ")}>
+    <span className={cn("items-center -space-x-2", className)} style={style} title={people.map((p) => p.name).join(", ")}>
       {shown.map((p) => <UserAvatar key={p.id} name={p.name} url={p.avatar_url} className="ring-2 ring-background" />)}
-      {people.length > 3 && <span className="ml-1 pl-1.5 text-[11px] text-muted-foreground">+{people.length - 3}</span>}
+      {people.length > 3 && <span className="ml-1 pl-2 text-[11px] text-muted-foreground">+{people.length - 3}</span>}
     </span>
   )
 }

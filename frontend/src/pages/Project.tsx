@@ -90,7 +90,7 @@ export default function Project(_props: { user: User }) {
         </div>
       </div>
       {notice && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status">
+        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
           <span>{notice.text}{notice.undo && <button type="button" onClick={undo} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}</span>
           <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
@@ -109,7 +109,7 @@ export default function Project(_props: { user: User }) {
         <div className="empty:hidden lg:col-span-2"><LessonsPanel projectId={id} /></div>
         <div className="lg:col-span-2"><Panel title="Scope and sign-off" hint="what was agreed, what was delivered, and the customer's signature" id="scope"><ScopePanel projectId={id} signoff={d.signoff} /></Panel></div>
         <Panel title="Details">
-          <dl className="grid grid-cols-[minmax(96px,auto)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">
+          <dl className="grid grid-cols-[minmax(96px,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">
             {Object.entries(LABELS).filter(([k]) => {
               const via = x.details.via
               if (k === "partner_name" || k === "partner_account_manager_name") return via === "Partner"
@@ -136,7 +136,7 @@ export default function Project(_props: { user: User }) {
         </Panel>
 
         <Panel title="Team" hint="who is on this project, and as what" id="team">
-          <ul className="grid grid-cols-1 gap-1.5">
+          <ul className="grid grid-cols-1 gap-2">
             {x.participants.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-[13px]">
                 <UserAvatar name={m.name} url={m.avatar_url} />
@@ -167,7 +167,7 @@ export default function Project(_props: { user: User }) {
 
         <Panel title="Documents" hint={`${x.documents.length}`}>
           {can.docs && <UploadForm x={x} busy={busy} onSubmit={(fd) => send(`/projects/${id}/documents`, fd)} />}
-          <ul className="mt-3 grid grid-cols-1 gap-1.5">
+          <ul className="mt-3 grid grid-cols-1 gap-2">
             {x.documents.map((doc) => (
               <li key={doc.id} className="flex items-center gap-3 text-[13px]">
                 <span className="w-28 shrink-0 truncate text-[12px] text-muted-foreground">{doc.category}</span>
@@ -183,7 +183,7 @@ export default function Project(_props: { user: User }) {
         {activity.length > 0 && (
           <Panel title="Activity" hint="everything recorded on this project, newest first">
             <a href={`/projects/${id}/activity.csv`} className="mb-2 inline-block text-[12px] text-primary-text hover:underline">Export CSV</a>
-            <ul className="grid grid-cols-1 gap-1.5 text-[13px]">
+            <ul className="grid grid-cols-1 gap-2 text-[13px]">
               {activity.map((a, i) => (
                 <li key={i} className="flex gap-2">
                   <Ago iso={a.when} className="w-24 shrink-0 whitespace-nowrap text-muted-foreground" />
@@ -242,7 +242,7 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
         )}
       </div>
       {editing ? (
-        <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then(() => setEditing(false)) }} className="mt-1 grid grid-cols-1 gap-1.5">
+        <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then(() => setEditing(false)) }} className="mt-1 grid grid-cols-1 gap-2">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={5000} aria-label="Edit note" autoFocus
             className="w-full rounded-md border border-input bg-background p-2 text-[13px]" onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
           <div className="flex gap-2">
@@ -271,7 +271,7 @@ function NoteForm({ busy, people, onSubmit }: { busy: boolean; people: string[];
       </div>
       {matches.length > 0 && (
         <ul role="listbox" aria-label="Mention someone" className="absolute left-0 top-9 z-20 w-64 overflow-hidden panel bg-popover py-1 text-[13px] shadow-pop">
-          {matches.map((n) => <li key={n} role="option" aria-selected={false}><button type="button" onClick={() => pick(n)} className="w-full px-3 py-1.5 text-left hover:bg-muted">@{n}</button></li>)}
+          {matches.map((n) => <li key={n} role="option" aria-selected={false}><button type="button" onClick={() => pick(n)} className="w-full px-3 py-2 text-left hover:bg-muted">@{n}</button></li>)}
         </ul>
       )}
     </form>

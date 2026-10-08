@@ -66,16 +66,16 @@ export default function Audit(_props: { user: User }) {
           <tbody>
             {data.rows.map((r) => (
               <tr key={r.id} className="border-b border-border align-top last:border-0 hover:bg-muted">
-                <td className="whitespace-nowrap px-3 py-1.5 text-[12px] text-muted-foreground">{fmt(r.timestamp)}</td>
-                <td className="px-3 py-1.5">{r.username}</td>
-                <td className="px-3 py-1.5"><span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[12px]">{r.action}</span></td>
-                <td className="px-3 py-1.5">
+                <td className="whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground">{fmt(r.timestamp)}</td>
+                <td className="px-3 py-2">{r.username}</td>
+                <td className="px-3 py-2"><span className="rounded-md bg-muted px-2 py-1 font-mono text-[12px]">{r.action}</span></td>
+                <td className="px-3 py-2">
                   {r.resource_type && <span className="text-[12px] text-muted-foreground">{r.resource_type} </span>}
                   {r.resource_type === "project" && r.resource_id ? <a href={`/projects/${r.resource_id}`} className="font-medium hover:underline">{r.resource_name ?? `#${r.resource_id}`}</a>
                     : r.resource_name ? <span>{r.resource_name}</span> : r.resource_id ? <span className="text-muted-foreground">#{r.resource_id}</span> : null}
                 </td>
-                <td className="max-w-md break-words px-3 py-1.5 text-[13px]">{r.details}</td>
-                <td className="hidden whitespace-nowrap px-3 py-1.5 text-[12px] text-muted-foreground lg:table-cell">{r.ip_address}</td>
+                <td className="max-w-md break-words px-3 py-2 text-[13px]">{r.details}</td>
+                <td className="hidden whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground lg:table-cell">{r.ip_address}</td>
               </tr>
             ))}
             {data.rows.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-[13px] text-muted-foreground">Nothing matches this filter.</td></tr>}

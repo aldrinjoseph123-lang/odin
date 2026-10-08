@@ -19,10 +19,10 @@ function Panel({ title, hint, children }: { title: string; hint?: string; childr
 
 // A state is a word and an icon, never colour alone.
 const TONE = {
-  ok: "bg-ok-soft text-ok", warn: "bg-warn-soft text-warn", bad: "bg-bad-soft text-bad", none: "bg-muted text-muted-foreground",
+  ok: "text-ok", warn: "bg-warn-soft text-warn", bad: "bg-bad-soft text-bad", none: "text-muted-foreground",   // the normal state is quiet; only exceptions get a fill
 } as const
 function Pill({ tone, icon, children }: { tone: keyof typeof TONE; icon: ReactNode; children: ReactNode }) {
-  return <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[12px] font-medium", TONE[tone])}>{icon}{children}</span>
+  return <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[12px] font-medium", TONE[tone])}>{icon}{children}</span>
 }
 const ICON = "h-3.5 w-3.5"
 const FEATURE_STATE: Record<AIFeatureView["state"], [keyof typeof TONE, ReactNode, string]> = {
@@ -80,7 +80,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
     <Panel title="AI server" hint="any OpenAI-compatible server: Ollama, llama.cpp, vLLM, or a hosted provider">
       <form onSubmit={save} className="grid grid-cols-1 gap-4">
         <label className="flex items-start gap-2 text-[13px] font-medium">
-          <input type="checkbox" checked={f.ai_enabled} onChange={(e) => setF({ ...f, ai_enabled: e.target.checked })} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
+          <input type="checkbox" checked={f.ai_enabled} onChange={(e) => setF({ ...f, ai_enabled: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />
           <span>{label("ai_enabled")?.label}<span className="block text-[12px] font-normal text-muted-foreground">{label("ai_enabled")?.help}</span></span>
         </label>
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
@@ -104,13 +104,13 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
             <p className="text-[12px] text-muted-foreground">Stored sealed, like the Microsoft 365 secret, and sent as a bearer token.</p>
           </div>
           <label className="flex items-start gap-2 text-[13px] font-medium">
-            <input type="checkbox" checked={f.ai_allow_external} onChange={(e) => { setF({ ...f, ai_allow_external: e.target.checked }); setCheck(null) }} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
+            <input type="checkbox" checked={f.ai_allow_external} onChange={(e) => { setF({ ...f, ai_allow_external: e.target.checked }); setCheck(null) }} className="mt-1 h-3.5 w-3.5 accent-primary" />
             <span>{label("ai_allow_external")?.label}<span className="block text-[12px] font-normal text-muted-foreground">{label("ai_allow_external")?.help}</span></span>
           </label>
         </div>
         {check && (
           <p role="status" className={cn("flex items-start gap-2 rounded-md px-3 py-2 text-[13px]", check.ok ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad")}>
-            {check.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" />}
+            {check.ok ? <CheckCircle2 className="mt-1 h-4 w-4 shrink-0" /> : <XCircle className="mt-1 h-4 w-4 shrink-0" />}
             <span>{check.ok ? <>The server answers and runs <span className="font-mono">{check.model}</span>. Save to use it; every feature is then validated on it.</> : check.reason}</span>
           </p>
         )}
@@ -151,7 +151,7 @@ function Status({ view, busy, send }: { view: AIView; busy: boolean; send: Send 
           <p className="text-muted-foreground">Last 24 hours: {view.usage.calls} request{view.usage.calls === 1 ? "" : "s"}{view.usage.failed ? `, ${view.usage.failed} failed` : ""}, {Math.round(view.usage.avg_s ?? 0)} s on average (slowest {Math.round(view.usage.max_s ?? 0)} s), {view.usage.tokens_in ?? 0} tokens read and {view.usage.tokens_out ?? 0} written.</p>
         )}
         {!view.scheduler_alive && s.state !== "off" && (
-          <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-warn">The scheduler is not running, so there is no heartbeat and nothing is validated. Start the <code className="font-mono text-[12px]">scheduler</code> service.</p>
+          <p className="rounded-md bg-warn-soft px-3 py-2 text-warn">The scheduler is not running, so there is no heartbeat and nothing is validated. Start the <code className="font-mono text-[12px]">scheduler</code> service.</p>
         )}
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
           <Button size="sm" variant="outline" disabled={busy || running || s.state === "off"} onClick={() => send("/settings/ai/validate")}>Validate now</Button>
@@ -176,7 +176,7 @@ function Features({ features, busy, send }: { features: AIFeatureView[]; busy: b
         <p className="text-[13px] text-muted-foreground">No AI features yet. Each one arrives with its own test project and appears here, validated against the server before it runs.</p>
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
-          <thead><tr className="text-left text-[12px] text-muted-foreground">{["Feature", "On the current model", "Last tested", "Answer time", "On", "Forced", ""].map((h) => <th key={h} className="pb-1.5 pr-3 font-normal">{h}</th>)}</tr></thead>
+          <thead><tr className="text-left text-[12px] text-muted-foreground">{["Feature", "On the current model", "Last tested", "Answer time", "On", "Forced", ""].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
           <tbody>
             {features.map((f) => {
               const [tone, icon, word] = FEATURE_STATE[f.state]

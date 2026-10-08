@@ -108,7 +108,7 @@ export default function Projects({ user }: { user: User }) {
               className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 px-2")}>{data.dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}</button>
           </span>
         )}
-        <form onSubmit={search} className="ml-auto flex items-center gap-1.5">
+        <form onSubmit={search} className="ml-auto flex items-center gap-2">
           <Input key={params.get("q") ?? ""} name="q" defaultValue={params.get("q") ?? ""} placeholder="Name, client, PO #" aria-label="Search projects" className="h-7 w-52 text-[13px]" />
           <button type="submit" aria-label="Search" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 px-2")}><Search className="h-3.5 w-3.5" /></button>
           {params.get("q") && <button type="button" onClick={() => update({ q: null })} className="text-[12px] text-muted-foreground hover:text-foreground">Clear</button>}
@@ -121,7 +121,7 @@ export default function Projects({ user }: { user: User }) {
             {data.rows.map((r) => {
               const done = r.total_tasks - r.open_tasks
               return (
-                <li key={r.id} className="grid grid-cols-1 content-start gap-2.5 panel p-4">
+                <li key={r.id} className="grid grid-cols-1 content-start gap-3 panel p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <a href={`/projects/${r.id}`} className="block truncate text-[14px] font-medium hover:underline">{r.name}</a>
@@ -129,7 +129,7 @@ export default function Projects({ user }: { user: User }) {
                     </div>
                     <TeamStack people={r.team} className="flex shrink-0" />
                   </div>
-                  <a href={`/board?rollout=${r.id}`} className="grid grid-cols-1 gap-1.5" title="Open on the flow">
+                  <a href={`/board?rollout=${r.id}`} className="grid grid-cols-1 gap-2" title="Open on the flow">
                     <Stepper stages={r.stages} index={r.stage_index} state="on_track" selected={false} />
                     <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage} <span className="font-normal text-muted-foreground">· stage {r.stage_index + 1} of {r.stages.length}</span></span>
                   </a>
@@ -142,7 +142,7 @@ export default function Projects({ user }: { user: User }) {
               )
             })}
             {data.rows.length === 0 && (
-              <li className="col-span-full rounded-lg border border-dashed border-border px-4 py-10 text-center text-[13px] text-muted-foreground">
+              <li className="col-span-full rounded-lg bg-muted/40 px-4 py-12 text-center text-[13px] text-muted-foreground">
                 {filtered ? <>No projects match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
                   : <>No projects yet.{data.can_create && user.role !== "Viewer" && <> <a href="/projects/new" className="text-primary-text hover:underline">Create the first one</a></>}</>}
               

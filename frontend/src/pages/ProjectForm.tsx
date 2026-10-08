@@ -80,7 +80,7 @@ export default function ProjectForm(_props: { user: User }) {
         <h1 className="text-[17px] font-semibold tracking-tight">{title}</h1>
         {editing && <a href={`/projects/${d.id}`} className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Cancel</a>}
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-1.5 text-[13px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
 
       <p className="mt-3 text-[12px] text-muted-foreground">Fields marked * are required.</p>   {/* test report UX-26 */}
       <form onSubmit={submit} className="mt-2 grid grid-cols-1 max-w-3xl gap-4 lg:grid-cols-2">

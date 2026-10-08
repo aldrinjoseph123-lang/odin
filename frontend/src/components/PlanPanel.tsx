@@ -72,7 +72,7 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse text-[13px]">
           <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">
-            {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", "SLA", "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className="px-2 py-1.5 font-normal">{h}</th>)}
+            {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", "SLA", "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className="px-2 py-2 font-normal">{h}</th>)}
           </tr></thead>
           <tbody>
             {d.stages.map((s, i) => {
@@ -80,16 +80,16 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
               const days = r.plan_start && r.plan_end ? workDays(r.plan_start, r.plan_end, d.calendar) : null
               return (
                 <tr key={s.id} className={cn("border-b border-border last:border-0", s.status === "current" && "bg-accent/40")}>
-                  <td className="px-2 py-1.5 font-medium">{s.name}{s.status === "current" && <span className="ml-1.5 text-[11px] font-normal text-primary-text">now</span>}</td>
+                  <td className="px-2 py-2 font-medium">{s.name}{s.status === "current" && <span className="ml-2 text-[11px] font-normal text-primary-text">now</span>}</td>
                   <td className="px-2 py-1"><input type="date" aria-label={`${s.name} planned start`} className={input} disabled={!d.can_edit || busy} value={r.plan_start ?? ""} placeholder={s.suggested_start}
                     onChange={(e) => e.target.value && setRows(setDate(rows, i, "plan_start", e.target.value, cascade))} /></td>
                   <td className="px-2 py-1"><input type="date" aria-label={`${s.name} planned end`} className={input} disabled={!d.can_edit || busy} value={r.plan_end ?? ""}
                     onChange={(e) => e.target.value && setRows(setDate(rows, i, "plan_end", e.target.value, cascade))} /></td>
-                  <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{days ?? "—"}</td>
-                  <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
-                  <td className="px-2 py-1.5 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` → ${fmtDate(s.actual_end)}` : " → now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
-                  <td className="px-2 py-1.5">{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
-                  <td className={cn("px-2 py-1.5 whitespace-nowrap", s.slip_days && s.slip_days > 0 ? "font-medium text-bad" : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
+                  <td className="px-2 py-2 tabular-nums text-muted-foreground">{days ?? "—"}</td>
+                  <td className="px-2 py-2 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
+                  <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` → ${fmtDate(s.actual_end)}` : " → now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
+                  <td className="px-2 py-2">{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
+                  <td className={cn("px-2 py-2 whitespace-nowrap", s.slip_days && s.slip_days > 0 ? "font-medium text-bad" : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
                 </tr>
               )
             })}
@@ -100,7 +100,7 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
       {d.can_edit && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Fill the gaps from SLAs</Button>
-          <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
+          <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
           {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="h-8 min-w-60 flex-1 rounded-md border border-input bg-background px-2 text-[13px]" />}
           <span className="ml-auto flex gap-2">
             {dirty && <Button size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={() => load()}>Discard</Button>}
@@ -113,11 +113,11 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
 
       {d.changes.length > 0 && (
         <div className="mt-3">
-          <button type="button" onClick={() => setLog(!log)} aria-expanded={log} className="flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"><History className="h-3.5 w-3.5" />{log ? "Hide" : "Show"} what moved ({d.changes.length})</button>
+          <button type="button" onClick={() => setLog(!log)} aria-expanded={log} className="flex items-center gap-2 text-[13px] text-muted-foreground hover:text-foreground"><History className="h-3.5 w-3.5" />{log ? "Hide" : "Show"} what moved ({d.changes.length})</button>
           {log && (
             <ul className="mt-2 divide-y divide-border text-[13px]">
               {d.changes.map((c, i) => (
-                <li key={i} className="flex flex-wrap items-baseline gap-x-2 py-1.5">
+                <li key={i} className="flex flex-wrap items-baseline gap-x-2 py-2">
                   {c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <span><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</span>}
                   {c.reason && <span className="text-muted-foreground">— {c.reason}</span>}
                   <span className="ml-auto text-[12px] text-muted-foreground">{c.author} · <Ago iso={c.created_at} /></span>

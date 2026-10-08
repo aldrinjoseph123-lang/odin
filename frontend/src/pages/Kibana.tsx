@@ -32,14 +32,14 @@ export function Kibana({ rollout, onRollout }: { rollout: number | null; onRollo
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-3">
-        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Kibana dashboards">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Kibana dashboards">
           {d.dashboards.map((x, i) => (
             <button key={x.name} type="button" role="tab" aria-selected={i === at} onClick={() => setAt(i)}
               className={cn("h-7 rounded-full border px-3 text-[12px] font-medium", i === at ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{x.name}</button>
           ))}
         </div>
         {perRollout && (
-          <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
             Rollout
             <select value={d.rollout ?? ""} onChange={(e) => onRollout(e.target.value ? Number(e.target.value) : null)} aria-label="Rollout shown in Kibana" className="h-7 max-w-64 rounded-md border border-input bg-background px-2 text-[13px] text-foreground">
               <option value="">Pick a rollout</option>

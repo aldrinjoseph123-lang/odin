@@ -76,7 +76,7 @@ export default function Person(_props: { user: User }) {
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <section className="panel p-4" aria-label="Contribution">
           <h2 className="mb-2 text-[14px] font-semibold">Contribution <span className="font-normal text-muted-foreground">tasks finished per week, 8 weeks</span></h2>
-          <ul className="flex h-24 items-end gap-1.5" aria-label="Tasks finished per week">
+          <ul className="flex h-24 items-end gap-2" aria-label="Tasks finished per week">
             {d.contribution.weeks.map((w) => (
               <li key={w.week} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`week of ${fmtDate(w.week)}: ${w.done}`}>
                 {w.done > 0 && w.done === peak && <span className="text-foreground">{w.done}</span>}
@@ -97,7 +97,7 @@ export default function Person(_props: { user: User }) {
                 <div className="flex items-center gap-2">
                   <span className={cn("h-2 w-2 shrink-0 rounded-full", p.state === "on_track" ? "bg-transparent" : STATE[p.state].dot)} aria-hidden />
                   <Link to={`/board?rollout=${p.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{p.role}</span>
+                  <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
                 </div>
                 <div className="mt-1 flex items-center gap-3 pl-4">
                   <span className="w-20 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
@@ -123,7 +123,7 @@ export default function Person(_props: { user: User }) {
               )
             })}
             {d.pending.length === 0 && <li className="py-2 text-muted-foreground">Nothing pending.</li>}
-            {d.pending.length > 12 && <li className="py-1.5 text-[12px] text-muted-foreground">{d.pending.length - 12} more</li>}
+            {d.pending.length > 12 && <li className="py-2 text-[12px] text-muted-foreground">{d.pending.length - 12} more</li>}
           </ul>
         </section>
 
@@ -142,12 +142,12 @@ export default function Person(_props: { user: User }) {
 
         <section className="panel p-4 xl:col-span-2" aria-label="Recent activity">
           <h2 className="mb-2 text-[14px] font-semibold">Recently <span className="font-normal text-muted-foreground">what {d.user.name.split(" ")[0]} did</span></h2>
-          <ul className="grid grid-cols-1 gap-2.5 text-[13px] md:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 text-[13px] md:grid-cols-2">
             {d.recent.map((a, i) => {
               const K = KIND[a.kind]
               return (
-                <li key={i} className="flex gap-2.5">
-                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><K.icon className="h-3.5 w-3.5" aria-hidden /></span>
+                <li key={i} className="flex gap-3">
+                  <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><K.icon className="h-3.5 w-3.5" aria-hidden /></span>
                   <span className="min-w-0">
                     <span className="block leading-snug">{K.verb} <Link to={`/board?rollout=${a.project_id}`} className="font-medium hover:underline">{a.project}</Link></span>
                     <span className="block truncate text-muted-foreground">{a.text}</span>

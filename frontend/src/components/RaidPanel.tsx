@@ -56,10 +56,10 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
       <div className="flex flex-wrap items-center gap-2">
         {counts.map(([k, n]) => {
           const K = RAID_KIND[k]
-          return <span key={k} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px]", n && (k === "blocker" ? "bg-bad-soft text-bad" : k === "issue" ? "bg-warn-soft text-warn" : "bg-muted"), !n && "text-muted-foreground")}><K.icon className="h-3 w-3" aria-hidden />{n} {K.label.toLowerCase()}{n === 1 ? "" : "s"}</span>
+          return <span key={k} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px]", n && (k === "blocker" ? "bg-bad-soft text-bad" : k === "issue" ? "bg-warn-soft text-warn" : "bg-muted"), !n && "text-muted-foreground")}><K.icon className="h-3 w-3" aria-hidden />{n} {K.label.toLowerCase()}{n === 1 ? "" : "s"}</span>
         })}
-        <span className="ml-auto flex rounded-full bg-muted p-0.5" role="group" aria-label="Show">
-          {(["open", "all"] as const).map((v) => <button key={v} type="button" aria-pressed={show === v} onClick={() => setShow(v)} className={cn("h-6 rounded-full px-2.5 text-[12px]", show === v ? "bg-card shadow-card" : "text-muted-foreground")}>{v === "open" ? "Open" : "All"}</button>)}
+        <span className="ml-auto flex rounded-full bg-muted p-1" role="group" aria-label="Show">
+          {(["open", "all"] as const).map((v) => <button key={v} type="button" aria-pressed={show === v} onClick={() => setShow(v)} className={cn("h-6 rounded-full px-3 text-[12px]", show === v ? "bg-card shadow-card" : "text-muted-foreground")}>{v === "open" ? "Open" : "All"}</button>)}
         </span>
         {d.can_edit && <Button size="sm" className="rounded-full" onClick={() => { setError(null); setFromAI(null); setEdit({ kind: "risk", title: "", impact: "medium", likelihood: "medium" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
@@ -75,14 +75,14 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
           const late = i.open && i.due_date ? lateBy(i.due_date, today) : 0
           return (
             <li key={i.id}>
-              <button type="button" disabled={!d.can_edit} onClick={() => { setError(null); setFromAI(null); setEdit({ ...i }) }} className="flex w-full items-start gap-2.5 py-2 text-left enabled:hover:bg-muted/40">
-                <K.icon className={cn("mt-0.5 h-4 w-4 shrink-0", i.kind === "blocker" && i.open ? "text-bad" : "text-muted-foreground")} aria-hidden />
+              <button type="button" disabled={!d.can_edit} onClick={() => { setError(null); setFromAI(null); setEdit({ ...i }) }} className="flex w-full items-start gap-3 py-2 text-left enabled:hover:bg-muted/40">
+                <K.icon className={cn("mt-1 h-4 w-4 shrink-0", i.kind === "blocker" && i.open ? "text-bad" : "text-muted-foreground")} aria-hidden />
                 <span className="min-w-0 flex-1">
                   <span className={cn("block font-medium", !i.open && "text-muted-foreground line-through")}>{i.title}</span>
                   <span className="block text-[12px] text-muted-foreground">{K.label} · {i.status}{i.owner_name && ` · ${i.owner_name}`}{i.stage && ` · ${i.stage}`}{i.resolution && ` · ${i.resolution}`}</span>
                 </span>
-                {i.customer_visible && <Eye className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Shown to the customer" />}
-                {i.kind !== "decision" && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", IMPACT[i.impact])}>{i.impact}</span>}
+                {i.customer_visible && <Eye className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Shown to the customer" />}
+                {i.kind !== "decision" && <span className={cn("shrink-0 rounded-full px-2 py-1 text-[11px] font-medium", IMPACT[i.impact])}>{i.impact}</span>}
                 {i.due_date && <span className={cn("shrink-0 whitespace-nowrap text-[12px]", late > 0 ? "font-medium text-bad" : "text-muted-foreground")}>{late > 0 ? `${late} d late` : fmtDate(i.due_date)}</span>}
               </button>
             </li>
@@ -96,7 +96,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
           {edit && (
             <form onSubmit={submit} className="grid grid-cols-1 gap-3">
               <DialogHeader><DialogTitle>{edit.id ? `Edit ${RAID_KIND[edit.kind].label.toLowerCase()}` : "Add to the register"}</DialogTitle><DialogDescription>Risks and issues with high impact, and every open blocker, count against the rollout's health.</DialogDescription></DialogHeader>
-              <div className="flex rounded-full bg-muted p-0.5" role="radiogroup" aria-label="Kind">
+              <div className="flex rounded-full bg-muted p-1" role="radiogroup" aria-label="Kind">
                 {(Object.keys(RAID_KIND) as RaidKind[]).map((k) => <button key={k} type="button" role="radio" aria-checked={edit.kind === k} onClick={() => set({ kind: k, status: d.statuses[k][0] })} className={cn("h-7 flex-1 rounded-full text-[13px]", edit.kind === k ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{RAID_KIND[k].label}</button>)}
               </div>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Title<input className={field} required maxLength={200} value={edit.title} onChange={(e) => set({ title: e.target.value })} autoFocus /></label>

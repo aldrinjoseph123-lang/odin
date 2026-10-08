@@ -62,12 +62,12 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
             {rows?.length === 0 && <li className="px-3 py-6 text-center text-[13px] text-muted-foreground">Nothing yet. Stage changes, tasks for you and mentions land here.</li>}
             {rows?.map((n) => (
               <li key={n.id}>
-                <button type="button" onClick={() => openOne(n)} className={cn("flex w-full gap-2.5 border-b border-border px-3 py-2.5 text-left last:border-0 hover:bg-muted", !n.read && "bg-accent/40")}>
-                  <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", n.read ? "bg-transparent" : "bg-primary")} aria-hidden />
+                <button type="button" onClick={() => openOne(n)} className={cn("flex w-full gap-3 border-b border-border px-3 py-3 text-left last:border-0 hover:bg-muted", !n.read && "bg-accent/40")}>
+                  <span className={cn("mt-2 h-2 w-2 shrink-0 rounded-full", n.read ? "bg-transparent" : "bg-primary")} aria-hidden />
                   <span className="min-w-0 flex-1">
                     <span className={cn("block text-[13px]", !n.read && "font-medium")}>{n.title}</span>
-                    {n.body && <span className="mt-0.5 line-clamp-2 block text-[12px] text-muted-foreground">{n.body}</span>}
-                    <span className="mt-0.5 block text-[12px] text-muted-foreground"><Ago iso={n.created_at} />{n.actor ? ` · ${n.actor}` : ""}</span>
+                    {n.body && <span className="mt-1 line-clamp-2 block text-[12px] text-muted-foreground">{n.body}</span>}
+                    <span className="mt-1 block text-[12px] text-muted-foreground"><Ago iso={n.created_at} />{n.actor ? ` · ${n.actor}` : ""}</span>
                   </span>
                 </button>
               </li>

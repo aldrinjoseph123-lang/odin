@@ -48,7 +48,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
       {d.lessons.length > 0 && (
         <ul className="mt-2 divide-y divide-border text-[13px]">
           {d.lessons.map((l) => (
-            <li key={l.id} className="flex items-start gap-2 py-1.5">
+            <li key={l.id} className="flex items-start gap-2 py-2">
               <span className={l.kind === "avoid" ? "w-14 shrink-0 text-[12px] font-medium text-warn" : "w-14 shrink-0 text-[12px] font-medium text-ok"}>{KIND[l.kind]}</span>
               <span className="min-w-0 flex-1">{l.text}</span>
               {d.can_edit && <button type="button" disabled={busy} onClick={() => void act(() => deleteLesson(projectId, l.id))} aria-label={`Delete lesson: ${l.text}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>}
@@ -57,7 +57,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
         </ul>
       )}
       {showAI && d.can_edit && s && (
-        <div className="mt-3 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px]">
+        <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[13px]">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
             <span className="min-w-0 flex-1" aria-live="polite">{drafting ? "Reading the rollout's history… about a minute." : sug ? "AI draft: tick the lessons worth keeping, then save them to the library." : "Draft this rollout's lessons with AI from its plan changes, overruns, risks, scope and notes."}</span>
@@ -66,7 +66,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
           </div>
           {sug && !drafting && (
             <div className="mt-2 border-t border-border pt-2">
-              <ul className="grid grid-cols-1 gap-1.5">
+              <ul className="grid grid-cols-1 gap-2">
                 {sug.payload.lessons.map((l, i) => (
                   <li key={i}><label className="flex items-start gap-2">
                     <input type="checkbox" className="mt-1 h-3.5 w-3.5 accent-primary" checked={picked.has(i)} onChange={() => setPicked((p) => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n })} />

@@ -12,7 +12,7 @@ export function Stepper({ stages, index, state, selected, columns }: { stages: s
   const pos = (i: number) => `${((columns && columns.length > 1 ? Math.max(0, columns.indexOf(stages[i])) : i) / n) * 100}%`
   const last = stages.length - 1
   return (
-    <div className="relative mx-1.5 h-3" role="img" aria-label={`Stage ${index + 1} of ${stages.length}: ${stages[index]}`}>
+    <div className="relative mx-2 h-3" role="img" aria-label={`Stage ${index + 1} of ${stages.length}: ${stages[index]}`}>
       <span className="absolute top-1/2 h-[1.5px] -translate-y-1/2 bg-input" style={{ left: pos(0), width: `calc(${pos(last)} - ${pos(0)})` }} aria-hidden />
       {index > 0 && <span className="absolute top-1/2 h-[1.5px] -translate-y-1/2 bg-ok-line" style={{ left: pos(0), width: `calc(${pos(index)} - ${pos(0)})` }} aria-hidden />}
       {stages.map((s, i) => (

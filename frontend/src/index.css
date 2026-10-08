@@ -204,6 +204,16 @@
   box-shadow: var(--elevation-card);
 }
 
+/* No card inside a card (UI/UX plan, stage 2): a panel that sits inside
+   another loses its own box and becomes a faint tone step, so a section
+   reads by alignment, not by stacked borders. Floating surfaces (menus,
+   listboxes, dialogs) keep theirs. */
+.panel .panel:not([role="listbox"], [role="dialog"], [role="menu"], .shadow-pop) {
+  border-color: transparent;
+  box-shadow: none;
+  background-color: color-mix(in srgb, var(--foreground) 3%, var(--card));
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

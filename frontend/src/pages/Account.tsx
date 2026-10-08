@@ -44,11 +44,11 @@ export default function Account(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">{me.name} · {me.username}{me.kind === "external" ? " · partner access" : ""}</p>
       </div>
       {me.must_change_password && <Alert className="mt-3"><AlertDescription>Set a new password before continuing. The one you were given is a shared secret.</AlertDescription></Alert>}
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-2 text-[13px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
       <div className="mt-3 grid grid-cols-1 max-w-3xl gap-4 lg:grid-cols-2">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Appearance <span className="font-normal text-muted-foreground">yours, on every device you sign in on</span></h2>
-          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Theme">
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Theme">
             {THEMES.map((t) => (
               <button key={t} type="button" role="radio" aria-checked={me.theme === t} disabled={busy}
                 onClick={() => { applyTheme(t, me.accent as Accent); void send("/account/appearance", { theme: t, accent: me.accent }) }}
@@ -66,7 +66,7 @@ export default function Account(_props: { user: User }) {
           <p className="text-[12px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. There is no red or amber accent: those colours mean overdue and warning.</p>
           {me.kind !== "external" && (
             <>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Home page">
+              <div className="mt-1 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Home page">
                 <span className="mr-1 text-[13px] text-muted-foreground">Home page</span>
                 {([["dashboard", "Dashboard"], ["board", "Flow"]] as const).map(([k, label]) => (
                   <button key={k} type="button" role="radio" aria-checked={me.home === k} disabled={busy} onClick={() => void send("/account/home", { home: k }, load)}
@@ -109,7 +109,7 @@ export default function Account(_props: { user: User }) {
         {me.kind === "internal" && (
           <section className="grid grid-cols-1 content-start gap-2 panel p-4" aria-label="How Odin reaches you">
             <h2 data-n className="text-[12px] font-semibold text-nav-fg">Reach me by <span className="font-normal text-muted-foreground">besides the bell</span></h2>
-            <div className="flex rounded-full bg-muted p-0.5" role="radiogroup" aria-label="Reach me by">
+            <div className="flex rounded-full bg-muted p-1" role="radiogroup" aria-label="Reach me by">
               {(["email", "teams"] as const).map((v) => (
                 <button key={v} type="button" role="radio" aria-checked={me.notify_via === v} disabled={busy} onClick={() => void send("/account/notify-via", { notify_via: v })}
                   className={cn("h-7 flex-1 rounded-full text-[13px]", me.notify_via === v ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{v === "email" ? "Email" : "Microsoft Teams"}</button>

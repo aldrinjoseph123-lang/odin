@@ -47,15 +47,15 @@ export default function Analytics(_props: { user: User }) {
                   const target = d.slas[r.stage]
                   return (
                     <tr key={r.stage} className="border-b border-border last:border-0">
-                      <td className="px-3 py-1.5 font-medium">{r.stage}</td>
-                      <td className="px-3 py-1.5">{target ? <span className={cn(r.avg_days != null && r.avg_days > target && "rounded-md bg-bad-soft px-1.5 py-0.5 font-medium text-bad")}>{target} d</span> : "—"}</td>
-                      <td className="px-3 py-1.5 text-muted-foreground">{r.visits || "—"}</td>
-                      <td className="px-3 py-1.5">{r.avg_days == null ? "—" : (
+                      <td className="px-3 py-2 font-medium">{r.stage}</td>
+                      <td className="px-3 py-2">{target ? <span className={cn(r.avg_days != null && r.avg_days > target && "rounded-md bg-bad-soft px-2 py-1 font-medium text-bad")}>{target} d</span> : "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{r.visits || "—"}</td>
+                      <td className="px-3 py-2">{r.avg_days == null ? "—" : (
                         <span className="flex items-center gap-2"><span className="h-1.5 w-32 rounded-full bg-muted"><span className="block h-1.5 rounded-full bg-foreground" style={{ width: `${scale ? (r.avg_days / scale) * 100 : 0}%` }} /></span>{d1(r.avg_days)}</span>
                       )}</td>
-                      <td className="px-3 py-1.5 text-muted-foreground">{d1(r.median_days)}</td>
-                      <td className="px-3 py-1.5 text-muted-foreground">{d1(r.max_days)}</td>
-                      <td className="px-3 py-1.5 text-muted-foreground">{r.in_stage_now || "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{d1(r.median_days)}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{d1(r.max_days)}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{r.in_stage_now || "—"}</td>
                     </tr>
                   )
                 })}
@@ -67,7 +67,7 @@ export default function Analytics(_props: { user: User }) {
               <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Aging <span className="font-normal text-muted-foreground">days in current stage</span></h2>
               <ul className="divide-y divide-border text-[13px]">
                 {s.aging.map((a) => (
-                  <li key={`${a.project_id}-${a.stage}`} className="flex items-center gap-3 py-1.5">
+                  <li key={`${a.project_id}-${a.stage}`} className="flex items-center gap-3 py-2">
                     <a href={`/board?rollout=${a.project_id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{a.project_name}</a>
                     <span className="truncate text-[13px] text-muted-foreground">{a.stage}</span>
                     <span className={cn("w-10 text-right", a.days >= 30 ? "font-medium text-bad" : a.days >= 14 ? "font-medium text-warn" : "")}>{Math.round(a.days)}</span>
@@ -78,7 +78,7 @@ export default function Analytics(_props: { user: User }) {
             </section>
             <section className="panel p-4">
               <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Throughput <span className="font-normal text-muted-foreground">projects closed per month</span></h2>
-              <ul className="grid grid-cols-1 gap-1.5 text-[13px]">
+              <ul className="grid grid-cols-1 gap-2 text-[13px]">
                 {s.throughput.map(([month, n]) => (
                   <li key={month} className="flex items-center gap-3"><span className="w-16 text-[12px] text-muted-foreground">{month}</span><span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-ok-line" style={{ width: `${peak ? (n / peak) * 100 : 0}%` }} /></span><span className="w-6 text-right">{n}</span></li>
                 ))}

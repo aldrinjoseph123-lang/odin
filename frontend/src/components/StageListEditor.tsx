@@ -26,10 +26,10 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
   return (
     <div className="grid grid-cols-1 gap-2 text-[13px]">
       {rows.map((s, i) => (
-        <div key={s.id} className="flex flex-wrap items-center gap-1.5">
+        <div key={s.id} className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={busy || i === 0} onClick={() => send(paths.move(s.id), { direction: "up" })} aria-label={`Move ${s.name} up`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-7 w-7 px-0")}><ArrowUp className="h-3.5 w-3.5" /></button>
           <button type="button" disabled={busy || i === rows.length - 1} onClick={() => send(paths.move(s.id), { direction: "down" })} aria-label={`Move ${s.name} down`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-7 w-7 px-0")}><ArrowDown className="h-3.5 w-3.5" /></button>
-          <form onSubmit={(e) => { e.preventDefault(); if ((names[s.id] ?? "").trim() && names[s.id] !== s.name) void send(paths.rename(s.id), { name: names[s.id] }) }} className="flex min-w-0 flex-1 items-center gap-1.5">
+          <form onSubmit={(e) => { e.preventDefault(); if ((names[s.id] ?? "").trim() && names[s.id] !== s.name) void send(paths.rename(s.id), { name: names[s.id] }) }} className="flex min-w-0 flex-1 items-center gap-2">
             <Input value={names[s.id] ?? ""} onChange={(e) => setNames({ ...names, [s.id]: e.target.value })} aria-label={`Rename stage ${s.name}`} maxLength={80} className={cn("h-7 min-w-32 flex-1 text-[13px]", s.name === current && "font-medium")} />
             {names[s.id] !== undefined && names[s.id] !== s.name && <Button type="submit" size="sm" variant="outline" className="h-7" disabled={busy}>Rename</Button>}
           </form>
@@ -46,7 +46,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
         <div className="mb-2 text-[12px] font-semibold text-nav-fg">SLA days per stage</div>
         <div className="flex flex-wrap gap-2">
           {rows.map((s) => (
-            <label key={s.id} className="flex items-center gap-1.5 text-[13px]">
+            <label key={s.id} className="flex items-center gap-2 text-[13px]">
               <span className="max-w-32 truncate text-muted-foreground">{s.name}</span>
               <Input type="number" min={1} value={slas[s.id] ?? ""} onChange={(e) => setSlas({ ...slas, [s.id]: e.target.value })} aria-label={`SLA days for ${s.name} in ${label}`} placeholder="—" className="h-7 w-16 text-[13px]" />
             </label>

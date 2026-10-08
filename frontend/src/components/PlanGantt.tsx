@@ -57,13 +57,13 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
         })}
       </div>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
-        <li className="flex items-center gap-1.5"><span className="h-3 w-5 rounded-full border-[1.5px] border-primary/70" />Plan</li>
-        <li className="flex items-center gap-1.5"><span className="h-2 w-5 rounded-full bg-foreground/70" />Actual</li>
-        <li className="flex items-center gap-1.5"><span className="h-2 w-5 rounded-full bg-primary/30" />Forecast</li>
-        {stages.some((s) => s.base_start) && <li className="flex items-center gap-1.5"><span className="h-[3px] w-5 rounded-full bg-input" />Baseline</li>}
-        <li className="flex items-center gap-1.5"><span className="h-2 w-5 rounded-full bg-warn-line" />Running late</li>
-        <li className="flex items-center gap-1.5"><span className="h-3 w-[1.5px] bg-primary/60" />Today</li>
-        {target && <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l border-dashed border-bad-line" />Target</li>}
+        <li className="flex items-center gap-2"><span className="h-3 w-5 rounded-full border-[1.5px] border-primary/70" />Plan</li>
+        <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-foreground/70" />Actual</li>
+        <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-primary/30" />Forecast</li>
+        {stages.some((s) => s.base_start) && <li className="flex items-center gap-2"><span className="h-[3px] w-5 rounded-full bg-input" />Baseline</li>}
+        <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-warn-line" />Running late</li>
+        <li className="flex items-center gap-2"><span className="h-3 w-[1.5px] bg-primary/60" />Today</li>
+        {target && <li className="flex items-center gap-2"><span className="h-3 w-0 border-l border-dashed border-bad-line" />Target</li>}
       </ul>
     </div>
   )
@@ -73,5 +73,5 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
 export function RagPill({ rag, className }: { rag: "green" | "amber" | "red" | "done"; className?: string }) {
   const map = { green: ["bg-ok-soft text-ok", "On track"], amber: ["bg-warn-soft text-warn", "At risk"], red: ["bg-bad-soft text-bad", "Off track"], done: ["bg-muted text-muted-foreground", "Complete"] } as const
   const [cls, word] = map[rag]
-  return <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-semibold", cls, className)}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{word}</span>
+  return <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold", cls, className)}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{word}</span>
 }

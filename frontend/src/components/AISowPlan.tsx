@@ -71,7 +71,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
   const row = (kind: string, item: SowItem, i: number, extra?: string) => {
     const key = `${kind}:${i}`
     return (
-      <li key={key} className="flex items-start gap-2 py-1.5">
+      <li key={key} className="flex items-start gap-2 py-2">
         <input type="checkbox" className="mt-1 h-3.5 w-3.5 accent-primary" checked={picked.has(key)} onChange={() => toggle(key)} aria-label={`Add ${item.title}`} />
         <span className="min-w-0 flex-1">
           <span className="font-medium">{item.title}</span>{extra && <span className="text-muted-foreground"> · {extra}</span>}
@@ -82,7 +82,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
     )
   }
   return (
-    <div className="mt-3 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px]">
+    <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[13px]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
         <span className="min-w-0 flex-1" aria-live="polite">

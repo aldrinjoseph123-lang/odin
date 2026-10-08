@@ -16,8 +16,8 @@ export function Table({ head, rows, tone }: { head: string[]; rows: ReactNode[][
     // Focusable so a keyboard can scroll it when it is wider than a phone.
     <div className="overflow-x-auto" tabIndex={0}>
       <table className="w-full border-collapse text-[13px]">
-        <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">{head.map((h) => <th key={h} className="px-2 py-1.5 font-normal">{h}</th>)}</tr></thead>
-        <tbody>{rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn("px-2 py-1.5 align-top", tone?.(i, j))}>{c}</td>)}</tr>)}</tbody>
+        <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">{head.map((h) => <th key={h} className="px-2 py-2 font-normal">{h}</th>)}</tr></thead>
+        <tbody>{rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn("px-2 py-2 align-top", tone?.(i, j))}>{c}</td>)}</tr>)}</tbody>
       </table>
     </div>
   )

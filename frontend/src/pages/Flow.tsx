@@ -28,7 +28,7 @@ const APPROVAL: Record<ApprovalStatus, { label: string; chip: string } | null> =
 }
 function ApprovalChip({ status, className }: { status: ApprovalStatus | null; className?: string }) {
   const a = status && APPROVAL[status]
-  return a ? <span className={cn("whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium", a.chip, className)}>{a.label}</span> : null
+  return a ? <span className={cn("whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-medium", a.chip, className)}>{a.label}</span> : null
 }
 
 
@@ -63,7 +63,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
       {tasks.length > 0 && (
         <ul className="divide-y divide-border border-t border-border">
           {tasks.map((t) => (
-            <li key={t.id} className={cn("group flex items-center gap-1.5 py-1.5", t.done && "text-muted-foreground")}>
+            <li key={t.id} className={cn("group flex items-center gap-2 py-2", t.done && "text-muted-foreground")}>
               <button type="button" disabled={!canTick(t) || busy} onClick={() => run(() => toggleTask(d.id, t.id))}
                 aria-label={t.done ? `Reopen ${t.title}` : `Complete ${t.title}`}
                 className={cn("relative flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border before:absolute before:-inset-[5px] before:content-['']", t.done ? "border-ok-line bg-ok-line text-background" : "border-input bg-background", canTick(t) ? "hover:border-foreground" : "cursor-default opacity-60")}>
@@ -84,16 +84,16 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
       )}
       {/* a finished stage keeps its tasks but takes no new ones */}
       {d.can_edit && !done && (adding ? (
-        <form className="mt-1.5 grid grid-cols-1 gap-1" onSubmit={(e) => { e.preventDefault(); void submit() }}>
+        <form className="mt-2 grid grid-cols-1 gap-1" onSubmit={(e) => { e.preventDefault(); void submit() }}>
           <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task" aria-label={`New task in ${stage}`} maxLength={200} className="h-7 px-2 text-[13px]"
             onKeyDown={(e) => { if (e.key === "Escape") { setAdding(false); setTitle("") } }} />
           <div className="flex items-center gap-1">
-            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} aria-label="Assign to" className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[12px]">
+            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} aria-label="Assign to" className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-[12px]">
               <option value="">Unassigned</option>
               {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
             <Button type="submit" size="sm" className="h-7 px-2" disabled={busy || !title.trim()} aria-label="Add task"><Plus className="h-3.5 w-3.5" /></Button>
-            <Button type="button" size="sm" variant="ghost" className="h-7 px-1.5" onClick={() => { setAdding(false); setTitle("") }} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
+            <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => { setAdding(false); setTitle("") }} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
           </div>
         </form>
       ) : (
@@ -117,7 +117,7 @@ function NextLine({ r, today }: { r: FlowRow; today: string }) {
   const t = r.next_task
   const late = t?.due_date ? lateBy(t.due_date, today) : 0
   return (
-    <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+    <span className="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
       {t ? (
         <>
           <span className="min-w-0 truncate"><span className="text-nav-fg">Next:</span> {t.title}</span>
@@ -135,7 +135,7 @@ function NextLine({ r, today }: { r: FlowRow; today: string }) {
 function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
   r: FlowRow; selected: boolean; tabStop: boolean; onSelect: (id: number) => void; columns: string[]; today: string; me: number
 }) {
-  const chip = <span className={cn("whitespace-nowrap rounded-md px-2 py-0.5 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
+  const chip = <span className={cn("whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
     <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
   // The viewer is on most of their own rows: show who else is.
   const others = r.team.filter((p) => p.id !== me)
@@ -145,7 +145,7 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
       <button type="button" data-row onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={tabStop ? 0 : -1}
         aria-label={`${r.name}, ${r.client}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
         className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
-          "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] md:gap-x-4 md:gap-y-0.5",
+          "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] md:gap-x-4 md:gap-y-1",
           selected ? "border-primary bg-accent" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
         <span className="flex min-w-0 items-center gap-2 md:col-start-1 md:row-start-1">
           <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
@@ -157,12 +157,12 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
           <Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} columns={columns} />
         </span>
         {/* phones: the stage and a progress bar in place of the dots */}
-        <span className="col-span-2 flex min-w-0 items-center gap-2 pl-4 md:col-span-1 md:col-start-3 md:row-span-2 md:row-start-1 md:grid md:gap-0.5 md:pl-0">
+        <span className="col-span-2 flex min-w-0 items-center gap-2 pl-4 md:col-span-1 md:col-start-3 md:row-span-2 md:row-start-1 md:grid md:gap-1 md:pl-0">
           <span className="truncate text-[13px] font-medium">{r.stage}</span>
           <span className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted md:hidden" aria-hidden>
             <span className="block h-full bg-ok-line" style={{ width: `${((r.stage_index + 1) / Math.max(1, r.stages.length)) * 100}%` }} />
           </span>
-          <span className="flex min-w-0 flex-wrap items-center gap-1.5 gap-y-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-2 gap-y-1">
             <span className="hidden md:inline">{chip}</span>
             <ApprovalChip status={r.approval} />
           </span>
@@ -228,14 +228,14 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
           {data.counts.over_sla ? <> · <span className="font-medium text-warn">{data.counts.over_sla} over SLA</span></> : null}
           {data.counts.due_soon ? <> · <span className="font-medium text-warn">{data.counts.due_soon} due soon</span></> : null}
         </p>
-        <div className="flex flex-wrap items-center gap-1.5 md:ml-auto">
+        <div className="flex flex-wrap items-center gap-2 md:ml-auto">
           {chips.map((c) => (
             <button key={c.key} type="button" onClick={() => setFilter(c.key)} aria-pressed={filter === c.key} aria-label={`${c.label}, ${c.n}`}
               className={cn(pill, filter === c.key ? pillOn : pillOff)}>
               {c.label}{c.n ? <span className={filter === c.key ? "text-background/70" : "text-muted-foreground"}>{c.n}</span> : null}
             </button>
           ))}
-          <label className="flex items-center gap-1.5 pl-1 text-[13px] text-muted-foreground">
+          <label className="flex items-center gap-2 pl-1 text-[13px] text-muted-foreground">
             Group
             <select aria-label="Group rollouts by" value={group ?? ""} onChange={(e) => setGroup((e.target.value || null) as FlowGroupBy | null)}
               className="h-8 rounded-md border border-input bg-background px-2 text-[13px] text-foreground pointer-coarse:h-10">
@@ -245,7 +245,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
         </div>
       </div>
       {/* how many sit in each stage, named; a tap shows only that stage */}
-      <nav aria-label="Rollouts in each stage" className="flex gap-1.5 overflow-x-auto px-5 pb-2 [scrollbar-width:none]">
+      <nav aria-label="Rollouts in each stage" className="flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none]">
         {columns.filter((c) => inStage.get(c) || stage === c).map((c) => {
           const on = stage === c
           return (
@@ -259,30 +259,30 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
         })}
       </nav>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-1.5 text-[12px] text-muted-foreground md:grid">
+        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-2 text-[12px] text-muted-foreground md:grid">
           <span>Rollout · next step</span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
-        <ul className="grid grid-cols-1 gap-0.5 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
+        <ul className="grid grid-cols-1 gap-1 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {group ? groupRows(shown, group).map((g) => (
             <li key={g.key} className="mt-2 first:mt-0">
               <p className="flex items-baseline gap-2 border-b border-border px-3 pb-1 text-[13px] font-semibold">
                 {g.key}<span className="font-normal text-muted-foreground">{g.rows.length}
                   {(() => { const bad = g.rows.filter((r) => r.state !== "on_track").length; return bad ? ` · ${bad} ${bad === 1 ? "needs" : "need"} attention` : "" })()}</span>
               </p>
-              <ul className="mt-0.5 grid grid-cols-1 gap-0.5">{g.rows.map(row)}</ul>
+              <ul className="mt-1 grid grid-cols-1 gap-1">{g.rows.map(row)}</ul>
             </li>
           )) : shown.map(row)}
           {(fold || (showCalm && calm.length > 0 && calm.length < rows.length)) && (
             <li>
               <button type="button" onClick={() => setShowCalm(fold)} aria-expanded={!fold} aria-label={fold ? `Show ${calm.length} on-track rollouts` : "Hide the on-track rollouts"}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[13px] text-muted-foreground outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-[13px] text-muted-foreground outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
                 <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", !fold && "rotate-90")} aria-hidden />
                 {fold ? <><span className="font-medium text-foreground">{calm.length} on track</span> · show</> : "Hide the on-track rollouts"}
               </button>
             </li>
           )}
           {rows.length === 0 && (
-            <li className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-[13px] text-muted-foreground">
+            <li className="rounded-lg bg-muted/40 px-4 py-12 text-center text-[13px] text-muted-foreground">
               {data.rows.length === 0 ? (partner ? "No rollout is shared with you yet. It appears here once a project manager adds you." : "No active rollouts yet. Create one from a client PO and it appears here.")
                 : stage ? `No rollout in ${stage} matches this filter.`
                 : filter === "customer" ? "No rollout is waiting on a customer's approval."
@@ -411,25 +411,25 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                 const arrow = k > 0 && (
                   <span className="absolute -left-2 top-[26px] hidden w-4 items-center md:flex" aria-hidden>
                     <span className={cn("h-[1.5px] flex-1", itemDone(items[k - 1]) ? "bg-ok-line" : "bg-input")} />
-                    <ArrowRight className={cn("-ml-1.5 h-3 w-3", itemDone(items[k - 1]) ? "text-ok-line" : "text-input")} />
+                    <ArrowRight className={cn("-ml-2 h-3 w-3", itemDone(items[k - 1]) ? "text-ok-line" : "text-input")} />
                   </span>
                 )
                 if (it.kind !== "stage") {
                   const names = d.stages.slice(it.from, it.to + 1).map((st) => st.name)
                   const open = d.tasks.filter((t) => !t.done && names.includes(t.stage)).length
                   return (
-                    <li key={`${it.kind}-${it.from}`} className="relative min-w-0 md:px-1.5 md:first:pl-0 md:last:pr-0">
+                    <li key={`${it.kind}-${it.from}`} className="relative min-w-0 md:px-2 md:first:pl-0 md:last:pr-0">
                       {arrow}
                       <button type="button" onClick={() => setShowAll(true)} aria-expanded={false}
                         aria-label={`${it.kind === "done" ? "Finished" : "Later"} stages: ${names.join(", ")}. Show every stage`}
                         title={names.join(" → ")}
-                        className={cn("block min-h-[58px] w-full rounded-lg border-[1.5px] px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                        className={cn("block min-h-[58px] w-full rounded-lg border-[1.5px] px-3 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                           it.kind === "done" ? "border-ok-line bg-ok-soft hover:bg-ok-soft/70" : "border-dashed border-input bg-card hover:bg-muted")}>
                         <span className={cn("flex items-start gap-1 text-[13px] font-semibold leading-tight", it.kind === "later" && "text-nav-fg")}>
                           {it.kind === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}
                           {it.kind === "done" ? `${names.length} done` : `+${names.length} later`}
                         </span>
-                        <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{names.join(", ")}</span>
+                        <span className="mt-1 block truncate text-[12px] text-muted-foreground">{names.join(", ")}</span>
                       </button>
                       {it.kind === "later" && open > 0 && <p className="mt-2 text-[12px] text-muted-foreground">{open} open task{open === 1 ? "" : "s"}</p>}
                     </li>
@@ -437,16 +437,16 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                 }
                 const i = it.index, st = d.stages[i]
                 return (
-                  <li key={st.name} className="relative min-w-0 md:px-1.5 md:first:pl-0 md:last:pr-0">
+                  <li key={st.name} className="relative min-w-0 md:px-2 md:first:pl-0 md:last:pr-0">
                     {arrow}
-                    <div className={cn("min-h-[58px] rounded-lg border-[1.5px] bg-card px-2.5 py-2",
+                    <div className={cn("min-h-[58px] rounded-lg border-[1.5px] bg-card px-3 py-2",
                       st.status === "done" && "border-ok-line bg-ok-soft",
                       st.status === "current" && cn("ring-[3px]", STATE[d.state].ring),
                       st.status === "next" && "border-dashed border-input")}>
                       <div className={cn("flex items-start gap-1 text-[13px] font-semibold leading-tight", st.status === "next" && "text-nav-fg")}>
                         {st.status === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}<span className="line-clamp-2">{st.name}</span>
                       </div>
-                      <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
+                      <div className="mt-1 truncate text-[12px] text-muted-foreground">
                         {st.status === "next" ? (st.sla_days ? `SLA ${st.sla_days} d` : "—") : st.status === "done" ? days(st.days) : `${days(st.days)}${st.sla_days ? ` · SLA ${st.sla_days}` : ""}`}
                       </div>
                     </div>
@@ -471,7 +471,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
       {/* right rail: what to do next, when it's due, how we got here */}
       <aside className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:grid-cols-1">
         <section className="panel p-3">
-          <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
+          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
           {next ? (
             <>
               <p className="font-medium">{next.title}</p>
@@ -483,7 +483,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           ) : <p className="text-muted-foreground">Nothing queued — add a task under a stage.</p>}
         </section>
         <section className="panel p-3">
-          <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> ETA</h3>
+          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> ETA</h3>
           {d.target_end_date ? (
             <p><span className="font-medium">{fmtDate(d.target_end_date)}</span>
               <span className={cn("ml-2", d.days_left != null && d.days_left < 0 ? "text-bad" : "text-muted-foreground")}>{d.days_left == null ? "" : d.days_left < 0 ? `${-d.days_left} d late` : `${d.days_left} d left`}</span></p>
@@ -491,7 +491,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           <p className="mt-1 text-muted-foreground">{d.documents} document{d.documents === 1 ? "" : "s"} · {d.tasks.filter((t) => t.done).length}/{d.tasks.length} tasks done</p>
         </section>
         {d.approval && d.approval.stage === d.stage && d.approval.status === "pending" && d.can_approve && (
-          <section className="rounded-lg border border-warn-line bg-warn-soft/40 p-3">
+          <section className="rounded-lg bg-warn-soft p-3">
             <h3 className="mb-1 text-[12px] font-semibold text-nav-fg">Your approval</h3>
             <p className="mb-2 text-[13px] text-muted-foreground">The project moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
             <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (optional)" aria-label="Approval comment" maxLength={2000} className="h-8 text-[13px]" />
@@ -505,15 +505,15 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           <p className="text-[13px] text-muted-foreground">{d.stage} {d.approval.status} by {d.approval.decided_by}{d.approval.comment ? ` · ${d.approval.comment}` : ""}</p>
         )}
         {d.signoff?.awaiting_me && (
-          <section className="rounded-lg border border-warn-line bg-warn-soft/40 p-3">
-            <h3 className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Your signature</h3>
+          <section className="rounded-lg bg-warn-soft p-3">
+            <h3 className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Your signature</h3>
             <p className="mb-2 text-[13px] text-muted-foreground">The sign-off for {d.name} is waiting for you: review what was delivered, then sign.</p>
             <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>Review and sign</Link>
           </section>
         )}
         {d.can_move && d.next_stage && d.signoff?.needed && (
           <section className="panel p-3">
-            <h3 className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</h3>
+            <h3 className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</h3>
             <p className="mb-2 text-[13px] text-muted-foreground">{signoffText(d.signoff.status)}. The project closes once the customer has signed and we have countersigned.</p>
             <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>{d.signoff.status ? "Open the sign-off" : "Prepare the sign-off"}</Link>
           </section>
@@ -528,7 +528,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             </ul>
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the history (optional)" aria-label="Stage change note" maxLength={5000} className="h-8 text-[13px]" />
             {confirming ? (
-              <div className="mt-2 grid grid-cols-1 gap-1.5" role="group" aria-label={`Confirm the move to ${d.next_stage}`}>
+              <div className="mt-2 grid grid-cols-1 gap-2" role="group" aria-label={`Confirm the move to ${d.next_stage}`}>
                 <Button size="sm" onClick={advance} disabled={busy} autoFocus>{busy ? "Moving…" : `Move to ${d.next_stage} now`}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
               </div>
@@ -543,8 +543,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
       {/* who and what happened: under the flowchart on wide screens, after the rail otherwise */}
       <div className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-1 xl:row-start-2">
         <section>
-          <h3 className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><UserRound className="h-3.5 w-3.5" /> Team</h3>
-          <ul className="grid grid-cols-1 gap-1.5">
+          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><UserRound className="h-3.5 w-3.5" /> Team</h3>
+          <ul className="grid grid-cols-1 gap-2">
             {d.participants.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-[13px]">
                 <UserAvatar name={m.name} url={m.avatar_url} />
@@ -553,13 +553,13 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
               </li>
             ))}
           </ul>
-          {!standalone && <a href={`/projects/${d.id}#team`} className="mt-1.5 inline-block text-[12px] text-primary-text hover:underline">Manage team</a>}
+          {!standalone && <a href={`/projects/${d.id}#team`} className="mt-2 inline-block text-[12px] text-primary-text hover:underline">Manage team</a>}
         </section>
         {d.recent_notes.length > 0 && (
           <section className="min-w-0">
             {/* min-w-0 all the way down: a truncated note must not widen the column */}
-            <h3 className="mb-1.5 text-[12px] font-semibold text-nav-fg">Recent</h3>
-            <ul className="grid grid-cols-1 min-w-0 gap-1.5">
+            <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Recent</h3>
+            <ul className="grid grid-cols-1 min-w-0 gap-2">
               {d.recent_notes.map((n, i) => (
                 <li key={i} className="min-w-0 text-[13px]"><span className="font-medium">{n.author}</span> <span className="text-muted-foreground">· {n.stage} · <Ago iso={n.created_at} /></span><div className="truncate text-nav-fg">{n.note}</div></li>
               ))}
@@ -666,10 +666,10 @@ export default function Flow({ user }: { user: User }) {
   if (!data) return <PageSkeleton />
 
   const views = (
-    <span className="flex rounded-full bg-muted p-0.5" role="group" aria-label="View">
+    <span className="flex rounded-full bg-muted p-1" role="group" aria-label="View">
       {([["list", LayoutList, "Rollouts"], ["calendar", CalendarDays, "Calendar"], ...(user.kind === "external" ? [] : [["kibana", BarChart3, "Kibana"] as const])] as const).map(([v, Icon, label]) => (
         <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v}
-          className={cn("flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium", view === v ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground")}>
+          className={cn("flex h-7 items-center gap-2 rounded-full px-3 text-[12px] font-medium", view === v ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground")}>
           <Icon className="h-3.5 w-3.5" aria-hidden />{label}
         </button>
       ))}
@@ -693,7 +693,7 @@ export default function Flow({ user }: { user: User }) {
                 </button>
               )}
               {notice && (
-                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-1.5 text-[13px]", notice.bad ? "bg-bad-soft text-bad" : "bg-ok-soft text-ok")} role="status">
+                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[13px]", notice.bad ? "bg-bad-soft text-bad" : "bg-ok-soft text-ok")} role="status">
                   <span>{notice.text}
                     {/* the mover can put it back for five minutes; the server decides */}
                     {notice.undo && <button type="button" onClick={() => void undoMove(notice.undo!)} className="ml-2 font-semibold underline-offset-2 hover:underline">Undo</button>}

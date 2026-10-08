@@ -36,7 +36,7 @@ function Chip({ it, full }: { it: Item; full?: boolean }) {
   const Icon = late ? AlarmClock : ICON[it.kind]
   const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
   return (
-    <Link to={it.href} className={cn("flex min-w-0 items-start gap-1.5 rounded-md px-1.5 py-0.5 text-[12px] leading-tight hover:bg-muted", full && "py-1.5 text-[13px]")} title={`${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}`}>
+    <Link to={it.href} className={cn("flex min-w-0 items-start gap-2 rounded-md px-2 py-1 text-[12px] leading-tight hover:bg-muted", full && "py-2 text-[13px]")} title={`${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}`}>
       <Icon className={cn("mt-px h-3 w-3 shrink-0", tone)} aria-hidden />
       <span className="min-w-0">
         <span className={cn("block truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}>{late && <span className="sr-only">Late: </span>}{it.text}</span>
@@ -71,7 +71,7 @@ export function Calendar({ wide }: { wide: boolean }) {
         <button type="button" onClick={() => setMonth(today.slice(0, 7))} className={pill}>Today</button>
       </div>
       <h2 className="text-[14px] font-semibold tracking-tight">{monthTitle(month)}</h2>
-      <div className="ml-auto flex flex-wrap gap-1.5" role="group" aria-label="Show">
+      <div className="ml-auto flex flex-wrap gap-2" role="group" aria-label="Show">
         {toggles.map((t) => (
           <button key={t.key} type="button" aria-pressed={show[t.key]} onClick={() => setShow({ ...show, [t.key]: !show[t.key] })}
             className={cn("h-7 rounded-full border px-3 text-[12px] font-medium", show[t.key] ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{t.label}</button>
@@ -104,7 +104,7 @@ export function Calendar({ wide }: { wide: boolean }) {
     <div className="flex h-full min-h-0 flex-col">
       {header}
       <div className="grid grid-cols-7 border-y border-border text-center text-[12px] text-muted-foreground">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((w) => <div key={w} className="py-1.5">{w}</div>)}
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((w) => <div key={w} className="py-2">{w}</div>)}
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {weeks.map((week) => {
@@ -119,18 +119,18 @@ export function Calendar({ wide }: { wide: boolean }) {
                 return (
                   <div key={day} className={cn("min-w-0 border-r border-border px-1 pb-1 pt-1 last:border-0", !inMonth(day) && "bg-muted/40 text-muted-foreground")}>
                     <button type="button" onClick={() => setOpenDay(openDay === day ? null : day)} aria-label={`${fmtDate(day)}, ${list.length} item${list.length === 1 ? "" : "s"}`}
-                      className={cn("mb-0.5 flex h-6 w-6 items-center justify-center rounded-full text-[12px] hover:bg-muted", day === today && "bg-primary font-semibold text-primary-foreground hover:bg-primary", openDay === day && day !== today && "ring-2 ring-primary/40")}>{Number(day.slice(8, 10))}</button>
+                      className={cn("mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] hover:bg-muted", day === today && "bg-primary font-semibold text-primary-foreground hover:bg-primary", openDay === day && day !== today && "ring-2 ring-primary/40")}>{Number(day.slice(8, 10))}</button>
                     <div style={{ height: laneCount * 18 }} aria-hidden />
-                    {extra > 0 && <span className="block px-1.5 text-[11px] text-muted-foreground">+{extra} rollout{extra === 1 ? "" : "s"}</span>}
+                    {extra > 0 && <span className="block px-2 text-[11px] text-muted-foreground">+{extra} rollout{extra === 1 ? "" : "s"}</span>}
                     {shown.map((it) => <Chip key={it.key} it={it} />)}
-                    {list.length > 3 && <button type="button" onClick={() => setOpenDay(day)} className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground">+{list.length - 3} more</button>}
+                    {list.length > 3 && <button type="button" onClick={() => setOpenDay(day)} className="px-2 text-[11px] text-muted-foreground hover:text-foreground">+{list.length - 3} more</button>}
                   </div>
                 )
               })}
               {/* the week's rollout bars, laid over the cells */}
               {lanes.segments.map((s) => (
                 <Link key={`${s.id}-${s.startCol}`} to={`/board?rollout=${s.id}`} title={`${s.name} · ${s.client} · ${s.stage} · ${fmtDate(s.start_date)} → ${s.target_end_date ? fmtDate(s.target_end_date) : "no target"}`}
-                  className={cn("absolute flex h-[14px] items-center truncate rounded-full px-1.5 text-[11px] font-medium leading-none hover:opacity-90",
+                  className={cn("absolute flex h-[14px] items-center truncate rounded-full px-2 text-[11px] font-medium leading-none hover:opacity-90",
                     // the accent carries white; a stuck rollout is its state's soft fill and text, ringed in its line colour, so the name stays readable
                     s.state === "on_track" ? "bg-primary text-primary-foreground" : cn(STATE[s.state].chip, "ring-1 ring-inset", s.state === "overdue" ? "ring-bad-line" : "ring-warn-line"),
                     s.startsHere ? "" : "rounded-l-none", s.endsHere ? "" : "rounded-r-none")}

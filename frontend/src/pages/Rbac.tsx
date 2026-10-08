@@ -39,7 +39,7 @@ export default function Rbac(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">which global role may do what; project roles narrow it further</p>
         <a href="/users" className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Users</a>
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[13px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-2 text-[13px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
       <form onSubmit={submit} className="mt-3">
         <div className="overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
@@ -52,11 +52,11 @@ export default function Rbac(_props: { user: User }) {
             <tbody>
               {data.permissions.map((p) => (
                 <tr key={p} className="border-b border-border last:border-0 hover:bg-muted">
-                  <td className="px-3 py-1.5 text-[13px]">{words(p)}</td>
+                  <td className="px-3 py-2 text-[13px]">{words(p)}</td>
                   {data.roles.map((r) => {
                     const locked = data.locked[p]?.includes(r)
                     return (
-                      <td key={r} className="px-3 py-1.5 text-center">
+                      <td key={r} className="px-3 py-2 text-center">
                         <input type="checkbox" checked={locked || !!matrix[p]?.[r]} disabled={locked || busy} aria-label={`${words(p)}, allowed for ${r}`} className="h-3.5 w-3.5 accent-primary disabled:opacity-50"
                           onChange={(e) => setMatrix({ ...matrix, [p]: { ...matrix[p], [r]: e.target.checked } })} />
                       </td>

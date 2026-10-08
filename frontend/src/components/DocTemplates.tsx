@@ -83,7 +83,7 @@ function Row({ t, busy, onEdit, onCopy, onDefault, onDelete }: { t: DocTemplate;
     <li className="flex flex-wrap items-center gap-2 py-2">
       <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: SWATCH[t.config.accent] }} aria-hidden />
       <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left"><span className="font-medium hover:underline">{t.name}</span>
-        {t.is_default && <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium text-primary-text">Default</span>}
+        {t.is_default && <span className="ml-2 rounded-full bg-accent px-2 py-1 text-[11px] font-medium text-primary-text">Default</span>}
         <span className="block text-[12px] text-muted-foreground">{t.config.title} · edited by {t.updated_by}, {fmtWhen(t.updated_at)}</span></button>
       {!t.is_default && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={onDefault}><Star className="h-3.5 w-3.5" /> Make default</Button>}
       <Button size="sm" variant="ghost" className="h-7" onClick={onCopy} aria-label={`Duplicate ${t.name}`}><Copy className="h-3.5 w-3.5" /></Button>
@@ -113,7 +113,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Brand">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Brand</h2>
-          <fieldset><legend className="mb-1.5 text-[13px] font-medium">Accent</legend>
+          <fieldset><legend className="mb-2 text-[13px] font-medium">Accent</legend>
             <div className="flex flex-wrap gap-2">
               {d.accents.map((a) => <button key={a} type="button" onClick={() => set({ accent: a })} aria-label={a} aria-pressed={c.accent === a}
                 className={cn("h-7 w-7 rounded-full ring-offset-2 ring-offset-card", c.accent === a && "ring-2 ring-foreground")} style={{ background: SWATCH[a] }} />)}
@@ -124,7 +124,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
               <span className="font-medium">{key === "logo" ? "Our logo" : "Customer's logo (co-brand)"} <span className="font-normal text-muted-foreground">{key === "logo" ? "replaces the Odin wordmark in the header" : "beside ours, on the right"}</span></span>
               <div className="flex items-center gap-2">
                 {c[key] ? <img src={`/api/doc-templates/logo/${c[key]}`} alt="" className="h-9 max-w-40 rounded border border-border bg-white object-contain p-1" /> : <span className="text-muted-foreground">none</span>}
-                <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border border-border px-2.5 hover:bg-muted"><ImageUp className="h-3.5 w-3.5" /> Upload
+                <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border border-border px-3 hover:bg-muted"><ImageUp className="h-3.5 w-3.5" /> Upload
                   <input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) onLogo(key, f); e.target.value = "" }} /></label>
                 {c[key] && <button type="button" onClick={() => set({ [key]: null })} className="text-muted-foreground hover:text-foreground" aria-label={`Remove ${key === "logo" ? "our logo" : "the customer's logo"}`}><X className="h-4 w-4" /></button>}
               </div>
@@ -154,7 +154,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Wording">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Wording</h2>
-          <p className="-mt-1 text-[12px] text-muted-foreground">Placeholders: {Object.entries(d.placeholders).map(([p, what]) => <code key={p} title={what} className="mr-1.5 rounded bg-muted px-1">{`{${p}}`}</code>)}</p>
+          <p className="-mt-1 text-[12px] text-muted-foreground">Placeholders: {Object.entries(d.placeholders).map(([p, what]) => <code key={p} title={what} className="mr-2 rounded bg-muted px-1">{`{${p}}`}</code>)}</p>
           {k.texts.map((t) => (
             <label key={t.key} className="grid grid-cols-1 gap-1 text-[13px] font-medium">{t.label} <span className="font-normal text-muted-foreground">{t.help}</span>
               <textarea rows={t.key === "terms" ? 3 : 2} maxLength={3000} value={c.texts[t.key] ?? ""} onChange={(e) => set({ texts: { ...c.texts, [t.key]: e.target.value } })}

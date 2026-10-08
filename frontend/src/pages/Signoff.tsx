@@ -25,7 +25,7 @@ import { fmtDate, fmtWhen, signoffText, toLines } from "@/lib/format"
 // we countersign; then the project can close. A signed paper copy can stand in,
 // and an admin can waive it with a reason. The server decides who may do what.
 const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[13px]")
-const area = "w-full rounded-lg border border-input bg-background p-2.5 text-[14px] leading-relaxed"
+const area = "w-full rounded-lg border border-input bg-background p-3 text-[14px] leading-relaxed"
 const input = "h-9 w-full rounded-md border border-input bg-background px-2 text-[14px]"
 const TONE: Record<SignoffStatus, string> = {
   sent: "bg-warn-soft text-warn", signed: "bg-warn-soft text-warn", countersigned: "bg-ok-soft text-ok", uploaded: "bg-ok-soft text-ok",
@@ -33,7 +33,7 @@ const TONE: Record<SignoffStatus, string> = {
 }
 
 function StatusPill({ status }: { status: SignoffStatus | null }) {
-  return <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-semibold", status ? TONE[status] : "bg-muted text-muted-foreground")}>
+  return <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold", status ? TONE[status] : "bg-muted text-muted-foreground")}>
     <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{signoffText(status)}</span>
 }
 
@@ -44,7 +44,7 @@ function Facts({ p }: { p: SignoffContent["project"] }) {
     ["Solution", [p.vendor_name, p.product_name].filter(Boolean).join(" ") || "—"], ["Started", fmtDate(p.start_date)],
     ["Target", fmtDate(p.target_end_date)], ["Completed", fmtDate(p.finished)],
   ]
-  return <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-2">{rows.map(([k, v]) => <div key={k} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2"><dt className="text-muted-foreground">{k}</dt><dd className="min-w-0 break-words">{v}</dd></div>)}</dl>
+  return <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">{rows.map(([k, v]) => <div key={k} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2"><dt className="text-muted-foreground">{k}</dt><dd className="min-w-0 break-words">{v}</dd></div>)}</dl>
 }
 
 function ScopeTable({ items }: { items: { title: string; detail: string | null; status: keyof typeof SCOPE_WORD; note: string | null }[] }) {
@@ -55,7 +55,7 @@ function ScopeTable({ items }: { items: { title: string; detail: string | null; 
           <span className="w-5 shrink-0 text-right text-[12px] tabular-nums text-muted-foreground">{i + 1}</span>
           <span className="min-w-0 flex-1"><span className={cn("block font-medium", x.status === "descoped" && "text-muted-foreground line-through")}>{x.title}</span>
             {(x.detail || x.note) && <span className="block text-[12px] text-muted-foreground">{[x.detail, x.note].filter(Boolean).join(" · ")}</span>}</span>
-          <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", SCOPE_TONE[x.status].replace("line-through", ""))}>{SCOPE_WORD[x.status]}</span>
+          <span className={cn("shrink-0 rounded-full px-2 py-1 text-[11px] font-medium", SCOPE_TONE[x.status].replace("line-through", ""))}>{SCOPE_WORD[x.status]}</span>
         </li>
       ))}
     </ol>
@@ -66,10 +66,10 @@ function SignatureBlock({ label, sig, name, title, when, pending, paper }: { lab
   return (
     <div className="min-w-0">
       <div className="text-[13px] font-semibold">{label}</div>
-      <div className="mt-1.5 flex h-24 items-center rounded-lg border border-border bg-card px-3 text-foreground">
+      <div className="mt-2 flex h-24 items-center rounded-lg border border-border bg-card px-3 text-foreground">
         {sig ? <SignatureView sig={sig} /> : <span className="text-[13px] text-muted-foreground">{paper ? "Signed on paper; the copy is on file" : pending ? `Waiting for ${pending}` : "—"}</span>}
       </div>
-      <dl className="mt-2 grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[13px]">
+      <dl className="mt-2 grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[13px]">
         <dt className="text-muted-foreground">Name</dt><dd>{name ?? "—"}</dd>
         <dt className="text-muted-foreground">Title</dt><dd>{title || "—"}</dd>
         <dt className="text-muted-foreground">Date</dt><dd>{when ? fmtDate(when) : "—"}</dd>
@@ -101,11 +101,11 @@ function Document({ v }: { v: SignoffVersion }) {
         </div>
       </Section>
       <Section title="Signing record">
-        <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px]">
+        <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-2 text-[13px]">
           <dt className="text-muted-foreground">Version</dt><dd>{v.version}, prepared by {v.created_by}, {fmtWhen(v.created_at, true)}</dd>
           <dt className="text-muted-foreground">Fingerprint</dt><dd className="break-all font-mono text-[12px]">SHA-256 {v.content_hash}</dd>
           <dt className="text-muted-foreground">Integrity</dt>
-          <dd className={cn("flex items-center gap-1.5", v.intact ? "text-ok" : "font-medium text-bad")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{v.intact ? "The content matches its fingerprint." : "The content no longer matches its fingerprint."}</dd>
+          <dd className={cn("flex items-center gap-2", v.intact ? "text-ok" : "font-medium text-bad")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{v.intact ? "The content matches its fingerprint." : "The content no longer matches its fingerprint."}</dd>
           {v.signed_at && v.status !== "uploaded" && <><dt className="text-muted-foreground">Customer</dt><dd>{v.signer_name} ({v.signer_email}) signed {fmtWhen(v.signed_at, true)} in Odin, after a one-time sign-in link sent to that address{v.signed_ip ? `; from ${v.signed_ip}` : ""}</dd></>}
           {v.link_issued_by && <><dt className="text-muted-foreground">Sign-in link</dt><dd>Issued by {v.link_issued_by}, {fmtWhen(v.link_issued_at, true)}, and passed on by hand</dd></>}
           {v.counter_signed_at && <><dt className="text-muted-foreground">Countersigned</dt><dd>{v.counter_name}, {fmtWhen(v.counter_signed_at, true)}{v.counter_ip ? `; from ${v.counter_ip}` : ""}</dd></>}
@@ -157,7 +157,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
       </div>
       <SignaturePad value={sig} onChange={setSig} typedDefault={name} />
       <label className="flex items-start gap-2 text-[13px] leading-snug">
-        <input type="checkbox" className="mt-0.5 accent-primary" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
+        <input type="checkbox" className="mt-1 accent-primary" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
         <span>{counter ? "I confirm the work above is complete and countersign on our behalf." : `I have read this document and accept it on behalf of ${client}.`}</span>
       </label>
       {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
@@ -268,7 +268,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
           <p className="text-[12px] text-muted-foreground">Sending freezes this version and its fingerprint. To change it later, withdraw it and send a new one.</p>
           {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
           {confirming ? (
-            <div className="grid grid-cols-1 gap-1.5" role="group" aria-label="Confirm sending">
+            <div className="grid grid-cols-1 gap-2" role="group" aria-label="Confirm sending">
               <Button onClick={send} disabled={busy} autoFocus className="rounded-full">{busy ? "Sending…" : `Send to ${who?.name ?? "the customer"} now`}</Button>
               <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy} className="rounded-full">Cancel</Button>
             </div>
@@ -339,7 +339,7 @@ export default function Signoff(_props: { user: User }) {
 
       <header className="mt-3">
         <h1 className="text-[24px] font-semibold tracking-tight">Sign-off</h1>
-        <p className="mt-0.5 text-[13px] text-muted-foreground">{d.project.name} · {d.project.client} · now in {d.project.stage}</p>
+        <p className="mt-1 text-[13px] text-muted-foreground">{d.project.name} · {d.project.client} · now in {d.project.stage}</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <StatusPill status={composing ? null : cur?.status ?? null} />
           {cur && !composing && <span className="text-[13px] text-muted-foreground">Version {cur.version}, sent {fmtWhen(cur.created_at, true)}</span>}
