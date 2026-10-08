@@ -23,12 +23,6 @@ type SessionResponse = { csrf: string; user: User | null; messages?: string[]; s
 
 let csrfToken: string | null = null
 
-export async function session(): Promise<SessionResponse> {
-  const res = await fetch("/api/session", { credentials: "same-origin" })
-  const data = (await res.json()) as SessionResponse
-  csrfToken = data.csrf
-  return data
-}
 
 export class ApiError extends Error {
   status: number
@@ -62,6 +56,35 @@ async function call(path: string, init?: RequestInit): Promise<Response> {
   }
 }
 
+// A failed session check (a 502 page while Odin restarts, a dropped
+// connection) is an ApiError like any other, so the page can offer a retry
+// instead of going blank.
+export async function session(): Promise<SessionResponse> {
+  const res = await call("/api/session")
+  const data = res.ok ? ((await res.json().catch(() => null)) as SessionResponse | null) : null
+  if (!data) throw new ApiError(res.ok ? 500 : res.status, failureText(res.ok ? 500 : res.status))
+  csrfToken = data.csrf
+  return data
+}
+
+// A mutation with the CSRF token. A stale token (the session was renewed in
+// another tab, Odin restarted) answers 400 with a fresh one: take it (or ask
+// /api/session) and send once more, so saves do not fail until a reload.
+export function csrfRejected(status: number, data: { csrf?: string; error?: string } | null): boolean {
+  return status === 400 && !!data && (!!data.csrf || /csrf/i.test(data.error ?? ""))
+}
+async function withToken(path: string, init: RequestInit): Promise<Response> {
+  if (!csrfToken) await session()
+  const go = () => call(path, { ...init, headers: { ...(init.headers as Record<string, string>), "X-CSRF-Token": csrfToken ?? "" } })
+  const res = await go()
+  if (res.status !== 400) return res
+  const data = (await res.clone().json().catch(() => null)) as { csrf?: string; error?: string } | null
+  if (!csrfRejected(res.status, data)) return res
+  if (data?.csrf) csrfToken = data.csrf
+  else await session().catch(() => null)
+  return go()
+}
+
 // The error for a failed response: the server's own words when it gave some;
 // a 400/401 from a session that has ended (the CSRF check fails first) says so.
 async function failure(res: Response, said?: string): Promise<ApiError> {
@@ -74,10 +97,9 @@ async function failure(res: Response, said?: string): Promise<ApiError> {
 
 // One JSON request with the CSRF token; every mutation goes through here.
 async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
-  if (!csrfToken) await session()
-  const res = await call(path, {
+  const res = await withToken(path, {
     method,
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken ?? "" },
+    headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string; csrf?: string } & T
@@ -327,8 +349,7 @@ export const signoffLink = (id: number, v: number) => post<{ ok: true; link: str
 export const withdrawSignoff = (id: number, v: number) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/withdraw`)
 export const waiveSignoff = (id: number, reason: string) => post<{ ok: true; version: number }>(`/api/projects/${id}/signoff/waive`, { reason })
 export async function uploadSignoff(id: number, v: number, form: FormData): Promise<{ ok: true }> {
-  if (!csrfToken) await session()
-  const res = await call(`/api/projects/${id}/signoff/${v}/upload`, { method: "POST", body: form, headers: { "X-CSRF-Token": csrfToken ?? "" } })
+  const res = await withToken(`/api/projects/${id}/signoff/${v}/upload`, { method: "POST", body: form })
   const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: true }
   if (!res.ok) throw await failure(res, data.error)
   return data as { ok: true }
@@ -363,7 +384,7 @@ export type DashboardData = {
     progress: { done: number; current: number; pending: number; pct: number }
     stages: { stage: string; count: number }[]
     completion: { day: string; count: number }[]
-    schedule: { due: { id: number; project_id: number; title: string; due_date: string; project: string; stage: string; who: string | null; avatar_url: string | null }[]
+    schedule: { due: { id: number; project_id: number; title: string; due_date: string; project: string; stage: string | null; who: string | null; avatar_url: string | null }[]
                 approvals: { project_id: number; project: string; stage: string; requested_at: string }[] }
     team: { people: { id: number; name: string; avatar_url: string | null; role: string; projects: number; open: number; late: number }[]; unassigned: number }
     activity: { kind: "move" | "note" | "approval" | "task" | "document"; at: string; who: string | null; project_id: number; project: string; text: string }[]
@@ -410,12 +431,16 @@ export const projectExtras = (id: number) => getJson<ProjectExtras>(`/api/projec
 // answer differs because we ask for JSON.
 export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null }
 export async function postForm(path: string, fields: Record<string, string> | FormData = {}): Promise<FormReply> {
-  if (!csrfToken) await session()
   const body = fields instanceof FormData ? fields : new URLSearchParams(fields)
-  const res = await call(path, { method: "POST", body, headers: { Accept: "application/json", "X-CSRF-Token": csrfToken ?? "" } })
-  if (!res.ok) throw await failure(res, res.status === 403 ? "You cannot do that on this project" : undefined)
-  const data = (await res.json().catch(() => null)) as FormReply | null
+  const res = await withToken(path, { method: "POST", body, headers: { Accept: "application/json" } })
+  if (!res.ok) {
+    // a refused form answers 400 {ok: false, error, messages}: its own words
+    const d = (await res.json().catch(() => null)) as { error?: string; messages?: string[] } | null
+    throw await failure(res, res.status === 403 ? "You cannot do that on this project" : d?.messages?.join(" ") || d?.error || undefined)
+  }
+  const data = (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
   if (!data) throw new ApiError(res.status, "Your session has ended — sign in again")
+  if (data.ok === false) throw new ApiError(400, data.messages?.join(" ") || data.error || "That did not save")
   return data
 }
 
@@ -549,8 +574,7 @@ export const deleteDocTemplate = (id: number) => send<{ ok: true }>(`/api/doc-te
 export const defaultDocTemplate = (id: number) => post<{ ok: true }>(`/api/doc-templates/${id}/default`)
 export const docTemplateChoices = (kind: DocKind) => getJson<{ choices: { id: number; name: string; is_default: boolean }[] }>(`/api/doc-templates/choices?kind=${kind}`)
 async function raw(path: string, body: BodyInit, json = false): Promise<Response> {
-  if (!csrfToken) await session()
-  const res = await call(path, { method: "POST", body, headers: { "X-CSRF-Token": csrfToken ?? "", ...(json ? { "Content-Type": "application/json" } : {}) } })
+  const res = await withToken(path, { method: "POST", body, headers: json ? { "Content-Type": "application/json" } : {} })
   if (!res.ok) { const d = (await res.json().catch(() => ({}))) as { error?: string }; throw await failure(res, d.error) }
   return res
 }
@@ -631,4 +655,7 @@ export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/pro
 export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null }) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)
 export const toggleTask = (projectId: number, taskId: number) => post<{ ok: true; done: boolean }>(`/projects/${projectId}/tasks/${taskId}/toggle`, {})
+// a task corrected in place: the route takes the whole task (title, assignee, due date)
+export const editTask = (projectId: number, taskId: number, task: { title: string; assignee_id: number | null; due_date: string | null }) =>
+  post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, task)
 export const deleteTask = (projectId: number, taskId: number) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/delete`, {})

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest"
-import { SIGNED_OUT, failureText } from "./api"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { ApiError, SIGNED_OUT, csrfRejected, failureText, markRead, session } from "./api"
 
 describe("failureText", () => {
   it("says what went wrong and what to do, never a bare status (test report UX-6)", () => {
@@ -10,5 +10,34 @@ describe("failureText", () => {
     expect(failureText(503)).toBe(failureText(500))
     expect(failureText(418)).toMatch(/error 418\)\. Reload/)
     for (const s of [0, 400, 401, 403, 404, 413, 429, 500]) expect(failureText(s)).not.toMatch(/Request failed/)
+  })
+})
+
+describe("the CSRF token and the session check", () => {
+  const reply = (status: number, body: unknown) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it("tells a stale-token 400 from any other 400", () => {
+    expect(csrfRejected(400, { error: "CSRF token missing or invalid" })).toBe(true)
+    expect(csrfRejected(400, { error: "x", csrf: "fresh" })).toBe(true)
+    expect(csrfRejected(400, { error: "Task needs a title" })).toBe(false)
+    expect(csrfRejected(403, { csrf: "fresh" })).toBe(false)
+    expect(csrfRejected(400, null)).toBe(false)
+  })
+
+  it("takes the fresh token from a CSRF 400 and sends once more (FE7)", async () => {
+    const tokens: string[] = []
+    vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === "/api/session") return reply(200, { csrf: "old", user: null })
+      tokens.push((init?.headers as Record<string, string>)["X-CSRF-Token"])
+      return tokens.length === 1 ? reply(400, { error: "CSRF token missing or invalid", csrf: "new" }) : reply(200, { ok: true })
+    }))
+    await expect(markRead({ all: true })).resolves.toEqual({ ok: true })
+    expect(tokens).toEqual(["old", "new"])
+  })
+
+  it("a 502 page from /api/session is an ApiError, not a crash (FE3)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => reply(502, "<html>Bad gateway</html>")))
+    await expect(session()).rejects.toBeInstanceOf(ApiError)
   })
 })
