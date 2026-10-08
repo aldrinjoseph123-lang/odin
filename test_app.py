@@ -5645,6 +5645,11 @@ SOW_GOOD = json.dumps({
                              {"title": "Approve the design within 5 working days", "quote": "approve the design within 5 working days of receipt"}],
     "key_dates": [{"what": "Kick-off", "date": "12 Oct 2026"}], "exclusions": ["Mac and Linux endpoints", "Server workloads"]})
 ANSWERS["You read part of a purchase order"] = SOW_GOOD
+CHASE_GOOD = json.dumps({"subject": "SIEM onboarding: design approval and Site B access",
+                         "body": "Hi Ann,\n\nThe approval of the Design stage has been waiting since 29 Sep 2026 (9 days), and building access at Site B "
+                                 "was due on 4 Oct 2026. Both are needed to keep the go-live of 20 Oct 2026. Could you approve the design, or let me "
+                                 "know when you expect to? I am happy to walk through it on a call.\n\nBest regards,\nSam Rivera"})
+ANSWERS["You draft a short, polite follow-up"] = CHASE_GOOD
 
 
 class WeeklyWordsTestCase(AITestBase):
@@ -6210,6 +6215,40 @@ class AIGuideRulesTestCase(AITestBase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_suggestions").fetchone()[0], 0)
         with self._db() as con:
             self.assertIsNotNone(con.execute("SELECT 1 FROM audit_logs WHERE action = 'cancel_ai_draft'").fetchone())
+
+
+class ChaseDraftTestCase(AITestBase):
+    """Feature 9: a chase email about what waits on the customer."""
+    isolate_features = False
+
+    def test_what_is_waiting_and_the_graders(self):
+        from datetime import date, timedelta
+        from services.ai.client import AIError
+        from services.ai.features.chase_draft import FEATURE, fixture, gather, options
+        good = json.loads(CHASE_GOOD)
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders if g(fixture(), good)], [])
+        self.assertTrue(FEATURE.graders[1](fixture(), {**good, "body": good["body"] + " This is urgent!"}))
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Waiting", "client": "C"})
+        with self._ctx():
+            self.assertEqual(options(1)["waiting"], [])
+            with self.assertRaises(AIError) as e:
+                gather(project_id=1)
+            self.assertEqual(e.exception.kind, "skip")
+        with patch("graph.send_mail", return_value=(False, "not configured")):
+            self.client.post("/projects/1/participants/invite", data={"email": "ann@c.example", "name": "Ann Lee", "role": "Customer"})
+        with self._db() as con:
+            stage = con.execute("SELECT stage FROM projects WHERE id = 1").fetchone()[0]
+            ann = con.execute("SELECT id FROM users WHERE email = 'ann@c.example'").fetchone()[0]
+            con.execute("INSERT INTO stage_approvals (project_id, stage, status, requested_by, requested_at) VALUES (1, ?, 'pending', 'admin', ?)",
+                        (stage, (date.today() - timedelta(days=9)).isoformat()))
+            con.execute("INSERT INTO tasks (project_id, title, due_date, assignee_id, created_at, created_by) VALUES (1, 'Send the log samples', ?, ?, ?, 'admin')",
+                        ((date.today() - timedelta(days=4)).isoformat(), ann, date.today().isoformat()))
+        with self._ctx():
+            facts = gather(project_id=1)
+        self.assertEqual(facts["customer_contact"], "Ann Lee")
+        self.assertEqual([w.get("days_waiting", w.get("days_overdue")) for w in facts["waiting_on_the_customer"]], [9, 4])
+        view = self.client.get("/api/projects/1/ai/chase_draft").get_json()
+        self.assertEqual(view["options"]["contact"], {"name": "Ann Lee", "email": "ann@c.example"})
 
 
 if __name__ == "__main__":

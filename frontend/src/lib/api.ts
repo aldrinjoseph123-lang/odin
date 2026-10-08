@@ -234,7 +234,8 @@ export const saveRolloutReport = (id: number, words: { summary: string; next_ste
 // draft, and the job writing a new one. Drafts are used or dismissed by a person.
 export type AISuggestion<T> = { id: number; payload: T; model: string | null; seconds: number | null; created_at: string; status: string }
 export type ProjectAI<T> = {
-  available: boolean; reason: string | null; label: string; suggestion: AISuggestion<T> | null; options?: { documents?: SowDocument[] } | null
+  available: boolean; reason: string | null; label: string; suggestion: AISuggestion<T> | null
+  options?: { documents?: SowDocument[]; waiting?: WaitingItem[]; contact?: { name: string; email: string | null } | null } | null
   job: { id: number; status: "queued" | "running" | "done" | "failed"; error: string | null; result: { skipped?: string; suggestion?: number } | null; created_at: string } | null
 }
 export type WeeklyWordsDraft = { summary: string; next_steps: string[]; asks: string[] }
@@ -242,6 +243,8 @@ export const projectAI = <T,>(id: number, key: string) => getJson<ProjectAI<T>>(
 export const requestProjectAI = (id: number, key: string, input?: unknown) => post<{ ok: true; job: number }>(`/api/projects/${id}/ai/${key}`, input === undefined ? undefined : { input })
 export const cancelAIJob = (id: number, job: number) => post<{ ok: true }>(`/api/projects/${id}/ai/jobs/${job}/cancel`)
 export const dismissAISuggestion = (id: number, suggestion: number) => post<{ ok: true }>(`/api/projects/${id}/ai/suggestions/${suggestion}/dismiss`)
+export type WaitingItem = { what: string; since?: string; days_waiting?: number; due?: string; days_overdue?: number }
+export type ChaseDraft = { subject: string; body: string }
 export type SowItem = { title: string; detail?: string; stage?: string | null; quote?: string }
 export type SowPlan = { scope_items: SowItem[]; tasks: SowItem[]; customer_obligations: SowItem[]; key_dates: { what: string; date: string }[]; exclusions: string[] }
 export type SowDocument = { id: number; filename: string; category: string; likely: boolean }

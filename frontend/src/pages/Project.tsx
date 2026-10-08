@@ -10,6 +10,7 @@ import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { PlanPanel } from "@/components/PlanPanel"
 import { RaidPanel } from "@/components/RaidPanel"
 import { ScopePanel } from "@/components/ScopePanel"
+import { AIChase } from "@/components/AIChase"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
@@ -95,6 +96,7 @@ export default function Project(_props: { user: User }) {
       <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
 
       <div className="grid grid-cols-1 gap-4 px-5 pb-6 lg:grid-cols-2 [&>*]:min-w-0">
+        <div className="empty:hidden lg:col-span-2"><AIChase projectId={id} /></div>
         <div className="lg:col-span-2"><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} /></Panel></div>
         <div className="lg:col-span-2"><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} /></Panel></div>
         <div className="lg:col-span-2"><Panel title="Scope and sign-off" hint="what was agreed, what was delivered, and the customer's signature" id="scope"><ScopePanel projectId={id} signoff={d.signoff} /></Panel></div>
