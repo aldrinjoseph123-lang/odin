@@ -13,7 +13,8 @@ export function Section({ n, title, sub, children, className }: { n?: boolean; t
 }
 export function Table({ head, rows, tone }: { head: string[]; rows: ReactNode[][]; tone?: (r: number, c: number) => string | undefined }) {
   return (
-    <div className="overflow-x-auto">
+    // Focusable so a keyboard can scroll it when it is wider than a phone.
+    <div className="overflow-x-auto" tabIndex={0}>
       <table className="w-full border-collapse text-[12.5px]">
         <thead><tr className="border-b border-border text-left text-[11.5px] text-muted-foreground">{head.map((h) => <th key={h} className="px-2 py-1.5 font-normal">{h}</th>)}</tr></thead>
         <tbody>{rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn("px-2 py-1.5 align-top", tone?.(i, j))}>{c}</td>)}</tr>)}</tbody>
