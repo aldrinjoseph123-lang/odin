@@ -142,6 +142,10 @@ def validate_all(db, run_id=None):
         _record(db, run_id, "smoke", "failed", detail=exc.reason, model=cfg["model"], fp=fp)
         return {"ok": False, "reason": exc.reason}
     results = {f.key: validate_feature(db, f, cfg, fp, run_id) for f in FEATURES.values()}
+    # a validation queued while this one ran (or before a direct call) has nothing left to prove
+    db.execute("UPDATE ai_jobs SET status = 'done', finished_at = ?, result = ? WHERE kind = 'validate' AND status = 'queued' AND id IS NOT ?",
+               (_now(), json.dumps({"skipped": "validated just before"}), run_id))
+    db.commit()
     failed = [FEATURES[k].label for k, s in results.items() if s == "failed"]
     if failed:
         _notify_admins(db, "AI features failed validation",
@@ -162,10 +166,43 @@ def queue(db, kind, feature=None, project_id=None, payload=None, actor=None):
         row = db.execute("SELECT id FROM ai_jobs WHERE kind = 'validate' AND status IN ('queued', 'running')").fetchone()
         if row:
             return row[0]
+    if kind == "feature":
+        row = db.execute("SELECT id FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id = ? AND status IN ('queued', 'running')",
+                         (feature, project_id)).fetchone()
+        if row:
+            return row[0]
     cur = db.execute("INSERT INTO ai_jobs (kind, feature, project_id, payload, status, requested_by, created_at) VALUES (?, ?, ?, ?, 'queued', ?, ?)",
                      (kind, feature, project_id, json.dumps(payload or {}), actor, _now()))
     db.commit()
     return cur.lastrowid
+
+
+def run_feature_job(db, job):
+    """A feature for one project: gate, gather, ask, keep the answer as a
+    suggestion. A nightly run skips a rollout whose facts have not changed
+    since its last unused draft."""
+    import hashlib
+    from services.ai import FEATURES, gate
+    feature = FEATURES.get(job["feature"])
+    if feature is None:
+        raise ValueError(f"no AI feature {job['feature']}")
+    reason = gate(feature.key, db)
+    if reason:
+        return {"skipped": reason}
+    inputs = feature.gather(project_id=job["project_id"])
+    digest = hashlib.sha256(json.dumps(inputs, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    last = db.execute("SELECT inputs_hash FROM ai_suggestions WHERE project_id = ? AND feature = ? AND status = 'new' ORDER BY id DESC LIMIT 1",
+                      (job["project_id"], feature.key)).fetchone()
+    if job["requested_by"] is None and last and last[0] == digest:
+        return {"skipped": "nothing changed since the last draft"}
+    out, meta = run(feature, inputs, config(db))
+    db.execute("UPDATE ai_suggestions SET status = 'superseded' WHERE project_id = ? AND feature = ? AND status = 'new'", (job["project_id"], feature.key))
+    cur = db.execute("INSERT INTO ai_suggestions (project_id, feature, payload, inputs_hash, model, fingerprint, prompt_hash, seconds, job_id, created_at) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     (job["project_id"], feature.key, json.dumps(out, ensure_ascii=False), digest, meta["model"], status(db).get("fingerprint"),
+                      meta["prompt_hash"], meta["seconds"], job["id"], _now()))
+    db.commit()
+    return {"suggestion": cur.lastrowid, "seconds": meta["seconds"], "model": meta["model"]}
 
 
 def work_once(db):
@@ -178,6 +215,8 @@ def work_once(db):
     try:
         if job["kind"] == "validate":
             result = validate_all(db, job["id"])
+        elif job["kind"] == "feature":
+            result = run_feature_job(db, job)
         else:
             raise ValueError(f"unknown AI job kind {job['kind']}")
         db.execute("UPDATE ai_jobs SET status = 'done', finished_at = ?, result = ? WHERE id = ?", (_now(), json.dumps(result), job["id"]))
@@ -208,7 +247,26 @@ def tick(db, now_local=None):
     if now_local.strftime("%H:%M") >= policy("ai_validate_time", db) and (row[0] if row else "") < today:
         _put(db, "ai.validate.last_date", today)
         queue(db, "validate", payload={"reason": "daily validation"})
+    row = db.execute("SELECT value FROM settings WHERE key = 'ai.night.last_date'").fetchone()
+    if now_local.strftime("%H:%M") >= policy("ai_night_time", db) and (row[0] if row else "") < today:
+        _put(db, "ai.night.last_date", today)
+        night_shift(db)
     return work_once(db)
+
+
+def night_shift(db):
+    """Queue every nightly feature for every open rollout. The gate is asked
+    when each job runs, after the daily validation ahead of it in the queue."""
+    from db import PROJECT_OPEN_SQL
+    from services.ai import FEATURES, switch
+    nightly = [f for f in FEATURES.values() if f.runs == "nightly" and switch(f.key, db)[0]]
+    if not nightly:
+        return 0
+    ids = [r[0] for r in db.execute(f"SELECT p.id FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.id")]
+    for f in nightly:
+        for pid in ids:
+            queue(db, "feature", feature=f.key, project_id=pid)
+    return len(ids) * len(nightly)
 
 
 def trim(db=None):
@@ -217,4 +275,5 @@ def trim(db=None):
     db = db or get_db()
     db.execute("DELETE FROM ai_checks WHERE created_at < ?", ((datetime.utcnow() - timedelta(days=180)).isoformat(),))
     db.execute("DELETE FROM ai_jobs WHERE status IN ('done', 'failed') AND created_at < ?", ((datetime.utcnow() - timedelta(days=30)).isoformat(),))
+    db.execute("DELETE FROM ai_suggestions WHERE status != 'new' AND created_at < ?", ((datetime.utcnow() - timedelta(days=90)).isoformat(),))
     db.commit()

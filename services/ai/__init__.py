@@ -44,6 +44,7 @@ class AIFeature:
     max_tokens: int = 800
     budget_s: Optional[int] = None  # slower than this = "slow"; None = the ai_budget_s policy
     temperature: float = 0.3
+    project_role: str = "manage_project"   # who may ask for it and see its suggestions (constants.PROJECT_ACTIONS)
     extra: dict = field(default_factory=dict)
 
 

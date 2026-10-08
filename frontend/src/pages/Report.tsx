@@ -10,6 +10,7 @@ import { PlanGantt, RagPill } from "@/components/PlanGantt"
 import { RAID_KIND } from "@/components/RaidPanel"
 import { Section, Table } from "@/components/ReportParts"
 import { ApiError, rolloutReport, saveRolloutReport, type RolloutReport, type User } from "@/lib/api"
+import { AIWordsDraft } from "@/components/AIWordsDraft"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { cn } from "@/lib/utils"
 import { fillPlaceholders, fmtDate, fmtWhen, groupBlocks } from "@/lib/format"
@@ -36,6 +37,7 @@ export default function Report({ user }: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [aiDraft, setAiDraft] = useState<number | null>(null)   // the AI draft the words came from, recorded with the save
   const load = useCallback(async () => {
     try {
       const x = await rolloutReport(id, audience, v, template)
@@ -53,7 +55,7 @@ export default function Report({ user }: { user: User }) {
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
     setBusy(true); setNotice(null)
-    try { const x = await saveRolloutReport(id, words, template); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+    try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
   const pdf = `/projects/${id}/report.pdf?audience=${r.audience}${r.version ? `&v=${r.version.version}` : template ? `&template=${template}` : ""}`
   const toolbar = (
@@ -160,6 +162,7 @@ export default function Report({ user }: { user: User }) {
 
       <div className="mt-4 grid grid-cols-1 gap-4">
         <Section n title="Summary" className={hide("summary")}>
+          {editable && <AIWordsDraft projectId={id} onUse={(w, sid) => { setWords(w); setAiDraft(sid) }} />}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {wordBlock("summary", "Where it stands", 5, "Two or three lines: where the rollout stands, what changed, what happens next.")}
             <div className="grid grid-cols-1 content-start gap-4">

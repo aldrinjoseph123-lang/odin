@@ -228,8 +228,19 @@ export type RolloutReport = {
 }
 export const rolloutReport = (id: number, audience: string, v?: number | null, template?: number | null) =>
   getJson<RolloutReport>(`/api/projects/${id}/rollout-report?${new URLSearchParams({ audience, ...(v ? { v: String(v) } : {}), ...(template ? { template: String(template) } : {}) })}`)
-export const saveRolloutReport = (id: number, words: { summary: string; next_steps: string; asks: string }, template_id?: number | null) =>
-  post<{ ok: true; version: number }>(`/api/projects/${id}/rollout-report`, { ...words, template_id: template_id ?? null })
+export const saveRolloutReport = (id: number, words: { summary: string; next_steps: string; asks: string }, template_id?: number | null, ai_suggestion?: number | null) =>
+  post<{ ok: true; version: number }>(`/api/projects/${id}/rollout-report`, { ...words, template_id: template_id ?? null, ai_suggestion: ai_suggestion ?? null })
+// An AI feature on one rollout (routes/ai.py): can it run, its latest unused
+// draft, and the job writing a new one. Drafts are used or dismissed by a person.
+export type AISuggestion<T> = { id: number; payload: T; model: string | null; seconds: number | null; created_at: string; status: string }
+export type ProjectAI<T> = {
+  available: boolean; reason: string | null; label: string; suggestion: AISuggestion<T> | null
+  job: { id: number; status: "queued" | "running" | "done" | "failed"; error: string | null; result: { skipped?: string; suggestion?: number } | null; created_at: string } | null
+}
+export type WeeklyWordsDraft = { summary: string; next_steps: string[]; asks: string[] }
+export const projectAI = <T,>(id: number, key: string) => getJson<ProjectAI<T>>(`/api/projects/${id}/ai/${key}`)
+export const requestProjectAI = (id: number, key: string) => post<{ ok: true; job: number }>(`/api/projects/${id}/ai/${key}`)
+export const dismissAISuggestion = (id: number, suggestion: number) => post<{ ok: true }>(`/api/projects/${id}/ai/suggestions/${suggestion}/dismiss`)
 export type RaidKind = "risk" | "issue" | "decision" | "blocker"
 export type RaidItem = {
   id: number; kind: RaidKind; title: string; detail: string | null; impact: "low" | "medium" | "high"; likelihood: "low" | "medium" | "high" | null

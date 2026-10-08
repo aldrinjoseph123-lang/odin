@@ -5333,9 +5333,10 @@ class FakeAIServer:
         return r
 
 
-class AIFrameworkTestCase(unittest.TestCase):
-    """services/ai: the address guard, the client, the gate, validation, the
-    heartbeat and Settings → AI, all against FakeAIServer."""
+class AITestBase(unittest.TestCase):
+    """Set-up shared by the AI tests: a fresh database, an admin signed in,
+    FakeAIServer in place of any real server."""
+    isolate_features = True
 
     def setUp(self):
         fd, db_module.DB_PATH = tempfile.mkstemp()
@@ -5350,6 +5351,10 @@ class AIFrameworkTestCase(unittest.TestCase):
         p = patch("services.ai.client.requests.request", self.server)
         p.start()
         self.addCleanup(p.stop)
+        if self.isolate_features:   # the framework tests use their own feature, not the real ones
+            f = patch.dict("services.ai.FEATURES", {}, clear=True)
+            f.start()
+            self.addCleanup(f.stop)
         self.addCleanup(self._unregister)
 
     def tearDown(self):
@@ -5380,6 +5385,17 @@ class AIFrameworkTestCase(unittest.TestCase):
 
     def _ctx(self):
         return app_module.app.test_request_context()
+
+    def _csrf(self):
+        with self.client.session_transaction() as sess:
+            token = sess.get("_csrf_token") or secrets.token_urlsafe(32)
+            sess["_csrf_token"] = token
+        return {"X-CSRF-Token": token}
+
+
+class AIFrameworkTestCase(AITestBase):
+    """services/ai: the address guard, the client, the gate, validation, the
+    heartbeat and Settings → AI, all against FakeAIServer."""
 
     def test_address_guard_keeps_customer_text_on_the_private_network(self):
         from services.ai.client import address_problem, is_local
@@ -5588,6 +5604,122 @@ class AIFrameworkTestCase(unittest.TestCase):
     def test_ai_notices_reach_admins_only_on_the_account_page(self):
         kinds = [k["key"] for k in self.client.get("/api/account").get_json()["email_kinds"]]
         self.assertIn("ai", kinds)
+
+
+class WeeklyWordsTestCase(AITestBase):
+    """The first AI feature: the report's words drafted from the week."""
+    isolate_features = False
+    GOOD = json.dumps({"summary": "SIEM onboarding is in Design, forecast 24 Oct 2026, 4 days after the 20 Oct 2026 target. "
+                                  "The vendor's firewall configuration arrived two days late and Site B is blocked on building access.",
+                       "next_steps": ["Close the design", "Cable Site B racks"], "asks": ["Approve the design document", "Grant building access at Site B"]})
+
+    def _project(self):
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Rollout One", "client": "Northwind"})
+        self.client.post("/projects/1/note", data={"note": "Site B cabling blocked: no building access yet."})
+
+    def _ready(self):
+        """AI on, server up, weekly words validated on the current model."""
+        from services.ai.health import heartbeat, validate_all
+        self._enable()
+        with self._ctx():
+            from db import get_db
+            heartbeat(get_db())
+            self.server.answers = ['{"status": "ready", "echo": 7}', self.GOOD]
+            self.assertEqual(validate_all(get_db())["features"], {"weekly_words": "passed"})
+
+    def test_gather_has_the_fixtures_shape(self):
+        from services.ai.features.weekly_words import fixture, gather
+        self._project()
+        with self._ctx():
+            facts = gather(project_id=1)
+
+        def same_keys(a, b, path="facts"):   # an empty value (no approval waiting) may stand for any shape
+            self.assertEqual(set(a), set(b), path)
+            for k in a:
+                if isinstance(a[k], dict) and isinstance(b[k], dict):
+                    same_keys(a[k], b[k], f"{path}.{k}")
+        same_keys(facts, fixture())
+        self.assertEqual(facts["rollout"]["name"], "Rollout One")
+        self.assertIn("Site B", facts["this_week"]["notes"][0]["text"])
+
+    def test_graders_catch_what_a_reader_would_mind(self):
+        from services.ai.features.weekly_words import FEATURE, fixture
+        good = json.loads(self.GOOD)
+        problems = lambda out: [p for p in (g(fixture(), out) for g in FEATURE.graders) if p]   # noqa: E731
+        self.assertEqual(problems(good), [])
+        self.assertTrue(problems({**good, "summary": good["summary"] + " Ravi says the rollout is on track."}))
+        self.assertTrue(problems({**good, "summary": "Design continues.", "asks": []}))   # dropped Site B, the target, the asks
+
+    def test_draft_on_demand_then_use_it_and_the_save_records_it(self):
+        from services.ai.health import work_once
+        self._project()
+        self._ready()
+        r = self.client.post("/api/projects/1/ai/weekly_words", json={}, headers=self._csrf())
+        self.assertEqual(r.status_code, 200)
+        self.server.answers = [self.GOOD]
+        with self._ctx():
+            from db import get_db
+            work_once(get_db())
+        view = self.client.get("/api/projects/1/ai/weekly_words").get_json()
+        self.assertTrue(view["available"])
+        sug = view["suggestion"]
+        self.assertEqual(sug["payload"]["asks"][1], "Grant building access at Site B")
+        r = self.client.post("/api/projects/1/rollout-report", json={"summary": sug["payload"]["summary"] + " Edited.", "next_steps": "x", "asks": "y",
+                                                                    "ai_suggestion": sug["id"]}, headers=self._csrf())
+        self.assertEqual(r.status_code, 200)
+        with self._db() as con:
+            self.assertEqual(con.execute("SELECT status FROM ai_suggestions WHERE id = ?", (sug["id"],)).fetchone()[0], "used")
+            detail = con.execute("SELECT details FROM audit_logs WHERE action = 'save_report'").fetchone()[0]
+            self.assertIn(f"from AI draft {sug['id']} (P24-AI), edited by", detail)
+            self.assertIsNotNone(con.execute("SELECT 1 FROM audit_logs WHERE action = 'request_ai_draft'").fetchone())
+        self.assertIsNone(self.client.get("/api/projects/1/ai/weekly_words").get_json()["suggestion"])
+
+    def test_no_draft_while_the_gate_is_closed_and_dismiss_is_recorded(self):
+        self._project()
+        r = self.client.post("/api/projects/1/ai/weekly_words", json={}, headers=self._csrf())
+        self.assertEqual((r.status_code, r.get_json()["error"]), (409, "AI is switched off (Settings → AI)"))
+        self.assertFalse(self.client.get("/api/projects/1/ai/weekly_words").get_json()["available"])
+        with self._db() as con:
+            con.execute("INSERT INTO ai_suggestions (project_id, feature, payload, status, created_at) VALUES (1, 'weekly_words', ?, 'new', '2026-10-08T03:40:00')", (self.GOOD,))
+        self.assertEqual(self.client.post("/api/projects/1/ai/suggestions/1/dismiss", json={}, headers=self._csrf()).status_code, 200)
+        with self._db() as con:
+            self.assertEqual(con.execute("SELECT status FROM ai_suggestions WHERE id = 1").fetchone()[0], "dismissed")
+            self.assertIsNotNone(con.execute("SELECT 1 FROM audit_logs WHERE action = 'dismiss_ai_draft'").fetchone())
+
+    def test_night_shift_drafts_every_open_rollout_and_skips_unchanged_ones(self):
+        from datetime import datetime
+        from services.ai.health import tick, work_once
+        self._project()
+        self._ready()
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.validate.last_date', '2026-10-08')")
+            db.commit()
+            with patch("services.ai.health.work_once", return_value=None):
+                tick(db, now_local=datetime(2026, 10, 8, 3, 31))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_jobs WHERE kind = 'feature' AND status = 'queued'").fetchone()[0], 1)
+            self.server.answers = [self.GOOD]
+            work_once(db)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_suggestions WHERE status = 'new'").fetchone()[0], 1)
+            # the next night, nothing changed: no model call, the draft stays
+            from services.ai.health import queue
+            queue(db, "feature", feature="weekly_words", project_id=1)
+            calls = len(self.server.calls)
+            work_once(db)
+            self.assertEqual(len(self.server.calls), calls)
+            self.assertEqual(json.loads(db.execute("SELECT result FROM ai_jobs ORDER BY id DESC LIMIT 1").fetchone()[0]), {"skipped": "nothing changed since the last draft"})
+
+    def test_suggestions_are_purged_with_their_project(self):
+        from datetime import datetime, timedelta
+        self._project()
+        with self._db() as con:
+            con.execute("INSERT INTO ai_suggestions (project_id, feature, payload, created_at) VALUES (1, 'weekly_words', '{}', '2026-10-08')")
+            con.execute("UPDATE projects SET deleted_at = ? WHERE id = 1", ((datetime.utcnow() - timedelta(days=1)).isoformat(),))
+        with self._ctx():
+            db_module.cleanup_soft_deletes()
+        with self._db() as con:
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM ai_suggestions").fetchone()[0], 0)
 
 
 if __name__ == "__main__":

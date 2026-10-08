@@ -157,7 +157,7 @@ function Status({ view, busy, send }: { view: AIView; busy: boolean; send: Send 
               : job.status === "running" ? <>Validating every feature on its test project (started {job.started_at ? <Ago iso={job.started_at} /> : "now"})…</>
                 : job.status === "failed" ? <>Last validation stopped: {job.error}</>
                   : job.result && !job.result.ok ? <>Last validation <Ago iso={job.finished_at ?? job.created_at} />: {job.result.reason}</>
-                    : <>Last validation <Ago iso={job.finished_at ?? job.created_at} />{job.result?.model ? <> on <span className="font-mono">{job.result.model}</span></> : null}{job.payload?.reason ? ` (${job.payload.reason})` : ""}.</>
+                    : <>Last validation <Ago iso={job.finished_at ?? job.created_at} />{job.result?.model ? <> on <span className="font-mono">{job.result.model}</span></> : null}.{job.payload?.reason ? ` Started because ${job.payload.reason}.` : ""}</>
           }</span>}
         </div>
       </div>

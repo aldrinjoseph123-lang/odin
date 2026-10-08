@@ -123,7 +123,7 @@ def cleanup_soft_deletes(db=None):
     if doomed:
         # a sign-up link that named the project keeps working, without the project
         db.execute(f"UPDATE signup_links SET project_id = NULL, project_role = NULL WHERE project_id IN ({marks})", doomed)
-        for table in ("signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs"):
+        for table in ("signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs", "ai_suggestions"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
@@ -328,6 +328,15 @@ def migrate_db(db):
         run_id INTEGER, kind TEXT NOT NULL, feature TEXT, model TEXT, fingerprint TEXT, prompt_hash TEXT,
         state TEXT NOT NULL, seconds REAL, detail TEXT, output TEXT, created_at TEXT NOT NULL)""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_ai_checks_feature ON ai_checks (feature, fingerprint, prompt_hash)")
+    # What a feature produced for a project: a draft a person uses or
+    # dismisses, never a change by itself. Kept with the model, fingerprint
+    # and prompt that made it; purged with its project.
+    db.execute("""CREATE TABLE IF NOT EXISTS ai_suggestions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES projects(id), feature TEXT NOT NULL, payload TEXT NOT NULL,
+        inputs_hash TEXT, model TEXT, fingerprint TEXT, prompt_hash TEXT, seconds REAL, job_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, decided_by TEXT, decided_at TEXT)""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_ai_suggestions_project ON ai_suggestions (project_id, feature, status)")
     # The old "Allow scheduled full backups to OneDrive" switch is now the
     # OneDrive destination in Settings → Backups.
     db.execute("INSERT OR IGNORE INTO settings (key, value) SELECT 'policy.dest_onedrive', '1' FROM settings WHERE key = 'onedrive_backup_enabled' AND value = '1'")

@@ -434,8 +434,10 @@ def api_rollout_report_save(project_id):
     db.execute("INSERT INTO project_reports (project_id, version, body, created_by, created_at, kind, data, summary, next_steps, asks) VALUES (?, ?, ?, ?, ?, 'snapshot', ?, ?, ?, ?)",
                (project_id, version, words["summary"], session["user_name"], datetime.utcnow().isoformat(), snapshot_json(snap),
                 words["summary"], words["next_steps"], words["asks"]))
+    from routes.ai import use_suggestion
+    ai = use_suggestion(project_id, body.get("ai_suggestion"), "weekly_words")
     db.commit()
-    audit_log("save_report", "project", project_id, project["name"], f"version {version}")
+    audit_log("save_report", "project", project_id, project["name"], f"version {version}{ai}")
     return jsonify(ok=True, version=version)
 
 

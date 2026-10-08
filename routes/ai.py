@@ -5,8 +5,9 @@ import json
 
 from flask import abort, flash, jsonify, redirect, request, session, url_for
 
-from core import app, permission_required
+from core import app, login_required, permission_required, project_allows
 from db import get_db, get_setting
+from routes.projects import load_project
 from services.audit import audit_log
 
 
@@ -115,3 +116,90 @@ def settings_ai_feature(key):
     audit_log("set_ai_feature", "settings", None, key, f"on={on} forced={forced}")
     flash(f"{FEATURES[key].label}: {'forced on' if forced else 'on' if on else 'off'}")
     return redirect(url_for("settings_section", section="ai"))
+
+
+# ---- a feature on one rollout: ask for it, read it, dismiss it ------------
+
+def _feature_for(project, key):
+    """The feature, if this person may use it on this rollout (already loaded
+    through load_project); else 404/403."""
+    from services.ai import FEATURES
+    project_id = project["id"]
+    feature = FEATURES.get(key)
+    if feature is None:
+        abort(404)
+    if session.get("kind") == "external" or not project_allows(project_id, feature.project_role):
+        abort(403)
+    return feature
+
+
+def _suggestion_view(row):
+    return {"id": row["id"], "payload": json.loads(row["payload"]), "model": row["model"], "seconds": row["seconds"],
+            "created_at": row["created_at"], "status": row["status"]}
+
+
+@app.route("/api/projects/<int:project_id>/ai/<key>")
+@login_required
+def api_project_ai(project_id, key):
+    """Whether the feature can run here now, its latest unused draft, and the
+    job drafting a new one, if any."""
+    from services.ai import gate
+    feature = _feature_for(load_project(project_id), key)
+    db = get_db()
+    row = db.execute("SELECT * FROM ai_suggestions WHERE project_id = ? AND feature = ? AND status = 'new' ORDER BY id DESC LIMIT 1", (project_id, key)).fetchone()
+    job = db.execute("SELECT id, status, error, result, requested_by, created_at FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id = ? "
+                     "ORDER BY id DESC LIMIT 1", (key, project_id)).fetchone()
+    reason = gate(key, db)
+    return jsonify(available=reason is None, reason=reason, label=feature.label,
+                   suggestion=_suggestion_view(row) if row else None,
+                   job={"id": job["id"], "status": job["status"], "error": job["error"], "result": json.loads(job["result"]) if job["result"] else None,
+                        "created_at": job["created_at"]} if job else None)
+
+
+@app.route("/api/projects/<int:project_id>/ai/<key>", methods=["POST"])
+@login_required
+def api_project_ai_request(project_id, key):
+    """Queue a fresh draft. The AI worker writes it; the page polls."""
+    from services.ai import gate
+    from services.ai.health import queue
+    project = load_project(project_id)
+    _feature_for(project, key)
+    reason = gate(key)
+    if reason:
+        return jsonify(error=reason), 409
+    job = queue(get_db(), "feature", feature=key, project_id=project_id, actor=session.get("user_name"))
+    audit_log("request_ai_draft", "project", project_id, project["name"], f"{key}, job {job}")
+    return jsonify(ok=True, job=job)
+
+
+@app.route("/api/projects/<int:project_id>/ai/suggestions/<int:suggestion_id>/dismiss", methods=["POST"])
+@login_required
+def api_project_ai_dismiss(project_id, suggestion_id):
+    from datetime import datetime
+    project = load_project(project_id)
+    db = get_db()
+    row = db.execute("SELECT * FROM ai_suggestions WHERE id = ? AND project_id = ?", (suggestion_id, project_id)).fetchone()
+    if row is None:
+        abort(404)
+    _feature_for(project, row["feature"])
+    db.execute("UPDATE ai_suggestions SET status = 'dismissed', decided_by = ?, decided_at = ? WHERE id = ? AND status = 'new'",
+               (session.get("user_name"), datetime.utcnow().isoformat(), suggestion_id))
+    db.commit()
+    audit_log("dismiss_ai_draft", "project", project_id, project["name"], f"{row['feature']} suggestion {suggestion_id}")
+    return jsonify(ok=True)
+
+
+def use_suggestion(project_id, suggestion_id, feature):
+    """Mark a draft as used by the save that is about to happen. Returns the
+    words for the audit row ("with the AI draft …"), or "" when there is none."""
+    from datetime import datetime
+    if not suggestion_id:
+        return ""
+    db = get_db()
+    row = db.execute("SELECT id, model FROM ai_suggestions WHERE id = ? AND project_id = ? AND feature = ? AND status = 'new'",
+                     (suggestion_id, project_id, feature)).fetchone()
+    if row is None:
+        return ""
+    db.execute("UPDATE ai_suggestions SET status = 'used', decided_by = ?, decided_at = ? WHERE id = ?",
+               (session.get("user_name"), datetime.utcnow().isoformat(), row["id"]))
+    return f", from AI draft {row['id']} ({row['model']}), edited by {session.get('user_name')}"

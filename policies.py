@@ -152,6 +152,8 @@ POLICIES = {
                           label="Down after missed heartbeats", help="Admins hear once when it goes down and once when it is back."),
     "ai_validate_time": dict(area="ai_schedule", kind="time", default="03:00",
                              label="Validate every feature daily at", help="Workspace time zone. Also runs after a settings change and whenever the model changes."),
+    "ai_night_time": dict(area="ai_schedule", kind="time", default="03:30",
+                          label="Night shift at", help="Nightly features (such as the weekly words) draft for every open rollout, after the daily validation. Only features that passed run."),
     "ai_budget_s": dict(area="ai_schedule", kind="int", default=90, min=10, max=900,
                         label="Seconds per answer before \"slow\"", help="A slow feature keeps running, with a warning in its row below."),
     "ai_timeout_s": dict(area="ai_schedule", kind="int", default=300, min=30, max=1800,
