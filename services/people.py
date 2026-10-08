@@ -8,17 +8,19 @@ from datetime import date, datetime, timedelta
 
 from db import PROJECT_OPEN_SQL, avatar_url, get_db, stages_for_projects
 from policies import local_date, local_today, policy
-from services.alerts import build_alerts
+from services.alerts import project_states as _states
+from services.analytics import days_in_stage, sla_by_stage, stage_sla_state
 
 STATE_LABEL = {"overdue": "Overdue", "over_sla": "Over SLA", "due_soon": "Due soon", "on_track": "On track"}
 
 
-def _states(projects):
-    """project id -> state, the flow's way."""
-    alerts = build_alerts(projects)
-    stuck = {"overdue": {p["id"] for p in alerts["project_overdue"]}, "over_sla": {p["id"] for p in alerts["stage_sla_breach"]},
-             "due_soon": {p["id"] for p in alerts["project_due_soon"]}}
-    return {p["id"]: next((k for k in ("overdue", "over_sla", "due_soon") if p["id"] in stuck[k]), "on_track") for p in projects}
+def _since(day):
+    """The UTC timestamp of the workspace's midnight starting `day`, to compare
+    with stored UTC timestamps (done_at, created_at)."""
+    from zoneinfo import ZoneInfo
+    from datetime import timezone
+    start = datetime.combine(day, datetime.min.time()).replace(tzinfo=ZoneInfo(policy("timezone")))
+    return start.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 def _projects_of(db, uid, scope):
@@ -39,12 +41,19 @@ def _task_rows(db, where, params):
 
 
 def _project_rows(db, projects, states, stage_lists):
-    out = []
+    """One row per rollout with the fields the Flow's rows carry for its state text."""
+    out, now = [], datetime.utcnow()
     for p in projects:
-        names = [r["name"] for r in (stage_lists.get(p["id"]) or [])]
+        own = stage_lists.get(p["id"]) or []
+        names = [r["name"] for r in own]
+        slas = sla_by_stage(own)
+        sla = stage_sla_state(p, slas, names[-1] if names else None, now)
+        in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         out.append({"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "state": states[p["id"]],
                     "stage_index": names.index(p["stage"]) if p["stage"] in names else 0, "stages": len(names),
-                    "target_end_date": p["target_end_date"], "role": p["my_role"], "owner_name": p["owner_name"]})
+                    "target_end_date": p["target_end_date"], "role": p["my_role"], "owner_name": p["owner_name"],
+                    "days_in_stage": None if in_stage is None else round(in_stage, 1), "sla_days": slas.get(p["stage"]),
+                    "over_by": round(sla["over_by"], 1) if sla else None})
     return out
 
 
@@ -55,7 +64,7 @@ def my_work(uid, scope):
     today = local_today()
     scope_sql, scope_params = scope
     tasks = _task_rows(db, f"t.assignee_id = ? AND t.done = 0{scope_sql}", (uid, *scope_params))
-    since = (today - timedelta(days=13)).isoformat()
+    since = _since(today - timedelta(days=13))
     done = Counter(local_date(r[0]).isoformat() for r in db.execute(
         "SELECT t.done_at FROM tasks t JOIN projects p ON p.id = t.project_id "
         f"WHERE t.assignee_id = ? AND t.done = 1 AND t.done_at >= ? AND p.deleted_at IS NULL{scope_sql}", (uid, since, *scope_params)))
@@ -80,7 +89,7 @@ def people(scope):
     db = get_db()
     today = local_today().isoformat()
     scope_sql, scope_params = scope
-    month_ago = (local_today() - timedelta(days=30)).isoformat()
+    month_ago = _since(local_today() - timedelta(days=30))
     open_sql = f"p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql}"
     rows = db.execute(
         "SELECT u.id, u.name, u.role, u.avatar, u.last_login_at, u.last_seen_at, "
@@ -110,8 +119,8 @@ def person(uid, scope):
     projects = _projects_of(db, uid, scope)
     states = _states(projects)
     pending = _task_rows(db, f"t.assignee_id = ? AND t.done = 0{scope_sql}", (uid, *scope_params))
-    month_ago = (today - timedelta(days=30)).isoformat()
-    done = _task_rows(db, f"t.assignee_id = ? AND t.done = 1 AND t.done_at >= ?{scope_sql}", (uid, (today - timedelta(days=56)).isoformat(), *scope_params))
+    month_ago = _since(today - timedelta(days=30))
+    done = _task_rows(db, f"t.assignee_id = ? AND t.done = 1 AND t.done_at >= ?{scope_sql}", (uid, _since(today - timedelta(days=56)), *scope_params))
     dated = [t for t in done if t["due_date"] and t["done_at"] >= month_ago]
     on_time = sum(1 for t in dated if local_date(t["done_at"]).isoformat() <= t["due_date"])
     # contribution by week, the last eight
@@ -122,16 +131,16 @@ def person(uid, scope):
         weeks.append({"week": start.isoformat(), "done": sum(1 for t in done if start <= local_date(t["done_at"]) < end)})
     notes = db.execute(f"SELECT COUNT(*) FROM status_notes n JOIN projects p ON p.id = n.project_id WHERE n.author_id = ? AND n.prev_stage IS NULL AND n.created_at >= ? AND p.deleted_at IS NULL{scope_sql}",
                        (uid, month_ago, *scope_params)).fetchone()[0]
-    moves = db.execute(f"SELECT COUNT(*) FROM status_notes n JOIN projects p ON p.id = n.project_id WHERE n.author = ? AND n.prev_stage IS NOT NULL AND n.created_at >= ? AND p.deleted_at IS NULL{scope_sql}",
-                       (u["name"], month_ago, *scope_params)).fetchone()[0]
+    moves = db.execute(f"SELECT COUNT(*) FROM status_notes n JOIN projects p ON p.id = n.project_id WHERE (n.author_id = ? OR (n.author_id IS NULL AND n.author = ?)) AND n.prev_stage IS NOT NULL AND n.created_at >= ? AND p.deleted_at IS NULL{scope_sql}",
+                       (uid, u["name"], month_ago, *scope_params)).fetchone()[0]
     recent = [dict(r) for r in db.execute(
         "SELECT * FROM (SELECT 'move' AS kind, n.created_at AS at, p.id AS project_id, p.name AS project, n.prev_stage || ' → ' || n.stage AS text FROM status_notes n JOIN projects p ON p.id = n.project_id "
-        f"WHERE n.author = ? AND n.prev_stage IS NOT NULL AND p.deleted_at IS NULL{scope_sql} "
+        f"WHERE (n.author_id = ? OR (n.author_id IS NULL AND n.author = ?)) AND n.prev_stage IS NOT NULL AND p.deleted_at IS NULL{scope_sql} "
         "UNION ALL SELECT 'note', n.created_at, p.id, p.name, n.note FROM status_notes n JOIN projects p ON p.id = n.project_id "
-        f"WHERE (n.author_id = ? OR n.author = ?) AND n.prev_stage IS NULL AND p.deleted_at IS NULL{scope_sql} "
+        f"WHERE (n.author_id = ? OR (n.author_id IS NULL AND n.author = ?)) AND n.prev_stage IS NULL AND p.deleted_at IS NULL{scope_sql} "
         "UNION ALL SELECT 'task', t.done_at, p.id, p.name, t.title FROM tasks t JOIN projects p ON p.id = t.project_id "
         f"WHERE t.assignee_id = ? AND t.done = 1 AND t.done_at IS NOT NULL AND p.deleted_at IS NULL{scope_sql}) ORDER BY at DESC LIMIT 12",
-        (u["name"], *scope_params, uid, u["name"], *scope_params, uid, *scope_params))]
+        (uid, u["name"], *scope_params, uid, u["name"], *scope_params, uid, *scope_params))]
     return {
         "user": {"id": u["id"], "name": u["name"], "role": u["role"], "email": u["email"], "avatar_url": avatar_url(u), "last_login_at": u["last_login_at"], "since": u["created_at"]},
         "today": t_iso,

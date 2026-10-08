@@ -233,6 +233,15 @@ def build_alerts(projects, dismissed=None):
     return alerts
 
 
+def project_states(projects, alerts=None):
+    """project id -> overdue | over_sla | due_soon | on_track: one state each,
+    in the Flow's order (routes/api._flow_state), so every count agrees."""
+    alerts = build_alerts(projects) if alerts is None else alerts
+    stuck = {"overdue": {p["id"] for p in alerts["project_overdue"]}, "over_sla": {p["id"] for p in alerts["stage_sla_breach"]},
+             "due_soon": {p["id"] for p in alerts["project_due_soon"]}}
+    return {p["id"]: next((k for k in ("overdue", "over_sla", "due_soon") if p["id"] in stuck[k]), "on_track") for p in projects}
+
+
 def build_dashboard(projects):
     stage_counts = {stage: 0 for stage in get_stage_names()}
     delivery_counts = {mode: 0 for mode in DELIVERY_MODES}

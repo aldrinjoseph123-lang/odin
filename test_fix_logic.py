@@ -117,5 +117,57 @@ class FlowAndPlanAgreeTestCase(FixBase):
         self.assertFalse(row["stale"])
 
 
+class CountsAgreeTestCase(FixBase):
+    """L10/B8/P4/L20: the tile, the chip and the widget count one state per rollout."""
+
+    def _late_and_over(self):
+        self.new_project(name="Both", client="C", target_end_date="2020-01-01")
+        self.new_project(name="Over", client="C")
+        self.sql("UPDATE project_stages SET sla_days = 1")
+        self.sql("UPDATE projects SET stage_entered_at = strftime('%Y-%m-%dT%H:%M:%S', 'now', '-20 days')")
+
+    def test_dashboard_tile_matches_the_flow_chips(self):
+        self._late_and_over()
+        c, _ = self._api_client()
+        flow = c.get("/api/flow").get_json()["counts"]
+        kpis = c.get("/api/dashboard").get_json()["data"]["kpis"]
+        self.assertEqual((flow["overdue"], flow["over_sla"]), (1, 1))
+        self.assertEqual((kpis["counts"]["overdue"], kpis["counts"]["over_sla"]), (1, 1))
+        self.assertEqual([r["name"] for r in kpis["detail"]["over_sla"]], ["Over"])
+        # today's trend point is the live count, not this morning's snapshot
+        self.assertEqual(kpis["series"]["over_sla"][-1]["v"], 1)
+        self.sql("UPDATE projects SET stage_entered_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE name = 'Over'")
+        kpis = c.get("/api/dashboard").get_json()["data"]["kpis"]
+        self.assertEqual(kpis["counts"]["over_sla"], 0)
+        self.assertEqual(kpis["series"]["over_sla"][-1]["v"], 0)
+        self.assertEqual(sum(1 for p in kpis["series"]["over_sla"] if p["day"] == kpis["series"]["over_sla"][-1]["day"]), 1)
+
+    def test_my_work_rollouts_carry_the_flow_fields(self):
+        self._late_and_over()
+        c, _ = self._api_client()
+        rows = {r["name"]: r for r in c.get("/api/my-work").get_json()["projects"]}
+        self.assertEqual(rows["Over"]["state"], "over_sla")
+        self.assertGreater(rows["Over"]["over_by"], 5)
+        self.assertGreater(rows["Over"]["days_in_stage"], rows["Over"]["over_by"])
+        self.assertEqual(rows["Over"]["sla_days"], 1)
+        self.assertEqual(rows["Both"]["target_end_date"], "2020-01-01")
+
+    def test_people_count_moves_by_author_id_not_name(self):
+        self.new_project(name="P", client="C")
+        c, csrf = self._api_client()
+        c.post("/api/projects/1/stage", json={"stage": self.stages()[1]}, headers={"X-CSRF-Token": csrf})
+        self.sql("UPDATE users SET name = 'Renamed' WHERE id = 1")   # the note keeps the old name
+        self.sql("INSERT INTO users (username, password_hash, name, role, active) VALUES ('twin', 'x', 'Admin', 'Member', 1)")
+        me = c.get("/api/people/1").get_json()
+        self.assertEqual(me["contribution"]["moves_30d"], 1)
+        twin = self.sql("SELECT id FROM users WHERE username = 'twin'")[0][0]
+        self.assertEqual(c.get(f"/api/people/{twin}").get_json()["contribution"]["moves_30d"], 0)
+
+    def test_calendar_month_out_of_range_falls_back(self):
+        c, _ = self._api_client()
+        for bad in ("0001-01", "9999-12", "abc"):
+            self.assertEqual(c.get(f"/api/calendar?month={bad}").status_code, 200, bad)
+
+
 if __name__ == "__main__":
     unittest.main()

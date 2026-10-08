@@ -3,7 +3,6 @@ about what is waiting on them (an approval past its wait, customer tasks
 overdue), with the dates and days worked out in code. On demand from the
 project page; the project manager copies it or opens it in their mail. Odin
 sends nothing. Fallback: nothing (chasing by hand, as before)."""
-from datetime import date
 
 from services.ai import AIFeature, register
 from services.ai.features.weekly_words import _fmt
@@ -17,10 +16,10 @@ def waiting(project_id, db=None):
     """What waits on the customer now: the pending approval of the current
     stage and the customer's overdue tasks, each with how long."""
     from db import get_db
-    from policies import local_today
+    from policies import local_date, local_today
     db = db or get_db()
     today = local_today()
-    days = lambda iso: (today - date.fromisoformat(iso[:10])).days   # noqa: E731
+    days = lambda iso: (today - local_date(iso)).days   # noqa: E731   a stored UTC time counts from its local day
     out = []
     a = db.execute("SELECT a.stage, a.requested_at FROM stage_approvals a JOIN projects p ON p.id = a.project_id "
                    "WHERE a.project_id = ? AND a.status = 'pending' AND a.stage = p.stage ORDER BY a.id DESC LIMIT 1", (project_id,)).fetchone()
