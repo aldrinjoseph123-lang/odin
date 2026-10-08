@@ -123,6 +123,7 @@ def cleanup_soft_deletes(db=None):
     if doomed:
         # a sign-up link that named the project keeps working, without the project
         db.execute(f"UPDATE signup_links SET project_id = NULL, project_role = NULL WHERE project_id IN ({marks})", doomed)
+        db.execute(f"UPDATE lessons SET project_id = NULL WHERE project_id IN ({marks})", doomed)   # the lesson stays in the library
         for table in ("doc_text", "ai_calls", "signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs", "ai_suggestions"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
@@ -347,6 +348,14 @@ def migrate_db(db):
         id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, feature TEXT, job_id INTEGER, project_id INTEGER, username TEXT,
         model TEXT, input_chars INTEGER, prompt_tokens INTEGER, completion_tokens INTEGER, seconds REAL, ok INTEGER NOT NULL, error TEXT)""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_ai_calls_at ON ai_calls (at)")
+    # The lessons library: what went wrong and what to repeat, saved by a
+    # project manager from a rollout (services/lessons.py). It outlives the
+    # rollout: when a project is purged its lessons keep their words and the
+    # rollout's name, and lose the link (project_id NULL).
+    db.execute("""CREATE TABLE IF NOT EXISTS lessons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER REFERENCES projects(id), project_name TEXT NOT NULL,
+        template_id INTEGER, product TEXT, vendor TEXT, client TEXT, kind TEXT NOT NULL, text TEXT NOT NULL, evidence TEXT,
+        created_by TEXT NOT NULL, created_at TEXT NOT NULL)""")
     # The text of an uploaded document, read once for the AI features that
     # need it (services/doctext.py); purged with its project.
     db.execute("""CREATE TABLE IF NOT EXISTS doc_text (

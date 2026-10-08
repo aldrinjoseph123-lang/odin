@@ -14,6 +14,7 @@ import { AIChase } from "@/components/AIChase"
 import { AICatchUp } from "@/components/AICatchUp"
 import { AIAsk } from "@/components/AIAsk"
 import { AINotesTasks } from "@/components/AINotesTasks"
+import { LessonsPanel } from "@/components/LessonsPanel"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
@@ -105,6 +106,7 @@ export default function Project(_props: { user: User }) {
         <div className="empty:hidden lg:col-span-2"><AIChase projectId={id} /></div>
         <div className="lg:col-span-2"><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} /></Panel></div>
         <div className="lg:col-span-2"><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} /></Panel></div>
+        <div className="empty:hidden lg:col-span-2"><LessonsPanel projectId={id} /></div>
         <div className="lg:col-span-2"><Panel title="Scope and sign-off" hint="what was agreed, what was delivered, and the customer's signature" id="scope"><ScopePanel projectId={id} signoff={d.signoff} /></Panel></div>
         <Panel title="Details">
           <dl className="grid grid-cols-[minmax(96px,auto)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">

@@ -301,3 +301,54 @@ def api_sla_proposals():
     ai = latest_portfolio("sla_calibration")
     reasons = ai[0]["reasons"] if ai else {}
     return jsonify(proposals=[{**p, "reason": reasons.get(p["key"])} for p in proposals()], model=ai[1]["model"] if ai else None)
+
+
+# ---- the lessons library (services/lessons.py) ------------------------------
+
+@app.route("/api/projects/<int:project_id>/lessons")
+@login_required
+def api_lessons(project_id):
+    """This rollout's saved lessons, and the most similar other rollouts with
+    their lessons and the risks that hit them. Staff only."""
+    from services import lessons
+    project = load_project(project_id)
+    if session.get("kind") == "external":
+        abort(404)
+    return jsonify(lessons=lessons.of_project(project_id), similar=lessons.similar(project),
+                   can_edit=project_allows(project_id, "manage_project"), can_add_risk=project_allows(project_id, "manage_tasks"))
+
+
+@app.route("/api/projects/<int:project_id>/lessons", methods=["POST"])
+@login_required
+def api_lessons_save(project_id):
+    """Save the ticked lessons to the library (from the AI draft or typed)."""
+    from routes.ai import use_suggestion
+    from services import lessons
+    project = load_project(project_id)
+    if session.get("kind") == "external" or not project_allows(project_id, "manage_project"):
+        abort(403)
+    body = request.get_json(silent=True) or {}
+    items = [i for i in body.get("items") or [] if isinstance(i, dict)][:12]
+    n = lessons.save(project, items, session["user_name"])
+    if not n:
+        return jsonify(error="Nothing to save"), 400
+    ai = use_suggestion(project_id, body.get("ai_suggestion"), "lessons")
+    get_db().commit()
+    audit_log("save_lessons", "project", project_id, project["name"], f"{n} lesson(s){ai}")
+    return jsonify(ok=True, saved=n)
+
+
+@app.route("/api/projects/<int:project_id>/lessons/<int:lesson_id>/delete", methods=["POST"])
+@login_required
+def api_lesson_delete(project_id, lesson_id):
+    project = load_project(project_id)
+    if session.get("kind") == "external" or not project_allows(project_id, "manage_project"):
+        abort(403)
+    db = get_db()
+    row = db.execute("SELECT text FROM lessons WHERE id = ? AND project_id = ?", (lesson_id, project_id)).fetchone()
+    if row is None:
+        abort(404)
+    db.execute("DELETE FROM lessons WHERE id = ?", (lesson_id,))
+    db.commit()
+    audit_log("delete_lesson", "project", project_id, project["name"], row["text"][:120])
+    return jsonify(ok=True)

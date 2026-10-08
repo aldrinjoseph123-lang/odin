@@ -248,6 +248,13 @@ export type ChaseDraft = { subject: string; body: string }
 export type SlaProposal = { key: string; template_id: number; template: string; stage_id: number; stage: string; current: number | null; proposed: number
   visits: number; median: number; p80: number; unit: string; reason: string | null }
 export const slaProposals = () => getJson<{ proposals: SlaProposal[]; model: string | null }>("/api/settings/sla-proposals")
+export type Lesson = { id?: number; kind: "avoid" | "repeat"; text: string; evidence: string | null }
+export type SimilarRollout = { id: number; name: string; client: string; stage: string; why: string[]; lessons: Lesson[]
+  risks: { kind: string; title: string; impact: string; status: string; resolution: string | null }[] }
+export type LessonsData = { lessons: (Lesson & { id: number; created_by: string; created_at: string })[]; similar: SimilarRollout[]; can_edit: boolean; can_add_risk: boolean }
+export const lessonsOf = (id: number) => getJson<LessonsData>(`/api/projects/${id}/lessons`)
+export const saveLessons = (id: number, items: Lesson[], ai_suggestion?: number | null) => post<{ ok: true; saved: number }>(`/api/projects/${id}/lessons`, { items, ai_suggestion: ai_suggestion ?? null })
+export const deleteLesson = (id: number, lesson: number) => post<{ ok: true }>(`/api/projects/${id}/lessons/${lesson}/delete`)
 export type MinutesTask = { title: string; owner: string | null; assignee_id: number | null; stage: string | null; due_date: string | null; due_text: string; quote: string }
 export type AskAnswer = { question: string; answer: string; found: boolean; sources: { n: number; kind: string; from: string; href: string }[] }
 export type CatchUp = { where_it_stands: string; who_is_who: string; what_changed: string; waiting: string[]; watch_out: string[] }

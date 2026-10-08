@@ -31,7 +31,7 @@ from db import DB_PATH, UPLOAD_DIR
 # Children before parents. Any new table keyed by project_id belongs here —
 # the id counter is reset below, so a survivor would attach itself to the
 # next project created (see the "new table" checklist in CLAUDE.md).
-WIPE_TABLES = ["doc_text", "ai_calls", "ai_suggestions", "ai_jobs", "signoffs", "scope_items", "plan_changes", "raid_items", "notifications", "status_notes", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
+WIPE_TABLES = ["lessons", "doc_text", "ai_calls", "ai_suggestions", "ai_jobs", "signoffs", "scope_items", "plan_changes", "raid_items", "notifications", "status_notes", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
                "project_participants", "project_stages", "login_links", "signup_links", "projects"]
 
 

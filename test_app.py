@@ -5686,6 +5686,12 @@ NOTES_GOOD = json.dumps({"tasks": [
     {"title": "Update the design document", "owner": "Sam Rivera", "stage": "Design", "due": "", "quote": "Sam to update the design document with the new retention period."},
     {"title": "Book the data centre", "owner": "Bob", "stage": "", "due": "", "quote": "Bob books the data centre"}]})
 ANSWERS["You read meeting minutes"] = NOTES_GOOD
+LESSONS_GOOD = json.dumps({"lessons": [
+    {"kind": "avoid", "text": "Ask for building access at kickoff: Build waited on Site B.", "evidence": "Waiting on building access at Site B"},
+    {"kind": "avoid", "text": "Plan a buffer for vendor configuration in Design.", "evidence": "Vendor configuration late"},
+    {"kind": "repeat", "text": "Hold daily stand-ups with the vendor during Build.", "evidence": "Daily stand-ups with the vendor during Build kept the onboarding on pace."},
+    {"kind": "avoid", "text": "Invented lesson.", "evidence": "the moon was full"}]})
+ANSWERS["You draft the lessons from"] = LESSONS_GOOD
 ANSWERS["You explain proposed changes"] = json.dumps({"reasons": [
     "Design took a median of 8 working days over 6 rollouts and 11 or fewer in 80% of them; today's 6 is shorter than most rollouts achieve.",
     "Hand-over took a median of 2 working days over 5 rollouts and 3 or fewer in 80% of them; today's 10 is longer than most rollouts need."]})
@@ -6486,6 +6492,57 @@ class NotesToTasksTestCase(AITestBase):
                                           headers=h).status_code, 200)
         with self._db() as con:
             self.assertEqual(con.execute("SELECT title FROM tasks").fetchone()[0], "Cable the Site B racks")
+
+
+class LessonsTestCase(AITestBase):
+    """Phase 2: the lessons library and similar rollouts."""
+    isolate_features = False
+
+    def _new(self, name, product, vendor="Contoso", client="Globex"):
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": name, "client": client})
+        with self._db() as con:
+            con.execute("UPDATE projects SET product_name = ?, vendor_name = ? WHERE name = ?", (product, vendor, name))
+
+    def test_drafted_lessons_need_evidence(self):
+        from services.ai.features.lessons import FEATURE, fixture, refine
+        out = refine(fixture(), json.loads(LESSONS_GOOD))
+        self.assertEqual([l["text"] for l in out["lessons"]][-1], "Hold daily stand-ups with the vendor during Build.")   # the invented one is gone
+        self.assertEqual(len(out["lessons"]), 3)
+        self.assertEqual([g(fixture(), out) for g in FEATURE.graders if g(fixture(), out)], [])
+
+    def test_save_find_in_similar_rollouts_and_outlive_the_rollout(self):
+        from datetime import datetime, timedelta
+        self._new("EDR Globex", "Defender")
+        self._new("EDR Initech", "Defender", client="Initech")
+        self._new("Email Hooli", "Mimecast", vendor="Other", client="Hooli")
+        h = self._csrf()
+        r = self.client.post("/api/projects/1/lessons", json={"items": [{"kind": "avoid", "text": "Ask for local admin rights at kickoff.", "evidence": "Pilot waited 6 days"}]}, headers=h)
+        self.assertEqual(r.get_json()["saved"], 1)
+        self.client.post("/api/projects/1/raid", json={"kind": "blocker", "title": "Firewall change approval", "impact": "high"}, headers=h)
+        sim = self.client.get("/api/projects/2/lessons").get_json()["similar"]
+        self.assertEqual([(x["name"], x["why"]) for x in sim], [("EDR Globex", ["same product", "same template", "same vendor"])])   # not the email rollout
+        self.assertEqual(sim[0]["lessons"][0]["text"], "Ask for local admin rights at kickoff.")
+        self.assertEqual(sim[0]["risks"][0]["title"], "Firewall change approval")
+        with self._db() as con:
+            self.assertIsNotNone(con.execute("SELECT 1 FROM audit_logs WHERE action = 'save_lessons'").fetchone())
+            con.execute("UPDATE projects SET deleted_at = ? WHERE id = 1", ((datetime.utcnow() - timedelta(days=1)).isoformat(),))
+        with self._ctx():
+            db_module.cleanup_soft_deletes()
+        with self._db() as con:
+            self.assertEqual(tuple(con.execute("SELECT project_id, project_name, text FROM lessons").fetchone()), (None, "EDR Globex", "Ask for local admin rights at kickoff."))
+
+    def test_partners_never_see_lessons(self):
+        self._new("EDR Globex", "Defender")
+        with patch("graph.send_mail", return_value=(False, "not configured")):
+            self.client.post("/projects/1/participants/invite", data={"email": "ann@globex.example", "name": "Ann", "role": "Customer"})
+        from security import issue_login_link
+        with self._db() as con:
+            uid = con.execute("SELECT id FROM users WHERE email = 'ann@globex.example'").fetchone()[0]
+        with app_module.app.test_request_context():
+            link = issue_login_link(uid)
+        ann = app_module.app.test_client()
+        ann.post(f"/auth/link/{link}")
+        self.assertEqual(ann.get("/api/projects/1/lessons").status_code, 404)
 
 
 if __name__ == "__main__":
