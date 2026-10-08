@@ -17,7 +17,7 @@ from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_dat
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
 from security import csrf_token, file_stem, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
-from services.analytics import _parse, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline
+from services.analytics import _parse, clock, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline, working_days
 from services.audit import audit_log
 from services import signoff as signoff_service
 from services.activity import enabled as activity_enabled, summary as activity_summary
@@ -623,7 +623,7 @@ def api_alerts():
 @app.route("/api/analytics")
 @permission_required("view_reports")
 def api_analytics():
-    from services.analytics import build_cycle_times
+    from services.analytics import build_cycle_times, clock
     db = get_db()
     templates = db.execute("SELECT id, name FROM stage_templates ORDER BY id").fetchall()
     template_id = request.args.get("template", type=int) or (templates[0]["id"] if templates else None)
@@ -636,7 +636,7 @@ def api_analytics():
         notes.setdefault(n["project_id"], []).append(n)
     rows = db.execute("SELECT name, sla_days FROM stage_template_stages WHERE template_id = ? ORDER BY position", (template_id,)).fetchall() if template_id else []
     names = [r["name"] for r in rows]
-    stats = build_cycle_times(projects, notes, names, names[-1]) if names else None
+    stats = build_cycle_times(projects, notes, names, names[-1], clock=clock()) if names else None
     return jsonify(
         templates=[{"id": t["id"], "name": t["name"]} for t in templates], template_id=template_id,
         slas={r["name"]: r["sla_days"] for r in rows},
@@ -919,8 +919,9 @@ def _flow_state(project, sla, schedule):
 
 
 def _days_since(iso, now):
+    """Calendar days since a stored timestamp, unrounded (round only to show)."""
     parsed = _parse(iso) if iso else None
-    return round((now - parsed).total_seconds() / 86400, 1) if parsed else None
+    return (now - parsed).total_seconds() / 86400 if parsed else None
 
 
 def _flow_urgency(r, now):
@@ -978,7 +979,9 @@ def api_flow():
             next_task[t["project_id"]] = {"title": t["title"], "due_date": t["due_date"], "assignee": t["assignee_name"], "here": here}
     for v in next_task.values():
         del v["here"]
-    stale_days = (get_alert_type_settings().get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
+    alert_settings = get_alert_type_settings()
+    stale_days = (alert_settings.get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
+    soon_days = (alert_settings.get("project_due_soon") or DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
     rows = []
     for p in projects:
         own = stage_lists.get(p["id"]) or []
@@ -986,10 +989,10 @@ def api_flow():
         terminal = stages[-1] if stages else None
         slas = sla_by_stage(own)
         sla = stage_sla_state(p, slas, terminal, now)
-        schedule = schedule_status(p, terminal_stage=terminal)
+        schedule = schedule_status(p, soon_days=soon_days, terminal_stage=terminal)
         state = _flow_state(p, sla, schedule)
         idle = _days_since(p["updated_at"], now)
-        in_stage = days_in_stage(p["stage_entered_at"], now)
+        in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
@@ -1000,7 +1003,7 @@ def api_flow():
             "sla_days": slas.get(p["stage"]), "over_by": round(sla["over_by"], 1) if sla else None,
             "state": state, "open_tasks": p["open_tasks"], "total_tasks": p["total_tasks"],
             "next_task": next_task.get(p["id"]), "updated_at": p["updated_at"],
-            "idle_days": idle, "stale": idle is not None and idle >= stale_days,
+            "idle_days": None if idle is None else round(idle, 1), "stale": idle is not None and idle >= stale_days,
         })
     rows.sort(key=lambda r: (STATE_RANK[r["state"]], _flow_urgency(r, now)))
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}
@@ -1038,12 +1041,13 @@ def api_plan_save(project_id):
     body = request.get_json(silent=True) or {}
     reason = str(body.get("reason") or "").strip()[:300]
     try:
-        changed, baselined = plan.save(project, body.get("stages"), reason, session["user_name"])
+        changed, baselined, warning = plan.save(project, body.get("stages"), reason, session["user_name"])
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     if changed or baselined:
         audit_log("save_plan", "project", project_id, project["name"], f"{changed} date(s) changed{'; baseline set' if baselined else ''}{f'; {reason}' if reason else ''}")
-    return jsonify(ok=True, changed=changed, baselined=baselined)
+    # warning: the plan ends after the target date (said, never blocking)
+    return jsonify(ok=True, changed=changed, baselined=baselined, warning=warning)
 
 
 @app.route("/api/projects/<int:project_id>/plan/baseline", methods=["POST"])
@@ -1056,7 +1060,10 @@ def api_plan_rebaseline(project_id):
     reason = str((request.get_json(silent=True) or {}).get("reason") or "").strip()[:300]
     if not reason:
         return jsonify(error="Say why the baseline moves"), 400
-    plan.rebaseline(project, reason, session["user_name"])
+    try:
+        plan.rebaseline(project, reason, session["user_name"])
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     audit_log("rebaseline_plan", "project", project_id, project["name"], reason)
     return jsonify(ok=True)
 
@@ -1137,17 +1144,18 @@ def api_project_flow(project_id):
     notes = db.execute("SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at", (project_id,)).fetchall()
     timeline = stage_timeline(project, notes, stages[0])
     # Dwell per stage: the last visit's span (a stage can be revisited; the
-    # latest visit is what the current SLA measures).
+    # latest visit is what the current SLA measures), in the SLA's own days.
+    clk = clock()
     visits = {}
     for i, (stage, entered) in enumerate(timeline):
         left = timeline[i + 1][1] if i + 1 < len(timeline) else now
-        visits[stage] = {"entered_at": entered.isoformat(), "days": round((left - entered).total_seconds() / 86400, 1)}
+        visits[stage] = {"entered_at": entered.isoformat(), "days": round(working_days(entered, left, clk), 1)}
     current = stages.index(project["stage"]) if project["stage"] in stages else 0
     # The current stage's clock is stage_entered_at (what change_stage sets and
     # the SLA measures); the note history can lag it, e.g. after a backdate.
     entered_now = _parse(project["stage_entered_at"]) if project["stage_entered_at"] else None
     if entered_now and project["stage"] in stages:
-        visits[project["stage"]] = {"entered_at": entered_now.isoformat(), "days": round((now - entered_now).total_seconds() / 86400, 1)}
+        visits[project["stage"]] = {"entered_at": entered_now.isoformat(), "days": round(working_days(entered_now, now, clk), 1)}
     stage_rows = []
     for i, name in enumerate(stages):
         status = "done" if i < current else "current" if i == current else "next"
@@ -1160,7 +1168,8 @@ def api_project_flow(project_id):
     sla = stage_sla_state(project, slas, terminal, now)
     schedule = schedule_status(project, terminal_stage=terminal)
     target = date.fromisoformat(project["target_end_date"]) if project["target_end_date"] else None
-    start = project["start_date"] or project["created_at"][:10]
+    from policies import local_date
+    start = project["start_date"] or local_date(project["created_at"]).isoformat()
     return jsonify({
         "id": project["id"], "name": project["name"], "client": project["client"],
         "vendor_name": project["vendor_name"], "product_name": project["product_name"],

@@ -414,11 +414,12 @@ def settings_stage_sla(template_id):
 @permission_required("manage_settings")
 def settings_stage_sla_from_measured(template_id):
     """Adopt each stage's measured average across projects created from this
-    template. Stages nothing has passed through are left alone — no evidence,
+    template, measured in working days like the SLAs themselves (when the
+    workspace counts them). Stages nothing has passed through are left alone — no evidence,
     no made-up number. Rounds up, so the target is never stricter than the
     average it came from."""
     import math
-    from services.analytics import build_cycle_times
+    from services.analytics import build_cycle_times, clock
 
     _template(template_id)
     db = get_db()
@@ -431,14 +432,14 @@ def settings_stage_sla_from_measured(template_id):
     stage_names = [row["name"] for row in stage_ops.list_stages("template", template_id)]
     if not stage_names:
         return _template_change("set_template_slas_from_measured", "Template has no stages")
-    stats = build_cycle_times(projects, notes_by_project, stage_names, stage_names[-1])
+    stats = build_cycle_times(projects, notes_by_project, stage_names, stage_names[-1], clock=clock())
     applied = 0
     for row in stats["stages"]:
         if row["avg_days"] is None or row["stage"] == stage_names[-1]:
             continue
         db.execute(
             "UPDATE stage_template_stages SET sla_days = ? WHERE template_id = ? AND name = ?",
-            (max(1, math.ceil(row["avg_days"])), template_id, row["stage"]),
+            (min(365, max(1, math.ceil(row["avg_days"]))), template_id, row["stage"]),
         )
         applied += 1
     db.commit()

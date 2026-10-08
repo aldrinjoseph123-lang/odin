@@ -6,7 +6,7 @@ from flask import abort, redirect, render_template, request, session, url_for
 from constants import ALERT_TYPES, ALERT_TYPE_TITLES
 from core import app, login_required, permission_required, project_scope
 from db import PROJECT_OPEN_SQL, get_db, get_stage_names, get_terminal_stage, stages_for_projects
-from services.analytics import build_cycle_times
+from services.analytics import build_cycle_times, clock
 from spa import spa_index, spa_serves
 from services.alerts import (
     alert_context_for,
@@ -181,7 +181,7 @@ def analytics():
     ).fetchall() if template_id else []
     names = [r["name"] for r in stage_rows_]
     slas = {r["name"]: r["sla_days"] for r in stage_rows_}
-    stats = build_cycle_times(projects, notes_by_project, names, names[-1] if names else None) if names else None
+    stats = build_cycle_times(projects, notes_by_project, names, names[-1] if names else None, clock=clock()) if names else None
     custom = db.execute("SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL AND stage_template_id IS NULL").fetchone()[0]
     return render_template("analytics.html", stats=stats, slas=slas, templates=templates, template=template, custom_count=custom)
 

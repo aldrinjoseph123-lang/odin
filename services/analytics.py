@@ -8,8 +8,12 @@ module.
 build_cycle_times() is pure computation over rows, so it can be tested without
 a request context and reused by any caller.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from statistics import median
+from zoneinfo import ZoneInfo
+
+# (working days, time zone) for pure callers: every day counts, in UTC
+CALENDAR = ((frozenset(range(7)), frozenset()), ZoneInfo("UTC"))
 
 
 def _parse(value):
@@ -49,8 +53,11 @@ def stage_timeline(project, notes, first_stage):
     return timeline
 
 
-def build_cycle_times(projects, notes_by_project, stage_names, terminal_stage, now=None):
+def build_cycle_times(projects, notes_by_project, stage_names, terminal_stage, now=None, clock=None):
     """Per-stage dwell statistics, current aging, lead time and throughput.
+
+    Durations are measured with `clock` (see clock()): pass the workspace's
+    to count working days like the SLAs do; without one every day counts.
 
     A *completed* visit is one the project has already left — those are the
     only ones with a known duration, so they alone feed the averages. Time in
@@ -70,17 +77,17 @@ def build_cycle_times(projects, notes_by_project, stage_names, terminal_stage, n
 
         for index, (stage, entered) in enumerate(timeline):
             if index + 1 < len(timeline):
-                days = (timeline[index + 1][1] - entered).total_seconds() / 86400
+                days = working_days(entered, timeline[index + 1][1], clock)
                 completed.setdefault(stage, []).append(days)
             else:
-                days = (now - entered).total_seconds() / 86400
+                days = working_days(entered, now, clock)
                 if stage != terminal_stage:
                     current.setdefault(stage, []).append(days)
                     aging.append({"project": project, "stage": stage, "days": days, "since": entered})
 
         final_stage, reached_at = timeline[-1]
         if final_stage == terminal_stage:
-            lead_times.append((reached_at - timeline[0][1]).total_seconds() / 86400)
+            lead_times.append(working_days(timeline[0][1], reached_at, clock))
             closed_events.append(reached_at)
 
     stages = []
@@ -143,17 +150,31 @@ def stage_sla_state(project, sla_by_stage, terminal_stage, now=None):
     }
 
 
-def days_in_stage(entered_at, now=None):
-    """Days since `entered_at` (fractional), leaving out non-working days
-    when the workspace counts working days (services/workdays.py)."""
-    from policies import local_date
+def clock(db=None):
+    """(working-day calendar, time zone) of the workspace, for working_days()."""
+    from policies import policy
     from services import workdays
+    return workdays.calendar(db), ZoneInfo(policy("timezone", db))
+
+
+def working_days(start, end, clock=None):
+    """Fractional days from `start` to `end` (naive UTC datetimes) that fall on
+    working days in the workspace's time zone, part days included: the one
+    measure of time in a stage, so the SLA clock never runs backwards over a
+    weekend. Without a clock every day counts."""
+    from services import workdays
+    cal, tz = clock or CALENDAR
+    local = lambda d: d.replace(tzinfo=timezone.utc).astimezone(tz).replace(tzinfo=None)   # noqa: E731
+    return workdays.elapsed(local(start), local(end), cal)
+
+
+def days_in_stage(entered_at, now=None, clock_=None):
+    """Working days since `entered_at` (fractional), or calendar days when the
+    workspace counts those (services/workdays.py)."""
     entered = _parse(entered_at) if entered_at else None
     if entered is None:
         return None
-    now = now or datetime.utcnow()
-    off = workdays.off_between(local_date(entered.isoformat()), local_date(now.isoformat()), workdays.calendar())
-    return max(0.0, (now - entered).total_seconds() / 86400 - off)
+    return working_days(entered, now or datetime.utcnow(), clock_ or clock())
 
 
 def sla_by_stage(stage_rows):

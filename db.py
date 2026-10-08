@@ -91,6 +91,12 @@ def restore_deleted(table, item_id):
     return bool(done)
 
 
+def touch_project(db, project_id):
+    """Work happened on the project (a note, a task, a document, the plan,
+    RAID, the sign-off): it is not idle. The caller commits."""
+    db.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (datetime.utcnow().isoformat(), project_id))
+
+
 def cleanup_soft_deletes(db=None):
     """Permanently remove rows older than the undo window, and everything that
     hangs off them.

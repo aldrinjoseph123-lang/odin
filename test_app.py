@@ -3692,7 +3692,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("UPDATE projects SET stage_entered_at = datetime('now', '-9 days') WHERE id = 1"); db.commit()
         d = c.get("/api/projects/1/flow").get_json()
-        self.assertGreaterEqual(d["stages"][1]["days"], 8.9)
+        # in working days, as the Flow's row counts it (nine calendar days hold at least five working ones)
+        self.assertGreaterEqual(d["stages"][1]["days"], 5)
+        self.assertAlmostEqual(d["stages"][1]["days"], c.get("/api/flow").get_json()["rows"][0]["days_in_stage"], delta=0.1)
         self.assertEqual([t["done"] for t in d["tasks"]], [False, True])
         self.assertGreater(d["days_left"], 20000)
         self.assertEqual(c.get("/api/projects/999/flow").status_code, 404)
