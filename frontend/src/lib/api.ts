@@ -241,6 +241,10 @@ export type WeeklyWordsDraft = { summary: string; next_steps: string[]; asks: st
 export const projectAI = <T,>(id: number, key: string) => getJson<ProjectAI<T>>(`/api/projects/${id}/ai/${key}`)
 export const requestProjectAI = (id: number, key: string) => post<{ ok: true; job: number }>(`/api/projects/${id}/ai/${key}`)
 export const dismissAISuggestion = (id: number, suggestion: number) => post<{ ok: true }>(`/api/projects/${id}/ai/suggestions/${suggestion}/dismiss`)
+export type RaidProposal = { kind: "risk" | "issue" | "blocker" | "decision"; title: string; detail: string; impact: "low" | "medium" | "high"; likelihood: "low" | "medium" | "high" | null; evidence: string }
+export type RaidProposals = { proposals: RaidProposal[]; decisions?: Record<string, { decision: "accepted" | "dismissed"; by: string; raid_id: number | null }> }
+export const decideAIProposal = (id: number, suggestion: number, index: number, decision: "accepted" | "dismissed", raid_id?: number) =>
+  post<{ ok: true; status: string }>(`/api/projects/${id}/ai/suggestions/${suggestion}/items/${index}`, { decision, raid_id: raid_id ?? null })
 export type RaidKind = "risk" | "issue" | "decision" | "blocker"
 export type RaidItem = {
   id: number; kind: RaidKind; title: string; detail: string | null; impact: "low" | "medium" | "high"; likelihood: "low" | "medium" | "high" | null

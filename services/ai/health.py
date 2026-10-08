@@ -167,7 +167,7 @@ def queue(db, kind, feature=None, project_id=None, payload=None, actor=None):
         if row:
             return row[0]
     if kind == "feature":
-        row = db.execute("SELECT id FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id = ? AND status IN ('queued', 'running')",
+        row = db.execute("SELECT id FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id IS ? AND status IN ('queued', 'running')",
                          (feature, project_id)).fetchone()
         if row:
             return row[0]
@@ -189,7 +189,14 @@ def run_feature_job(db, job):
     reason = gate(feature.key, db)
     if reason:
         return {"skipped": reason}
-    inputs = feature.gather(project_id=job["project_id"])
+    if feature.scope == "portfolio":
+        return _run_portfolio(db, feature, job)
+    try:
+        inputs = feature.gather(project_id=job["project_id"])
+    except AIError as exc:
+        if exc.kind == "skip":   # nothing to do for this rollout (a green one has no amber to explain)
+            return {"skipped": exc.reason}
+        raise
     digest = hashlib.sha256(json.dumps(inputs, sort_keys=True, default=str).encode()).hexdigest()[:16]
     last = db.execute("SELECT inputs_hash FROM ai_suggestions WHERE project_id = ? AND feature = ? AND status = 'new' ORDER BY id DESC LIMIT 1",
                       (job["project_id"], feature.key)).fetchone()
@@ -203,6 +210,22 @@ def run_feature_job(db, job):
                       meta["prompt_hash"], meta["seconds"], job["id"], _now()))
     db.commit()
     return {"suggestion": cur.lastrowid, "seconds": meta["seconds"], "model": meta["model"]}
+
+
+def _run_portfolio(db, feature, job):
+    """A portfolio-wide feature: the answer is kept as the latest one (settings
+    ai.latest.<key>), with its model and prompt, for the place that shows it."""
+    import hashlib
+    inputs = feature.gather()
+    digest = hashlib.sha256(json.dumps(inputs, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    row = db.execute("SELECT value FROM settings WHERE key = ?", (f"ai.latest.{feature.key}",)).fetchone()
+    if job["requested_by"] is None and row and json.loads(row[0]).get("inputs_hash") == digest:
+        return {"skipped": "nothing changed since the last answer"}
+    out, meta = run(feature, inputs, config(db))
+    _put(db, f"ai.latest.{feature.key}", json.dumps({"payload": out, "model": meta["model"], "fingerprint": status(db).get("fingerprint"),
+                                                     "prompt_hash": meta["prompt_hash"], "seconds": meta["seconds"], "inputs_hash": digest,
+                                                     "created_at": _now()}, ensure_ascii=False))
+    return {"seconds": meta["seconds"], "model": meta["model"]}
 
 
 def work_once(db):
@@ -263,10 +286,12 @@ def night_shift(db):
     if not nightly:
         return 0
     ids = [r[0] for r in db.execute(f"SELECT p.id FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.id")]
+    n = 0
     for f in nightly:
-        for pid in ids:
+        for pid in (ids if f.scope == "project" else [None]):
             queue(db, "feature", feature=f.key, project_id=pid)
-    return len(ids) * len(nightly)
+            n += 1
+    return n
 
 
 def trim(db=None):

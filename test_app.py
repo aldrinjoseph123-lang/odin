@@ -5308,6 +5308,7 @@ class FakeAIServer:
     def __init__(self, models=None, answers=None):
         self.models = models if models is not None else [{"id": "P24-AI:latest", "created": 100}]
         self.answers = list(answers or [])
+        self.by_prompt = {}   # a phrase in the system prompt -> the answer for that feature, used before `answers`
         self.calls = []
         self.down = False
         self.status = 200
@@ -5325,7 +5326,9 @@ class FakeAIServer:
         if url.endswith("/models"):
             body = {"object": "list", "data": [{"object": "model", **m} for m in self.models]}
         else:
-            answer = self.answers.pop(0) if self.answers else '{"status": "ready", "echo": 7}'
+            system = (json or {}).get("messages", [{}])[0].get("content", "")
+            keyed = next((a for k, a in self.by_prompt.items() if k in system), None)
+            answer = keyed if keyed is not None else self.answers.pop(0) if self.answers else '{"status": "ready", "echo": 7}'
             if isinstance(answer, Exception):
                 raise answer
             body = {"model": "P24-AI", "choices": [{"message": {"role": "assistant", "content": answer}}], "usage": {"total_tokens": 10}}
@@ -5606,6 +5609,22 @@ class AIFrameworkTestCase(AITestBase):
         self.assertIn("ai", kinds)
 
 
+RAID_GOOD = json.dumps({"proposals": [
+    {"kind": "decision", "title": "Decide whether the phase 2 scope changes", "detail": "The customer wants two more clinics; it would move the go-live.",
+     "impact": "high", "likelihood": "medium", "evidence": "Customer asked whether the phase 2 scope can change"},
+    {"kind": "risk", "title": "Vendor deliveries keep slipping", "detail": "Two late deliveries this month put the design dates at risk.",
+     "impact": "medium", "likelihood": "high", "evidence": "the second late delivery this month"}]})
+
+
+HEALTH_GOOD = json.dumps({"why": "Design is 3 working days over its 6-day SLA and the finish is forecast 4 days after the 20 Oct 2026 target; "
+                                  "the design approval has waited since 29 Sep 2026.", "first_move": "Chase the customer's design approval."})
+PORTFOLIO_GOOD = json.dumps({"opening": "Of 5 open rollouts, 3 are green, SIEM onboarding is amber and Firewall refresh is red, 12 days past its target with a blocker. "
+                                          "EDR rollout moved from Kickoff to Deployment this week.",
+                              "needs_decision": ["SIEM onboarding: chase the design approval asked on 29 Sep 2026", "Firewall refresh: get the change window approved"]})
+ANSWERS = {"You are a health check": '{"status": "ready", "echo": 7}', "You review an IT security": RAID_GOOD, "You explain why": HEALTH_GOOD,
+           "You write the opening": PORTFOLIO_GOOD}
+
+
 class WeeklyWordsTestCase(AITestBase):
     """The first AI feature: the report's words drafted from the week."""
     isolate_features = False
@@ -5624,8 +5643,9 @@ class WeeklyWordsTestCase(AITestBase):
         with self._ctx():
             from db import get_db
             heartbeat(get_db())
-            self.server.answers = ['{"status": "ready", "echo": 7}', self.GOOD]
-            self.assertEqual(validate_all(get_db())["features"], {"weekly_words": "passed"})
+            self.server.by_prompt = {**ANSWERS, "You write the weekly status words": self.GOOD}
+            self.assertEqual(set(validate_all(get_db())["features"].values()), {"passed"})
+            self.server.by_prompt = {}
 
     def test_gather_has_the_fixtures_shape(self):
         from services.ai.features.weekly_words import fixture, gather
@@ -5695,6 +5715,9 @@ class WeeklyWordsTestCase(AITestBase):
             from db import get_db
             db = get_db()
             db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.validate.last_date', '2026-10-08')")
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.feature.raid_proposals', '0')")   # this test is about one feature
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.feature.health_explained', '0')")
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.feature.portfolio_narrative', '0')")
             db.commit()
             with patch("services.ai.health.work_once", return_value=None):
                 tick(db, now_local=datetime(2026, 10, 8, 3, 31))
@@ -5720,6 +5743,125 @@ class WeeklyWordsTestCase(AITestBase):
             db_module.cleanup_soft_deletes()
         with self._db() as con:
             self.assertEqual(con.execute("SELECT COUNT(*) FROM ai_suggestions").fetchone()[0], 0)
+
+
+class RaidProposalsTestCase(AITestBase):
+    """Feature 2: risks, issues, blockers and decisions the notes imply."""
+    isolate_features = False
+
+    def _project(self):
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Rollout Two", "client": "Northwind"})
+        self.client.post("/projects/1/note", data={"note": "Customer asked whether the phase 2 scope can change to add the two clinics in the north."})
+        self.client.post("/projects/1/note", data={"note": "Vendor delivered the firewall configuration two days late, the second late delivery this month."})
+
+    def test_only_quoted_and_new_proposals_survive(self):
+        from services.ai.features.raid_proposals import FEATURE, fixture, refine
+        out = json.loads(RAID_GOOD)
+        out["proposals"] += [
+            {"kind": "blocker", "title": "Site B building access missing", "detail": "x", "impact": "high", "evidence": "building access not granted yet"},
+            {"kind": "risk", "title": "Data centre fire", "detail": "x", "impact": "high", "likelihood": "low", "evidence": "the server room caught fire"}]
+        kept = refine(fixture(), out)
+        self.assertEqual([p["title"] for p in kept["proposals"]], ["Decide whether the phase 2 scope changes", "Vendor deliveries keep slipping"])
+        self.assertIsNone(kept["proposals"][0]["likelihood"])            # a decision has no likelihood
+        self.assertEqual([g(fixture(), kept) for g in FEATURE.graders], [None, None])
+        self.assertTrue(FEATURE.graders[0](fixture(), {"proposals": []}))   # finding nothing fails the test project
+
+    def test_look_add_one_dismiss_one(self):
+        from services.ai.health import heartbeat, validate_all, work_once
+        self._project()
+        self._enable()
+        with self._ctx():
+            from db import get_db
+            heartbeat(get_db())
+            self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+            self.assertEqual(validate_all(get_db())["features"]["raid_proposals"], "passed")
+            self.server.by_prompt = {}
+        self.assertEqual(self.client.post("/api/projects/1/ai/raid_proposals", json={}, headers=self._csrf()).status_code, 200)
+        self.server.answers = [RAID_GOOD]
+        with self._ctx():
+            from db import get_db
+            work_once(get_db())
+        sug = self.client.get("/api/projects/1/ai/raid_proposals").get_json()["suggestion"]
+        self.assertEqual(len(sug["payload"]["proposals"]), 2)
+        p = sug["payload"]["proposals"][0]
+        rid = self.client.post("/api/projects/1/raid", json={"kind": p["kind"], "title": p["title"], "detail": p["detail"], "impact": p["impact"]},
+                               headers=self._csrf()).get_json()["id"]
+        r = self.client.post(f"/api/projects/1/ai/suggestions/{sug['id']}/items/0", json={"decision": "accepted", "raid_id": rid}, headers=self._csrf())
+        self.assertEqual(r.get_json()["status"], "new")                    # one still waiting
+        r = self.client.post(f"/api/projects/1/ai/suggestions/{sug['id']}/items/1", json={"decision": "dismissed"}, headers=self._csrf())
+        self.assertEqual(r.get_json()["status"], "used")
+        self.assertIsNone(self.client.get("/api/projects/1/ai/raid_proposals").get_json()["suggestion"])
+        with self._db() as con:
+            self.assertEqual(con.execute("SELECT title FROM raid_items").fetchone()[0], "Decide whether the phase 2 scope changes")
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'decide_ai_proposal'").fetchone()[0], 2)
+        self.assertEqual(self.client.post(f"/api/projects/1/ai/suggestions/{sug['id']}/items/0", json={"decision": "accepted"}, headers=self._csrf()).status_code, 404)
+
+
+class HealthExplainedTestCase(AITestBase):
+    """Feature 3: why an amber or red rollout is amber or red."""
+    isolate_features = False
+
+    def test_graders_and_green_rollouts_are_skipped(self):
+        from services.ai.client import AIError
+        from services.ai.features.health_explained import FEATURE, fixture, gather
+        good = json.loads(HEALTH_GOOD)
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders], [None, None, None, None])
+        self.assertTrue(FEATURE.graders[1](fixture(), {**good, "why": "The rollout is broadly on track."}))
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Quiet", "client": "C"})
+        with self._ctx():
+            with self.assertRaises(AIError) as e:
+                gather(project_id=1)
+        self.assertEqual(e.exception.kind, "skip")
+
+    def test_an_amber_rollout_gets_its_explanation(self):
+        from services.ai.health import heartbeat, run_feature_job, validate_all
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Late", "client": "C"})
+        self.client.post("/api/projects/1/raid", json={"kind": "blocker", "title": "No building access", "impact": "high"}, headers=self._csrf())
+        self._enable()
+        self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            heartbeat(db)
+            self.assertEqual(validate_all(db)["features"]["health_explained"], "passed")
+            job = {"id": 0, "feature": "health_explained", "project_id": 1, "requested_by": None}
+            self.assertIn("suggestion", run_feature_job(db, job))
+        view = self.client.get("/api/projects/1/ai/health_explained").get_json()
+        self.assertEqual(view["suggestion"]["payload"]["first_move"], "Chase the customer's design approval.")
+        sent = json.loads(next(c for c in self.server.calls if c[3] and "You explain why" in c[3]["messages"][0]["content"] and "Late" in c[3]["messages"][1]["content"])[3]["messages"][1]["content"])
+        self.assertEqual((sent["health"], sent["open_blockers"]), ("red", ["No building access"]))
+
+
+class PortfolioNarrativeTestCase(AITestBase):
+    """Feature 4: the weekly report's opening, written from the portfolio."""
+    isolate_features = False
+
+    def test_the_weekly_email_opens_with_it_only_while_the_ai_may_run(self):
+        from services import weekly_report
+        from services.ai.features.portfolio_narrative import FEATURE, fixture, gather
+        from services.ai.health import heartbeat, run_feature_job, validate_all
+        self.assertEqual([g(fixture(), json.loads(PORTFOLIO_GOOD)) for g in FEATURE.graders], [None, None, None, None])
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Rollout P", "client": "C"})
+        with self._ctx():
+            self.assertEqual(set(gather()), set(fixture()))
+            self.assertNotIn("Written by AI", weekly_report.build()[1])           # AI off: the email as it always was
+        self._enable()
+        self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            heartbeat(db)
+            self.assertEqual(validate_all(db)["features"]["portfolio_narrative"], "passed")
+            self.assertEqual(run_feature_job(db, {"id": 0, "feature": "portfolio_narrative", "project_id": None, "requested_by": None})["model"], "P24-AI")
+            self.assertEqual(run_feature_job(db, {"id": 0, "feature": "portfolio_narrative", "project_id": None, "requested_by": None}),
+                             {"skipped": "nothing changed since the last answer"})
+            html = weekly_report.build()[1]
+            self.assertIn("EDR rollout moved from Kickoff to Deployment", html)
+            self.assertIn("<li>Firewall refresh: get the change window approved</li>", html)
+            self.assertIn("Written by AI (P24-AI)", html)
+            self.client.post("/settings/ai/features/portfolio_narrative", data={})   # switched off: gone from the next email
+            self.assertNotIn("Written by AI", weekly_report.build()[1])
+        self.assertEqual(self.client.get("/api/projects/1/ai/portfolio_narrative").status_code, 404)   # not a per-rollout feature
 
 
 if __name__ == "__main__":

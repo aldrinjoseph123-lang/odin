@@ -41,10 +41,12 @@ class AIFeature:
     graders: tuple                  # grader(inputs, output) -> a problem sentence, or None
     fallback: Optional[Callable] = None   # today's behaviour, used when the gate is closed
     runs: str = "on_demand"         # on_demand | nightly | at_event
+    scope: str = "project"          # project: gather(project_id=…), kept as a suggestion on it; portfolio: gather(), kept as the latest answer
     max_tokens: int = 800
     budget_s: Optional[int] = None  # slower than this = "slow"; None = the ai_budget_s policy
     temperature: float = 0.3
-    project_role: str = "manage_project"   # who may ask for it and see its suggestions (constants.PROJECT_ACTIONS)
+    project_role: Optional[str] = "manage_project"   # who may ask for it and see its suggestions (constants.PROJECT_ACTIONS); None = all staff who see the rollout
+    refine: Optional[Callable] = None       # refine(inputs, output) -> output: Odin's own checks after the form check (drop what the input does not support)
     extra: dict = field(default_factory=dict)
 
 
@@ -89,6 +91,8 @@ def run(feature, inputs, cfg=None):
         if exc.kind != "invalid":
             raise
         out, meta = chat(cfg, msgs, feature.schema, feature.max_tokens, feature.temperature)
+    if feature.refine:
+        out = feature.refine(inputs, out)
     meta["prompt_hash"] = prompt_of(feature)[1]
     return out, meta
 
@@ -148,6 +152,23 @@ def gate(key, db=None):
     if check["state"] not in GOOD_STATES:
         return "Failed validation on the current model"
     return None
+
+
+def latest_portfolio(key, db=None, max_age_hours=36):
+    """A portfolio feature's latest answer, when the gate is open now and it
+    is recent: (payload, meta) or None (the caller leaves it out)."""
+    from datetime import datetime, timedelta
+    from db import get_db
+    db = db or get_db()
+    if gate(key, db):
+        return None
+    row = db.execute("SELECT value FROM settings WHERE key = ?", (f"ai.latest.{key}",)).fetchone()
+    if not row:
+        return None
+    rec = json.loads(row[0])
+    if rec["created_at"] < (datetime.utcnow() - timedelta(hours=max_age_hours)).isoformat():
+        return None
+    return rec["payload"], rec
 
 
 def complete(key, **context):

@@ -63,7 +63,17 @@ def build():
         ("Rollouts per stage", [f"<li>{escape(stage)}: {n}</li>" for stage, n in per_stage.most_common()], "No active rollouts."),
     ]
     health = f"{mix.get('green', 0)} on track · {mix.get('amber', 0)} at risk · {mix.get('red', 0)} off track"
-    html = (f"<p><b>{len(projects)}</b> active rollouts · <b>{len(alerts['project_overdue'])}</b> overdue · "
+    # the AI's opening (services/ai portfolio_narrative), only when it may run now and is from the last day and a half
+    from services.ai import latest_portfolio
+    ai = latest_portfolio("portfolio_narrative")
+    opening = ""
+    if ai:
+        words, rec = ai
+        opening = f"<p>{escape(words['opening'])}</p>"
+        if words["needs_decision"]:
+            opening += "<p style='margin:8px 0 4px'><b>Needs a decision</b></p><ul style='margin:0;padding-left:18px'>" + "".join(f"<li>{escape(x)}</li>" for x in words["needs_decision"]) + "</ul>"
+        opening += f"<p style='color:#6B7280;font-size:12px;margin:6px 0 14px'>Written by AI ({escape(rec['model'])}) from the figures below.</p>"
+    html = opening + (f"<p><b>{len(projects)}</b> active rollouts · <b>{len(alerts['project_overdue'])}</b> overdue · "
             f"<b>{len(alerts['stage_sla_breach'])}</b> over SLA · <b>{len(alerts['project_due_soon'])}</b> due soon</p>"
             f"<p>Health: {health}</p>")
     for title, items, empty in sections:

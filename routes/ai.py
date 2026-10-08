@@ -126,9 +126,9 @@ def _feature_for(project, key):
     from services.ai import FEATURES
     project_id = project["id"]
     feature = FEATURES.get(key)
-    if feature is None:
+    if feature is None or feature.scope != "project":
         abort(404)
-    if session.get("kind") == "external" or not project_allows(project_id, feature.project_role):
+    if session.get("kind") == "external" or (feature.project_role and not project_allows(project_id, feature.project_role)):
         abort(403)
     return feature
 
@@ -203,3 +203,35 @@ def use_suggestion(project_id, suggestion_id, feature):
     db.execute("UPDATE ai_suggestions SET status = 'used', decided_by = ?, decided_at = ? WHERE id = ?",
                (session.get("user_name"), datetime.utcnow().isoformat(), row["id"]))
     return f", from AI draft {row['id']} ({row['model']}), edited by {session.get('user_name')}"
+
+
+@app.route("/api/projects/<int:project_id>/ai/suggestions/<int:suggestion_id>/items/<int:index>", methods=["POST"])
+@login_required
+def api_project_ai_item(project_id, suggestion_id, index):
+    """One proposal in a list-shaped draft (risks proposed): accepted (it was
+    added through the normal route, which audits the new item) or dismissed.
+    When every proposal is decided the draft is used or dismissed."""
+    from datetime import datetime
+    project = load_project(project_id)
+    db = get_db()
+    row = db.execute("SELECT * FROM ai_suggestions WHERE id = ? AND project_id = ? AND status = 'new'", (suggestion_id, project_id)).fetchone()
+    if row is None:
+        abort(404)
+    _feature_for(project, row["feature"])
+    body = request.get_json(silent=True) or {}
+    decision = body.get("decision")
+    payload = json.loads(row["payload"])
+    items = payload.get("proposals") or []
+    if decision not in ("accepted", "dismissed") or not 0 <= index < len(items):
+        return jsonify(error="Unknown proposal or decision"), 400
+    decisions = payload.setdefault("decisions", {})
+    decisions[str(index)] = {"decision": decision, "by": session.get("user_name"), "raid_id": body.get("raid_id")}
+    status = row["status"]
+    if len(decisions) == len(items):
+        status = "used" if any(d["decision"] == "accepted" for d in decisions.values()) else "dismissed"
+    db.execute("UPDATE ai_suggestions SET payload = ?, status = ?, decided_by = ?, decided_at = ? WHERE id = ?",
+               (json.dumps(payload, ensure_ascii=False), status, session.get("user_name"), datetime.utcnow().isoformat(), suggestion_id))
+    db.commit()
+    audit_log("decide_ai_proposal", "project", project_id, project["name"], f"{row['feature']} suggestion {suggestion_id} item {index}: {decision}"
+              + (f", RAID item {body['raid_id']}" if body.get("raid_id") else ""))
+    return jsonify(ok=True, status=status)

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PlanGantt, RagPill } from "@/components/PlanGantt"
 import { Ago } from "@/components/Ago"
+import { AIHealthWhy } from "@/components/AIHealthWhy"
 import { ApiError, plan as loadPlan, rebaseline, savePlan, type PlanData } from "@/lib/api"
 import { fillSuggested, setDate, workDays, type PlanRow } from "@/lib/plan"
 import { cn } from "@/lib/utils"
@@ -55,6 +56,7 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
         <RagPill rag={d.health.rag} />
         <ul className="min-w-0 flex-1 text-[12.5px] text-muted-foreground">{d.health.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
       </div>
+      <AIHealthWhy projectId={projectId} rag={d.health.rag} />
       <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {tiles.map((t) => (
           <div key={t.label} className="rounded-xl bg-muted/50 p-3">
