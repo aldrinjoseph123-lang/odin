@@ -481,7 +481,7 @@ export type AIFeatureView = {
   seconds: number | null; detail: string | null; output: unknown; prompt: string; prompt_hash: string
 }
 export type AIView = {
-  status: { state: AIState; since?: string; checked_at?: string; misses?: number; fingerprint?: string; model?: string; error?: string | null; seconds?: number | null }
+  status: { state: AIState; since?: string; checked_at?: string; misses?: number; fingerprint?: string; model?: string; error?: string | null; seconds?: number | null; stale?: boolean }
   has_key: boolean; scheduler_alive: boolean
   usage: { calls: number; failed: number | null; avg_s: number | null; max_s: number | null; tokens_in: number | null; tokens_out: number | null }
   features: AIFeatureView[]

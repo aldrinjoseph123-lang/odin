@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,7 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
 const selectClass = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
+const MISSING = "This project does not exist, or you cannot edit it."
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">{label}{hint && <span className="ml-1 text-[12px]">({hint})</span>}{children}</label>
@@ -22,6 +23,7 @@ export default function ProjectForm(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const sending = useRef(false)   // a double click sends once: state updates too late to stop the second
   const [f, setF] = useState<Record<string, string>>({})
   const [team, setTeam] = useState<string[]>([])
   const [approval, setApproval] = useState(false)
@@ -45,7 +47,7 @@ export default function ProjectForm(_props: { user: User }) {
       setApproval(data.mode === "new" ? data.defaults.customer_approval : !!p.customer_approval)
       setInitial("pending")   // the snapshot is taken on the next render, once f is set
       document.title = `${data.mode === "edit" ? "Edit" : data.mode === "duplicate" ? "Duplicate" : "New"} project · Odin`
-    }).catch((e) => setError(e instanceof ApiError && e.status === 403 ? "You cannot edit this project." : e instanceof ApiError ? e.message : "Could not load the form"))
+    }).catch((e) => setError(editId && e instanceof ApiError && (e.status === 403 || e.status === 404) ? MISSING : e instanceof ApiError && e.status === 403 ? "You cannot create projects." : e instanceof ApiError ? e.message : "Could not load the form"))
   }, [query])
 
   useEffect(() => { if (initial === "pending") setInitial(JSON.stringify(f)) }, [initial, f])
@@ -59,16 +61,21 @@ export default function ProjectForm(_props: { user: User }) {
     for (const [k, v] of Object.entries(f)) fd.set(k, v)
     fd.delete("team_user_ids"); for (const id of team) fd.append("team_user_ids", id)
     if (approval) fd.set("customer_approval", "1"); else fd.delete("customer_approval")
+    if (sending.current) return
+    sending.current = true
     setBusy(true)
     try {
       const r = await postForm(d.mode === "edit" ? `/projects/${d.id}/edit` : "/projects/new", fd)
       const failed = r.location && (r.location.endsWith("/projects/new") || r.location.endsWith("/edit"))
+      // saved: stay busy until the next page (the new project's own page once the server names it)
       if (r.location && !failed) { setSaved(true); window.setTimeout(() => window.location.assign(r.location!), 0); return }
       setNotice(r.messages.join(" ") || "Not saved")
-    } catch (err) { setNotice(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
+    } catch (err) { setNotice(err instanceof ApiError ? err.message : "That did not save") }
+    sending.current = false
+    setBusy(false)
   }
 
-  if (error) return <LoadError message={error} />
+  if (error) return <LoadError message={error} back={error === MISSING ? { href: "/projects", label: "All projects" } : undefined} />
   if (!d) return <PageSkeleton />
   const editing = d.mode === "edit"
   const title = editing ? "Edit project" : d.mode === "duplicate" ? "Duplicate project" : "New project"

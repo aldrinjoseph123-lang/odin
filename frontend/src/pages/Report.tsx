@@ -5,7 +5,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTip, XAxis, YAxis
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { PrintBrand } from "@/components/Brand"
-import { PageSkeleton } from "@/components/PageSkeleton"
+import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
 import { PlanGantt, RagPill } from "@/components/PlanGantt"
 import { RAID_KIND } from "@/components/RaidPanel"
 import { Section, Table } from "@/components/ReportParts"
@@ -22,6 +22,7 @@ import { TemplatePicker } from "@/components/TemplatePicker"
 // to the customer's copy; the project manager's words are edited in place and
 // "Save as version" freezes the lot. Partners and customers read saved
 // versions only (the server enforces it). Every version exports to PDF.
+const MISSING = "This project does not exist, or you are not on it."
 const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[13px]")
 const slip = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--elevation-pop)", fontSize: 12 }, labelStyle: { color: "var(--muted-foreground)" } }
@@ -45,12 +46,18 @@ export default function Report({ user }: { user: User }) {
       setR(x); setError(null)
       setWords({ summary: x.words.summary ?? "", next_steps: x.words.next_steps ?? "", asks: x.words.asks ?? "" })
       document.title = `Report · ${x.project.name} · Odin`
-    } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "No report has been published for this rollout yet." : e instanceof ApiError ? e.message : "Could not load the report") }
-  }, [id, audience, v, template])
+    } catch (e) {
+      const missing = e instanceof ApiError && (e.status === 404 || e.status === 403)
+      setError(missing && v ? "That version of the report does not exist."
+        : missing && user.kind === "external" ? "No report has been published for this rollout yet."
+        : missing ? MISSING : e instanceof ApiError ? e.message : "Could not load the report")
+    }
+  }, [id, audience, v, template, user.kind])
   useEffect(() => { void load() }, [load])
   const editable = !!r && r.is_live && r.can_edit
   const dirty = !!r && editable && (words.summary !== r.words.summary || words.next_steps !== r.words.next_steps || words.asks !== r.words.asks)
   useUnsavedGuard(dirty)
+  if (error === MISSING) return <LoadError message={error} back={{ href: "/projects", label: "All projects" }} />
   if (error) return <div className="p-5"><Alert role="status"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!r) return <PageSkeleton />
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
@@ -61,7 +68,7 @@ export default function Report({ user }: { user: User }) {
   const pdf = `/projects/${id}/report.pdf?audience=${r.audience}${r.version ? `&v=${r.version.version}` : template ? `&template=${template}` : ""}`
   const toolbar = (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
-      <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{r.project.name}</Link>
+      <Link to={`/projects/${id}`} className="inline-flex min-w-0 max-w-full items-start gap-1 text-[13px] text-muted-foreground wrap-anywhere hover:text-foreground"><ChevronLeft className="mt-1 h-3.5 w-3.5 shrink-0" />{r.project.name}</Link>
       <span className="ml-auto flex flex-wrap items-center gap-2">
         {r.can_edit && (
           <span className="flex rounded-full bg-muted p-1" role="group" aria-label="Audience">
@@ -109,10 +116,10 @@ export default function Report({ user }: { user: User }) {
   const intro = fillPlaceholders(d.template?.texts.intro ?? "", tplValues).trim()
   const closing = fillPlaceholders(d.template?.texts.closing ?? "", tplValues).trim()
   const f = d.finish
-  const tiles: { label: string; value: string; sub: string; bad?: boolean }[] = [
+  const tiles: { label: string; value: string; sub: string; bad?: boolean; warn?: boolean }[] = [
     { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, bad: (f.vs_target_days ?? 0) > 0 },
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
-    ...(customer ? [] : [{ label: "Against baseline", value: slip(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", bad: (f.vs_baseline_days ?? 0) > 0 }]),
+    ...(customer ? [] : [{ label: "Against baseline", value: slip(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", warn: (f.vs_baseline_days ?? 0) > 0 }]),
     { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
     { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", bad: d.work.late > 0 },
   ]
@@ -124,7 +131,7 @@ export default function Report({ user }: { user: User }) {
           <button type="button" onClick={() => setWords({ ...words, [key]: r.words.suggested![key] })} className="inline-flex items-center gap-1 text-[12px] text-primary-text hover:underline print:hidden"><Sparkles className="h-3 w-3" /> Use the suggestion</button>
         )}
       </div>
-      {editable && <textarea aria-label={label} rows={rows} value={words[key]} onChange={(e) => setWords({ ...words, [key]: e.target.value })} placeholder={hint} className={cn(textarea, "print:hidden")} />}
+      {editable && <textarea aria-label={label} rows={rows} maxLength={6000} value={words[key]} onChange={(e) => setWords({ ...words, [key]: e.target.value })} placeholder={hint} className={cn(textarea, "print:hidden")} />}
       <div className={cn("whitespace-pre-line text-[14px] leading-relaxed", editable && "hidden print:block")}>{words[key] || <span className="text-muted-foreground">—</span>}</div>
     </div>
   )
@@ -155,7 +162,7 @@ export default function Report({ user }: { user: User }) {
         {tiles.map((t) => (
           <div key={t.label} className="panel p-4 print:shadow-none">
             <div className="text-[12px] text-muted-foreground">{t.label}</div>
-            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.bad && "text-bad")}>{t.value}</div>
+            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.bad && "text-bad", t.warn && "text-warn")}>{t.value}</div>
             <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
           </div>
         ))}

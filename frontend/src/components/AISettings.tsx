@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input"
 import { Ago } from "@/components/Ago"
 import { aiSettings, ApiError, postForm, type AICheck, type AIFeatureView, type AIView, type Policy } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { usePoll } from "@/lib/usePoll"
+import { aiStale } from "@/lib/format"
 
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
@@ -41,12 +43,11 @@ export function AISettings({ policies, busy, send, schedule }: { policies: Polic
     try { setView(await aiSettings()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load the AI status") }
   }, [])
   useEffect(() => { void load() }, [load])
-  const working = !!view && (view.jobs[0]?.status === "queued" || view.jobs[0]?.status === "running" || view.status.state === "unknown")
-  useEffect(() => {
-    if (!working) return
-    const t = window.setInterval(() => void load(), 4000)
-    return () => window.clearInterval(t)
-  }, [working, load])
+  // refresh while a validation runs or the first heartbeat is due; never when
+  // nothing can answer (AI off, no scheduler), and not in a hidden tab
+  const working = !!view && view.status.state !== "off" && view.scheduler_alive
+    && (view.jobs[0]?.status === "queued" || view.jobs[0]?.status === "running" || view.status.state === "unknown")
+  usePoll(working, load)
   const act: Send = async (path, fields, confirmText) => { const r = await send(path, fields, confirmText); await load(); return r }
 
   return (
@@ -74,7 +75,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
       setCheck(r.result)
     } catch (e) { setCheck({ ok: false, reason: e instanceof ApiError ? e.message : "The check did not run" }) } finally { setChecking(false) }
   }
-  function save(e: FormEvent) { e.preventDefault(); void send("/settings/policies/ai", fields()).then(() => setCheck(null)) }
+  function save(e: FormEvent) { e.preventDefault(); void send("/settings/policies/ai", fields()).then((r) => { if (r) setCheck(null) }) }
   const label = (k: string) => policies.find((p) => p.key === k)
   return (
     <Panel title="AI server" hint="any OpenAI-compatible server: Ollama, llama.cpp, vLLM, or a hosted provider">
@@ -98,7 +99,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
             <label htmlFor="ai-key" className="text-[13px] font-medium">API key</label>
             <div className="flex flex-wrap items-center gap-2">
               <Input id="ai-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "saved; type to replace" : "none (a local server needs none)"} className="h-8 max-w-xs text-[13px]" />
-              <Button type="button" size="sm" variant="outline" disabled={busy || !key} onClick={() => void send("/settings/ai/key", { api_key: key }).then(() => setKey(""))}>Save key</Button>
+              <Button type="button" size="sm" variant="outline" disabled={busy || !key} onClick={() => void send("/settings/ai/key", { api_key: key }).then((r) => { if (r) setKey("") })}>Save key</Button>
               {hasKey && <Button type="button" size="sm" variant="ghost" className="text-bad hover:text-bad" disabled={busy} onClick={() => void send("/settings/ai/key", { clear: "1" }, "Remove the saved API key?")}>Remove</Button>}
             </div>
             <p className="text-[12px] text-muted-foreground">Stored sealed, like the Microsoft 365 secret, and sent as a bearer token.</p>
@@ -125,20 +126,22 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
 
 function Status({ view, busy, send }: { view: AIView; busy: boolean; send: Send }) {
   const s = view.status
+  const stale = aiStale(s, view.scheduler_alive)
   const job = view.jobs[0]
   const running = job && (job.status === "queued" || job.status === "running")
   return (
     <Panel title="Status" hint="the heartbeat asks the server which model it runs; no model work">
       <div className="grid grid-cols-1 gap-3 text-[13px]">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          {s.state === "up" && <Pill tone="ok" icon={<CheckCircle2 className={ICON} />}>Answering</Pill>}
-          {s.state === "down" && <Pill tone="bad" icon={<XCircle className={ICON} />}>Not answering</Pill>}
+          {stale && <Pill tone="none" icon={<CircleDashed className={ICON} />}>Unknown — no recent heartbeat</Pill>}
+          {!stale && s.state === "up" && <Pill tone="ok" icon={<CheckCircle2 className={ICON} />}>Answering</Pill>}
+          {!stale && s.state === "down" && <Pill tone="bad" icon={<XCircle className={ICON} />}>Not answering</Pill>}
           {s.state === "unknown" && <Pill tone="none" icon={<CircleDashed className={ICON} />}>Waiting for the first heartbeat</Pill>}
           {s.state === "off" && <Pill tone="none" icon={<CircleDashed className={ICON} />}>Off</Pill>}
-          {s.state === "up" && s.since && <span className="text-muted-foreground">since <Ago iso={s.since} /></span>}
+          {!stale && s.state === "up" && s.since && <span className="text-muted-foreground">since <Ago iso={s.since} /></span>}
           {s.checked_at && s.state !== "off" && <span className="text-muted-foreground">last heartbeat <Ago iso={s.checked_at} /></span>}
         </div>
-        {s.state === "down" && s.error && <p className="text-bad">{s.error}. AI features are paused; Odin is using its usual behaviour.</p>}
+        {!stale && s.state === "down" && s.error && <p className="text-bad">{s.error}. AI features are paused; Odin is using its usual behaviour.</p>}
         {s.state === "off" && <p className="text-muted-foreground">Odin is not using AI. Set the server above, tick Use AI features, Check, then Save.</p>}
         {s.model && s.state !== "off" && (
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">

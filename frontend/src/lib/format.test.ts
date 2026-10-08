@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -245,5 +245,28 @@ describe("dayBucket", () => {
     expect(dayBucket(iso(new Date(2026, 9, 9, 0, 30)), now)).toBe("Today")
     expect(dayBucket(iso(new Date(2026, 9, 8, 23, 59)), now)).toBe("Yesterday")
     expect(dayBucket(iso(new Date(2026, 9, 6, 12, 0)), now)).toBe(fmtWhen(iso(new Date(2026, 9, 6, 12, 0))))
+  })
+})
+
+describe("reminderText", () => {
+  it("lists what waits on the customer, greeting the contact by name when known (P9)", () => {
+    setDateFormat("yyyy-MM-dd")
+    const t = reminderText([{ what: "Site access", since: "1 Oct 2026", days_waiting: 8 }, { what: "Signed PO", due: "5 Oct 2026", days_overdue: 4 }], "Dana")
+    expect(t.split("\n")[0]).toBe("Hello Dana,")
+    expect(t).toContain("- Site access (asked 1 Oct 2026, 8 d waiting)")
+    expect(t).toContain("- Signed PO (due 5 Oct 2026, 4 d overdue)")
+    expect(reminderText([{ what: "Keys" }]).split("\n")[0]).toBe("Hello,")
+    setDateFormat("d MMM yyyy")
+  })
+})
+
+describe("aiStale", () => {
+  const now = Date.parse("2026-10-09T12:00:00Z")
+  it("never calls an old heartbeat 'Answering' (V21)", () => {
+    expect(aiStale({ state: "up", checked_at: "2026-10-09T11:58:00" }, true, now)).toBe(false)
+    expect(aiStale({ state: "up", checked_at: "2026-10-09T11:00:00" }, true, now)).toBe(true)     // an hour ago
+    expect(aiStale({ state: "up", checked_at: "2026-10-09T11:58:00" }, false, now)).toBe(true)    // no scheduler
+    expect(aiStale({ state: "down", checked_at: "2026-10-09T11:58:00", stale: true }, true, now)).toBe(true)
+    expect(aiStale({ state: "off" }, false, now)).toBe(false)
   })
 })

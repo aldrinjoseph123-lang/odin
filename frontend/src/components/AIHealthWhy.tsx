@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Ago } from "@/components/Ago"
 import { projectAI, requestProjectAI, type ProjectAI } from "@/lib/api"
+import { usePoll } from "@/lib/usePoll"
 
 type Why = { why: string; first_move: string }
 
@@ -19,11 +20,7 @@ export function AIHealthWhy({ projectId, rag }: { projectId: number; rag: string
   const show = rag === "amber" || rag === "red"
   useEffect(() => { if (show) void load() }, [load, show])
   const working = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  useEffect(() => {
-    if (!working) return
-    const t = window.setInterval(() => void load(), 4000)
-    return () => window.clearInterval(t)
-  }, [working, load])
+  usePoll(working, load)
   if (!show || !s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   async function explain() {
@@ -33,7 +30,7 @@ export function AIHealthWhy({ projectId, rag }: { projectId: number; rag: string
   return (
     <div className="mt-2 flex flex-wrap items-start gap-x-3 gap-y-1 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">
       <Sparkles className="mt-1 h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
-      <div className="min-w-0 flex-1" aria-live="polite">
+      <div className="min-w-0 flex-1 basis-56" aria-live="polite">
         {working ? <span className="text-muted-foreground">Explaining… about half a minute.</span>
           : sug ? <>
               <p>{sug.payload.why}</p>

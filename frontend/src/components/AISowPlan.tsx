@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { addTask, ApiError, cancelAIJob, closeAISuggestion, dismissAISuggestion, projectAI, requestProjectAI, saveScope, type ProjectAI, type SowItem, type SowPlan } from "@/lib/api"
 import { fmtWhen } from "@/lib/format"
+import { usePoll } from "@/lib/usePoll"
 
 type Pick = { kind: "scope" | "task" | "customer"; item: SowItem; key: string }
 
@@ -30,11 +31,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
   }, [projectId])
   useEffect(() => { void load() }, [load])
   const reading = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  useEffect(() => {
-    if (!reading) return
-    const t = window.setInterval(() => void load(), 5000)
-    return () => window.clearInterval(t)
-  }, [reading, load])
+  usePoll(reading, load, 5000)
   if (!s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   const all = s.options?.documents ?? []
@@ -85,7 +82,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
     <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[13px]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
-        <span className="min-w-0 flex-1" aria-live="polite">
+        <span className="min-w-0 flex-1 basis-56" aria-live="polite">
           {reading ? "Reading the documents in parts and drafting a plan… a few minutes for a long scope of work."
             : sug ? <>AI suggested plan from the documents, {fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}. Untick what you do not want, then add the rest.</>
               : "Suggest the scope items and tasks from the PO and scope of work with AI. Pick the documents to read:"}
@@ -93,7 +90,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
           {lastJob?.result?.skipped && <span className="block text-bad">{lastJob.result.skipped}</span>}
           {error && <span className="block text-bad" role="alert">{error}</span>}
         </span>
-        {reading && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load)}>Cancel</Button>}
+        {reading && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
       </div>
       {!sug && !reading && (
         <div className="mt-2">
@@ -123,7 +120,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
           )}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" className="h-7" loading={busy} disabled={picked.size === 0} onClick={() => void take()}>Add {picked.size} selected</Button>
-            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void dismissAISuggestion(projectId, sug.id).then(load)}>Dismiss</Button>
+            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void dismissAISuggestion(projectId, sug.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Dismiss</Button>
           </div>
         </div>
       )}

@@ -304,3 +304,20 @@ export function dayBucket(iso: string, now: Date = new Date()): string {
   return fmtWhen(iso)
 }
 
+// A plain reminder about what waits on the customer, for when no AI draft is
+// at hand: the person copies it into their own mail. Odin sends nothing.
+export type Waiting = { what: string; since?: string; days_waiting?: number; due?: string; days_overdue?: number }
+export function reminderText(waiting: Waiting[], name?: string | null): string {
+  const line = (w: Waiting) => `- ${w.what}${w.days_waiting != null ? ` (asked ${w.since}, ${w.days_waiting} d waiting)` : w.due ? ` (due ${w.due}, ${w.days_overdue ?? 0} d overdue)` : ""}`
+  return [`Hello${name ? ` ${name}` : ""},`, "", "A short reminder: to keep the rollout moving we are waiting on the following from your side:",
+    ...waiting.map(line), "", "Could you let us know when we can expect them? Thank you."].join("\n")
+}
+
+
+// Settings → AI: a status nobody has checked lately is not a status. Stale when
+// the scheduler is not running, the server says so, or the last heartbeat is
+// over 15 minutes old (three missed beats at the default 5).
+export function aiStale(s: { state: string; checked_at?: string; stale?: boolean }, schedulerAlive: boolean, now = Date.now()): boolean {
+  if (s.state === "off" || s.state === "unknown") return false
+  return !schedulerAlive || !!s.stale || !s.checked_at || now - parseStamp(s.checked_at).getTime() > 15 * 60_000
+}

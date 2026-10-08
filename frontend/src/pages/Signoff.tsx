@@ -217,7 +217,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
     setBusy(true); setErr(null)
     try {
       const r = await sendSignoff(id, { summary, delivered: toLines(delivered), outstanding: toLines(outstanding), terms: toLines(terms), signer_id: signer, counter_id: counter, template_id: template, ai_suggestion: aiDraft })
-      onSent(`Version ${r.version} sent to ${who?.name}. They get an email with a link to review and sign.`)
+      onSent(`Version ${r.version} sent to ${who?.name}. They get the link by email when mail is set up; otherwise make a one-time link below and pass it on.`)
     } catch (x) { setErr(x instanceof ApiError ? x.message : "That did not send"); setConfirming(false) } finally { setBusy(false) }
   }
   return (
@@ -238,14 +238,14 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
           </Section>
         ) : (
           <Section n title="What was delivered" sub="one per line; drafted from the stages, as no scope was recorded">
-            <textarea aria-label="What was delivered" rows={6} value={delivered} onChange={(e) => setDelivered(e.target.value)} className={area} />
+            <textarea aria-label="What was delivered" rows={6} maxLength={20000} value={delivered} onChange={(e) => setDelivered(e.target.value)} className={area} />
           </Section>
         )}
         <Section n title="Outstanding items" sub="one per line; open tasks and issues, drafted">
-          <textarea aria-label="Outstanding items" rows={4} value={outstanding} onChange={(e) => setOutstanding(e.target.value)} className={area} placeholder="None" />
+          <textarea aria-label="Outstanding items" rows={4} maxLength={20000} value={outstanding} onChange={(e) => setOutstanding(e.target.value)} className={area} placeholder="None" />
         </Section>
         <Section n title="Handover and support" sub="one per line">
-          <textarea aria-label="Handover and support" rows={3} value={terms} onChange={(e) => setTerms(e.target.value)} className={area} />
+          <textarea aria-label="Handover and support" rows={3} maxLength={20000} value={terms} onChange={(e) => setTerms(e.target.value)} className={area} />
         </Section>
         <Section n title="Acceptance" sub="set by an admin in Settings → Workflow"><p className="rounded-lg bg-muted/60 p-3 text-[14px] leading-relaxed">{draft.statement}</p></Section>
       </div>
@@ -259,7 +259,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
               {cand.signers.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
           </label>
-          {cand.signers.length === 0 && <p className="text-[12px] text-muted-foreground">Invite the customer's contact on the <Link to={`/projects/${id}`} className="underline">project page</Link> (Team → Invite, role Customer). They sign with a one-time link sent to their email.</p>}
+          {cand.signers.length === 0 && <p className="text-[12px] text-muted-foreground">Invite the customer's contact on the <Link to={`/projects/${id}`} className="underline">project page</Link> (Team → Invite, role Customer). They sign with a one-time link: by email when mail is set up, or one you pass on.</p>}
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Countersigns for us
             <select className={input} value={counter} onChange={(e) => setCounter(e.target.value ? Number(e.target.value) : "")}>
               {cand.countersigners.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
@@ -323,7 +323,7 @@ export default function Signoff(_props: { user: User }) {
     <div className="mx-auto w-full max-w-6xl px-5 pb-10 pt-2 print:max-w-none print:px-0">
       <PrintBrand />
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{d.project.name}</Link>
+        <Link to={`/projects/${id}`} className="inline-flex min-w-0 max-w-full items-start gap-1 text-[13px] text-muted-foreground wrap-anywhere hover:text-foreground"><ChevronLeft className="mt-1 h-3.5 w-3.5 shrink-0" />{d.project.name}</Link>
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {d.versions.length > 0 && (
             <select value={v ?? ""} onChange={(e) => setParams(e.target.value ? { v: e.target.value } : {}, { replace: true })} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
