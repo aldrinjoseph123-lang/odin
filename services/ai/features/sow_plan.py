@@ -149,5 +149,5 @@ FEATURE = register(AIFeature(
     prompt="sow_plan.v1.txt", schema=SCHEMA, gather=gather, fixture=fixture, refine=refine, chunks=chunks, merge=merge, options=documents,
     graders=(finds("scope_items", ["500", "design", "runbook"], at_least=0.67), finds("customer_obligations", ["credential", "window", "approv"], at_least=0.67),
              finds("exclusions", ["mac"], at_least=1.0), lambda inputs, out: "a price came through" if "184" in str(out) else None),
-    runs="on_demand", max_tokens=1000, temperature=0.1, takes_input=True, project_role="manage_project",
+    runs="on_demand", budget_s=200, max_tokens=1000, temperature=0.1, takes_input=True, project_role="manage_project",
 ))

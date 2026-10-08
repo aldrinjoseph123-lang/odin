@@ -36,6 +36,15 @@ def never_says(*phrases):
     return grade
 
 
+def mentions_any(*options, what=None):
+    """At least one of these wordings appears (the same fact, said either way)."""
+    def grade(inputs, output):
+        text = _text(output).lower()
+        return None if any(o.lower() in text for o in options) else f"left out {what or options[0]}"
+    grade.__name__ = "mentions_any"
+    return grade
+
+
 def max_words(field, n):
     def grade(inputs, output):
         words = len(_text(output.get(field, "")).split())

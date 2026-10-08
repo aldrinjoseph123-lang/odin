@@ -5623,7 +5623,7 @@ PORTFOLIO_GOOD = json.dumps({"opening": "Of 5 open rollouts, 3 are green, SIEM o
                                           "EDR rollout moved from Kickoff to Deployment this week.",
                               "needs_decision": ["SIEM onboarding: chase the design approval asked on 29 Sep 2026", "Firewall refresh: get the change window approved"]})
 SIGNOFF_GOOD = json.dumps({"summary": "Protect24x7 has completed SIEM onboarding for Northwind Clinics. The work started on 4 Aug 2026 and finished on "
-                                        "24 Oct 2026 against a target of 20 Oct 2026. 3 of 5 agreed items were delivered in full. The branch firewalls were "
+                                        "24 Oct 2026, 4 days after the target of 20 Oct 2026. 3 of 5 agreed items were delivered in full. The branch firewalls were "
                                         "delivered in part: two legacy firewalls were excluded at end of life. The phase 2 clinics were descoped and moved to a "
                                         "separate purchase order at the customer's request. Outstanding items will be closed as listed below."})
 ANSWERS = {"You are a health check": '{"status": "ready", "echo": 7}', "You review an IT security": RAID_GOOD, "You explain why": HEALTH_GOOD,
@@ -5893,7 +5893,8 @@ class SignoffSummaryTestCase(AITestBase):
     def test_graders_and_only_customer_safe_facts_reach_the_model(self):
         from services.ai.features.signoff_summary import FEATURE, fixture, gather
         good = json.loads(SIGNOFF_GOOD)
-        self.assertEqual([g(fixture(), good) for g in FEATURE.graders], [None, None, None])
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders if g(fixture(), good)], [])
+        self.assertTrue(any(g(fixture(), {"summary": good["summary"].replace("4 days after the target of", "within the target of")}) for g in FEATURE.graders))   # a timing it made up
         self.assertTrue(FEATURE.graders[0](fixture(), {"summary": "All agreed items were delivered."}))
         self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Close me", "client": "Globex"})
         self.client.post("/projects/1/note", data={"note": "Internal: the vendor engineer was useless again"})

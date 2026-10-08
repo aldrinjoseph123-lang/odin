@@ -120,5 +120,5 @@ FEATURE = register(AIFeature(
     description="Reads the last two weeks of notes and proposes risks, issues, blockers and decisions nobody has logged, each with the note words that show it.",
     prompt="raid_proposals.v1.txt", schema=SCHEMA, gather=gather, fixture=fixture, refine=refine,
     graders=(finds("proposals", ["scope", "vendor"], at_least=1.0), says_nothing_logged_or_named),
-    runs="nightly", max_tokens=600, temperature=0.2, project_role="manage_tasks", on_new=on_new,
+    runs="nightly", budget_s=150, max_tokens=600, temperature=0.2, project_role="manage_tasks", on_new=on_new,
 ))
