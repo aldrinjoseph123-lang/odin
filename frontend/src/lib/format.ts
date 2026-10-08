@@ -19,15 +19,21 @@ export function fmtWhen(iso: string | null | undefined, withTime = false): strin
   return withTime ? `${date}, ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : date
 }
 
+// A stored timestamp (naive UTC unless it says otherwise) as a Date.
+export const parseStamp = (iso: string) => new Date(/Z$|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`)
+
 // A calendar date (YYYY-MM-DD). The default reads "27 Sep" — compact, the
-// year is obvious in context; the numeric formats always carry it.
+// year is obvious in context; the numeric formats always carry it. A full
+// timestamp is first moved to the reader's day: 00:30 in Dubai is not yesterday.
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—"
-  const [y, m, d] = iso.slice(0, 10).split("-")
+  const stamp = iso.length > 10 ? parseStamp(iso) : null
+  const ymd = stamp && !Number.isNaN(stamp.getTime()) ? localToday(stamp) : iso.slice(0, 10)
+  const [y, m, d] = ymd.split("-")
   if (dateFormat === "yyyy-MM-dd") return `${y}-${m}-${d}`
   if (dateFormat === "dd/MM/yyyy") return `${d}/${m}/${y}`
   if (dateFormat === "MM/dd/yyyy") return `${m}/${d}/${y}`
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" })
+  return new Date(`${ymd}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" })
 }
 export const days = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n)} d`)
 

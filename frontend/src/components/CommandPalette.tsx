@@ -25,8 +25,9 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
   useEffect(() => {
     const term = q.trim()
     if (term.length < 2) { setResults({ projects: [], tasks: [], mentions: [] }); return }
-    const timer = setTimeout(() => { search(term).then(setResults).catch(() => {}) }, 150)
-    return () => clearTimeout(timer)
+    let live = true   // a slow answer for "ab" must not replace the one for "abc"
+    const timer = setTimeout(() => { search(term).then((r) => { if (live) setResults(r) }).catch(() => {}) }, 150)
+    return () => { live = false; clearTimeout(timer) }
   }, [q])
 
   const items: PaletteItem[] = useMemo(() => {

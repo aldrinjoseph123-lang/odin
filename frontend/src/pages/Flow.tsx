@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
 import { ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -9,11 +9,11 @@ import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
+import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { days, fitStages, fmtDate, groupRows, signoffText, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
+import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { Calendar } from "@/pages/Calendar"
 import { Kibana } from "@/pages/Kibana"
@@ -41,29 +41,57 @@ function DueDate({ due, today, className }: { due: string; today: string; classN
     {late > 0 ? `${late} d late · due ${fmtDate(due)}` : `due ${fmtDate(due)}`}</span>
 }
 
-// ---- tasks under a stage box: tick, add, remove — no page change --------------
+// A task's fields, for adding one or correcting one in place. What was typed
+// stays when the save fails; `save` says whether it worked.
+type TaskValues = { title: string; assignee: string; due: string }
+function TaskForm({ d, label, init, busy, onSave, onCancel, submitLabel }: {
+  d: FlowDetail; label: string; init: TaskValues; busy: boolean; submitLabel: string
+  onSave: (v: TaskValues) => Promise<boolean>; onCancel: () => void
+}) {
+  const [v, setV] = useState(init)
+  const set = (k: keyof TaskValues) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value })
+  return (
+    <form className="mt-2 grid grid-cols-1 gap-1" onSubmit={async (e) => { e.preventDefault(); if (v.title.trim() && await onSave(v) && !init.title) setV({ ...v, title: "" }) }}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel() } }}>
+      <Input autoFocus value={v.title} onChange={set("title")} placeholder="Task" aria-label={label} maxLength={200} className="h-7 px-2 text-[13px]" />
+      <select value={v.assignee} onChange={set("assignee")} aria-label="Assign to" className="h-7 min-w-0 rounded-md border border-input bg-background px-2 text-[12px]">
+        <option value="">Unassigned</option>
+        {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </select>
+      <Input type="date" value={v.due} onChange={set("due")} aria-label="Due date" className="h-7 min-w-0 px-2 text-[12px]" />
+      <div className="flex items-center gap-1">
+        <Button type="submit" size="sm" className="h-7 flex-1 px-2" loading={busy} disabled={!v.title.trim()} aria-label={submitLabel}>{init.title ? "Save" : <Plus className="h-3.5 w-3.5" />}</Button>
+        <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={onCancel} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
+      </div>
+    </form>
+  )
+}
+
+// ---- tasks under a stage box: tick, add, correct, remove — no page change ------
 function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage: string; done: boolean; reload: () => Promise<void>; onError: (m: string | null) => void }) {
   const tasks = d.tasks.filter((t) => t.stage === stage)
   const [adding, setAdding] = useState(false)
-  const [title, setTitle] = useState("")
-  const [assignee, setAssignee] = useState<string>("")
+  const [editing, setEditing] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const canTick = (t: FlowTask) => d.can_edit || t.assignee_id === d.me
-  async function run(fn: () => Promise<unknown>, done?: string) {
+  async function run(fn: () => Promise<unknown>, done?: string): Promise<boolean> {
     setBusy(true); onError(null)
-    try { await fn(); await reload(); if (done) toast(done) } catch (e) { onError(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+    try { await fn(); await reload(); if (done) toast(done); return true }
+    catch (e) { onError(e instanceof ApiError ? e.message : "That did not save"); return false }
+    finally { setBusy(false) }
   }
-  async function submit() {
-    const t = title.trim()
-    if (!t) return
-    await run(() => addTask(d.id, { title: t, stage, assignee_id: assignee ? Number(assignee) : null }), `Task added to ${stage}`)
-    setTitle("")
-  }
+  const fields = (v: TaskValues) => ({ title: v.title.trim(), assignee_id: v.assignee ? Number(v.assignee) : null, due_date: v.due || null })
   return (
     <div className="mt-2 text-[13px]">
       {tasks.length > 0 && (
         <ul className="divide-y divide-border border-t border-border">
-          {tasks.map((t) => (
+          {tasks.map((t) => editing === t.id ? (
+            <li key={t.id} className="py-1">
+              <TaskForm d={d} label={`Task title`} submitLabel={`Save ${t.title}`} busy={busy} init={{ title: t.title, assignee: t.assignee_id ? String(t.assignee_id) : "", due: t.due_date ?? "" }}
+                onCancel={() => setEditing(null)}
+                onSave={async (v) => { const ok = await run(() => editTask(d.id, t.id, fields(v)), "Task saved"); if (ok) setEditing(null); return ok }} />
+            </li>
+          ) : (
             <li key={t.id} className={cn("group flex items-center gap-2 py-2", t.done && "text-muted-foreground")}>
               <button type="button" disabled={!canTick(t) || busy} onClick={() => run(() => toggleTask(d.id, t.id), t.done ? `Reopened ${t.title}` : `Done: ${t.title}`)}
                 aria-label={t.done ? `Reopen ${t.title}` : `Complete ${t.title}`}
@@ -71,13 +99,16 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
                 {t.done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
               </button>
               <span className="min-w-0 flex-1">
-                <span className={cn("break-words line-clamp-2", t.done && "line-through")}>{t.title}</span>
+                {/* the title opens the task for correcting: title, who, when */}
+                {d.can_edit && !t.done
+                  ? <button type="button" onClick={() => setEditing(t.id)} title={`${t.title} — edit`} aria-label={`Edit ${t.title}`} className="line-clamp-3 text-left decoration-dotted underline-offset-2 hover:underline">{t.title}</button>
+                  : <span title={t.title} className={cn("line-clamp-3", t.done && "line-through")}>{t.title}</span>}
                 {t.due_date && !t.done && <DueDate due={t.due_date} today={d.today} />}
               </span>
               {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[11px]" />}
               {d.can_edit && (
                 <button type="button" disabled={busy} onClick={() => run(() => deleteTask(d.id, t.id), `Deleted ${t.title}`)} aria-label={`Delete ${t.title}`}
-                  className="hidden shrink-0 text-muted-foreground hover:text-bad group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
+                  className="relative hidden shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-bad group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
             </li>
           ))}
@@ -85,18 +116,8 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
       )}
       {/* a finished stage keeps its tasks but takes no new ones */}
       {d.can_edit && !done && (adding ? (
-        <form className="mt-2 grid grid-cols-1 gap-1" onSubmit={(e) => { e.preventDefault(); void submit() }}>
-          <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task" aria-label={`New task in ${stage}`} maxLength={200} className="h-7 px-2 text-[13px]"
-            onKeyDown={(e) => { if (e.key === "Escape") { setAdding(false); setTitle("") } }} />
-          <div className="flex items-center gap-1">
-            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} aria-label="Assign to" className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-[12px]">
-              <option value="">Unassigned</option>
-              {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-            <Button type="submit" size="sm" className="h-7 px-2" loading={busy} disabled={!title.trim()} aria-label="Add task"><Plus className="h-3.5 w-3.5" /></Button>
-            <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => { setAdding(false); setTitle("") }} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
-          </div>
-        </form>
+        <TaskForm d={d} label={`New task in ${stage}`} submitLabel="Add task" busy={busy} init={{ title: "", assignee: "", due: "" }} onCancel={() => setAdding(false)}
+          onSave={(v) => run(() => addTask(d.id, { stage, ...fields(v) }), `Task added to ${stage}`)} />
       ) : (
         <button type="button" onClick={() => setAdding(true)} aria-label={`Add a task to ${stage}`} className="mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text">
           <Plus className="h-3 w-3" /> Task
@@ -121,8 +142,9 @@ function NextLine({ r, today }: { r: FlowRow; today: string }) {
     <span className="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
       {t ? (
         <>
-          <span className="min-w-0 truncate"><span className="text-nav-fg">Next:</span> {t.title}</span>
-          {t.assignee && <span className="shrink-0">· {t.assignee}</span>}
+          {/* the title keeps ~16 characters; the extras give way before it does */}
+          <span className="min-w-[min(10rem,100%)] shrink truncate" title={t.title}><span className="text-nav-fg">Next:</span> {t.title}</span>
+          {t.assignee && <span className="hidden min-w-0 shrink-[4] truncate sm:inline" title={t.assignee}>· {t.assignee}</span>}
           {t.due_date && <span className={cn("shrink-0", late > 0 && "font-medium text-bad")}>· {late > 0 ? `${late} d late` : `due ${fmtDate(t.due_date)}`}</span>}
         </>
       ) : <span className="truncate">No open task</span>}
@@ -150,8 +172,8 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
           selected ? "border-primary bg-accent" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
         <span className="flex min-w-0 items-center gap-2 md:col-start-1 md:row-start-1">
           <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
-          <span className="truncate text-[14px] font-medium">{r.name}</span>
-          <span className="hidden truncate text-[12px] text-muted-foreground sm:inline">{r.client}</span>
+          <span className="truncate text-[14px] font-medium" title={r.name}>{r.name}</span>
+          <span className="hidden truncate text-[12px] text-muted-foreground sm:inline" title={r.client}>{r.client}</span>
         </span>
         <span className="justify-self-end md:hidden">{chip}</span>
         <span className="hidden md:col-start-2 md:row-span-2 md:row-start-1 md:block">
@@ -159,7 +181,7 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
         </span>
         {/* phones: the stage and a progress bar in place of the dots */}
         <span className="col-span-2 flex min-w-0 items-center gap-2 pl-4 md:col-span-1 md:col-start-3 md:row-span-2 md:row-start-1 md:grid md:gap-1 md:pl-0">
-          <span className="truncate text-[13px] font-medium">{r.stage}</span>
+          <span className="truncate text-[13px] font-medium" title={r.stage}>{r.stage}</span>
           <span className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted md:hidden" aria-hidden>
             <span className="block h-full bg-ok-line" style={{ width: `${((r.stage_index + 1) / Math.max(1, r.stages.length)) * 100}%` }} />
           </span>
@@ -246,7 +268,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
         </div>
       </div>
       {/* how many sit in each stage, named; a tap shows only that stage */}
-      <nav aria-label="Rollouts in each stage" className="flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none]">
+      <nav aria-label="Rollouts in each stage" className="fade-x flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none]">
         {columns.filter((c) => inStage.get(c) || stage === c).map((c) => {
           const on = stage === c
           return (
@@ -297,13 +319,14 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
 }
 
 // ---- bottom pane: the selected rollout as a flowchart ------------------------
+const NODE = 148   // px per flowchart column before stages fold
 function TimeStrip({ d }: { d: FlowDetail }) {
   const start = new Date(`${d.start_date}T00:00:00`).getTime()
   const today = new Date(`${d.today}T00:00:00`).getTime()
   const end = d.target_end_date ? new Date(`${d.target_end_date}T00:00:00`).getTime() : Math.max(today, start + 14 * 864e5)
   // The domain covers everything worth seeing — a target already in the past
   // sits to the left of today, which is exactly the shape of "overdue".
-  const firstEntry = Math.min(...d.stages.filter((s) => s.entered_at).map((s) => new Date(s.entered_at!).getTime()), start)
+  const firstEntry = Math.min(...d.stages.filter((s) => s.entered_at).map((s) => parseStamp(s.entered_at!).getTime()), start)
   const t0 = Math.min(start, end, firstEntry)
   const t1 = Math.max(today, end, start + 864e5)
   const span = t1 - t0 || 1
@@ -321,12 +344,12 @@ function TimeStrip({ d }: { d: FlowDetail }) {
       ))}
       <span className="absolute top-10 h-1.5 rounded-full bg-muted" style={{ left: pct(Math.min(start, end)), width: `calc(${pct(Math.max(start, end))} - ${pct(Math.min(start, end))})` }} aria-hidden />
       {visited.map((s, i) => {
-        const from = new Date(s.entered_at!).getTime()
-        const to = i + 1 < visited.length ? new Date(visited[i + 1].entered_at!).getTime() : today
+        const from = parseStamp(s.entered_at!).getTime()
+        const to = i + 1 < visited.length ? parseStamp(visited[i + 1].entered_at!).getTime() : today
         const late = s.status === "current" && (d.state === "over_sla" || d.state === "overdue")
         return (
           <Tooltip key={s.name}>
-            <TooltipTrigger render={<span />} className={cn("absolute top-10 h-1.5 rounded-full", late ? "bg-warn-line" : "bg-foreground")} style={{ left: pct(from), width: `calc(${pct(to)} - ${pct(from)})` }} />
+            <TooltipTrigger render={<span />} className={cn("absolute top-10 h-1.5 rounded-full", late ? "bg-warn-line" : s.status === "done" ? "bg-ok-line" : "bg-foreground")} style={{ left: pct(from), width: `calc(${pct(to)} - ${pct(from)})` }} />
             <TooltipContent>{s.name} · {days(s.days)}</TooltipContent>
           </Tooltip>
         )
@@ -368,6 +391,9 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
   const openHere = open.filter((t) => t.stage === d.stage).length
   const approvalPending = d.approval?.stage === d.stage && d.approval.status === "pending"
   const told = d.participants.filter((p) => p.user_id !== d.me).length
+  // the terminal stage is the end: the project is closed, nothing is "next"
+  const closed = !d.next_stage && d.stage_index === d.stages.length - 1
+  const closedOn = closed ? d.stages[d.stage_index]?.entered_at ?? null : null
   async function advance() {
     if (!d.next_stage) return
     setBusy(true); setErr(null)
@@ -384,30 +410,32 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             {standalone
-              ? <h1 className="truncate text-[17px] font-semibold tracking-tight">{d.name}</h1>
-              : <h2 className="truncate text-[17px] font-semibold tracking-tight">{d.name}</h2>}
+              ? <h1 className="truncate text-[17px] font-semibold tracking-tight" title={d.name}>{d.name}</h1>
+              : <h2 className="truncate text-[17px] font-semibold tracking-tight" title={d.name}>{d.name}</h2>}
             <p className="text-[13px] text-muted-foreground">
               {d.client}{d.vendor_name ? ` · ${d.vendor_name}` : ""}{d.product_name ? ` · ${d.product_name}` : ""}{d.outsourcer_name ? ` · via ${d.outsourcer_name}` : ""} · owner {d.owner_name}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {d.approval && d.approval.stage === d.stage && <ApprovalChip status={d.approval.status} className="px-2 py-1 text-[12px]" />}
-            {d.state !== "on_track" && <span className={cn("rounded-md px-2 py-1 text-[12px] font-medium", STATE[d.state].chip)}>{stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })}</span>}
+            {closed && <span className="rounded-md bg-ok-soft px-2 py-1 text-[12px] font-medium text-ok">Closed{closedOn ? ` on ${fmtDate(closedOn)}` : ""}</span>}
+            {!closed && d.state !== "on_track" && <span className={cn("rounded-md px-2 py-1 text-[12px] font-medium", STATE[d.state].chip)}>{stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })}</span>}
             {!standalone && <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>}
             {!standalone && <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open project <ExternalLink className="h-3.5 w-3.5" /></a>}
             {onClose && <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close this rollout (Esc)" title="Close (Esc)"><X className="h-4 w-4" /></Button>}
           </div>
         </div>
 
-        {/* the flowchart: one column per stage while they fit (112 px each);
-            below md it is a plain stacked list and nothing folds */}
+        {/* the flowchart: one column per stage while they fit (148 px each, so a
+            stage name wraps at words, never mid-word); below md it is a plain
+            stacked list and nothing folds */}
         {(() => {
           const stacked = typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches
-          const capacity = showAll || stacked || !flowWidth ? Infinity : Math.max(4, Math.floor((flowWidth + 12) / 112))
+          const capacity = showAll || stacked || !flowWidth ? Infinity : Math.max(4, Math.floor((flowWidth + 12) / NODE))
           const items = fitStages(d.stages.map((st) => st.status), capacity)
           const itemDone = (it: (typeof items)[number]) => it.kind === "done" || (it.kind === "stage" && d.stages[it.index].status === "done")
           return (
-            <ol ref={measure} className="mt-4 grid grid-cols-1 items-start gap-2 md:gap-0 md:overflow-x-auto md:pb-2 md:[grid-template-columns:var(--cols)]" style={{ "--cols": `repeat(${items.length}, minmax(100px, 1fr))` } as CSSProperties} aria-label="Stages">
+            <ol ref={measure} className="mt-4 grid grid-cols-1 items-start gap-2 md:gap-0 md:overflow-x-auto md:pb-2 md:[grid-template-columns:var(--cols)]" style={{ "--cols": `repeat(${items.length}, minmax(${NODE - 12}px, 1fr))` } as CSSProperties} aria-label="Stages">
               {items.map((it, k) => {
                 const arrow = k > 0 && (
                   <span className="absolute -left-2 top-[26px] hidden w-4 items-center md:flex" aria-hidden>
@@ -445,14 +473,14 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                       st.status === "current" && cn("ring-[3px]", STATE[d.state].ring),
                       st.status === "next" && "border-dashed border-input")}>
                       <div className={cn("flex items-start gap-1 text-[13px] font-semibold leading-tight", st.status === "next" && "text-nav-fg")}>
-                        {st.status === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}<span className="line-clamp-2">{st.name}</span>
+                        {st.status === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}<span className="line-clamp-2 [overflow-wrap:normal] hyphens-auto" title={st.name}>{st.name}</span>
                       </div>
                       <div className="mt-1 truncate text-[12px] text-muted-foreground">
                         {st.status === "next" ? (st.sla_days ? `SLA ${st.sla_days} d` : "—") : st.status === "done" ? days(st.days) : `${days(st.days)}${st.sla_days ? ` · SLA ${st.sla_days}` : ""}`}
                       </div>
                     </div>
                     {/* every stage carries its own tasks — work happens here, not on the project page */}
-                    <StageTasks d={d} stage={st.name} done={st.status === "done"} reload={reload} onError={setErr} />
+                    <StageTasks d={d} stage={st.name} done={st.status === "done" || closed} reload={reload} onError={setErr} />
                     {st.status === "current" && openHere > 0 && <p className="mt-1 text-[12px] text-muted-foreground">{openHere} open before moving on</p>}
                   </li>
                 )
@@ -460,7 +488,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             </ol>
           )
         })()}
-        {showAll && flowWidth > 0 && d.stages.length * 112 > flowWidth + 12 && (
+        {showAll && flowWidth > 0 && d.stages.length * NODE > flowWidth + 12 && (
           <button type="button" onClick={() => setShowAll(false)} className="mt-1 text-[12px] text-muted-foreground hover:text-foreground">Fold stages to fit</button>
         )}
         {/* one place for errors: the Advance section shows its own when it is on screen */}
@@ -471,7 +499,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
 
       {/* right rail: what to do next, when it's due, how we got here */}
       <aside className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:grid-cols-1">
-        <section className="panel p-3">
+        {!closed && <section className="panel p-3">
           <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
           {next ? (
             <>
@@ -482,10 +510,14 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
               </p>
             </>
           ) : <p className="text-muted-foreground">Nothing queued — add a task under a stage.</p>}
-        </section>
+        </section>}
         <section className="panel p-3">
-          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> ETA</h3>
-          {d.target_end_date ? (
+          {/* the target the customer was given (the plan's forecast lives on the project page) */}
+          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> {closed ? "Closed" : "Target"}</h3>
+          {closed ? (
+            <p><span className="font-medium">{closedOn ? fmtDate(closedOn) : "—"}</span>
+              {d.target_end_date && <span className="ml-2 text-muted-foreground">target {fmtDate(d.target_end_date)}</span>}</p>
+          ) : d.target_end_date ? (
             <p><span className="font-medium">{fmtDate(d.target_end_date)}</span>
               <span className={cn("ml-2", d.days_left != null && d.days_left < 0 ? "text-bad" : "text-muted-foreground")}>{d.days_left == null ? "" : d.days_left < 0 ? `${-d.days_left} d late` : `${d.days_left} d left`}</span></p>
           ) : <p className="text-muted-foreground">No target date set.</p>}
@@ -527,7 +559,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
               {approvalPending && <li className="font-medium text-warn">The customer has not approved {d.stage} yet</li>}
               <li>Tells {told} {told === 1 ? "person" : "people"} on the team</li>
             </ul>
-            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the history (optional)" aria-label="Stage change note" maxLength={5000} className="h-8 text-[13px]" />
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Stage change note, shared with the customer and partners" aria-describedby={`move-note-${d.id}`} maxLength={5000} className="h-8 text-[13px]" />
+            <p id={`move-note-${d.id}`} className="mt-1 text-[12px] text-muted-foreground">Shared with the customer and partners.</p>
             {confirming ? (
               <div className="mt-2 grid grid-cols-1 gap-2" role="group" aria-label={`Confirm the move to ${d.next_stage}`}>
                 <Button size="sm" onClick={advance} loading={busy} autoFocus>{`Move to ${d.next_stage} now`}</Button>
@@ -602,6 +635,10 @@ export default function Flow({ user }: { user: User }) {
     }, { replace: selectedId != null || id == null })
   }, [setParams, selectedId])
   const [detail, setDetail] = useState<FlowDetail | null>(null)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  // the rollout the pane is for: a slower answer for the previous one is dropped
+  const wanted = useRef(selectedId)
+  wanted.current = selectedId
   // Three ways to look at the portfolio, kept in the URL: the list, a month, or Kibana.
   const vw = params.get("view")
   const view: "list" | "calendar" | "kibana" = vw === "calendar" || (vw === "kibana" && user.kind !== "external") ? vw : "list"
@@ -631,10 +668,17 @@ export default function Flow({ user }: { user: User }) {
     try { setData(await flow()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load rollouts") }
   }, [])
   const loadDetail = useCallback(async (id: number) => {
-    try { setDetail(await flowDetail(id)) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load the rollout") }
+    try {
+      const x = await flowDetail(id)
+      if (wanted.current === id) { setDetail(x); setDetailError(null) }
+    } catch (e) {
+      if (wanted.current !== id) return
+      setDetailError(e instanceof ApiError && (e.status === 404 || e.status === 403) ? "This rollout does not exist, or you are not on it."
+        : e instanceof ApiError ? e.message : "Could not load the rollout")
+    }
   }, [])
   useEffect(() => { void load() }, [load])
-  useEffect(() => { if (selectedId != null) void loadDetail(selectedId) }, [selectedId, loadDetail])
+  useEffect(() => { setDetailError(null); if (selectedId != null) void loadDetail(selectedId) }, [selectedId, loadDetail])
   // Only after a click. On load the list must open at the top, where the
   // stuck rows are — scrolling to a deep-linked row would hide them.
   useEffect(() => {
@@ -702,7 +746,12 @@ export default function Flow({ user }: { user: User }) {
                   <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
                 </div>
               )}
-              {detail && detail.id === selectedId ? (
+              {detailError ? (
+                <div className="flex flex-wrap items-center gap-3 px-5 py-4 text-[13px]" role="alert">
+                  <span className="min-w-0 flex-1">{detailError}</span>
+                  <Button size="sm" variant="outline" onClick={() => setSelectedId(null)}>Back to all rollouts</Button>
+                </div>
+              ) : detail && detail.id === selectedId ? (
                 <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={(text, undo) => setNotice({ text, undo })} onClose={wide ? () => setSelectedId(null) : undefined} />
               ) : <PageSkeleton />}
     </>

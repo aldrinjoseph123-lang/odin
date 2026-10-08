@@ -16,7 +16,8 @@ import { fmtDate } from "@/lib/format"
 const input = "h-8 w-[8.5rem] rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-60"
 const slipText = (n: number | null) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 
-export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?: () => void }) {
+// `refresh` changes when something else on the page moves the health (a RAID item).
+export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: number; onSaved?: () => void; refresh?: number }) {
   const [d, setD] = useState<PlanData | null>(null)
   const [rows, setRows] = useState<(PlanRow & { name: string })[]>([])
   const [cascade, setCascade] = useState(true)
@@ -25,14 +26,19 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null)
   const [rebase, setRebase] = useState<string | null>(null)
   const [log, setLog] = useState(false)
+  const [failed, setFailed] = useState(false)
   const load = useCallback(async () => {
     const x = await loadPlan(projectId)
     setD(x)
     setRows(x.stages.map((s) => ({ id: s.id, name: s.name, plan_start: s.plan_start, plan_end: s.plan_end, suggested_start: s.suggested_start, suggested_end: s.suggested_end })))
   }, [projectId])
-  useEffect(() => { load().catch(() => setNotice({ text: "Could not load the plan", bad: true })) }, [load])
+  useEffect(() => { setFailed(false); load().catch(() => setFailed(true)) }, [load, refresh])
   const dirty = useMemo(() => !!d && rows.some((r, i) => r.plan_start !== d.stages[i].plan_start || r.plan_end !== d.stages[i].plan_end), [d, rows])
-  if (!d) return <p className="text-[13px] text-muted-foreground">Loading the plan…</p>
+  if (!d) return failed
+    ? <p className="flex items-center gap-2 text-[13px] text-muted-foreground" role="alert">Could not load the plan. <Button size="sm" variant="outline" onClick={() => { setFailed(false); load().catch(() => setFailed(true)) }}>Try again</Button></p>
+    : <p className="text-[13px] text-muted-foreground">Loading the plan…</p>
+  // a closed rollout's plan is history: shown, not edited
+  const editable = d.can_edit && !d.closed
 
   async function run(fn: () => Promise<string>) {
     setBusy(true); setNotice(null)
@@ -41,7 +47,8 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
   const save = () => run(async () => {
     const r = await savePlan(projectId, rows.map(({ id, plan_start, plan_end }) => ({ id, plan_start, plan_end })), reason.trim())
     setReason("")
-    return r.baselined ? "Plan saved and frozen as the baseline." : `Plan saved: ${r.changed} date${r.changed === 1 ? "" : "s"} moved.`
+    const said = r.baselined ? "Plan saved and frozen as the baseline." : `Plan saved: ${r.changed} date${r.changed === 1 ? "" : "s"} moved.`
+    return r.warning ? `${said} ${r.warning}` : said
   })
   const f = d.finish
   const tiles: { label: string; value: string; sub?: string; tone?: "bad" | "warn" | "ok" }[] = [
@@ -69,7 +76,7 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
 
       <div className="mt-4"><PlanGantt stages={d.stages} today={d.today} target={f.target} /></div>
 
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Dates per stage">
         <table className="w-full min-w-[720px] border-collapse text-[13px]">
           <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">
             {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", "SLA", "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className="px-2 py-2 font-normal">{h}</th>)}
@@ -81,9 +88,9 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
               return (
                 <tr key={s.id} className={cn("border-b border-border last:border-0", s.status === "current" && "bg-accent/40")}>
                   <td className="px-2 py-2 font-medium">{s.name}{s.status === "current" && <span className="ml-2 text-[11px] font-normal text-primary-text">now</span>}</td>
-                  <td className="px-2 py-1"><input type="date" aria-label={`${s.name} planned start`} className={input} disabled={!d.can_edit || busy} value={r.plan_start ?? ""} placeholder={s.suggested_start}
+                  <td className="px-2 py-1"><input type="date" aria-label={`${s.name} planned start`} className={input} disabled={!editable || busy} value={r.plan_start ?? ""} placeholder={s.suggested_start}
                     onChange={(e) => e.target.value && setRows(setDate(rows, i, "plan_start", e.target.value, cascade))} /></td>
-                  <td className="px-2 py-1"><input type="date" aria-label={`${s.name} planned end`} className={input} disabled={!d.can_edit || busy} value={r.plan_end ?? ""}
+                  <td className="px-2 py-1"><input type="date" aria-label={`${s.name} planned end`} className={input} disabled={!editable || busy} value={r.plan_end ?? ""}
                     onChange={(e) => e.target.value && setRows(setDate(rows, i, "plan_end", e.target.value, cascade))} /></td>
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{days ?? "—"}</td>
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
@@ -97,17 +104,18 @@ export function PlanPanel({ projectId, onSaved }: { projectId: number; onSaved?:
         </table>
       </div>
 
-      {d.can_edit && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Fill the gaps from SLAs</Button>
+      {editable && (
+        <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void save() }}>
+          <Button type="button" size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Fill the gaps from SLAs</Button>
           <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
-          {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="h-8 min-w-60 flex-1 rounded-md border border-input bg-background px-2 text-[13px]" />}
+          {/* once there is a baseline, every move says why (the log and the customer read it) */}
+          {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} required placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="h-8 min-w-0 flex-1 basis-60 rounded-md border border-input bg-background px-2 text-[13px]" />}
           <span className="ml-auto flex gap-2">
-            {dirty && <Button size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={() => load()}>Discard</Button>}
-            <Button size="sm" className="rounded-full" loading={busy} disabled={!dirty} onClick={save}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
-            {d.baseline_at && <Button size="sm" variant="outline" className="rounded-full" disabled={busy || dirty} onClick={() => setRebase("")}>Re-baseline</Button>}
+            {dirty && <Button type="button" size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={() => load()}>Discard</Button>}
+            <Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!dirty}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
+            {d.baseline_at && <Button type="button" size="sm" variant="outline" className="rounded-full" disabled={busy || dirty} onClick={() => setRebase("")}>Re-baseline</Button>}
           </span>
-        </div>
+        </form>
       )}
       {notice && <p className={cn("mt-2 text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
 

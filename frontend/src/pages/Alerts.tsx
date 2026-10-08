@@ -15,7 +15,12 @@ export default function Alerts(_props: { user: User }) {
   const [d, setD] = useState<AlertsData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const query = params.toString()
-  useEffect(() => { document.title = "Alerts · Odin"; alerts(query).then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load alerts")) }, [query])
+  useEffect(() => {
+    document.title = "Alerts · Odin"
+    let live = true   // only the latest filter's answer is shown
+    alerts(query).then((x) => { if (live) setD(x) }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load alerts") })
+    return () => { live = false }
+  }, [query])
   function update(changes: Record<string, string | null>) {
     const next = new URLSearchParams(params); next.delete("page")
     for (const [k, v] of Object.entries(changes)) { if (v) next.set(k, v); else next.delete(k) }

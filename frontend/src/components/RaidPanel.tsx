@@ -28,9 +28,13 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
   const [error, setError] = useState<string | null>(null)
   const [fromAI, setFromAI] = useState<{ suggestion: number; index: number } | null>(null)   // the proposal this new item came from
   const [aiRefresh, setAiRefresh] = useState(0)
-  const load = useCallback(() => raid(projectId).then(setD), [projectId])
-  useEffect(() => { void load() }, [load])
-  if (!d) return <p className="text-[13px] text-muted-foreground">Loading…</p>
+  const [failed, setFailed] = useState(false)
+  const load = useCallback(() => raid(projectId).then((x) => { setD(x); setFailed(false) }), [projectId])
+  const first = useCallback(() => { setFailed(false); load().catch(() => setFailed(true)) }, [load])
+  useEffect(first, [first])
+  if (!d) return failed
+    ? <p className="flex items-center gap-2 text-[13px] text-muted-foreground" role="alert">Could not load the register. <Button size="sm" variant="outline" onClick={first}>Try again</Button></p>
+    : <p className="text-[13px] text-muted-foreground">Loading…</p>
   const today = localToday()
   const list = d.items.filter((i) => show === "all" || i.open)
   const counts = (["blocker", "issue", "risk", "decision"] as RaidKind[]).map((k) => [k, d.items.filter((i) => i.kind === k && i.open).length] as const)
@@ -90,7 +94,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
             </li>
           )
         })}
-        {list.length === 0 && <li className="py-3 text-muted-foreground">{show === "open" ? "Nothing open. Add a risk before it becomes an issue." : "Nothing recorded yet."}</li>}
+        {list.length === 0 && <li className="py-3 text-muted-foreground">{show === "open" ? (d.can_edit ? "Nothing open. Add a risk before it becomes an issue." : "Nothing open.") : "Nothing recorded yet."}</li>}
       </ul>
 
       <Dialog open={edit !== null} onOpenChange={(o) => { if (!o) { setEdit(null); setFromAI(null) } }}>

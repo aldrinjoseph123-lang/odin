@@ -41,7 +41,9 @@ export default function Projects({ user }: { user: User }) {
   function pickLayout(l: Layout) { setLayout(l); try { localStorage.setItem("odin.projects.layout", l) } catch { /* private window: forgotten on reload, nothing lost */ } }
   const query = params.toString()
   useEffect(() => {
-    projects(query).then((d) => { setData(d); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load projects"))
+    let live = true   // a slower answer to an older query must not replace the newer one
+    projects(query).then((d) => { if (live) { setData(d); setError(null) } }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load projects") })
+    return () => { live = false }
   }, [query])
 
   // change some keys, drop the page (a new filter starts at the top)

@@ -222,7 +222,7 @@ export type PlanData = {
 }
 export const plan = (id: number) => getJson<PlanData>(`/api/projects/${id}/plan`)
 export const savePlan = (id: number, stages: { id: number; plan_start: string | null; plan_end: string | null }[], reason: string) =>
-  send<{ ok: true; changed: number; baselined: boolean }>(`/api/projects/${id}/plan`, "PUT", { stages, reason })
+  send<{ ok: true; changed: number; baselined: boolean; warning?: string }>(`/api/projects/${id}/plan`, "PUT", { stages, reason })
 export const rebaseline = (id: number, reason: string) => post<{ ok: true }>(`/api/projects/${id}/plan/baseline`, { reason })
 export type ReportWords = { summary: string; next_steps: string; asks: string; suggested?: { summary: string; next_steps: string; asks: string }; blocks?: ["h" | "li" | "p", string][] }
 export type ReportPayload = {

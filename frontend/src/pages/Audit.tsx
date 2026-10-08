@@ -19,7 +19,9 @@ export default function Audit(_props: { user: User }) {
   const query = params.toString()
   useEffect(() => {
     document.title = "Audit log · Odin"
-    audit(query).then((d) => { setData(d); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load the audit log"))
+    let live = true   // only the latest filter's answer is shown
+    audit(query).then((d) => { if (live) { setData(d); setError(null) } }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load the audit log") })
+    return () => { live = false }
   }, [query])
   function update(changes: Record<string, string | null>) {
     const next = new URLSearchParams(params)

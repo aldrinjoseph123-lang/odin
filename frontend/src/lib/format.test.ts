@@ -23,6 +23,15 @@ describe("fmtDate", () => {
     expect(fmtDate(null)).toBe("—")
     expect(fmtDate("2026-11-30T10:00:00")).toMatch(/30/)
   })
+  it("keeps a plain date as it is and moves a stored UTC timestamp to the reader's day (FE15)", () => {
+    setDateFormat("yyyy-MM-dd")
+    expect(fmtDate("2026-10-08")).toBe("2026-10-08")
+    const justAfterMidnight = new Date(2026, 9, 9, 0, 30)          // 9 Oct 00:30 local
+    const stored = justAfterMidnight.toISOString().slice(0, 19)   // naive UTC, as the server keeps it
+    expect(fmtDate(stored)).toBe("2026-10-09")
+    expect(fmtDate(`${stored}Z`)).toBe("2026-10-09")
+    setDateFormat("d MMM yyyy")
+  })
 })
 
 describe("stateText", () => {
