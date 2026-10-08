@@ -171,6 +171,8 @@ POLICIES = {
                                help="How long a stage is assumed to take when neither the plan nor its SLA says — for the forecast and the suggested plan."),
     "count_working_days": dict(area="workflow", kind="bool", default=True, label="Count stage lengths and SLAs in working days",
                                help="Weekends outside the working week and public holidays (Settings → General) do not count. Off: calendar days. Gaps between dates, such as days late, are always calendar days."),
+    "sla_min_visits": dict(area="workflow", kind="int", default=3, min=2, max=50, label="Finished visits before an SLA is questioned",
+                           help="The SLA check under Stage templates proposes a new SLA for a stage only when at least this many rollouts have passed through it."),
     "rag_amber_days": dict(area="workflow", kind="int", default=1, min=0, max=90, label="Amber after (days late)",
                            help="A rollout turns amber when it is forecast to finish more than this many days after its target date."),
     "rag_red_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Red after (days late)",

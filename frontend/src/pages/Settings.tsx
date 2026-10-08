@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { isDark } from "@/lib/theme"
 import { DocTemplates } from "@/components/DocTemplates"
 import { AISettings } from "@/components/AISettings"
+import { SlaCheck } from "@/components/SlaCheck"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
@@ -107,6 +108,7 @@ export default function Settings(_props: { user: User }) {
               </div>
               <AddForm placeholder="New template name (e.g. EDR rollout)" label="New template name" button="Add template" busy={busy} onSubmit={(name) => send("/settings/templates/add", { name })} />
               <p className="mt-2 text-[11.5px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
+              <SlaCheck templates={data.templates} busy={busy} send={send} />
             </Panel>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
               <Panel title="Document categories" hint="untick to keep a kind from partners and customers">

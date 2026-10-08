@@ -289,3 +289,15 @@ def api_project_ai_cancel(project_id, job_id):
     cancel(db, job_id)
     audit_log("cancel_ai_draft", "project", project_id, project["name"], f"{job['feature']} job {job_id}")
     return jsonify(ok=True)
+
+
+@app.route("/api/settings/sla-proposals")
+@permission_required("manage_settings")
+def api_sla_proposals():
+    """Where a template's SLAs disagree with history (services/sla_calibration),
+    each with the AI's one-line reason when the nightly answer covers it."""
+    from services.ai import latest_portfolio
+    from services.sla_calibration import proposals
+    ai = latest_portfolio("sla_calibration")
+    reasons = ai[0]["reasons"] if ai else {}
+    return jsonify(proposals=[{**p, "reason": reasons.get(p["key"])} for p in proposals()], model=ai[1]["model"] if ai else None)

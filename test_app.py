@@ -6338,5 +6338,52 @@ class CatchUpTestCase(AITestBase):
         self.assertEqual(viewer.post("/api/projects/1/ai/chase_draft", json={}, headers={"X-CSRF-Token": viewer.get("/api/session").get_json()["csrf"]}).status_code, 403)
 
 
+class SlaCalibrationTestCase(AITestBase):
+    """Feature 12: SLA proposals from history; the AI words them."""
+    isolate_features = False
+
+    def _history(self, days_in_first_stage):
+        """Rollouts on the first template that each spent N calendar days (Mon start) in its first stage."""
+        with self._db() as con:
+            tid = con.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone()[0]
+            first, second = [r[0] for r in con.execute("SELECT name FROM stage_template_stages WHERE template_id = ? ORDER BY position LIMIT 2", (tid,))]
+        for i, d in enumerate(days_in_first_stage):
+            self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": f"R{i}", "client": "C"})
+        with self._db() as con:
+            ids = [r[0] for r in con.execute("SELECT id FROM projects ORDER BY id")]
+            for pid, d in zip(ids, days_in_first_stage):
+                start = "2026-06-01T09:00:00"                                         # a Monday
+                left = (datetime(2026, 6, 1, 9) + timedelta(days=d)).isoformat()
+                con.execute("UPDATE projects SET stage_template_id = ?, created_at = ?, stage = ?, updated_at = ? WHERE id = ?", (tid, start, second, left, pid))
+                con.execute("DELETE FROM status_notes WHERE project_id = ?", (pid,))
+                con.execute("INSERT INTO status_notes (project_id, stage, note, author, created_at, prev_stage) VALUES (?, ?, 'moved', 'admin', ?, ?)", (pid, second, left, first))
+                con.execute("UPDATE stage_template_stages SET sla_days = 2 WHERE template_id = ? AND name = ?", (tid, first))
+        return tid, first
+
+    def test_proposals_count_working_days_and_need_enough_history(self):
+        from services.sla_calibration import proposals
+        tid, first = self._history([7, 7])                                       # two visits: not enough
+        with self._ctx():
+            self.assertEqual(proposals(), [])
+        self.tearDown(); self.setUp()
+        tid, first = self._history([7, 7, 14, 3, 7])                              # Mon + 7 = 5 working days; +14 = 10; +3 = 3
+        with self._ctx():
+            p = [x for x in proposals() if x["stage"] == first][0]
+        self.assertEqual((p["current"], p["visits"], p["median"], p["p80"], p["proposed"], p["unit"]), (2, 5, 5, 5, 5, "working days"))
+
+    def test_reasons_join_their_proposals_and_the_graders(self):
+        from services.ai.features.sla_calibration import FEATURE, fixture, refine
+        good = {"reasons": ["Design took a median of 8 working days over 6 rollouts and 11 or fewer in 80% of them; today's 6 is shorter than most rollouts achieve.",
+                            "Hand-over took a median of 2 working days over 5 rollouts and 3 or fewer in 80% of them; today's 10 is longer than most rollouts need."]}
+        out = refine(fixture(), good)
+        self.assertEqual(list(out["reasons"]), ["1:2:11", "1:5:3"])
+        self.assertEqual([g(fixture(), out) for g in FEATURE.graders if g(fixture(), out)], [])
+        self.assertTrue(FEATURE.graders[0](fixture(), refine(fixture(), {"reasons": good["reasons"][:1]})))     # one reason missing
+        self.assertTrue(FEATURE.graders[2](fixture(), refine(fixture(), {"reasons": [good["reasons"][0], "Hand-over SLA is exceeded."]})))
+        self._history([7, 7, 14, 3, 7])
+        rows = self.client.get("/api/settings/sla-proposals").get_json()["proposals"]
+        self.assertTrue(rows and rows[0]["reason"] is None)                       # no AI answer yet: the numbers alone
+
+
 if __name__ == "__main__":
     unittest.main()
