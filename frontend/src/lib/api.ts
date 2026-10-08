@@ -248,6 +248,7 @@ export type ChaseDraft = { subject: string; body: string }
 export type SlaProposal = { key: string; template_id: number; template: string; stage_id: number; stage: string; current: number | null; proposed: number
   visits: number; median: number; p80: number; unit: string; reason: string | null }
 export const slaProposals = () => getJson<{ proposals: SlaProposal[]; model: string | null }>("/api/settings/sla-proposals")
+export type MinutesTask = { title: string; owner: string | null; assignee_id: number | null; stage: string | null; due_date: string | null; due_text: string; quote: string }
 export type AskAnswer = { question: string; answer: string; found: boolean; sources: { n: number; kind: string; from: string; href: string }[] }
 export type CatchUp = { where_it_stands: string; who_is_who: string; what_changed: string; waiting: string[]; watch_out: string[] }
 export type SowItem = { title: string; detail?: string; stage?: string | null; quote?: string }

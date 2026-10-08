@@ -5680,6 +5680,12 @@ ANSWERS["You brief someone who is taking over"] = CATCHUP_GOOD
 ASK_GOOD = json.dumps({"answer": "The vendor delivered the firewall configuration two days late [3], so the Design end moved from 2 Oct 2026 to 9 Oct 2026 [2].",
                        "sources": [2, 3], "found": True})
 ANSWERS["You answer a colleague's question"] = ASK_GOOD
+NOTES_GOOD = json.dumps({"tasks": [
+    {"title": "Cable the Site B racks", "owner": "Omar", "stage": "build", "due": "", "quote": "Omar to cable the Site B racks by 13 Oct once access is granted."},
+    {"title": "Send the log samples", "owner": "Ann Lee", "stage": "Design", "due": "Friday 10 Oct", "quote": "Ann will send the log samples from the clinic firewalls by Friday 10 Oct."},
+    {"title": "Update the design document", "owner": "Sam Rivera", "stage": "Design", "due": "", "quote": "Sam to update the design document with the new retention period."},
+    {"title": "Book the data centre", "owner": "Bob", "stage": "", "due": "", "quote": "Bob books the data centre"}]})
+ANSWERS["You read meeting minutes"] = NOTES_GOOD
 ANSWERS["You explain proposed changes"] = json.dumps({"reasons": [
     "Design took a median of 8 working days over 6 rollouts and 11 or fewer in 80% of them; today's 6 is shorter than most rollouts achieve.",
     "Hand-over took a median of 2 working days over 5 rollouts and 3 or fewer in 80% of them; today's 10 is longer than most rollouts need."]})
@@ -6442,6 +6448,44 @@ class AskRolloutTestCase(AITestBase):
             get_db().execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.feature.ask_rollout.force', '1')"); get_db().commit()
             r = run_feature_job(get_db(), {"id": 0, "feature": "ask_rollout", "project_id": 1, "requested_by": "admin", "payload": json.dumps({"input": {"question": "?"}})})
         self.assertEqual(r, {"skipped": "Ask a question first"})
+
+
+class NotesToTasksTestCase(AITestBase):
+    """Phase 2: the actions in pasted minutes, as tasks the PM ticks."""
+    isolate_features = False
+
+    def test_owner_stage_and_date_are_odins_and_inventions_are_dropped(self):
+        from services.ai.features.notes_to_tasks import FEATURE, fixture, refine
+        with self._ctx():
+            with patch("policies.local_today", return_value=date(2026, 10, 8)):
+                out = refine(fixture(), json.loads(NOTES_GOOD))
+        rows = [(t["title"], t["owner"], t["assignee_id"], t["stage"], t["due_date"]) for t in out["tasks"]]
+        self.assertEqual(rows, [("Cable the Site B racks", "Omar Haddad", 2, "Build", "2026-10-13"),
+                                ("Send the log samples", "Ann Lee", 3, "Design", "2026-10-10"),
+                                ("Update the design document", "Sam Rivera", 1, "Design", None)])   # Bob's action is not in the minutes
+        self.assertEqual([g(fixture(), out) for g in FEATURE.graders if g(fixture(), out)], [])
+
+    def test_paste_find_and_add(self):
+        from services.ai.health import heartbeat, validate_all, work_once
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Minutes", "client": "C"})
+        self._enable()
+        self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+        with self._ctx():
+            from db import get_db
+            heartbeat(get_db())
+            self.assertEqual(validate_all(get_db())["features"]["notes_to_tasks"], "passed")
+        h = self._csrf()
+        minutes = "Omar to cable the Site B racks by 13 Oct once access is granted. Sam to update the design document with the new retention period."
+        self.assertEqual(self.client.post("/api/projects/1/ai/notes_to_tasks", json={"input": {"text": minutes}}, headers=h).status_code, 200)
+        with self._ctx():
+            from db import get_db
+            work_once(get_db())
+        tasks = self.client.get("/api/projects/1/ai/notes_to_tasks").get_json()["suggestion"]["payload"]["tasks"]
+        self.assertEqual([t["title"] for t in tasks], ["Cable the Site B racks", "Update the design document"])   # only actions in these minutes
+        self.assertEqual(self.client.post("/projects/1/tasks", json={"title": tasks[0]["title"], "stage": tasks[0]["stage"] or "", "due_date": tasks[0]["due_date"]},
+                                          headers=h).status_code, 200)
+        with self._db() as con:
+            self.assertEqual(con.execute("SELECT title FROM tasks").fetchone()[0], "Cable the Site B racks")
 
 
 if __name__ == "__main__":
