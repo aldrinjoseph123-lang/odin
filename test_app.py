@@ -5650,6 +5650,10 @@ CHASE_GOOD = json.dumps({"subject": "SIEM onboarding: design approval and Site B
                                  "was due on 4 Oct 2026. Both are needed to keep the go-live of 20 Oct 2026. Could you approve the design, or let me "
                                  "know when you expect to? I am happy to walk through it on a call.\n\nBest regards,\nSam Rivera"})
 ANSWERS["You draft a short, polite follow-up"] = CHASE_GOOD
+BRIEF_GOOD = json.dumps({"brief": "Firewall refresh is red: past its target date by 8 d with 1 open blocker. SIEM onboarding is amber: Design is 3 d over its "
+                                  "6 d SLA. Send the change window request today; the design document review is overdue.",
+                         "first_move": "Review the SIEM design document."})
+ANSWERS["You write a project manager's morning brief"] = BRIEF_GOOD
 
 
 class WeeklyWordsTestCase(AITestBase):
@@ -6249,6 +6253,57 @@ class ChaseDraftTestCase(AITestBase):
         self.assertEqual([w.get("days_waiting", w.get("days_overdue")) for w in facts["waiting_on_the_customer"]], [9, 4])
         view = self.client.get("/api/projects/1/ai/chase_draft").get_json()
         self.assertEqual(view["options"]["contact"], {"name": "Ann Lee", "email": "ann@c.example"})
+
+
+class MorningBriefTestCase(AITestBase):
+    """Feature 10: one brief a working morning for each person with open rollouts."""
+    isolate_features = False
+
+    def test_who_when_and_where_it_lands(self):
+        from datetime import datetime
+        from services.ai.features.morning_brief import FEATURE, fixture, gather, people
+        from services.ai.health import heartbeat, tick, validate_all, work_once
+        good = json.loads(BRIEF_GOOD)
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders if g(fixture(), good)], [])
+        self.assertTrue(FEATURE.graders[1](fixture(), {**good, "brief": good["brief"] + " SIEM is 4 days over its SLA."}))   # the mixed-up numbers
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Mine", "client": "C"})
+        self._enable()
+        self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            self.assertEqual(people(db), [1])
+            self.assertEqual(gather(user_id=1)["rollouts"][0]["name"], "Mine")
+            heartbeat(db)
+            self.assertEqual(validate_all(db)["features"]["morning_brief"], "passed")
+            for k in ("ai.validate.last_date", "ai.night.last_date"):
+                db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, '2026-10-08')", (k,))
+            db.commit()
+            with patch("services.ai.health.work_once", return_value=None):
+                tick(db, now_local=datetime(2026, 10, 8, 7, 0))        # before the time: nothing
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_jobs WHERE feature = 'morning_brief'").fetchone()[0], 0)
+                tick(db, now_local=datetime(2026, 10, 8, 7, 31))       # a Thursday, a working day
+                tick(db, now_local=datetime(2026, 10, 8, 7, 40))       # once a day
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_jobs WHERE feature = 'morning_brief'").fetchone()[0], 1)
+            while work_once(db):
+                pass
+            n = db.execute("SELECT kind, title, body FROM notifications WHERE kind = 'brief'").fetchone()
+        self.assertEqual(n[1], "Your morning brief")
+        self.assertIn("First move:", n[2])
+        self.assertIn("brief", [k["key"] for k in self.client.get("/api/account").get_json()["email_kinds"]])
+
+    def test_no_brief_on_a_day_off(self):
+        from datetime import datetime
+        from services.ai.health import heartbeat, tick
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Mine", "client": "C"})
+        self._enable()
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            heartbeat(db)
+            with patch("services.ai.health.work_once", return_value=None):
+                tick(db, now_local=datetime(2026, 10, 10, 8, 0))       # a Saturday
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_jobs WHERE feature = 'morning_brief'").fetchone()[0], 0)
 
 
 if __name__ == "__main__":

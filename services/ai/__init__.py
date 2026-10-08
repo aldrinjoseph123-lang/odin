@@ -40,8 +40,9 @@ class AIFeature:
     fixture: Callable[[], dict]     # a synthetic project's inputs: never customer data
     graders: tuple                  # grader(inputs, output) -> a problem sentence, or None
     fallback: Optional[Callable] = None   # today's behaviour, used when the gate is closed
-    runs: str = "on_demand"         # on_demand | nightly | at_event
-    scope: str = "project"          # project: gather(project_id=…), kept as a suggestion on it; portfolio: gather(), kept as the latest answer
+    runs: str = "on_demand"         # on_demand | nightly | daily (the morning brief, at its own time) | at_event
+    scope: str = "project"          # project: gather(project_id=…), kept as a suggestion on it; portfolio: gather(), kept as the latest answer;
+                                    # person: gather(user_id=…), handed to on_new (the morning brief), not kept
     takes_input: bool = False       # on-demand features that work on text the person sent: gather(project_id=…, given=…)
     chunks: Optional[Callable] = None   # chunks(inputs) -> [inputs, …]: input too long for one request, asked in parts…
     merge: Optional[Callable] = None    # …and merge([output, …]) -> output joins the answers before refine

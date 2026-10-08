@@ -9,3 +9,4 @@ from services.ai.features import signoff_summary  # noqa: F401
 from services.ai.features import customer_words  # noqa: F401
 from services.ai.features import sow_plan  # noqa: F401
 from services.ai.features import chase_draft  # noqa: F401
+from services.ai.features import morning_brief  # noqa: F401

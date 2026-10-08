@@ -84,6 +84,7 @@ NOTIFICATION_KINDS = {
     "due": "A daily reminder of my tasks due today or overdue",
     "nudge": "A note a colleague sends me from the People page",
     "alert": "Alerts on projects I am on (overdue, due soon, over SLA, idle), and my daily digest",
+    "brief": "My morning brief: my rollouts, what is due, what came in (written by AI)",
 }
 
 # Kinds only admins receive, so only admins see them on the Account page.

@@ -156,6 +156,8 @@ POLICIES = {
                              label="Validate every feature daily at", help="Workspace time zone. Also runs after a settings change and whenever the model changes."),
     "ai_night_time": dict(area="ai_schedule", kind="time", default="03:30",
                           label="Night shift at", help="Nightly features (such as the weekly words) draft for every open rollout, after the daily validation. Only features that passed run."),
+    "ai_brief_time": dict(area="ai_schedule", kind="time", default="07:30",
+                          label="Morning brief at", help="Working days only. Each person with open rollouts gets one; they can switch the email off on their Account page."),
     "ai_budget_s": dict(area="ai_schedule", kind="int", default=90, min=10, max=900,
                         label="Seconds per answer before \"slow\"", help="A slow feature keeps running, with a warning in its row below."),
     "ai_max_input_chars": dict(area="ai_schedule", kind="int", default=4000, min=1000, max=30000,

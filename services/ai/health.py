@@ -160,7 +160,7 @@ def queue(db, kind, feature=None, project_id=None, payload=None, actor=None):
         row = db.execute("SELECT id FROM ai_jobs WHERE kind = 'validate' AND status IN ('queued', 'running')").fetchone()
         if row:
             return row[0]
-    if kind == "feature":
+    if kind == "feature" and not (payload or {}).get("user_id"):
         row = db.execute("SELECT id FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id IS ? AND status IN ('queued', 'running')",
                          (feature, project_id)).fetchone()
         if row:
@@ -185,6 +185,8 @@ def run_feature_job(db, job):
         return {"skipped": reason}
     if feature.scope == "portfolio":
         return _run_portfolio(db, feature, job)
+    if feature.scope == "person":
+        return _run_person(db, feature, job)
     try:
         raw = job["payload"] if "payload" in job.keys() else None
         given = (json.loads(raw) if isinstance(raw, str) else raw or {}).get("input")
@@ -213,6 +215,23 @@ def run_feature_job(db, job):
         except Exception as exc:  # noqa: BLE001 — a notice that fails never loses the answer
             print(f"[ai] {feature.key} notice failed: {exc}")
     return {"suggestion": cur.lastrowid, "seconds": meta["seconds"], "model": meta["model"]}
+
+
+def _run_person(db, feature, job):
+    """A feature for one person (the morning brief): asked, then handed to
+    on_new to deliver; the call log keeps the record."""
+    user_id = json.loads(job["payload"] or "{}").get("user_id") if isinstance(job["payload"], str) else (job["payload"] or {}).get("user_id")
+    try:
+        inputs = feature.gather(user_id=user_id)
+    except AIError as exc:
+        if exc.kind == "skip":
+            return {"skipped": exc.reason}
+        raise
+    out, meta = run(feature, inputs, config(db), log={"job_id": job["id"], "user": f"user {user_id}"})
+    if _cancelled(db, job):
+        return {"skipped": "cancelled"}
+    feature.on_new(db, user_id, out)
+    return {"delivered_to": user_id, "seconds": meta["seconds"], "model": meta["model"]}
 
 
 def _run_portfolio(db, feature, job):
@@ -290,11 +309,35 @@ def tick(db, now_local=None):
     if now_local.strftime("%H:%M") >= policy("ai_validate_time", db) and (row[0] if row else "") < today:
         _put(db, "ai.validate.last_date", today)
         queue(db, "validate", payload={"reason": "daily validation"})
+    from policies import is_working_day
+    row = db.execute("SELECT value FROM settings WHERE key = 'ai.brief.last_date'").fetchone()
+    if now_local.strftime("%H:%M") >= policy("ai_brief_time", db) and (row[0] if row else "") < today:
+        _put(db, "ai.brief.last_date", today)
+        if is_working_day(now_local.date(), db):
+            morning_briefs(db)
     row = db.execute("SELECT value FROM settings WHERE key = 'ai.night.last_date'").fetchone()
     if now_local.strftime("%H:%M") >= policy("ai_night_time", db) and (row[0] if row else "") < today:
         _put(db, "ai.night.last_date", today)
         night_shift(db)
     return work_once(db)
+
+
+def morning_briefs(db):
+    """Queue one brief per person with open rollouts, for each daily person feature switched on."""
+    from services.ai import FEATURES, switch
+    n = 0
+    for f in FEATURES.values():
+        if f.runs != "daily" or f.scope != "person" or not switch(f.key, db)[0]:
+            continue
+        for uid in f.extra.get("people", _people)(db):
+            queue(db, "feature", feature=f.key, payload={"user_id": uid})
+            n += 1
+    return n
+
+
+def _people(db):
+    from services.ai.features.morning_brief import people
+    return people(db)
 
 
 def night_shift(db):
