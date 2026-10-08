@@ -36,7 +36,7 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, login_required, permission_required, project_allows, project_role_required, role_has_permission, undo_button, undo_note, write_required, project_scope
+from core import app, as_id, json_body, parse_date, login_required, permission_required, project_allows, project_role_required, role_has_permission, undo_button, undo_note, write_required, project_scope
 from security import content_matches_extension, upload_problem, valid_email, safe_csv_writer
 from policies import local_today, policy
 from spa import spa_index, spa_serves
@@ -318,35 +318,35 @@ def project_new():
     if request.method == "POST":
         po_document = request.files.get("po_document")
         if not po_document or not po_document.filename:
-            flash(f"Upload a '{CLIENT_PO_DOC_CATEGORY}' document to create the project")
+            flash(f"Upload a '{CLIENT_PO_DOC_CATEGORY}' document to create the project", "error")
             return redirect(url_for("project_new"))
         if problem := upload_problem(po_document):
-            flash(problem)
+            flash(problem, "error")
             return redirect(url_for("project_new"))
         if not content_matches_extension(po_document):
-            flash("That file's contents don't match its extension")
+            flash("That file's contents don't match its extension", "error")
             return redirect(url_for("project_new"))
 
         template = _chosen_template(db, request.form.get("stage_template_id"))
         if template is None:
-            flash("Create a stage template in Settings before adding projects")
+            flash("Create a stage template in Settings before adding projects", "error")
             return redirect(url_for("project_new"))
         first_stage = db.execute(
             "SELECT name FROM stage_template_stages WHERE template_id = ? ORDER BY position LIMIT 1",
             (template["id"],),
         ).fetchone()
         if first_stage is None:
-            flash(f"Template '{template['name']}' has no stages yet")
+            flash(f"Template '{template['name']}' has no stages yet", "error")
             return redirect(url_for("project_new"))
 
         if not request.form.get("name", "").strip() or not request.form.get("client", "").strip():
-            flash("Project name and client are required")   # test report FN-5: edit refused this, create did not
+            flash("Project name and client are required", "error")   # test report FN-5: edit refused this, create did not
             return redirect(url_for("project_new"))
         if request.form.get("delivery_mode", DELIVERY_MODES[0]) not in DELIVERY_MODES:
-            flash("Pick a delivery mode")
+            flash("Pick a delivery mode", "error")
             return redirect(url_for("project_new"))
         if problem := _date_problem(request.form):
-            flash(problem)
+            flash(problem, "error")
             return redirect(url_for("project_new"))
         # The project manager must be able to move stages. Someone who cannot
         # (a Contributor) names one and joins as a Coordinator.
@@ -355,7 +355,7 @@ def project_new():
             raw = request.form.get("owner_id", "")
             lead = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone() if raw.isdigit() else None
             if lead is None or not role_has_permission(lead["role"], "edit_project_stage"):
-                flash("Choose a project manager who can move stages (an Admin or Member)")
+                flash("Choose a project manager who can move stages (an Admin or Member)", "error")
                 return redirect(url_for("project_new"))
             lead_id = lead["id"]
         now = datetime.utcnow().isoformat()
@@ -373,7 +373,7 @@ def project_new():
                 name,
                 request.form["client"].strip()[:200],
                 request.form.get("po_number") or None,
-                request.form.get("po_date") or None,
+                parse_date(request.form.get("po_date")),
                 first_stage["name"],
                 lead_id,
                 request.form.get("via") or None,
@@ -382,8 +382,8 @@ def project_new():
                 request.form.get("partner_name") or None,
                 request.form.get("partner_account_manager_name") or None,
                 request.form.get("partner_account_manager_email") or None,
-                request.form.get("start_date") or None,
-                request.form.get("target_end_date") or None,
+                parse_date(request.form.get("start_date")),
+                parse_date(request.form.get("target_end_date")),
                 request.form.get("delivery_mode", DELIVERY_MODES[0]),
                 request.form.get("outsourcer_name") or None,
                 request.form.get("outsourcer_email") or None,
@@ -508,18 +508,15 @@ def project_edit(project_id):
         name = request.form.get("name", "").strip()[:200]
         client = request.form.get("client", "").strip()[:200]
         if not name or not client:
-            flash("Project name and client are required")
+            flash("Project name and client are required", "error")
             return redirect(url_for("project_edit", project_id=project_id))
         if problem := _date_problem(request.form):
-            flash(problem)
+            flash(problem, "error")
             return redirect(url_for("project_edit", project_id=project_id))
 
         # Owner reassignment — fall back to the current owner if the submitted
         # id is missing or not a real user (never leave a project ownerless).
-        try:
-            owner_id = int(request.form.get("owner_id", project["owner_id"]))
-        except (TypeError, ValueError):
-            owner_id = project["owner_id"]
+        owner_id = as_id(request.form.get("owner_id")) or project["owner_id"]
         # the owner is the project manager: an active staff account that may move stages
         owner = db.execute("SELECT role, active, kind FROM users WHERE id = ?", (owner_id,)).fetchone()
         if not owner or not owner["active"] or owner["kind"] == "external" or not role_has_permission(owner["role"], "edit_project_stage"):
@@ -544,15 +541,15 @@ def project_edit(project_id):
             (
                 name, client, owner_id,
                 request.form.get("po_number") or None,
-                request.form.get("po_date") or None,
+                parse_date(request.form.get("po_date")),
                 request.form.get("via") or None,
                 request.form.get("account_manager_name") or None,
                 request.form.get("account_manager_email") or None,
                 request.form.get("partner_name") or None,
                 request.form.get("partner_account_manager_name") or None,
                 request.form.get("partner_account_manager_email") or None,
-                request.form.get("start_date") or None,
-                request.form.get("target_end_date") or None,
+                parse_date(request.form.get("start_date")),
+                parse_date(request.form.get("target_end_date")),
                 delivery_mode,
                 request.form.get("outsourcer_name") or None,
                 request.form.get("outsourcer_email") or None,
@@ -756,18 +753,42 @@ def has_required_document(project_id, category):
 
 def _date_problem(form):
     """Dates arrive as YYYY-MM-DD from the date pickers; anything else would
-    break every page that does arithmetic on them."""
-    from datetime import date as _date
+    break every page that does arithmetic on them (the routes store
+    parse_date(value) once this passes). Then the project form's other
+    fields: see _field_problem."""
+    dates = {}
     for key, label in (("po_date", "PO date"), ("start_date", "Start date"), ("target_end_date", "Target end date")):
-        value = (form.get(key) or "").strip()
-        if value:
-            try:
-                _date.fromisoformat(value)
-            except ValueError:
-                return f"{label} must be a date (YYYY-MM-DD)"
-    start, end = (form.get("start_date") or "").strip(), (form.get("target_end_date") or "").strip()
-    if start and end and end < start:
+        try:
+            dates[key] = parse_date(form.get(key))
+        except ValueError as exc:
+            return f"{label} must be {exc}"
+    if dates["start_date"] and dates["target_end_date"] and dates["target_end_date"] < dates["start_date"]:
         return "The target end date is before the start date"
+    return _field_problem(form)
+
+
+PROJECT_TEXT_FIELDS = (("name", "Project name", 200), ("client", "Client", 200), ("po_number", "PO number", 100),
+                       ("account_manager_name", "Account manager", 200), ("partner_name", "Partner", 200),
+                       ("partner_account_manager_name", "Partner account manager", 200), ("outsourcer_name", "Outsourcer", 200),
+                       ("vendor_name", "Vendor", 200), ("product_name", "Product", 200))
+PROJECT_EMAIL_FIELDS = (("account_manager_email", "Account manager email"), ("partner_account_manager_email", "Partner account manager email"),
+                        ("outsourcer_email", "Outsourcer email"))
+
+
+def _field_problem(form):
+    """The new / edit project form's text fields: one line each, of a sane
+    length; addresses that look like addresses; `via` from its list."""
+    from constants import VIA_OPTIONS
+    for key, label, limit in PROJECT_TEXT_FIELDS:
+        value = form.get(key) or ""
+        if len(value) > limit or "\x00" in value or "\n" in value or "\r" in value:
+            return f"{label}: one line, at most {limit} characters"
+    for key, label in PROJECT_EMAIL_FIELDS:
+        value = (form.get(key) or "").strip()
+        if value and not valid_email(value):
+            return f"{label} does not look like an email address"
+    if (form.get("via") or "") not in ("", *VIA_OPTIONS):
+        return f"Via is one of: {', '.join(VIA_OPTIONS)}"
     return None
 
 
@@ -1283,14 +1304,18 @@ def _notify_assignee(assignee_id, project_id, title):
 # One route each — same permission, same audit row, same validation.
 
 def _task_input():
-    return request.get_json(silent=True) or request.form
+    form = json_body() or request.form
+    # a list or number where text belongs is a 400, never a crash on .strip()
+    if any(form.get(k) is not None and not isinstance(form.get(k), str) for k in ("title", "due_date", "stage")):
+        abort(400, description="Send the title, due date and stage as text")
+    return form
 
 
 def _task_reply(project_id, error=None, **payload):
     if request.is_json:
         return (jsonify(error=error), 400) if error else jsonify(ok=True, **payload)
     if error:
-        flash(error)
+        flash(error, "error")
     return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
 
 
@@ -1303,6 +1328,7 @@ def _assignee(db, project_id, raw):
     """The assignee, or None: an active staff account (staff see every
     project), or a partner on this project — never a partner from elsewhere,
     who would be told the name of a project they cannot open (test report FN-4)."""
+    raw = as_id(raw)
     if not raw:
         return None
     ok = db.execute("SELECT 1 FROM users u WHERE u.id = ? AND u.active = 1 AND (u.kind = 'internal' OR EXISTS "
@@ -1311,13 +1337,12 @@ def _assignee(db, project_id, raw):
 
 
 def _due_problem(form):
-    """A due date the reports can do arithmetic on (test report FN-3)."""
-    from datetime import date as _date
-    value = (form.get("due_date") or "").strip()
+    """A due date the reports can do arithmetic on (test report FN-3); the
+    route stores parse_date(form["due_date"]) once this passes."""
     try:
-        value and _date.fromisoformat(value)
-    except ValueError:
-        return "Due date must be a date (YYYY-MM-DD)"
+        parse_date(form.get("due_date"))
+    except ValueError as exc:
+        return f"Due date must be {exc}"
     return None
 
 
@@ -1337,7 +1362,7 @@ def task_add(project_id):
         return _task_reply(project_id, problem)
     cur = db.execute(
         "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (project_id, title, assignee_id, form.get("due_date") or None,
+        (project_id, title, assignee_id, parse_date(form.get("due_date")),
          datetime.utcnow().isoformat(), session["user_name"], _task_stage(project_id, form.get("stage"))),
     )
     db.commit()
@@ -1404,7 +1429,7 @@ def task_edit(project_id, task_id):
     stage = _task_stage(project_id, form.get("stage")) if "stage" in form else task["stage"]
     db.execute(
         "UPDATE tasks SET title = ?, assignee_id = ?, due_date = ?, stage = ? WHERE id = ?",
-        (title, assignee_id, form.get("due_date") or None, stage, task_id),
+        (title, assignee_id, parse_date(form.get("due_date")), stage, task_id),
     )
     db.commit()
     # only ping on a genuine reassignment, not on every title tweak

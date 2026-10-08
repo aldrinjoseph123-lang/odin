@@ -9,7 +9,7 @@ from policies import local_today, policy, policy_view
 from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
-from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
+from core import app, as_id, json_body, parse_date, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
@@ -88,8 +88,11 @@ def api_session():
 
 @app.route("/api/login", methods=["POST"])
 def api_login():
-    data = request.get_json(silent=True) or {}
-    ok, message = attempt_login((data.get("username") or "").strip(), data.get("password") or "")
+    data = json_body()
+    username, password = data.get("username") or "", data.get("password") or ""
+    if not isinstance(username, str) or not isinstance(password, str):
+        return jsonify(error="Send a username and a password as text"), 400
+    ok, message = attempt_login(username.strip(), password)
     if message == MFA_NEEDED:
         return jsonify({"code_needed": True, "csrf": csrf_token()})
     if not ok:
@@ -140,7 +143,7 @@ def api_board():
 @app.route("/api/projects/<int:project_id>/approvals/<int:approval_id>", methods=["POST"])
 @login_required
 def api_approval_decide(project_id, approval_id):
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     error = decide_approval(project_id, approval_id, body.get("decision"), body.get("comment"))
     if error:
         return jsonify(error=error), 400
@@ -422,7 +425,7 @@ def api_rollout_report_save(project_id):
     from services import report_data
     from services.plan import snapshot_json
     project = load_project(project_id)
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     words = {k: str(body.get(k) or "").strip()[:6000] for k in ("summary", "next_steps", "asks")}
     if not words["summary"]:
         return jsonify(error="Write the summary first — two or three lines on where it stands"), 400
@@ -508,7 +511,7 @@ def api_person_notify(user_id):
     from services.notifications import notify_users
     if session.get("kind") == "external" or session.get("role") not in ("Admin", "Member", "Contributor") or user_id == session["user_id"]:
         abort(403)
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     message = str(body.get("message") or "").strip()[:1000]
     if not message:
         abort(400)
@@ -583,7 +586,7 @@ def api_dashboard_layout():
         db.commit()
         audit_log("dashboard_layout_reset", "user", session["user_id"], session.get("user_name"))
         return jsonify(ok=True, layout=dashboard.default_layout(), is_custom=False)
-    layout = dashboard.normalize_layout((request.get_json(silent=True) or {}).get("layout"))
+    layout = dashboard.normalize_layout(json_body().get("layout"))
     if layout is None:
         abort(400)
     db.execute("UPDATE users SET dashboard_layout = ? WHERE id = ?", (json.dumps(layout), session["user_id"]))
@@ -599,7 +602,7 @@ def api_dashboard_default_layout():
     import json
     from db import set_setting
     from services import dashboard
-    layout = dashboard.normalize_layout((request.get_json(silent=True) or {}).get("layout"))
+    layout = dashboard.normalize_layout(json_body().get("layout"))
     if layout is None:
         abort(400)
     set_setting(dashboard.LAYOUT_KEY, json.dumps(layout))
@@ -1090,7 +1093,7 @@ def api_raid_create(project_id):
     from services import raid
     project = load_project(project_id)
     try:
-        fields = raid.clean(request.get_json(silent=True) or {})
+        fields = raid.cleanjson_body()
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     rid = raid.create(project_id, fields, session["user_name"])
@@ -1117,7 +1120,7 @@ def api_raid_item(project_id, item_id):
         audit_log("delete_raid_item", "project", project_id, project["name"], f"{item['kind']}: {item['title'][:80]}")
         return jsonify(ok=True)
     try:
-        fields = raid.clean(request.get_json(silent=True) or {}, existing=item)
+        fields = raid.clean(json_body(), existing=item)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     raid.update(item, fields)
@@ -1216,7 +1219,7 @@ def api_notifications_read():
     """Mark one (id) or all of this user's notifications read. Only ever the
     caller's own rows."""
     from services.notifications import visible_clause
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     db = get_db()
     now = datetime.utcnow().isoformat()
     # what the bell shows, no more (test report FN-14): hidden rows are neither marked nor counted

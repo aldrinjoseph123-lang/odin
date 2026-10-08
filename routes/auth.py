@@ -17,6 +17,7 @@ from security import (
     consume_login_link,
     reset_link_row,
     issue_login_link,
+    login_account_paused,
     login_is_blocked,
     password_problem,
     rate_limited,
@@ -38,9 +39,12 @@ def attempt_login(username, password):
     message is the user-facing reason on failure and never reveals whether
     the account exists.
     """
+    from policies import policy
+    if not isinstance(username, str) or not isinstance(password, str) or "\x00" in username or len(username) > 200 or len(password) > 1000:
+        return False, "Bad username or password"
+    too_many = f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
     if login_is_blocked(username):
-        from policies import policy
-        return False, f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
+        return False, too_many
     user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
     # One password hash on every path, so the answer takes as long whether or not
     # the name exists, and an account's state shows only to its password (test report SEC-7).
@@ -69,7 +73,8 @@ def attempt_login(username, password):
         # Failed attempts are evidence too — login_attempts is purged after
         # a week, the audit trail is not.
         audit_log("login_failure", "user", user["id"] if user else None, username, actor=username)
-        return False, "Bad username or password"
+        # guessed from many addresses: a wrong password hears "paused"; the right one still works
+        return False, too_many if login_account_paused(username) else "Bad username or password"
     from routes.sso import sso_enforced
     if sso_enforced() and not user["password_login"]:
         # Staff use Microsoft; only accounts an admin flagged keep a password.
@@ -302,7 +307,7 @@ def is_local_path(url):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        ok, message = attempt_login(request.form["username"].strip(), request.form["password"])
+        ok, message = attempt_login(request.form.get("username", "").strip(), request.form.get("password", ""))
         if ok:
             return redirect(safe_next_url() or home_url())
         flash("Two-step sign-in needs Odin's web app to enter the code" if message == MFA_NEEDED else message)

@@ -4,7 +4,7 @@ import json
 
 from flask import Response, abort, jsonify, request, send_file, session
 
-from core import app, login_required, permission_required
+from core import app, as_id, json_body, text_field, login_required, permission_required
 from services import doc_templates as dt
 from services.audit import audit_log
 
@@ -33,7 +33,7 @@ def api_doc_template_choices():
 @app.route("/api/doc-templates", methods=["POST"])
 @permission_required("manage_settings")
 def api_doc_template_create():
-    b = request.get_json(silent=True) or {}
+    b = json_body()
     try:
         tid = dt.save(b.get("kind"), b.get("name"), b.get("config") or {}, session["user_name"])
     except ValueError as e:
@@ -54,7 +54,7 @@ def api_doc_template(template_id):
             abort(404)
         audit_log("doc_template_delete", "doc_template", template_id)
         return jsonify(ok=True)
-    b = request.get_json(silent=True) or {}
+    b = json_body()
     try:
         dt.save(b.get("kind"), b.get("name"), b.get("config") or {}, session["user_name"], template_id)
     except ValueError as e:
@@ -103,7 +103,7 @@ def api_doc_template_logo_file(name):
 @permission_required("manage_settings")
 def api_doc_template_preview():
     """The unsaved template on sample data: the newest open project (or the portfolio)."""
-    b = request.get_json(silent=True) or {}
+    b = json_body()
     kind = b.get("kind")
     try:
         cfg = dt.clean(kind, b.get("config") or {})

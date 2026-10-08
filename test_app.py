@@ -3495,8 +3495,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.commit()
         c = app_module.app.test_client()
         csrf = c.get("/api/session").get_json()["csrf"]
+        r = c.post("/api/login", json={"username": "target", "password": "Wrong-Horse-99"}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(r.status_code, 429)      # a wrong password hears the account is paused
         r = c.post("/api/login", json={"username": "target", "password": STRONG_PASSWORD}, headers={"X-CSRF-Token": csrf})
-        self.assertNotEqual(r.status_code, 200)   # right password, but the account is paused
+        self.assertEqual(r.status_code, 200)      # the right one still works: failing on purpose cannot lock anyone out (S4)
 
     def test_alerts_are_recorded_by_the_scheduler(self):
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")

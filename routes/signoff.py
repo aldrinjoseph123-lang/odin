@@ -9,7 +9,7 @@ from markupsafe import escape
 
 import graph
 from constants import SIGNOFF_DOC_CATEGORY
-from core import admin_required, app, external_url, login_required, permission_required, project_allows, project_role_required
+from core import admin_required, app, json_body, external_url, login_required, permission_required, project_allows, project_role_required
 from db import get_db, get_setting
 from routes.projects import load_project, save_document
 from policies import policy
@@ -29,7 +29,7 @@ def _link(project_id):
 
 
 def _body():
-    return request.get_json(silent=True) or {}
+    return json_body()
 
 
 def _bad(error, status=400):

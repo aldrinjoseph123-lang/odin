@@ -5,7 +5,7 @@ import json
 
 from flask import abort, flash, jsonify, redirect, request, session, url_for
 
-from core import app, login_required, permission_required, project_allows
+from core import app, as_id, json_body, login_required, permission_required, project_allows
 from db import get_db, get_setting
 from routes.projects import load_project
 from services.audit import audit_log
@@ -178,7 +178,7 @@ def api_project_ai_request(project_id, key):
         return jsonify(error=reason), 409
     payload = None
     if feature.takes_input:
-        given = (request.get_json(silent=True) or {}).get("input")
+        given = json_body().get("input")
         if not isinstance(given, dict) or len(json.dumps(given)) > 20000:
             return jsonify(error="Nothing to work on"), 400
         payload = {"input": given}
@@ -234,7 +234,7 @@ def api_project_ai_item(project_id, suggestion_id, index):
     if row is None:
         abort(404)
     _feature_for(project, row["feature"])
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     decision = body.get("decision")
     payload = json.loads(row["payload"])
     items = payload.get("proposals") or []
@@ -266,7 +266,7 @@ def api_project_ai_close(project_id, suggestion_id):
     if row is None:
         abort(404)
     _feature_for(project, row["feature"])
-    taken = int((request.get_json(silent=True) or {}).get("taken") or 0)
+    taken = int(json_body().get("taken") or 0)
     db.execute("UPDATE ai_suggestions SET status = ?, decided_by = ?, decided_at = ? WHERE id = ?",
                ("used" if taken else "dismissed", session.get("user_name"), datetime.utcnow().isoformat(), suggestion_id))
     db.commit()
@@ -327,7 +327,7 @@ def api_lessons_save(project_id):
     project = load_project(project_id)
     if session.get("kind") == "external" or not project_allows(project_id, "manage_project"):
         abort(403)
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     items = [i for i in body.get("items") or [] if isinstance(i, dict)][:12]
     n = lessons.save(project, items, session["user_name"])
     if not n:
