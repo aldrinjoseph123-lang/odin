@@ -1501,7 +1501,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # pm1 switches stage emails off; the bell still gets it
         p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on", "due": "on"}, headers=ph)
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
-        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False})
+        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False, "brief": False})
         mail.reset_mock()
         self.client.post("/projects/1/stage", data={"stage": stages[1]})
         self.assertEqual([c.args[0] for c in mail.call_args_list], [])                     # pm1 opted out; admin is the actor
@@ -5654,6 +5654,11 @@ BRIEF_GOOD = json.dumps({"brief": "Firewall refresh is red: past its target date
                                   "6 d SLA. Send the change window request today; the design document review is overdue.",
                          "first_move": "Review the SIEM design document."})
 ANSWERS["You write a project manager's morning brief"] = BRIEF_GOOD
+CATCHUP_GOOD = json.dumps({"where_it_stands": "SIEM onboarding is in Design (stage 2 of 6), amber: Design is 3 d over its 6 d SLA; forecast 4 d after the target. Go-live is 20 Oct 2026.",
+                           "who_is_who": "Sam Rivera is the project manager, Omar Haddad the coordinator and Ann Lee the customer.",
+                           "what_changed": "The Design end moved from 2 Oct to 9 Oct 2026 because the vendor configuration was late.",
+                           "watch_out": ["No building access at Site B, which could delay the build.", "Log volume above the licence."]})
+ANSWERS["You brief someone who is taking over"] = CATCHUP_GOOD
 
 
 class WeeklyWordsTestCase(AITestBase):
@@ -6304,6 +6309,33 @@ class MorningBriefTestCase(AITestBase):
             with patch("services.ai.health.work_once", return_value=None):
                 tick(db, now_local=datetime(2026, 10, 10, 8, 0))       # a Saturday
             self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_jobs WHERE feature = 'morning_brief'").fetchone()[0], 0)
+
+
+class CatchUpTestCase(AITestBase):
+    """Feature 11: a one-page brief on a rollout."""
+    isolate_features = False
+
+    def test_odin_writes_who_waits_and_trims_guesses(self):
+        from services.ai.features.catch_up import FEATURE, fixture, gather, refine
+        out = refine(fixture(), json.loads(CATCHUP_GOOD))
+        self.assertEqual(out["watch_out"][0], "No building access at Site B.")          # the guess is gone, the fact stays
+        self.assertEqual(out["waiting"][0], "Ann Lee (customer): approval of the Design stage, asked 29 Sep 2026, 9 d waiting")
+        self.assertEqual([g(fixture(), out) for g in FEATURE.graders if g(fixture(), out)], [])
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Handover", "client": "C"})
+        with self._ctx():
+            facts = gather(project_id=1)
+        self.assertEqual(set(facts), set(fixture()))
+        self.assertEqual(facts["team"][0]["role"], "Project manager")
+
+    def test_a_viewer_gets_a_quiet_no_not_an_error(self):
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Seen", "client": "C"})
+        self.client.post("/users", data={"username": "vic", "name": "Vic", "password": STRONG_PASSWORD, "role": "Viewer", "email": "vic@x.example"})
+        viewer = app_module.app.test_client()
+        viewer.post("/login", data={"username": "vic", "password": STRONG_PASSWORD})
+        r = viewer.get("/api/projects/1/ai/chase_draft")
+        self.assertEqual((r.status_code, r.get_json()["available"], r.get_json()["suggestion"]), (200, False, None))
+        self.assertEqual(viewer.get("/api/projects/1/ai/catch_up").status_code, 200)                      # everyone who sees the rollout
+        self.assertEqual(viewer.post("/api/projects/1/ai/chase_draft", json={}, headers={"X-CSRF-Token": viewer.get("/api/session").get_json()["csrf"]}).status_code, 403)
 
 
 if __name__ == "__main__":

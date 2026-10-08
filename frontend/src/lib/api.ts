@@ -245,6 +245,7 @@ export const cancelAIJob = (id: number, job: number) => post<{ ok: true }>(`/api
 export const dismissAISuggestion = (id: number, suggestion: number) => post<{ ok: true }>(`/api/projects/${id}/ai/suggestions/${suggestion}/dismiss`)
 export type WaitingItem = { what: string; since?: string; days_waiting?: number; due?: string; days_overdue?: number }
 export type ChaseDraft = { subject: string; body: string }
+export type CatchUp = { where_it_stands: string; who_is_who: string; what_changed: string; waiting: string[]; watch_out: string[] }
 export type SowItem = { title: string; detail?: string; stage?: string | null; quote?: string }
 export type SowPlan = { scope_items: SowItem[]; tasks: SowItem[]; customer_obligations: SowItem[]; key_dates: { what: string; date: string }[]; exclusions: string[] }
 export type SowDocument = { id: number; filename: string; category: string; likely: boolean }

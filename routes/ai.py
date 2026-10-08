@@ -146,8 +146,14 @@ def _suggestion_view(row):
 def api_project_ai(project_id, key):
     """Whether the feature can run here now, its latest unused draft, and the
     job drafting a new one, if any."""
-    from services.ai import gate
-    feature = _feature_for(load_project(project_id), key)
+    from services.ai import FEATURES, gate
+    project = load_project(project_id)
+    feature = FEATURES.get(key)
+    if feature is None or feature.scope != "project":
+        abort(404)
+    if session.get("kind") == "external" or (feature.project_role and not project_allows(project_id, feature.project_role)):
+        # not this person's feature here: a quiet "no", so the page simply leaves it out
+        return jsonify(available=False, reason="Not available to you on this rollout", label=feature.label, options=None, suggestion=None, job=None)
     db = get_db()
     row = db.execute("SELECT * FROM ai_suggestions WHERE project_id = ? AND feature = ? AND status = 'new' ORDER BY id DESC LIMIT 1", (project_id, key)).fetchone()
     job = db.execute("SELECT id, status, error, result, requested_by, created_at FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id = ? "
