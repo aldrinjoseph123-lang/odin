@@ -144,6 +144,8 @@ POLICIES = {
                         label="AI server address", help="The OpenAI-compatible base address, usually ending in /v1, e.g. http://ai.p24.lan:11434/v1. A name rather than an IP lets the server move without touching Odin."),
     "ai_model": dict(area="ai", kind="text", default="P24-AI", max=120,
                      label="Model name", help="The name the server answers to. Keep it an alias the server owns (P24-AI), so the model behind it can change without touching Odin."),
+    "ai_identity": dict(area="ai", kind="text", default="You are P24x7-AI, the assistant for Odin.", max=200,
+                        label="Identity line", help="Starts every system prompt Odin sends, as the AI server's integration guide asks; without it the model may name itself something else. Changing it validates every feature again."),
     "ai_allow_external": dict(area="ai", kind="bool", default=False,
                               label="Allow an external AI provider", help="Off: Odin refuses any address outside the private network, so customer notes never leave the building. On: a hosted provider may be used; every AI request then sends project text to it."),
     "ai_heartbeat_minutes": dict(area="ai_schedule", kind="int", default=5, min=1, max=60,
@@ -156,6 +158,8 @@ POLICIES = {
                           label="Night shift at", help="Nightly features (such as the weekly words) draft for every open rollout, after the daily validation. Only features that passed run."),
     "ai_budget_s": dict(area="ai_schedule", kind="int", default=90, min=10, max=900,
                         label="Seconds per answer before \"slow\"", help="A slow feature keeps running, with a warning in its row below."),
+    "ai_max_input_chars": dict(area="ai_schedule", kind="int", default=4000, min=1000, max=30000,
+                               label="Longest input per request (characters)", help="Reading is the slow part on a CPU server: Odin trims the longest text in a request (and reads documents in parts) to stay under this."),
     "ai_timeout_s": dict(area="ai_schedule", kind="int", default=300, min=30, max=1800,
                          label="Give up on an answer after (seconds)", help="The server answers one request at a time; allow for waiting behind another application's request."),
     # ---- Projects & workflow

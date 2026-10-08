@@ -135,26 +135,53 @@ def fingerprint(model):
     return f"{model['id']}@{model.get('created')}"
 
 
-def chat(cfg, messages, schema, max_tokens=800, temperature=0.3):
+def _log_call(log, cfg, messages, seconds, data=None, error=None):
+    """One row in ai_calls per request (the AI server's guide asks for it):
+    never allowed to break the call it records."""
+    try:
+        from datetime import datetime
+        from db import get_db
+        usage = (data or {}).get("usage") or {}
+        db = get_db()
+        db.execute("INSERT INTO ai_calls (at, feature, job_id, project_id, username, model, input_chars, prompt_tokens, completion_tokens, seconds, ok, error) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (datetime.utcnow().replace(microsecond=0).isoformat(), log.get("feature"), log.get("job_id"), log.get("project_id"), log.get("user"),
+                    (data or {}).get("model") or cfg["model"], sum(len(m["content"]) for m in messages), usage.get("prompt_tokens"),
+                    usage.get("completion_tokens"), seconds, 0 if error else 1, error))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def chat(cfg, messages, schema, max_tokens=800, temperature=0.3, log=None):
     """One answer, parsed and checked against `schema`. Returns (data, meta)
-    with meta = {model, seconds, usage}. Raises AIError."""
+    with meta = {model, seconds, usage}. Raises AIError. Every request is
+    recorded in ai_calls, with `log` naming the feature, job, project and person."""
     body = {"model": cfg["model"], "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": False,
             "response_format": {"type": "json_schema", "json_schema": {"name": "answer", "schema": schema}}}
     started = time.monotonic()
-    data = _request("POST", cfg, "/chat/completions", cfg.get("timeout") or 300, json=body)
+    try:
+        data = _request("POST", cfg, "/chat/completions", cfg.get("timeout") or 300, json=body)
+    except AIError as exc:
+        _log_call(log or {}, cfg, messages, round(time.monotonic() - started, 1), error=exc.reason[:300])
+        raise
     seconds = round(time.monotonic() - started, 1)
     try:
         content = data["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError, TypeError):
+        _log_call(log or {}, cfg, messages, seconds, data, "no message in the answer")
         raise AIError("The answer had no message: not an OpenAI-compatible reply", "invalid")
     content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())   # some servers fence JSON even when asked not to
     try:
         value = json.loads(content)
     except ValueError:
+        _log_call(log or {}, cfg, messages, seconds, data, "answer was not JSON")
         raise AIError(f"The answer was not JSON: {content[:120]!r}", "invalid")
     problems = schema_problems(schema, value)
     if problems:
+        _log_call(log or {}, cfg, messages, seconds, data, "answer did not match its form")
         raise AIError("The answer did not match its form: " + "; ".join(problems[:3]), "invalid")
+    _log_call(log or {}, cfg, messages, seconds, data)
     return value, {"model": data.get("model") or cfg["model"], "seconds": seconds, "usage": data.get("usage") or {}}
 
 

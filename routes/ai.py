@@ -38,8 +38,11 @@ def api_settings_ai():
     last_run = jobs[0]["id"] if jobs else None
     checks = [dict(r) for r in db.execute("SELECT kind, state, seconds, detail, model, created_at FROM ai_checks WHERE run_id = ? AND kind != 'feature' ORDER BY id",
                                           (last_run,))] if last_run else []
+    from datetime import datetime, timedelta
+    day = db.execute("SELECT COUNT(*) AS calls, SUM(ok = 0) AS failed, AVG(seconds) AS avg_s, MAX(seconds) AS max_s, SUM(prompt_tokens) AS tokens_in, "
+                     "SUM(completion_tokens) AS tokens_out FROM ai_calls WHERE at >= ?", ((datetime.utcnow() - timedelta(hours=24)).isoformat(),)).fetchone()
     return jsonify(status=status(db), has_key=bool(get_setting(KEY_SETTING)), features=features, jobs=jobs, run_checks=checks,
-                   scheduler_alive=healthy())
+                   scheduler_alive=healthy(), usage={k: day[k] for k in day.keys()})
 
 
 @app.route("/settings/ai/check", methods=["POST"])
@@ -150,7 +153,7 @@ def api_project_ai(project_id, key):
     job = db.execute("SELECT id, status, error, result, requested_by, created_at FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id = ? "
                      "ORDER BY id DESC LIMIT 1", (key, project_id)).fetchone()
     reason = gate(key, db)
-    return jsonify(available=reason is None, reason=reason, label=feature.label,
+    return jsonify(available=reason is None, reason=reason, label=feature.label, options=feature.options(project_id) if feature.options else None,
                    suggestion=_suggestion_view(row) if row else None,
                    job={"id": job["id"], "status": job["status"], "error": job["error"], "result": json.loads(job["result"]) if job["result"] else None,
                         "created_at": job["created_at"]} if job else None)
@@ -163,11 +166,17 @@ def api_project_ai_request(project_id, key):
     from services.ai import gate
     from services.ai.health import queue
     project = load_project(project_id)
-    _feature_for(project, key)
+    feature = _feature_for(project, key)
     reason = gate(key)
     if reason:
         return jsonify(error=reason), 409
-    job = queue(get_db(), "feature", feature=key, project_id=project_id, actor=session.get("user_name"))
+    payload = None
+    if feature.takes_input:
+        given = (request.get_json(silent=True) or {}).get("input")
+        if not isinstance(given, dict) or len(json.dumps(given)) > 20000:
+            return jsonify(error="Nothing to work on"), 400
+        payload = {"input": given}
+    job = queue(get_db(), "feature", feature=key, project_id=project_id, payload=payload, actor=session.get("user_name"))
     audit_log("request_ai_draft", "project", project_id, project["name"], f"{key}, job {job}")
     return jsonify(ok=True, job=job)
 
@@ -189,15 +198,16 @@ def api_project_ai_dismiss(project_id, suggestion_id):
     return jsonify(ok=True)
 
 
-def use_suggestion(project_id, suggestion_id, feature):
+def use_suggestion(project_id, suggestion_id, features):
     """Mark a draft as used by the save that is about to happen. Returns the
     words for the audit row ("with the AI draft …"), or "" when there is none."""
     from datetime import datetime
     if not suggestion_id:
         return ""
     db = get_db()
-    row = db.execute("SELECT id, model FROM ai_suggestions WHERE id = ? AND project_id = ? AND feature = ? AND status = 'new'",
-                     (suggestion_id, project_id, feature)).fetchone()
+    features = (features,) if isinstance(features, str) else tuple(features)
+    row = db.execute(f"SELECT id, model FROM ai_suggestions WHERE id = ? AND project_id = ? AND feature IN ({','.join('?' * len(features))}) AND status = 'new'",
+                     (suggestion_id, project_id, *features)).fetchone()
     if row is None:
         return ""
     db.execute("UPDATE ai_suggestions SET status = 'used', decided_by = ?, decided_at = ? WHERE id = ?",
@@ -235,3 +245,41 @@ def api_project_ai_item(project_id, suggestion_id, index):
     audit_log("decide_ai_proposal", "project", project_id, project["name"], f"{row['feature']} suggestion {suggestion_id} item {index}: {decision}"
               + (f", RAID item {body['raid_id']}" if body.get("raid_id") else ""))
     return jsonify(ok=True, status=status)
+
+
+@app.route("/api/projects/<int:project_id>/ai/suggestions/<int:suggestion_id>/close", methods=["POST"])
+@login_required
+def api_project_ai_close(project_id, suggestion_id):
+    """A draft whose parts were taken through their own routes (a suggested
+    plan: scope items and tasks, each added and audited there): record how
+    many were taken and close it."""
+    from datetime import datetime
+    project = load_project(project_id)
+    db = get_db()
+    row = db.execute("SELECT * FROM ai_suggestions WHERE id = ? AND project_id = ? AND status = 'new'", (suggestion_id, project_id)).fetchone()
+    if row is None:
+        abort(404)
+    _feature_for(project, row["feature"])
+    taken = int((request.get_json(silent=True) or {}).get("taken") or 0)
+    db.execute("UPDATE ai_suggestions SET status = ?, decided_by = ?, decided_at = ? WHERE id = ?",
+               ("used" if taken else "dismissed", session.get("user_name"), datetime.utcnow().isoformat(), suggestion_id))
+    db.commit()
+    audit_log("close_ai_draft", "project", project_id, project["name"], f"{row['feature']} suggestion {suggestion_id}: {taken} item(s) taken")
+    return jsonify(ok=True)
+
+
+@app.route("/api/projects/<int:project_id>/ai/jobs/<int:job_id>/cancel", methods=["POST"])
+@login_required
+def api_project_ai_cancel(project_id, job_id):
+    """Stop a draft: a waiting one never runs; a running one's answer is
+    dropped when it arrives."""
+    from services.ai.health import cancel
+    project = load_project(project_id)
+    db = get_db()
+    job = db.execute("SELECT id, feature FROM ai_jobs WHERE id = ? AND project_id = ? AND kind = 'feature'", (job_id, project_id)).fetchone()
+    if job is None:
+        abort(404)
+    _feature_for(project, job["feature"])
+    cancel(db, job_id)
+    audit_log("cancel_ai_draft", "project", project_id, project["name"], f"{job['feature']} job {job_id}")
+    return jsonify(ok=True)

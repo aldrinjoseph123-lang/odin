@@ -127,6 +127,13 @@ Odin depends on the contract, never on that server:
   suggestion a person accepts through the normal audited route.
 - **One door:** nothing outside `services/ai/` calls the server; a meta-test
   enforces it. Tests use `FakeAIServer` in test_app.py, never a real model.
+- **The AI server's integration guide (8 Oct 2026)** binds Odin as one of its
+  two client apps: every system prompt starts with the identity line (policy
+  `ai_identity`); input at most `ai_max_input_chars` (4,000; `fit()` trims,
+  documents are read in parts); replies capped at 1,000 tokens; one request
+  at a time (the single AI worker); every request logged in `ai_calls`;
+  cancel on every draft; arithmetic in code, never in the model. Odin does
+  not stream: its AI work is queued, not watched token by token.
 
 # Front end migration — React + shadcn/ui (in progress)
 

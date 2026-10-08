@@ -106,5 +106,5 @@ FEATURE = register(AIFeature(
     prompt="weekly_words.v1.txt", schema=SCHEMA, gather=gather, fixture=fixture,
     graders=(facts_kept("Site B", "20 Oct"), never_says("on track", "ahead of schedule", "no risks", "Ravi"),
              max_words("summary", 130), finds("asks", ["design", "access"], at_least=0.5)),
-    runs="nightly", max_tokens=700,
+    runs="nightly", max_tokens=500,
 ))

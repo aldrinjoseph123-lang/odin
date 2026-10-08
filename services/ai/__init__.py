@@ -42,6 +42,11 @@ class AIFeature:
     fallback: Optional[Callable] = None   # today's behaviour, used when the gate is closed
     runs: str = "on_demand"         # on_demand | nightly | at_event
     scope: str = "project"          # project: gather(project_id=…), kept as a suggestion on it; portfolio: gather(), kept as the latest answer
+    takes_input: bool = False       # on-demand features that work on text the person sent: gather(project_id=…, given=…)
+    chunks: Optional[Callable] = None   # chunks(inputs) -> [inputs, …]: input too long for one request, asked in parts…
+    merge: Optional[Callable] = None    # …and merge([output, …]) -> output joins the answers before refine
+    options: Optional[Callable] = None  # options(project_id) -> dict the page needs to ask (e.g. which documents)
+    on_new: Optional[Callable] = None   # on_new(db, project_id, output): after a night-shift answer (tell someone it is there)
     max_tokens: int = 800
     budget_s: Optional[int] = None  # slower than this = "slow"; None = the ai_budget_s policy
     temperature: float = 0.3
@@ -65,32 +70,89 @@ def register(feature):
     return feature
 
 
-def prompt_of(feature):
-    """(text, hash): the hash goes into every answer and every check, so an
-    edited prompt is a new prompt that must pass validation again."""
-    with open(os.path.join(PROMPTS, feature.prompt), encoding="utf-8") as fh:
+MAX_REPLY_TOKENS = 1000   # under the server's 1,024-token cap per reply (integration guide)
+
+
+def system_prompt(prompt_file):
+    """The identity line (policy ai_identity; the AI server's guide asks every
+    application to start with it) and then the feature's own instructions."""
+    from policies import policy
+    with open(os.path.join(PROMPTS, prompt_file), encoding="utf-8") as fh:
         text = fh.read().strip()
+    identity = policy("ai_identity").strip()
+    return f"{identity}\n\n{text}" if identity else text
+
+
+def prompt_of(feature):
+    """(system prompt, hash): the hash goes into every answer and every check,
+    so an edited prompt, or a new identity line, must pass validation again."""
+    text = system_prompt(feature.prompt)
     return text, hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
+def _dump(inputs):
+    return json.dumps(inputs, ensure_ascii=False, default=str)
+
+
+def fit(inputs, limit):
+    """The inputs, trimmed until their JSON is at most `limit` characters
+    (policy ai_max_input_chars): the longest text is halved first, then the
+    longest list loses its last item. Facts at the start of each text and
+    list are kept; reading is the slow part on a CPU server."""
+    import copy
+    if len(_dump(inputs)) <= limit:
+        return inputs
+    inputs = copy.deepcopy(inputs)
+
+    def walk(node):
+        items = node.items() if isinstance(node, dict) else enumerate(node) if isinstance(node, list) else ()
+        for k, v in items:
+            yield node, k, v
+            yield from walk(v)
+    while len(_dump(inputs)) > limit:
+        leaves = list(walk(inputs))
+        texts = [(len(v), n, k) for n, k, v in leaves if isinstance(v, str)]
+        lists = [(len(v), v) for _n, _k, v in leaves if isinstance(v, list)]
+        longest = max(texts, key=lambda t: t[0], default=(0, None, None))
+        if longest[0] > 160:
+            n, k = longest[1], longest[2]
+            n[k] = n[k][: len(n[k]) // 2].rstrip() + "…"
+        elif lists and max(lists, key=lambda x: x[0])[0] > 1:
+            max(lists, key=lambda x: x[0])[1].pop()
+        else:
+            break
+    return inputs
+
+
 def messages_for(feature, inputs):
+    from policies import policy
     text, _ = prompt_of(feature)
     return [{"role": "system", "content": text},
-            {"role": "user", "content": json.dumps(inputs, ensure_ascii=False, indent=1, default=str)}]
+            {"role": "user", "content": _dump(fit(inputs, policy("ai_max_input_chars")))}]
 
 
-def run(feature, inputs, cfg=None):
+def run(feature, inputs, cfg=None, log=None):
     """Ask the server. One retry when the answer does not match its form;
     any other failure raises AIError. Returns (output, meta) with meta =
-    {model, seconds, usage, prompt_hash}."""
+    {model, seconds, usage, prompt_hash}. `log` names the job, project and
+    person for the call log."""
     cfg = cfg or config()
-    msgs = messages_for(feature, inputs)
-    try:
-        out, meta = chat(cfg, msgs, feature.schema, feature.max_tokens, feature.temperature)
-    except AIError as exc:
-        if exc.kind != "invalid":
-            raise
-        out, meta = chat(cfg, msgs, feature.schema, feature.max_tokens, feature.temperature)
+    log = {"feature": feature.key, **(log or {})}
+    tokens = min(feature.max_tokens, MAX_REPLY_TOKENS)
+    parts = feature.chunks(inputs) if feature.chunks else [inputs]
+    outs, seconds = [], 0.0
+    for part in parts:
+        msgs = messages_for(feature, part)
+        try:
+            out, meta = chat(cfg, msgs, feature.schema, tokens, feature.temperature, log=log)
+        except AIError as exc:
+            if exc.kind != "invalid":
+                raise
+            out, meta = chat(cfg, msgs, feature.schema, tokens, feature.temperature, log=log)
+        outs.append(out)
+        seconds += meta["seconds"]
+    out = feature.merge(outs) if feature.merge else outs[0]
+    meta["seconds"], meta["parts"] = round(seconds, 1), len(parts)
     if feature.refine:
         out = feature.refine(inputs, out)
     meta["prompt_hash"] = prompt_of(feature)[1]
@@ -169,6 +231,19 @@ def latest_portfolio(key, db=None, max_age_hours=36):
     if rec["created_at"] < (datetime.utcnow() - timedelta(hours=max_age_hours)).isoformat():
         return None
     return rec["payload"], rec
+
+
+def latest_project(key, project_id, db=None, max_age_hours=36):
+    """A project feature's newest unused answer, when the gate is open now and
+    it is recent: the payload, or None."""
+    from datetime import datetime, timedelta
+    from db import get_db
+    db = db or get_db()
+    if gate(key, db):
+        return None
+    row = db.execute("SELECT payload FROM ai_suggestions WHERE project_id = ? AND feature = ? AND status = 'new' AND created_at >= ? ORDER BY id DESC LIMIT 1",
+                     (project_id, key, (datetime.utcnow() - timedelta(hours=max_age_hours)).isoformat())).fetchone()
+    return json.loads(row[0]) if row else None
 
 
 def complete(key, **context):

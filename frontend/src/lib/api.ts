@@ -234,13 +234,18 @@ export const saveRolloutReport = (id: number, words: { summary: string; next_ste
 // draft, and the job writing a new one. Drafts are used or dismissed by a person.
 export type AISuggestion<T> = { id: number; payload: T; model: string | null; seconds: number | null; created_at: string; status: string }
 export type ProjectAI<T> = {
-  available: boolean; reason: string | null; label: string; suggestion: AISuggestion<T> | null
+  available: boolean; reason: string | null; label: string; suggestion: AISuggestion<T> | null; options?: { documents?: SowDocument[] } | null
   job: { id: number; status: "queued" | "running" | "done" | "failed"; error: string | null; result: { skipped?: string; suggestion?: number } | null; created_at: string } | null
 }
 export type WeeklyWordsDraft = { summary: string; next_steps: string[]; asks: string[] }
 export const projectAI = <T,>(id: number, key: string) => getJson<ProjectAI<T>>(`/api/projects/${id}/ai/${key}`)
-export const requestProjectAI = (id: number, key: string) => post<{ ok: true; job: number }>(`/api/projects/${id}/ai/${key}`)
+export const requestProjectAI = (id: number, key: string, input?: unknown) => post<{ ok: true; job: number }>(`/api/projects/${id}/ai/${key}`, input === undefined ? undefined : { input })
+export const cancelAIJob = (id: number, job: number) => post<{ ok: true }>(`/api/projects/${id}/ai/jobs/${job}/cancel`)
 export const dismissAISuggestion = (id: number, suggestion: number) => post<{ ok: true }>(`/api/projects/${id}/ai/suggestions/${suggestion}/dismiss`)
+export type SowItem = { title: string; detail?: string; stage?: string | null; quote?: string }
+export type SowPlan = { scope_items: SowItem[]; tasks: SowItem[]; customer_obligations: SowItem[]; key_dates: { what: string; date: string }[]; exclusions: string[] }
+export type SowDocument = { id: number; filename: string; category: string; likely: boolean }
+export const closeAISuggestion = (id: number, suggestion: number, taken: number) => post<{ ok: true }>(`/api/projects/${id}/ai/suggestions/${suggestion}/close`, { taken })
 export type RaidProposal = { kind: "risk" | "issue" | "blocker" | "decision"; title: string; detail: string; impact: "low" | "medium" | "high"; likelihood: "low" | "medium" | "high" | null; evidence: string }
 export type RaidProposals = { proposals: RaidProposal[]; decisions?: Record<string, { decision: "accepted" | "dismissed"; by: string; raid_id: number | null }> }
 export const decideAIProposal = (id: number, suggestion: number, index: number, decision: "accepted" | "dismissed", raid_id?: number) =>
@@ -298,7 +303,7 @@ export type SignoffData = {
 export type SignBody = { name: string; title: string; accept: boolean; signature: Signature }
 export const signoff = (id: number, v?: number | null, template?: number | null) =>
   getJson<SignoffData>(`/api/projects/${id}/signoff${v ? `?v=${v}` : template ? `?template=${template}` : ""}`)
-export const sendSignoff = (id: number, body: { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; signer_id: number; counter_id: number; template_id?: number | null }) =>
+export const sendSignoff = (id: number, body: { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; signer_id: number; counter_id: number; template_id?: number | null; ai_suggestion?: number | null }) =>
   post<{ ok: true; version: number }>(`/api/projects/${id}/signoff`, body)
 export const signSignoff = (id: number, v: number, body: SignBody, counter = false) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/${counter ? "countersign" : "sign"}`, body)
 export const rejectSignoff = (id: number, v: number, comment: string) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/reject`, { comment })
@@ -437,6 +442,7 @@ export type AIFeatureView = {
 export type AIView = {
   status: { state: AIState; since?: string; checked_at?: string; misses?: number; fingerprint?: string; model?: string; error?: string | null; seconds?: number | null }
   has_key: boolean; scheduler_alive: boolean
+  usage: { calls: number; failed: number | null; avg_s: number | null; max_s: number | null; tokens_in: number | null; tokens_out: number | null }
   features: AIFeatureView[]
   jobs: { id: number; status: "queued" | "running" | "done" | "failed"; requested_by: string | null; created_at: string; started_at: string | null; finished_at: string | null
     result: { ok: boolean; reason?: string; model?: string; seconds?: number; features?: Record<string, string> } | null; error: string | null; payload: { reason?: string } | null }[]

@@ -66,5 +66,5 @@ FEATURE = register(AIFeature(
     prompt="portfolio_narrative.v1.txt", schema=SCHEMA, gather=gather, fixture=fixture,
     graders=(facts_kept("Firewall refresh", "SIEM", "EDR"), never_says("all rollouts are on track", "everything is on track"),
              max_words("opening", 110), finds("needs_decision", ["approv", "change window"], at_least=1.0)),
-    runs="nightly", scope="portfolio", max_tokens=700, temperature=0.2, project_role=None,
+    runs="nightly", scope="portfolio", max_tokens=500, temperature=0.2, project_role=None,
 ))

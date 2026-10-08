@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ApiError, deleteScope, saveScope, scopeItems, type ScopeData, type ScopeItem, type ScopeStatus, type SignoffState } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { signoffText } from "@/lib/format"
+import { AISowPlan } from "@/components/AISowPlan"
 
 // The agreed scope: recorded while scoping, marked delivered / partial /
 // descoped at the end. The sign-off document lists it item by item, so the
@@ -55,6 +56,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
           : <span className="text-muted-foreground">What the customer agreed to, item by item. The sign-off lists it.</span>}
         {d.can_edit && <Button size="sm" className="ml-auto rounded-full" onClick={() => { setError(null); setEdit({ title: "", status: "agreed" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
+      {d.can_edit && <AISowPlan projectId={projectId} onAdded={() => void load()} />}
       {error && !edit && <p className="mt-2 text-[12.5px] text-bad" role="alert">{error}</p>}
       <ol className="mt-2 divide-y divide-border text-[13px]">
         {d.items.map((i, n) => (

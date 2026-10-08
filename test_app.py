@@ -1092,7 +1092,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         d = c.get("/api/settings").get_json()
         self.assertEqual(d["templates"][0]["projects"], 1); self.assertEqual(len(d["templates"][0]["stages"]), 8)
         self.assertIn("Client PO", [x["name"] for x in d["doc_categories"]])
-        self.assertEqual([a["key"] for a in d["alerts"]], ["project_overdue", "project_due_soon", "stage_sla_breach", "stale"])
+        self.assertEqual([a["key"] for a in d["alerts"]], ["project_overdue", "project_due_soon", "stage_sla_breach", "stale",
+                                                         "approval_waiting", "blocker_open", "task_unowned", "customer_quiet"])
         self.assertEqual(d["alerts"][1]["threshold_days"], 7); self.assertTrue(d["alerts"][1]["notify_inapp"])
         self.assertFalse(d["m365"]["connected"]); self.assertEqual(d["m365"]["teams"], [])
         self.assertEqual(d["toggles"]["notify_email_enabled"], False)
@@ -5621,8 +5622,29 @@ HEALTH_GOOD = json.dumps({"why": "Design is 3 working days over its 6-day SLA an
 PORTFOLIO_GOOD = json.dumps({"opening": "Of 5 open rollouts, 3 are green, SIEM onboarding is amber and Firewall refresh is red, 12 days past its target with a blocker. "
                                           "EDR rollout moved from Kickoff to Deployment this week.",
                               "needs_decision": ["SIEM onboarding: chase the design approval asked on 29 Sep 2026", "Firewall refresh: get the change window approved"]})
+SIGNOFF_GOOD = json.dumps({"summary": "Protect24x7 has completed SIEM onboarding for Northwind Clinics. The work started on 4 Aug 2026 and finished on "
+                                        "24 Oct 2026 against a target of 20 Oct 2026. 3 of 5 agreed items were delivered in full. The branch firewalls were "
+                                        "delivered in part: two legacy firewalls were excluded at end of life. The phase 2 clinics were descoped and moved to a "
+                                        "separate purchase order at the customer's request. Outstanding items will be closed as listed below."})
 ANSWERS = {"You are a health check": '{"status": "ready", "echo": 7}', "You review an IT security": RAID_GOOD, "You explain why": HEALTH_GOOD,
-           "You write the opening": PORTFOLIO_GOOD}
+           "You write the opening": PORTFOLIO_GOOD, "You write the summary paragraph": SIGNOFF_GOOD}
+CUSTOMER_GOOD = json.dumps({"summary": "The design stage has slipped: the vendor's firewall configuration arrived two days late, and the design approval has been "
+                                       "waiting since 29 Sep. Site B is blocked until building access is granted. The 20 Oct go-live is at risk, with a forecast of 24 Oct.",
+                            "next_steps": ["Follow up on the design approval", "Have the vendor correct the firewall configuration", "Cable the Site B racks once access is granted"],
+                            "asks": ["Approve the design document", "Grant building access for Site B"]})
+ANSWERS["You edit the status words"] = CUSTOMER_GOOD
+SOW_GOOD = json.dumps({
+    "scope_items": [{"title": "EDR on 500 Windows endpoints", "detail": "Dubai and Abu Dhabi offices",
+                     "quote": "deploy endpoint detection and response to 500 Windows endpoints"},
+                    {"title": "Approved design document", "quote": "A design document approved by Globex"},
+                    {"title": "Operations runbook and hand-over session", "quote": "An operations runbook and a hand-over session"}],
+    "tasks": [{"title": "Write the design document", "stage": "Design", "quote": "A design document approved by Globex"},
+              {"title": "Onboard the endpoints in two waves", "stage": "deployment", "quote": "Onboarding of all 500 endpoints in two waves"}],
+    "customer_obligations": [{"title": "Provide local admin credentials", "quote": "Globex will provide local admin credentials"},
+                             {"title": "Provide a maintenance window per wave", "quote": "a maintenance window for each wave"},
+                             {"title": "Approve the design within 5 working days", "quote": "approve the design within 5 working days of receipt"}],
+    "key_dates": [{"what": "Kick-off", "date": "12 Oct 2026"}], "exclusions": ["Mac and Linux endpoints", "Server workloads"]})
+ANSWERS["You read part of a purchase order"] = SOW_GOOD
 
 
 class WeeklyWordsTestCase(AITestBase):
@@ -5862,6 +5884,331 @@ class PortfolioNarrativeTestCase(AITestBase):
             self.client.post("/settings/ai/features/portfolio_narrative", data={})   # switched off: gone from the next email
             self.assertNotIn("Written by AI", weekly_report.build()[1])
         self.assertEqual(self.client.get("/api/projects/1/ai/portfolio_narrative").status_code, 404)   # not a per-rollout feature
+
+
+class SignoffSummaryTestCase(AITestBase):
+    """Feature 5: the sign-off summary, from customer-safe facts only."""
+    isolate_features = False
+
+    def test_graders_and_only_customer_safe_facts_reach_the_model(self):
+        from services.ai.features.signoff_summary import FEATURE, fixture, gather
+        good = json.loads(SIGNOFF_GOOD)
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders], [None, None, None])
+        self.assertTrue(FEATURE.graders[0](fixture(), {"summary": "All agreed items were delivered."}))
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Close me", "client": "Globex"})
+        self.client.post("/projects/1/note", data={"note": "Internal: the vendor engineer was useless again"})
+        self.client.post("/api/projects/1/raid", json={"kind": "issue", "title": "Internal margin problem", "impact": "high"}, headers=self._csrf())
+        self.client.post("/api/projects/1/scope", json={"title": "Deploy sensors"}, headers=self._csrf())
+        with self._ctx():
+            facts = json.dumps(gather(project_id=1))
+        self.assertIn("Deploy sensors", facts)
+        self.assertNotIn("useless", facts)
+        self.assertNotIn("margin", facts)
+
+    def test_the_send_records_the_ai_draft_it_came_from(self):
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Close me", "client": "Globex"})
+        with patch("graph.send_mail", return_value=(False, "not configured")):
+            self.client.post("/projects/1/participants/invite", data={"email": "ann@globex.example", "name": "Ann", "role": "Customer"})
+        h = self._csrf()
+        self.client.post("/api/projects/1/scope", json={"title": "Deploy sensors"}, headers=h)
+        item = self.client.get("/api/projects/1/scope").get_json()["items"][0]["id"]
+        self.client.put(f"/api/projects/1/scope/{item}", json={"status": "delivered"}, headers=h)
+        with self._db() as con:
+            ann = con.execute("SELECT id FROM users WHERE email = 'ann@globex.example'").fetchone()[0]
+            con.execute("INSERT INTO ai_suggestions (project_id, feature, payload, model, status, created_at) VALUES (1, 'signoff_summary', ?, 'P24-AI', 'new', '2026-10-08')",
+                        (SIGNOFF_GOOD,))
+        r = self.client.post("/api/projects/1/signoff", json={"summary": "Edited AI words.", "signer_id": ann, "counter_id": 1, "ai_suggestion": 1}, headers=h)
+        self.assertEqual(r.get_json()["version"], 1)
+        with self._db() as con:
+            self.assertEqual(con.execute("SELECT status FROM ai_suggestions WHERE id = 1").fetchone()[0], "used")
+            self.assertIn("from AI draft 1 (P24-AI), edited by", con.execute("SELECT details FROM audit_logs WHERE action = 'signoff_send'").fetchone()[0])
+
+
+class CustomerWordsTestCase(AITestBase):
+    """Feature 6: the report's words, as typed, made fit for the customer."""
+    isolate_features = False
+
+    def test_graders_catch_names_and_blame_and_dropped_facts(self):
+        from services.ai.features.customer_words import FEATURE, fixture
+        good = json.loads(CUSTOMER_GOOD)
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders], [None, None, None])
+        self.assertTrue(FEATURE.graders[1](fixture(), {**good, "summary": good["summary"] + " Ravi was useless."}))
+        self.assertTrue(FEATURE.graders[0](fixture(), {**good, "summary": "Design slipped."}))
+
+    def test_tidy_the_typed_words_then_save_them(self):
+        from services.ai.health import heartbeat, validate_all, work_once
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Rollout C", "client": "Northwind"})
+        self._enable()
+        self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+        with self._ctx():
+            from db import get_db
+            heartbeat(get_db())
+            self.assertEqual(validate_all(get_db())["features"]["customer_words"], "passed")
+        h = self._csrf()
+        self.assertEqual(self.client.post("/api/projects/1/ai/customer_words", json={}, headers=h).status_code, 400)   # nothing sent to tidy
+        typed = {"summary": "Ravi was useless again, design 2 days late.", "next_steps": "Chase them", "asks": "Approve ASAP"}
+        self.assertEqual(self.client.post("/api/projects/1/ai/customer_words", json={"input": typed}, headers=h).status_code, 200)
+        with self._ctx():
+            from db import get_db
+            work_once(get_db())
+        sent = json.loads([c for c in self.server.calls if c[3] and "You edit the status words" in c[3]["messages"][0]["content"]][-1][3]["messages"][1]["content"])
+        self.assertEqual(sent["words"], {"summary": typed["summary"], "next_steps": ["Chase them"], "asks": ["Approve ASAP"]})
+        sug = self.client.get("/api/projects/1/ai/customer_words").get_json()["suggestion"]
+        self.assertEqual(sug["payload"]["asks"][1], "Grant building access for Site B")
+        r = self.client.post("/api/projects/1/rollout-report", json={"summary": sug["payload"]["summary"], "next_steps": "", "asks": "", "ai_suggestion": sug["id"]}, headers=h)
+        self.assertEqual(r.status_code, 200)
+        with self._db() as con:
+            self.assertIn(f"from AI draft {sug['id']}", con.execute("SELECT details FROM audit_logs WHERE action = 'save_report'").fetchone()[0])
+
+
+class DocTextTestCase(unittest.TestCase):
+    """services/doctext: text out of uploads, safely."""
+
+    def _file(self, name, data):
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, name)
+        with open(path, "wb") as fh:
+            fh.write(data)
+        return path
+
+    def test_each_kind_of_file_and_a_broken_one(self):
+        import zipfile as zf
+        from services.doctext import extract_file
+        from services.pdf import report_pdf
+        pdf = self._file("sow.pdf", report_pdf("Scope of work", ["Deploy EDR to 500 endpoints", "Customer provides admin credentials"], "footer"))
+        self.assertIn("Deploy EDR to 500 endpoints", extract_file(pdf, "pdf")[0])
+        w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        docx = self._file("sow.docx", b"")
+        with zf.ZipFile(docx, "w") as z:
+            z.writestr("word/document.xml", f'<w:document xmlns:w="{w}"><w:body><w:p><w:r><w:t>Onboard all </w:t></w:r><w:r><w:t>500 endpoints</w:t></w:r></w:p>'
+                                            f'<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Wave 1</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>')
+        self.assertEqual(extract_file(docx, ".DOCX")[0], "Onboard all 500 endpoints\nWave 1")
+        from openpyxl import Workbook
+        wb = Workbook()
+        wb.active.append(["Item", "Qty"]); wb.active.append(["Sensors", 500])
+        xlsx = os.path.join(tempfile.mkdtemp(), "boq.xlsx"); wb.save(xlsx)
+        self.assertIn("Sensors | 500", extract_file(xlsx, "xlsx")[0])
+        eml = self._file("m.eml", b"From: a@x.example\r\nSubject: Scope\r\nContent-Type: text/plain\r\n\r\nPlease add the Abu Dhabi office.\r\n")
+        self.assertIn("Scope", extract_file(eml, "eml")[0])
+        self.assertEqual(extract_file(self._file("bad.pdf", b"%PDF-1.4 not really"), "pdf")[0], "")
+        self.assertIn("could not be read", extract_file(self._file("bad.docx", b"not a zip"), "docx")[1])
+        self.assertIn("not read", extract_file(self._file("x.png", b"\x89PNG"), "png")[1])
+
+
+class SowPlanTestCase(AITestBase):
+    """Feature 7: a plan suggested from the PO and the scope of work."""
+    isolate_features = False
+
+    def test_check_step_drops_prices_inventions_and_unknown_stages(self):
+        from services.ai.features.sow_plan import FEATURE, chunks, fixture, merge, refine
+        good = refine(fixture(), json.loads(SOW_GOOD))
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders], [None, None, None, None])
+        self.assertEqual([t["stage"] for t in good["tasks"]], ["Design", "Deployment"])
+        bad = json.loads(SOW_GOOD)
+        bad["scope_items"] += [{"title": "Fixed fee", "detail": "AED 184,000", "quote": "The total fixed fee is AED 184,000"},
+                               {"title": "Firewalls in Riyadh", "quote": "install firewalls in the Riyadh office"}]
+        bad["tasks"][0]["stage"] = "Wave 1"
+        kept = refine(fixture(), bad)
+        self.assertEqual(len(kept["scope_items"]), 3)
+        self.assertIsNone(kept["tasks"][0]["stage"])
+        long = {**fixture(), "text": ("A paragraph about endpoints. " * 40 + "\n") * 25 + "One very long line. " * 1200}
+        with self._ctx():
+            parts = chunks(long)
+        self.assertGreater(len(parts), 1)
+        self.assertTrue(all(len(p["text"]) <= 7500 for p in parts))
+        self.assertEqual("".join(p["text"] for p in parts).replace("\n", ""), long["text"].replace("\n", ""))   # nothing dropped
+        self.assertEqual(merge([{"scope_items": [1], "tasks": []}, {"scope_items": [2]}])["scope_items"], [1, 2])
+
+    def test_pick_documents_read_them_and_take_the_plan(self):
+        from services.ai.health import heartbeat, validate_all, work_once
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "EDR rollout", "client": "Globex"})
+        sow = json.loads(json.dumps(__import__("services.ai.features.sow_plan", fromlist=["fixture"]).fixture()["text"]))
+        self.client.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(sow.encode()), "Globex SOW v2.txt")},
+                         content_type="multipart/form-data")
+        self._enable()
+        self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+        with self._ctx():
+            from db import get_db
+            heartbeat(get_db())
+            self.assertEqual(validate_all(get_db())["features"]["sow_plan"], "passed")
+        view = self.client.get("/api/projects/1/ai/sow_plan").get_json()
+        docs = {d["filename"]: d for d in view["options"]["documents"]}
+        self.assertTrue(docs["Globex SOW v2.txt"]["likely"])
+        h = self._csrf()
+        self.assertEqual(self.client.post("/api/projects/1/ai/sow_plan", json={"input": {"document_ids": [docs["Globex SOW v2.txt"]["id"]]}}, headers=h).status_code, 200)
+        with self._ctx():
+            from db import get_db
+            work_once(get_db())
+            self.assertEqual(get_db().execute("SELECT error FROM doc_text").fetchone()[0], None)   # read once, kept
+        sug = self.client.get("/api/projects/1/ai/sow_plan").get_json()["suggestion"]
+        self.assertEqual(len(sug["payload"]["scope_items"]), 3)
+        self.assertNotIn("184", json.dumps(sug["payload"]))
+        self.assertEqual(self.client.post(f"/api/projects/1/ai/suggestions/{sug['id']}/close", json={"taken": 4}, headers=h).status_code, 200)
+        with self._db() as con:
+            self.assertEqual(con.execute("SELECT status FROM ai_suggestions WHERE id = ?", (sug["id"],)).fetchone()[0], "used")
+            self.assertIn("4 item(s) taken", con.execute("SELECT details FROM audit_logs WHERE action = 'close_ai_draft'").fetchone()[0])
+
+    def test_document_text_goes_with_its_document(self):
+        from datetime import datetime, timedelta
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "P", "client": "C"})
+        with self._db() as con:
+            con.execute("INSERT INTO doc_text (document_id, project_id, chars, text, extracted_at) VALUES (1, 1, 3, 'abc', '2026-10-08')")
+            con.execute("UPDATE documents SET deleted_at = ? WHERE id = 1", ((datetime.utcnow() - timedelta(days=1)).isoformat(),))
+        with self._ctx():
+            db_module.cleanup_soft_deletes()
+        with self._db() as con:
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM doc_text").fetchone()[0], 0)
+
+
+class AIAlertsTestCase(AITestBase):
+    """Feature 8: bottleneck rules fire (Layer A); the AI explains and notices (Layer B)."""
+    isolate_features = False
+
+    def _project(self, name="Stuck"):
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": name, "client": "C"})
+
+    def _alerts(self):
+        from services.alerts import build_alerts
+        with self._ctx():
+            from db import get_db
+            rows = get_db().execute("SELECT * FROM projects WHERE deleted_at IS NULL").fetchall()
+            return {k: [p["name"] for p in v] for k, v in build_alerts(rows).items()}
+
+    def test_each_bottleneck_fires_past_its_wait_and_not_before(self):
+        from datetime import date, timedelta
+        self._project()
+        with patch("graph.send_mail", return_value=(False, "not configured")):
+            self.client.post("/projects/1/participants/invite", data={"email": "ann@c.example", "name": "Ann", "role": "Customer"})
+        ago = lambda n: (date.today() - timedelta(days=n)).isoformat()   # noqa: E731
+        with self._db() as con:
+            stage = con.execute("SELECT stage FROM projects WHERE id = 1").fetchone()[0]
+            ann = con.execute("SELECT id FROM users WHERE email = 'ann@c.example'").fetchone()[0]
+            con.execute("INSERT INTO stage_approvals (project_id, stage, status, requested_by, requested_at) VALUES (1, ?, 'pending', 'admin', ?)", (stage, ago(2)))
+            con.execute("INSERT INTO raid_items (project_id, kind, title, status, created_by, created_at, updated_at) VALUES (1, 'blocker', 'No access', 'open', 'admin', ?, ?)", (ago(1), ago(1)))
+            con.execute("INSERT INTO tasks (project_id, title, due_date, created_at, created_by) VALUES (1, 'Nobody owns me', ?, ?, 'admin')", (ago(1), ago(5)))
+            con.execute("INSERT INTO tasks (project_id, title, due_date, assignee_id, created_at, created_by) VALUES (1, 'Customer sends data', ?, ?, ?, 'admin')", (ago(2), ann, ago(5)))
+        quiet = self._alerts()
+        for rule in ("approval_waiting", "blocker_open", "task_unowned", "customer_quiet"):
+            self.assertEqual(quiet[rule], [], rule)                     # each still inside its wait
+        with self._db() as con:
+            con.execute("UPDATE stage_approvals SET requested_at = ?", (ago(6),))
+            con.execute("UPDATE raid_items SET created_at = ?", (ago(4),))
+            con.execute("UPDATE tasks SET due_date = ? WHERE title = 'Nobody owns me'", (ago(2),))
+            con.execute("UPDATE tasks SET due_date = ? WHERE title = 'Customer sends data'", (ago(4),))
+        loud = self._alerts()
+        for rule in ("approval_waiting", "blocker_open", "task_unowned", "customer_quiet"):
+            self.assertEqual(loud[rule], ["Stuck"], rule)
+        with self._db() as con:
+            kinds = {r[0] for r in con.execute("SELECT alert_type FROM alert_type_settings")}
+        self.assertTrue({"approval_waiting", "blocker_open", "task_unowned", "customer_quiet"} <= kinds)   # their settings rows survive start-up
+
+    def test_a_new_alert_carries_the_ai_reason_when_there_is_one(self):
+        from services.ai.health import heartbeat, validate_all
+        from services.alerts import sync_alerts_to_db
+        self._project()
+        self._enable()
+        self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            heartbeat(db)
+            validate_all(db)
+            db.execute("INSERT INTO ai_suggestions (project_id, feature, payload, status, created_at) VALUES (1, 'health_explained', ?, 'new', datetime('now'))", (HEALTH_GOOD,))
+            db.commit()
+            project = db.execute("SELECT * FROM projects WHERE id = 1").fetchone()
+            sync_alerts_to_db({"blocker_open": [project]})
+            body = db.execute("SELECT body FROM notifications WHERE kind = 'alert' ORDER BY id DESC").fetchone()[0]
+        self.assertIn("First move: Chase the customer's design approval.", body)
+
+    def test_the_night_shift_tells_the_pm_what_it_noticed(self):
+        from services.ai.health import heartbeat, run_feature_job, validate_all
+        self._project()
+        self.client.post("/projects/1/note", data={"note": "Customer asked whether the phase 2 scope can change to add the two clinics."})
+        self.client.post("/projects/1/note", data={"note": "Vendor delivered late, the second late delivery this month."})
+        self._enable()
+        self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            heartbeat(db)
+            validate_all(db)
+            run_feature_job(db, {"id": 0, "feature": "raid_proposals", "project_id": 1, "requested_by": None})
+            n = db.execute("SELECT title, body, link FROM notifications WHERE title LIKE 'AI noticed%'").fetchone()
+            run_feature_job(db, {"id": 0, "feature": "raid_proposals", "project_id": 1, "requested_by": "admin"})   # asked for on the page: no second notice
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notifications WHERE title LIKE 'AI noticed%'").fetchone()[0], 1)
+        self.assertEqual(n[0], "AI noticed 2 things in the notes of Stuck that the register does not hold")
+        self.assertIn("Vendor deliveries keep slipping", n[1])
+        self.assertEqual(n[2], "/projects/1#raid")
+
+
+class AIGuideRulesTestCase(AITestBase):
+    """The AI server's integration guide (8 Oct 2026): identity line, input cap,
+    reply cap, a log of every request, cancel."""
+    isolate_features = False
+
+    def _ready(self):
+        from services.ai.health import heartbeat, validate_all
+        self._enable()
+        self.server.by_prompt = {**ANSWERS, "You write the weekly status words": WeeklyWordsTestCase.GOOD}
+        with self._ctx():
+            from db import get_db
+            heartbeat(get_db())
+            return validate_all(get_db())
+
+    def test_every_request_starts_with_the_identity_and_fits_the_caps(self):
+        self._ready()
+        bodies = [c[3] for c in self.server.calls if c[3]]
+        self.assertTrue(bodies)
+        for b in bodies:
+            self.assertTrue(b["messages"][0]["content"].startswith("You are P24x7-AI, the assistant for Odin."), b["messages"][0]["content"][:60])
+            self.assertLessEqual(len(b["messages"][1]["content"]), 4000)
+            self.assertLessEqual(b["max_tokens"], 1000)
+
+    def test_fit_trims_the_longest_text_then_the_longest_list(self):
+        from services.ai import fit
+        big = {"name": "keep me", "notes": [{"text": "x" * 3000}, {"text": "y" * 3000}], "list": list(range(400))}
+        out = fit(big, 4000)
+        self.assertLessEqual(len(json.dumps(out, ensure_ascii=False)), 4000)
+        self.assertEqual(out["name"], "keep me")
+        self.assertEqual(len(big["notes"][0]["text"]), 3000)                # the caller's inputs are not touched
+
+    def test_every_request_is_logged(self):
+        self._ready()
+        self.server.answers, self.server.by_prompt = ["not json", "still not json"], {}
+        from services.ai import run, FEATURES
+        from services.ai.client import AIError
+        with self._ctx():
+            with self.assertRaises(AIError):
+                run(FEATURES["health_explained"], FEATURES["health_explained"].fixture(), log={"project_id": 7, "user": "pm1"})
+        with self._db() as con:
+            rows = con.execute("SELECT feature, ok, error, username, project_id, input_chars FROM ai_calls ORDER BY id").fetchall()
+        self.assertGreaterEqual(len(rows), 9)                                 # smoke + every feature, then two failed tries
+        self.assertEqual([tuple(r)[:5] for r in rows[-2:]], [("health_explained", 0, "answer was not JSON", "pm1", 7)] * 2)
+        self.assertTrue(all(r["input_chars"] > 0 for r in rows))
+        view = self.client.get("/api/settings/ai").get_json()["usage"]
+        self.assertEqual((view["calls"], view["failed"]), (len(rows), 2))
+
+    def test_cancel_a_waiting_draft_and_a_running_one(self):
+        from services.ai.health import cancel, run_feature_job, work_once
+        self._ready()
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "R", "client": "C"})
+        h = self._csrf()
+        job = self.client.post("/api/projects/1/ai/weekly_words", json={}, headers=h).get_json()["job"]
+        self.assertEqual(self.client.post(f"/api/projects/1/ai/jobs/{job}/cancel", json={}, headers=h).status_code, 200)
+        calls = len(self.server.calls)
+        with self._ctx():
+            from db import get_db
+            db = get_db()
+            self.assertIsNone(work_once(db))                                   # a cancelled job never runs
+            self.assertEqual(len(self.server.calls), calls)
+            job = self.client.post("/api/projects/1/ai/weekly_words", json={}, headers=h).get_json()["job"]
+            db.execute("UPDATE ai_jobs SET status = 'running' WHERE id = ?", (job,)); db.commit()
+            cancel(db, job)                                                    # cancelled while the model answers
+            row = db.execute("SELECT * FROM ai_jobs WHERE id = ?", (job,)).fetchone()
+            self.assertEqual(run_feature_job(db, row), {"skipped": "cancelled"})
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_suggestions").fetchone()[0], 0)
+        with self._db() as con:
+            self.assertIsNotNone(con.execute("SELECT 1 FROM audit_logs WHERE action = 'cancel_ai_draft'").fetchone())
 
 
 if __name__ == "__main__":

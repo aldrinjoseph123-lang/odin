@@ -129,14 +129,19 @@ PERMISSIONS = {
 
 # Lifecycle alerts: schedule health (vs a project's target end date) + inactivity.
 # The commercial payment alerts were removed with the rest of the financials.
-ALERT_TYPES = {"project_overdue", "project_due_soon", "stage_sla_breach", "stale"}
 
 ALERT_TYPE_TITLES = {
     "project_overdue": "Project overdue",
     "project_due_soon": "Project due soon",
     "stage_sla_breach": "Stage SLA breached",
     "stale": "Project inactive",
+    "approval_waiting": "Customer approval waiting",
+    "blocker_open": "Blocker still open",
+    "task_unowned": "Overdue task with no owner",
+    "customer_quiet": "Customer task overdue",
 }
+
+ALERT_TYPES = set(ALERT_TYPE_TITLES)   # every type with a title; settings rows of any other are dropped at start-up
 
 # project_overdue has no threshold — it fires the moment the target end date passes.
 DEFAULT_ALERT_TYPE_SETTINGS = {
@@ -145,6 +150,11 @@ DEFAULT_ALERT_TYPE_SETTINGS = {
     # no threshold_days: the target is per stage, set on the stage itself
     "stage_sla_breach": {"severity": "warning", "threshold_days": None, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
     "stale": {"severity": "warning", "threshold_days": 7, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+    # bottlenecks (8 Oct 2026): what usually stalls a rollout, each with its own wait in days
+    "approval_waiting": {"severity": "warning", "threshold_days": 5, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+    "blocker_open": {"severity": "critical", "threshold_days": 3, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+    "task_unowned": {"severity": "warning", "threshold_days": 1, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+    "customer_quiet": {"severity": "warning", "threshold_days": 3, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
 }
 
 # Columns added to projects / users after their original CREATE TABLE — applied

@@ -100,10 +100,25 @@ def says_nothing_logged_or_named(inputs, output):
     return f"proposed \"{said[0]}\", which is already logged or names a person" if said else None
 
 
+def on_new(db, project_id, output):
+    """The night shift found things the register does not hold: one bell to
+    the project manager, with the titles. Nothing when it found nothing."""
+    from markupsafe import escape
+    from services.notifications import notify_users
+    found = output["proposals"]
+    if not found:
+        return
+    project = db.execute("SELECT name, owner_id FROM projects WHERE id = ?", (project_id,)).fetchone()
+    items = "".join(f"<li>{escape(p['title'])}</li>" for p in found)
+    notify_users([project["owner_id"]], "alert", project_id, f"AI noticed {len(found)} thing{'s' if len(found) != 1 else ''} in the notes of {escape(project['name'])} that the register does not hold",
+                 f"<ul>{items}</ul><p>Each comes with the note words behind it. Add or dismiss them on the RAID panel.</p>",
+                 link=f"/projects/{project_id}#raid", email=False)
+
+
 FEATURE = register(AIFeature(
     key="raid_proposals", label="Risks proposed",
     description="Reads the last two weeks of notes and proposes risks, issues, blockers and decisions nobody has logged, each with the note words that show it.",
     prompt="raid_proposals.v1.txt", schema=SCHEMA, gather=gather, fixture=fixture, refine=refine,
     graders=(finds("proposals", ["scope", "vendor"], at_least=1.0), says_nothing_logged_or_named),
-    runs="nightly", max_tokens=900, temperature=0.2, project_role="manage_tasks",
+    runs="nightly", max_tokens=600, temperature=0.2, project_role="manage_tasks", on_new=on_new,
 ))

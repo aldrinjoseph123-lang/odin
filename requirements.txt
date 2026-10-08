@@ -11,3 +11,5 @@ click>=8.3.3; python_version >= "3.10"
 tzdata>=2024.1  # zone names for the time-zone setting on slim images
 cryptography==50.0.1  # seals two-step sign-in secrets (services/mfa.py)
 segno==1.6.6  # the QR code for setting up two-step sign-in (pure Python)
+pypdf==6.19.0  # text out of uploaded PDFs for the AI features (services/doctext.py, pure Python)
+openpyxl==3.1.5  # text out of uploaded Excel files, same (pure Python)

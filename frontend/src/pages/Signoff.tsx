@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { AIDraftBar } from "@/components/AIDraftBar"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { CheckCircle2, ChevronLeft, Copy, Download, FileSignature, Link2, Printer, ShieldCheck, Upload } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -198,6 +199,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
   const draft = d.draft!
   const cand = d.candidates!
   const [summary, setSummary] = useState(draft.summary)
+  const [aiDraft, setAiDraft] = useState<number | null>(null)   // the AI draft the summary came from, recorded with the send
   const [delivered, setDelivered] = useState(draft.delivered.join("\n"))
   const [outstanding, setOutstanding] = useState(draft.outstanding.join("\n"))
   const [terms, setTerms] = useState(draft.terms.join("\n"))
@@ -214,7 +216,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
     if (!signer || !counter) return
     setBusy(true); setErr(null)
     try {
-      const r = await sendSignoff(id, { summary, delivered: toLines(delivered), outstanding: toLines(outstanding), terms: toLines(terms), signer_id: signer, counter_id: counter, template_id: template })
+      const r = await sendSignoff(id, { summary, delivered: toLines(delivered), outstanding: toLines(outstanding), terms: toLines(terms), signer_id: signer, counter_id: counter, template_id: template, ai_suggestion: aiDraft })
       onSent(`Version ${r.version} sent to ${who?.name}. They get an email with a link to review and sign.`)
     } catch (x) { setErr(x instanceof ApiError ? x.message : "That did not send"); setConfirming(false) } finally { setBusy(false) }
   }
@@ -222,6 +224,11 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="grid grid-cols-1 content-start gap-4">
         <Section n title="Summary" sub="drafted from the project; make it yours">
+          <AIDraftBar<{ summary: string }> projectId={id} feature="signoff_summary"
+            idle="Draft this summary with AI from the scope, dates and deliverables."
+            working="Drafting from the scope, dates and deliverables… about a minute."
+            note="It fills the summary for you to check word by word: the customer signs under it."
+            onUse={(s) => { setSummary(s.payload.summary); setAiDraft(s.id) }} />
           <textarea aria-label="Summary" rows={4} maxLength={4000} value={summary} onChange={(e) => setSummary(e.target.value)} className={area} />
         </Section>
         {draft.scope.length > 0 ? (

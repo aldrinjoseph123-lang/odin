@@ -123,9 +123,11 @@ def cleanup_soft_deletes(db=None):
     if doomed:
         # a sign-up link that named the project keeps working, without the project
         db.execute(f"UPDATE signup_links SET project_id = NULL, project_role = NULL WHERE project_id IN ({marks})", doomed)
-        for table in ("signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs", "ai_suggestions"):
+        for table in ("doc_text", "ai_calls", "signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs", "ai_suggestions"):
             db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
+    # the text read from a document goes with it
+    db.execute("DELETE FROM doc_text WHERE document_id IN (SELECT id FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < ?)", (cutoff,))
     for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
         db.execute(f"DELETE FROM {table} WHERE deleted_at IS NOT NULL AND deleted_at < ?", (cutoff,))
 
@@ -148,7 +150,7 @@ def _purge_orphans(db):
     their children. Everything removed here is unreachable by definition: no
     project row means no page can ever display it.
     """
-    for table in ("signoffs", "scope_items", "status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items"):
+    for table in ("doc_text", "signoffs", "scope_items", "status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs", "ai_suggestions"):
         column = "project_id"
         db.execute(
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
@@ -337,6 +339,19 @@ def migrate_db(db):
         inputs_hash TEXT, model TEXT, fingerprint TEXT, prompt_hash TEXT, seconds REAL, job_id INTEGER,
         status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, decided_by TEXT, decided_at TEXT)""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_ai_suggestions_project ON ai_suggestions (project_id, feature, status)")
+    # Every request Odin sends to the AI server (services/ai/client.py chat):
+    # what, for whom, how big, how long, whether it worked. The AI server's
+    # integration guide asks each application to keep this; trimmed after 90
+    # days, removed with the project.
+    db.execute("""CREATE TABLE IF NOT EXISTS ai_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, feature TEXT, job_id INTEGER, project_id INTEGER, username TEXT,
+        model TEXT, input_chars INTEGER, prompt_tokens INTEGER, completion_tokens INTEGER, seconds REAL, ok INTEGER NOT NULL, error TEXT)""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_ai_calls_at ON ai_calls (at)")
+    # The text of an uploaded document, read once for the AI features that
+    # need it (services/doctext.py); purged with its project.
+    db.execute("""CREATE TABLE IF NOT EXISTS doc_text (
+        document_id INTEGER PRIMARY KEY REFERENCES documents(id), project_id INTEGER NOT NULL REFERENCES projects(id),
+        chars INTEGER NOT NULL DEFAULT 0, text TEXT, error TEXT, extracted_at TEXT NOT NULL)""")
     # The old "Allow scheduled full backups to OneDrive" switch is now the
     # OneDrive destination in Settings → Backups.
     db.execute("INSERT OR IGNORE INTO settings (key, value) SELECT 'policy.dest_onedrive', '1' FROM settings WHERE key = 'onedrive_backup_enabled' AND value = '1'")

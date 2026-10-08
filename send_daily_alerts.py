@@ -30,6 +30,10 @@ def _format_alerts_html(alerts):
         "project_due_soon": "Projects due soon",
         "stage_sla_breach": "Projects over their stage SLA",
         "stale": "Projects untouched for a while",
+        "approval_waiting": "Customer approvals waiting",
+        "blocker_open": "Blockers still open",
+        "task_unowned": "Overdue tasks nobody owns",
+        "customer_quiet": "Customer tasks overdue",
     }
     for key, label in labels.items():
         items = alerts.get(key) or []

@@ -108,7 +108,7 @@ def validate_feature(db, feature, cfg, fp, run_id=None):
     from policies import policy
     inputs = feature.fixture()
     try:
-        out, meta = run(feature, inputs, cfg)
+        out, meta = run(feature, inputs, cfg, log={"job_id": run_id, "user": "validation"})
     except AIError as exc:
         _record(db, run_id, "feature", "failed", feature.key, detail=exc.reason, model=cfg["model"], fp=fp, prompt_hash=prompt_of(feature)[1])
         return "failed"
@@ -130,10 +130,9 @@ def validate_all(db, run_id=None):
     fp = st["fingerprint"]
     _record(db, run_id, "connect", "passed", model=st["model"], fp=fp)
     try:
-        with open(_smoke_path(), encoding="utf-8") as fh:
-            smoke_prompt = fh.read().strip()
-        out, meta = chat(cfg, [{"role": "system", "content": smoke_prompt},
-                               {"role": "user", "content": "7"}], SMOKE_SCHEMA, max_tokens=40, temperature=0)
+        from services.ai import system_prompt
+        out, meta = chat(cfg, [{"role": "system", "content": system_prompt("_smoke.v1.txt")},
+                               {"role": "user", "content": "7"}], SMOKE_SCHEMA, max_tokens=40, temperature=0, log={"feature": "_smoke", "job_id": run_id})
         ok = out.get("echo") == 7
         _record(db, run_id, "smoke", "passed" if ok else "failed", seconds=meta["seconds"], output=out, model=meta["model"], fp=fp,
                 detail=None if ok else "answered in the right form but with the wrong content")
@@ -152,11 +151,6 @@ def validate_all(db, run_id=None):
                        f"On {st['model']}: {', '.join(failed)}. They are off, and Odin uses its usual behaviour for them, until they pass again.")
     return {"ok": True, "model": st["model"], "seconds": meta["seconds"], "features": results}
 
-
-def _smoke_path():
-    import os
-    from services.ai import PROMPTS
-    return os.path.join(PROMPTS, "_smoke.v1.txt")
 
 
 def queue(db, kind, feature=None, project_id=None, payload=None, actor=None):
@@ -192,7 +186,9 @@ def run_feature_job(db, job):
     if feature.scope == "portfolio":
         return _run_portfolio(db, feature, job)
     try:
-        inputs = feature.gather(project_id=job["project_id"])
+        raw = job["payload"] if "payload" in job.keys() else None
+        given = (json.loads(raw) if isinstance(raw, str) else raw or {}).get("input")
+        inputs = feature.gather(project_id=job["project_id"], **({"given": given} if feature.takes_input else {}))
     except AIError as exc:
         if exc.kind == "skip":   # nothing to do for this rollout (a green one has no amber to explain)
             return {"skipped": exc.reason}
@@ -202,13 +198,20 @@ def run_feature_job(db, job):
                       (job["project_id"], feature.key)).fetchone()
     if job["requested_by"] is None and last and last[0] == digest:
         return {"skipped": "nothing changed since the last draft"}
-    out, meta = run(feature, inputs, config(db))
+    out, meta = run(feature, inputs, config(db), log={"job_id": job["id"], "project_id": job["project_id"], "user": job["requested_by"] or "night shift"})
+    if _cancelled(db, job):
+        return {"skipped": "cancelled"}
     db.execute("UPDATE ai_suggestions SET status = 'superseded' WHERE project_id = ? AND feature = ? AND status = 'new'", (job["project_id"], feature.key))
     cur = db.execute("INSERT INTO ai_suggestions (project_id, feature, payload, inputs_hash, model, fingerprint, prompt_hash, seconds, job_id, created_at) "
                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                      (job["project_id"], feature.key, json.dumps(out, ensure_ascii=False), digest, meta["model"], status(db).get("fingerprint"),
                       meta["prompt_hash"], meta["seconds"], job["id"], _now()))
     db.commit()
+    if feature.on_new and job["requested_by"] is None:   # a night-shift answer: tell whoever should look at it
+        try:
+            feature.on_new(db, job["project_id"], out)
+        except Exception as exc:  # noqa: BLE001 — a notice that fails never loses the answer
+            print(f"[ai] {feature.key} notice failed: {exc}")
     return {"suggestion": cur.lastrowid, "seconds": meta["seconds"], "model": meta["model"]}
 
 
@@ -221,11 +224,27 @@ def _run_portfolio(db, feature, job):
     row = db.execute("SELECT value FROM settings WHERE key = ?", (f"ai.latest.{feature.key}",)).fetchone()
     if job["requested_by"] is None and row and json.loads(row[0]).get("inputs_hash") == digest:
         return {"skipped": "nothing changed since the last answer"}
-    out, meta = run(feature, inputs, config(db))
+    out, meta = run(feature, inputs, config(db), log={"job_id": job["id"], "user": job["requested_by"] or "night shift"})
     _put(db, f"ai.latest.{feature.key}", json.dumps({"payload": out, "model": meta["model"], "fingerprint": status(db).get("fingerprint"),
                                                      "prompt_hash": meta["prompt_hash"], "seconds": meta["seconds"], "inputs_hash": digest,
                                                      "created_at": _now()}, ensure_ascii=False))
     return {"seconds": meta["seconds"], "model": meta["model"]}
+
+
+def _cancelled(db, job):
+    """Did someone cancel this job while the model was answering? Its answer
+    is then dropped (the server finishes the request it was given)."""
+    if not job["id"]:
+        return False
+    row = db.execute("SELECT status FROM ai_jobs WHERE id = ?", (job["id"],)).fetchone()
+    return bool(row) and row[0] == "cancelling"
+
+
+def cancel(db, job_id):
+    """Cancel a job: a waiting one never runs; a running one's answer is dropped."""
+    db.execute("UPDATE ai_jobs SET status = CASE status WHEN 'queued' THEN 'cancelled' ELSE 'cancelling' END, "
+               "finished_at = CASE status WHEN 'queued' THEN ? ELSE finished_at END WHERE id = ? AND status IN ('queued', 'running')", (_now(), job_id))
+    db.commit()
 
 
 def work_once(db):
@@ -242,7 +261,8 @@ def work_once(db):
             result = run_feature_job(db, job)
         else:
             raise ValueError(f"unknown AI job kind {job['kind']}")
-        db.execute("UPDATE ai_jobs SET status = 'done', finished_at = ?, result = ? WHERE id = ?", (_now(), json.dumps(result), job["id"]))
+        db.execute("UPDATE ai_jobs SET status = CASE status WHEN 'cancelling' THEN 'cancelled' ELSE 'done' END, finished_at = ?, result = ? WHERE id = ?",
+                   (_now(), json.dumps(result), job["id"]))
     except Exception as exc:  # noqa: BLE001 — a failed job is recorded, never fatal to the worker
         db.execute("UPDATE ai_jobs SET status = 'failed', finished_at = ?, error = ? WHERE id = ?", (_now(), str(exc)[:500], job["id"]))
     db.commit()
@@ -258,7 +278,7 @@ def tick(db, now_local=None):
         return None
     # a job left "running" by a worker that died is not running
     stale = (datetime.utcnow() - timedelta(hours=1)).isoformat()
-    db.execute("UPDATE ai_jobs SET status = 'failed', error = 'interrupted', finished_at = ? WHERE status = 'running' AND started_at < ?", (_now(), stale))
+    db.execute("UPDATE ai_jobs SET status = 'failed', error = 'interrupted', finished_at = ? WHERE status IN ('running', 'cancelling') AND started_at < ?", (_now(), stale))
     db.commit()
     st = status(db)
     last = st.get("checked_at")
@@ -299,6 +319,7 @@ def trim(db=None):
     from db import get_db
     db = db or get_db()
     db.execute("DELETE FROM ai_checks WHERE created_at < ?", ((datetime.utcnow() - timedelta(days=180)).isoformat(),))
-    db.execute("DELETE FROM ai_jobs WHERE status IN ('done', 'failed') AND created_at < ?", ((datetime.utcnow() - timedelta(days=30)).isoformat(),))
+    db.execute("DELETE FROM ai_jobs WHERE status IN ('done', 'failed', 'cancelled') AND created_at < ?", ((datetime.utcnow() - timedelta(days=30)).isoformat(),))
     db.execute("DELETE FROM ai_suggestions WHERE status != 'new' AND created_at < ?", ((datetime.utcnow() - timedelta(days=90)).isoformat(),))
+    db.execute("DELETE FROM ai_calls WHERE at < ?", ((datetime.utcnow() - timedelta(days=90)).isoformat(),))
     db.commit()

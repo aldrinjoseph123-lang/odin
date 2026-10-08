@@ -150,7 +150,10 @@ def api_signoff_send(project_id):
         row = signoff.send(project, _body(), session["user_name"])
     except ValueError as e:
         return _bad(e)
-    audit_log("signoff_send", "project", project_id, project["name"], f"v{row['version']} to {row['signer_email']} sha256={row['content_hash'][:16]}")
+    from routes.ai import use_suggestion
+    ai = use_suggestion(project_id, _body().get("ai_suggestion"), "signoff_summary")
+    get_db().commit()
+    audit_log("signoff_send", "project", project_id, project["name"], f"v{row['version']} to {row['signer_email']} sha256={row['content_hash'][:16]}{ai}")
     notify_users([row["signer_id"]], "approval", project_id, f"Please review and sign off {project['name']}",
                  f"<p>{escape(session['user_name'])} has sent the sign-off for <b>{escape(project['name'])}</b> (version {row['version']}). "
                  "It lists what was delivered against the agreed scope. Please review it, then sign — or say what needs to change.</p>",

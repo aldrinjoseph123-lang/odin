@@ -147,6 +147,9 @@ function Status({ view, busy, send }: { view: AIView; busy: boolean; send: Send 
             {s.seconds != null && <><dt className="text-muted-foreground">One short answer</dt><dd className="tabular-nums">{s.seconds} s</dd></>}
           </dl>
         )}
+        {view.usage?.calls > 0 && (
+          <p className="text-muted-foreground">Last 24 hours: {view.usage.calls} request{view.usage.calls === 1 ? "" : "s"}{view.usage.failed ? `, ${view.usage.failed} failed` : ""}, {Math.round(view.usage.avg_s ?? 0)} s on average (slowest {Math.round(view.usage.max_s ?? 0)} s), {view.usage.tokens_in ?? 0} tokens read and {view.usage.tokens_out ?? 0} written.</p>
+        )}
         {!view.scheduler_alive && s.state !== "off" && (
           <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-warn">The scheduler is not running, so there is no heartbeat and nothing is validated. Start the <code className="font-mono text-[12px]">scheduler</code> service.</p>
         )}

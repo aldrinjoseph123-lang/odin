@@ -11,6 +11,7 @@ import { RAID_KIND } from "@/components/RaidPanel"
 import { Section, Table } from "@/components/ReportParts"
 import { ApiError, rolloutReport, saveRolloutReport, type RolloutReport, type User } from "@/lib/api"
 import { AIWordsDraft } from "@/components/AIWordsDraft"
+import { AIDraftBar } from "@/components/AIDraftBar"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { cn } from "@/lib/utils"
 import { fillPlaceholders, fmtDate, fmtWhen, groupBlocks } from "@/lib/format"
@@ -163,6 +164,14 @@ export default function Report({ user }: { user: User }) {
       <div className="mt-4 grid grid-cols-1 gap-4">
         <Section n title="Summary" className={hide("summary")}>
           {editable && <AIWordsDraft projectId={id} onUse={(w, sid) => { setWords(w); setAiDraft(sid) }} />}
+          {editable && words.summary.trim() && (
+            <AIDraftBar<{ summary: string; next_steps: string[]; asks: string[] }> projectId={id} feature="customer_words" input={() => words}
+              ask="Tidy for the customer" again="Tidy again"
+              idle="Before you save: rewrite these words so the customer can read them. Names, blame and shorthand come out; every fact stays; nothing is added."
+              working="Tidying the words as they are now… about a minute."
+              note="A customer-ready version of your words. Use it, then read it once more before saving."
+              onUse={(s) => { setWords({ summary: s.payload.summary, next_steps: s.payload.next_steps.join("\n"), asks: s.payload.asks.join("\n") }); setAiDraft(s.id) }} />
+          )}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {wordBlock("summary", "Where it stands", 5, "Two or three lines: where the rollout stands, what changed, what happens next.")}
             <div className="grid grid-cols-1 content-start gap-4">

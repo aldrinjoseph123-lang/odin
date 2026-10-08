@@ -435,7 +435,7 @@ def api_rollout_report_save(project_id):
                (project_id, version, words["summary"], session["user_name"], datetime.utcnow().isoformat(), snapshot_json(snap),
                 words["summary"], words["next_steps"], words["asks"]))
     from routes.ai import use_suggestion
-    ai = use_suggestion(project_id, body.get("ai_suggestion"), "weekly_words")
+    ai = use_suggestion(project_id, body.get("ai_suggestion"), ("weekly_words", "customer_words"))
     db.commit()
     audit_log("save_report", "project", project_id, project["name"], f"version {version}{ai}")
     return jsonify(ok=True, version=version)
