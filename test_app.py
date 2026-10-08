@@ -5677,6 +5677,12 @@ CATCHUP_GOOD = json.dumps({"where_it_stands": "SIEM onboarding is in Design (sta
                            "what_changed": "The Design end moved from 2 Oct to 9 Oct 2026 because the vendor configuration was late.",
                            "watch_out": ["No building access at Site B, which could delay the build.", "Log volume above the licence."]})
 ANSWERS["You brief someone who is taking over"] = CATCHUP_GOOD
+ASK_GOOD = json.dumps({"answer": "The vendor delivered the firewall configuration two days late [3], so the Design end moved from 2 Oct 2026 to 9 Oct 2026 [2].",
+                       "sources": [2, 3], "found": True})
+ANSWERS["You answer a colleague's question"] = ASK_GOOD
+ANSWERS["You explain proposed changes"] = json.dumps({"reasons": [
+    "Design took a median of 8 working days over 6 rollouts and 11 or fewer in 80% of them; today's 6 is shorter than most rollouts achieve.",
+    "Hand-over took a median of 2 working days over 5 rollouts and 3 or fewer in 80% of them; today's 10 is longer than most rollouts need."]})
 
 
 class WeeklyWordsTestCase(AITestBase):
@@ -5769,9 +5775,10 @@ class WeeklyWordsTestCase(AITestBase):
             from db import get_db
             db = get_db()
             db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.validate.last_date', '2026-10-08')")
-            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.feature.raid_proposals', '0')")   # this test is about one feature
-            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.feature.health_explained', '0')")
-            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.feature.portfolio_narrative', '0')")
+            from services.ai import FEATURES
+            for key in FEATURES:                                         # this test is about one feature
+                if key != "weekly_words":
+                    db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, '0')", (f"ai.feature.{key}",))
             db.commit()
             with patch("services.ai.health.work_once", return_value=None):
                 tick(db, now_local=datetime(2026, 10, 8, 3, 31))
@@ -6401,6 +6408,40 @@ class SlaCalibrationTestCase(AITestBase):
         self._history([7, 7, 14, 3, 7])
         rows = self.client.get("/api/settings/sla-proposals").get_json()["proposals"]
         self.assertTrue(rows and rows[0]["reason"] is None)                       # no AI answer yet: the numbers alone
+
+
+class AskRolloutTestCase(AITestBase):
+    """Phase 2: a question answered only from the rollout's own records."""
+    isolate_features = False
+
+    def test_finds_the_passages_cites_them_and_keeps_links_from_the_model(self):
+        from services.ai import messages_for
+        from services.ai.features.ask_rollout import FEATURE, fixture, gather, refine
+        good = refine(fixture(), json.loads(ASK_GOOD))
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders if g(fixture(), good)], [])
+        self.assertEqual([x["href"] for x in good["sources"]], ["/projects/1#plan", "/projects/1"])
+        nothing = refine(fixture(), {"answer": "The records do not say.", "sources": [], "found": True})
+        self.assertFalse(nothing["found"])                                       # "found" needs a real source
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Asked", "client": "C"})
+        self.client.post("/projects/1/note", data={"note": "Vendor delivered the firewall configuration two days late."})
+        self.client.post("/projects/1/note", data={"note": "Lunch order for the workshop: pizza."})
+        with self._ctx():
+            facts = gather(project_id=1, given={"question": "Why was the firewall configuration late?"})
+            sent = messages_for(FEATURE, facts)[1]["content"]
+        self.assertEqual([p["text"] for p in facts["passages"]], ["Vendor delivered the firewall configuration two days late."])   # not the pizza
+        self.assertNotIn("_links", sent)
+        self.assertNotIn("href", sent)
+
+    def test_asking_needs_a_question(self):
+        self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Asked", "client": "C"})
+        self._enable()
+        from services.ai.health import heartbeat, run_feature_job
+        with self._ctx():
+            from db import get_db
+            heartbeat(get_db())
+            get_db().execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.feature.ask_rollout.force', '1')"); get_db().commit()
+            r = run_feature_job(get_db(), {"id": 0, "feature": "ask_rollout", "project_id": 1, "requested_by": "admin", "payload": json.dumps({"input": {"question": "?"}})})
+        self.assertEqual(r, {"skipped": "Ask a question first"})
 
 
 if __name__ == "__main__":

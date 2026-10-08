@@ -12,6 +12,7 @@ import { RaidPanel } from "@/components/RaidPanel"
 import { ScopePanel } from "@/components/ScopePanel"
 import { AIChase } from "@/components/AIChase"
 import { AICatchUp } from "@/components/AICatchUp"
+import { AIAsk } from "@/components/AIAsk"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
@@ -98,6 +99,7 @@ export default function Project(_props: { user: User }) {
 
       <div className="grid grid-cols-1 gap-4 px-5 pb-6 lg:grid-cols-2 [&>*]:min-w-0">
         <div className="empty:hidden lg:col-span-2"><AICatchUp projectId={id} /></div>
+        <div className="empty:hidden lg:col-span-2"><AIAsk projectId={id} /></div>
         <div className="empty:hidden lg:col-span-2"><AIChase projectId={id} /></div>
         <div className="lg:col-span-2"><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} /></Panel></div>
         <div className="lg:col-span-2"><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} /></Panel></div>

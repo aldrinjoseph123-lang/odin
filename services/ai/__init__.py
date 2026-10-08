@@ -126,8 +126,12 @@ def fit(inputs, limit):
 
 
 def messages_for(feature, inputs):
+    """System prompt and the inputs as JSON. Keys starting with "_" are Odin's
+    own bookkeeping (links for refine) and never reach the model."""
     from policies import policy
     text, _ = prompt_of(feature)
+    if isinstance(inputs, dict):
+        inputs = {k: v for k, v in inputs.items() if not k.startswith("_")}
     return [{"role": "system", "content": text},
             {"role": "user", "content": _dump(fit(inputs, policy("ai_max_input_chars")))}]
 

@@ -12,3 +12,4 @@ from services.ai.features import chase_draft  # noqa: F401
 from services.ai.features import morning_brief  # noqa: F401
 from services.ai.features import catch_up  # noqa: F401
 from services.ai.features import sla_calibration  # noqa: F401
+from services.ai.features import ask_rollout  # noqa: F401
