@@ -585,3 +585,17 @@ test("@flow notes: an @mention is picked by keyboard, and a note can be shared",
   await expect(page.getByText("Visible to the customer and partners")).toBeVisible()
   expectClean(errors)
 })
+
+test("@flow users: each person is one row; Manage opens their settings and Esc closes it", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/users")
+  const list = page.getByRole("region", { name: "Team members" })
+  await expect(list.getByRole("listitem").filter({ hasText: "Omar Haddad" })).toContainText(/Signed in|Never signed in/)
+  await list.getByRole("button", { name: "Manage Omar Haddad" }).click()
+  const dialog = page.getByRole("dialog", { name: "Omar Haddad" })
+  await expect(dialog.getByRole("textbox", { name: "Email for Omar Haddad" })).toBeVisible()
+  await expect(dialog.getByRole("button", { name: "Deactivate" })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(dialog).toHaveCount(0)
+  expectClean(errors)
+})

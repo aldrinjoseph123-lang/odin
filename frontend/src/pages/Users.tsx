@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
-import { Badge } from "@/components/ui/badge"
 import { UserAvatar } from "@/components/UserAvatar"
 import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ApiError, createSignupLink, postForm, revokeAllSignupLinks, revokeSignupLink, signupLinks, users as fetchUsers, type AdminUser, type SignupLinks, type User, type UsersData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const fmt = (iso: string | null, withTime = false) => fmtWhen(iso, withTime)
-const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-[13px] disabled:opacity-60"
-// the actions column stays in view when the table scrolls sideways
-const pinned = "sticky right-0 bg-card"
+const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px] disabled:opacity-60"
 
 export default function Users(_props: { user: User }) {
   const [data, setData] = useState<UsersData | null>(null)
@@ -59,19 +57,16 @@ export default function Users(_props: { user: User }) {
 
       {pending.length > 0 && <Pending people={pending} roles={data.roles} busy={busy} send={send} />}
 
-      <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0 overflow-auto panel">
-          <table className="w-full border-collapse text-[13px]">
-            <thead className="bg-card">
-              <tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">
-                {["Name", "Username", "Email", "Role", "Status", "Sign-in", "Last sign-in", "Created", ""].map((h, i) => <th key={i} className={cn("px-3 py-2 font-normal", (i === 1 || i === 6 || i === 7) && "hidden 2xl:table-cell", i === 8 && pinned)}><span className={i === 8 ? "sr-only" : undefined}>{h || "Actions"}</span></th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {people.map((u) => <Row key={`${u.id}:${u.email ?? ""}`} u={u} roles={data.roles} me={data.me} microsoftOnly={data.microsoft_only} busy={busy} send={send} />)}
-            </tbody>
-          </table>
-        </div>
+      <div className="mt-3 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+        {/* one row per person, as a receipt: who on the left, role and state in
+            the middle, one Manage button on the right; the rarely used
+            controls (email, sign-in options, password, deactivate) live in
+            the Manage dialog, so the list stays readable */}
+        <section className="min-w-0 panel" aria-label="Team members">
+          <ul className="divide-y divide-border">
+            {people.map((u) => <Row key={`${u.id}:${u.email ?? ""}:${u.active}`} u={u} roles={data.roles} me={data.me} microsoftOnly={data.microsoft_only} busy={busy} send={send} />)}
+          </ul>
+        </section>
         <div className="grid grid-cols-1 content-start gap-4">
           <AddUser roles={data.roles} busy={busy} send={send} />
           <SignupLinksPanel />
@@ -106,58 +101,118 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
   )
 }
 
+// How this person gets in. When Microsoft sign-in is required, a password is
+// the exception an admin keeps for emergencies; otherwise everyone has one.
+function signInText(u: AdminUser, microsoftOnly: boolean) {
+  if (u.kind === "external") return "Email link"
+  const ways = microsoftOnly ? ["Microsoft", u.password_login && "password kept"] : [u.microsoft && "Microsoft", "Password"]
+  return [...ways, u.two_step && "two-step"].filter(Boolean).join(" · ")
+}
+
 function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles: string[]; me: number; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean> }) {
-  const [email, setEmail] = useState(u.email ?? "")   // the row remounts (key) when the saved email changes
-  const [pw, setPw] = useState("")
-  const [resetting, setResetting] = useState(false)
+  const [open, setOpen] = useState(false)
   const self = u.id === me
   return (
-    <tr className={cn("border-b border-border last:border-0", !u.active && "text-muted-foreground")}>
-      <td className="px-3 py-2 font-medium"><span className="inline-flex items-center gap-2"><UserAvatar name={u.name} url={u.avatar_url} className="h-6 w-6" /><span title={u.username}>{u.name}</span></span>{u.kind === "external" && <Badge variant="secondary" className="ml-2">External</Badge>}{self && <span className="ml-2 text-[12px] font-normal text-muted-foreground">you</span>}</td>
-      <td className="hidden px-3 py-2 text-muted-foreground 2xl:table-cell">{u.username}</td>
-      <td className="px-3 py-2">
-        <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="flex items-center gap-1">
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" aria-label={`Email for ${u.name}`} className="h-7 w-40 text-[13px]" />
-          {email !== (u.email ?? "") && <Button type="submit" size="sm" variant="outline" className="h-7" loading={busy}>Save</Button>}
-        </form>
-      </td>
-      <td className="px-3 py-2">
-        {/* External is a kind of account, not a role to hand out: an invited
-            partner stays External, staff never become it */}
-        <select value={u.role} disabled={self || busy || u.kind === "external"} onChange={(e) => send(`/users/${u.id}/role`, { role: e.target.value })} aria-label={`Role for ${u.name}`} className={selectClass}>
-          {roles.filter((r) => (r === "External") === (u.kind === "external")).map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-      </td>
-      <td className="px-3 py-2">{u.active ? "Active" : <span className="text-muted-foreground">Deactivated</span>}</td>
-      <td className="px-3 py-2 text-[13px]">
-        {u.kind === "external" ? <span className="text-muted-foreground">Email link</span> : (
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {u.microsoft && <Badge variant="secondary">Microsoft</Badge>}
-            {u.two_step && <span className="inline-flex items-center gap-1"><Badge variant="secondary">Two-step</Badge>
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-[12px]" disabled={busy} aria-label={`Reset two-step sign-in for ${u.name}`}
-                onClick={() => send(`/users/${u.id}/two-step-reset`, {}, `Reset two-step sign-in for ${u.name}? Use this when they lost their phone and recovery codes. Their sessions end.`)}>Reset</Button></span>}
-            <label className="flex items-center gap-2 whitespace-nowrap" title="Keeps a password when staff must use Microsoft: the emergency way in">
-              <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => send(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-3.5 w-3.5 accent-primary" />
-              Password
-            </label>
-          </span>
-        )}
-      </td>
-      <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground 2xl:table-cell">{u.last_login_at ? <Ago iso={u.last_login_at} /> : "—"}</td>
-      <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground 2xl:table-cell">{fmt(u.created_at)}</td>
-      <td className={cn("px-3 py-2", pinned)}>
-        <div className="flex flex-wrap items-center gap-2">
-          {!self && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined)}>{u.active ? "Deactivate" : "Reactivate"}</Button>}
-          {u.kind !== "external" && (!microsoftOnly || u.password_login) && (resetting ? (
-            <form onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then((ok) => { if (ok) { setPw(""); setResetting(false) } }) }} className="flex items-center gap-1">
-              <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password" aria-label={`New password for ${u.name}`} minLength={12} required className="h-7 w-36 text-[13px]" />
-              <Button type="submit" size="sm" className="h-7" loading={busy} disabled={pw.length < 12}>Set</Button>
-              <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setResetting(false)}>Cancel</Button>
-            </form>
-          ) : <Button size="sm" variant="ghost" className="h-7" onClick={() => setResetting(true)}>Reset password</Button>)}
+    // phones: who + Manage on top, role and state on one line under it;
+    // md and up: one line, the role/state pair dissolving into grid cells
+    <li className={cn("grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 px-4 py-3 text-[13px] md:grid-cols-[minmax(0,1fr)_128px_190px_auto]", !u.active && "text-muted-foreground")}>
+      <div className="flex min-w-0 items-center gap-3">
+        <UserAvatar name={u.name} url={u.avatar_url} className="h-8 w-8" />
+        <div className="min-w-0">
+          <p className="flex min-w-0 items-center gap-2 font-medium">
+            <span className="truncate" title={u.name}>{u.name || "(no name)"}</span>
+            {self && <span className="shrink-0 text-[12px] font-normal text-muted-foreground">you</span>}
+          </p>
+          {/* a partner's username is their email: say it once */}
+          <p className="truncate text-[12px] text-muted-foreground" title={[u.username, u.email].filter(Boolean).join(" · ")}>
+            {u.email && u.email.toLowerCase() === u.username.toLowerCase() ? u.email : `${u.username} · ${u.email || "no email"}`}
+          </p>
         </div>
-      </td>
-    </tr>
+      </div>
+      <div className="md:order-last md:justify-self-end">
+        <Button size="sm" variant="outline" onClick={() => setOpen(true)} aria-label={`Manage ${u.name}`}>Manage</Button>
+      </div>
+      <div className="col-span-2 flex items-center gap-4 md:contents">
+        <div className="w-32 shrink-0 md:w-auto">
+          {/* External is a kind of account, not a role to hand out: an invited
+              partner stays External (plain text), staff never become it */}
+          {u.kind === "external" ? <span className="text-muted-foreground">External</span> : (
+            <select value={u.role} disabled={self || busy} onChange={(e) => send(`/users/${u.id}/role`, { role: e.target.value })} aria-label={`Role for ${u.name}`} className={cn(selectClass, "w-full")}>
+              {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
+        </div>
+        <div className="min-w-0 text-[12px] text-muted-foreground">
+          <p className="truncate">{u.active ? signInText(u, microsoftOnly) : <span className="font-medium text-foreground">Deactivated</span>}</p>
+          <p>{u.last_login_at ? <>Signed in <Ago iso={u.last_login_at} /></> : "Never signed in"}</p>
+        </div>
+      </div>
+      <Manage u={u} self={self} microsoftOnly={microsoftOnly} busy={busy} send={send} open={open} onClose={() => setOpen(false)} />
+    </li>
+  )
+}
+
+// Everything about one account that is changed rarely: one dialog, sections
+// separated by hairlines; destructive actions last.
+function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: AdminUser; self: boolean; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean>; open: boolean; onClose: () => void }) {
+  const [email, setEmail] = useState(u.email ?? "")
+  const [pw, setPw] = useState("")
+  const canReset = u.kind !== "external" && (!microsoftOnly || u.password_login)
+  const section = "grid grid-cols-1 gap-2 border-t border-border pt-4"
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{u.name}</DialogTitle>
+          <DialogDescription>{u.kind === "external" ? "Partner or customer account" : `${u.username} · ${u.role}`} · added {fmt(u.created_at)}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="grid grid-cols-1 gap-2">
+          <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Email
+            <span className="flex gap-2">
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" maxLength={254} aria-label={`Email for ${u.name}`} className="h-8 flex-1 text-[13px]" />
+              <Button type="submit" size="sm" variant="outline" loading={busy} disabled={email === (u.email ?? "")}>Save</Button>
+            </span>
+          </label>
+        </form>
+        {u.kind !== "external" && (
+          <div className={section}>
+            <p className="text-[12px] font-medium">Sign-in</p>
+            <p className="text-[13px] text-muted-foreground">{signInText(u, microsoftOnly).replace(/^./, (c) => c.toUpperCase())}.</p>
+            {microsoftOnly && (
+              <label className="flex items-center gap-2 text-[13px]">
+                <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => send(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-4 w-4 accent-primary" />
+                Keep a password too (the emergency way in while Microsoft is required)
+              </label>
+            )}
+            {u.two_step && (
+              <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                <span className="text-muted-foreground">Two-step sign-in is on.</span>
+                <Button size="sm" variant="ghost" disabled={busy} aria-label={`Reset two-step sign-in for ${u.name}`}
+                  onClick={() => send(`/users/${u.id}/two-step-reset`, {}, `Reset two-step sign-in for ${u.name}? Use this when they lost their phone and recovery codes. Their sessions end.`)}>Reset two-step</Button>
+              </div>
+            )}
+          </div>
+        )}
+        {canReset && (
+          <form className={section} onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then((ok) => { if (ok) setPw("") }) }}>
+            <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Set a new password
+              <span className="flex gap-2">
+                <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 12 characters" aria-label={`New password for ${u.name}`} minLength={12} required autoComplete="new-password" className="h-8 flex-1 text-[13px]" />
+                <Button type="submit" size="sm" loading={busy}>Set</Button>
+              </span>
+            </label>
+            <p className="text-[12px] text-muted-foreground">They must change it at their next sign-in; their sessions end.</p>
+          </form>
+        )}
+        {!self && (
+          <div className={cn(section, "flex flex-wrap items-center justify-between gap-2")}>
+            <span className="text-[13px] text-muted-foreground">{u.active ? "Deactivating ends their sessions now." : "This account can't sign in."}</span>
+            <Button size="sm" variant={u.active ? "destructive" : "outline"} disabled={busy}
+              onClick={() => void send(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined).then((ok) => { if (ok) onClose() })}>{u.active ? "Deactivate" : "Reactivate"}</Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

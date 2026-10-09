@@ -198,8 +198,10 @@ Admins see the same page inside Odin (Settings → System map & changes,
 `/settings/map`, framed from `/settings/map/page`), so each release carries the
 map and change log of its own code. The change log is generated from git: each
 tag is a release, and commits after the last tag appear under the version in
-`VERSION`. **Releasing:** set `VERSION` to the new number, regenerate the map,
-commit, let CI pass, then tag `v<VERSION>` on that commit.
+`VERSION`. **Releasing:** set `VERSION` to the new number and **commit it first**, then
+regenerate the map and commit (the generator reads the last commit and refuses
+an uncommitted VERSION; v1.5.0 shipped a map that still said v1.4.1), let CI
+pass, then tag `v<VERSION>` on that commit.
 The Stop hook `scripts/system_map_stale.sh` (`.claude/settings.json`) blocks
 the end of a turn while the generated facts do not match HEAD or a code commit
 is newer than the map's last commit.
