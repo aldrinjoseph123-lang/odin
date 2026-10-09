@@ -16,7 +16,7 @@
       // localStorage once the app loads; until then, whatever was last used.
       (function () {
         try {
-          var t = localStorage.getItem("odin.theme") || "system", a = localStorage.getItem("odin.accent") || "blue";
+          var t = localStorage.getItem("odin.theme") || "system", a = localStorage.getItem("odin.accent") || "red";
           var dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
           var r = document.documentElement; r.dataset.theme = dark ? "dark" : "light"; r.dataset.accent = a; r.classList.toggle("dark", dark);
         } catch (e) {}

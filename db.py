@@ -246,6 +246,13 @@ def migrate_db(db):
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ms_oid ON users(ms_oid) WHERE ms_oid IS NOT NULL")
     # Rose and amber accents were retired: they read as the overdue/warning states.
     db.execute("UPDATE users SET accent = CASE accent WHEN 'rose' THEN 'plum' ELSE 'sky' END WHERE accent IN ('rose', 'amber')")
+    # 9 Oct 2026: pastel accents with red as the default (the user's call). Once:
+    # everyone still on the old default blue, and the workspace default, move to red;
+    # anyone who picks blue afterwards keeps it.
+    if not db.execute("SELECT 1 FROM settings WHERE key = 'migrated.accent_red'").fetchone():
+        db.execute("UPDATE users SET accent = 'red' WHERE accent = 'blue' OR accent IS NULL")
+        db.execute("UPDATE settings SET value = 'red' WHERE key = 'policy.default_accent' AND value = 'blue'")
+        db.execute("INSERT INTO settings (key, value) VALUES ('migrated.accent_red', '1')")
     if role_column_is_new:
         # pre-RBAC installs: promote the original (lowest-id) user to Admin once
         db.execute("UPDATE users SET role = 'Admin' WHERE id = (SELECT MIN(id) FROM users)")

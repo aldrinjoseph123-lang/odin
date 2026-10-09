@@ -1,6 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
-import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripVertical, Layers, Maximize2, MessageSquare, MoreHorizontal, PauseCircle, Plus, ShieldCheck, Timer, Trash2, UserCheck } from "lucide-react"
+import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripHorizontal, Layers, Maximize2, MessageSquare, MoreHorizontal, PauseCircle, Plus, ShieldCheck, Timer, Trash2, UserCheck } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, Line, LineChart, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as ChartTip, XAxis } from "recharts"
 import { buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -183,7 +183,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
           {list.map((r) => {
             const a = dayOf(r.start_date), b = r.target_end_date ? dayOf(r.target_end_date) : now
             const from = Math.min(a, b), to = Math.max(a, b)
-            const fill = r.state === "on_track" ? "bg-primary" : STATE[r.state].dot
+            const fill = r.state === "on_track" ? "bg-muted-foreground/45" : STATE[r.state].dot   // on track is neutral grey; colour is for trouble
             return (
               <Fragment key={r.id}>
                 <Link to={`/board?rollout=${r.id}`} title={`${r.name} · ${r.client}`} className="flex min-w-0 items-baseline gap-2 py-2 font-medium hover:underline">
@@ -768,9 +768,10 @@ export default function Dashboard({ user }: { user: User }) {
               draggable={grip === key} onDragStart={() => setDragging(key)} onDragEnd={() => { setDragging(null); setGrip(null) }}
               onDragOver={(e) => { if (dragging) e.preventDefault() }} onDrop={(e) => { e.preventDefault(); if (dragging && dragging !== key) commit((l) => reorder(l, dragging, key)); setDragging(null); setGrip(null) }}>
               {/* drag by the grip (mouse); the menu's Earlier / Later does the same from the keyboard */}
-              <span onPointerDown={() => setGrip(key)} onPointerUp={() => setGrip(null)} aria-hidden
-                className="absolute left-1.5 top-1.5 z-10 hidden cursor-grab rounded-md p-1 text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 md:block">
-                <GripVertical className="h-4 w-4" /></span>
+              {/* a small handle centred in the card's top margin, never over its title */}
+              <span onPointerDown={() => setGrip(key)} onPointerUp={() => setGrip(null)} aria-hidden title="Drag to move"
+                className="absolute left-1/2 top-0 z-10 hidden h-4 w-10 -translate-x-1/2 cursor-grab items-center justify-center rounded-b-md text-muted-foreground/70 opacity-0 transition-opacity hover:text-foreground group-hover/cell:opacity-100 md:flex">
+                <GripHorizontal className="h-4 w-4" /></span>
               {item.id === "kpis" && <div className="absolute -top-2 right-0 z-10 rounded-full bg-card opacity-0 shadow-card transition-opacity focus-within:opacity-100 group-hover/cell:opacity-100">{menu}</div>}
               <MenuSlot.Provider value={item.id === "kpis" ? null : menu}>
                 {renderWidget(item, d.data, d.today, { tile: setTile, expand: item.id === "kpis" ? undefined : () => setExpanded(key) })}

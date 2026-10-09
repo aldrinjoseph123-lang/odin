@@ -506,6 +506,14 @@ A round picture when the person uploaded one, otherwise initials: 24 px in rows 
 - **Faces for names:** a person in a row or rail is an avatar beside the name (20–24 px).
 - **Copy:** a heading is about seven words at most, its subtext about fourteen; detail moves to the point of action (a hint by the field, a confirmation).
 
+### The 9 Oct 2026 refresh (the user's calls)
+- **Pastel accents, red first.** Every accent is a soft pastel fill with deep text (`--primary` pastel, `--primary-foreground` deep, `--primary-text` for accent-as-text, `--ring` a mid tone); nothing white sits on the fill. Red is the default for new people and replaced the old default blue once (`migrated.accent_red`); the choices are Red, Blue, Indigo, Violet, Teal, Green, Sky, Plum, Ink on the Account page. This reverses the earlier retirement of rose: the user chose red. To keep it apart from the overdue state, the accent red is a rose-leaning pastel fill (#FFD3DA / #8E1230) while overdue stays the solid `--bad` triplet with its word ("Overdue 9 d").
+- **Progress is a straight line.** The stepper is a row of 6 px rounded segments, one per stage, 4 px apart: done green (`ok-line`), the current one in its state (ink on track, amber due soon / over SLA, red overdue), upcoming a quiet grey; shared columns keep stages aligned across rows; each segment has its tooltip.
+- **Header.** 72 px tall; pills 36 px with 16 px sides in a 6 px-padded white pill bar; Log out and Account settings live in the avatar menu ("Your account"), so the bar fits 1,280 px.
+- **Tooltips everywhere.** `TitleTips` turns any `title` and any icon-only control's aria-label into one styled ink tooltip (12 px, after 450 ms hover, at once on keyboard focus, gone on leave, scroll or Esc); the Tooltip component stays for richer content.
+- **Settings menu.** The open area is a white block with the card shadow, bold ink text and a 4 px accent bar on its left.
+- **Widget handle.** Dashboard widgets are dragged by a small horizontal handle centred in the card's top margin, shown on hover; it never covers a title.
+
 ## Do's and Don'ts
 
 ### Do:

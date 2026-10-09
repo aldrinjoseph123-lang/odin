@@ -79,19 +79,19 @@
     --card-foreground: #101114;
     --popover: #FFFFFF;
     --popover-foreground: #101114;
-    --primary: #3D5AFE;
-    --primary-foreground: #FFFFFF;
-    --primary-text: #2F47D6;        /* accent as text: 6.1:1 on white */
+    --primary: #FFD3DA;
+    --primary-foreground: #8E1230;
+    --primary-text: #B4143C;        /* accent as text: AA on white */
     --secondary: #F7F7F8;
     --secondary-foreground: #101114;
     --muted: #F3F4F6;
     --muted-foreground: #5B6270;    /* 4.9:1 on the darkest tinted ground and every soft fill (#6B7280 fell to 3.9 there) */
-    --accent: #EEF1FF;
-    --accent-foreground: #2F47D6;
+    --accent: #FFF0F2;
+    --accent-foreground: #B4143C;
     --destructive: #D6372F;
     --border: #E9EAF0;
     --input: #D0D3DA;
-    --ring: #3D5AFE;
+    --ring: #F2667F;
     --elevation-card: 0 1px 2px rgb(16 17 20 / 0.04), 0 10px 28px -14px rgb(16 17 20 / 0.14);
     --elevation-pop: 0 2px 6px rgb(16 17 20 / 0.06), 0 16px 40px -12px rgb(16 17 20 / 0.22);
     --chart-1: #3D5AFE;
@@ -139,7 +139,6 @@
     --card-foreground: #E7E8EC;
     --popover: #1D2129;
     --popover-foreground: #E7E8EC;
-    --primary-foreground: #FFFFFF;
     --secondary: #1E222A;
     --secondary-foreground: #E7E8EC;
     --muted: #252A34;
@@ -176,22 +175,28 @@
 /* ---- Accent: the one hue the world spends on selection and the primary
    action. Each accent sets five tokens; the dark variants lift the text
    shade so it stays readable on the dark ground. ---- */
-:root[data-accent="indigo"] { --primary: #4F46E5; --primary-text: #4338CA; --accent: #EEF0FF; --accent-foreground: #4338CA; --ring: #4F46E5; }
-:root[data-accent="violet"] { --primary: #7C3AED; --primary-text: #6D28D9; --accent: #F3EEFF; --accent-foreground: #6D28D9; --ring: #7C3AED; }
-:root[data-accent="teal"]   { --primary: #0F766E; --primary-text: #115E59; --accent: #E6F7F5; --accent-foreground: #115E59; --ring: #0F766E; }
-:root[data-accent="green"]  { --primary: #15803D; --primary-text: #166534; --accent: #E9F8EE; --accent-foreground: #166534; --ring: #15803D; }
-:root[data-accent="sky"]    { --primary: #0369A1; --primary-text: #075985; --accent: #E0F2FE; --accent-foreground: #075985; --ring: #0369A1; }
-:root[data-accent="plum"]   { --primary: #A21CAF; --primary-text: #86198F; --accent: #FAE8FF; --accent-foreground: #86198F; --ring: #A21CAF; }
-:root[data-accent="ink"]    { --primary: #101114; --primary-text: #101114; --accent: #ECEDF0; --accent-foreground: #101114; --ring: #101114; }
+/* Pastel accents (9 Oct 2026, the user's call): a soft fill with deep text,
+   red first and the default; each person picks theirs on the Account page.
+   The fill carries --primary-foreground (deep), never white. */
+:root[data-accent="red"]   { --primary: #FFD3DA; --primary-foreground: #8E1230; --primary-text: #B4143C; --accent: #FFF0F2; --accent-foreground: #B4143C; --ring: #F2667F; }
+:root[data-accent="blue"]  { --primary: #CCDAFF; --primary-foreground: #1C3A8C; --primary-text: #2F47D6; --accent: #EEF2FF; --accent-foreground: #2F47D6; --ring: #7090FF; }
+:root[data-accent="indigo"] { --primary: #D6D8FF; --primary-foreground: #302C80; --primary-text: #4338CA; --accent: #F0F0FF; --accent-foreground: #4338CA; --ring: #8B8CF6; }
+:root[data-accent="violet"] { --primary: #E2D5FF; --primary-foreground: #4A1D93; --primary-text: #6D28D9; --accent: #F6F1FF; --accent-foreground: #6D28D9; --ring: #A98BF5; }
+:root[data-accent="teal"]  { --primary: #C4EEE6; --primary-foreground: #12504A; --primary-text: #0F766E; --accent: #EEFAF7; --accent-foreground: #0F766E; --ring: #3CC7B0; }
+:root[data-accent="green"] { --primary: #CFF0D9; --primary-foreground: #14532D; --primary-text: #15803D; --accent: #F0FAF3; --accent-foreground: #15803D; --ring: #4CC77A; }
+:root[data-accent="sky"]   { --primary: #C9E8FB; --primary-foreground: #0B4A6E; --primary-text: #0369A1; --accent: #EEF7FD; --accent-foreground: #0369A1; --ring: #45B3EE; }
+:root[data-accent="plum"]  { --primary: #F4D5F8; --primary-foreground: #6B1A70; --primary-text: #A21CAF; --accent: #FCF0FD; --accent-foreground: #A21CAF; --ring: #D97CE6; }
+:root[data-accent="ink"]   { --primary: #E3E5EA; --primary-foreground: #101114; --primary-text: #101114; --accent: #F2F3F5; --accent-foreground: #101114; --ring: #6B7280; }
 
-:root[data-theme="dark"]                      { --accent: #1C2340; --accent-foreground: #9DB0FF; --primary-text: #9DB0FF; }
+:root[data-theme="dark"][data-accent="red"] { --accent: #3A1520; --accent-foreground: #FDA4B4; --primary-text: #FDA4B4; }
+:root[data-theme="dark"][data-accent="blue"] { --accent: #1C2340; --accent-foreground: #9DB0FF; --primary-text: #9DB0FF; }
 :root[data-theme="dark"][data-accent="indigo"] { --accent: #1E1F45; --accent-foreground: #A5B4FC; --primary-text: #A5B4FC; }
 :root[data-theme="dark"][data-accent="violet"] { --accent: #2A1B4A; --accent-foreground: #C4B5FD; --primary-text: #C4B5FD; }
-:root[data-theme="dark"][data-accent="teal"]   { --accent: #0F2E2B; --accent-foreground: #5EEAD4; --primary-text: #5EEAD4; }
-:root[data-theme="dark"][data-accent="green"]  { --accent: #10301C; --accent-foreground: #86EFAC; --primary-text: #86EFAC; }
-:root[data-theme="dark"][data-accent="sky"]    { --accent: #0C2A3D; --accent-foreground: #7DD3FC; --primary-text: #7DD3FC; }
-:root[data-theme="dark"][data-accent="plum"]   { --accent: #3A1540; --accent-foreground: #F0ABFC; --primary-text: #F0ABFC; }
-:root[data-theme="dark"][data-accent="ink"]    { --primary: #E7E8EC; --primary-foreground: #0F1115; --accent: #262B34; --accent-foreground: #E7E8EC; --primary-text: #E7E8EC; --ring: #E7E8EC; }
+:root[data-theme="dark"][data-accent="teal"] { --accent: #0F2E2B; --accent-foreground: #5EEAD4; --primary-text: #5EEAD4; }
+:root[data-theme="dark"][data-accent="green"] { --accent: #10301C; --accent-foreground: #86EFAC; --primary-text: #86EFAC; }
+:root[data-theme="dark"][data-accent="sky"] { --accent: #0C2A3D; --accent-foreground: #7DD3FC; --primary-text: #7DD3FC; }
+:root[data-theme="dark"][data-accent="plum"] { --accent: #3A1540; --accent-foreground: #F0ABFC; --primary-text: #F0ABFC; }
+:root[data-theme="dark"][data-accent="ink"] { --accent: #262B34; --accent-foreground: #E7E8EC; --primary-text: #E7E8EC; }
 
 
 /* A card: the one surface content sits on. White (or the dark step) on the

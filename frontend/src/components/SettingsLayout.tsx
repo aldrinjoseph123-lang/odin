@@ -35,8 +35,11 @@ export function SettingsLayout({ user, children }: { user: User; children: React
                 const on = pathname === i.href
                 return (
                   <Link key={i.href} to={i.href} aria-current={on ? "page" : undefined}
-                    className={cn("whitespace-nowrap rounded-md px-2 py-2 text-[13px] font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                      on ? "bg-accent text-accent-foreground" : "text-nav-fg hover:bg-muted hover:text-foreground")}>{i.label}</Link>
+                    // the open area reads at a glance: a card-coloured block with
+                    // the accent bar on its left, bold ink text
+                    className={cn("relative whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                      on ? "bg-card font-semibold text-foreground shadow-card before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-full before:bg-primary-text md:before:block before:hidden"
+                        : "text-nav-fg hover:bg-card/60 hover:text-foreground")}>{i.label}</Link>
                 )
               })}
             </div>

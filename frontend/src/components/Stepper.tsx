@@ -1,34 +1,38 @@
-import type { CSSProperties } from "react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { FlowState } from "@/lib/api"
-import { STATE } from "@/lib/state"
 import { cn } from "@/lib/utils"
 
-// ---- the stepper: one row's whole flow at a glance ----------------------------
-// With `columns` (the shared stage order of every row on screen), each dot sits
-// in its stage's column, so the lead can read down a column and see who is in
-// Deployment. A stage this project doesn't have leaves a gap on its line.
+// ---- the progress bar: one row's whole flow at a glance ----------------------
+// A straight line of rounded segments, one per stage (9 Oct 2026: replaced the
+// dots-on-a-line stepper). Done stages are green, the current one wears its
+// state (ink when on track, amber when due soon or over SLA, red when overdue),
+// upcoming ones are a quiet grey. With `columns` (the shared stage order of
+// every row on screen) each segment sits in its stage's column, so the lead can
+// read down a column; a stage this project doesn't have leaves a gap.
+const CURRENT: Record<FlowState, string> = {
+  on_track: "bg-foreground",
+  due_soon: "bg-warn-line",
+  over_sla: "bg-warn-line",
+  overdue: "bg-bad-line",
+}
+
 export function Stepper({ stages, index, state, selected, columns }: { stages: string[]; index: number; state: FlowState; selected: boolean; columns?: string[] }) {
-  const n = columns && columns.length > 1 ? columns.length - 1 : Math.max(stages.length - 1, 1)
-  const pos = (i: number) => `${((columns && columns.length > 1 ? Math.max(0, columns.indexOf(stages[i])) : i) / n) * 100}%`
-  const last = stages.length - 1
+  const shared = columns && columns.length > 1 ? columns : null
+  const col = (i: number) => (shared ? Math.max(0, shared.indexOf(stages[i])) : i) + 1
   return (
-    // dots shrink (to 6 px) before they touch: their size follows the row's width (a container query)
-    <div className="relative mx-2 h-3 [container-type:inline-size]" role="img" aria-label={`Stage ${index + 1} of ${stages.length}: ${stages[index]}`}
-      style={{ "--dot": `clamp(6px, calc(100cqw / ${(n + 1) * 1.5}), 12px)` } as CSSProperties}>
-      <span className="absolute top-1/2 h-[1.5px] -translate-y-1/2 bg-input" style={{ left: pos(0), width: `calc(${pos(last)} - ${pos(0)})` }} aria-hidden />
-      {index > 0 && <span className="absolute top-1/2 h-[1.5px] -translate-y-1/2 bg-ok-line" style={{ left: pos(0), width: `calc(${pos(index)} - ${pos(0)})` }} aria-hidden />}
+    <div className="grid h-4 items-center gap-1" style={{ gridTemplateColumns: `repeat(${shared ? shared.length : stages.length}, minmax(0, 1fr))` }}
+      role="img" aria-label={`Stage ${index + 1} of ${stages.length}: ${stages[index]}`}>
       {stages.map((s, i) => (
         <Tooltip key={s}>
           <TooltipTrigger
             render={<span />}
-            style={{ left: pos(i) }}
+            style={{ gridColumnStart: col(i) }}
             className={cn(
-              "absolute top-1/2 block size-(--dot) -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px]",
-              selected ? "bg-accent" : "bg-card",   // opaque, so the line stops at the ring
-              i < index && "border-ok-line bg-ok-line",
-              i === index && cn("ring-[3px]", STATE[state].ring, selected && "scale-110"),
-              i > index && "border-input",
+              // a taller invisible hit area around a 6 px bar
+              "relative block h-1.5 rounded-full transition-colors before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']",
+              i < index && "bg-ok-line",
+              i === index && cn(CURRENT[state], selected && "h-2"),
+              i > index && "bg-input/70",
             )}
           />
           <TooltipContent>{s}{i === index ? " · current" : i < index ? " · done" : ""}</TooltipContent>

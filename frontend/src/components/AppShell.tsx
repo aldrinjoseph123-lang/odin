@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { Menu, Monitor, Moon, Search, Sun } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { buttonVariants } from "@/components/ui/button"
 import { logout, postForm, type User } from "@/lib/api"
 import { Logo } from "@/components/Brand"
 import { UserAvatar } from "@/components/UserAvatar"
 import { CommandPalette } from "@/components/CommandPalette"
 import { Toaster } from "@/components/Toaster"
+import { TitleTips } from "@/components/TitleTips"
 import { NotificationBell } from "@/components/NotificationBell"
 import { applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
@@ -20,7 +22,7 @@ type Item = { href: string; label: string; count?: number; match: (path: string)
 
 function NavLink({ item, current, onClick }: { item: Item; current: boolean; onClick?: () => void }) {
   const className = cn(
-    "inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-full px-3 text-[13px] font-medium transition-colors",
+    "inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-full px-4 text-[13px] font-medium transition-colors",
     current ? "bg-primary text-primary-foreground" : "text-nav-fg hover:bg-muted hover:text-foreground",
   )
   const text = (
@@ -62,6 +64,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
     return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("pointerdown", onDown) }
   }, [open])
   const [theme, setTheme] = useState<Theme>(user.theme)
+  const [account, setAccount] = useState(false)   // the avatar menu
   const [palette, setPalette] = useState(false)
   // Ctrl/⌘ K anywhere; "/" when not typing in a field
   useEffect(() => {
@@ -100,13 +103,14 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   return (
     <div className="flex min-h-svh flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">Skip to content</a>
-      <header className="flex h-14 shrink-0 items-center gap-4 px-5 print:hidden">
+      {/* a roomier bar: 72 px tall, pills 36 px, the account and Log out in the avatar menu */}
+      <header className="flex h-18 shrink-0 items-center gap-4 px-5 print:hidden">
         <Link to={user.home === "board" ? "/board" : "/dashboard"} aria-label="Odin, home" className="shrink-0"><Logo markClass="h-7 w-7" wordClass="h-[15px]" /></Link>
         {/* The admin's full row needs ~1,250 px (test report UX-1): below xl the
             links fold into the menu, and up to 2xl search is just its icon;
             bell, theme and avatar stay visible at every width. */}
         <nav ref={navRef} className={cn("absolute inset-x-0 top-14 z-40 mx-3 flex-col gap-3 rounded-2xl bg-card p-4 shadow-pop xl:static xl:mx-0 xl:flex xl:flex-1 xl:flex-row xl:items-center xl:gap-4 xl:rounded-none xl:bg-transparent xl:p-0 xl:shadow-none xl:gap-6", open ? "flex" : "hidden")}>
-          <span className="flex flex-col gap-1 xl:flex-row xl:rounded-full xl:bg-card xl:p-1 xl:shadow-card">
+          <span className="flex flex-col gap-1 xl:flex-row xl:gap-0 xl:rounded-full xl:bg-card xl:p-1.5 xl:shadow-card">
             {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
           </span>
           <span className="xl:flex-1" />
@@ -126,10 +130,19 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-nav-fg hover:bg-muted hover:text-foreground">
             {theme === "dark" ? <Moon className="h-4 w-4" /> : theme === "light" ? <Sun className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
           </button>
-          <a href="/account" className="flex items-center text-[13px] text-nav-fg hover:text-foreground" title={user.name} aria-label="Your account">
-            <UserAvatar name={user.name} url={user.avatar_url} className="h-7 w-7" textClass="text-[11px] bg-accent text-accent-foreground" />
-          </a>
-          <button type="button" onClick={signOut} className="hidden whitespace-nowrap text-[13px] font-medium text-nav-fg hover:text-foreground xl:ml-2 xl:inline">Log out</button>
+          <Popover open={account} onOpenChange={setAccount}>
+            <PopoverTrigger render={<button type="button" />} aria-label="Your account" className="flex items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+              <UserAvatar name={user.name} url={user.avatar_url} className="h-8 w-8" textClass="text-[11px] bg-accent text-accent-foreground" />
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56 gap-1 p-2 text-[13px]">
+              <div className="px-2 pb-2 pt-1">
+                <p className="truncate font-medium" title={user.name}>{user.name}</p>
+                <p className="text-[12px] text-muted-foreground">{user.kind === "external" ? "Partner or customer" : user.role}</p>
+              </div>
+              <Link to="/account" onClick={() => setAccount(false)} className="rounded-md px-2 py-2 hover:bg-muted">Account settings</Link>
+              <button type="button" onClick={() => { setAccount(false); void signOut() }} className="rounded-md px-2 py-2 text-left hover:bg-muted">Log out</button>
+            </PopoverContent>
+          </Popover>
           <button ref={menuButton} type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted xl:hidden"><Menu className="h-5 w-5" /></button>
         </div>
       </header>
@@ -141,6 +154,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
       )}
       <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">{children}</main>
       <Toaster />
+      <TitleTips />
       <CommandPalette open={palette} onClose={() => setPalette(false)}
         pages={[...items.map((i) => ({ label: i.label, href: i.href })), { label: "Account", href: "/account" },
           ...(user.permissions.includes("create_project") && user.kind !== "external" ? [{ label: "New project", href: "/projects/new" }] : [])]} />

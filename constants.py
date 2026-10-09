@@ -92,7 +92,7 @@ ADMIN_KINDS = ("access", "ai")
 
 THEMES = ("system", "light", "dark")
 # No red or amber accent: in the UI those mean overdue and warning (27 Sep 2026).
-ACCENTS = ("blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
+ACCENTS = ("red", "blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
 AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 AVATAR_MAX_BYTES = 2 * 1024 * 1024
 
@@ -225,7 +225,7 @@ NEW_USER_COLUMNS = {
     # OS, and which hue the one accent takes. The avatar is a filename under
     # ODIN_DATA_DIR/avatars, unique per upload so its URL changes on replace.
     "theme": "TEXT NOT NULL DEFAULT 'system'",
-    "accent": "TEXT NOT NULL DEFAULT 'blue'",
+    "accent": "TEXT NOT NULL DEFAULT 'red'",
     "avatar": "TEXT",
     # Notification kinds this user does NOT want by email (comma list); the
     # in-app notification always arrives.

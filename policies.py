@@ -23,7 +23,7 @@ UPLOAD_TYPES = ("pdf", "png", "jpg", "jpeg", "gif", "webp", "doc", "docx", "xls"
 DATE_FORMATS = {"d MMM yyyy": "27 Sep 2026", "yyyy-MM-dd": "2026-09-27", "dd/MM/yyyy": "27/09/2026", "MM/dd/yyyy": "09/27/2026"}
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 THEME_CHOICES = ("system", "light", "dark")
-ACCENT_CHOICES = ("blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
+ACCENT_CHOICES = ("red", "blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
 
 POLICIES = {
     # ---- General
@@ -41,7 +41,7 @@ POLICIES = {
                      help="One per line: \"2026-12-02 National Day\", or a span \"2027-03-20 to 2027-03-22 Eid al-Fitr\" (dates as announced). Not counted as working days; no digest or reminders on them."),
     "default_theme": dict(area="general", kind="choice", default="system", choices=THEME_CHOICES,
                           label="Theme for new people", help="Each person can change their own on the Account page."),
-    "default_accent": dict(area="general", kind="choice", default="blue", choices=ACCENT_CHOICES,
+    "default_accent": dict(area="general", kind="choice", default="red", choices=ACCENT_CHOICES,
                            label="Accent for new people", help="Each person can change their own on the Account page."),
     # ---- Sign-in & security
     "session_idle_minutes": dict(area="security", kind="int", default=60, min=5, max=1440,
