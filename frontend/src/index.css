@@ -242,10 +242,16 @@
   background-color: color-mix(in srgb, var(--foreground) 3%, var(--card));
 }
 
-/* The chevron's room, outside the base layer so a select's own px-* utility
-   cannot take it away (9 Oct 2026: "Warning" and "Contractor" ran under the
-   chevron). */
-select:not([multiple]):not([data-slot="native-select"]) {
+/* Every native <select> wears shadcn's Native Select look (9 Oct 2026): no
+   browser chrome, our chevron and room for it. Outside the base layer so a
+   select's own px-* utility cannot take the room away ("Warning" and
+   "Contractor" once ran under the chevron). */
+select:not([multiple]) {
+  appearance: none;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 16px 16px;
   padding-right: 32px;
 }
 
@@ -277,17 +283,6 @@ select:not([multiple]):not([data-slot="native-select"]) {
     }
   button:disabled, [aria-disabled="true"], select:disabled, input:disabled, textarea:disabled {
     cursor: not-allowed;
-    }
-  /* Every native <select> wears shadcn's Native Select look (9 Oct 2026): no
-     browser chrome, our chevron, room for it, the input radius and ring. New
-     code may use <NativeSelect> from components/ui; existing selects follow
-     here without changing how they work. */
-  select:not([multiple]):not([data-slot="native-select"]) {
-    appearance: none;
-    background-image: var(--select-chevron);
-    background-repeat: no-repeat;
-    background-position: right 8px center;
-    background-size: 16px 16px;
     }
   select:not([multiple]):focus-visible {
     border-color: var(--ring);

@@ -333,10 +333,10 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   // The domain covers everything worth seeing — a target already in the past
   // sits to the left of today, which is exactly the shape of "overdue".
   const firstEntry = Math.min(...d.stages.filter((s) => s.entered_at).map((s) => parseStamp(s.entered_at!).getTime()), start)
-  const t0 = Math.min(start, end, firstEntry)
+  const t0 = Math.min(end, firstEntry)
   const t1 = Math.max(today, end)
   const drawn = t1 - t0 >= 2 * 864e5   // under two days there is nothing to see but a dot
-  const span = t1 - t0 || 1
+  const span = t1 - t0
   const frac = (t: number) => Math.min(1, Math.max(0, (t - t0) / span))
   const pct = (t: number) => `${frac(t) * 100}%`
   const ticks = [{ t: start, l: fmtDate(d.start_date) }, { t: today, l: "today" }, ...(d.target_end_date ? [{ t: end, l: `target ${fmtDate(d.target_end_date)}` }] : [])]
@@ -350,9 +350,9 @@ function TimeStrip({ d }: { d: FlowDetail }) {
         <p className="text-[13px]"><span className="font-semibold">Timeline</span><span className="text-muted-foreground"> · {timelineSummary(d.start_date, d.today, d.target_end_date)}</span></p>
         {drawn && (
           <p className="flex items-center gap-3 text-[11px] text-muted-foreground" aria-hidden>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-3 rounded-full bg-ok-line" />stage done</span>
-            <span className="flex items-center gap-1"><span className={cn("h-1.5 w-3 rounded-full", late ? "bg-warn-line" : "bg-foreground")} />current stage</span>
-            <span className="flex items-center gap-1"><span className="h-3 w-[1.5px] bg-foreground" />today</span>
+            {[["h-1.5 w-3 rounded-full bg-ok-line", "stage done"], [cn("h-1.5 w-3 rounded-full", late ? "bg-warn-line" : "bg-foreground"), "current stage"], ["h-3 w-[1.5px] bg-foreground", "today"]].map(([swatch, label]) => (
+              <span key={label} className="flex items-center gap-1"><span className={swatch} />{label}</span>
+            ))}
           </p>
         )}
       </div>

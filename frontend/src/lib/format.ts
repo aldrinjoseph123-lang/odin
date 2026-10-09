@@ -365,7 +365,7 @@ export function timelineSummary(start: string, today: string, target?: string | 
   const dayN = lateBy(start, today) + 1
   const head = `Started ${start === today ? "today" : fmtDate(start)} · day ${dayN}`
   if (!target) return `${head} · no target date`
-  const left = lateBy(today, target), late = lateBy(target, today)
-  const when = late ? `${late} day${late === 1 ? "" : "s"} late` : left ? `${left} day${left === 1 ? "" : "s"} left` : "due today"
+  const left = lateBy(today, target), late = lateBy(target, today), n = (k: number) => `${k} day${k === 1 ? "" : "s"}`
+  const when = late ? `${n(late)} late` : left ? `${n(left)} left` : "due today"
   return `${head} · target ${fmtDate(target)}, ${when}`
 }
