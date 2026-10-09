@@ -464,3 +464,17 @@ class RobustnessTest(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class ExternalRoleTest(Base):
+    def test_session_names_a_customer_and_a_partner(self):
+        self.new_project(name="P1", client="C")
+        self.new_project(name="P2", client="C")
+        self._invite(1, "vendor@example.com", role="Contractor")
+        self._invite(1, "cust@example.com", role="Contractor")
+        self._invite(2, "cust@example.com", role="Customer")
+        user = lambda email: self._external_client(email).get("/api/session").get_json()["user"]
+        self.assertEqual(user("cust@example.com")["external_role"], "Customer")     # customer anywhere wins
+        self.assertEqual(user("vendor@example.com")["external_role"], "Contractor")
+        self.assertIsNone(self.client.get("/api/session").get_json()["user"]["external_role"])   # staff

@@ -53,6 +53,9 @@ def _current_user():
         "avatar_url": avatar_url(me) if me else None,
         "role": session.get("role"),
         "kind": session.get("kind", "internal"),
+        # an external's project role, for the header badge: "Customer" when they
+        # are the customer on any open project, else their first role
+        "external_role": _external_role(session["user_id"]) if session.get("kind") == "external" else None,
         # where sign-in and the logo land; partners always get the flow
         "home": "board" if session.get("kind") == "external" or not me or me["home"] == "board" else "dashboard",
         "must_change_password": bool(session.get("must_change_password")),
@@ -63,6 +66,13 @@ def _current_user():
         "prefs": {"date_format": policy("date_format"), "undo_minutes": policy("undo_minutes"),
                   "activity_idle_minutes": policy("activity_idle_minutes") if policy("activity_tracking") else 0},
     }
+
+
+def _external_role(user_id):
+    roles = [r["role"] for r in get_db().execute(
+        "SELECT pp.role FROM project_participants pp JOIN projects p ON p.id = pp.project_id "
+        "WHERE pp.user_id = ? AND p.deleted_at IS NULL ORDER BY pp.id", (user_id,))]
+    return "Customer" if "Customer" in roles else (roles[0] if roles else None)
 
 
 @app.route("/api/session")
