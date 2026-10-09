@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { ApiError, postForm, projectForm, type ProjectFormData, type User } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
+import { productsFor } from "@/lib/format"
 
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
@@ -172,8 +173,18 @@ export default function ProjectForm(_props: { user: User }) {
             </>
           ) : (
             <>
-              <Field label="Vendor"><select value={f.vendor_name} onChange={set("vendor_name")} aria-label="Vendor" className={selectClass}><option value="">Select…</option>{d.vendors.map((v) => <option key={v}>{v}</option>)}</select></Field>
-              <Field label="Product"><select value={f.product_name} onChange={set("product_name")} aria-label="Product" className={selectClass}><option value="">Select…</option>{d.products.map((p) => <option key={p}>{p}</option>)}</select></Field>
+              <Field label="Vendor">
+                <select value={f.vendor_name} aria-label="Vendor" className={selectClass}
+                  onChange={(e) => { const v = e.target.value; const keep = d.products.some((p) => p.name === f.product_name && (!p.vendor || p.vendor === v)); setF({ ...f, vendor_name: v, product_name: keep ? f.product_name : "" }) }}>
+                  <option value="">Select…</option>{d.vendors.map((v) => <option key={v}>{v}</option>)}
+                </select>
+              </Field>
+              <Field label="Product">
+                <select value={f.product_name} onChange={set("product_name")} aria-label="Product" className={selectClass}>
+                  <option value="">Select…</option>
+                  {productsFor(d.products, f.vendor_name, f.product_name).map((p) => <option key={p}>{p}</option>)}
+                </select>
+              </Field>
             </>
           )}
         </section>

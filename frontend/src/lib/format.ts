@@ -349,3 +349,11 @@ export function aiProgress(job: { status: string; progress?: { ahead: number; st
   // past the usual time: creep towards 99, and say so honestly
   return { pct: 95 + 4 * (1 - Math.exp(-(elapsed - expected) / expected)), text: `Taking longer than usual · ${Math.round(elapsed)} s so far` }
 }
+
+// The project form's product list: the chosen vendor's products plus those
+// with no vendor (all of them when no vendor is chosen). A project's current
+// product stays listed even if it now belongs elsewhere, so an edit never drops it.
+export function productsFor(products: { name: string; vendor: string }[], vendor: string, current = ""): string[] {
+  const names = products.filter((p) => !vendor || !p.vendor || p.vendor === vendor).map((p) => p.name)
+  return current && !names.includes(current) ? [current, ...names] : names
+}

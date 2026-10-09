@@ -171,7 +171,7 @@ POLICIES = {
                                help="How long a stage is assumed to take when neither the plan nor its SLA says — for the forecast and the suggested plan."),
     "count_working_days": dict(area="workflow", kind="bool", default=True, label="Count stage lengths and SLAs in working days",
                                help="Weekends outside the working week and public holidays (Settings → General) do not count. Off: calendar days. Gaps between dates, such as days late, are always calendar days."),
-    "sla_min_visits": dict(area="workflow", kind="int", default=3, min=2, max=50, label="Finished visits before an SLA is questioned",
+    "sla_min_visits": dict(area="workflow", kind="int", default=3, min=2, max=50, label="Finished projects before an SLA is questioned",
                            help="The SLA check under Stage templates proposes a new SLA for a stage only when at least this many rollouts have passed through it."),
     "rag_amber_days": dict(area="workflow", kind="int", default=1, min=0, max=90, label="Amber after (days late)",
                            help="A rollout turns amber when it is forecast to finish more than this many days after its target date."),
@@ -315,14 +315,96 @@ def policy(key, db=None):
         return _default(entry)
 
 
+# The settings page draws each area as small titled cards, each with its own
+# Save (9 Oct 2026, the user's call). `hint` is the one plain line (with an
+# example) shown under a setting; the longer `help` sits behind "What is this?".
+# A setting without a hint shows its help directly.
+_GROUPS = {
+    "Your workspace": ("company_name", "public_url"),
+    "Dates and working days": ("timezone", "date_format", "working_days", "holidays"),
+    "Look for new people": ("default_theme", "default_accent"),
+    "Sessions": ("session_idle_minutes", "session_max_hours"),
+    "Passwords and two-step": ("password_min_length", "mfa_required"),
+    "Wrong passwords": ("login_max_attempts", "login_account_max", "login_window_minutes"),
+    "Uploads": ("upload_max_mb", "upload_types"),
+    "Partner access": ("external_domains", "link_minutes"),
+    "Undo": ("undo_minutes",),
+    "Sign-up links": ("signup_enabled", "signup_domains", "signup_days"),
+    "Time on Odin": ("activity_tracking", "activity_roles", "activity_idle_minutes"),
+    "Daily digest": ("digest_time",),
+    "Teams webhook": ("teams_webhook_url",),
+    "Kibana": ("kibana_dashboards",),
+    "When it goes out": ("report_enabled", "report_days", "report_time"),
+    "Who gets it": ("report_roles", "report_emails"),
+    "What it carries": ("report_attach", "report_teams"),
+    "Retention": ("audit_keep", "notifications_keep_days", "activity_keep_days"),
+    "When to back up": ("backup_time", "backup_days", "restore_test"),
+    "Copies kept": ("keep_daily", "keep_weekly", "keep_monthly"),
+    "Where copies go": ("dest_onedrive", "dest_sharepoint", "sharepoint_site", "sharepoint_folder", "dest_share", "share_path"),
+    "AI server": ("ai_enabled", "ai_base_url", "ai_model", "ai_identity", "ai_allow_external"),
+    "Watching the server": ("ai_heartbeat_minutes", "ai_down_after", "ai_validate_time", "ai_night_time", "ai_brief_time",
+                            "ai_budget_s", "ai_max_input_chars", "ai_timeout_s"),
+    "Defaults": ("default_template",),
+    "Stage timing": ("default_stage_days", "count_working_days", "sla_min_visits"),
+    "Health colours": ("rag_amber_days", "rag_red_days"),
+    "Sign-off": ("signoff_required", "signoff_statement", "signoff_terms"),
+    "Customer approval": ("default_customer_approval",),
+}
+_HINTS = {
+    "public_url": "The address people use to reach Odin, e.g. https://odin.example.com.",
+    "working_days": "The days your team works, e.g. Mon to Fri. Deadlines and reminders skip the rest.",
+    "holidays": "Days off that do not count as working days, e.g. 2026-12-02 National Day.",
+    "mfa_required": "Ask for a code from a phone app after the password, e.g. required for admins.",
+    "login_max_attempts": "Pause sign-in after this many wrong passwords from one computer, e.g. 5.",
+    "login_account_max": "Pause an account after this many wrong passwords from anywhere, e.g. 20.",
+    "login_window_minutes": "How long the pause lasts, e.g. 15 minutes.",
+    "upload_types": "The kinds of file people may attach, e.g. PDF and Word.",
+    "external_domains": "Partners can be invited only from these email domains, e.g. partner.com. Blank: any.",
+    "link_minutes": "How long a sign-in or password-reset email link works, e.g. 30 minutes.",
+    "undo_minutes": "How long the Undo button stays after a delete or a stage move, e.g. 5 minutes.",
+    "signup_enabled": "Lets new staff join with a link made on the Users page. Off: every open link stops working.",
+    "signup_domains": "Only these email domains may join by link, e.g. protect24x7.com. Blank: any.",
+    "signup_days": "How long a new sign-up link works, e.g. 7 days.",
+    "activity_tracking": "Counts the minutes each person actively uses Odin.",
+    "activity_roles": "Which roles may see other people's time. Everyone always sees their own.",
+    "activity_idle_minutes": "Stop counting after this long without mouse or keyboard, e.g. 5 minutes.",
+    "digest_time": "When the daily summary email and reminders go out, e.g. 08:00.",
+    "teams_webhook_url": "Paste a Teams channel's webhook address to post updates there.",
+    "kibana_dashboards": "Dashboards shown on the Flow page, one per line: Name | address.",
+    "report_enabled": "Email a weekly summary of every rollout.",
+    "report_emails": "Extra people to email, e.g. ceo@company.com.",
+    "audit_keep": "How many years of the audit log to keep, e.g. 3.",
+    "restore_test": "Check each backup by actually restoring it.",
+    "ai_base_url": "Where the AI server answers, e.g. http://ai.office.lan:11434/v1.",
+    "ai_identity": "The first line of every instruction Odin sends the AI.",
+    "ai_allow_external": "Off keeps customer notes inside the office network.",
+    "ai_max_input_chars": "Longer text is trimmed to this before it is sent, e.g. 4,000 characters.",
+    "default_template": "The stage list a new project starts with.",
+    "default_stage_days": "How long a stage is expected to take when nothing else says, e.g. 7 days.",
+    "count_working_days": "Skip weekends and holidays when counting stage days: Friday to Monday is one day.",
+    "sla_min_visits": "How many projects must finish a stage before Odin suggests a new time limit, e.g. 3.",
+    "rag_amber_days": "A project turns amber when forecast to finish this many days late, e.g. 1.",
+    "rag_red_days": "It turns red when forecast this many days late, e.g. 7.",
+    "signoff_required": "A project cannot close until the customer has signed it off.",
+    "signoff_statement": "What the customer agrees to when they sign.",
+    "signoff_terms": "Support terms printed on the sign-off, one per line.",
+    "default_customer_approval": "New projects ask the customer to approve each stage move.",
+}
+for _title, _keys in _GROUPS.items():
+    for _key in _keys:
+        POLICIES[_key]["group"] = _title
+for _key, _hint in _HINTS.items():
+    POLICIES[_key]["hint"] = _hint
+
 def policy_view(area=None):
     """Everything the settings page needs to draw and validate a form."""
     out = []
     for key, e in POLICIES.items():
         if area and e["area"] != area:
             continue
-        item = {"key": key, "area": e["area"], "kind": e["kind"], "label": e["label"], "help": e.get("help", ""), "value": policy(key)}
-        for k in ("min", "max", "multiline"):
+        item = {"key": key, "area": e["area"], "kind": e["kind"], "label": e["label"], "help": e.get("help", ""), "value": policy(key),
+                "group": e.get("group", "")}
+        for k in ("min", "max", "multiline", "hint"):
             if k in e:
                 item[k] = e[k]
         if "choices" in e:
@@ -333,15 +415,15 @@ def policy_view(area=None):
 
 def save_policies(area, form):
     """Validate and store the policies of one area from a posted form. Only
-    the keys the form carries change; an absent boolean is false (an
-    unticked checkbox is not posted), every other absent key keeps its value.
-    A multi-select posts one comma list. Returns (changed, errors) — nothing
-    is stored if any value is invalid."""
+    the keys the form carries change: the settings page saves one card at a
+    time, so an absent key, a switch included, keeps its value (a card posts
+    its switches as "on" or "0"). A multi-select posts one comma list.
+    Returns (changed, errors) — nothing is stored if any value is invalid."""
     values, errors = {}, []
     for key, e in POLICIES.items():
         if e["area"] != area:
             continue
-        raw = form.get(key, "" if e["kind"] == "bool" else None)
+        raw = form.get(key)
         if raw is None:
             continue
         try:

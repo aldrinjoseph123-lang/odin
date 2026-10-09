@@ -196,6 +196,7 @@ CREATE TABLE IF NOT EXISTS vendors (
 CREATE TABLE IF NOT EXISTS products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
+    vendor_id INTEGER REFERENCES vendors(id),
     deleted_at TEXT
 );
 

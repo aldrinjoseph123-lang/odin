@@ -1138,6 +1138,55 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c.post(r["undo"], data={}, headers=h)
         self.assertEqual(c.get("/api/settings/contacts").get_json()["partners"][0]["managers"][0]["name"], "Meera")
 
+    def test_contacts_show_usage_rename_into_projects_and_link_products_to_vendors(self):
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        c.post("/settings/contacts/vendors/add", data={"name": "Fortinet"}, headers=h)
+        c.post("/settings/contacts/vendors/add", data={"name": "Sophos"}, headers=h)
+        lists = {l["key"]: l["items"] for l in c.get("/api/settings/contacts").get_json()["lists"]}
+        fortinet = next(v["id"] for v in lists["vendors"] if v["name"] == "Fortinet")
+        c.post("/settings/contacts/products/add", data={"name": "FortiGate", "vendor_id": str(fortinet)}, headers=h)
+        c.post("/settings/contacts/products/add", data={"name": "Cabling"}, headers=h)
+        # a vendor that is not on the list is refused, by the field
+        self.assertEqual(c.post("/settings/contacts/products/add", data={"name": "X", "vendor_id": "999"}, headers=h).status_code, 400)
+        c.post("/settings/contacts/account-managers/add", data={"name": "Asha", "email": "asha@example.com"}, headers=h)
+        self.new_project(name="Firewall", client="C", delivery_mode="Distribution/MSSP", vendor_name="Fortinet", product_name="FortiGate",
+                         account_manager_name="Asha", account_manager_email="asha@example.com")
+        x = c.get("/api/settings/contacts").get_json()
+        lists = {l["key"]: l["items"] for l in x["lists"]}
+        vendor = next(v for v in lists["vendors"] if v["name"] == "Fortinet")
+        self.assertEqual([p["name"] for p in vendor["used"]], ["Firewall"])
+        self.assertEqual(next(v for v in lists["vendors"] if v["name"] == "Sophos")["used"], [])
+        products = {p["name"]: p for p in lists["products"]}
+        self.assertEqual((products["FortiGate"]["vendor_id"], products["Cabling"]["vendor_id"]), (fortinet, None))
+        # the project form offers each product with its vendor
+        form = c.get("/api/project-form").get_json()
+        self.assertIn({"name": "FortiGate", "vendor": "Fortinet"}, form["products"])
+        self.assertIn({"name": "Cabling", "vendor": ""}, form["products"])
+        # a rename (and a new email) follows into the projects that name it
+        r = c.post(f"/settings/contacts/vendors/{vendor['id']}/edit", data={"name": "Fortinet Inc"}, headers=h)
+        self.assertEqual(r.status_code, 200)
+        am = lists["account-managers"][0]
+        c.post(f"/settings/contacts/account-managers/{am['id']}/edit", data={"name": "Asha M", "email": "asha.m@example.com"}, headers=h)
+        p = self.raw_db().execute("SELECT vendor_name, account_manager_name, account_manager_email FROM projects WHERE name = 'Firewall'").fetchone()
+        self.assertEqual(tuple(p), ("Fortinet Inc", "Asha M", "asha.m@example.com"))
+        # a duplicate name is refused and changes nothing
+        self.assertEqual(c.post(f"/settings/contacts/vendors/{vendor['id']}/edit", data={"name": "Sophos"}, headers=h).status_code, 400)
+        self.assertEqual(self.raw_db().execute("SELECT vendor_name FROM projects WHERE name = 'Firewall'").fetchone()[0], "Fortinet Inc")
+        # partners and their account managers rename the same way
+        c.post("/settings/contacts/partners/add", data={"name": "Redington"}, headers=h)
+        pid = c.get("/api/settings/contacts").get_json()["partners"][0]["id"]
+        c.post(f"/settings/contacts/partners/{pid}/managers/add", data={"name": "Meera", "email": "meera@example.com"}, headers=h)
+        mid = c.get("/api/settings/contacts").get_json()["partners"][0]["managers"][0]["id"]
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET partner_name = 'Redington', partner_account_manager_name = 'Meera' WHERE name = 'Firewall'")
+        c.post(f"/settings/contacts/partners/{pid}/edit", data={"name": "Redington India"}, headers=h)
+        c.post(f"/settings/contacts/partner-managers/{mid}/edit", data={"name": "Meera K", "email": "meera@example.com"}, headers=h)
+        partner = c.get("/api/settings/contacts").get_json()["partners"][0]
+        self.assertEqual((partner["name"], len(partner["used"]), len(partner["managers"][0]["used"])), ("Redington India", 1, 1))
+        actions = [r[0] for r in self.raw_db().execute("SELECT action FROM audit_logs WHERE action LIKE 'edit_%'")]
+        self.assertEqual(sorted(set(actions)), ["edit_contact", "edit_partner", "edit_partner_manager"])
+
     # ---- users and audit as JSON (React port) --------------------------------
 
     def test_api_users_and_audit_feed_the_admin_pages(self):
@@ -1648,6 +1697,15 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # workflow defaults reach the new-project form
         c.post("/settings/policies/workflow", data={"default_template": "", "default_customer_approval": "on"}, headers=h)
         self.assertTrue(c.get("/api/project-form").get_json()["defaults"]["customer_approval"])
+        # each card saves alone: a switch on another card of the area keeps its value, "0" turns one off
+        c.post("/settings/policies/workflow", data={"rag_amber_days": "2", "rag_red_days": "9"}, headers=h)
+        self.assertTrue(c.get("/api/project-form").get_json()["defaults"]["customer_approval"])
+        c.post("/settings/policies/workflow", data={"default_customer_approval": "0"}, headers=h)
+        self.assertFalse(c.get("/api/project-form").get_json()["defaults"]["customer_approval"])
+        # every setting sits on a titled card
+        everything = c.get("/api/settings").get_json()["policies"]
+        self.assertEqual([p["key"] for p in everything if not p["group"]], [])
+        self.assertEqual({p["group"] for p in everything if p["area"] == "workflow"}, {"Defaults", "Stage timing", "Health colours", "Sign-off", "Customer approval"})
         # only admins, and only known areas
         self.assertEqual(c.post("/settings/policies/nope", data={}, headers=h).status_code, 404)
 

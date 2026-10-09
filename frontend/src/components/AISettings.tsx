@@ -68,7 +68,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
   const [key, setKey] = useState("")
   const [check, setCheck] = useState<AICheck | null>(null)
   const [checking, setChecking] = useState(false)
-  const fields = () => ({ ai_base_url: f.ai_base_url, ai_model: f.ai_model, ...(f.ai_enabled ? { ai_enabled: "on" } : {}), ...(f.ai_allow_external ? { ai_allow_external: "on" } : {}) })
+  const fields = () => ({ ai_base_url: f.ai_base_url, ai_model: f.ai_model, ai_enabled: f.ai_enabled ? "on" : "0", ai_allow_external: f.ai_allow_external ? "on" : "0" })
   async function runCheck() {
     setChecking(true)
     try {

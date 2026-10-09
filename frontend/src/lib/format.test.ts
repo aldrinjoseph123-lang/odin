@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -295,5 +295,18 @@ describe("aiProgress", () => {
     const late = aiProgress({ status: "running", progress: p }, at(600))
     expect(late.pct).toBeGreaterThan(95); expect(late.pct).toBeLessThan(99.01)
     expect(late.text).toBe("Taking longer than usual · 600 s so far")
+  })
+})
+
+describe("productsFor", () => {
+  const products = [{ name: "FortiGate", vendor: "Fortinet" }, { name: "PA-440", vendor: "Palo Alto" }, { name: "Cabling", vendor: "" }]
+  it("offers the chosen vendor's products and the vendor-free ones", () => {
+    expect(productsFor(products, "Fortinet")).toEqual(["FortiGate", "Cabling"])
+  })
+  it("offers everything before a vendor is chosen", () => {
+    expect(productsFor(products, "")).toEqual(["FortiGate", "PA-440", "Cabling"])
+  })
+  it("keeps a project's current product listed", () => {
+    expect(productsFor(products, "Fortinet", "PA-440")).toEqual(["PA-440", "FortiGate", "Cabling"])
   })
 })

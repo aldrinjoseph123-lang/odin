@@ -463,6 +463,10 @@ def migrate_db(db):
     if "partners" not in {row[1] for row in db.execute("PRAGMA table_info(doc_categories)")}:
         db.execute("ALTER TABLE doc_categories ADD COLUMN partners INTEGER NOT NULL DEFAULT 1")
         db.execute("UPDATE doc_categories SET partners = 0 WHERE name = ?", (CLIENT_PO_DOC_CATEGORY,))
+    # A product belongs to one vendor (9 Oct 2026, the user's call); older
+    # products stay "any vendor" until an admin picks one.
+    if "vendor_id" not in {row[1] for row in db.execute("PRAGMA table_info(products)")}:
+        db.execute("ALTER TABLE products ADD COLUMN vendor_id INTEGER REFERENCES vendors(id)")
     if not db.execute("SELECT 1 FROM doc_categories LIMIT 1").fetchone():
         for name in DEFAULT_DOC_CATEGORIES:
             db.execute("INSERT INTO doc_categories (name) VALUES (?)", (name,))

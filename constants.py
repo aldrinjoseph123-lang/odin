@@ -53,10 +53,11 @@ VIA_OPTIONS = ["Direct", "Partner"]
 # URL segment used in their add/delete routes. Partners are handled separately
 # since they cascade to partner_account_managers — see the dedicated routes.
 CONTACT_LISTS = {
-    "account-managers": {"table": "account_managers", "has_email": True, "label": "Internal Account Managers"},
-    "vendors": {"table": "vendors", "has_email": False, "label": "Vendors"},
-    "products": {"table": "products", "has_email": False, "label": "Products"},
-    "outsourcers": {"table": "outsourcers", "has_email": True, "label": "Outsourcers"},
+    # column: where a project keeps the picked name (text, so a rename carries it over)
+    "account-managers": {"table": "account_managers", "has_email": True, "label": "Internal Account Managers", "column": "account_manager_name"},
+    "vendors": {"table": "vendors", "has_email": False, "label": "Vendors", "column": "vendor_name"},
+    "products": {"table": "products", "has_email": False, "label": "Products", "column": "product_name"},
+    "outsourcers": {"table": "outsourcers", "has_email": True, "label": "Outsourcers", "column": "outsourcer_name"},
 }
 
 # Contributor: creates and comments (sales / account managers) but never moves

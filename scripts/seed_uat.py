@@ -66,8 +66,9 @@ with app.test_client() as c:
     con.close()
     for v in ["CrowdStrike", "Palo Alto", "Microsoft", "Fortinet"]:
         post("/settings/contacts/vendors/add", name=v)
-    for p in ["Falcon Complete", "Sentinel", "Defender XDR", "FortiGate"]:
-        post("/settings/contacts/products/add", name=p)
+    # each product under its vendor (ids follow the list above)
+    for p, vendor_id in [("Falcon Complete", "1"), ("Sentinel", "3"), ("Defender XDR", "3"), ("FortiGate", "4")]:
+        post("/settings/contacts/products/add", name=p, vendor_id=vendor_id)
     post("/settings/contacts/outsourcers/add", name="VendorCo", email="ops@vendorco.example")
     post("/settings/contacts/partners/add", name="Redington")
     post("/settings/contacts/partners/1/managers/add", name="Meera", email="meera@redington.example")
