@@ -72,8 +72,9 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
               onMouseEnter={() => setActive(i)} onClick={() => go(it)}
               className={cn("flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-[13px]", i === active && "bg-accent text-accent-foreground")}>
               <Icon className="h-4 w-4 shrink-0 opacity-70" />
-              <span className="min-w-0 flex-1 truncate">{it.label}</span>
-              {it.hint && <span className="shrink-0 truncate text-[12px] text-muted-foreground">{it.hint}</span>}
+              <span className="min-w-0 flex-1 truncate" title={it.label}>{it.label}</span>
+              {/* the hint gives way to the label: at most 40% of the row */}
+              {it.hint && <span className="min-w-0 max-w-[40%] truncate text-[12px] text-muted-foreground" title={it.hint}>{it.hint}</span>}
               {i === active && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 opacity-60" />}
             </li>
           )

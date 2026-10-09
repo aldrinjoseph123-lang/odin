@@ -52,7 +52,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
         {unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[11px] font-semibold leading-4 text-primary-foreground">{unread > 99 ? "99+" : unread}</span>}
       </button>
       {open && (
-        <div role="dialog" aria-label="Notifications" className="absolute right-0 top-10 z-50 w-[min(380px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground">
+        <div role="dialog" aria-label="Notifications" className="fixed inset-x-4 top-14 z-50 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-pop sm:absolute sm:inset-x-auto sm:right-0 sm:top-10 sm:w-[380px]">
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-[12px] font-semibold text-nav-fg">Notifications</span>
             {unread > 0 && <button type="button" onClick={readAll} className="text-[12px] text-primary-text hover:underline">Mark all read</button>}
@@ -64,6 +64,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
               <li key={n.id}>
                 <button type="button" onClick={() => openOne(n)} className={cn("flex w-full gap-3 border-b border-border px-3 py-3 text-left last:border-0 hover:bg-muted", !n.read && "bg-accent/40")}>
                   <span className={cn("mt-2 h-2 w-2 shrink-0 rounded-full", n.read ? "bg-transparent" : "bg-primary")} aria-hidden />
+                  {!n.read && <span className="sr-only">Unread: </span>}
                   <span className="min-w-0 flex-1">
                     <span className={cn("block text-[13px]", !n.read && "font-medium")}>{n.title}</span>
                     {n.body && <span className="mt-1 line-clamp-2 block text-[12px] text-muted-foreground">{n.body}</span>}

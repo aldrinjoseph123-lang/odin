@@ -40,7 +40,7 @@ export const days = (n: number | null | undefined) => (n == null ? "—" : `${Ma
 export const daysLate = (target: string | null) => (target ? Math.round((Date.now() - new Date(`${target}T00:00:00`).getTime()) / 864e5) : 0)
 export function stateText(r: { state: FlowState; days_in_stage: number | null; over_by: number | null; target_end_date: string | null }) {
   if (r.state === "overdue") return `Overdue ${daysLate(r.target_end_date)} d`
-  if (r.state === "over_sla") return `${days(r.days_in_stage)} · ${Math.round(r.over_by ?? 0)} over SLA`
+  if (r.state === "over_sla") return r.days_in_stage == null ? "Over SLA" : `${days(r.days_in_stage)} · ${Math.round(r.over_by ?? 0)} over SLA`
   if (r.state === "due_soon") return `Due ${fmtDate(r.target_end_date)}`
   return days(r.days_in_stage)
 }
@@ -313,6 +313,14 @@ export function reminderText(waiting: Waiting[], name?: string | null): string {
     ...waiting.map(line), "", "Could you let us know when we can expect them? Thank you."].join("\n")
 }
 
+
+// An audit log code read as words: "login_success" → "Login success",
+// "AI_force" → "AI force". Words already in capitals (AI, MFA, API) stay so.
+export function actionText(code: string | null | undefined): string {
+  const words = (code ?? "").split(/[_\s]+/).filter(Boolean).map((w) => (w.length > 1 && w === w.toUpperCase() ? w : w.toLowerCase()))
+  if (!words.length) return ""
+  return [words[0][0].toUpperCase() + words[0].slice(1), ...words.slice(1)].join(" ")
+}
 
 // Settings → AI: a status nobody has checked lately is not a status. Stale when
 // the scheduler is not running, the server says so, or the last heartbeat is

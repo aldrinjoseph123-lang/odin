@@ -16,6 +16,7 @@ export type User = {
   avatar_url: string | null
   home: "dashboard" | "board"
   prefs?: { date_format: DateFormat; undo_minutes: number; activity_idle_minutes?: number }
+  external_role?: string | null   // an external's project role ("Customer", "Vendor", …) when the server names it
 }
 
 export type SignIn = { microsoft: boolean; microsoft_only: boolean; link_minutes?: number }
@@ -389,7 +390,7 @@ export type DashboardData = {
     team: { people: { id: number; name: string; avatar_url: string | null; role: string; projects: number; open: number; late: number }[]; unassigned: number }
     activity: { kind: "move" | "note" | "approval" | "task" | "document"; at: string; who: string | null; project_id: number; project: string; text: string }[]
     alerts: { id: number; project_id: number; project: string; type: string; title: string; severity: string; created_at: string }[]
-    mywork: { tasks: { id: number; title: string; project_id: number; project: string; due_date: string | null; stage: string }[]; owned: number }
+    mywork: { tasks: { id: number; title: string; project_id: number; project: string; due_date: string | null; stage: string | null }[]; owned: number }
     cycle: { template: string; lead_avg: number | null; lead_median: number | null; completed_count: number; throughput: [string, number][]; slowest: { stage: string; avg_days: number } | null; measured_projects: number } | null
   }
 }
@@ -587,7 +588,8 @@ export async function previewDocTemplate(kind: DocKind, config: DocConfig): Prom
 }
 export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
 export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
-export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string }
+export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string
+  days_in_stage?: number | null; over_by?: number | null }
 export type MyWorkData = {
   today: string; tasks: WorkTask[]; done_by_day: { day: string; count: number }[]; projects: WorkProject[]
   counts: { open: number; overdue: number; due_week: number; done_week: number; rollouts: number; stuck: number }

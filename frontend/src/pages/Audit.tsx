@@ -5,7 +5,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, audit, type AuditData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { dayBucket, fmtWhen } from "@/lib/format"
+import { actionText, dayBucket, fmtWhen } from "@/lib/format"
 import { UserAvatar } from "@/components/UserAvatar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
@@ -49,7 +49,7 @@ export default function Audit(_props: { user: User }) {
           <option value="">All users</option>{data.usernames.map((u) => <option key={u} value={u}>{u}</option>)}
         </select>
         <select value={params.get("action") ?? ""} onChange={(e) => update({ action: e.target.value || null })} aria-label="Filter by action" className={selectClass}>
-          <option value="">All actions</option>{data.actions.map((a) => <option key={a} value={a}>{a}</option>)}
+          <option value="">All actions</option>{data.actions.map((a) => <option key={a} value={a}>{actionText(a)}</option>)}
         </select>
         <select value={params.get("project_id") ?? ""} onChange={(e) => update({ project_id: e.target.value || null })} aria-label="Filter by project" className={selectClass}>
           <option value="">All projects</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -74,14 +74,15 @@ export default function Audit(_props: { user: User }) {
               {head && <tr className="bg-muted/50"><th scope="rowgroup" colSpan={6} className="px-3 py-1 text-left text-[12px] font-semibold text-nav-fg">{day}</th></tr>}
               <tr className="border-b border-border align-top last:border-0 hover:bg-muted">
                 <td className="whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground">{fmt(r.timestamp)}</td>
-                <td className="px-3 py-2"><span className="inline-flex items-center gap-2"><UserAvatar name={r.username || "?"} className="h-5 w-5" />{r.username}</span></td>
-                <td className="px-3 py-2"><span className="rounded-md bg-muted px-2 py-1 font-mono text-[12px]">{r.action}</span></td>
+                <td className="px-3 py-2"><span className="inline-flex items-center gap-2 wrap-anywhere"><UserAvatar name={r.username || "?"} className="h-5 w-5 shrink-0" />{r.username}</span></td>
+                <td className="px-3 py-2" title={r.action}>{actionText(r.action)}</td>
                 <td className="px-3 py-2">
-                  {r.resource_type && <span className="text-[12px] text-muted-foreground">{r.resource_type} </span>}
-                  {r.resource_type === "project" && r.resource_id ? <a href={`/projects/${r.resource_id}`} className="font-medium hover:underline">{r.resource_name ?? `#${r.resource_id}`}</a>
-                    : r.resource_name ? <span>{r.resource_name}</span> : r.resource_id ? <span className="text-muted-foreground">#{r.resource_id}</span> : null}
+                  {/* the name when there is one; "Project 40" only when the record has none */}
+                  {r.resource_type && !r.resource_name && <span className="text-muted-foreground">{actionText(r.resource_type)} </span>}
+                  {r.resource_type === "project" && r.resource_id ? <a href={`/projects/${r.resource_id}`} className="font-medium wrap-anywhere hover:underline">{r.resource_name ?? r.resource_id}</a>
+                    : r.resource_name ? <span className="wrap-anywhere">{r.resource_name}</span> : r.resource_id ? <span className="text-muted-foreground">{r.resource_id}</span> : null}
                 </td>
-                <td className="max-w-md break-words px-3 py-2 text-[13px]">{r.details}</td>
+                <td className="max-w-md px-3 py-2 text-[13px] wrap-anywhere">{r.details}</td>
                 <td className="hidden whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground lg:table-cell">{r.ip_address}</td>
               </tr>
               </Fragment>)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -38,6 +38,7 @@ describe("stateText", () => {
   it("says the one thing each state needs", () => {
     expect(stateText({ state: "on_track", days_in_stage: 3.2, over_by: null, target_end_date: null })).toBe("3 d")
     expect(stateText({ state: "over_sla", days_in_stage: 9, over_by: 4, target_end_date: null })).toBe("9 d · 4 over SLA")
+    expect(stateText({ state: "over_sla", days_in_stage: null, over_by: null, target_end_date: null })).toBe("Over SLA")   // not "— · 0 over SLA" (V12)
     expect(stateText({ state: "due_soon", days_in_stage: 1, over_by: null, target_end_date: "2026-11-30" })).toMatch(/^Due /)
     expect(stateText({ state: "overdue", days_in_stage: 1, over_by: null, target_end_date: "2020-01-01" })).toMatch(/^Overdue \d+ d$/)
   })
@@ -268,5 +269,15 @@ describe("aiStale", () => {
     expect(aiStale({ state: "up", checked_at: "2026-10-09T11:58:00" }, false, now)).toBe(true)    // no scheduler
     expect(aiStale({ state: "down", checked_at: "2026-10-09T11:58:00", stale: true }, true, now)).toBe(true)
     expect(aiStale({ state: "off" }, false, now)).toBe(false)
+  })
+})
+
+describe("actionText", () => {
+  it("reads an audit code as words, keeping acronyms (V30)", () => {
+    expect(actionText("login_success")).toBe("Login success")
+    expect(actionText("edit_task")).toBe("Edit task")
+    expect(actionText("AI_force_feature")).toBe("AI force feature")
+    expect(actionText("Delete")).toBe("Delete")
+    expect(actionText(null)).toBe("")
   })
 })
