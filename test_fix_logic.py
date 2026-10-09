@@ -476,5 +476,57 @@ class SignoffRulesTestCase(FixBase):
         self.assertEqual(self.sql("SELECT COUNT(*) FROM raid_items")[0][0], 0)
 
 
+class ReportPdfAndAITestCase(FixBase):
+    """P8/P23/D15/F-H1."""
+
+    def test_one_bad_date_does_not_take_the_pdf_down(self):
+        self.new_project(name="P", client="C", customer_approval="1")
+        s = self.stages()
+        self.client.post("/projects/1/stage", data={"stage": s[1]})   # an approval waits on the customer
+        self.client.post("/projects/1/tasks", data={"title": "t"})
+        self.sql("UPDATE tasks SET due_date = 'not-a-date'")
+        self.sql("UPDATE project_stages SET base_start = 'garbage', base_end = '9999-12-31', plan_start = '2026-10-01', plan_end = '9999-12-31' WHERE position = 0")
+        pdf = self.client.get("/projects/1/report.pdf")
+        self.assertEqual(pdf.status_code, 200)
+        self.assertIn(b"What we need from the customer", pdf.data)   # the internal copy says it too
+        c, _ = self._api_client()
+        self.assertEqual(c.get("/api/reports/all").status_code, 200)
+
+    def test_plan_dates_outside_the_window_are_refused(self):
+        self.new_project(name="P", client="C")
+        c, csrf = self._api_client()
+        sid = self.sql("SELECT id FROM project_stages WHERE project_id = 1 ORDER BY position")[0][0]
+        r = c.put("/api/projects/1/plan", json={"stages": [{"id": sid, "plan_start": "2026-10-01", "plan_end": "9999-12-31"}]}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("between 2000 and 2100", r.get_json()["error"])
+
+    def test_plan_reason_warning_and_first_baseline(self):
+        self.new_project(name="P", client="C", target_end_date="2026-11-01")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf}
+        sid = self.sql("SELECT id FROM project_stages WHERE project_id = 1 ORDER BY position")[0][0]
+        self.assertEqual(c.post("/api/projects/1/plan/baseline", json={"reason": "early"}, headers=h).status_code, 400)   # nothing to baseline (L11)
+        r = c.put("/api/projects/1/plan", json={"stages": [{"id": sid, "plan_start": "2026-10-01", "plan_end": "2026-12-01"}]}, headers=h).get_json()
+        self.assertTrue(r["baselined"])
+        self.assertIn("after the target date", r["warning"])
+        self.assertIn("after the target date", c.get("/api/projects/1/plan").get_json()["warning"])
+        moved = {"stages": [{"id": sid, "plan_start": "2026-10-02", "plan_end": "2026-12-01"}]}
+        self.assertEqual(c.put("/api/projects/1/plan", json=moved, headers=h).get_json()["error"], "Say why the dates move")
+        self.assertEqual(c.put("/api/projects/1/plan", json={**moved, "reason": "vendor late"}, headers=h).status_code, 200)
+
+    def test_stale_ai_heartbeat_closes_the_gate(self):
+        import json as _json
+        from services.ai import gate, status
+        for k, v in (("ai_enabled", "1"), ("ai_base_url", "http://192.168.1.238:11434/v1")):
+            self.sql("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", f"policy.{k}", v)
+        old = (datetime.utcnow() - timedelta(hours=2)).isoformat()
+        self.sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('ai.status', ?)", _json.dumps({"state": "up", "checked_at": old, "fingerprint": "m@1"}))
+        with app_module.app.test_request_context():
+            st = status()
+            self.assertTrue(st["stale"])
+            self.assertEqual(st["no_heartbeat_since"], old)
+            self.assertIn("No heartbeat", gate("anything"))
+
+
 if __name__ == "__main__":
     unittest.main()

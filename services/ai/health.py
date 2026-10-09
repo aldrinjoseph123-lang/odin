@@ -17,7 +17,7 @@ ten-minute validation never delays a backup or the digest).
 import json
 from datetime import datetime, timedelta
 
-from services.ai import FEATURES, GOOD_STATES, STATUS_SETTING, prompt_of, run, status
+from services.ai import FEATURES, GOOD_STATES, STALE_KEYS, STATUS_SETTING, prompt_of, run, status
 from services.ai.client import AIError, chat, config, find_model, fingerprint, list_models
 
 SMOKE_SCHEMA = {"type": "object", "properties": {"status": {"type": "string", "enum": ["ready"]}, "echo": {"type": "integer"}},
@@ -76,7 +76,7 @@ def heartbeat(db):
         return new
     misses = int(prev.get("misses") or 0) + 1
     down = misses >= policy("ai_down_after", db)
-    new = {**prev, "state": "down" if down else prev.get("state", "unknown"), "checked_at": now, "misses": misses, "error": c["reason"]}
+    new = {**{k: v for k, v in prev.items() if k not in STALE_KEYS}, "state": "down" if down else prev.get("state", "unknown"), "checked_at": now, "misses": misses, "error": c["reason"]}
     if down and prev.get("state") != "down":
         new["since"] = now
         _notify_admins(db, "The AI server is not answering",
@@ -136,7 +136,7 @@ def validate_all(db, run_id=None):
         ok = out.get("echo") == 7
         _record(db, run_id, "smoke", "passed" if ok else "failed", seconds=meta["seconds"], output=out, model=meta["model"], fp=fp,
                 detail=None if ok else "answered in the right form but with the wrong content")
-        _put(db, STATUS_SETTING, json.dumps({**status(db), "seconds": meta["seconds"]}))
+        _put(db, STATUS_SETTING, json.dumps({**{k: v for k, v in status(db).items() if k not in STALE_KEYS}, "seconds": meta["seconds"]}))
     except AIError as exc:
         _record(db, run_id, "smoke", "failed", detail=exc.reason, model=cfg["model"], fp=fp)
         return {"ok": False, "reason": exc.reason}
