@@ -329,3 +329,23 @@ export function aiStale(s: { state: string; checked_at?: string; stale?: boolean
   if (s.state === "off" || s.state === "unknown") return false
   return !schedulerAlive || !!s.stale || !s.checked_at || now - parseStamp(s.checked_at).getTime() > 15 * 60_000
 }
+
+// An AI draft's progress (the model does not stream): how far through its
+// usual time it is, as a percentage that never reaches 100 before the answer,
+// and the words under the bar. Queued: no percentage (the bar is indeterminate).
+export function aiProgress(job: { status: string; progress?: { ahead: number; started_at: string | null; expected_s: number } | null }, now: number = Date.now()):
+  { pct: number | null; text: string } {
+  const p = job.progress
+  if (job.status === "queued" || !p?.started_at) {
+    const ahead = p?.ahead ?? 0
+    return { pct: null, text: ahead > 0 ? `Waiting for the AI server · ${ahead} ahead` : "Starting…" }
+  }
+  const started = Date.parse(/Z$|[+-]\d\d:\d\d$/.test(p.started_at) ? p.started_at : `${p.started_at}Z`)
+  const elapsed = Math.max(0, (now - started) / 1000), expected = Math.max(p.expected_s, 1)
+  if (elapsed <= expected) {
+    const left = Math.ceil(expected - elapsed)
+    return { pct: Math.min(95, (elapsed / expected) * 95), text: left > 60 ? `Writing… about ${Math.round(left / 60)} min left` : `Writing… about ${left} s left` }
+  }
+  // past the usual time: creep towards 99, and say so honestly
+  return { pct: 95 + 4 * (1 - Math.exp(-(elapsed - expected) / expected)), text: `Taking longer than usual · ${Math.round(elapsed)} s so far` }
+}

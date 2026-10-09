@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Copy, Mail, Sparkles } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { AIProgress } from "@/components/AIProgress"
 import { ApiError, cancelAIJob, closeAISuggestion, dismissAISuggestion, projectAI, requestProjectAI, type ChaseDraft, type ProjectAI } from "@/lib/api"
 import { fmtWhen, reminderText } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -58,7 +59,7 @@ export function AIChase({ projectId }: { projectId: number }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
           <span className="min-w-0 flex-1 basis-56" aria-live="polite">
-            {drafting ? "Drafting a chase… about a minute."
+            {drafting ? "Drafting a chase…"
               : sug ? <>AI draft, {fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}. Read it, then copy it or open it in your mail. Odin does not send it.</>
                 : "Draft a short, polite chase email about these with AI."}
             {note && <span className="block text-muted-foreground" role="status">{note}</span>}
@@ -66,6 +67,7 @@ export function AIChase({ projectId }: { projectId: number }) {
           {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void act(() => requestProjectAI(projectId, "chase_draft"))}>{sug ? "Draft again" : "Draft a chase"}</Button>}
           {drafting && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void act(() => cancelAIJob(projectId, s.job!.id))}>Cancel</Button>}
         </div>
+        {drafting && s.job && <AIProgress job={s.job} />}
         {sug && !drafting && (
           <div className="mt-2 border-t border-border pt-2">
             <p className="font-medium">{sug.payload.subject}</p>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AIProgress } from "@/components/AIProgress"
 import { addTask, ApiError, cancelAIJob, closeAISuggestion, dismissAISuggestion, projectAI, requestProjectAI, saveScope, type ProjectAI, type SowItem, type SowPlan } from "@/lib/api"
 import { fmtWhen } from "@/lib/format"
 import { usePoll } from "@/lib/usePoll"
@@ -83,7 +84,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
         <span className="min-w-0 flex-1 basis-56" aria-live="polite">
-          {reading ? "Reading the documents in parts and drafting a plan… a few minutes for a long scope of work."
+          {reading ? "Reading the documents in parts and drafting a plan…"
             : sug ? <>AI suggested plan from the documents, {fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}. Untick what you do not want, then add the rest.</>
               : "Suggest the scope items and tasks from the PO and scope of work with AI. Pick the documents to read:"}
           {lastJob?.status === "failed" && <span className="block text-bad">The last reading did not finish: {lastJob.error}</span>}
@@ -92,6 +93,7 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
         </span>
         {reading && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
       </div>
+      {reading && s.job && <AIProgress job={s.job} />}
       {!sug && !reading && (
         <div className="mt-2">
           {all.length === 0 ? <p className="text-muted-foreground">No readable documents yet: upload the PO or scope of work (PDF, Word, Excel or text) under Documents.</p> : (

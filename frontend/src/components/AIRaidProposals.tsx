@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AIProgress } from "@/components/AIProgress"
 import { ApiError, cancelAIJob, decideAIProposal, projectAI, requestProjectAI, type ProjectAI, type RaidProposal, type RaidProposals } from "@/lib/api"
 import { fmtWhen } from "@/lib/format"
 import { RAID_KIND } from "@/components/RaidPanel"
@@ -39,7 +40,7 @@ export function AIRaidProposals({ projectId, refresh, onAdd }: { projectId: numb
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
         <span className="min-w-0 flex-1 basis-56" aria-live="polite">
-          {looking ? "Reading the last two weeks of notes for anything not yet logged… about a minute."
+          {looking ? "Reading the last two weeks of notes for anything not yet logged…"
             : sug && open.length ? <>AI found {open.length} thing{open.length === 1 ? "" : "s"} the notes mention that the register does not ({fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}).</>
               : sug ? "Nothing new in the notes that the register does not already hold."
                 : "Look through the last two weeks of notes with AI for risks, issues and decisions nobody has logged."}
@@ -49,6 +50,7 @@ export function AIRaidProposals({ projectId, refresh, onAdd }: { projectId: numb
         {s.available && !looking && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void look()}>{sug ? "Look again" : "Look with AI"}</Button>}
         {looking && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
       </div>
+      {looking && s.job && <AIProgress job={s.job} />}
       {sug && open.length > 0 && !looking && (
         <ul className="mt-2 divide-y divide-border border-t border-border">
           {open.map(([p, i]) => {

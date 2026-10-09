@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AIProgress } from "@/components/AIProgress"
 import { Input } from "@/components/ui/input"
 import { Ago } from "@/components/Ago"
 import { ApiError, cancelAIJob, projectAI, requestProjectAI, type AskAnswer, type ProjectAI } from "@/lib/api"
@@ -45,7 +46,7 @@ export function AIAsk({ projectId }: { projectId: number }) {
         </form>
       )}
       <div aria-live="polite" className="text-[13px]">
-        {working && <p className="mt-2 text-muted-foreground">Reading the rollout's records… about a minute or two.</p>}
+        {working && s.job && <AIProgress job={s.job} doing="Reading the rollout's records" />}
         {lastJob?.status === "failed" && <p className="mt-2 text-bad">That question did not finish: {lastJob.error}</p>}
         {lastJob?.result?.skipped && <p className="mt-2 text-muted-foreground">{lastJob.result.skipped}</p>}
         {error && <p className="mt-2 text-bad" role="alert">{error}</p>}

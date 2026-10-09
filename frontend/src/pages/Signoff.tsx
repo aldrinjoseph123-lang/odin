@@ -229,7 +229,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
         <Section n title="Summary" sub="drafted from the project; make it yours">
           <AIDraftBar<{ summary: string }> projectId={id} feature="signoff_summary"
             idle="Draft this summary with AI from the scope, dates and deliverables."
-            working="Drafting from the scope, dates and deliverables… about a minute."
+            working="Drafting from the scope, dates and deliverables…"
             note="It fills the summary for you to check word by word: the customer signs under it."
             onUse={(s) => { setSummary(s.payload.summary); setAiDraft(s.id) }} />
           <textarea aria-label="Summary" rows={4} maxLength={4000} value={summary} onChange={(e) => setSummary(e.target.value)} className={area} />

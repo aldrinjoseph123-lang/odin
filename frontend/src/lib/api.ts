@@ -260,7 +260,8 @@ export type AISuggestion<T> = { id: number; payload: T; model: string | null; se
 export type ProjectAI<T> = {
   available: boolean; reason: string | null; label: string; suggestion: AISuggestion<T> | null
   options?: { documents?: SowDocument[]; waiting?: WaitingItem[]; contact?: { name: string; email: string | null } | null } | null
-  job: { id: number; status: "queued" | "running" | "done" | "failed"; error: string | null; result: { skipped?: string; suggestion?: number } | null; created_at: string } | null
+  job: { id: number; status: "queued" | "running" | "done" | "failed"; error: string | null; result: { skipped?: string; suggestion?: number } | null; created_at: string
+    progress?: { ahead: number; started_at: string | null; expected_s: number } | null } | null
 }
 export type WeeklyWordsDraft = { summary: string; next_steps: string[]; asks: string[] }
 export const projectAI = <T,>(id: number, key: string) => getJson<ProjectAI<T>>(`/api/projects/${id}/ai/${key}`)

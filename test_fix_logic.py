@@ -545,3 +545,23 @@ class ReportPdfAndAITestCase(FixBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AIJobProgressTest(test_app.AITestBase):
+    """A queued draft tells the page where it stands, so the progress bar is not blind."""
+    isolate_features = False
+    GOOD = test_app.WeeklyWordsTestCase.GOOD
+    _project = test_app.WeeklyWordsTestCase._project
+    _ready = test_app.WeeklyWordsTestCase._ready
+
+    def test_queued_job_reports_its_place_and_expected_time(self):
+        self._project()
+        self._ready()
+        with self._db() as con:   # another rollout's draft is already running
+            con.execute("INSERT INTO ai_jobs (kind, feature, project_id, status, created_at, started_at) VALUES ('feature', 'weekly_words', NULL, 'running', '2026-10-09T00:00:00', '2026-10-09T00:00:00')")
+        self.assertEqual(self.client.post("/api/projects/1/ai/weekly_words", json={}, headers=self._csrf()).status_code, 200)
+        job = self.client.get("/api/projects/1/ai/weekly_words").get_json()["job"]
+        self.assertEqual(job["status"], "queued")
+        self.assertEqual(job["progress"]["ahead"], 1)
+        self.assertGreater(job["progress"]["expected_s"], 0)          # from the feature's last test
+        self.assertIsNone(job["progress"]["started_at"])

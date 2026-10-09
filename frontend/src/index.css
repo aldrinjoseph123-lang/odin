@@ -313,3 +313,7 @@ main { counter-reset: panel; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
+
+/* an indeterminate bar: a third of the track sliding across, for waits with no
+   known length (an AI draft still in the queue) */
+@keyframes odin-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AIProgress } from "@/components/AIProgress"
 import { ApiError, cancelAIJob, dismissAISuggestion, projectAI, requestProjectAI, type AISuggestion, type ProjectAI } from "@/lib/api"
 import { fmtWhen } from "@/lib/format"
 import { usePoll } from "@/lib/usePoll"
@@ -51,6 +52,7 @@ export function AIDraftBar<T>({ projectId, feature, idle, working, note, onUse, 
       )}
       {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void draft()}>{sug ? again : ask}</Button>}
       {drafting && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
+      {drafting && s.job && <div className="basis-full"><AIProgress job={s.job} /></div>}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AIProgress } from "@/components/AIProgress"
 import { Ago } from "@/components/Ago"
 import { projectAI, requestProjectAI, type ProjectAI } from "@/lib/api"
 import { usePoll } from "@/lib/usePoll"
@@ -31,7 +32,7 @@ export function AIHealthWhy({ projectId, rag }: { projectId: number; rag: string
     <div className="mt-2 flex flex-wrap items-start gap-x-3 gap-y-1 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">
       <Sparkles className="mt-1 h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
       <div className="min-w-0 flex-1 basis-56" aria-live="polite">
-        {working ? <span className="text-muted-foreground">Explaining… about half a minute.</span>
+        {working && s.job ? <AIProgress job={s.job} doing="Explaining" />
           : sug ? <>
               <p>{sug.payload.why}</p>
               <p className="mt-1"><span className="font-medium">First move:</span> {sug.payload.first_move}</p>

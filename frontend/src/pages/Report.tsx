@@ -175,7 +175,7 @@ export default function Report({ user }: { user: User }) {
             <AIDraftBar<{ summary: string; next_steps: string[]; asks: string[] }> projectId={id} feature="customer_words" input={() => words}
               ask="Tidy for the customer" again="Tidy again"
               idle="Before you save: rewrite these words so the customer can read them. Names, blame and shorthand come out; every fact stays; nothing is added."
-              working="Tidying the words as they are now… about a minute."
+              working="Tidying the words as they are now…"
               note="A customer-ready version of your words. Use it, then read it once more before saving."
               onUse={(s) => { setWords({ summary: s.payload.summary, next_steps: s.payload.next_steps.join("\n"), asks: s.payload.asks.join("\n") }); setAiDraft(s.id) }} />
           )}
