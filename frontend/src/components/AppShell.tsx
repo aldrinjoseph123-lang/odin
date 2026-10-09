@@ -13,6 +13,7 @@ import { TitleTips } from "@/components/TitleTips"
 import { NotificationBell } from "@/components/NotificationBell"
 import { applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
+import { Kbd } from "@/components/ui/kbd"
 import { useActivityPing } from "@/lib/useActivityPing"
 
 // White top bar, ink links, accent underline on the current section. Un-ported
@@ -117,7 +118,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           <button type="button" onClick={() => { setOpen(false); setPalette(true) }} aria-label="Search projects and tasks" aria-keyshortcuts="Control+K Meta+K /"
             className="flex h-9 w-full items-center gap-2 rounded-full bg-card px-3 text-left text-[13px] text-muted-foreground shadow-card hover:text-foreground xl:w-9 xl:justify-center xl:px-0 2xl:w-56 2xl:justify-start 2xl:px-3">
             <Search className="h-3.5 w-3.5 shrink-0" /><span className="flex-1 truncate xl:hidden 2xl:inline">Search…</span>
-            <kbd className="rounded-md border border-border px-1 text-[11px] xl:hidden 2xl:inline">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+            <Kbd className="xl:hidden 2xl:inline-flex">{isMac ? "⌘K" : "Ctrl K"}</Kbd>
           </button>
           {user.permissions.includes("create_project") && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}

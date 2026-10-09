@@ -127,6 +127,7 @@
     --brand-paper: #FFFFFF;
     --brand-muted: #B8B8B4;
     --brand-edge: transparent;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B6270' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
 /* ---- Dark: same world, inverted ground. Ink becomes the surface, surfaces
@@ -169,6 +170,7 @@
     --sidebar-foreground: #E7E8EC;
     --sidebar-border: #262B34;
     --brand-edge: #2E3440;          /* keeps the black tile visible on the dark ground */
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239AA0AB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     color-scheme: dark;
 }
 
@@ -268,6 +270,23 @@
     }
   button:disabled, [aria-disabled="true"], select:disabled, input:disabled, textarea:disabled {
     cursor: not-allowed;
+    }
+  /* Every native <select> wears shadcn's Native Select look (9 Oct 2026): no
+     browser chrome, our chevron, room for it, the input radius and ring. New
+     code may use <NativeSelect> from components/ui; existing selects follow
+     here without changing how they work. */
+  select:not([multiple]):not([data-slot="native-select"]) {
+    appearance: none;
+    background-image: var(--select-chevron);
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 16px 16px;
+    padding-right: 32px;
+    }
+  select:not([multiple]):focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
+    outline: none;
     }
   /* on a touch screen every button is at least 24 x 24 px to hit (WCAG 2.5.8,
      test report UX-21: delete, remove and copy icons were 14 px) */

@@ -514,6 +514,9 @@ A round picture when the person uploaded one, otherwise initials: 24 px in rows 
 - **Settings menu.** The open area is a white block with the card shadow, bold ink text and a 4 px accent bar on its left.
 - **Widget handle.** Dashboard widgets are dragged by a small horizontal handle centred in the card's top margin, shown on hover; it never covers a title.
 
+### shadcn components in use (9 Oct 2026)
+Reach for these before hand-building: **Calendar** behind `DatePicker` for every date (weeks start Monday, month/year dropdowns, Today/Clear); **Progress + Spinner** behind `AIProgress` for every AI draft (queue place, then a bar towards the feature's usual time); **Switch** for on/off settings; **Native Select** look for every `<select>` (global CSS, or `<NativeSelect>` in new code); **Textarea**, **Kbd** (⌘K, Esc), **Empty** (empty lists with an icon), **Breadcrumb** (Projects › name), **Skeleton** (page loading), **Pagination** behind `Pager`; plus the existing Button, Dialog, Popover, Tooltip, Badge, Avatar, Alert. Candidates when their screens are next touched: Select (searchable), Sheet (phone menu), DropdownMenu (widget and row menus), ToggleGroup (segmented controls), Command (palette), HoverCard (people).
+
 ## Do's and Don'ts
 
 ### Do:

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { useParams } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 import { Copy, Trash2 } from "lucide-react"
 import { UserAvatar } from "@/components/UserAvatar"
 import { Ago } from "@/components/Ago"
@@ -17,6 +17,7 @@ import { AINotesTasks } from "@/components/AINotesTasks"
 import { LessonsPanel } from "@/components/LessonsPanel"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
@@ -85,9 +86,13 @@ export default function Project({ user }: { user: User }) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="flex flex-wrap items-center gap-2 px-5 pt-4">
-        <a href="/projects" className="text-[13px] text-muted-foreground hover:text-foreground">Projects</a>
-        <span className="text-[13px] text-muted-foreground">/</span>
-        <span className="text-[13px] font-medium">{x.name}</span>
+        <Breadcrumb className="min-w-0 text-[13px]">
+          <BreadcrumbList>
+            <BreadcrumbItem><BreadcrumbLink render={<Link to="/projects" />}>Projects</BreadcrumbLink></BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem className="min-w-0"><BreadcrumbPage className="truncate" title={x.name}>{x.name}</BreadcrumbPage></BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a href={`/board?rollout=${id}`} className={buttonVariants({ variant: "ghost", size: "sm" })}>On the flow</a>
           <a href={`/projects/${id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { Navigate, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
@@ -230,7 +231,7 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
             <div key={p.key} className={cn("grid min-w-0 content-start gap-1", (p.kind === "multi" || p.kind === "dates") && "md:col-span-2")}>
               {p.kind === "bool" ? (
                 <label className="flex items-start gap-2 text-[13px] font-medium">
-                  <input type="checkbox" checked={!!v[p.key]} onChange={(e) => setV({ ...v, [p.key]: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />{p.label}
+                  <Switch checked={!!v[p.key]} onCheckedChange={(c) => setV({ ...v, [p.key]: c })} className="mt-1" />{p.label}
                 </label>
               ) : (
                 <label htmlFor={`pol-${p.key}`} className="text-[13px] font-medium">{p.label}</label>
@@ -401,7 +402,7 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[13px]" /></label>
         </div>
         <label className="flex items-start gap-2 text-[13px]">
-          <input type="checkbox" checked={enforced} onChange={(e) => setEnforced(e.target.checked)} disabled={!sso.configured} className="mt-1 h-3.5 w-3.5 accent-primary" />
+          <Switch checked={enforced} onCheckedChange={setEnforced} disabled={!sso.configured} className="mt-1" />
           <span>Staff must sign in with Microsoft <span className="block text-[12px] text-muted-foreground">The password form disappears. Accounts ticked "Password" on the Users page ({sso.password_admins} admin{sso.password_admins === 1 ? "" : "s"} now) keep an emergency form at /login/password; each use is recorded and the admins are told.</span></span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
@@ -431,7 +432,7 @@ function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData;
       <form onSubmit={submit} className="grid grid-cols-1 gap-2 text-[13px]">
         {keys.map((i) => (
           <label key={i.key} className="flex items-start gap-2">
-            <input type="checkbox" checked={t[i.key]} onChange={(e) => setT({ ...t, [i.key]: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />
+            <Switch checked={t[i.key]} onCheckedChange={(c) => setT({ ...t, [i.key]: c })} className="mt-1" />
             <span>{i.label}</span>
           </label>
         ))}

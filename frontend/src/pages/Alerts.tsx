@@ -1,9 +1,8 @@
 import { Fragment, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { ChevronLeft, ChevronRight } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
 import { alerts, ApiError, type AlertsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { Pager } from "@/components/Pager"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
@@ -71,12 +70,11 @@ export default function Alerts(_props: { user: User }) {
         </table>
       </div>
       <div className="mt-2 flex items-center gap-3 text-[13px] text-muted-foreground">
-        {d.total_pages > 1 && (<>
-          <button type="button" disabled={d.page <= 1} onClick={() => { const n = new URLSearchParams(params); n.set("page", String(d.page - 1)); setParams(n) }} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7")} aria-label="Previous page"><ChevronLeft className="h-3.5 w-3.5" /></button>
-          <span>Page {d.page} of {d.total_pages}</span>
-          <button type="button" disabled={d.page >= d.total_pages} onClick={() => { const n = new URLSearchParams(params); n.set("page", String(d.page + 1)); setParams(n) }} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7")} aria-label="Next page"><ChevronRight className="h-3.5 w-3.5" /></button>
+        {d.total_pages > 1 && <>
+          <Pager page={d.page} pages={d.total_pages} href={(n) => { const q = new URLSearchParams(params); q.set("page", String(n)); return `?${q}` }}
+            onPage={(n) => { const q = new URLSearchParams(params); q.set("page", String(n)); setParams(q) }} />
           <span>·</span>
-        </>)}
+        </>}
         <span>{d.total} alert{d.total === 1 ? "" : "s"}</span>
       </div>
     </div>

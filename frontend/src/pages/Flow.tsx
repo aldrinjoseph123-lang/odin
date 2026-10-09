@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
-import { ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
+import { Inbox, ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
 import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
@@ -306,12 +307,12 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
             </li>
           )}
           {rows.length === 0 && (
-            <li className="rounded-lg bg-muted/40 px-4 py-12 text-center text-[13px] text-muted-foreground">
+            <li><Empty className="rounded-lg bg-muted/40 py-12"><EmptyHeader><EmptyMedia variant="icon"><Inbox /></EmptyMedia><EmptyDescription>
               {data.rows.length === 0 ? (partner ? "No rollout is shared with you yet. It appears here once a project manager adds you." : "No active rollouts yet. Create one from a client PO and it appears here.")
                 : stage ? `No rollout in ${stage} matches this filter.`
                 : filter === "customer" ? "No rollout is waiting on a customer's approval."
                 : "Nothing needs attention — every rollout is inside its stage SLA and on schedule."}
-            </li>
+            </EmptyDescription></EmptyHeader></Empty></li>
           )}
         </ul>
       </ScrollArea>

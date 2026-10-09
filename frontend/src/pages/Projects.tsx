@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink, LayoutGrid, List, Search } from "lucide-react"
+import { FolderOpen, ArrowDown, ArrowUp, ExternalLink, LayoutGrid, List, Search } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Stepper } from "@/components/Stepper"
 import { TeamStack } from "@/components/TeamStack"
 import { ApiError, projects, type ProjectsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { Pager } from "@/components/Pager"
 import { activeProjectsView, fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
@@ -144,11 +146,11 @@ export default function Projects({ user }: { user: User }) {
               )
             })}
             {data.rows.length === 0 && (
-              <li className="col-span-full rounded-lg bg-muted/40 px-4 py-12 text-center text-[13px] text-muted-foreground">
+              <li className="col-span-full"><Empty className="rounded-lg bg-muted/40 py-12"><EmptyHeader><EmptyMedia variant="icon"><FolderOpen /></EmptyMedia><EmptyDescription>
                 {filtered ? <>No projects match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
                   : <>No projects yet.{data.can_create && user.role !== "Viewer" && <> <a href="/projects/new" className="text-primary-text hover:underline">Create the first one</a></>}</>}
               
-              </li>
+              </EmptyDescription></EmptyHeader></Empty></li>
             )}
           </ul>
         </div>
@@ -201,14 +203,11 @@ export default function Projects({ user }: { user: User }) {
       )}
 
       <div className="mt-2 flex items-center gap-3 text-[13px] text-muted-foreground">
-        {data.total_pages > 1 && (
-          <>
-            <button type="button" disabled={data.page <= 1} onClick={() => { const n = new URLSearchParams(params); n.set("page", String(data.page - 1)); setParams(n) }} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7")} aria-label="Previous page"><ChevronLeft className="h-3.5 w-3.5" /></button>
-            <span>Page {data.page} of {data.total_pages}</span>
-            <button type="button" disabled={data.page >= data.total_pages} onClick={() => { const n = new URLSearchParams(params); n.set("page", String(data.page + 1)); setParams(n) }} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7")} aria-label="Next page"><ChevronRight className="h-3.5 w-3.5" /></button>
-            <span>·</span>
-          </>
-        )}
+        {data.total_pages > 1 && <>
+          <Pager page={data.page} pages={data.total_pages} href={(n) => { const q = new URLSearchParams(params); q.set("page", String(n)); return `?${q}` }}
+            onPage={(n) => { const q = new URLSearchParams(params); q.set("page", String(n)); setParams(q) }} />
+          <span>·</span>
+        </>}
         <span>{data.total} project{data.total === 1 ? "" : "s"}</span>
       </div>
     </div>

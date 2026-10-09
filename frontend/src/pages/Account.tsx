@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { account, ApiError, postForm, type User } from "@/lib/api"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -134,7 +135,7 @@ export default function Account(_props: { user: User }) {
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Email me about <span className="font-normal text-muted-foreground">the bell shows everything either way</span></h2>
           {me.email_kinds.map((k) => (
             <label key={k.key} className="flex items-start gap-2 text-[13px]">
-              <input type="checkbox" name={k.key} defaultChecked={k.on} className="mt-1 h-3.5 w-3.5 accent-primary" />
+              <Switch name={k.key} defaultChecked={k.on} className="mt-1" />
               <span>{k.label}</span>
             </label>
           ))}

@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { ChevronLeft, ChevronRight } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import { ApiError, audit, type AuditData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { Pager } from "@/components/Pager"
 import { DatePicker } from "@/components/DatePicker"
 import { actionText, dayBucket, fmtWhen } from "@/lib/format"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -92,14 +92,11 @@ export default function Audit(_props: { user: User }) {
         </table>
       </div>
       <div className="mt-2 flex items-center gap-3 text-[13px] text-muted-foreground">
-        {data.total_pages > 1 && (
-          <>
-            <button type="button" disabled={data.page <= 1} onClick={() => goto(data.page - 1)} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7")} aria-label="Previous page"><ChevronLeft className="h-3.5 w-3.5" /></button>
-            <span>Page {data.page} of {data.total_pages}</span>
-            <button type="button" disabled={data.page >= data.total_pages} onClick={() => goto(data.page + 1)} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7")} aria-label="Next page"><ChevronRight className="h-3.5 w-3.5" /></button>
-            <span>·</span>
-          </>
-        )}
+        {data.total_pages > 1 && <>
+          <Pager page={data.page} pages={data.total_pages} href={(n) => { const q = new URLSearchParams(params); q.set("page", String(n)); return `?${q}` }}
+            onPage={goto} />
+          <span>·</span>
+        </>}
         <span>{data.total} entr{data.total === 1 ? "y" : "ies"}</span>
       </div>
     </div>
