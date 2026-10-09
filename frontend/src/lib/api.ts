@@ -16,6 +16,7 @@ export type User = {
   avatar_url: string | null
   home: "dashboard" | "board"
   prefs?: { date_format: DateFormat; undo_minutes: number; activity_idle_minutes?: number }
+  external_role?: string | null   // an external's project role ("Customer", "Vendor", …) when the server names it
 }
 
 export type SignIn = { microsoft: boolean; microsoft_only: boolean; link_minutes?: number }
@@ -23,12 +24,6 @@ type SessionResponse = { csrf: string; user: User | null; messages?: string[]; s
 
 let csrfToken: string | null = null
 
-export async function session(): Promise<SessionResponse> {
-  const res = await fetch("/api/session", { credentials: "same-origin" })
-  const data = (await res.json()) as SessionResponse
-  csrfToken = data.csrf
-  return data
-}
 
 export class ApiError extends Error {
   status: number
@@ -62,6 +57,35 @@ async function call(path: string, init?: RequestInit): Promise<Response> {
   }
 }
 
+// A failed session check (a 502 page while Odin restarts, a dropped
+// connection) is an ApiError like any other, so the page can offer a retry
+// instead of going blank.
+export async function session(): Promise<SessionResponse> {
+  const res = await call("/api/session")
+  const data = res.ok ? ((await res.json().catch(() => null)) as SessionResponse | null) : null
+  if (!data) throw new ApiError(res.ok ? 500 : res.status, failureText(res.ok ? 500 : res.status))
+  csrfToken = data.csrf
+  return data
+}
+
+// A mutation with the CSRF token. A stale token (the session was renewed in
+// another tab, Odin restarted) answers 400 with a fresh one: take it (or ask
+// /api/session) and send once more, so saves do not fail until a reload.
+export function csrfRejected(status: number, data: { csrf?: string; error?: string } | null): boolean {
+  return status === 400 && !!data && (!!data.csrf || /csrf/i.test(data.error ?? ""))
+}
+async function withToken(path: string, init: RequestInit): Promise<Response> {
+  if (!csrfToken) await session()
+  const go = () => call(path, { ...init, headers: { ...(init.headers as Record<string, string>), "X-CSRF-Token": csrfToken ?? "" } })
+  const res = await go()
+  if (res.status !== 400) return res
+  const data = (await res.clone().json().catch(() => null)) as { csrf?: string; error?: string } | null
+  if (!csrfRejected(res.status, data)) return res
+  if (data?.csrf) csrfToken = data.csrf
+  else await session().catch(() => null)
+  return go()
+}
+
 // The error for a failed response: the server's own words when it gave some;
 // a 400/401 from a session that has ended (the CSRF check fails first) says so.
 async function failure(res: Response, said?: string): Promise<ApiError> {
@@ -74,10 +98,9 @@ async function failure(res: Response, said?: string): Promise<ApiError> {
 
 // One JSON request with the CSRF token; every mutation goes through here.
 async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
-  if (!csrfToken) await session()
-  const res = await call(path, {
+  const res = await withToken(path, {
     method,
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken ?? "" },
+    headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string; csrf?: string } & T
@@ -99,7 +122,8 @@ export function loginCode(code: string) {
 
 export type TwoStep = { enabled: boolean; enabled_at: string | null; required: boolean; recovery_left: number; password: boolean }
 export const twoStep = () => getJson<TwoStep>("/api/account/two-step")
-export const twoStepSetup = (password: string) => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup", { password })
+// re-enrolling while two-step is on also needs a current code (or a recovery code)
+export const twoStepSetup = (password: string, code?: string) => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup", code ? { password, code } : { password })
 export const twoStepConfirm = (code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/confirm", { code })
 export const twoStepOff = (password: string, code: string) => post<{ ok: true }>("/api/account/two-step/off", { password, code })
 export const twoStepCodes = (password: string, code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/recovery-codes", { password, code })
@@ -200,7 +224,7 @@ export type PlanData = {
 }
 export const plan = (id: number) => getJson<PlanData>(`/api/projects/${id}/plan`)
 export const savePlan = (id: number, stages: { id: number; plan_start: string | null; plan_end: string | null }[], reason: string) =>
-  send<{ ok: true; changed: number; baselined: boolean }>(`/api/projects/${id}/plan`, "PUT", { stages, reason })
+  send<{ ok: true; changed: number; baselined: boolean; warning?: string }>(`/api/projects/${id}/plan`, "PUT", { stages, reason })
 export const rebaseline = (id: number, reason: string) => post<{ ok: true }>(`/api/projects/${id}/plan/baseline`, { reason })
 export type ReportWords = { summary: string; next_steps: string; asks: string; suggested?: { summary: string; next_steps: string; asks: string }; blocks?: ["h" | "li" | "p", string][] }
 export type ReportPayload = {
@@ -323,12 +347,13 @@ export const sendSignoff = (id: number, body: { summary: string; delivered: stri
   post<{ ok: true; version: number }>(`/api/projects/${id}/signoff`, body)
 export const signSignoff = (id: number, v: number, body: SignBody, counter = false) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/${counter ? "countersign" : "sign"}`, body)
 export const rejectSignoff = (id: number, v: number, comment: string) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/reject`, { comment })
-export const signoffLink = (id: number, v: number) => post<{ ok: true; link: string; minutes: number; email: string }>(`/api/projects/${id}/signoff/${v}/link`)
+// link is null when the server emailed it instead (or will not hand it out): then `message` says what happened
+export type SignoffLink = { ok: true; link: string | null; minutes: number; email: string; emailed?: boolean; message?: string }
+export const signoffLink = (id: number, v: number) => post<SignoffLink>(`/api/projects/${id}/signoff/${v}/link`)
 export const withdrawSignoff = (id: number, v: number) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/withdraw`)
 export const waiveSignoff = (id: number, reason: string) => post<{ ok: true; version: number }>(`/api/projects/${id}/signoff/waive`, { reason })
 export async function uploadSignoff(id: number, v: number, form: FormData): Promise<{ ok: true }> {
-  if (!csrfToken) await session()
-  const res = await call(`/api/projects/${id}/signoff/${v}/upload`, { method: "POST", body: form, headers: { "X-CSRF-Token": csrfToken ?? "" } })
+  const res = await withToken(`/api/projects/${id}/signoff/${v}/upload`, { method: "POST", body: form })
   const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: true }
   if (!res.ok) throw await failure(res, data.error)
   return data as { ok: true }
@@ -363,12 +388,12 @@ export type DashboardData = {
     progress: { done: number; current: number; pending: number; pct: number }
     stages: { stage: string; count: number }[]
     completion: { day: string; count: number }[]
-    schedule: { due: { id: number; project_id: number; title: string; due_date: string; project: string; stage: string; who: string | null; avatar_url: string | null }[]
+    schedule: { due: { id: number; project_id: number; title: string; due_date: string; project: string; stage: string | null; who: string | null; avatar_url: string | null }[]
                 approvals: { project_id: number; project: string; stage: string; requested_at: string }[] }
     team: { people: { id: number; name: string; avatar_url: string | null; role: string; projects: number; open: number; late: number }[]; unassigned: number }
     activity: { kind: "move" | "note" | "approval" | "task" | "document"; at: string; who: string | null; project_id: number; project: string; text: string }[]
     alerts: { id: number; project_id: number; project: string; type: string; title: string; severity: string; created_at: string }[]
-    mywork: { tasks: { id: number; title: string; project_id: number; project: string; due_date: string | null; stage: string }[]; owned: number }
+    mywork: { tasks: { id: number; title: string; project_id: number; project: string; due_date: string | null; stage: string | null }[]; owned: number }
     cycle: { template: string; lead_avg: number | null; lead_median: number | null; completed_count: number; throughput: [string, number][]; slowest: { stage: string; avg_days: number } | null; measured_projects: number } | null
   }
 }
@@ -410,12 +435,16 @@ export const projectExtras = (id: number) => getJson<ProjectExtras>(`/api/projec
 // answer differs because we ask for JSON.
 export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null }
 export async function postForm(path: string, fields: Record<string, string> | FormData = {}): Promise<FormReply> {
-  if (!csrfToken) await session()
   const body = fields instanceof FormData ? fields : new URLSearchParams(fields)
-  const res = await call(path, { method: "POST", body, headers: { Accept: "application/json", "X-CSRF-Token": csrfToken ?? "" } })
-  if (!res.ok) throw await failure(res, res.status === 403 ? "You cannot do that on this project" : undefined)
-  const data = (await res.json().catch(() => null)) as FormReply | null
+  const res = await withToken(path, { method: "POST", body, headers: { Accept: "application/json" } })
+  if (!res.ok) {
+    // a refused form answers 400 {ok: false, error, messages}: its own words
+    const d = (await res.json().catch(() => null)) as { error?: string; messages?: string[] } | null
+    throw await failure(res, res.status === 403 ? "You cannot do that on this project" : d?.messages?.join(" ") || d?.error || undefined)
+  }
+  const data = (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
   if (!data) throw new ApiError(res.status, "Your session has ended — sign in again")
+  if (data.ok === false) throw new ApiError(400, data.messages?.join(" ") || data.error || "That did not save")
   return data
 }
 
@@ -456,7 +485,7 @@ export type AIFeatureView = {
   seconds: number | null; detail: string | null; output: unknown; prompt: string; prompt_hash: string
 }
 export type AIView = {
-  status: { state: AIState; since?: string; checked_at?: string; misses?: number; fingerprint?: string; model?: string; error?: string | null; seconds?: number | null }
+  status: { state: AIState; since?: string; checked_at?: string; misses?: number; fingerprint?: string; model?: string; error?: string | null; seconds?: number | null; stale?: boolean }
   has_key: boolean; scheduler_alive: boolean
   usage: { calls: number; failed: number | null; avg_s: number | null; max_s: number | null; tokens_in: number | null; tokens_out: number | null }
   features: AIFeatureView[]
@@ -469,7 +498,8 @@ export const aiSettings = () => getJson<AIView>("/api/settings/ai")
 export const settingsData = (section: string, teamId = "") =>
   getJson<SettingsData>(`/api/settings?section=${encodeURIComponent(section)}${teamId ? `&team_id=${encodeURIComponent(teamId)}` : ""}`)
 
-export type RbacData = { roles: string[]; permissions: string[]; matrix: Record<string, Record<string, boolean>>; locked: Record<string, string[]> }
+// locked: always on for that role; forbidden: never allowed for it (e.g. External), both shown and not editable
+export type RbacData = { roles: string[]; permissions: string[]; matrix: Record<string, Record<string, boolean>>; locked: Record<string, string[]>; forbidden?: Record<string, string[]> }
 export const rbac = () => getJson<RbacData>("/api/settings/rbac")
 export type ContactsData = {
   lists: { key: string; label: string; has_email: boolean; items: { id: number; name: string; email: string | null }[] }[]
@@ -549,8 +579,7 @@ export const deleteDocTemplate = (id: number) => send<{ ok: true }>(`/api/doc-te
 export const defaultDocTemplate = (id: number) => post<{ ok: true }>(`/api/doc-templates/${id}/default`)
 export const docTemplateChoices = (kind: DocKind) => getJson<{ choices: { id: number; name: string; is_default: boolean }[] }>(`/api/doc-templates/choices?kind=${kind}`)
 async function raw(path: string, body: BodyInit, json = false): Promise<Response> {
-  if (!csrfToken) await session()
-  const res = await call(path, { method: "POST", body, headers: { "X-CSRF-Token": csrfToken ?? "", ...(json ? { "Content-Type": "application/json" } : {}) } })
+  const res = await withToken(path, { method: "POST", body, headers: json ? { "Content-Type": "application/json" } : {} })
   if (!res.ok) { const d = (await res.json().catch(() => ({}))) as { error?: string }; throw await failure(res, d.error) }
   return res
 }
@@ -563,7 +592,8 @@ export async function previewDocTemplate(kind: DocKind, config: DocConfig): Prom
 }
 export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
 export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
-export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string }
+export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string
+  days_in_stage?: number | null; over_by?: number | null }
 export type MyWorkData = {
   today: string; tasks: WorkTask[]; done_by_day: { day: string; count: number }[]; projects: WorkProject[]
   counts: { open: number; overdue: number; due_week: number; done_week: number; rollouts: number; stuck: number }
@@ -631,4 +661,7 @@ export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/pro
 export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null }) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)
 export const toggleTask = (projectId: number, taskId: number) => post<{ ok: true; done: boolean }>(`/projects/${projectId}/tasks/${taskId}/toggle`, {})
+// a task corrected in place: the route takes the whole task (title, assignee, due date)
+export const editTask = (projectId: number, taskId: number, task: { title: string; assignee_id: number | null; due_date: string | null }) =>
+  post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, task)
 export const deleteTask = (projectId: number, taskId: number) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/delete`, {})

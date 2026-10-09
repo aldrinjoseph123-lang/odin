@@ -43,9 +43,9 @@ function Widget({ title, sub, action, onExpand, children }: { title: string; sub
   const menu = useContext(MenuSlot)
   return (
     <section className="panel flex h-full min-w-0 flex-col p-4" aria-label={title}>
-      <header className="mb-3 flex items-start justify-between gap-3">
-        <h2 className="text-[14px] font-semibold">{title}{sub && <span className="sr-only">, </span>}{sub && <span className="ml-2 font-normal text-muted-foreground">{sub}</span>}</h2>
-        <span className="flex shrink-0 items-center gap-1">
+      <header className="mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+        <h2 className="min-w-0 text-[14px] font-semibold">{title}{sub && <span className="sr-only">, </span>}{sub && <span className="ml-2 font-normal text-muted-foreground">{sub}</span>}</h2>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
           {action}
           {onExpand && <button type="button" onClick={onExpand} aria-label={`Expand ${title}`} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><Maximize2 className="h-3.5 w-3.5" /></button>}
           {menu}
@@ -186,7 +186,8 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
             const fill = r.state === "on_track" ? "bg-primary" : STATE[r.state].dot
             return (
               <Fragment key={r.id}>
-                <Link to={`/board?rollout=${r.id}`} className="truncate py-2 font-medium hover:underline">{r.name}{r.state === "overdue" && <span className="ml-2 text-[11px] font-semibold text-bad">late</span>}<span className="ml-2 font-normal text-muted-foreground">{r.client}</span></Link>
+                <Link to={`/board?rollout=${r.id}`} title={`${r.name} · ${r.client}`} className="flex min-w-0 items-baseline gap-2 py-2 font-medium hover:underline">
+                  <span className="truncate">{r.name}</span>{r.state === "overdue" && <span className="shrink-0 text-[11px] font-semibold text-bad">late</span>}<span className="hidden min-w-0 truncate font-normal text-muted-foreground sm:inline">{r.client}</span></Link>
                 <div className="relative py-2">
                   <span className="absolute inset-y-0 w-[1.5px] bg-primary/60" style={{ left: pct(now) }} aria-hidden />
                   <Tooltip>
@@ -198,7 +199,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
                     </TooltipTrigger>
                     <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} → {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
                   </Tooltip>
-                  {r.team.length > 0 && <TeamStack people={r.team} className="absolute top-1/2 flex -translate-y-1/2 pl-2 [&_span]:h-[22px] [&_span]:w-[22px] [&_span]:text-[11px]" style={{ left: pct(to) }} />}
+                  {r.team.length > 0 && <TeamStack people={r.team} avatarClass="h-5 w-5" className="absolute top-1/2 flex -translate-y-1/2 pl-2" style={{ left: pct(to) }} />}
                 </div>
               </Fragment>
             )
@@ -215,7 +216,7 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
   const total = p.done + p.current + p.pending
   const legend = (
     <ul className="mt-2 grid grid-cols-3 gap-2 text-center text-[12px]">
-      {[["Completed", p.done, "bg-primary"], ["In progress", p.current, "bg-primary/40"], ["Pending", p.pending, "bg-muted"]].map(([l, n, c]) => (
+      {[["Completed", p.done, "bg-ok-line"], ["In progress", p.current, "bg-primary/40"], ["Pending", p.pending, "bg-input"]].map(([l, n, c]) => (
         <li key={String(l)} className="rounded-xl bg-muted/50 py-2">
           <span className={cn("mx-auto mb-1 block h-2 w-2 rounded-full", String(c))} aria-hidden />
           <span className="block text-[14px] font-semibold leading-none">{n}</span>
@@ -230,7 +231,7 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
         <>
           <div className="flex items-baseline gap-2"><span className="text-[24px] font-semibold leading-none tracking-tight">{p.pct}%</span><span className="text-[12px] text-muted-foreground">of stages done</span></div>
           <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${p.done} done, ${p.current} in progress, ${p.pending} pending`}>
-            <span className="bg-primary" style={{ width: `${(p.done / total) * 100}%` }} /><span className="bg-primary/40" style={{ width: `${(p.current / total) * 100}%` }} />
+            <span className="bg-ok-line" style={{ width: `${(p.done / total) * 100}%` }} /><span className="bg-primary/40" style={{ width: `${(p.current / total) * 100}%` }} />
           </div>
           {legend}
         </>
@@ -240,7 +241,7 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
             <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart innerRadius="72%" outerRadius="100%" startAngle={210} endAngle={-30} data={[{ v: p.pct }]} barSize={14}>
                 <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                <RadialBar dataKey="v" fill="var(--primary)" cornerRadius={8} background={{ fill: "var(--muted)" }} isAnimationActive={false} />
+                <RadialBar dataKey="v" fill="var(--ok-line)" cornerRadius={8} background={{ fill: "var(--muted)" }} isAnimationActive={false} />
               </RadialBarChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pt-4">
@@ -261,22 +262,29 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
   const until = new Date(`${today}T00:00:00Z`); until.setUTCDate(until.getUTCDate() + days)
   const due = sch.due.filter((t) => t.due_date <= until.toISOString().slice(0, 10))
   const cap = large ? 100 : 6
+  const lateCount = due.filter((t) => lateBy(t.due_date, today) > 0).length
+  const group = "border-0 bg-muted/60 px-2 py-1 text-[12px] font-semibold text-nav-fg"
   return (
-    <Widget title="Schedule" sub={`next ${days} days`} action={<Link to="/my-work" className={pill}>My work</Link>} onExpand={onExpand}>
+    <Widget title="Schedule" sub={lateCount ? `${lateCount} late · next ${days} days` : `next ${days} days`} action={<Link to="/my-work" className={pill}>My work</Link>} onExpand={onExpand}>
       <ul className="divide-y divide-border text-[13px]">
-        {due.slice(0, cap).map((t) => {
+        {due.slice(0, cap).map((t, i) => {
           const late = lateBy(t.due_date, today)
+          // due is sorted by date: late items first, then the window, each under its own heading
+          const head = i === 0 && late > 0 ? "Late" : (i === 0 || lateBy(due[i - 1].due_date, today) > 0) && late <= 0 ? `Next ${days} days` : null
           return (
-            <li key={t.id} className="flex items-center gap-3 py-2">
+            <Fragment key={t.id}>
+            {head && <li className={group}>{head}</li>}
+            <li className="flex items-center gap-3 py-2">
               <span className={cn("w-14 shrink-0 whitespace-nowrap rounded-lg px-1 py-1 text-center text-[11px] leading-tight", late > 0 ? "bg-bad-soft text-bad" : "bg-muted text-muted-foreground")}>
                 <span className="block text-[13px] font-semibold text-foreground">{t.due_date.slice(8, 10)}</span>{late > 0 ? `${late} d late` : dayLabel(t.due_date)}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{t.title}</span>
-                <span className="block truncate text-[12px] text-muted-foreground">{t.project}{t.who ? ` · ${t.who}` : ""}</span>
+                <span className="block truncate text-[12px] text-muted-foreground">{[t.project, t.stage, t.who].filter(Boolean).join(" · ")}</span>
               </span>
               <Link to={`/board?rollout=${t.project_id}`} className={pill}>Open</Link>
             </li>
+            </Fragment>
           )
         })}
         {due.length === 0 && <li><Empty>Nothing falls due in the next {days} days.</Empty></li>}
@@ -311,6 +319,7 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
   const data = now.map((x) => ({ ...x, label: n <= 7 ? dayLabel(x.day).slice(0, 1) : x.day.slice(8, 10) }))
   return (
     <Widget title="Tasks completed" sub={`last ${n} days`} onExpand={onExpand}>
+      {total === 0 ? <Empty>No tasks completed in the last {n} days{prev ? ` (${prev} in the ${n} days before)` : ""}.</Empty> : <>
       <div className="mb-2 flex items-baseline gap-2">
         <span className="text-[24px] font-semibold leading-none tracking-tight">{total}</span>
         {change && <span className={cn("rounded-full px-2 py-1 text-[11px] font-medium", change.startsWith("+") ? "bg-ok-soft text-ok" : change.startsWith("-") ? "bg-warn-soft text-warn" : "bg-muted text-muted-foreground")}>{change}</span>}
@@ -338,6 +347,7 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
         </ResponsiveContainer>
       </div>
       <p className="sr-only">{data.map((x) => `${fmtDate(x.day)}: ${x.count}`).join(", ")}</p>
+      </>}
     </Widget>
   )
 }
@@ -438,7 +448,7 @@ function MyWork({ m, today, onExpand }: { m: D["mywork"]; today: string; onExpan
           return (
             <li key={t.id} className="flex items-center gap-3 border-b border-border py-2">
               <span className={cn("w-16 shrink-0 text-[12px]", late > 0 ? "font-medium text-bad" : "text-muted-foreground")}>{t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "no date"}</span>
-              <span className="min-w-0 flex-1"><Link to={`/board?rollout=${t.project_id}`} className="block truncate font-medium hover:underline">{t.title}</Link><span className="block truncate text-[12px] text-muted-foreground">{t.project} · {t.stage}</span></span>
+              <span className="min-w-0 flex-1"><Link to={`/board?rollout=${t.project_id}`} className="block truncate font-medium hover:underline">{t.title}</Link><span className="block truncate text-[12px] text-muted-foreground">{[t.project, t.stage].filter(Boolean).join(" · ")}</span></span>
             </li>
           )
         })}
@@ -518,7 +528,7 @@ function tableFor(item: LayoutItem, d: D): Table | null {
     case "stages": return { columns: ["Stage", "Rollouts"], rows: d.stages.map((s) => [s.stage, s.count]) }
     case "activity": return { columns: ["When", "Who", "Rollout", "What"], rows: d.activity.map((a) => [a.at.slice(0, 16).replace("T", " "), a.who ?? "—", a.project, a.text]) }
     case "alerts": return { columns: ["Severity", "Alert", "Rollout", "Raised"], rows: d.alerts.map((a) => [a.severity, a.title, a.project, a.created_at.slice(0, 10)]) }
-    case "mywork": return { columns: ["Due", "Task", "Rollout", "Stage"], rows: d.mywork.tasks.map((t) => [t.due_date ? fmtDate(t.due_date) : "—", t.title, t.project, t.stage]) }
+    case "mywork": return { columns: ["Due", "Task", "Rollout", "Stage"], rows: d.mywork.tasks.map((t) => [t.due_date ? fmtDate(t.due_date) : "—", t.title, t.project, t.stage ?? "—"]) }
     case "cycle": return d.cycle ? { columns: ["Month", "Closed"], rows: d.cycle.throughput.map(([m, n]) => [m, n]) } : null
     case "custom": { const rows = d.aggregates[String(item.settings.measure ?? "rollouts_by_stage")] ?? []; return { columns: ["Key", "Count"], rows: rows.map((r) => [r.key, r.count]) } }
     default: return null
@@ -636,11 +646,13 @@ export default function Dashboard({ user }: { user: User }) {
   const [tile, setTile] = useState<DashKey | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const version = useRef<number | null>(null)
+  const saved = useRef<{ layout: DashboardData["layout"]; is_custom: boolean } | null>(null)   // the arrangement the server holds
+  const pending = useRef(false)
 
   const load = useCallback(async () => {
     try {
       const next = await dashboard()
-      setD(next); version.current = next.version; setUpdatedAt(new Date().toISOString()); setError(null)
+      setD(next); version.current = next.version; saved.current = { layout: next.layout, is_custom: next.is_custom }; setUpdatedAt(new Date().toISOString()); setError(null)
     } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load") }
   }, [])
   useEffect(() => { document.title = "Dashboard · Odin"; void load() }, [load])
@@ -648,7 +660,7 @@ export default function Dashboard({ user }: { user: User }) {
   useEffect(() => {
     let stop = false
     const check = async () => {
-      if (stop || document.hidden) return
+      if (stop || document.hidden || pending.current) return
       try {
         const { version: v } = await dashboardVersion()
         if (version.current != null && v !== version.current) await load()
@@ -675,8 +687,16 @@ export default function Dashboard({ user }: { user: User }) {
     setD({ ...d, layout: next, is_custom: true })
     setUndo(before)
     window.clearTimeout(saveTimer.current)
+    pending.current = true
     saveTimer.current = window.setTimeout(() => {
-      saveLayout(next).then(() => setNotice(label)).catch((e) => setNotice(e instanceof ApiError ? e.message : "That did not save"))
+      saveLayout(next).then(() => { saved.current = { layout: next, is_custom: true }; setNotice(label) })
+        .catch((e) => {
+          const back = saved.current
+          if (back) setD((cur) => (cur ? { ...cur, ...back } : cur))
+          setUndo(null)
+          setNotice(`${e instanceof ApiError ? e.message : "That did not save"} The dashboard is back as it was saved.`)
+        })
+        .finally(() => { pending.current = false })
     }, settle)
   }
   const add = (w: WidgetInfo) => commit((l) => [...l, { id: w.id, w: w.w, settings: Object.fromEntries(w.settings.map((s) => [s.key, s.default])), ...(w.multiple ? { uid: newUid() } : {}) }], `${w.title} added.`)

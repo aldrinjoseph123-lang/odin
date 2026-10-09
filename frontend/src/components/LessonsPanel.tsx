@@ -4,6 +4,7 @@ import { Sparkles, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ApiError, cancelAIJob, deleteLesson, dismissAISuggestion, lessonsOf, projectAI, requestProjectAI, saveLessons, saveRaid,
   type Lesson, type LessonsData, type ProjectAI } from "@/lib/api"
+import { usePoll } from "@/lib/usePoll"
 
 const KIND = { avoid: "Avoid", repeat: "Repeat" } as const
 
@@ -28,11 +29,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
   }, [projectId])
   useEffect(() => { void load() }, [load])
   const drafting = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  useEffect(() => {
-    if (!drafting) return
-    const t = window.setInterval(() => void load(), 4000)
-    return () => window.clearInterval(t)
-  }, [drafting, load])
+  usePoll(drafting, load)
   if (!d) return null
   const sug = s?.suggestion
   const showAI = !!s && (s.available || !!sug)
@@ -60,7 +57,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
         <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[13px]">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
-            <span className="min-w-0 flex-1" aria-live="polite">{drafting ? "Reading the rollout's history… about a minute." : sug ? "AI draft: tick the lessons worth keeping, then save them to the library." : "Draft this rollout's lessons with AI from its plan changes, overruns, risks, scope and notes."}</span>
+            <span className="min-w-0 flex-1 basis-56" aria-live="polite">{drafting ? "Reading the rollout's history… about a minute." : sug ? "AI draft: tick the lessons worth keeping, then save them to the library." : "Draft this rollout's lessons with AI from its plan changes, overruns, risks, scope and notes."}</span>
             {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void act(() => requestProjectAI(projectId, "lessons"))}>{sug ? "Draft again" : "Draft lessons"}</Button>}
             {drafting && s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void act(() => cancelAIJob(projectId, s.job!.id))}>Cancel</Button>}
           </div>

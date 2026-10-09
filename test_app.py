@@ -328,23 +328,23 @@ class AlertDismissalTestCase(unittest.TestCase):
         resp = self.client.get("/board")
         self.assertIn(b"untouched for a while", resp.data)
 
-        resp = self.client.get("/alerts/1/dismiss/stale?next=board", follow_redirects=True)
+        resp = self.client.post("/alerts/1/dismiss/stale?next=board", follow_redirects=True)
         self.assertEqual(resp.status_code, 200)
         resp = self.client.get("/board")
         # the project itself still appears on the board — only the banner entry goes
         self.assertNotIn(b"untouched for a while", resp.data)
 
     def test_dismiss_without_next_redirects_to_project(self):
-        resp = self.client.get("/alerts/1/dismiss/stale")
+        resp = self.client.post("/alerts/1/dismiss/stale")
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/projects/1", resp.headers["Location"])
 
     def test_invalid_alert_type_404s(self):
-        resp = self.client.get("/alerts/1/dismiss/not-a-real-type")
+        resp = self.client.post("/alerts/1/dismiss/not-a-real-type")
         self.assertEqual(resp.status_code, 404)
 
     def test_alert_reappears_after_relogin_even_with_unchanged_data(self):
-        self.client.get("/alerts/1/dismiss/stale?next=board")
+        self.client.post("/alerts/1/dismiss/stale?next=board")
         resp = self.client.get("/board")
         self.assertNotIn(b"untouched for a while", resp.data)
 
@@ -354,7 +354,7 @@ class AlertDismissalTestCase(unittest.TestCase):
         self.assertIn(b"untouched for a while", resp.data)
 
     def test_dismissal_does_not_touch_database(self):
-        self.client.get("/alerts/1/dismiss/stale?next=board")
+        self.client.post("/alerts/1/dismiss/stale?next=board")
         db = sqlite3.connect(db_module.DB_PATH)
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertNotIn("alert_dismissals", tables)
@@ -399,7 +399,7 @@ class IntegrationNotificationTestCase(unittest.TestCase):
         self.client.post(
             "/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Loud Proj", "client": "C", "delivery_mode": "Distribution/MSSP"}
         )
-        mock_mail.assert_not_called()   # creation is announced on Teams; a named PM gets "You manage" by mail, once (D12)
+        mock_mail.assert_not_called()      # the creator is the owner: never mailed about their own act (D12)
         mock_teams.assert_called_once()
 
         mock_mail.reset_mock()
@@ -1829,8 +1829,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.get("/api/projects/1/report?v=7").status_code, 404)
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         ann = self._external_client("ann@acme.example")
-        e = ann.get("/api/projects/1/report").get_json()
-        self.assertEqual((e["can_edit"], e["blocks"][0]), (False, ["h", "Summary"]))
+        self.assertEqual(ann.get("/api/projects/1/report").status_code, 404)   # the plain-text report is internal (S2)
         self.assertEqual([x["name"] for x in ann.get("/api/reports/all").get_json()["rows"]], ["Rep"])
         self.assertEqual(ann.get("/api/projects/2/report").status_code, 404)
 
@@ -1880,7 +1879,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                                           "po_document": (io.BytesIO(b"%PDF-1.4 po"), "po.pdf")}, headers=h).get_json()
         self.assertEqual((r["location"], r["messages"]), ("/projects/2", ["Project created"]))   # straight to the new rollout (P14)
         r = c.post("/projects/new", data={"name": "No PO", "client": "Globex"}, headers=h).get_json()
-        self.assertTrue(r["location"].endswith("/projects/new")); self.assertIn("Upload a 'Client PO' document", r["messages"][0])
+        self.assertFalse(r["ok"]); self.assertIn("Upload a 'Client PO' document", r["error"])   # a refused form is an error to fetch callers (F-M10)
         r = c.post("/projects/2/edit", data={"name": "Made in React 2", "client": "Globex", "owner_id": "1"}, headers=h).get_json()
         self.assertEqual((r["location"], r["messages"]), ("/projects/2", ["Project updated"]))
         with self.raw_db() as db:
@@ -2132,8 +2131,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="Rep", client="Acme")
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         ann = self._external_client("ann@acme.example")
-        self.assertIn(b"No report has been published", ann.get("/projects/1/report").data)
-        self.assertNotIn(b"Edit report", ann.get("/projects/1/report").data)
+        self.assertEqual(ann.get("/projects/1/report").status_code, 404)   # the plain-text report is internal (S2)
         self.assertEqual(ann.post("/projects/1/report/save", data={"body": "# Mine"}).status_code, 403)
         r = self.client.post("/projects/1/report/save", data={"body": "# Summary\nPilot complete, fleet next.\n- item one\n- item two"}, follow_redirects=True)
         self.assertIn(b"Report version 1 saved", r.data)
@@ -2145,8 +2143,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIn("Pilot complete", old); self.assertIn("<ul><li>item one</li><li>item two</li></ul>", old.replace("\n", "").replace("  ", ""))
         self.assertEqual(self.client.get("/projects/1/report?v=9").status_code, 404)
         self.assertIn("# Timeline", self.client.get("/projects/1/report?draft=1").data.decode())
-        partner = ann.get("/projects/1/report").data.decode()
-        self.assertIn("Fleet rollout under way", partner); self.assertNotIn("# Timeline", partner)
+        self.assertEqual(ann.get("/projects/1/report").status_code, 404)
         self.client.post("/projects/1/report/save", data={"body": "   "})
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM project_reports").fetchone()[0], 2)
@@ -3277,7 +3274,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # SEC-8: the legacy dismiss link is a 404 for a project the caller cannot see
         self._invite(1, "ann@globex.example", "Customer", "Ann")
         ann = self._external_client("ann@globex.example")
-        self.assertEqual(ann.get("/alerts/2/dismiss/stale").status_code, 404)
+        self.assertEqual(ann.post("/alerts/2/dismiss/stale").status_code, 404)
 
     def _security_form(self):
         from policies import POLICIES, policy
@@ -3387,7 +3384,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         ann = self._external_client("ann@globex.example")
         board = ann.get("/api/board").get_json()
         self.assertNotIn("secret", str(board)); self.assertNotIn("margin", str(board))
-        self.assertTrue(all(a["project_id"] == 1 for a in ann.get("/api/alerts").get_json()["rows"]))
+        self.assertEqual(ann.get("/api/alerts").status_code, 403)          # alerts are internal (R6)
         self.assertNotIn("margin", str(ann.get("/api/projects/1").get_json()["notes"]))
         self.assertNotIn("margin", str(ann.get("/api/projects/1/flow").get_json()["recent_notes"]))
         plan = ann.get("/api/projects/1/plan").get_json()
@@ -3499,8 +3496,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.commit()
         c = app_module.app.test_client()
         csrf = c.get("/api/session").get_json()["csrf"]
+        r = c.post("/api/login", json={"username": "target", "password": "Wrong-Horse-99"}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(r.status_code, 429)      # a wrong password hears the account is paused
         r = c.post("/api/login", json={"username": "target", "password": STRONG_PASSWORD}, headers={"X-CSRF-Token": csrf})
-        self.assertNotEqual(r.status_code, 200)   # right password, but the account is paused
+        self.assertEqual(r.status_code, 200)      # the right one still works: failing on purpose cannot lock anyone out (S4)
 
     def test_alerts_are_recorded_by_the_scheduler(self):
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
@@ -4146,8 +4145,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_nginx_passes_cloudflares_client_ip_and_hides_server(self):
         conf = open(os.path.join(os.path.dirname(app_module.__file__), "deploy", "nginx.conf")).read()
-        self.assertIn("$http_cf_connecting_ip", conf)
-        self.assertIn("proxy_set_header X-Forwarded-For   $client_ip", conf)
+        # the published listener trusts only the TCP peer (S3); the tunnel overlay reads Cloudflare's header
+        self.assertNotIn("$http_cf_connecting_ip", conf)
+        self.assertIn("proxy_set_header X-Forwarded-For   $remote_addr", conf)
+        overlay = open(os.path.join(os.path.dirname(app_module.__file__), "deploy", "nginx.cloudflare.conf")).read()
+        self.assertIn("proxy_set_header X-Forwarded-For   $client_ip", overlay); self.assertIn("$http_cf_connecting_ip", overlay)
         self.assertIn("server_tokens off", conf)
         self.assertIn("proxy_hide_header Server", conf)
 

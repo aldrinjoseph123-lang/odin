@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -23,12 +23,22 @@ describe("fmtDate", () => {
     expect(fmtDate(null)).toBe("—")
     expect(fmtDate("2026-11-30T10:00:00")).toMatch(/30/)
   })
+  it("keeps a plain date as it is and moves a stored UTC timestamp to the reader's day (FE15)", () => {
+    setDateFormat("yyyy-MM-dd")
+    expect(fmtDate("2026-10-08")).toBe("2026-10-08")
+    const justAfterMidnight = new Date(2026, 9, 9, 0, 30)          // 9 Oct 00:30 local
+    const stored = justAfterMidnight.toISOString().slice(0, 19)   // naive UTC, as the server keeps it
+    expect(fmtDate(stored)).toBe("2026-10-09")
+    expect(fmtDate(`${stored}Z`)).toBe("2026-10-09")
+    setDateFormat("d MMM yyyy")
+  })
 })
 
 describe("stateText", () => {
   it("says the one thing each state needs", () => {
     expect(stateText({ state: "on_track", days_in_stage: 3.2, over_by: null, target_end_date: null })).toBe("3 d")
     expect(stateText({ state: "over_sla", days_in_stage: 9, over_by: 4, target_end_date: null })).toBe("9 d · 4 over SLA")
+    expect(stateText({ state: "over_sla", days_in_stage: null, over_by: null, target_end_date: null })).toBe("Over SLA")   // not "— · 0 over SLA" (V12)
     expect(stateText({ state: "due_soon", days_in_stage: 1, over_by: null, target_end_date: "2026-11-30" })).toMatch(/^Due /)
     expect(stateText({ state: "overdue", days_in_stage: 1, over_by: null, target_end_date: "2020-01-01" })).toMatch(/^Overdue \d+ d$/)
   })
@@ -236,5 +246,38 @@ describe("dayBucket", () => {
     expect(dayBucket(iso(new Date(2026, 9, 9, 0, 30)), now)).toBe("Today")
     expect(dayBucket(iso(new Date(2026, 9, 8, 23, 59)), now)).toBe("Yesterday")
     expect(dayBucket(iso(new Date(2026, 9, 6, 12, 0)), now)).toBe(fmtWhen(iso(new Date(2026, 9, 6, 12, 0))))
+  })
+})
+
+describe("reminderText", () => {
+  it("lists what waits on the customer, greeting the contact by name when known (P9)", () => {
+    setDateFormat("yyyy-MM-dd")
+    const t = reminderText([{ what: "Site access", since: "1 Oct 2026", days_waiting: 8 }, { what: "Signed PO", due: "5 Oct 2026", days_overdue: 4 }], "Dana")
+    expect(t.split("\n")[0]).toBe("Hello Dana,")
+    expect(t).toContain("- Site access (asked 1 Oct 2026, 8 d waiting)")
+    expect(t).toContain("- Signed PO (due 5 Oct 2026, 4 d overdue)")
+    expect(reminderText([{ what: "Keys" }]).split("\n")[0]).toBe("Hello,")
+    setDateFormat("d MMM yyyy")
+  })
+})
+
+describe("aiStale", () => {
+  const now = Date.parse("2026-10-09T12:00:00Z")
+  it("never calls an old heartbeat 'Answering' (V21)", () => {
+    expect(aiStale({ state: "up", checked_at: "2026-10-09T11:58:00" }, true, now)).toBe(false)
+    expect(aiStale({ state: "up", checked_at: "2026-10-09T11:00:00" }, true, now)).toBe(true)     // an hour ago
+    expect(aiStale({ state: "up", checked_at: "2026-10-09T11:58:00" }, false, now)).toBe(true)    // no scheduler
+    expect(aiStale({ state: "down", checked_at: "2026-10-09T11:58:00", stale: true }, true, now)).toBe(true)
+    expect(aiStale({ state: "off" }, false, now)).toBe(false)
+  })
+})
+
+describe("actionText", () => {
+  it("reads an audit code as words, keeping acronyms (V30)", () => {
+    expect(actionText("login_success")).toBe("Login success")
+    expect(actionText("edit_task")).toBe("Edit task")
+    expect(actionText("AI_force_feature")).toBe("AI force feature")
+    expect(actionText("Delete")).toBe("Delete")
+    expect(actionText(null)).toBe("")
   })
 })

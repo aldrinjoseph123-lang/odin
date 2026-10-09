@@ -1,11 +1,27 @@
-import { Suspense, lazy, useEffect, useState } from "react"
+import { Suspense, lazy, useEffect, useState, type ComponentType } from "react"
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import AppShell from "@/components/AppShell"
 import { SettingsLayout } from "@/components/SettingsLayout"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import Flow from "@/pages/Flow"
+import { LoadError } from "@/components/PageSkeleton"
+
+// A deploy replaces the chunk files, so a tab opened before it asks for a
+// file that is gone. Reload once to fetch the new build; the flag stops a loop
+// and is cleared once a chunk loads again.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyPage<T extends ComponentType<any>>(load: () => Promise<{ default: T }>) {
+  const flag = "odin.chunk-reload"
+  const store = { get: () => { try { return sessionStorage.getItem(flag) } catch { return "1" } },
+                  set: (v: string | null) => { try { if (v) sessionStorage.setItem(flag, v); else sessionStorage.removeItem(flag) } catch { /* private mode */ } } }
+  return lazy(() => load().then((m) => { store.set(null); return m }, (e) => {
+    if (store.get()) throw e
+    store.set("1"); window.location.reload()
+    return new Promise<{ default: T }>(() => {})
+  }))
+}
 // the dashboard carries the chart library: its own chunk, fetched on first visit
-const Dashboard = lazy(() => import("@/pages/Dashboard"))
+const Dashboard = lazyPage(() => import("@/pages/Dashboard"))
 import { PageSkeleton } from "@/components/PageSkeleton"
 import Projects from "@/pages/Projects"
 import Project from "@/pages/Project"
@@ -21,14 +37,14 @@ import People from "@/pages/People"
 import Person from "@/pages/Person"
 import Alerts from "@/pages/Alerts"
 import Analytics from "@/pages/Analytics"
-const ReportAll = lazy(() => import("@/pages/ReportAll"))
+const ReportAll = lazyPage(() => import("@/pages/ReportAll"))
 // the report carries the chart library too: its own chunk
-const Report = lazy(() => import("@/pages/Report"))
-const Signoff = lazy(() => import("@/pages/Signoff"))
+const Report = lazyPage(() => import("@/pages/Report"))
+const Signoff = lazyPage(() => import("@/pages/Signoff"))
 import Login from "@/pages/Login"
 import LinkRequest from "@/pages/LinkRequest"
 import LinkContinue from "@/pages/LinkContinue"
-const Join = lazy(() => import("@/pages/Join"))
+const Join = lazyPage(() => import("@/pages/Join"))
 import ForgotPassword from "@/pages/ForgotPassword"
 import { session, type User } from "@/lib/api"
 import { setDateFormat } from "@/lib/format"
@@ -45,22 +61,36 @@ function HandOffToFlask() {
 function Protected({ children }: { children: (user: User) => React.ReactNode }) {
   const [user, setUser] = useState<User | null | undefined>(undefined)
   const [messages, setMessages] = useState<string[]>([])
+  const [failed, setFailed] = useState(false)
   const { pathname, search } = useLocation()
   useEffect(() => {
+    // every navigation re-checks the session (it may have ended); the user
+    // object is only replaced when it changed, so the page does not re-render
     session().then((s) => {
       if (!s.user) window.location.assign(`/login?next=${encodeURIComponent(pathname + search)}`)
       else if ((s.user.must_change_password || s.user.must_enroll_mfa) && pathname !== "/account") window.location.assign("/account")
-      else { setDateFormat(s.user.prefs?.date_format); setUser(s.user); if (s.messages?.length) setMessages(s.messages) }
-    })
+      else {
+        const next = s.user
+        setDateFormat(next.prefs?.date_format)
+        setUser((prev) => prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next)
+        if (s.messages?.length) setMessages(s.messages)
+      }
+    }).catch(() => setFailed(true))   // a page already shown keeps showing; a first load says so
   }, [pathname, search])
+  if (!user && failed) return <main className="min-h-svh bg-background pt-8"><LoadError message="Odin is not answering just now (it may be restarting). Try again in a moment." /></main>
   if (!user) return null
   return <AppShell user={user} messages={messages} onDismiss={() => setMessages([])}>{children(user)}</AppShell>
+}
+
+// The error screen clears when the address changes, so the nav still works.
+function PageBoundary({ children }: { children: React.ReactNode }) {
+  return <ErrorBoundary resetKey={useLocation().pathname}>{children}</ErrorBoundary>
 }
 
 export default function App() {
   return (
     <BrowserRouter>
-      <ErrorBoundary>
+      <PageBoundary>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/login/password" element={<Login />} />
@@ -94,7 +124,7 @@ export default function App() {
         <Route path="/settings/:section" element={<Protected>{(user) => <SettingsLayout user={user}><Settings user={user} /></SettingsLayout>}</Protected>} />
         <Route path="*" element={<HandOffToFlask />} />
       </Routes>
-      </ErrorBoundary>
+      </PageBoundary>
     </BrowserRouter>
   )
 }

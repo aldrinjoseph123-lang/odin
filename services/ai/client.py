@@ -49,23 +49,34 @@ def config(db=None):
 
 def is_local(url):
     """Does this address stay on the private network? Private, loopback and
-    link-local IPs, single-label and .lan/.local-style names, and names that
-    resolve only to private addresses."""
+    link-local IPs (also in the shorthand forms the HTTP library accepts,
+    such as 134744072 for 8.8.8.8), and names whose every address is one.
+    A name that does not resolve at all cannot be reached either: a
+    single-label or .lan/.local-style name stays usable (the LAN's DNS may
+    know it later), any other name is outside until it resolves privately.
+    Checked again before every request, so a name later pointed outside is
+    refused then."""
+    # ponytail: resolved here and again by requests (a DNS rebinding window); pin the IP if that ever matters
     host = (urlsplit(url).hostname or "").lower()
     if not host:
         return False
     try:
-        ip = ipaddress.ip_address(host)
-        return ip.is_private or ip.is_loopback or ip.is_link_local
+        return _private(ipaddress.ip_address(host))
     except ValueError:
         pass
-    if "." not in host or host.endswith(LOCAL_SUFFIXES):
-        return True
+    try:   # 134744072, 0x8080808, 010.0.0.1, 10.1: the forms inet_aton (and so requests) reads as IPv4
+        return _private(ipaddress.IPv4Address(socket.inet_aton(host)))
+    except OSError:
+        pass
     try:
         addrs = {a[4][0] for a in socket.getaddrinfo(host, None)}
     except OSError:
-        return False   # unresolvable now: treat as outside until it resolves privately
-    return bool(addrs) and all(ipaddress.ip_address(a.split("%")[0]).is_private for a in addrs)
+        return "." not in host or host.endswith(LOCAL_SUFFIXES)
+    return bool(addrs) and all(_private(ipaddress.ip_address(a.split("%")[0])) for a in addrs)
+
+
+def _private(ip):
+    return ip.is_private or ip.is_loopback or ip.is_link_local
 
 
 def address_problem(url, allow_external):

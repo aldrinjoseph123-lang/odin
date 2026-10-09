@@ -12,7 +12,7 @@ not an account: the nightly scheduler, and only after the rows are safe.
 
 With "forever" nothing happens.
 """
-import csv
+from security import safe_csv_writer
 import hashlib
 import os
 import sqlite3
@@ -46,7 +46,7 @@ def run_audit_retention(now=None):
             return 0, None
         path = os.path.join(archive_dir(), f"audit-before-{cutoff[:10]}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv")
         with open(path, "w", newline="") as fh:
-            writer = csv.writer(fh)
+            writer = safe_csv_writer(fh)   # a cell starting with = + - @ is defused, as in every export
             writer.writerow([d[0] for d in cur.description])
             writer.writerows(rows)
         with open(path, "rb") as fh:

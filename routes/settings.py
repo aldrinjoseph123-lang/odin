@@ -16,7 +16,7 @@ from core import app, permission_required, undo_button, undo_note, write_require
 from db import get_db, get_setting, restore_deleted, soft_delete
 from services.alerts import get_alert_type_settings
 from services import stages as stage_ops
-from security import safe_csv_writer
+from security import safe_csv_writer, valid_email
 from services.audit import audit_log
 from spa import spa_index, spa_serves
 
@@ -226,11 +226,11 @@ def settings_policies(area):
             url = ""   # save_policies reports the format
         problem = url and address_problem(url, request.form.get("ai_allow_external") == "on")
         if problem:
-            flash("Not saved. " + problem)
+            flash("Not saved. " + problem, "error")
             return redirect(url_for("settings_section", section="ai"))
     changed, errors = save_policies(area, request.form)
     if errors:
-        flash("Not saved. " + "; ".join(errors))
+        flash("Not saved. " + "; ".join(errors), "error")
     elif changed:
         audit_log("update_policies", "settings", None, area, ", ".join(changed))
         if any(c.startswith("mfa_required=") for c in changed):
@@ -282,6 +282,12 @@ def settings_rbac():
 @permission_required("manage_settings")
 def settings_rbac_update():
     db = get_db()
+    refused = [p for p in PERMISSIONS if p not in EXTERNAL_ALLOWED and request.form.get(f"{p}::External") == "on"]
+    if refused:
+        flash(f"Not saved: partner and customer accounts (External) can only view, comment and download, not {', '.join(refused)}", "error")
+        return redirect(url_for("settings_rbac"))
+    before = {(r["permission"], r["role"]): bool(r["allowed"]) for r in db.execute("SELECT * FROM role_permissions")}
+    changes = []
     for permission in PERMISSIONS:
         for role in ROLES:
             # Admin always keeps manage_settings + manage_users — otherwise an
@@ -296,10 +302,18 @@ def settings_rbac_update():
                 "UPDATE role_permissions SET allowed = ? WHERE permission = ? AND role = ?",
                 (allowed, permission, role),
             )
+            if before.get((permission, role), False) != bool(allowed):
+                changes.append(f"{permission}: {role} {'on' if allowed else 'off'}")
     db.commit()
-    audit_log("update_role_permissions", details="RBAC matrix updated")
-    flash("Permissions updated")
+    audit_log("update_role_permissions", details="; ".join(changes) or "no change")
+    flash("Permissions updated" if changes else "Nothing changed")
     return redirect(url_for("settings_rbac"))
+
+
+# What an External (partner or customer) account may ever be granted: its
+# seeded rights, which only view, comment and download. Anything else would
+# hand an outsider staff or admin powers from one tick in the matrix.
+EXTERNAL_ALLOWED = frozenset(p for p, roles in PERMISSIONS.items() if "External" in roles)
 
 
 # ---- stage templates: what a new project copies its stage list from ---------
@@ -457,15 +471,27 @@ def settings_stage_sla_from_measured(template_id):
     return _template_change("set_template_slas_from_measured", None, f"{applied} stage(s)")
 
 
+def _name_problem(name, label, limit, email=None):
+    """A pick-list entry's name (and address, when it has one): required,
+    one line, at most `limit` characters."""
+    if not name:
+        return f"{label} required"
+    if len(name) > limit or any(ord(ch) < 32 for ch in name):
+        return f"{label}: one line, at most {limit} characters"
+    if email and not valid_email(email):
+        return "Enter a valid email address"
+    return None
+
+
 @app.route("/settings/doc-categories/add", methods=["POST"])
 @permission_required("manage_settings")
 def settings_category_add():
     name = request.form.get("name", "").strip()
     db = get_db()
-    if not name:
-        flash("Category name required")
+    if problem := _name_problem(name, "Category name", 80):
+        flash(problem, "error")
     elif db.execute("SELECT 1 FROM doc_categories WHERE name = ?", (name,)).fetchone():
-        flash("Category already exists")
+        flash("Category already exists", "error")
     else:
         db.execute("INSERT INTO doc_categories (name) VALUES (?)", (name,))
         db.commit()
@@ -540,10 +566,10 @@ def settings_contacts_add(list_key):
         abort(404)
     meta = CONTACT_LISTS[list_key]
     name = request.form.get("name", "").strip()
-    if not name:
-        flash("Name required")
-        return redirect(url_for("settings_contacts"))
     email = request.form.get("email", "").strip() if meta["has_email"] else None
+    if problem := _name_problem(name, "Name", 120, email):
+        flash(problem, "error")
+        return redirect(url_for("settings_contacts"))
     db = get_db()
     try:
         if meta["has_email"]:
@@ -574,8 +600,8 @@ def settings_contacts_delete(list_key, item_id):
 @permission_required("manage_contacts")
 def settings_partner_add():
     name = request.form.get("name", "").strip()
-    if not name:
-        flash("Partner name required")
+    if problem := _name_problem(name, "Partner name", 120):
+        flash(problem, "error")
         return redirect(url_for("settings_contacts"))
     db = get_db()
     try:
@@ -608,10 +634,10 @@ def settings_partner_manager_add(partner_id):
     if not db.execute("SELECT 1 FROM partners WHERE id = ? AND deleted_at IS NULL", (partner_id,)).fetchone():
         abort(404)
     name = request.form.get("name", "").strip()
-    if not name:
-        flash("Account manager name required")
-        return redirect(url_for("settings_contacts"))
     email = request.form.get("email", "").strip() or None
+    if problem := _name_problem(name, "Account manager name", 120, email):
+        flash(problem, "error")
+        return redirect(url_for("settings_contacts"))
     db.execute(
         "INSERT INTO partner_account_managers (partner_id, name, email) VALUES (?, ?, ?)",
         (partner_id, name, email),
@@ -642,10 +668,10 @@ def settings_alerts():
         raw_threshold = request.form.get(f"threshold::{alert_type}", "").strip()
         threshold_days = None
         if raw_threshold:
-            try:
-                threshold_days = max(0, int(raw_threshold))
-            except ValueError:
-                flash(f"Threshold for {ALERT_TYPE_TITLES[alert_type]} must be a number")
+            # bounded: a day count past a year is a typo, and a huge one overflowed every page that adds it to a date
+            threshold_days = int(raw_threshold) if raw_threshold.isascii() and raw_threshold.isdigit() and len(raw_threshold) <= 3 else None
+            if threshold_days is None or threshold_days > 365:
+                flash(f"Threshold for {ALERT_TYPE_TITLES[alert_type]}: a whole number of days, 0 to 365", "error")
                 return redirect(url_for("settings"))
 
         severity = request.form.get(f"severity::{alert_type}", "warning")

@@ -17,6 +17,7 @@ from security import (
     consume_login_link,
     reset_link_row,
     issue_login_link,
+    login_account_paused,
     login_is_blocked,
     password_problem,
     rate_limited,
@@ -38,9 +39,12 @@ def attempt_login(username, password):
     message is the user-facing reason on failure and never reveals whether
     the account exists.
     """
+    from policies import policy
+    if not isinstance(username, str) or not isinstance(password, str) or "\x00" in username or len(username) > 200 or len(password) > 1000:
+        return False, "Bad username or password"
+    too_many = f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
     if login_is_blocked(username):
-        from policies import policy
-        return False, f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
+        return False, too_many
     user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
     # One password hash on every path, so the answer takes as long whether or not
     # the name exists, and an account's state shows only to its password (test report SEC-7).
@@ -69,7 +73,8 @@ def attempt_login(username, password):
         # Failed attempts are evidence too — login_attempts is purged after
         # a week, the audit trail is not.
         audit_log("login_failure", "user", user["id"] if user else None, username, actor=username)
-        return False, "Bad username or password"
+        # guessed from many addresses: a wrong password hears "paused"; the right one still works
+        return False, too_many if login_account_paused(username) else "Bad username or password"
     from routes.sso import sso_enforced
     if sso_enforced() and not user["password_login"]:
         # Staff use Microsoft; only accounts an admin flagged keep a password.
@@ -167,11 +172,11 @@ def auth_link_request():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         if not valid_email(email):
-            flash("Enter the email address you were invited with")
+            flash("Enter the email address you were invited with", "error")
         elif _mail_off():
-            flash("This workspace does not send email yet — ask your project manager for a sign-in link")
+            flash("This workspace does not send email yet — ask your project manager for a sign-in link", "error")
         elif rate_limited(f"link:{email}", 3, 15):
-            flash("Too many requests for that address — wait a few minutes and try again")
+            flash("Too many requests for that address — wait a few minutes and try again", "error")
         else:
             from policies import email_domain_allowed
             user = get_db().execute(
@@ -194,11 +199,11 @@ def auth_reset_request():
         return spa_index() if spa_serves("auth_reset_request") else redirect(url_for("login"))
     email = request.form.get("email", "").strip().lower()
     if not valid_email(email):
-        flash("Enter the email address on your account")
+        flash("Enter the email address on your account", "error")
     elif _mail_off():
-        flash("This workspace does not send email yet — ask an admin to reset your password")
+        flash("This workspace does not send email yet — ask an admin to reset your password", "error")
     elif rate_limited(f"reset:{email}", 3, 15):
-        flash("Too many requests for that address — wait a few minutes and try again")
+        flash("Too many requests for that address — wait a few minutes and try again", "error")
     else:
         from routes.sso import sso_enforced
         user = get_db().execute(
@@ -242,7 +247,7 @@ def auth_reset_form(token):
     new_password = request.form.get("new_password", "")
     problem = password_problem(new_password)
     if problem:
-        flash(problem)
+        flash(problem, "error")
         return redirect(url_for("auth_reset_form", token=token))
     db = get_db()
     now = datetime.utcnow().isoformat()
@@ -302,7 +307,7 @@ def is_local_path(url):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        ok, message = attempt_login(request.form["username"].strip(), request.form["password"])
+        ok, message = attempt_login(request.form.get("username", "").strip(), request.form.get("password", ""))
         if ok:
             return redirect(safe_next_url() or home_url())
         flash("Two-step sign-in needs Odin's web app to enter the code" if message == MFA_NEEDED else message)
@@ -374,7 +379,7 @@ def index():
 def account_home():
     home = request.form.get("home", "")
     if home not in HOME_PAGES:
-        flash("Pick a home page from the list")
+        flash("Pick a home page from the list", "error")
         return redirect(url_for("account"))
     db = get_db()
     db.execute("UPDATE users SET home = ? WHERE id = ?", (home, session["user_id"]))
@@ -390,17 +395,17 @@ def account():
     if request.method == "GET" and spa_serves("account"):
         return spa_index()
     if request.method == "POST":
-        current = request.form["current_password"]
-        new_password = request.form["new_password"]
+        current = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
         db = get_db()
         user = db.execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
         problem = password_problem(new_password)
         if user["kind"] == "external":
-            flash("External accounts sign in by email link and have no password")
+            flash("External accounts sign in by email link and have no password", "error")
         elif not check_password_hash(user["password_hash"], current):
-            flash("Current password is wrong")
+            flash("Current password is wrong", "error")
         elif problem:
-            flash(problem)
+            flash(problem, "error")
         else:
             db.execute(
                 "UPDATE users SET password_hash = ?, must_change_password = 0, session_epoch = session_epoch + 1 WHERE id = ?",
@@ -424,7 +429,7 @@ def account_name():
     under — they are a record, not a live label."""
     name = request.form.get("name", "").strip()[:80]
     if not name:
-        flash("Enter your name")
+        flash("Enter your name", "error")
         return redirect(url_for("account"))
     db = get_db()
     db.execute("UPDATE users SET name = ? WHERE id = ?", (name, session["user_id"]))
@@ -470,7 +475,7 @@ def account_appearance():
     theme = request.form.get("theme", "")
     accent = request.form.get("accent", "")
     if theme not in THEMES or accent not in ACCENTS:
-        flash("Pick a theme and an accent from the list")
+        flash("Pick a theme and an accent from the list", "error")
         return redirect(url_for("account"))
     db = get_db()
     db.execute("UPDATE users SET theme = ?, accent = ? WHERE id = ?", (theme, accent, session["user_id"]))
@@ -516,11 +521,11 @@ def _store_avatar(user_id, file):
 def account_avatar():
     file = request.files.get("avatar")
     if not file or not file.filename:
-        flash("Choose a picture first")
+        flash("Choose a picture first", "error")
         return redirect(url_for("account"))
     stored, error = _store_avatar(session["user_id"], file)
     if error:
-        flash(error)
+        flash(error, "error")
     else:
         audit_log("change_own_avatar", "user", session["user_id"], session.get("user_name"))
         flash("Picture updated")
@@ -564,7 +569,7 @@ def user_avatar(user_id, stored):
 def account_notify_via():
     choice = request.form.get("notify_via", "")
     if choice not in ("email", "teams"):
-        flash("Pick email or Teams")
+        flash("Pick email or Teams", "error")
         return redirect(url_for("account"))
     db = get_db()
     db.execute("UPDATE users SET notify_via = ? WHERE id = ?", (choice, session["user_id"]))
@@ -579,19 +584,19 @@ def account_notify_via():
 def account_email():
     email = request.form.get("email", "").strip()
     if email and not valid_email(email):
-        flash("Enter a valid email address")
+        flash("Enter a valid email address", "error")
         return redirect(url_for("account"))
     db = get_db()
     if session.get("kind") == "external":
-        flash("Your email address is how you sign in; ask the project manager to change it")
+        flash("Your email address is how you sign in; ask the project manager to change it", "error")
         return redirect(url_for("account"))
     me = db.execute("SELECT password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     if me["password_hash"] and "$" in me["password_hash"] and not check_password_hash(me["password_hash"], request.form.get("password", "")):
         # reset links go to this address, so changing it is as sensitive as the password (test report SEC-5)
-        flash("Enter your current password to change your email")
+        flash("Enter your current password to change your email", "error")
         return redirect(url_for("account"))
     if email and db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND id != ?", (email.lower(), session["user_id"])).fetchone():
-        flash("That address belongs to another account")
+        flash("That address belongs to another account", "error")
         return redirect(url_for("account"))
     db.execute("UPDATE users SET email = ? WHERE id = ?", (email or None, session["user_id"]))
     db.commit()

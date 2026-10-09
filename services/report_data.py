@@ -142,14 +142,16 @@ def build(project, audience="internal"):
         "history": {"dwell": dwell, "approvals": approvals, "notes": notes},
         "needs": {"approval": pending_approval, "tasks": customer_tasks},
     }
-    data["draft"] = draft_words(project, p, items, audience)   # from the full plan, before the customer's cut removes the slip
+    # The words are saved once and the customer reads them, so the suggestion
+    # is always the customer's: no baseline, no blocker they cannot see.
+    data["draft"] = draft_words(project, p, items, "customer")
     if audience == "internal":
         data["people"] = [{"name": k, **v} for k, v in sorted(people.items(), key=lambda kv: (-kv[1]["late"], -kv[1]["open"]))]
         data["plan_changes"] = plan_service.changes(pid, 30)
         data["documents"] = documents
     else:
         # the customer's health is the word, not the internal reasons
-        data["health"] = {"rag": p["health"]["rag"], "reasons": [], "confidence": p["health"]["confidence"]}
+        data["health"] = customer_health(data)
         for s in data["stages"]:
             s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
         data["finish"] = {k: v for k, v in p["finish"].items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
@@ -158,12 +160,63 @@ def build(project, audience="internal"):
     return data
 
 
+def customer_health(d):
+    """The colour a customer sees, worked out again from what they may see:
+    only the RAID items marked for them count, and the baseline (an internal
+    yardstick) does not, so a hidden blocker never turns their report red.
+    No reasons: the customer's health is the word. Works on live data and on
+    a saved snapshot alike."""
+    h = d["health"]
+    if h["rag"] == "done":
+        return {"rag": "done", "reasons": [], "confidence": h.get("confidence")}
+    stages = d.get("stages", [])
+    cur = next((i for i, s in enumerate(stages) if s.get("status") == "current"), 0)
+    finish = {**d.get("finish", {}), "vs_baseline_days": None}
+    finish.setdefault("vs_target_days", None); finish.setdefault("target", None)
+    risks = [r for r in d.get("raid", []) if r.get("customer_visible") and r.get("open")]
+    today = date.fromisoformat(d["today"]) if d.get("today") else local_today()
+    rag = plan_service._health(None, stages, cur, finish, risks, today, False, d.get("has_plan"))["rag"]
+    return {"rag": rag, "reasons": [], "confidence": h.get("confidence")}
+
+
+def customer_words(project_id, words, snapshot=None):
+    """The project manager's words as the customer copy shows them: a
+    sentence or line naming a RAID item that is not marked for the customer
+    (now, or in the saved snapshot) is left out, and so is one about the
+    baseline. Words written before the suggestion became customer-safe may
+    still carry them."""
+    import re
+    hidden = {r["title"].strip().lower() for r in get_db().execute(
+        "SELECT title FROM raid_items WHERE project_id = ? AND customer_visible = 0", (project_id,))}
+    if snapshot:
+        hidden |= {str(r.get("title") or "").strip().lower() for r in snapshot.get("raid", []) if not r.get("customer_visible")}
+    hidden = {t for t in hidden if len(t) >= 3}
+
+    def keep(sentence):
+        low = sentence.lower()
+        return "baseline" not in low and not any(t in low for t in hidden)
+
+    out = {}
+    for k, text in words.items():
+        if k not in ("summary", "next_steps", "asks") or not isinstance(text, str):
+            out[k] = text
+            continue
+        lines = []
+        for line in text.split("\n"):
+            parts = re.split(r"(?<=[.!?])\s+", line)
+            kept = [s for s in parts if keep(s)]
+            if kept or not line.strip():
+                lines.append(" ".join(kept))
+        out[k] = "\n".join(lines).strip()
+    return out
+
+
 def customer_view(snapshot):
     """A saved internal snapshot, cut down to what the customer may see."""
     d = json.loads(snapshot) if isinstance(snapshot, str) else dict(snapshot)
     d = json.loads(json.dumps(d))   # a deep copy
     d["audience"] = "customer"
-    d["health"] = {"rag": d["health"]["rag"], "reasons": [], "confidence": d["health"].get("confidence")}
+    d["health"] = customer_health(d)
     for s in d.get("stages", []):
         s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
     d["finish"] = {k: v for k, v in d.get("finish", {}).items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}

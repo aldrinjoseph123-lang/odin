@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from flask import abort, flash, jsonify, redirect, request, session, url_for
 from werkzeug.security import check_password_hash
 
-from core import app, login_required, permission_required
+from core import app, json_body, login_required, permission_required
 from db import get_db
 from routes.auth import finish_login
 from security import csrf_token, login_is_blocked, record_login_attempt
@@ -23,14 +23,17 @@ def api_login_code():
     """The second step: the password was right a moment ago (session mfa_user)."""
     from routes.api import _current_user
     uid, at = session.get("mfa_user"), session.get("mfa_at")
-    if not uid or not at or datetime.fromisoformat(at) < datetime.utcnow() - timedelta(minutes=mfa.PENDING_MINUTES):
+    if not uid or not at:
+        # nothing waiting for a code: say so, and leave whoever is signed in signed in
+        return jsonify(error="No sign-in is waiting for a code — sign in with your password first"), 400
+    if datetime.fromisoformat(at) < datetime.utcnow() - timedelta(minutes=mfa.PENDING_MINUTES):
         session.clear()
         return jsonify(error="That took too long — sign in again"), 410   # 410/429: back to the password
     user = get_db().execute("SELECT * FROM users WHERE id = ? AND active = 1", (uid,)).fetchone()
     if user is None or login_is_blocked(user["username"]):
         session.clear()
         return jsonify(error="Too many failed attempts. Sign in again later."), 429
-    how = mfa.check(user, (request.get_json(silent=True) or {}).get("code"))
+    how = mfa.check(user, _text(json_body().get("code")))
     if how is None:
         record_login_attempt(user["username"], success=False)
         audit_log("login_failure", "user", user["id"], user["username"], "wrong two-step code", actor=user["username"])
@@ -58,10 +61,14 @@ def api_two_step():
 def api_two_step_setup():
     if session.get("kind") == "external":
         abort(403)
-    u = _me()
+    u, body = _me(), json_body()
     # someone holding only the session must not be able to bind their own authenticator
-    if not (u["password_hash"] and "$" in u["password_hash"] and check_password_hash(u["password_hash"], (request.get_json(silent=True) or {}).get("password") or "")):
+    if not _password_ok(u, body):
         return jsonify(error="Your password is not right"), 400
+    # replacing a working authenticator takes it too (or a recovery code): the password alone is not two steps
+    if mfa.enabled(u) and mfa.check(u, _text(body.get("code"))) is None:
+        audit_log("mfa_setup_refused", "user", u["id"], u["username"], "replacing the authenticator without a current code")
+        return jsonify(error="Two-step sign-in is on: enter a code from your current authenticator, or a recovery code"), 400
     audit_log("mfa_setup_started", "user", session["user_id"], session.get("user_name"))
     return jsonify(mfa.start_setup(session["user_id"]))
 
@@ -69,19 +76,35 @@ def api_two_step_setup():
 @app.route("/api/account/two-step/confirm", methods=["POST"])
 @login_required
 def api_two_step_confirm():
-    codes = mfa.confirm_setup(session["user_id"], (request.get_json(silent=True) or {}).get("code"))
+    replacing = mfa.enabled(_me())
+    codes = mfa.confirm_setup(session["user_id"], _text(json_body().get("code")))
     if codes is None:
         return jsonify(error="That code is not right. Scan the code again, or check the time on your phone."), 400
     session["must_enroll_mfa"] = False
-    audit_log("mfa_enable", "user", session["user_id"], session.get("user_name"))
+    if replacing:
+        # a new authenticator: every other session ends, this one carries on (as "sign out of other devices")
+        db = get_db()
+        db.execute("UPDATE users SET session_epoch = session_epoch + 1 WHERE id = ?", (session["user_id"],))
+        db.commit()
+        session["epoch"] = db.execute("SELECT session_epoch FROM users WHERE id = ?", (session["user_id"],)).fetchone()[0]
+    audit_log("mfa_enable", "user", session["user_id"], session.get("user_name"), "authenticator replaced; other sessions ended" if replacing else None)
     return jsonify(ok=True, recovery_codes=codes)
+
+
+def _text(value):
+    """A posted password or code as text; anything else (a list, a number) as nothing."""
+    return value if isinstance(value, str) else ""
+
+
+def _password_ok(u, body):
+    return bool(u["password_hash"] and "$" in u["password_hash"] and check_password_hash(u["password_hash"], _text(body.get("password"))))
 
 
 def _proof(u, body):
     """Password and a current code: what turning off or new codes need."""
-    if not (u["password_hash"] and "$" in u["password_hash"] and check_password_hash(u["password_hash"], body.get("password") or "")):
+    if not _password_ok(u, body):
         return "Your password is not right"
-    if mfa.check(u, body.get("code")) is None:
+    if mfa.check(u, _text(body.get("code"))) is None:
         return "That code is not right"
     return None
 
@@ -89,7 +112,7 @@ def _proof(u, body):
 @app.route("/api/account/two-step/off", methods=["POST"])
 @login_required
 def api_two_step_off():
-    u, body = _me(), request.get_json(silent=True) or {}
+    u, body = _me(), json_body()
     if mfa.required(u):
         return jsonify(error="Two-step sign-in is required for your account"), 400
     problem = _proof(u, body)
@@ -104,7 +127,7 @@ def api_two_step_off():
 @app.route("/api/account/two-step/recovery-codes", methods=["POST"])
 @login_required
 def api_two_step_codes():
-    u, body = _me(), request.get_json(silent=True) or {}
+    u, body = _me(), json_body()
     if not mfa.enabled(u):
         abort(400)
     problem = _proof(u, body)

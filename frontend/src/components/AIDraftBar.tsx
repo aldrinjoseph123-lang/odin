@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ApiError, cancelAIJob, dismissAISuggestion, projectAI, requestProjectAI, type AISuggestion, type ProjectAI } from "@/lib/api"
 import { fmtWhen } from "@/lib/format"
+import { usePoll } from "@/lib/usePoll"
 
 // An AI draft for one rollout, above the boxes it fills: ask for one, use it
 // (the boxes fill; nothing is saved until the person saves), dismiss it, or
@@ -20,11 +21,7 @@ export function AIDraftBar<T>({ projectId, feature, idle, working, note, onUse, 
   }, [projectId, feature])
   useEffect(() => { void load() }, [load])
   const drafting = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  useEffect(() => {
-    if (!drafting) return
-    const t = window.setInterval(() => void load(), 4000)
-    return () => window.clearInterval(t)
-  }, [drafting, load])
+  usePoll(drafting, load)
   if (!s || (!s.available && !s.suggestion)) return null
 
   async function draft() {
@@ -33,14 +30,14 @@ export function AIDraftBar<T>({ projectId, feature, idle, working, note, onUse, 
   }
   async function dismiss(id: number) {
     setBusy(true)
-    try { await dismissAISuggestion(projectId, id); await load() } finally { setBusy(false) }
+    try { await dismissAISuggestion(projectId, id); await load() } catch (e) { setError(e instanceof ApiError ? e.message : "Could not dismiss the draft") } finally { setBusy(false) }
   }
   const sug = s.suggestion
   const lastJob = s.job && !drafting && s.job.created_at > (sug?.created_at ?? "") ? s.job : null
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-muted/60 px-3 py-2 text-[13px] print:hidden">
       <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
-      <span className="min-w-0 flex-1" aria-live="polite">
+      <span className="min-w-0 flex-1 basis-56" aria-live="polite">
         {drafting ? working : sug ? <>AI draft, {fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}. {note}</> : idle}
         {lastJob?.status === "failed" && <span className="block text-bad">The last draft did not finish: {lastJob.error}</span>}
         {lastJob?.result?.skipped && <span className="block text-muted-foreground">{lastJob.result.skipped}</span>}
@@ -53,7 +50,7 @@ export function AIDraftBar<T>({ projectId, feature, idle, working, note, onUse, 
         </>
       )}
       {s.available && !drafting && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void draft()}>{sug ? again : ask}</Button>}
-      {drafting && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load)}>Cancel</Button>}
+      {drafting && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
     </div>
   )
 }

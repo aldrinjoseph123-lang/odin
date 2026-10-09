@@ -19,22 +19,28 @@ export function fmtWhen(iso: string | null | undefined, withTime = false): strin
   return withTime ? `${date}, ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : date
 }
 
+// A stored timestamp (naive UTC unless it says otherwise) as a Date.
+export const parseStamp = (iso: string) => new Date(/Z$|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`)
+
 // A calendar date (YYYY-MM-DD). The default reads "27 Sep" — compact, the
-// year is obvious in context; the numeric formats always carry it.
+// year is obvious in context; the numeric formats always carry it. A full
+// timestamp is first moved to the reader's day: 00:30 in Dubai is not yesterday.
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—"
-  const [y, m, d] = iso.slice(0, 10).split("-")
+  const stamp = iso.length > 10 ? parseStamp(iso) : null
+  const ymd = stamp && !Number.isNaN(stamp.getTime()) ? localToday(stamp) : iso.slice(0, 10)
+  const [y, m, d] = ymd.split("-")
   if (dateFormat === "yyyy-MM-dd") return `${y}-${m}-${d}`
   if (dateFormat === "dd/MM/yyyy") return `${d}/${m}/${y}`
   if (dateFormat === "MM/dd/yyyy") return `${m}/${d}/${y}`
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" })
+  return new Date(`${ymd}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" })
 }
 export const days = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n)} d`)
 
 export const daysLate = (target: string | null) => (target ? Math.round((Date.now() - new Date(`${target}T00:00:00`).getTime()) / 864e5) : 0)
 export function stateText(r: { state: FlowState; days_in_stage: number | null; over_by: number | null; target_end_date: string | null }) {
   if (r.state === "overdue") return `Overdue ${daysLate(r.target_end_date)} d`
-  if (r.state === "over_sla") return `${days(r.days_in_stage)} · ${Math.round(r.over_by ?? 0)} over SLA`
+  if (r.state === "over_sla") return r.days_in_stage == null ? "Over SLA" : `${days(r.days_in_stage)} · ${Math.round(r.over_by ?? 0)} over SLA`
   if (r.state === "due_soon") return `Due ${fmtDate(r.target_end_date)}`
   return days(r.days_in_stage)
 }
@@ -298,3 +304,28 @@ export function dayBucket(iso: string, now: Date = new Date()): string {
   return fmtWhen(iso)
 }
 
+// A plain reminder about what waits on the customer, for when no AI draft is
+// at hand: the person copies it into their own mail. Odin sends nothing.
+export type Waiting = { what: string; since?: string; days_waiting?: number; due?: string; days_overdue?: number }
+export function reminderText(waiting: Waiting[], name?: string | null): string {
+  const line = (w: Waiting) => `- ${w.what}${w.days_waiting != null ? ` (asked ${w.since}, ${w.days_waiting} d waiting)` : w.due ? ` (due ${w.due}, ${w.days_overdue ?? 0} d overdue)` : ""}`
+  return [`Hello${name ? ` ${name}` : ""},`, "", "A short reminder: to keep the rollout moving we are waiting on the following from your side:",
+    ...waiting.map(line), "", "Could you let us know when we can expect them? Thank you."].join("\n")
+}
+
+
+// An audit log code read as words: "login_success" → "Login success",
+// "AI_force" → "AI force". Words already in capitals (AI, MFA, API) stay so.
+export function actionText(code: string | null | undefined): string {
+  const words = (code ?? "").split(/[_\s]+/).filter(Boolean).map((w) => (w.length > 1 && w === w.toUpperCase() ? w : w.toLowerCase()))
+  if (!words.length) return ""
+  return [words[0][0].toUpperCase() + words[0].slice(1), ...words.slice(1)].join(" ")
+}
+
+// Settings → AI: a status nobody has checked lately is not a status. Stale when
+// the scheduler is not running, the server says so, or the last heartbeat is
+// over 15 minutes old (three missed beats at the default 5).
+export function aiStale(s: { state: string; checked_at?: string; stale?: boolean }, schedulerAlive: boolean, now = Date.now()): boolean {
+  if (s.state === "off" || s.state === "unknown") return false
+  return !schedulerAlive || !!s.stale || !s.checked_at || now - parseStamp(s.checked_at).getTime() > 15 * 60_000
+}

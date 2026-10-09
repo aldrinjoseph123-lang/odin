@@ -35,7 +35,7 @@ POLICIES = {
                      label="Time zone", help="Decides \"today\" for due dates and when scheduled jobs run."),
     "date_format": dict(area="general", kind="choice", default="d MMM yyyy", choices=tuple(DATE_FORMATS),
                         label="Date format", help="How dates read across the app."),
-    "working_days": dict(area="general", kind="multi", default="Mon,Tue,Wed,Thu,Fri", choices=WEEKDAYS,
+    "working_days": dict(area="general", kind="multi", default="Mon,Tue,Wed,Thu,Fri", choices=WEEKDAYS, nonempty=True,
                          label="Working week", help="Stage lengths and SLAs count these days (Settings → Projects & workflow); reminders and digests go out on them only."),
     "holidays": dict(area="general", kind="dates", default="", max=4000, optional=True, label="Public holidays",
                      help="One per line: \"2026-12-02 National Day\", or a span \"2027-03-20 to 2027-03-22 Eid al-Fitr\" (dates as announced). Not counted as working days; no digest or reminders on them."),
@@ -60,7 +60,7 @@ POLICIES = {
                                  label="Pause length (minutes)", help="Failures older than this stop counting."),
     "upload_max_mb": dict(area="security", kind="int", default=25, min=1, max=100,
                           label="Largest upload (MB)", help="Per file. The server never accepts more than 100 MB."),
-    "upload_types": dict(area="security", kind="multi", default=",".join(UPLOAD_TYPES), choices=UPLOAD_TYPES,
+    "upload_types": dict(area="security", kind="multi", default=",".join(UPLOAD_TYPES), choices=UPLOAD_TYPES, nonempty=True,
                          label="Allowed file types", help="Untick a type to refuse it. Types the server cannot verify are never offered."),
     "link_minutes": dict(area="security", kind="int", default=30, min=5, max=1440,
                          label="Email link lifetime (minutes)", help="Partner sign-in links and password-reset links work once, for this long."),
@@ -84,7 +84,7 @@ POLICIES = {
     # ---- Notifications
     "digest_time": dict(area="notifications", kind="time", default="08:00",
                         label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
-    "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500,
+    "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500, query=True,
                               label="Teams Workflows webhook", help="From a Teams channel: Workflows → \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
     # ---- Reports
     "kibana_dashboards": dict(area="integrations", kind="lines", default="", max=4000, optional=True, label="Kibana dashboards",
@@ -204,11 +204,19 @@ def _choices(entry):
     return list(c or ())
 
 
+# A host name: dot-separated labels of letters, digits and inner hyphens (so "-" and "-.-" are not one).
+_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+_HOST = rf"{_LABEL}(?:\.{_LABEL})*"
+
+
 def _parse(entry, raw):
     """Typed value from a stored/posted string, or raise ValueError."""
     kind = entry["kind"]
     if kind == "int":
-        v = int(str(raw).strip())
+        s = str(raw).strip()
+        if not re.fullmatch(r"-?[0-9]{1,9}", s):   # int() would take "١٢" and answer in Python's words
+            raise ValueError(f"a whole number between {entry['min']} and {entry['max']}")
+        v = int(s)
         if not entry["min"] <= v <= entry["max"]:
             raise ValueError(f"between {entry['min']} and {entry['max']}")
         return v
@@ -219,21 +227,26 @@ def _parse(entry, raw):
         allowed = _choices(entry)
         if any(p not in allowed for p in picked):
             raise ValueError("pick from the list")
+        if entry.get("nonempty") and not picked:
+            raise ValueError("keep at least one")
         return [p for p in allowed if p in picked]   # canonical order
     v = str(raw).strip()
+    if "\x00" in v or (kind in ("url", "emails", "domains", "time", "choice") or (kind == "text" and not entry.get("multiline"))) and ("\n" in v or "\r" in v):
+        raise ValueError("one line of plain text")
     if kind == "url":
         v = v.rstrip("/")
-        if v and (len(v) > entry["max"] or not re.fullmatch(r"https?://[A-Za-z0-9.-]+(:\d+)?(/[\w./-]*)?", v)):
+        query = r"(\?[A-Za-z0-9_.~%&=+,;:@/-]*)?" if entry.get("query") else ""   # a webhook's ?api-version=…&sig=…
+        if v and (len(v) > entry["max"] or not re.fullmatch(rf"https?://{_HOST}(:[0-9]{{1,5}})?(/[A-Za-z0-9_./%~-]*)?{query}", v)):
             raise ValueError("a web address like https://odin.example.com")
         return v
     if kind == "emails":
         parts = sorted({p.lower() for p in re.split(r"[\s,;]+", v) if p})
-        if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(r"[^@\s]+@[a-z0-9-]+(\.[a-z0-9-]+)+", p) for p in parts):
+        if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(rf"[^@\s<>\"']+@{_HOST}", p) or "." not in p.split("@")[1] for p in parts):
             raise ValueError("email addresses separated by commas")
         return parts
     if kind == "domains":
         parts = sorted({p.lower().lstrip("@") for p in re.split(r"[\s,;]+", v) if p})
-        if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", p) for p in parts):
+        if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(_HOST, p) or "." not in p for p in parts):
             raise ValueError("domains like partner.com, separated by commas")
         return parts
     if kind == "time":
@@ -319,22 +332,26 @@ def policy_view(area=None):
 
 
 def save_policies(area, form):
-    """Validate and store every policy in one area from a posted form (absent
-    booleans are false; a multi-select posts one comma list). Returns
-    (changed, errors) — nothing is stored if any value is invalid."""
+    """Validate and store the policies of one area from a posted form. Only
+    the keys the form carries change; an absent boolean is false (an
+    unticked checkbox is not posted), every other absent key keeps its value.
+    A multi-select posts one comma list. Returns (changed, errors) — nothing
+    is stored if any value is invalid."""
     values, errors = {}, []
     for key, e in POLICIES.items():
         if e["area"] != area:
             continue
-        raw = form.get(key, "" if e["kind"] in ("bool", "multi", "domains", "emails", "url", "lines", "dates") else None)
+        raw = form.get(key, "" if e["kind"] == "bool" else None)
         if raw is None:
             continue
         try:
             values[key] = _parse(e, raw)
         except ValueError as exc:
             errors.append(f"{e['label']}: {exc}")
-    if values.get("upload_types") == []:
-        errors.append("Allowed file types: keep at least one")
+    if "rag_amber_days" in values or "rag_red_days" in values:
+        amber, red = values.get("rag_amber_days", policy("rag_amber_days")), values.get("rag_red_days", policy("rag_red_days"))
+        if isinstance(amber, int) and isinstance(red, int) and amber >= red:
+            errors.append(f"Amber after ({amber} days) must come before red after ({red} days)")
     if errors:
         return [], errors
     changed = []

@@ -292,9 +292,24 @@ class Image:
     """A raster for Canvas.image: PNG (8/16-bit; grey, RGB, palette, with or
     without alpha; not interlaced) or JPEG, decoded without any library. JPEG
     is embedded as it is; PNG pixels are unfiltered and re-deflated, alpha
-    becomes a soft mask."""
+    becomes a soft mask. Anything malformed is a ValueError with words to
+    show, never a crash; the size is checked before any pixel is inflated."""
+
+    MAX_SIDE = 3000
 
     def __init__(self, data):
+        import struct
+        import zlib
+        try:
+            self._decode(data)
+        except ValueError:
+            raise
+        except (struct.error, zlib.error, KeyError, IndexError, TypeError, NameError, MemoryError, OverflowError):
+            raise ValueError("That image could not be read; save it again as a PNG or JPEG") from None
+        if not (0 < self.w <= self.MAX_SIDE and 0 < self.h <= self.MAX_SIDE):
+            raise ValueError(f"An image up to {self.MAX_SIDE} × {self.MAX_SIDE} pixels, please")
+
+    def _decode(self, data):
         import struct
         import zlib
         if data[:2] == b"\xff\xd8":
@@ -319,10 +334,17 @@ class Image:
             raise ValueError("Save the PNG without interlacing")
         if depth not in (8, 16) and ctype != 3:
             raise ValueError("Use an 8-bit PNG")
+        if not (0 < w <= self.MAX_SIDE and 0 < h <= self.MAX_SIDE):   # before inflating: a tiny file may claim a huge picture
+            raise ValueError(f"An image up to {self.MAX_SIDE} × {self.MAX_SIDE} pixels, please")
         channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[ctype]
         bpp = channels * (2 if depth == 16 else 1)
         stride = (w * channels * depth + 7) // 8
-        raw, rows, prev = zlib.decompress(idat), [], bytearray(stride)
+        need = h * (stride + 1)
+        raw, rows, prev = zlib.decompressobj().decompress(idat, need), [], bytearray(stride)   # never more than the picture needs
+        if len(raw) < need:
+            raise ValueError("That PNG is cut short")
+        if ctype == 3 and not plte:
+            raise ValueError("That PNG has no palette")
         for y in range(h):
             f, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
             for i in range(stride):

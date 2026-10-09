@@ -43,12 +43,23 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   const navRef = useRef<HTMLElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
   // the phone menu: focus moves into it, Escape closes it and returns to the button (test report UX-12)
+  // a tap outside closes it, and Tab cycles inside it (the menu button included)
   useEffect(() => {
     if (!open) return
     navRef.current?.querySelector<HTMLElement>("a, button")?.focus()
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); menuButton.current?.focus() } }
+    const inside = (t: EventTarget | null) => t instanceof Node && (!!navRef.current?.contains(t) || !!menuButton.current?.contains(t))
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); menuButton.current?.focus(); return }
+      if (e.key !== "Tab" || !navRef.current) return
+      const stops = [...navRef.current.querySelectorAll<HTMLElement>("a[href], button:not(:disabled)"), menuButton.current!].filter((el) => el && el.offsetParent !== null)
+      const at = stops.indexOf(document.activeElement as HTMLElement)
+      const to = e.shiftKey ? (at <= 0 ? stops.length - 1 : at - 1) : (at === stops.length - 1 || at < 0 ? 0 : at + 1)
+      e.preventDefault(); stops[to]?.focus()
+    }
+    const onDown = (e: PointerEvent) => { if (!inside(e.target)) setOpen(false) }
     window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
+    document.addEventListener("pointerdown", onDown)
+    return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("pointerdown", onDown) }
   }, [open])
   const [theme, setTheme] = useState<Theme>(user.theme)
   const [palette, setPalette] = useState(false)
@@ -106,7 +117,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           </button>
           {user.permissions.includes("create_project") && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
-          {user.kind === "external" && <Badge variant="secondary">Partner access</Badge>}
+          {user.kind === "external" && <Badge variant="secondary">{user.external_role === "Customer" ? "Customer access" : user.external_role ? "Partner access" : "External access"}</Badge>}
           <button type="button" onClick={signOut} className="text-left text-[13px] font-medium text-nav-fg hover:text-foreground xl:hidden">Log out</button>
         </nav>
         <div className="ml-auto flex items-center gap-2 xl:ml-0 xl:gap-3">

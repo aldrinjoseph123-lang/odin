@@ -401,6 +401,21 @@ class TasksTestCase(FixBase):
         c.post("/projects/1/tasks/1/toggle", headers=h)
         self.assertIn("done: renamed", self.sql("SELECT details FROM audit_logs WHERE action = 'toggle_task'")[0][0])
 
+    def test_assignee_may_move_only_their_own_due_date(self):
+        self.new_project(name="P", client="C")
+        self._invite(1, "kim@vendor.example", "Contractor", "Kim")
+        kim = self.sql("SELECT id FROM users WHERE email = 'kim@vendor.example'")[0][0]
+        self.client.post("/projects/1/tasks", data={"title": "mine", "assignee_id": str(kim), "due_date": "2026-12-01"})
+        self.client.post("/projects/1/tasks", data={"title": "not mine", "due_date": "2026-12-01"})
+        e = self._external_client("kim@vendor.example")
+        h = {"X-CSRF-Token": e.get("/api/session").get_json()["csrf"]}
+        whole = {"title": "mine", "assignee_id": kim, "due_date": "2026-12-15"}   # the page sends the whole task
+        self.assertEqual(e.post("/projects/1/tasks/1/edit", json=whole, headers=h).status_code, 200)
+        self.assertEqual(self.sql("SELECT due_date FROM tasks WHERE id = 1")[0][0], "2026-12-15")
+        self.assertEqual(e.post("/projects/1/tasks/1/edit", json={**whole, "title": "renamed"}, headers=h).status_code, 403)
+        self.assertEqual(e.post("/projects/1/tasks/2/edit", json={"due_date": "2026-12-20"}, headers=h).status_code, 403)
+        self.assertEqual(self.sql("SELECT title FROM tasks WHERE id = 1")[0][0], "mine")
+
     def test_bulk_complete_keeps_the_day_a_task_was_done(self):
         self.new_project(name="P", client="C")
         for t in ("a", "b"):

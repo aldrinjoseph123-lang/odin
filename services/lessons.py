@@ -15,20 +15,20 @@ from db import get_db
 
 
 def save(project, items, author):
-    """Store the ticked lessons. items: [{kind, text, evidence}]. Returns how many."""
+    """Store the ticked lessons. items: [{kind, text, evidence}]. Returns how
+    many. The caller commits, together with whatever else the save records."""
     db = get_db()
     n = 0
     for it in items:
-        text = str(it.get("text") or "").strip()[:400]
+        text = it.get("text").strip()[:400] if isinstance(it.get("text"), str) else ""
         kind = it.get("kind") if it.get("kind") in ("avoid", "repeat") else "avoid"
         if not text:
             continue
         db.execute("INSERT INTO lessons (project_id, project_name, template_id, product, vendor, client, kind, text, evidence, created_by, created_at) "
                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                    (project["id"], project["name"], project["stage_template_id"], project["product_name"], project["vendor_name"], project["client"],
-                    kind, text, str(it.get("evidence") or "")[:400] or None, author, datetime.utcnow().isoformat()))
+                    kind, text, (it.get("evidence").strip()[:400] if isinstance(it.get("evidence"), str) else "") or None, author, datetime.utcnow().isoformat()))
         n += 1
-    db.commit()
     return n
 
 

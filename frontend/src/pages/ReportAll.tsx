@@ -24,7 +24,7 @@ const SOLID: Record<Rag, string> = { red: "bg-bad-line", amber: "bg-warn-line", 
 const SOFT: Record<Rag, string> = { red: "bg-bad-soft border-bad-line", amber: "bg-warn-soft border-warn-line", green: "bg-ok-soft border-ok-line", done: "bg-muted border-border" }
 const days = (n: number | null | undefined, late = "late", early = "early") => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d ${late}` : `${-n} d ${early}`)
 
-function Roadmap({ rows, today }: { rows: PortfolioRow[]; today: string }) {
+function Roadmap({ rows, today, external = false }: { rows: PortfolioRow[]; today: string; external?: boolean }) {
   const all = rows.flatMap((r) => [r.start, r.forecast, r.baseline ?? null, r.target_end_date]).concat(today).filter((x): x is string => !!x).map(dayOf)
   const t0 = Math.min(...all) - 5 * 864e5, t1 = Math.max(...all) + 5 * 864e5
   const pct = (iso: string) => ((dayOf(iso) - t0) / (t1 - t0)) * 100
@@ -44,8 +44,9 @@ function Roadmap({ rows, today }: { rows: PortfolioRow[]; today: string }) {
             + (r.baseline ? `, baseline finish ${fmtDate(r.baseline)} (${days(r.vs_baseline_days)})` : "")
           return (
             <div key={r.id} className="contents">
-              <Link to={`/projects/${r.id}/report`} className="flex h-9 min-w-0 items-center gap-2 hover:underline">
-                <span className={cn("h-2 w-2 shrink-0 rounded-full", SOLID[r.rag])} aria-hidden />
+              <Link to={external && !r.report ? `/projects/${r.id}` : `/projects/${r.id}/report`} title={`${r.name} · ${r.client} · ${WORD[r.rag]}`} className="flex h-9 min-w-0 items-center gap-2 hover:underline">
+                {/* the health is a word for everyone, the dot only repeats it */}
+                <span className={cn("h-2 w-2 shrink-0 rounded-full", SOLID[r.rag])} aria-hidden /><span className="sr-only">{WORD[r.rag]}: </span>
                 <span className="truncate font-medium">{r.name}</span>
                 <span className="hidden truncate text-muted-foreground xl:inline">{r.client}</span>
               </Link>
@@ -75,7 +76,8 @@ function Roadmap({ rows, today }: { rows: PortfolioRow[]; today: string }) {
   )
 }
 
-export default function ReportAll(_props: { user: User }) {
+export default function ReportAll({ user }: { user: User }) {
+  const external = user.kind === "external"
   const [d, setD] = useState<ReportAllData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [template, setTemplate] = useState<number | null>(null)
@@ -130,7 +132,7 @@ export default function ReportAll(_props: { user: User }) {
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4">
-        {d.rows.length > 0 && <Section n title="Roadmap" sub="start to forecast finish, worst health first; open a rollout for its report" className={hide("roadmap")}><Roadmap rows={d.rows} today={d.today} /></Section>}
+        {d.rows.length > 0 && <Section n title="Roadmap" sub="start to forecast finish, worst health first; open a rollout for its report" className={hide("roadmap")}><Roadmap rows={d.rows} today={d.today} external={external} /></Section>}
 
         <div className={cn("grid gap-4", league.length > 0 && "lg:grid-cols-2")}>
           {league.length > 0 && (
@@ -169,7 +171,8 @@ export default function ReportAll(_props: { user: User }) {
               <span key="f" className="whitespace-nowrap">{fmtDate(r.forecast)}{r.vs_target_days != null && r.vs_target_days > 0 && <span className="block text-[12px] text-bad">{r.vs_target_days} d after target</span>}</span>,
               <span key="t" className="whitespace-nowrap">{fmtDate(r.target_end_date)}</span>,
               r.owner_name,
-              <Link key="r" to={`/projects/${r.id}/report`} className="whitespace-nowrap text-primary-text hover:underline">{r.report ? `v${r.report.version} · ${fmtDate(r.report.created_at)}` : "Live"}</Link>,
+              external && !r.report ? <span key="r" className="whitespace-nowrap text-muted-foreground">Not published yet</span>
+                : <Link key="r" to={`/projects/${r.id}/report`} className="whitespace-nowrap text-primary-text hover:underline">{r.report ? `v${r.report.version} · ${fmtDate(r.report.created_at)}` : "Live"}</Link>,
             ])} />
           {d.rows.length === 0 && <p className="py-4 text-center text-[13px] text-muted-foreground">No active rollouts.</p>}
         </Section>

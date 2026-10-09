@@ -105,6 +105,8 @@ def lookup(raw):
 
 def register(link, form):
     """Create the pending account; returns its id or raises ValueError with the reason."""
+    if any(form.get(k) is not None and not isinstance(form.get(k), str) for k in ("name", "username", "email", "password", "notify_via")):
+        raise ValueError("Send the form's fields as text")
     name = str(form.get("name") or "").strip()[:120]
     username = str(form.get("username") or "").strip()[:40]
     email = str(form.get("email") or "").strip().lower()[:200]
@@ -128,12 +130,15 @@ def register(link, form):
         raise ValueError("That username is taken; pick another")
     if db.execute("SELECT 1 FROM users WHERE lower(email) = ?", (email,)).fetchone():
         raise ValueError("That address already has an account; ask an admin")
+    # take the use first, guarded: two people on a single-use link at the same moment cannot both get in
+    if not db.execute("UPDATE signup_links SET uses = uses + 1 WHERE id = ? AND uses < max_uses AND revoked_at IS NULL",
+                      (link["id"],)).rowcount:
+        raise ValueError("This sign-up link has just been used up. Ask the admin who sent it for a new one.")
     cur = db.execute(
         "INSERT INTO users (username, password_hash, name, role, active, email, created_at, kind, pending, theme, accent, notify_via, "
         "signup_link_id, signup_project_id, signup_project_role) VALUES (?, ?, ?, ?, 0, ?, ?, 'internal', 1, ?, ?, ?, ?, ?, ?)",
         (username, generate_password_hash(password, method="pbkdf2:sha256"), name, link["role"], email, datetime.utcnow().isoformat(),
          policy("default_theme"), policy("default_accent"), channel, link["id"], link["project_id"], link["project_role"]))
-    db.execute("UPDATE signup_links SET uses = uses + 1 WHERE id = ?", (link["id"],))
     db.commit()
     return cur.lastrowid
 
