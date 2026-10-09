@@ -94,7 +94,7 @@ def guest_stage(token):
         abort(403)
     if author is None:
         return redirect(url_for("guest_view", token=token))
-    new_stage = request.form["stage"]
+    new_stage = request.form.get("stage", "")
     if new_stage != next_stage_for(project):
         flash("Only the next stage can be set from this link")
         return redirect(url_for("guest_view", token=token))
@@ -111,7 +111,7 @@ def guest_note(token):
     project, party, author = _guard(token)
     if author is None:
         return redirect(url_for("guest_view", token=token))
-    note_text = request.form["note"].strip()[:5000]
+    note_text = request.form.get("note", "").strip()[:5000]
     if note_text:
         db = get_db()
         now = datetime.utcnow().isoformat()

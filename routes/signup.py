@@ -4,7 +4,7 @@ the Users page with the existing access-request flow (routes/sso.py)."""
 from flask import abort, jsonify, request, session
 from markupsafe import escape
 
-from core import admin_required, app, json_body, text_field, external_url
+from core import admin_required, app, as_id, json_body, text_field, external_url
 from db import get_db
 from policies import policy
 from security import rate_limited
@@ -27,10 +27,14 @@ def api_signup_links():
 def api_signup_link_create():
     b = json_body()
     try:
-        raw = signup.create(b.get("label"), b.get("role"), b.get("project_id"), b.get("project_role"), b.get("days"), b.get("max_uses"), session["user_name"])
+        label = text_field(b.get("label"), 80, "Label")
+        project_id = as_id(b.get("project_id"))
+        if b.get("project_id") not in (None, "", 0) and project_id is None:
+            raise ValueError("That project does not exist")
+        raw = signup.create(label, b.get("role"), project_id, b.get("project_role"), b.get("days"), b.get("max_uses"), session["user_name"])
     except (ValueError, TypeError) as e:
         return jsonify(error=str(e)), 400
-    audit_log("signup_link_create", "signup_link", None, str(b.get("label"))[:80], f"role={b.get('role')} project={b.get('project_id')} uses={b.get('max_uses')}")
+    audit_log("signup_link_create", "signup_link", None, label, f"role={b.get('role')} project={project_id} uses={b.get('max_uses')}")
     return jsonify(ok=True, link=external_url("join_page", token=raw))
 
 

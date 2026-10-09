@@ -30,17 +30,32 @@ def api_doc_template_choices():
     return jsonify(choices=[{"id": t["id"], "name": t["name"], "is_default": t["is_default"]} for t in dt.all_templates(kind)])
 
 
+def _template_input(b, named=True):
+    """(kind, name, config) — or (kind, config) — from a posted body, the
+    shapes checked so the services see a string kind, a one-line name and a
+    config object whose parts are of the right types (else ValueError)."""
+    kind, config = b.get("kind"), b.get("config") or {}
+    if not isinstance(kind, str) or not isinstance(config, dict):
+        raise ValueError("Unknown document kind")
+    for key, want in (("title", str), ("accent", str), ("logo", str), ("co_logo", str), ("company_line", str), ("footer", str), ("sections", list), ("texts", dict)):
+        if config.get(key) is not None and not isinstance(config.get(key), want):
+            raise ValueError(f"The template's {key.replace('_', ' ')} is not in the expected form")
+    if not isinstance(config.get("texts") or {}, dict) or any(not isinstance(v, str) for v in (config.get("texts") or {}).values() if v is not None):
+        raise ValueError("The template's texts are not in the expected form")
+    return (kind, text_field(b.get("name"), 80, "Name"), config) if named else (kind, config)
+
+
 @app.route("/api/doc-templates", methods=["POST"])
 @permission_required("manage_settings")
 def api_doc_template_create():
     b = json_body()
     try:
-        tid = dt.save(b.get("kind"), b.get("name"), b.get("config") or {}, session["user_name"])
+        tid = dt.save(*_template_input(b), session["user_name"])
     except ValueError as e:
         return jsonify(error=str(e)), 400
     except KeyError:
         return jsonify(error="Unknown document kind"), 400
-    audit_log("doc_template_create", "doc_template", tid, str(b.get("name"))[:80], b.get("kind"))
+    audit_log("doc_template_create", "doc_template", tid, str(b.get("name") or "")[:80], b.get("kind"))
     return jsonify(ok=True, id=tid)
 
 
@@ -56,12 +71,12 @@ def api_doc_template(template_id):
         return jsonify(ok=True)
     b = json_body()
     try:
-        dt.save(b.get("kind"), b.get("name"), b.get("config") or {}, session["user_name"], template_id)
+        dt.save(*_template_input(b), session["user_name"], template_id)
     except ValueError as e:
         return jsonify(error=str(e)), 400
     except (LookupError, KeyError):
         abort(404)
-    audit_log("doc_template_update", "doc_template", template_id, str(b.get("name"))[:80])
+    audit_log("doc_template_update", "doc_template", template_id, str(b.get("name") or "")[:80])
     return jsonify(ok=True)
 
 
@@ -106,7 +121,7 @@ def api_doc_template_preview():
     b = json_body()
     kind = b.get("kind")
     try:
-        cfg = dt.clean(kind, b.get("config") or {})
+        cfg = dt.clean(*_template_input(b, named=False))
     except (ValueError, KeyError) as e:
         return jsonify(error=str(e)), 400
     return Response(_preview(kind, cfg), mimetype="application/pdf", headers={"Content-Disposition": 'inline; filename="preview.pdf"'})
