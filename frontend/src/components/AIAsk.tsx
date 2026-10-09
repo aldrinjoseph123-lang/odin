@@ -1,27 +1,21 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
 import { Input } from "@/components/ui/input"
 import { Ago } from "@/components/Ago"
-import { ApiError, cancelAIJob, projectAI, requestProjectAI, type AskAnswer, type ProjectAI } from "@/lib/api"
-import { usePoll } from "@/lib/usePoll"
+import { ApiError, cancelAIJob, requestProjectAI, type AskAnswer } from "@/lib/api"
+import { useProjectAI } from "@/lib/usePoll"
 
 // Ask this rollout: a question answered only from the rollout's own records,
 // each sentence pointing at the passage it came from. Odin finds the
 // passages; the AI answers from them or says the records do not say.
 export function AIAsk({ projectId }: { projectId: number }) {
-  const [s, setS] = useState<ProjectAI<AskAnswer> | null>(null)
+  const { s, load, working } = useProjectAI<AskAnswer>(projectId, "ask_rollout")
   const [q, setQ] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const load = useCallback(async () => {
-    try { setS(await projectAI<AskAnswer>(projectId, "ask_rollout")) } catch { setS(null) }
-  }, [projectId])
-  useEffect(() => { void load() }, [load])
-  const working = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  usePoll(working, load)
   if (!s || (!s.available && !s.suggestion)) return null
   const a = s.suggestion
   async function ask(e: FormEvent) {

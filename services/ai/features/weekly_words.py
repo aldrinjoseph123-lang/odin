@@ -94,12 +94,6 @@ SCHEMA = {"type": "object", "required": ["summary", "next_steps", "asks"], "prop
 }}
 
 
-def as_words(output):
-    """The report's three fields from an answer."""
-    return {"summary": output["summary"].strip(), "next_steps": "\n".join(s.strip() for s in output["next_steps"] if s.strip()),
-            "asks": "\n".join(s.strip() for s in output["asks"] if s.strip())}
-
-
 FEATURE = register(AIFeature(
     key="weekly_words", label="Weekly words, drafted",
     description="Drafts the report's summary, next steps and asks from the rollout's week; the project manager edits and saves.",

@@ -1507,7 +1507,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_every_email_wears_the_brand(self):
         import graph
-        with patch("graph.mail_configured", return_value=True), patch("graph._headers", return_value=({}, None)), \
+        with patch("graph.is_connected", return_value=True), patch("graph._headers", return_value=({}, None)), \
              patch("graph.requests.post") as post:
             post.return_value.status_code = 202
             self.assertEqual(graph.send_mail("a@example.com", "Hi", "<p>Stage moved</p>"), (True, None))

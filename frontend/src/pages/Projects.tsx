@@ -28,7 +28,6 @@ const COLUMNS: { key: string; label: string; className?: string }[] = [
   { key: "vendor", label: "Vendor", className: "hidden xl:table-cell" }, { key: "product", label: "Product", className: "hidden xl:table-cell" },
   { key: "updated", label: "Updated", className: "hidden md:table-cell" },
 ]
-const fmtDate = (iso: string | null) => fmtWhen(iso)
 const selectClass = "h-7 rounded-md border border-border bg-background px-2 text-[13px] font-medium text-nav-fg hover:bg-muted"
 // Table or cards: a per-browser convenience, so it lives in localStorage (which may be unavailable).
 type Layout = "table" | "cards"
@@ -140,7 +139,7 @@ export default function Projects({ user }: { user: User }) {
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
                     <span className="h-1.5 w-16 rounded-full bg-muted" aria-hidden><span className="block h-1.5 rounded-full bg-ok-line" style={{ width: `${r.total_tasks ? (done / r.total_tasks) * 100 : 0}%` }} /></span>
                     <span className="tabular-nums">{r.total_tasks ? `${done} of ${r.total_tasks} tasks done` : "No tasks yet"}</span>
-                    {r.target_end_date && <span className="ml-auto whitespace-nowrap">target {fmtDate(r.target_end_date)}</span>}
+                    {r.target_end_date && <span className="ml-auto whitespace-nowrap">target {fmtWhen(r.target_end_date)}</span>}
                   </div>
                 </li>
               )
@@ -188,7 +187,7 @@ export default function Projects({ user }: { user: User }) {
                   <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{r.delivery_mode}</td>
                   <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{r.vendor_name ?? "—"}</td>
                   <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{r.product_name ?? "—"}</td>
-                  <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground md:table-cell">{fmtDate(r.updated_at)}</td>
+                  <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground md:table-cell">{fmtWhen(r.updated_at)}</td>
                 </tr>
               ))}
               {data.rows.length === 0 && (

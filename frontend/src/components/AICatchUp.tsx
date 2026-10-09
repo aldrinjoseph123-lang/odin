@@ -1,25 +1,19 @@
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
 import { Ago } from "@/components/Ago"
-import { ApiError, cancelAIJob, projectAI, requestProjectAI, type CatchUp, type ProjectAI } from "@/lib/api"
-import { usePoll } from "@/lib/usePoll"
+import { ApiError, cancelAIJob, requestProjectAI, type CatchUp } from "@/lib/api"
+import { useProjectAI } from "@/lib/usePoll"
 
 // Catch me up: a one-page brief on this rollout for whoever takes it over or
 // joins. Who waits on whom is Odin's own list; the rest is written by the AI
 // from the rollout's facts. Hidden when the AI cannot run and no brief exists.
 export function AICatchUp({ projectId }: { projectId: number }) {
-  const [s, setS] = useState<ProjectAI<CatchUp> | null>(null)
+  const { s, load, working } = useProjectAI<CatchUp>(projectId, "catch_up", { every: 5000 })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
-  const load = useCallback(async () => {
-    try { setS(await projectAI<CatchUp>(projectId, "catch_up")) } catch { setS(null) }
-  }, [projectId])
-  useEffect(() => { void load() }, [load])
-  const working = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  usePoll(working, load, 5000)
   if (!s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   async function ask() {

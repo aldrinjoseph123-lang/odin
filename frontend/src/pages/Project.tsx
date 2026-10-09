@@ -21,7 +21,6 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const fmtDate = (iso: string) => fmtWhen(iso)
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
 // a 14 px bin with a 24 px target (the pseudo-element), kept clear of its neighbours
 const hit = "relative ml-1 shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-bad"
@@ -188,7 +187,7 @@ export default function Project({ user }: { user: User }) {
               <li key={doc.id} className="flex items-center gap-3 text-[13px]">
                 <span className="w-28 shrink-0 truncate text-[12px] text-muted-foreground">{doc.category}</span>
                 {can.download ? <a href={`/projects/${id}/documents/${doc.id}/download`} className="min-w-0 flex-1 truncate font-medium hover:underline">{doc.filename}</a> : <span className="min-w-0 flex-1 truncate font-medium">{doc.filename}</span>}
-                <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtDate(doc.uploaded_at)}</span>
+                <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtWhen(doc.uploaded_at)}</span>
                 {can.delete_doc && <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}?`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
               </li>
             ))}

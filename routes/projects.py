@@ -23,7 +23,7 @@ from flask import (
     session,
     url_for,
 )
-from markupsafe import Markup, escape
+from markupsafe import escape
 from werkzeug.utils import secure_filename
 
 import graph
@@ -35,7 +35,7 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, as_id, json_body, parse_date, login_required, permission_required, project_allows, project_role_required, role_has_permission, undo_button, undo_note, write_required, project_scope
+from core import app, as_id, json_body, parse_date, login_required, permission_required, project_allows, project_role_required, role_has_permission, offer_undo, undo_note, project_scope
 from security import content_matches_extension, upload_problem, valid_email, safe_csv_writer
 from policies import local_today, policy
 from spa import spa_index
@@ -495,8 +495,6 @@ def undo_stage_change(project_id, note_id):
     both rows, and everyone who was told about the move is told it was undone."""
     db = get_db()
     project = load_project(project_id)
-    if project is None:
-        abort(404)
     note = db.execute("SELECT * FROM status_notes WHERE id = ? AND project_id = ? AND prev_stage IS NOT NULL", (note_id, project_id)).fetchone()
     cutoff = (datetime.utcnow() - timedelta(minutes=policy("undo_minutes"))).isoformat()
     later_move = note and db.execute(
@@ -706,7 +704,8 @@ def document_delete(project_id, doc_id):
         touch_project(db, project_id)
         soft_delete("documents", doc_id)
         audit_log("delete_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
-        flash(Markup(f"Deleted {escape(doc['filename'])}. {undo_button('Undo', 'undo_document', doc_id=doc_id)} {undo_note()}"))
+        offer_undo("undo_document", doc_id=doc_id)
+        flash(f"Deleted {doc['filename']}. Undo {undo_note()}")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -727,12 +726,13 @@ def project_delete(project_id):
                (project_id, project_id))
     db.commit()
     audit_log("delete_project", "project", project_id, project["name"])
-    flash(Markup(f"Project deleted. {undo_button('Undo', 'undo_project', project_id=project_id)} {undo_note()}"))
+    offer_undo("undo_project", project_id=project_id)
+    flash(f"Project deleted. Undo {undo_note()}")
     return redirect(url_for("board"))
 
 
 @app.route("/projects/<int:project_id>/rotate-token", methods=["POST"])
-@write_required
+@permission_required("edit_project")
 @project_role_required("manage_project")
 def project_rotate_token(project_id):
     """Mint a fresh guest access token — instantly revokes any leaked old link."""
@@ -867,9 +867,8 @@ def participant_invite(project_id):
                 # the link by hand. It still works once and expires in 30 minutes.
                 from core import external_url
                 link = external_url("auth_link_consume", token=raw, next=url_for("project_detail", project_id=project_id))
-                flash(Markup(f"{escape(user['name'])} added as {escape(role)}. Email could not be sent "
-                             f"({escape(error or 'not configured')}) — send them this link yourself: "
-                             f"<code>{escape(link)}</code>"))
+                flash(f"{user['name']} added as {role}. Email could not be sent "
+                      f"({error or 'not configured'}) — send them this link yourself: {link}")
     return redirect(url_for("project_detail", project_id=project_id) + "#team")
 
 
@@ -897,18 +896,11 @@ def participant_remove(project_id, participant_id):
 
 # ---- a project's own stages: add / rename / reorder / delete / SLAs ---------
 
-def _live_project(project_id):
-    project = load_project(project_id)
-    if project is None:
-        abort(404)
-    return project
-
-
 def _stage_change(project_id, action, error, detail):
     if error:
         flash(error)
     else:
-        audit_log(action, "project", project_id, _live_project(project_id)["name"], detail)
+        audit_log(action, "project", project_id, load_project(project_id)["name"], detail)
     return redirect(url_for("project_detail", project_id=project_id) + "#stages")
 
 
@@ -916,7 +908,7 @@ def _stage_change(project_id, action, error, detail):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_add(project_id):
-    _live_project(project_id)
+    load_project(project_id)
     name = request.form.get("name", "")
     return _stage_change(project_id, "add_project_stage", stage_ops.add_stage("project", project_id, name), name)
 
@@ -925,7 +917,7 @@ def project_stage_add(project_id):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_rename(project_id, stage_id):
-    _live_project(project_id)
+    load_project(project_id)
     name = request.form.get("name", "")
     return _stage_change(project_id, "rename_project_stage", stage_ops.rename_stage("project", project_id, stage_id, name), f"stage_id={stage_id} -> {name}")
 
@@ -934,7 +926,7 @@ def project_stage_rename(project_id, stage_id):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_move(project_id, stage_id):
-    _live_project(project_id)
+    load_project(project_id)
     direction = request.form.get("direction", "")
     return _stage_change(project_id, "move_project_stage", stage_ops.move_stage("project", project_id, stage_id, direction), f"stage_id={stage_id} {direction}")
 
@@ -943,7 +935,7 @@ def project_stage_move(project_id, stage_id):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_delete(project_id, stage_id):
-    _live_project(project_id)
+    load_project(project_id)
     return _stage_change(project_id, "delete_project_stage", stage_ops.delete_stage("project", project_id, stage_id), f"stage_id={stage_id}")
 
 
@@ -951,7 +943,7 @@ def project_stage_delete(project_id, stage_id):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_sla(project_id):
-    _live_project(project_id)
+    load_project(project_id)
     return _stage_change(project_id, "update_project_stage_slas", stage_ops.set_slas("project", project_id, request.form), None)
 
 

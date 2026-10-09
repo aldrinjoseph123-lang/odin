@@ -7,7 +7,6 @@ projects, their stages and tasks, and saved reports — never write. A token
 sees what internal staff see (every project). Behind Cloudflare Access,
 /api/v1 needs its own Access policy (a service token) to be reachable.
 """
-import hashlib
 import secrets
 from datetime import datetime, timedelta
 from functools import wraps
@@ -17,13 +16,11 @@ from flask import abort, flash, g, jsonify, redirect, request, session, url_for
 from core import app, permission_required
 from db import PROJECT_OPEN_SQL, get_db, get_stage_names
 from routes.projects import load_project
+from security import token_hash
 from services.audit import audit_log
 
 LIFETIMES = {"30": 30, "90": 90, "365": 365}
 
-
-def _hash(raw):
-    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def token_required(view):
@@ -34,7 +31,7 @@ def token_required(view):
         raw = header[7:].strip() if header.startswith("Bearer ") else ""
         now = datetime.utcnow().isoformat()
         row = raw and get_db().execute(
-            "SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?", (_hash(raw), now)).fetchone()
+            "SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?", (token_hash(raw), now)).fetchone()
         if not row:
             return jsonify(error="A valid API token is required (Authorization: Bearer <token>)"), 401
         db = get_db()
@@ -63,7 +60,7 @@ def api_token_create():
     db.execute("DELETE FROM api_tokens WHERE (revoked_at IS NOT NULL OR expires_at < ?) AND created_at < ?",
                (now.isoformat(), (now - timedelta(days=90)).isoformat()))
     cur = db.execute("INSERT INTO api_tokens (name, token_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-                     (name, _hash(raw), session.get("user_name", "?"), now.isoformat(), (now + timedelta(days=days)).isoformat()))
+                     (name, token_hash(raw), session.get("user_name", "?"), now.isoformat(), (now + timedelta(days=days)).isoformat()))
     db.commit()
     audit_log("create_api_token", "api_token", cur.lastrowid, name, f"read-only, {days} days")
     flash(f"Token for {name} (shown once — copy it now): {raw}")

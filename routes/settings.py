@@ -7,10 +7,9 @@ import io
 import sqlite3
 
 from flask import Response, abort, flash, redirect, request, session, url_for
-from markupsafe import Markup
 
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, PERMISSIONS, ROLES
-from core import app, as_id, permission_required, undo_button, undo_note
+from core import app, as_id, offer_undo, permission_required, undo_note
 from db import get_db, restore_deleted, soft_delete
 from services import stages as stage_ops
 from security import safe_csv_writer, valid_email
@@ -612,7 +611,8 @@ def settings_contacts_delete(list_key, item_id):
         abort(404)
     meta = CONTACT_LISTS[list_key]
     soft_delete(meta['table'], item_id)
-    flash(Markup(f"{meta['label']} entry deleted. {undo_button('Undo', 'undo_contact', list_key=list_key, item_id=item_id)} {undo_note()}"))
+    offer_undo("undo_contact", list_key=list_key, item_id=item_id)
+    flash(f"{meta['label']} entry deleted. Undo {undo_note()}")
     audit_log("delete_contact", list_key, item_id)
     return redirect(url_for("settings_contacts"))
 
@@ -644,7 +644,8 @@ def settings_partner_delete(partner_id):
                (partner_id, partner_id))
     db.commit()
     audit_log("delete_partner", "partner", partner_id)
-    flash(Markup(f"Partner deleted (its account managers were removed too). {undo_button('Undo', 'undo_partner', partner_id=partner_id)} {undo_note()}"))
+    offer_undo("undo_partner", partner_id=partner_id)
+    flash(f"Partner deleted (its account managers were removed too). Undo {undo_note()}")
     return redirect(url_for("settings_contacts"))
 
 
@@ -673,7 +674,8 @@ def settings_partner_manager_add(partner_id):
 @permission_required("manage_contacts")
 def settings_partner_manager_delete(manager_id):
     soft_delete("partner_account_managers", manager_id)
-    flash(Markup(f"Account manager deleted. {undo_button('Undo', 'undo_partner_manager', manager_id=manager_id)} {undo_note()}"))
+    offer_undo("undo_partner_manager", manager_id=manager_id)
+    flash(f"Account manager deleted. Undo {undo_note()}")
     audit_log("delete_partner_manager", "partner_manager", manager_id)
     return redirect(url_for("settings_contacts"))
 

@@ -85,10 +85,8 @@ def api_session():
     before continuing") would otherwise lose the message, or have it surface
     later inside an unrelated reply."""
     from flask import get_flashed_messages
-    from markupsafe import Markup
-    import re
     user = _current_user()
-    messages = [re.sub(r"<[^>]+>", "", str(m)).replace("  ", " ").strip() if isinstance(m, Markup) else m for m in get_flashed_messages()]
+    messages = [str(m) for m in get_flashed_messages()]
     from routes.sso import sso_configured, sso_enforced
     # what the sign-in page offers: Microsoft for staff, and whether the
     # password form is hidden (then only at /login/password, for flagged accounts)

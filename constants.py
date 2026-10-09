@@ -39,7 +39,6 @@ DEFAULT_SETTINGS = {
     "notify_email_enabled": "0",
     "notify_teams_enabled": "0",
     "onedrive_mirror_uploads_enabled": "0",
-    "onedrive_backup_enabled": "0",
 }
 
 # The one document category the project can't be created without — its upload
@@ -92,7 +91,7 @@ NOTIFICATION_KINDS = {
 ADMIN_KINDS = ("access", "ai")
 
 THEMES = ("system", "light", "dark")
-# No red or amber accent: in the UI those mean overdue and warning (27 Sep 2026).
+# Pastel accents, red first and the default (9 Oct 2026); overdue stays the solid --bad state.
 ACCENTS = ("red", "blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
 AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 AVATAR_MAX_BYTES = 2 * 1024 * 1024

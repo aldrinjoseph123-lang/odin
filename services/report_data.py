@@ -23,9 +23,6 @@ from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
 
-AUDIENCES = ("internal", "customer")
-
-
 def _day(stamp):
     """A stored UTC timestamp's workspace-local date, as 'YYYY-MM-DD' ('' when empty)."""
     d = local_date(stamp)

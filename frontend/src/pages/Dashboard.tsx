@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
 import { dayOf, deltaText, fmtDate, lateBy, monthTicks, timelineDomain } from "@/lib/format"
 import { configure, GRID_CLASS, keyOf, move, newUid, pack, pctChange, remove, reorder, resize, SPAN_CLASS, splitWindow, type LayoutItem, type Width } from "@/lib/dashboard"
+import { useMedia, useWidth } from "@/lib/useMeasure"
 
 // The dashboard: widgets on a three-column grid, in the order and widths of
 // the layout the server hands over (the workspace default, or this user's
@@ -162,13 +163,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
   const { t0, t1 } = timelineDomain(shown, today)
   const pct = (t: number) => `${((t - t0) / (t1 - t0)) * 100}%`
   const now = dayOf(today)
-  const [width, setWidth] = useState(0)
-  const measure = useCallback((el: HTMLDivElement | null) => {
-    if (!el) return
-    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+  const [width, measure] = useWidth<HTMLDivElement>()
   const months = monthTicks(t0, t1, width ? Math.max(2, Math.floor(width / 64)) : 8)
   const crowded = months.some((tk) => Math.abs(tk.t - now) / (t1 - t0) * (width || 800) < 44)
   return (
@@ -619,16 +614,8 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
 
 // Three columns on wide screens, two on tablets, one on phones: the packer needs to know which.
 function useColumns() {
-  const get = () => (typeof window.matchMedia !== "function" ? 3 : window.matchMedia("(min-width: 1280px)").matches ? 3 : window.matchMedia("(min-width: 768px)").matches ? 2 : 1)
-  const [cols, setCols] = useState(get)
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return
-    const lists = ["(min-width: 1280px)", "(min-width: 768px)"].map((q) => window.matchMedia(q))
-    const on = () => setCols(get())
-    lists.forEach((l) => l.addEventListener("change", on))
-    return () => lists.forEach((l) => l.removeEventListener("change", on))
-  }, [])
-  return cols
+  const xl = useMedia("(min-width: 1280px)"), md = useMedia("(min-width: 768px)")
+  return xl ? 3 : md ? 2 : 1
 }
 
 export default function Dashboard({ user }: { user: User }) {

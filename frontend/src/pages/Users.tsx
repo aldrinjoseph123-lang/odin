@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const fmt = (iso: string | null, withTime = false) => fmtWhen(iso, withTime)
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px] disabled:opacity-60"
 
 export default function Users(_props: { user: User }) {
@@ -86,7 +85,7 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
       <ul className="grid grid-cols-1 gap-2">
         {people.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-2 text-[13px]">
-            <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.username} · {u.email} · asked {fmt(u.created_at, true)}
+            <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.username} · {u.email} · asked {fmtWhen(u.created_at, true)}
               {u.signup_label ? ` · via sign-up link "${u.signup_label}"` : u.microsoft ? " · via Microsoft sign-in" : ""}{u.signup_project ? ` · joins ${u.signup_project} as ${u.signup_project_role}` : ""}
               {u.notify_via === "teams" ? " · prefers Teams" : ""}</span></span>
             <select value={role[u.id] ?? (u.signup_label ? u.role : "Viewer")} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={selectClass}>
@@ -164,7 +163,7 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{u.name}</DialogTitle>
-          <DialogDescription>{u.kind === "external" ? "Partner or customer account" : `${u.username} · ${u.role}`} · added {fmt(u.created_at)}</DialogDescription>
+          <DialogDescription>{u.kind === "external" ? "Partner or customer account" : `${u.username} · ${u.role}`} · added {fmtWhen(u.created_at)}</DialogDescription>
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="grid grid-cols-1 gap-2">
           <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Email

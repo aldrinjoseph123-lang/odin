@@ -1,8 +1,8 @@
-import { useCallback, useState } from "react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { PlanStage } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { dayOf, fmtDate, monthTicks } from "@/lib/format"
+import { useWidth } from "@/lib/useMeasure"
 
 // Plan against reality, one row per stage: the baseline as a thin grey line
 // under the row, the current plan as an outlined bar, what actually happened
@@ -18,13 +18,7 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
   const at = (t: number) => `${((t - t0) / (t1 - t0)) * 100}%`
   const pct = (iso: string) => at(dayOf(iso))
   const span = (a: string, b: string) => ({ left: pct(a), width: `max(3px, calc(${pct(b)} - ${pct(a)}))` })
-  const [width, setWidth] = useState(0)
-  const measure = useCallback((el: HTMLDivElement | null) => {
-    if (!el) return
-    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+  const [width, measure] = useWidth<HTMLDivElement>()
   const months = monthTicks(t0, t1, width ? Math.max(2, Math.floor(width / 70)) : 8)
   // a light line at each Monday (Odin's weeks start on Monday), numbered when there is room
   const weeks = mondays(t0, t1)

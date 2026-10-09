@@ -87,16 +87,11 @@ def undo_note():
     return f"({policy('undo_minutes')} min window)"
 
 
-def undo_button(label, endpoint, **values):
-    """Render an inline POST form styled as a link — used inside flash messages
-    so 'undo' is a state-changing POST (CSRF-protected), not a bare GET link a
-    cross-site <img> could trigger."""
-    return Markup(
-        f"<form method='post' action='{escape(url_for(endpoint, **values))}' style='display:inline'>"
-        f"<input type='hidden' name='_csrf' value='{escape(csrf_token())}'>"
-        f"<button type='submit' class='link-btn' style='font-weight:600'>{escape(label)}</button>"
-        f"</form>"
-    )
+def offer_undo(endpoint, **values):
+    """Offer an Undo on this reply: json_for_fetch hands the address to the
+    React page, which POSTs there (CSRF-protected, never a GET a cross-site
+    <img> could trigger)."""
+    g.undo_url = url_for(endpoint, **values)
 
 
 ERROR_COPY = {
@@ -299,21 +294,6 @@ def admin_required(view):
     return wrapped
 
 
-def write_required(view):
-    """Blocks the Viewer (read-only) role from mutating routes."""
-
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        gate = _auth_gate()
-        if gate:
-            return gate
-        if session.get("role") == "Viewer":
-            abort(403)
-        return view(*args, **kwargs)
-
-    return wrapped
-
-
 def role_has_permission(role, permission):
     db = get_db()
     row = db.execute(
@@ -356,21 +336,16 @@ def json_for_fetch(response):
             # client can tell "signed out"; a route that finishes on the
             # sign-in page (a password reset) is an ordinary reply
             and "/login?next=" not in (response.headers.get("Location") or "")):
-        import re
-        messages, errors, undo = [], [], None
+        messages, errors = [], []
         for category, m in get_flashed_messages(with_categories=True):
-            html = str(m)
-            found = re.search(r"action='(/undo/[^']+)'", html)
-            if found:
-                undo = found.group(1)
-            messages.append(re.sub(r"<[^>]+>", "", html).replace("  ", " ").strip())
+            messages.append(str(m))
             if category == "error":
                 errors.append(messages[-1])
         if errors:   # a refused form (flash(…, "error")): the page shows it as a failure, not a success
             refused = jsonify(ok=False, error=errors[0], messages=messages)
             refused.status_code = 400   # an after_request hook returns a response, not a (body, code) tuple
             return refused
-        return jsonify(ok=True, messages=messages, undo=undo, location=response.headers.get("Location"))
+        return jsonify(ok=True, messages=messages, undo=g.get("undo_url"), location=response.headers.get("Location"))
     return response
 
 

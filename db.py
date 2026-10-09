@@ -951,13 +951,6 @@ def get_setting(key, default=""):
     return row["value"] if row else default
 
 
-def get_setting_int(key, default):
-    try:
-        return int(get_setting(key, str(default)))
-    except ValueError:
-        return default
-
-
 def set_setting(key, value):
     db = get_db()
     db.execute(

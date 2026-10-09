@@ -1,7 +1,7 @@
 # Odin — project lifecycle tracker
 #
-# Runtime image only: there is no build step (no npm, no bundler), so this is
-# just Python + the three runtime dependencies. gunicorn serves the app; nginx
+# Two stages: Node builds the React front end, then the Python runtime image
+# (requirements.txt) gets only the built files. gunicorn serves the app; nginx
 # in front of it terminates TLS and serves /static (see docker-compose.yml).
 # Stage 1: the React front end. Only its build output crosses into the runtime
 # image — Node never ships. Debian (glibc), not Alpine: v1.5.1's fresh npm ci

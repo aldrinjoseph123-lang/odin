@@ -20,6 +20,7 @@ import { Stepper } from "@/components/Stepper"
 import { Calendar } from "@/pages/Calendar"
 import { Kibana } from "@/pages/Kibana"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
+import { useMedia, useWidth } from "@/lib/useMeasure"
 
 
 // Customer approval of the current stage: amber while open, green/red once decided.
@@ -386,15 +387,9 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
   const [confirming, setConfirming] = useState(false)
   // The flowchart fits its width: measure it, and fold stages that don't fit
   // (finished ones first) until someone asks to see them all.
-  const [flowWidth, setFlowWidth] = useState(0)
+  const [flowWidth, measure] = useWidth<HTMLOListElement>()
   const [showAll, setShowAll] = useState(false)
   useEffect(() => { setShowAll(false) }, [d.id])
-  const measure = useCallback((el: HTMLOListElement | null) => {
-    if (!el) return
-    const ro = new ResizeObserver(([e]) => setFlowWidth(e.contentRect.width))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
   const [comment, setComment] = useState("")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -629,20 +624,9 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
 }
 
 // Phones get the rollout as its own screen with a back button, not a split.
-function useWide() {
-  const q = "(min-width: 768px)"
-  const [wide, setWide] = useState(() => typeof window === "undefined" || window.matchMedia(q).matches)
-  useEffect(() => {
-    const m = window.matchMedia(q)
-    const on = () => setWide(m.matches)
-    m.addEventListener("change", on)
-    return () => m.removeEventListener("change", on)
-  }, [])
-  return wide
-}
 
 export default function Flow({ user }: { user: User }) {
-  const wide = useWide()
+  const wide = useMedia("(min-width: 768px)")
   const [data, setData] = useState<FlowData | null>(null)
   // The selection is the URL (?rollout=): shareable, and it follows any
   // navigation to it — a palette jump or a link — even while this page is open.

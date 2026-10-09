@@ -9,7 +9,6 @@ import { actionText, dayBucket, fmtWhen } from "@/lib/format"
 import { UserAvatar } from "@/components/UserAvatar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const fmt = (iso: string) => fmtWhen(iso, true)
 const selectClass = "h-7 max-w-48 rounded-md border border-border bg-background px-2 text-[13px] font-medium text-nav-fg hover:bg-muted"
 
 export default function Audit(_props: { user: User }) {
@@ -73,7 +72,7 @@ export default function Audit(_props: { user: User }) {
               return (<Fragment key={r.id}>
               {head && <tr className="bg-muted/50"><th scope="rowgroup" colSpan={6} className="px-3 py-1 text-left text-[12px] font-semibold text-nav-fg">{day}</th></tr>}
               <tr className="border-b border-border align-top last:border-0 hover:bg-muted">
-                <td className="whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground">{fmt(r.timestamp)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground">{fmtWhen(r.timestamp, true)}</td>
                 <td className="px-3 py-2"><span className="inline-flex items-center gap-2 wrap-anywhere"><UserAvatar name={r.username || "?"} className="h-5 w-5 shrink-0" />{r.username}</span></td>
                 <td className="px-3 py-2" title={r.action}>{actionText(r.action)}</td>
                 <td className="px-3 py-2">

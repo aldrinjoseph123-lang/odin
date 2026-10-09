@@ -22,8 +22,7 @@ from db import get_db
 UPLOAD_TYPES = ("pdf", "png", "jpg", "jpeg", "gif", "webp", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "txt", "msg", "eml", "zip")
 DATE_FORMATS = {"d MMM yyyy": "27 Sep 2026", "yyyy-MM-dd": "2026-09-27", "dd/MM/yyyy": "27/09/2026", "MM/dd/yyyy": "09/27/2026"}
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-THEME_CHOICES = ("system", "light", "dark")
-ACCENT_CHOICES = ("red", "blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
+from constants import ACCENTS as ACCENT_CHOICES, THEMES as THEME_CHOICES   # noqa: E402
 
 POLICIES = {
     # ---- General

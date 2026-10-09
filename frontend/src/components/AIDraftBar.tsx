@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
-import { ApiError, cancelAIJob, dismissAISuggestion, projectAI, requestProjectAI, type AISuggestion, type ProjectAI } from "@/lib/api"
+import { ApiError, cancelAIJob, dismissAISuggestion, requestProjectAI, type AISuggestion } from "@/lib/api"
 import { fmtWhen } from "@/lib/format"
-import { usePoll } from "@/lib/usePoll"
+import { useProjectAI } from "@/lib/usePoll"
 
 // An AI draft for one rollout, above the boxes it fills: ask for one, use it
 // (the boxes fill; nothing is saved until the person saves), dismiss it, or
@@ -14,15 +14,9 @@ export function AIDraftBar<T>({ projectId, feature, idle, working, note, onUse, 
   projectId: number; feature: string; idle: string; working: string; note: ReactNode; onUse: (s: AISuggestion<T>) => void
   ask?: string; again?: string; input?: () => unknown   // input: what the person typed, for a feature that works on it
 }) {
-  const [s, setS] = useState<ProjectAI<T> | null>(null)
+  const { s, load, working: drafting } = useProjectAI<T>(projectId, feature)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const load = useCallback(async () => {
-    try { setS(await projectAI<T>(projectId, feature)) } catch { setS(null) }
-  }, [projectId, feature])
-  useEffect(() => { void load() }, [load])
-  const drafting = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  usePoll(drafting, load)
   if (!s || (!s.available && !s.suggestion)) return null
 
   async function draft() {

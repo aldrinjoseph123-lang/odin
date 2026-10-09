@@ -11,6 +11,7 @@ Covers the layers the framework does not give us for free:
 Depends only on constants + db, so it sits beside the other low-level modules
 and never imports routes or core (core imports it, not the reverse).
 """
+import hashlib
 import os
 import re
 import secrets
@@ -195,10 +196,14 @@ def content_matches_extension(file):
 
 
 
+def token_hash(raw):
+    """How a one-time link or API token is stored: its SHA-256, never the token."""
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
 def issue_login_link(user_id, created_by=None, purpose="signin"):
     """Mint a single-use sign-in link for a user; returns the raw token, which
     exists only in the email (and the inviter's fallback flash)."""
-    import hashlib
     raw = secrets.token_urlsafe(32)
     from policies import policy
     now = datetime.utcnow()
@@ -208,7 +213,7 @@ def issue_login_link(user_id, created_by=None, purpose="signin"):
     get_db().execute(
         "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address, purpose, epoch) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT session_epoch FROM users WHERE id = ?))",
-        (user_id, hashlib.sha256(raw.encode()).hexdigest(), now.isoformat(),
+        (user_id, token_hash(raw), now.isoformat(),
          (now + timedelta(minutes=policy("link_minutes"))).isoformat(), created_by, request.remote_addr, purpose, user_id),
     )
     get_db().commit()
@@ -218,11 +223,10 @@ def issue_login_link(user_id, created_by=None, purpose="signin"):
 def consume_login_link(raw):
     """The user for a valid, unexpired, unused link — marking it used — or
     None. Invalid for internal accounts: they sign in with a password."""
-    import hashlib
     db = get_db()
     row = db.execute(
         "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
-        (hashlib.sha256((raw or "").encode()).hexdigest(),),
+        (token_hash(raw or ""),),
     ).fetchone()
     if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
         return None   # epoch: the password, role or active state changed since the link was issued
@@ -236,10 +240,9 @@ def consume_login_link(raw):
 def reset_link_row(raw):
     """The live password-reset link for this token, or None: unused,
     unexpired, purpose 'reset', for an active staff account."""
-    import hashlib
     row = get_db().execute(
         "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
-        (hashlib.sha256((raw or "").encode()).hexdigest(),),
+        (token_hash(raw or ""),),
     ).fetchone()
     if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
         return None   # epoch: the password, role or active state changed since the link was issued
