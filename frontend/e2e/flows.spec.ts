@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto"
 import { expect, test } from "@playwright/test"
-import { expectClean, signIn, USERS, watch } from "./helpers"
+import { expectClean, pickDate, signIn, USERS, watch } from "./helpers"
 
 // @flow: the journeys, end to end, on the seeded portfolio. Each test leaves
 // the data as it found it where it can (undo, reset, restore), so the order
@@ -248,11 +248,11 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   const errors = watch(page)
   await signIn(page, "admin", "/projects/1")
   const plan = page.locator("#plan")
-  const end = plan.locator("input[aria-label$='planned end']").last()
+  const end = plan.locator("button[aria-label*='planned end']").last()
   await expect(end).toBeEnabled()
-  const was = await end.inputValue()
+  const was = await end.getAttribute("data-value")
   const later = new Date(Date.parse(was || "2026-12-01") + 3 * 864e5).toISOString().slice(0, 10)
-  await end.fill(later)
+  await pickDate(page, end, later)
   await plan.getByRole("textbox", { name: "Why the dates move" }).fill("E2E slip")
   await plan.getByRole("button", { name: /^Save plan/ }).click()
   await expect(plan.getByRole("status")).toHaveText(/Plan saved/)
@@ -531,7 +531,7 @@ test("@flow tasks: a new task takes a due date and is corrected in place", async
   await signIn(page, "admin", "/board?rollout=1")
   await page.getByRole("button", { name: /^Add a task to / }).first().click()
   await page.getByRole("textbox", { name: /^New task in / }).fill("E2E dated task")
-  await page.getByLabel("Due date").fill("2030-01-15")
+  await pickDate(page, page.getByRole("button", { name: /^Due date:/ }), "2030-01-15")
   await page.getByRole("button", { name: "Add task" }).click()
   await expect(page.getByRole("button", { name: "Edit E2E dated task" })).toBeVisible()
   await expect(page.locator("li", { has: page.getByRole("button", { name: "Edit E2E dated task" }) }).first()).toContainText(/due /)
@@ -558,7 +558,7 @@ test("@flow my work: a due date is set in place, and a tick can be undone", asyn
   await expect(page.getByRole("button", { name: "Edit E2E my task" })).toBeVisible()
   await page.goto("/my-work")
   await page.getByRole("button", { name: "No date. Change the due date of E2E my task" }).click()
-  await page.getByLabel("Due date for E2E my task").fill("2030-02-01")
+  await pickDate(page, page.getByRole("button", { name: /^Due date for E2E my task/ }), "2030-02-01")   // the picker opens by itself
   await expect(page.getByText("E2E my task: due")).toBeVisible()
   await page.getByRole("button", { name: "Complete E2E my task" }).click()
   await expect(page.getByText("Done: E2E my task")).toBeVisible()

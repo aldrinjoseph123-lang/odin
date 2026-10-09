@@ -7,6 +7,7 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, editTask, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
+import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
 import { fmtDate, lateBy, stateText } from "@/lib/format"
 
@@ -42,10 +43,8 @@ function groupTasks(tasks: WorkTask[], today: string): Group[] {
 function DueButton({ t, late, busy, onChange }: { t: WorkTask; late: number; busy: boolean; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false)
   if (open) return (
-    <input type="date" autoFocus defaultValue={t.due_date ?? ""} aria-label={`Due date for ${t.title}`} disabled={busy}
-      onChange={(e) => { setOpen(false); if (e.target.value !== (t.due_date ?? "")) onChange(e.target.value) }}
-      onBlur={() => setOpen(false)} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false) }}
-      className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[12px]" />
+    <DatePicker autoOpen value={t.due_date ?? ""} label={`Due date for ${t.title}`} disabled={busy} onClose={() => setOpen(false)}
+      onChange={(v) => { setOpen(false); if (v !== (t.due_date ?? "")) onChange(v) }} className="h-7 shrink-0 px-2 text-[12px]" />
   )
   return (
     <button type="button" onClick={() => setOpen(true)} aria-label={`${t.due_date ? `Due ${fmtDate(t.due_date)}` : "No date"}. Change the due date of ${t.title}`}

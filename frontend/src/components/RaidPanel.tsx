@@ -6,6 +6,7 @@ import { ApiError, decideAIProposal, deleteRaid, raid, saveRaid, type RaidData, 
 import { toast } from "@/lib/toast"
 import { AIRaidProposals } from "@/components/AIRaidProposals"
 import { cn } from "@/lib/utils"
+import { DatePicker } from "@/components/DatePicker"
 import { fmtDate, lateBy, localToday } from "@/lib/format"
 
 // The rollout's risks, issues, decisions and blockers: a filterable list, and
@@ -112,7 +113,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
                 {edit.kind === "risk" && <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Likelihood<select className={field} value={edit.likelihood ?? "medium"} onChange={(e) => set({ likelihood: e.target.value as RaidItem["likelihood"] })}>{["low", "medium", "high"].map((x) => <option key={x}>{x}</option>)}</select></label>}
                 <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Status<select className={field} value={edit.status ?? d.statuses[edit.kind][0]} onChange={(e) => set({ status: e.target.value })}>{d.statuses[edit.kind].map((x) => <option key={x}>{x}</option>)}</select></label>
                 <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Owner<select className={field} value={edit.owner_id ?? ""} onChange={(e) => set({ owner_id: e.target.value ? Number(e.target.value) : null })}><option value="">Nobody yet</option>{d.owners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
-                <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Due<input type="date" className={field} value={edit.due_date ?? ""} onChange={(e) => set({ due_date: e.target.value || null })} /></label>
+                <div className="grid grid-cols-1 gap-1 text-[13px] font-medium">Due<DatePicker value={edit.due_date ?? ""} onChange={(v) => set({ due_date: v || null })} label="Due" placeholder="No date" className="w-full" /></div>
                 <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Stage<select className={field} value={edit.stage ?? ""} onChange={(e) => set({ stage: e.target.value || null })}><option value="">Any</option>{d.stages.map((s) => <option key={s}>{s}</option>)}</select></label>
               </div>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">{edit.kind === "decision" ? "Decision and rationale" : "Mitigation or resolution"}<input className={field} maxLength={2000} value={edit.resolution ?? ""} onChange={(e) => set({ resolution: e.target.value })} /></label>

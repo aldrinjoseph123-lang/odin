@@ -2,9 +2,9 @@ import { Fragment, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { ApiError, audit, type AuditData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { DatePicker } from "@/components/DatePicker"
 import { actionText, dayBucket, fmtWhen } from "@/lib/format"
 import { UserAvatar } from "@/components/UserAvatar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
@@ -54,8 +54,8 @@ export default function Audit(_props: { user: User }) {
         <select value={params.get("project_id") ?? ""} onChange={(e) => update({ project_id: e.target.value || null })} aria-label="Filter by project" className={selectClass}>
           <option value="">All projects</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <Input type="date" value={params.get("from") ?? ""} onChange={(e) => update({ from: e.target.value || null })} aria-label="From date" className="h-7 w-36 text-[13px]" />
-        <Input type="date" value={params.get("to") ?? ""} onChange={(e) => update({ to: e.target.value || null })} aria-label="To date" className="h-7 w-36 text-[13px]" />
+        <DatePicker value={params.get("from") ?? ""} onChange={(v) => update({ from: v || null })} label="From date" placeholder="From" className="h-8 w-40" />
+        <DatePicker value={params.get("to") ?? ""} onChange={(v) => update({ to: v || null })} label="To date" placeholder="To" className="h-8 w-40" />
         {filtered && <button type="button" onClick={() => setParams({})} className="text-[12px] text-muted-foreground hover:text-foreground">Clear</button>}
       </div>
 

@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
+import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
 import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
@@ -58,7 +59,7 @@ function TaskForm({ d, label, init, busy, onSave, onCancel, submitLabel }: {
         <option value="">Unassigned</option>
         {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
       </select>
-      <Input type="date" value={v.due} onChange={set("due")} aria-label="Due date" className="h-7 min-w-0 px-2 text-[12px]" />
+      <DatePicker value={v.due} onChange={(due) => setV({ ...v, due })} label="Due date" placeholder="Due" className="h-7 px-2 text-[12px]" />
       <div className="flex items-center gap-1">
         <Button type="submit" size="sm" className="h-7 flex-1 px-2" loading={busy} disabled={!v.title.trim()} aria-label={submitLabel}>{init.title ? "Save" : <Plus className="h-3.5 w-3.5" />}</Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={onCancel} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
