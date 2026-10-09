@@ -192,9 +192,11 @@ export default function Projects({ user }: { user: User }) {
                 </tr>
               ))}
               {data.rows.length === 0 && (
-                <tr><td colSpan={COLUMNS.length} className="px-4 py-10 text-center text-[13px] text-muted-foreground">
+                <tr><td colSpan={COLUMNS.length}>
+                  <Empty className="py-12"><EmptyHeader><EmptyMedia variant="icon"><FolderOpen /></EmptyMedia><EmptyDescription>
                   {filtered ? <>No projects match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
                     : <>No projects yet.{data.can_create && user.role !== "Viewer" && <> <a href="/projects/new" className="text-primary-text hover:underline">Create the first one</a></>}</>}
+                  </EmptyDescription></EmptyHeader></Empty>
                 </td></tr>
               )}
             </tbody>
