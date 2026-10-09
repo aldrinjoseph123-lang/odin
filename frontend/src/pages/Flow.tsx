@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
-import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
+import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { Calendar } from "@/pages/Calendar"
 import { Kibana } from "@/pages/Kibana"
@@ -322,15 +322,20 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
 
 // ---- bottom pane: the selected rollout as a flowchart ------------------------
 const NODE = 148   // px per flowchart column before stages fold
+// The rollout's timeline (9 Oct 2026: the bare strip read as noise): a titled
+// line in words, then — once there is a span worth drawing — a bar from the
+// start to the target (or to today when there is none), each visited stage a
+// segment, today an ink line, and a legend for the colours.
 function TimeStrip({ d }: { d: FlowDetail }) {
   const start = new Date(`${d.start_date}T00:00:00`).getTime()
   const today = new Date(`${d.today}T00:00:00`).getTime()
-  const end = d.target_end_date ? new Date(`${d.target_end_date}T00:00:00`).getTime() : Math.max(today, start + 14 * 864e5)
+  const end = d.target_end_date ? new Date(`${d.target_end_date}T00:00:00`).getTime() : today
   // The domain covers everything worth seeing — a target already in the past
   // sits to the left of today, which is exactly the shape of "overdue".
   const firstEntry = Math.min(...d.stages.filter((s) => s.entered_at).map((s) => parseStamp(s.entered_at!).getTime()), start)
   const t0 = Math.min(start, end, firstEntry)
-  const t1 = Math.max(today, end, start + 864e5)
+  const t1 = Math.max(today, end)
+  const drawn = t1 - t0 >= 2 * 864e5   // under two days there is nothing to see but a dot
   const span = t1 - t0 || 1
   const frac = (t: number) => Math.min(1, Math.max(0, (t - t0) / span))
   const pct = (t: number) => `${frac(t) * 100}%`
@@ -338,26 +343,41 @@ function TimeStrip({ d }: { d: FlowDetail }) {
     .sort((a, b) => a.t - b.t)
     .map((tk, i, all) => ({ ...tk, row: i > 0 && frac(tk.t) - frac(all[i - 1].t) < 0.12 ? 1 : 0 }))
   const visited = d.stages.filter((s) => s.entered_at)
+  const late = d.state === "over_sla" || d.state === "overdue"
   return (
-    <div className="relative mt-4 h-[68px] border-t border-border">
-      {ticks.map((tk) => (
-        <span key={tk.l} className={cn("absolute whitespace-nowrap text-[11px]", tk.row ? "top-5" : "top-1", tk.l === "today" ? "font-semibold text-foreground" : "text-muted-foreground")}
-          style={{ left: pct(tk.t), transform: frac(tk.t) > 0.85 ? "translateX(-100%)" : frac(tk.t) < 0.1 ? "none" : "translateX(-50%)" }}>{tk.l}</span>
-      ))}
-      <span className="absolute top-10 h-1.5 rounded-full bg-muted" style={{ left: pct(Math.min(start, end)), width: `calc(${pct(Math.max(start, end))} - ${pct(Math.min(start, end))})` }} aria-hidden />
-      {visited.map((s, i) => {
-        const from = parseStamp(s.entered_at!).getTime()
-        const to = i + 1 < visited.length ? parseStamp(visited[i + 1].entered_at!).getTime() : today
-        const late = s.status === "current" && (d.state === "over_sla" || d.state === "overdue")
-        return (
-          <Tooltip key={s.name}>
-            <TooltipTrigger render={<span />} className={cn("absolute top-10 h-1.5 rounded-full", late ? "bg-warn-line" : s.status === "done" ? "bg-ok-line" : "bg-foreground")} style={{ left: pct(from), width: `calc(${pct(to)} - ${pct(from)})` }} />
-            <TooltipContent>{s.name} · {days(s.days)}</TooltipContent>
-          </Tooltip>
-        )
-      })}
-      <span className="absolute top-8 h-6 w-[1.5px] bg-foreground" style={{ left: pct(today) }} aria-hidden />
-    </div>
+    <section className="mt-4 border-t border-border pt-3" aria-label="Timeline">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="text-[13px]"><span className="font-semibold">Timeline</span><span className="text-muted-foreground"> · {timelineSummary(d.start_date, d.today, d.target_end_date)}</span></p>
+        {drawn && (
+          <p className="flex items-center gap-3 text-[11px] text-muted-foreground" aria-hidden>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-3 rounded-full bg-ok-line" />stage done</span>
+            <span className="flex items-center gap-1"><span className={cn("h-1.5 w-3 rounded-full", late ? "bg-warn-line" : "bg-foreground")} />current stage</span>
+            <span className="flex items-center gap-1"><span className="h-3 w-[1.5px] bg-foreground" />today</span>
+          </p>
+        )}
+      </div>
+      {drawn && (
+        <div className="relative mt-1 h-[52px]">
+          {ticks.map((tk) => (
+            <span key={tk.l} className={cn("absolute whitespace-nowrap text-[11px]", tk.row ? "top-4" : "top-0", tk.l === "today" ? "font-semibold text-foreground" : "text-muted-foreground")}
+              style={{ left: pct(tk.t), transform: frac(tk.t) > 0.85 ? "translateX(-100%)" : frac(tk.t) < 0.1 ? "none" : "translateX(-50%)" }}>{tk.l}</span>
+          ))}
+          <span className="absolute top-9 h-1.5 rounded-full bg-foreground/10" style={{ left: pct(t0), width: `calc(${pct(t1)} - ${pct(t0)})` }} aria-hidden />
+          {visited.map((s, i) => {
+            const from = parseStamp(s.entered_at!).getTime()
+            const to = i + 1 < visited.length ? parseStamp(visited[i + 1].entered_at!).getTime() : today
+            return (
+              <Tooltip key={s.name}>
+                <TooltipTrigger render={<span />} className={cn("absolute top-9 h-1.5 rounded-full", s.status === "current" && late ? "bg-warn-line" : s.status === "done" ? "bg-ok-line" : "bg-foreground")}
+                  style={{ left: pct(from), width: `max(6px, calc(${pct(to)} - ${pct(from)}))` }} />
+                <TooltipContent>{s.name} · {days(s.days)}</TooltipContent>
+              </Tooltip>
+            )
+          })}
+          <span className="absolute top-7 h-6 w-[1.5px] bg-foreground" style={{ left: pct(today) }} aria-hidden />
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -496,7 +516,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {/* one place for errors: the Advance section shows its own when it is on screen */}
         {err && !(d.can_move && d.next_stage) && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
 
-        <TimeStrip d={d} />
+        {/* the project page draws the full plan chart below; the strip is the flow pane's short version */}
+        {!standalone && <TimeStrip d={d} />}
       </div>
 
       {/* right rail: what to do next, when it's due, how we got here */}

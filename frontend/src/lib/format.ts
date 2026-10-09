@@ -357,3 +357,15 @@ export function productsFor(products: { name: string; vendor: string }[], vendor
   const names = products.filter((p) => !vendor || !p.vendor || p.vendor === vendor).map((p) => p.name)
   return current && !names.includes(current) ? [current, ...names] : names
 }
+
+// The project timeline's one line in words: "Started 9 Oct · day 1 · no target
+// date" / "… · target 30 Oct, 21 days left" / "… · target 2 Oct, 7 days late".
+// Calendar days (gaps between dates stay calendar days).
+export function timelineSummary(start: string, today: string, target?: string | null): string {
+  const dayN = lateBy(start, today) + 1
+  const head = `Started ${start === today ? "today" : fmtDate(start)} · day ${dayN}`
+  if (!target) return `${head} · no target date`
+  const left = lateBy(today, target), late = lateBy(target, today)
+  const when = late ? `${late} day${late === 1 ? "" : "s"} late` : left ? `${left} day${left === 1 ? "" : "s"} left` : "due today"
+  return `${head} · target ${fmtDate(target)}, ${when}`
+}

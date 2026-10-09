@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -308,5 +308,18 @@ describe("productsFor", () => {
   })
   it("keeps a project's current product listed", () => {
     expect(productsFor(products, "Fortinet", "PA-440")).toEqual(["PA-440", "FortiGate", "Cabling"])
+  })
+})
+
+describe("timelineSummary", () => {
+  it("says a project started today has no target", () => {
+    expect(timelineSummary("2026-10-09", "2026-10-09")).toBe("Started today · day 1 · no target date")
+  })
+  it("counts the days left to the target", () => {
+    expect(timelineSummary("2026-10-01", "2026-10-09", "2026-10-30")).toMatch(/· day 9 · target .*, 21 days left$/)
+  })
+  it("counts the days past the target", () => {
+    expect(timelineSummary("2026-09-01", "2026-10-09", "2026-10-08")).toMatch(/, 1 day late$/)
+    expect(timelineSummary("2026-09-01", "2026-10-09", "2026-10-09")).toMatch(/, due today$/)
   })
 })
