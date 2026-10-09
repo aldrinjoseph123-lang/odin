@@ -427,6 +427,7 @@ def project_new():
             f"New project: {escape(name)}",
             f"Project '{escape(name)}' for {escape(request.form['client'])} was created"
             + (f" by {escape(session['user_name'])} and assigned to you." if lead_id != session["user_id"] else "."),
+            channels={"email": False, "teams": True},   # the named PM already had "You manage …" by email (D12)
         )
         flash("Project created")
         return redirect(url_for("project_detail", project_id=project_id))   # straight to the new rollout (P14)

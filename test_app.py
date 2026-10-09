@@ -399,7 +399,7 @@ class IntegrationNotificationTestCase(unittest.TestCase):
         self.client.post(
             "/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Loud Proj", "client": "C", "delivery_mode": "Distribution/MSSP"}
         )
-        mock_mail.assert_called_once()
+        mock_mail.assert_not_called()   # creation is announced on Teams; a named PM gets "You manage" by mail, once (D12)
         mock_teams.assert_called_once()
 
         mock_mail.reset_mock()
@@ -2623,6 +2623,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(data["real_alerts"]["project_overdue"], 1)
         self.assertEqual(data["dashboard"]["total_active"], 1)
         self.assertTrue(data["can_move"])
+        __import__("scheduler").sync_alerts()   # the badge counts recorded alerts; the scheduler records them (B9)
         nav = c.get("/api/session").get_json()["user"]["nav"]
         self.assertGreaterEqual(nav["active_alert_count"], 1)
         self.assertEqual(app_module.app.test_client().get("/api/board").status_code, 302)   # anonymous
@@ -3457,7 +3458,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_the_signed_paper_copy_cannot_be_deleted(self):
         c, h, ann, _ = self._signoff_setup()
         c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["All"]}, headers=h)
-        c.post("/api/projects/1/signoff/1/upload", data={"signer_name": "Ann", "signed_on": "2026-09-30", "file": (io.BytesIO(b"%PDF-1.4 s"), "signed.pdf")},
+        c.post("/api/projects/1/signoff/1/upload", data={"signer_name": "Ann", "signed_on": __import__("policies").local_today(sqlite3.connect(db_module.DB_PATH)).isoformat(),
+                                                         "file": (io.BytesIO(b"%PDF-1.4 s"), "signed.pdf")},
                headers=h, content_type="multipart/form-data")
         with self.raw_db() as db:
             doc = db.execute("SELECT document_id FROM signoffs").fetchone()[0]
@@ -5039,14 +5041,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
-        # First board load creates the stale alert
-        self.client.get("/board")
+        # The scheduler's sync creates the stale alert (a board load no longer does, B9)
+        __import__("scheduler").sync_alerts()
         # Project touched again — no longer stale
         with self.raw_db() as db:
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (date.today().isoformat() + "T12:00:00",))
             db.commit()
-        # Second board load should resolve it
-        self.client.get("/board")
+        # the next sync resolves it
+        __import__("scheduler").sync_alerts()
         with self.raw_db() as db:
             alert = db.execute("SELECT * FROM alerts WHERE alert_type = 'stale'").fetchone()
         self.assertEqual(alert["resolved"], 1)
@@ -5103,7 +5105,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
-        self.client.get("/board")
+        __import__("scheduler").sync_alerts()   # the scheduler records alerts and sends their mail (B9)
         sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Project inactive: Proj")]
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0].args[2].startswith("Project: Proj (C)"))
