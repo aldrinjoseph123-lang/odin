@@ -96,12 +96,12 @@ export default function Person(_props: { user: User }) {
               <li key={p.id} className="py-2">
                 <div className="flex items-center gap-2">
                   <span className={cn("h-2 w-2 shrink-0 rounded-full", p.state === "on_track" ? "bg-transparent" : STATE[p.state].dot)} aria-hidden />
-                  <Link to={`/board?rollout=${p.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
+                  <Link to={`/board?rollout=${p.id}`} title={`${p.name} · ${p.client}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
                   <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
                 </div>
                 <div className="mt-1 flex items-center gap-3 pl-4">
                   <span className="w-20 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
-                  <span className="truncate text-[13px]">{p.stage}</span>
+                  <span className="truncate text-[13px]" title={p.stage}>{p.stage}</span>
                   <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "on_track" ? "text-muted-foreground" : STATE[p.state].chip.split(" ")[1])}>{STATE[p.state].label}</span>
                 </div>
               </li>
@@ -150,7 +150,7 @@ export default function Person(_props: { user: User }) {
                   <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><K.icon className="h-3.5 w-3.5" aria-hidden /></span>
                   <span className="min-w-0">
                     <span className="block leading-snug">{K.verb} <Link to={`/board?rollout=${a.project_id}`} className="font-medium hover:underline">{a.project}</Link></span>
-                    <span className="block truncate text-muted-foreground">{a.text}</span>
+                    <span className="block truncate text-muted-foreground" title={a.text}>{a.text}</span>
                     <span className="block text-[11px] text-muted-foreground"><Ago iso={a.at} /></span>
                   </span>
                 </li>

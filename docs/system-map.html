@@ -66,7 +66,9 @@ header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: 
 .stamp { font: 12px var(--mono); color: var(--faint); text-align: right }
 
 nav.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); display: flex; gap: 4px; overflow-x: auto;
-  border-bottom: 1px solid var(--line); margin-bottom: 20px; scrollbar-width: thin }
+  border-bottom: 1px solid var(--line); margin-bottom: 20px; scrollbar-width: thin;
+  /* a tab cut by the edge fades out, so the row reads as "scroll for more" */
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent) }
 nav.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 12px; cursor: pointer; white-space: nowrap; color: var(--muted); font-weight: 500 }
 nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent) }
 nav.tabs button:focus-visible, .chip:focus-visible, .node:focus-visible, .mk:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
@@ -227,11 +229,12 @@ details.suite li.desc { list-style: none; margin-left: -18px; color: var(--muted
 .versions button { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 12px; cursor: pointer; display: grid; gap: 2px }
 .versions button[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft) }
 .versions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
-.versions b { font: 600 14px var(--mono) }
+.versions b { font: 600 14px var(--mono); white-space: nowrap }
 .versions small { color: var(--muted); font-size: 12px }
-.badge { font: 600 10.5px/1 var(--body); letter-spacing: .04em; text-transform: uppercase; border-radius: 99px; padding: 3px 7px; margin-left: 6px; vertical-align: 1px }
+.badge { font: 600 10.5px/1 var(--body); letter-spacing: .04em; text-transform: uppercase; border-radius: 99px; padding: 3px 7px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; display: inline-block }
 .badge.now { background: var(--ok-soft); color: var(--ok) }
-.badge.draft { background: var(--warn-soft); color: var(--warn) }
+/* the warn text is pulled toward the ink so it clears 4.5:1 on its wash in both themes */
+.badge.draft { background: var(--warn-soft); color: color-mix(in srgb, var(--warn) 80%, var(--ink)) }
 .rel-head { display: grid; gap: 4px }
 .rel-head h2 { font-size: 22px }
 .area-bar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--sunk); margin-top: 10px }

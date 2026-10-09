@@ -43,7 +43,7 @@ export default function Alerts(_props: { user: User }) {
       </div>
       <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
         <table className="w-full border-collapse text-[13px]">
-          <thead className="sticky top-0 bg-card"><tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Project", "Raised", "Status"].map((h, i) => <th key={h} className={cn("px-3 py-2 font-normal", i > 1 && "text-right")}>{h}</th>)}</tr></thead>
+          <thead className="sticky top-0 bg-card"><tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Project", "Raised", "Status"].map((h, i) => <th key={h} className={cn("px-3 py-2 font-normal", i > 1 && "text-right", i > 0 && "hidden sm:table-cell")}>{h}</th>)}</tr></thead>
           <tbody>
             {d.rows.map((a, i) => {
               // chunked the way the list is sorted: open alerts by severity, then the resolved ones
@@ -54,10 +54,15 @@ export default function Alerts(_props: { user: User }) {
                 <span className={cn("mr-2 inline-block h-2 w-2 rounded-full", age === "critical" ? "bg-bad-line" : age === "warning" ? "bg-warn-line" : "bg-input")} aria-hidden />{age}</th></tr>}
               <tr className={cn("border-b border-border last:border-0 hover:bg-muted", a.resolved && "text-muted-foreground")}>
                 {/* the receipt: what happened on the left, its weight, age and state on the right */}
-                <td className="px-3 py-2"><div className="font-medium">{a.title}</div>{a.description && <div className="text-[12px] text-muted-foreground">{a.description}</div>}</td>
-                <td className="px-3 py-2">{a.project_id && a.project_name ? <a href={`/board?rollout=${a.project_id}`} className="hover:underline">{a.project_name}</a> : "—"}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground">{fmt(a.created_at)}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground">{a.resolved ? `Resolved ${a.resolved_at ? fmt(a.resolved_at) : ""}` : "Open"}</td>
+                <td className="px-3 py-2 wrap-anywhere"><div className="font-medium">{a.title}</div>{a.description && <div className="text-[12px] text-muted-foreground">{a.description}</div>}
+                  {/* phones: one stacked receipt */}
+                  <div className="mt-1 text-[12px] text-muted-foreground sm:hidden">
+                    {a.project_id && a.project_name && <><a href={`/board?rollout=${a.project_id}`} className="text-foreground hover:underline">{a.project_name}</a> · </>}
+                    {fmt(a.created_at)} · {a.resolved ? "Resolved" : "Open"}
+                  </div></td>
+                <td className="hidden px-3 py-2 wrap-anywhere sm:table-cell">{a.project_id && a.project_name ? <a href={`/board?rollout=${a.project_id}`} className="hover:underline">{a.project_name}</a> : "—"}</td>
+                <td className="hidden whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground sm:table-cell">{fmt(a.created_at)}</td>
+                <td className="hidden whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground sm:table-cell">{a.resolved ? `Resolved ${a.resolved_at ? fmt(a.resolved_at) : ""}` : "Open"}</td>
               </tr>
               </Fragment>)
             })}

@@ -126,7 +126,7 @@ export default function ProjectForm(_props: { user: User }) {
                 <select name="stage_template_id" value={f.stage_template_id} onChange={set("stage_template_id")} aria-label="Stage template" className={selectClass}>{d.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
               </Field>
               <Field label="Client PO document *" hint="required — no project without the PO on file">
-                <input type="file" name="po_document" required aria-label="Client PO document" className="text-[13px] file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-[13px] file:font-medium" />
+                <input type="file" name="po_document" required aria-label="Client PO document" className="text-[13px] text-muted-foreground file:mr-2 file:h-7 file:cursor-pointer file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-muted" />
               </Field>
             </>
           )}

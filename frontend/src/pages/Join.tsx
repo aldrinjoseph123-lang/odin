@@ -34,7 +34,13 @@ export default function Join() {
     catch (x) { setError(x instanceof ApiError ? x.message : "Could not reach Odin — try again") } finally { setBusy(false) }
   }
 
-  if (bad) return <AuthLayout><AuthHeading title="Link not valid">{bad}</AuthHeading></AuthLayout>
+  if (bad) return (
+    <AuthLayout>
+      <AuthHeading title="This sign-up link does not work">It may have expired, been used up or been revoked. Ask whoever sent it for a new one; if you already have an account, sign in.</AuthHeading>
+      <p className="text-[13px] text-muted-foreground">{bad}</p>
+      <a href="/login" className="mt-6 inline-block text-[14px] text-primary-text hover:underline">Go to sign-in</a>
+    </AuthLayout>
+  )
   if (!info) return <AuthLayout><p className="text-sm text-muted-foreground">Opening your invitation…</p></AuthLayout>
   if (done) return (
     <AuthLayout>
