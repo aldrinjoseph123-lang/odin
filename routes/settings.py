@@ -6,7 +6,6 @@ Registration side effects only.
 import csv
 import io
 import sqlite3
-from datetime import datetime
 
 from flask import Response, abort, flash, redirect, render_template, request, session, url_for
 from markupsafe import Markup
@@ -38,8 +37,12 @@ def undo_contact(list_key, item_id):
 @permission_required("manage_contacts")
 def undo_partner(partner_id):
     db = get_db()
-    restore_deleted("partners", partner_id)
-    db.execute("UPDATE partner_account_managers SET deleted_at = NULL WHERE partner_id = ?", (partner_id,))
+    stamp = db.execute("SELECT deleted_at FROM partners WHERE id = ?", (partner_id,)).fetchone()
+    if not stamp or not restore_deleted("partners", partner_id):
+        flash("Too late to undo — the undo window has passed")
+        return redirect(url_for("settings_contacts"))
+    # only the managers that went with the partner (B4): one removed on its own stays removed
+    db.execute("UPDATE partner_account_managers SET deleted_at = NULL WHERE partner_id = ? AND deleted_at = ?", (partner_id, stamp[0]))
     db.commit()
     audit_log("restore_partner", "partner", partner_id)
     flash("Partner and its account managers restored")
@@ -399,7 +402,14 @@ def settings_stage_move(template_id, stage_id):
 @permission_required("manage_settings")
 def settings_stage_delete(template_id, stage_id):
     _template(template_id)
-    return _template_change("delete_template_stage", stage_ops.delete_stage("template", template_id, stage_id), str(stage_id))
+    from constants import SIGNOFF_STAGE
+    rows = stage_ops.list_stages("template", template_id)
+    names = [s["name"] for s in rows]
+    gone = next((s["name"] for s in rows if s["id"] == stage_id), None)
+    error = stage_ops.delete_stage("template", template_id, stage_id)
+    if not error and gone == SIGNOFF_STAGE and len(names) >= 2 and names[-2] == gone:   # R14: allowed, but said
+        flash(f"Removed '{gone}': new projects from this template send their sign-off from the stage before {names[-1]} instead")
+    return _template_change("delete_template_stage", error, str(stage_id))
 
 
 @app.route("/settings/templates/<int:template_id>/sla", methods=["POST"])
@@ -583,8 +593,8 @@ def settings_partner_add():
 def settings_partner_delete(partner_id):
     db = get_db()
     soft_delete("partners", partner_id)
-    now = datetime.utcnow().isoformat()
-    db.execute("UPDATE partner_account_managers SET deleted_at = ? WHERE partner_id = ?", (now, partner_id))
+    db.execute("UPDATE partner_account_managers SET deleted_at = (SELECT deleted_at FROM partners WHERE id = ?) WHERE partner_id = ? AND deleted_at IS NULL",
+               (partner_id, partner_id))
     db.commit()
     audit_log("delete_partner", "partner", partner_id)
     flash(Markup(f"Partner deleted (its account managers were removed too). {undo_button('Undo', 'undo_partner', partner_id=partner_id)} {undo_note()}"))

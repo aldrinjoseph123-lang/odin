@@ -11,7 +11,7 @@ from datetime import date, datetime
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
-from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
+from db import PROJECT_OPEN_SQL, current_approval, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
@@ -1100,6 +1100,7 @@ def api_raid_create(project_id):
         fields = raid.clean(request.get_json(silent=True) or {})
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
+    touch_project(get_db(), project_id)
     rid = raid.create(project_id, fields, session["user_name"])
     audit_log("add_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:80]}")
     _raid_notify_owner(project, fields["title"], fields["owner_id"])
@@ -1120,6 +1121,7 @@ def api_raid_item(project_id, item_id):
         if not project_allows(project_id, "manage_project"):
             abort(403)
         db.execute("DELETE FROM raid_items WHERE id = ?", (item_id,))
+        touch_project(db, project_id)
         db.commit()
         audit_log("delete_raid_item", "project", project_id, project["name"], f"{item['kind']}: {item['title'][:80]}")
         return jsonify(ok=True)
@@ -1127,6 +1129,7 @@ def api_raid_item(project_id, item_id):
         fields = raid.clean(request.get_json(silent=True) or {}, existing=item)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
+    touch_project(db, project_id)
     raid.update(item, fields)
     audit_log("update_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:60]} → {fields['status']}")
     _raid_notify_owner(project, fields["title"], fields["owner_id"], before=item["owner_id"])
