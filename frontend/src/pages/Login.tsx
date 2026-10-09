@@ -130,10 +130,7 @@ export default function Login() {
             {error?.field === "username" && <p id="username-error" role="alert" className="text-[13px] text-bad">{error.text}</p>}
           </div>
           <div className="grid grid-cols-1 gap-2">
-            <div className="flex items-baseline justify-between gap-3">
-              <Label htmlFor="password" className="text-[14px]">Password</Label>
-              {!emergency && <a href="/auth/reset" className="text-[13px] text-primary-text hover:underline">Forgot password?</a>}
-            </div>
+            <Label htmlFor="password" className="text-[14px]">Password</Label>
             <div className="relative">
               <Input id="password" ref={passRef} name="password" type={show ? "text" : "password"} autoComplete="current-password"
                 value={password} onChange={(e) => { setPassword(e.target.value); if (error?.field === "password") setError(null) }}
@@ -148,9 +145,9 @@ export default function Login() {
             {caps && <p id="caps-warning" className="text-[13px] text-warn">Caps Lock is on</p>}
             {error?.field === "password" && <p id="password-error" role="alert" className="text-[13px] text-bad">{error.text}</p>}
           </div>
-          <Button type="submit" loading={busy} className="mt-1 h-11 text-sm">
-            {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Signing in…</> : "Sign in"}
-          </Button>
+          <Button type="submit" loading={busy} className="mt-1 h-11 text-sm">Sign in</Button>
+          {/* after the button, so Tab goes username → password → Sign in */}
+          {!emergency && <a href="/auth/reset" className="justify-self-center text-[13px] text-primary-text hover:underline">Forgot password?</a>}
         </form>
       )}
 
