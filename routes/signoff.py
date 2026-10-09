@@ -9,7 +9,7 @@ from markupsafe import escape
 
 import graph
 from constants import SIGNOFF_DOC_CATEGORY
-from core import admin_required, app, external_url, login_required, permission_required, project_allows, project_role_required
+from core import admin_required, app, json_body, external_url, login_required, permission_required, project_allows, project_role_required
 from db import get_db, get_setting
 from routes.projects import load_project, save_document
 from policies import policy
@@ -29,7 +29,7 @@ def _link(project_id):
 
 
 def _body():
-    return request.get_json(silent=True) or {}
+    return json_body()
 
 
 def _bad(error, status=400):
@@ -249,13 +249,27 @@ def api_signoff_reject(project_id, version):
 @project_role_required("manage_project")
 def api_signoff_link(project_id, version):
     """A one-time sign-in link for the signatory, landing on the sign-off: for
-    when mail is not connected, or the email went astray. Carried by hand."""
+    when mail is not connected, or the email went astray. Carried by hand —
+    but only for a signatory on this project alone: an account that is on
+    other projects too gets the link by email, never in this reply, or the
+    project manager could act as that person elsewhere."""
     project = load_project(project_id)
     row = _version(project_id, version)
     if row["status"] != "sent":
         return _bad("Only a version waiting for the customer's signature needs their link")
-    link = external_url("auth_link_consume", token=issue_login_link(row["signer_id"], session["user_id"]), next=_link(project_id))
-    db = get_db()   # disclosed on the signing record: the signatory's sign-in came by hand from this person
+    db = get_db()
+    signer = db.execute("SELECT * FROM users WHERE id = ?", (row["signer_id"],)).fetchone()
+    raw = issue_login_link(row["signer_id"], session["user_id"])
+    if signer is None or signer["kind"] != "external" or db.execute(
+            "SELECT 1 FROM project_participants WHERE user_id = ? AND project_id != ?", (row["signer_id"], project_id)).fetchone():
+        from routes.auth import send_login_link
+        sent, _error = send_login_link(signer, raw, session["user_name"], project["name"], project_id) if signer else (False, None)
+        audit_log("signoff_link", "project", project_id, project["name"], f"v{version} sign-in link for {row['signer_email']} {'emailed' if sent else 'not sent'}")
+        return jsonify(ok=True, link=None, emailed=sent, minutes=policy("link_minutes"), email=row["signer_email"],
+                       message=f"A sign-in link was emailed to {row['signer_email']}" if sent else
+                       f"Email could not be sent; {row['signer_email']} can ask for a sign-in link on the sign-in page")
+    link = external_url("auth_link_consume", token=raw, next=_link(project_id))
+    # disclosed on the signing record: the signatory's sign-in came by hand from this person
     db.execute("UPDATE signoffs SET link_issued_by = ?, link_issued_at = ? WHERE id = ?", (session["user_name"], datetime.utcnow().isoformat(), row["id"]))
     db.commit()
     audit_log("signoff_link", "project", project_id, project["name"], f"v{version} sign-in link for {row['signer_email']}")

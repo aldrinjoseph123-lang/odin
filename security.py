@@ -99,19 +99,25 @@ def _login_window_start():
 
 
 def login_is_blocked(username):
-    """True when this username+IP pair has burned through its attempts, or the
-    account has, counted across every address (guessing from many machines)."""
-    db = get_db()
-    since = _login_window_start()
-    row = db.execute(
+    """True when this username+IP pair has burned through its attempts: the
+    hard stop, checked before the password."""
+    row = get_db().execute(
         "SELECT COUNT(*) AS failures FROM login_attempts "
         "WHERE username = ? AND ip_address IS ? AND success = 0 AND attempted_at > ?",
-        (username, request.remote_addr, since),
+        (username, request.remote_addr, _login_window_start()),
     ).fetchone()
     from policies import policy
-    if row["failures"] >= policy("login_max_attempts"):
-        return True
-    total = db.execute("SELECT COUNT(*) FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?", (username, since)).fetchone()[0]
+    return row["failures"] >= policy("login_max_attempts")
+
+
+def login_account_paused(username):
+    """True when the account has had too many failures counted across every
+    address (guessing from many machines). It only changes what a WRONG
+    password hears; a correct one still signs in, or anyone could lock any
+    account out by failing on purpose."""
+    total = get_db().execute("SELECT COUNT(*) FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?",
+                             (username, _login_window_start())).fetchone()[0]
+    from policies import policy
     return total >= policy("login_account_max")
 
 
@@ -252,12 +258,14 @@ def file_stem(name, fallback="project"):
 
 # Deliberately loose — one @, a dot in the domain, no whitespace. Enough to
 # catch fat-finger input; real deliverability is proven by the test-email button.
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# No control characters, quotes, angle brackets, commas or semicolons: an
+# address lands in mail headers and HTML.
+_EMAIL_RE = re.compile(r"[^@\s<>\"',;\x00-\x1f\x7f]+@[^@\s<>\"',;\x00-\x1f\x7f]+\.[^@\s<>\"',;\x00-\x1f\x7f]+")
 
 
 def valid_email(email):
     """True for a plausibly-formatted address. Empty is caller's call."""
-    return bool(_EMAIL_RE.match(email))
+    return isinstance(email, str) and len(email) <= 254 and bool(_EMAIL_RE.fullmatch(email))
 
 
 # Substrings that make a password guessable regardless of what surrounds them.
@@ -308,7 +316,10 @@ def _validate_csrf():
     # compare_digest keeps the check constant-time; the empty-expected case
     # still fails closed because compare_digest("", "") is only reached when
     # neither side has a token, which we reject explicitly first.
-    if not expected or not submitted or not secrets.compare_digest(submitted, expected):
+    # bytes: compare_digest raises on a non-ASCII str, and the header is the caller's
+    if not expected or not submitted or not secrets.compare_digest(submitted.encode(), expected.encode()):
+        from flask import g
+        g.csrf_failed = True   # a fetch caller's 400 carries a fresh token (core._error_page)
         abort(400, description="CSRF token missing or invalid — reload the page and try again.")
     return None
 

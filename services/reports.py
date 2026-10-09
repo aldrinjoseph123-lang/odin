@@ -75,13 +75,14 @@ def report_versions(project_id):
 def save_report(project_id, body, author):
     """Append a new version; the previous ones stay readable."""
     db = get_db()
-    version = (db.execute("SELECT MAX(version) FROM project_reports WHERE project_id = ?", (project_id,)).fetchone()[0] or 0) + 1
-    db.execute(
-        "INSERT INTO project_reports (project_id, version, body, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
-        (project_id, version, body, author, datetime.utcnow().isoformat()),
+    # the number is taken inside the INSERT: two saves at once cannot pick the same one
+    cur = db.execute(
+        "INSERT INTO project_reports (project_id, version, body, created_by, created_at) "
+        "SELECT ?, COALESCE(MAX(version), 0) + 1, ?, ?, ? FROM project_reports WHERE project_id = ?",
+        (project_id, body, author, datetime.utcnow().isoformat(), project_id),
     )
     db.commit()
-    return version
+    return db.execute("SELECT version FROM project_reports WHERE id = ?", (cur.lastrowid,)).fetchone()[0]
 
 
 def render_blocks(body):

@@ -19,8 +19,8 @@
         into several screens of text above the first number on the page. -#}
     {% for p in alerts[key][:banner_names] %}
     <span class="alert-item">
-      <a class="alert-link" href="{{ url_for('alert_dismiss', project_id=p.id, alert_type=key) }}" title="Open project (clears this notification)">{{ p.name }}</a>
-      <a href="{{ url_for('alert_dismiss', project_id=p.id, alert_type=key, next='board') }}" class="alert-dismiss" title="Dismiss">&times;</a>
+      <a class="alert-link" href="{{ url_for('project_detail', project_id=p.id) }}" title="Open project">{{ p.name }}</a>
+      <form method="post" action="{{ url_for('alert_dismiss', project_id=p.id, alert_type=key, next='board') }}" style="display:inline"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button type="submit" class="link-btn alert-dismiss" title="Dismiss">&times;</button></form>
     </span>{% if not loop.last %}<span class="alert-sep">,</span>{% endif %}
     {% endfor %}
     {% if alerts[key]|length > banner_names %}
