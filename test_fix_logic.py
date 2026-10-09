@@ -169,5 +169,101 @@ class CountsAgreeTestCase(FixBase):
             self.assertEqual(c.get(f"/api/calendar?month={bad}").status_code, 200, bad)
 
 
+class AlertsTestCase(FixBase):
+    """B9/L17/B7/L15: reads stay reads; dismissals have a context; badges equal the pages."""
+
+    def test_board_load_writes_no_alerts(self):
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        c, _ = self._api_client()
+        c.get("/api/board"); self.client.get("/board")
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM alerts")[0][0], 0)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM notifications WHERE kind = 'alert'")[0][0], 0)
+        import scheduler
+        scheduler.sync_alerts()
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM alerts WHERE resolved = 0")[0][0], 1)
+
+    def test_dismissed_blocker_comes_back_for_a_new_blocker(self):
+        self.new_project(name="B", client="C")
+        self.sql("UPDATE alert_type_settings SET threshold_days = 0 WHERE alert_type = 'blocker_open'")
+        c, csrf = self._api_client()
+        h = {"X-CSRF-Token": csrf}
+        self.assertEqual(c.post("/api/projects/1/raid", json={"kind": "blocker", "title": "Firewall"}, headers=h).status_code, 200)
+        names = lambda: [p["name"] for p in c.get("/api/board").get_json()["alerts"]["blocker_open"]]   # noqa: E731
+        self.assertEqual(names(), ["B"])
+        c.post("/api/alerts/1/dismiss/blocker_open", headers=h)
+        self.assertEqual(names(), [])
+        c.post("/api/projects/1/raid", json={"kind": "blocker", "title": "Licences"}, headers=h)
+        self.assertEqual(names(), ["B"])   # a new blocker is a new alert
+
+    def test_badges_leave_out_deleted_and_closed_projects(self):
+        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
+        self.new_project(name="Done", client="C")
+        c, csrf = self._api_client()
+        self.sql("INSERT INTO tasks (project_id, title, assignee_id, created_at) VALUES (2, 'left over', 1, '2026-01-01T00:00:00')")
+        import scheduler
+        scheduler.sync_alerts()
+        nav = lambda: c.get("/api/session").get_json()["user"]["nav"]   # noqa: E731
+        self.assertEqual((nav()["active_alert_count"], nav()["my_open_task_count"]), (1, 1))
+        self.sql("UPDATE projects SET stage = (SELECT name FROM project_stages WHERE project_id = 2 ORDER BY position DESC LIMIT 1) WHERE id = 2")
+        self.sql("UPDATE projects SET deleted_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE id = 1")
+        self.assertEqual((nav()["active_alert_count"], nav()["my_open_task_count"]), (0, 0))
+        self.assertEqual(c.get("/api/alerts").get_json()["total"], 0)
+
+    def test_scheduler_quarters(self):
+        from scheduler import alert_quarter
+        self.assertEqual(alert_quarter(datetime(2026, 1, 1, 10, 16, 59)), datetime(2026, 1, 1, 10, 15))
+        self.assertNotEqual(alert_quarter(datetime(2026, 1, 1, 10, 14)), alert_quarter(datetime(2026, 1, 1, 10, 16)))   # a late pass still syncs
+
+
+class PurgeAndResetTestCase(FixBase):
+    """B3/#39/B8: the purge is one transaction in the right order; reset leaves nothing behind."""
+
+    def test_purge_of_a_partner_with_managers_and_signup_pointer(self):
+        self.new_project(name="P", client="C")
+        old = "2000-01-01T00:00:00"
+        self.sql("INSERT INTO partners (name, deleted_at) VALUES ('Gone', ?)", old)
+        self.sql("INSERT INTO partner_account_managers (partner_id, name) VALUES ((SELECT id FROM partners WHERE name = 'Gone'), 'Mo')")
+        self.sql("UPDATE projects SET deleted_at = ? WHERE id = 1", old)
+        self.sql("UPDATE users SET signup_project_id = 1 WHERE id = 1")
+        from db import cleanup_soft_deletes, get_db
+        with app_module.app.app_context():
+            cleanup_soft_deletes()   # foreign keys are on in the app's connection
+            get_db().close()
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM partners WHERE name = 'Gone'")[0][0], 0)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM partner_account_managers")[0][0], 0)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM projects")[0][0], 0)
+        self.assertIsNone(self.sql("SELECT signup_project_id FROM users WHERE id = 1")[0][0])
+
+    def test_failed_purge_rolls_back(self):
+        self.new_project(name="P", client="C")
+        self.sql("UPDATE projects SET deleted_at = '2000-01-01T00:00:00' WHERE id = 1")
+        from unittest.mock import patch
+        import db as db_module
+        with app_module.app.app_context(), patch.object(db_module, "_purge_orphans", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                db_module.cleanup_soft_deletes()
+            db_module.get_db().close()
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM projects")[0][0], 1)
+        self.assertGreater(self.sql("SELECT COUNT(*) FROM project_stages WHERE project_id = 1")[0][0], 0)
+
+    def test_reset_wipes_snapshots_ai_words_and_signup_pointers(self):
+        import reset_data
+        from unittest.mock import patch
+        self.new_project(name="P", client="C")
+        self.sql("INSERT INTO portfolio_snapshots (day, active, overdue, over_sla, due_soon, awaiting, idle) VALUES ('2026-01-01', 1, 0, 0, 0, 0, 0)")
+        self.sql("INSERT INTO settings (key, value) VALUES ('ai.latest.portfolio_narrative', '{}')")
+        self.sql("UPDATE users SET signup_project_id = 1")
+        with patch("sys.argv", ["reset_data.py", "--yes"]), patch.object(reset_data, "DB_PATH", test_app.db_module.DB_PATH):
+            self.assertEqual(reset_data.main(), 0)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM portfolio_snapshots")[0][0], 0)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM settings WHERE key LIKE 'ai.latest.%'")[0][0], 0)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM users WHERE signup_project_id IS NOT NULL")[0][0], 0)
+
+    def test_indexes_exist(self):
+        names = {r[0] for r in self.sql("SELECT name FROM sqlite_master WHERE type = 'index'")}
+        for n in ("idx_audit_logs_time", "idx_tasks_assignee", "idx_projects_deleted", "idx_signoffs_document"):
+            self.assertIn(n, names)
+
+
 if __name__ == "__main__":
     unittest.main()

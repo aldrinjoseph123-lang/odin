@@ -160,7 +160,7 @@ def _save_tokens(token_response):
     db = _db()
     db.execute(
         """INSERT INTO ms_connection (id, access_token, refresh_token, expires_at, connected_at)
-           VALUES (1, ?, ?, ?, datetime('now'))
+           VALUES (1, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%S', 'now'))   -- ISO 8601 with a T, like every other stored time
            ON CONFLICT(id) DO UPDATE SET
              access_token = excluded.access_token,
              -- COALESCE, not a plain assignment: a refresh response is allowed
