@@ -260,7 +260,8 @@ export type AISuggestion<T> = { id: number; payload: T; model: string | null; se
 export type ProjectAI<T> = {
   available: boolean; reason: string | null; label: string; suggestion: AISuggestion<T> | null
   options?: { documents?: SowDocument[]; waiting?: WaitingItem[]; contact?: { name: string; email: string | null } | null } | null
-  job: { id: number; status: "queued" | "running" | "done" | "failed"; error: string | null; result: { skipped?: string; suggestion?: number } | null; created_at: string } | null
+  job: { id: number; status: "queued" | "running" | "done" | "failed"; error: string | null; result: { skipped?: string; suggestion?: number } | null; created_at: string
+    progress?: { ahead: number; started_at: string | null; expected_s: number } | null } | null
 }
 export type WeeklyWordsDraft = { summary: string; next_steps: string[]; asks: string[] }
 export const projectAI = <T,>(id: number, key: string) => getJson<ProjectAI<T>>(`/api/projects/${id}/ai/${key}`)
@@ -453,6 +454,7 @@ export type Policy = {
   key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "ai" | "ai_schedule" | "backups" | "reports" | "audit"
   kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines" | "dates"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
+  group: string; hint?: string  // the card it sits on; the one plain line shown under it (help then sits behind "What is this?")
 }
 export type BackupRun = {
   id: number; started_at: string; finished_at: string | null; trigger: string; actor: string | null; file: string | null
@@ -501,9 +503,12 @@ export const settingsData = (section: string, teamId = "") =>
 // locked: always on for that role; forbidden: never allowed for it (e.g. External), both shown and not editable
 export type RbacData = { roles: string[]; permissions: string[]; matrix: Record<string, Record<string, boolean>>; locked: Record<string, string[]>; forbidden?: Record<string, string[]> }
 export const rbac = () => getJson<RbacData>("/api/settings/rbac")
+// `used` = the live projects that name the entry; a product may name its vendor (null = any vendor)
+export type ProjectRef = { id: number; name: string }
+export type ContactItem = { id: number; name: string; email: string | null; used: ProjectRef[]; vendor_id?: number | null }
 export type ContactsData = {
-  lists: { key: string; label: string; has_email: boolean; items: { id: number; name: string; email: string | null }[] }[]
-  partners: { id: number; name: string; managers: { id: number; name: string; email: string | null }[] }[]
+  lists: { key: string; label: string; has_email: boolean; items: ContactItem[] }[]
+  partners: { id: number; name: string; used: ProjectRef[]; managers: ContactItem[] }[]
 }
 export const contacts = () => getJson<ContactsData>("/api/settings/contacts")
 
@@ -652,7 +657,7 @@ export type ProjectFormData = {
   via_options: string[]; delivery_modes: string[]
   account_managers: { name: string; email: string | null }[]
   partners: { id: number; name: string; managers: { name: string; email: string }[] }[]
-  vendors: string[]; products: string[]; outsourcers: { name: string; email: string | null }[]
+  vendors: string[]; products: { name: string; vendor: string }[]; outsourcers: { name: string; email: string | null }[]
   templates: { id: number; name: string }[]; users: { id: number; name: string }[]
 }
 export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/project-form${query ? `?${query}` : ""}`)

@@ -49,7 +49,7 @@ def _current_user():
     return {
         "id": session["user_id"],
         "name": session.get("user_name"),
-        "theme": me["theme"] if me else "system", "accent": me["accent"] if me else "blue",
+        "theme": me["theme"] if me else "system", "accent": me["accent"] if me else "red",
         "avatar_url": avatar_url(me) if me else None,
         "role": session.get("role"),
         "kind": session.get("kind", "internal"),
@@ -275,16 +275,32 @@ def api_settings_rbac():
 @permission_required("manage_contacts")
 def api_settings_contacts():
     db = get_db()
+
+    def used(*columns):
+        # where each entry is used: the live projects that name it (projects keep the name as text)
+        found = {}
+        for r in db.execute(f"SELECT id, name, {', '.join(columns)} FROM projects WHERE deleted_at IS NULL ORDER BY name"):
+            found.setdefault(tuple(r[2:]), []).append({"id": r["id"], "name": r["name"]})
+        return found
+    by_partner_manager = used("partner_name", "partner_account_manager_name")
+    by_partner = used("partner_name")
+    partner_rows = db.execute("SELECT * FROM partners WHERE deleted_at IS NULL ORDER BY name").fetchall()
+    partner_names = {p["id"]: p["name"] for p in partner_rows}
     managers = {}
     for m in db.execute("SELECT * FROM partner_account_managers WHERE deleted_at IS NULL ORDER BY name"):
-        managers.setdefault(m["partner_id"], []).append({"id": m["id"], "name": m["name"], "email": m["email"]})
+        managers.setdefault(m["partner_id"], []).append({"id": m["id"], "name": m["name"], "email": m["email"],
+                                                         "used": by_partner_manager.get((partner_names.get(m["partner_id"]), m["name"]), [])})
+    lists = []
+    for key, meta in CONTACT_LISTS.items():
+        counts = used(meta["column"])
+        lists.append({"key": key, "label": meta["label"], "has_email": meta["has_email"],
+                      "items": [{"id": r["id"], "name": r["name"], "email": r["email"] if meta["has_email"] else None,
+                                 "used": counts.get((r["name"],), []), **({"vendor_id": r["vendor_id"]} if key == "products" else {})}
+                                for r in db.execute(f"SELECT * FROM {meta['table']} WHERE deleted_at IS NULL ORDER BY name")]})
     return jsonify(
-        lists=[{"key": key, "label": meta["label"], "has_email": meta["has_email"],
-                "items": [{"id": r["id"], "name": r["name"], "email": r["email"] if meta["has_email"] else None}
-                          for r in db.execute(f"SELECT * FROM {meta['table']} WHERE deleted_at IS NULL ORDER BY name")]}
-               for key, meta in CONTACT_LISTS.items()],
-        partners=[{"id": p["id"], "name": p["name"], "managers": managers.get(p["id"], [])}
-                  for p in db.execute("SELECT * FROM partners WHERE deleted_at IS NULL ORDER BY name")],
+        lists=lists,
+        partners=[{"id": p["id"], "name": p["name"], "used": by_partner.get((p["name"],), []), "managers": managers.get(p["id"], [])}
+                  for p in partner_rows],
     )
 
 
@@ -707,6 +723,7 @@ def api_project_form():
             source = load_project(from_id)
         mode = "duplicate" if source else "new"
     lists = get_contact_lists()
+    vendor_names = {r["id"]: r["name"] for r in lists["vendors"]}
     fields = ["name", "client", "via", "account_manager_name", "account_manager_email", "partner_name", "partner_account_manager_name",
               "partner_account_manager_email", "po_number", "po_date", "start_date", "target_end_date", "delivery_mode",
               "vendor_name", "product_name", "outsourcer_name", "outsourcer_email"]
@@ -720,7 +737,9 @@ def api_project_form():
         "via_options": list(VIA_OPTIONS), "delivery_modes": list(DELIVERY_MODES),
         "account_managers": [{"name": r["name"], "email": r["email"]} for r in lists["account_managers"]],
         "partners": [{"id": p["id"], "name": p["name"], "managers": lists["partner_managers_by_partner"].get(str(p["id"]), [])} for p in lists["partners"]],
-        "vendors": [r["name"] for r in lists["vendors"]], "products": [r["name"] for r in lists["products"]],
+        "vendors": [r["name"] for r in lists["vendors"]],
+        # each product names its vendor ("" = any vendor); the form offers the chosen vendor's
+        "products": [{"name": r["name"], "vendor": vendor_names.get(r["vendor_id"], "")} for r in lists["products"]],
         "outsourcers": [{"name": r["name"], "email": r["email"]} for r in lists["outsourcers"]],
         "templates": [{"id": t["id"], "name": t["name"]} for t in db.execute("SELECT id, name FROM stage_templates ORDER BY name")],
         # Settings → Projects & workflow: what a new project starts with

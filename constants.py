@@ -53,10 +53,11 @@ VIA_OPTIONS = ["Direct", "Partner"]
 # URL segment used in their add/delete routes. Partners are handled separately
 # since they cascade to partner_account_managers — see the dedicated routes.
 CONTACT_LISTS = {
-    "account-managers": {"table": "account_managers", "has_email": True, "label": "Internal Account Managers"},
-    "vendors": {"table": "vendors", "has_email": False, "label": "Vendors"},
-    "products": {"table": "products", "has_email": False, "label": "Products"},
-    "outsourcers": {"table": "outsourcers", "has_email": True, "label": "Outsourcers"},
+    # column: where a project keeps the picked name (text, so a rename carries it over)
+    "account-managers": {"table": "account_managers", "has_email": True, "label": "Internal Account Managers", "column": "account_manager_name"},
+    "vendors": {"table": "vendors", "has_email": False, "label": "Vendors", "column": "vendor_name"},
+    "products": {"table": "products", "has_email": False, "label": "Products", "column": "product_name"},
+    "outsourcers": {"table": "outsourcers", "has_email": True, "label": "Outsourcers", "column": "outsourcer_name"},
 }
 
 # Contributor: creates and comments (sales / account managers) but never moves
@@ -92,7 +93,7 @@ ADMIN_KINDS = ("access", "ai")
 
 THEMES = ("system", "light", "dark")
 # No red or amber accent: in the UI those mean overdue and warning (27 Sep 2026).
-ACCENTS = ("blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
+ACCENTS = ("red", "blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
 AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 AVATAR_MAX_BYTES = 2 * 1024 * 1024
 
@@ -225,7 +226,7 @@ NEW_USER_COLUMNS = {
     # OS, and which hue the one accent takes. The avatar is a filename under
     # ODIN_DATA_DIR/avatars, unique per upload so its URL changes on replace.
     "theme": "TEXT NOT NULL DEFAULT 'system'",
-    "accent": "TEXT NOT NULL DEFAULT 'blue'",
+    "accent": "TEXT NOT NULL DEFAULT 'red'",
     "avatar": "TEXT",
     # Notification kinds this user does NOT want by email (comma list); the
     # in-app notification always arrives.

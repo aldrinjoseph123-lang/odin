@@ -136,7 +136,7 @@ export function Calendar({ wide }: { wide: boolean }) {
                 <Link key={`${s.id}-${s.startCol}`} to={`/board?rollout=${s.id}`} title={`${s.name} · ${s.client} · ${s.stage} · ${fmtDate(s.start_date)} → ${s.target_end_date ? fmtDate(s.target_end_date) : "no target"}`}
                   className={cn("absolute flex h-[14px] items-center truncate rounded-full px-2 text-[11px] font-medium leading-none hover:opacity-90",
                     // the accent carries white; a stuck rollout is its state's soft fill and text, ringed in its line colour, so the name stays readable
-                    s.state === "on_track" ? "bg-primary text-primary-foreground" : cn(STATE[s.state].chip, "ring-1 ring-inset", s.state === "overdue" ? "ring-bad-line" : "ring-warn-line"),
+                    s.state === "on_track" ? "bg-muted text-foreground ring-1 ring-inset ring-input" : cn(STATE[s.state].chip, "ring-1 ring-inset", s.state === "overdue" ? "ring-bad-line" : "ring-warn-line"),
                     s.startsHere ? "" : "rounded-l-none", s.endsHere ? "" : "rounded-r-none")}
                   style={{ left: `calc(${(s.startCol / 7) * 100}% + 2px)`, width: `calc(${(s.cols / 7) * 100}% - 4px)`, top: 32 + s.lane * 18 }}>
                   {s.name}

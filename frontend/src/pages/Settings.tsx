@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { Navigate, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
 import { Ago } from "@/components/Ago"
@@ -18,7 +20,7 @@ type Send = (path: string, fields?: Record<string, string>, confirmText?: string
 
 function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
   return (
-    <section id={id} className="panel p-4">
+    <section id={id} aria-label={title} className="panel p-4">
       <h2 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="sr-only">, </span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h2>
       {children}
     </section>
@@ -70,10 +72,20 @@ export default function Settings(_props: { user: User }) {
   if (!TITLES[section]) return <Navigate to="/settings/general" replace />
   if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
-  const policyForm = (area: Policy["area"], title: string, hint?: string) => (
-    <PolicyForm key={`${area}:${JSON.stringify(data.policies.filter((p) => p.area === area).map((p) => p.value))}`} title={title} hint={hint}
-      area={area} policies={data.policies.filter((p) => p.area === area)} templates={data.templates} busy={busy} send={send} />
-  )
+  // one small titled card per topic, each with its own Save (9 Oct 2026, the user's call)
+  const policyForm = (area: Policy["area"]) => {
+    const mine = data.policies.filter((p) => p.area === area)
+    const groups = [...new Set(mine.map((p) => p.group))]
+    return (
+      <div className="gap-4 lg:columns-2 [&>*]:mb-4 [&>*]:min-w-0 [&>*]:break-inside-avoid [&>*:last-child]:mb-0">
+        {groups.map((g) => {
+          const ps = mine.filter((p) => p.group === g)
+          return <PolicyForm key={`${g}:${JSON.stringify(ps.map((p) => p.value))}`} title={g} hint={GROUP_HINTS[g]}
+            area={area} policies={ps} templates={data.templates} busy={busy} send={send} />
+        })}
+      </div>
+    )
+  }
 
   return (
     <div className="px-5 pb-6 pt-4">
@@ -88,12 +100,12 @@ export default function Settings(_props: { user: User }) {
       {/* min-w-0 on every grid item: a wide table scrolls inside its panel
           instead of stretching the page on a phone */}
       <div className={cn("mt-4 grid gap-4 [&>*]:min-w-0", section !== "map" && "max-w-5xl")}>
-        {section === "general" && policyForm("general", "Workspace")}
-        {section === "people" && policyForm("people", "Sign-up links and time on Odin", "links are made and revoked on the Users page")}
+        {section === "general" && policyForm("general")}
+        {section === "people" && policyForm("people")}
         {section === "security" && (
           <>
             <Sso key={JSON.stringify(data.sso)} sso={data.sso} busy={busy} send={send} />
-            {policyForm("security", "Policies", "applies at everyone's next request")}
+            {policyForm("security")}
             <Toggles data={data} busy={busy} send={send} title="Outside access" keys={[
               { key: "guest_links_enabled", label: "Keep the legacy anonymous guest links working (turn off once invited partner and customer accounts have replaced them; every old link then stops)" },
             ]} />
@@ -101,7 +113,7 @@ export default function Settings(_props: { user: User }) {
         )}
         {section === "workflow" && (
           <>
-            {policyForm("workflow", "New projects")}
+            {policyForm("workflow")}
             <Panel title="Stage templates" hint="a new project copies one, then owns its list" id="templates">
               <div className="grid grid-cols-1 gap-5">
                 {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
@@ -129,7 +141,7 @@ export default function Settings(_props: { user: User }) {
             </div>
           </>
         )}
-        {section === "notifications" && policyForm("notifications", "Schedule and Teams webhook")}
+        {section === "notifications" && policyForm("notifications")}
         {section === "notifications" && (
           <div><Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/notifications/test-webhook")}>Send a test to the Teams webhook</Button></div>
         )}
@@ -149,19 +161,19 @@ export default function Settings(_props: { user: User }) {
             <Toggles data={data} busy={busy} send={send} title="OneDrive" keys={[
               { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
             ]} />
-            {policyForm("integrations", "Kibana")}
+            {policyForm("integrations")}
           </>
         )}
         {section === "ai" && (
           <AISettings key={JSON.stringify(data.policies.filter((p) => p.area === "ai").map((p) => p.value))}
             policies={data.policies.filter((p) => p.area === "ai")} busy={busy} send={send}
-            schedule={policyForm("ai_schedule", "Watching the server", "applies from the next heartbeat")} />
+            schedule={policyForm("ai_schedule")} />
         )}
         {section === "documents" && <DocTemplates />}
         {section === "reports" && (
           <>
             {!data.public_url_set && <p className="rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn">Set the public web address under General, so the links in scheduled mail point at Odin and not at the server's own name.</p>}
-            {policyForm("reports", "Weekly report")}
+            {policyForm("reports")}
             <div><Button size="sm" variant="outline" disabled={busy} onClick={() => send("/settings/reports/send-test")}>Send this week's report to me now</Button></div>
           </>
         )}
@@ -169,7 +181,7 @@ export default function Settings(_props: { user: User }) {
         {section === "map" && <SystemMap />}
         {section === "audit" && (
           <>
-            {policyForm("audit", "Retention")}
+            {policyForm("audit")}
             <Panel title="Archives" hint="written nightly before rows are removed; included in every backup">
               {data.audit_archives.length === 0 ? <p className="text-[13px] text-muted-foreground">Nothing archived yet: no row is older than the retention period.</p> : (
                 <ul className="grid grid-cols-1 gap-1 text-[13px]">{data.audit_archives.map((a) => <li key={a.name} className="flex justify-between gap-3"><span className="font-mono text-[12px]">{a.name}</span><span className="text-muted-foreground">{bytes(a.size)}</span></li>)}</ul>
@@ -181,7 +193,7 @@ export default function Settings(_props: { user: User }) {
         {section === "backups" && data.backups && (
           <>
             <Scheduler view={data.backups} busy={busy} send={send} />
-            {policyForm("backups", "Schedule, retention and destinations", "a local copy is always kept on the server")}
+            {policyForm("backups")}
             <BackupHistory runs={data.backups.runs} />
           </>
         )}
@@ -192,6 +204,21 @@ export default function Settings(_props: { user: User }) {
 
 // One admin policy area, drawn from the server's own list (policies.py), so a
 // limit or a choice is defined once. Numbers carry their range; ticks post "on".
+// a card's subtitle, where the title alone leaves a question
+const GROUP_HINTS: Record<string, string> = {
+  "Sessions": "applies at everyone's next request", "Sign-up links": "links are made and revoked on the Users page",
+  "Where copies go": "a local copy is always kept on the server", "Watching the server": "applies from the next heartbeat",
+  "Health colours": "green, amber or red on every project",
+}
+// the longer explanation of a setting, one tap away
+function WhatIsThis({ label, text }: { label: string; text: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger render={<button type="button" />} aria-label={`What is ${label}?`} className="ml-1 rounded-sm font-medium text-primary-text hover:underline">What is this?</PopoverTrigger>
+      <PopoverContent align="start" className="w-80 text-[13px] leading-relaxed wrap-anywhere">{text}</PopoverContent>
+    </Popover>
+  )
+}
 const DATE_EXAMPLES: Record<string, string> = { "d MMM yyyy": "27 Sep", "yyyy-MM-dd": "2026-09-27", "dd/MM/yyyy": "27/09/2026", "MM/dd/yyyy": "09/27/2026" }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 // The system map is a self-contained page shipped with each release; the
@@ -213,7 +240,8 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
     const fields: Record<string, string> = {}
     for (const p of policies) {
       const x = v[p.key]
-      if (p.kind === "bool") { if (x) fields[p.key] = "on" } else fields[p.key] = Array.isArray(x) ? x.join(",") : String(x)
+      if (p.kind === "bool") fields[p.key] = x ? "on" : "0"   // explicit: an absent tick would read as off
+      else fields[p.key] = Array.isArray(x) ? x.join(",") : String(x)
     }
     void send(`/settings/policies/${area}`, fields)
   }
@@ -225,12 +253,12 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
   return (
     <Panel title={title} hint={hint}>
       <form onSubmit={submit} className="grid grid-cols-1 gap-4">
-        <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4">
           {policies.map((p) => (
-            <div key={p.key} className={cn("grid min-w-0 content-start gap-1", (p.kind === "multi" || p.kind === "dates") && "md:col-span-2")}>
+            <div key={p.key} className="grid min-w-0 content-start gap-1">
               {p.kind === "bool" ? (
                 <label className="flex items-start gap-2 text-[13px] font-medium">
-                  <input type="checkbox" checked={!!v[p.key]} onChange={(e) => setV({ ...v, [p.key]: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />{p.label}
+                  <Switch checked={!!v[p.key]} onCheckedChange={(c) => setV({ ...v, [p.key]: c })} className="mt-1" />{p.label}
                 </label>
               ) : (
                 <label htmlFor={`pol-${p.key}`} className="text-[13px] font-medium">{p.label}</label>
@@ -280,7 +308,12 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
                   })}
                 </fieldset>
               )}
-              {p.help && <p className="text-[12px] text-muted-foreground wrap-anywhere">{p.help}{p.kind === "int" && p.min != null ? ` ${p.min}–${p.max}.` : ""}</p>}
+              {(p.hint || p.help) && (
+                <p className="text-[12px] text-muted-foreground wrap-anywhere">
+                  {p.hint ?? p.help}{p.kind === "int" && p.min != null ? ` ${p.min}–${p.max}.` : ""}
+                  {p.hint && p.help && <WhatIsThis label={p.label} text={p.help} />}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -401,7 +434,7 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[13px]" /></label>
         </div>
         <label className="flex items-start gap-2 text-[13px]">
-          <input type="checkbox" checked={enforced} onChange={(e) => setEnforced(e.target.checked)} disabled={!sso.configured} className="mt-1 h-3.5 w-3.5 accent-primary" />
+          <Switch checked={enforced} onCheckedChange={setEnforced} disabled={!sso.configured} className="mt-1" />
           <span>Staff must sign in with Microsoft <span className="block text-[12px] text-muted-foreground">The password form disappears. Accounts ticked "Password" on the Users page ({sso.password_admins} admin{sso.password_admins === 1 ? "" : "s"} now) keep an emergency form at /login/password; each use is recorded and the admins are told.</span></span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
@@ -431,7 +464,7 @@ function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData;
       <form onSubmit={submit} className="grid grid-cols-1 gap-2 text-[13px]">
         {keys.map((i) => (
           <label key={i.key} className="flex items-start gap-2">
-            <input type="checkbox" checked={t[i.key]} onChange={(e) => setT({ ...t, [i.key]: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />
+            <Switch checked={t[i.key]} onCheckedChange={(c) => setT({ ...t, [i.key]: c })} className="mt-1" />
             <span>{i.label}</span>
           </label>
         ))}

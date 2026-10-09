@@ -398,6 +398,13 @@ def render(page, data):
 
 
 def main():
+    # The map describes the last commit. A VERSION raised but not yet committed
+    # would be missed, and the release would ship a map naming the old version
+    # (v1.5.0 shipped saying v1.4.1). Commit VERSION first, then regenerate.
+    on_disk = open(os.path.join(ROOT, "VERSION"), encoding="utf-8").read().strip() if os.path.exists(os.path.join(ROOT, "VERSION")) else ""
+    committed = subprocess.run(["git", "show", "HEAD:VERSION"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    if on_disk != committed and "--check" not in sys.argv:
+        sys.exit(f"VERSION is {on_disk} on disk but {committed} in the last commit: commit VERSION first, then regenerate the map.")
     page = open(PAGE, encoding="utf-8").read()
     new = render(page, build())
     if "--check" in sys.argv:

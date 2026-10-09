@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { DatePicker } from "@/components/DatePicker"
 import { useParams, useSearchParams } from "react-router-dom"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, postForm, projectForm, type ProjectFormData, type User } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
+import { productsFor } from "@/lib/format"
 
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
@@ -116,9 +118,9 @@ export default function ProjectForm(_props: { user: User }) {
           <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} className="h-3.5 w-3.5 accent-primary" /> Ask the customer contact to approve each stage change</label>
           <Field label="PO number"><Input value={f.po_number} onChange={set("po_number")} maxLength={100} aria-label="PO number" className="h-8 text-[13px]" /></Field>
           <div className="grid grid-cols-3 gap-2">
-            <Field label="PO date"><Input type="date" value={f.po_date} onChange={(e) => setF({ ...f, po_date: e.target.value, start_date: f.start_date || e.target.value })} aria-label="PO date" className="h-8 text-[13px]" /></Field>
-            <Field label="Start date"><Input type="date" value={f.start_date} onChange={set("start_date")} aria-label="Start date" className="h-8 text-[13px]" /></Field>
-            <Field label="Target end"><Input type="date" value={f.target_end_date} onChange={set("target_end_date")} aria-label="Target end date" className="h-8 text-[13px]" /></Field>
+            <Field label="PO date"><DatePicker value={f.po_date} onChange={(v) => setF({ ...f, po_date: v, start_date: f.start_date || v })} label="PO date" className="w-full" /></Field>
+            <Field label="Start date"><DatePicker value={f.start_date} onChange={(v) => setF({ ...f, start_date: v })} label="Start date" className="w-full" /></Field>
+            <Field label="Target end"><DatePicker value={f.target_end_date} onChange={(v) => setF({ ...f, target_end_date: v })} label="Target end date" min={f.start_date || undefined} className="w-full" /></Field>
           </div>
           {!editing && (
             <>
@@ -171,8 +173,18 @@ export default function ProjectForm(_props: { user: User }) {
             </>
           ) : (
             <>
-              <Field label="Vendor"><select value={f.vendor_name} onChange={set("vendor_name")} aria-label="Vendor" className={selectClass}><option value="">Select…</option>{d.vendors.map((v) => <option key={v}>{v}</option>)}</select></Field>
-              <Field label="Product"><select value={f.product_name} onChange={set("product_name")} aria-label="Product" className={selectClass}><option value="">Select…</option>{d.products.map((p) => <option key={p}>{p}</option>)}</select></Field>
+              <Field label="Vendor">
+                <select value={f.vendor_name} aria-label="Vendor" className={selectClass}
+                  onChange={(e) => { const v = e.target.value; const keep = d.products.some((p) => p.name === f.product_name && (!p.vendor || p.vendor === v)); setF({ ...f, vendor_name: v, product_name: keep ? f.product_name : "" }) }}>
+                  <option value="">Select…</option>{d.vendors.map((v) => <option key={v}>{v}</option>)}
+                </select>
+              </Field>
+              <Field label="Product">
+                <select value={f.product_name} onChange={set("product_name")} aria-label="Product" className={selectClass}>
+                  <option value="">Select…</option>
+                  {productsFor(d.products, f.vendor_name, f.product_name).map((p) => <option key={p}>{p}</option>)}
+                </select>
+              </Field>
             </>
           )}
         </section>

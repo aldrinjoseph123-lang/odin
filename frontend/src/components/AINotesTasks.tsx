@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AIProgress } from "@/components/AIProgress"
 import { addTask, ApiError, cancelAIJob, closeAISuggestion, dismissAISuggestion, projectAI, requestProjectAI, type MinutesTask, type ProjectAI } from "@/lib/api"
 import { fmtDate } from "@/lib/format"
 import { usePoll } from "@/lib/usePoll"
@@ -66,7 +67,8 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
         </div>
       )}
       <div aria-live="polite" className="text-[13px]">
-        {working && <div className="mt-2 flex items-center gap-3 text-muted-foreground">Reading the minutes… about a minute.
+        {working && s.job && <AIProgress job={s.job} doing="Reading the minutes" />}
+        {working && <div className="mt-2 flex items-center gap-3 text-muted-foreground">
           {s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setNote(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}</div>}
         {lastJob?.status === "failed" && <p className="mt-2 text-bad">That did not finish: {lastJob.error}</p>}
         {lastJob?.result?.skipped && <p className="mt-2 text-muted-foreground">{lastJob.result.skipped}</p>}

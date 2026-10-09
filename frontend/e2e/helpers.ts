@@ -1,4 +1,4 @@
-import { expect, type Page, type ConsoleMessage } from "@playwright/test"
+import { expect, type Locator, type Page, type ConsoleMessage } from "@playwright/test"
 
 // The seeded accounts (scripts/seed_uat.py). Test values on a throw-away database.
 export const USERS = {
@@ -40,4 +40,19 @@ export async function setTheme(page: Page, theme: "light" | "dark") {
   await page.addStyleTag({ content: "*, *::before, *::after { transition: none !important; animation: none !important }" })
   await page.evaluate((t) => { document.documentElement.dataset.theme = t; document.documentElement.classList.toggle("dark", t === "dark") }, theme)
   await page.waitForTimeout(50)
+}
+
+// The date picker (shadcn Calendar in a popover): open it unless it is open,
+// choose month and year in the caption, then click the day.
+export async function pickDate(page: Page, trigger: Locator, iso: string) {
+  const [y, m, d] = iso.split("-").map(Number)
+  const pop = page.locator("[data-slot='popover-content']").last()
+  if (!(await pop.isVisible().catch(() => false))) await trigger.click()
+  await expect(pop).toBeVisible()
+  const selects = pop.locator("select")
+  await selects.nth(1).selectOption(String(y))
+  await selects.nth(0).selectOption(String(m - 1))
+  const month = new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "long" })
+  await pop.getByRole("button", { name: new RegExp(`${month} ${d}(st|nd|rd|th)?, ${y}`) }).click()
+  await expect(pop).toBeHidden()
 }

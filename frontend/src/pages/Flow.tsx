@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
-import { ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
+import { Inbox, ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
@@ -12,6 +12,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
 import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
@@ -58,7 +60,7 @@ function TaskForm({ d, label, init, busy, onSave, onCancel, submitLabel }: {
         <option value="">Unassigned</option>
         {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
       </select>
-      <Input type="date" value={v.due} onChange={set("due")} aria-label="Due date" className="h-7 min-w-0 px-2 text-[12px]" />
+      <DatePicker value={v.due} onChange={(due) => setV({ ...v, due })} label="Due date" placeholder="Due" className="h-7 px-2 text-[12px]" />
       <div className="flex items-center gap-1">
         <Button type="submit" size="sm" className="h-7 flex-1 px-2" loading={busy} disabled={!v.title.trim()} aria-label={submitLabel}>{init.title ? "Save" : <Plus className="h-3.5 w-3.5" />}</Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={onCancel} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
@@ -305,12 +307,12 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
             </li>
           )}
           {rows.length === 0 && (
-            <li className="rounded-lg bg-muted/40 px-4 py-12 text-center text-[13px] text-muted-foreground">
+            <li><Empty className="rounded-lg bg-muted/40 py-12"><EmptyHeader><EmptyMedia variant="icon"><Inbox /></EmptyMedia><EmptyDescription>
               {data.rows.length === 0 ? (partner ? "No rollout is shared with you yet. It appears here once a project manager adds you." : "No active rollouts yet. Create one from a client PO and it appears here.")
                 : stage ? `No rollout in ${stage} matches this filter.`
                 : filter === "customer" ? "No rollout is waiting on a customer's approval."
                 : "Nothing needs attention — every rollout is inside its stage SLA and on schedule."}
-            </li>
+            </EmptyDescription></EmptyHeader></Empty></li>
           )}
         </ul>
       </ScrollArea>
@@ -339,7 +341,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   return (
     <div className="relative mt-4 h-[68px] border-t border-border">
       {ticks.map((tk) => (
-        <span key={tk.l} className={cn("absolute whitespace-nowrap text-[11px]", tk.row ? "top-5" : "top-1", tk.l === "today" ? "font-semibold text-primary-text" : "text-muted-foreground")}
+        <span key={tk.l} className={cn("absolute whitespace-nowrap text-[11px]", tk.row ? "top-5" : "top-1", tk.l === "today" ? "font-semibold text-foreground" : "text-muted-foreground")}
           style={{ left: pct(tk.t), transform: frac(tk.t) > 0.85 ? "translateX(-100%)" : frac(tk.t) < 0.1 ? "none" : "translateX(-50%)" }}>{tk.l}</span>
       ))}
       <span className="absolute top-10 h-1.5 rounded-full bg-muted" style={{ left: pct(Math.min(start, end)), width: `calc(${pct(Math.max(start, end))} - ${pct(Math.min(start, end))})` }} aria-hidden />
@@ -354,7 +356,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
           </Tooltip>
         )
       })}
-      <span className="absolute top-8 h-6 w-[1.5px] bg-primary" style={{ left: pct(today) }} aria-hidden />
+      <span className="absolute top-8 h-6 w-[1.5px] bg-foreground" style={{ left: pct(today) }} aria-hidden />
     </div>
   )
 }

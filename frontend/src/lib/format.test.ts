@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -279,5 +279,34 @@ describe("actionText", () => {
     expect(actionText("AI_force_feature")).toBe("AI force feature")
     expect(actionText("Delete")).toBe("Delete")
     expect(actionText(null)).toBe("")
+  })
+})
+
+describe("aiProgress", () => {
+  const start = "2026-10-09T10:00:00"   // naive UTC, as stored
+  const at = (s: number) => Date.parse(`${start}Z`) + s * 1000
+  it("is indeterminate while queued and counts the jobs ahead", () => {
+    expect(aiProgress({ status: "queued", progress: { ahead: 2, started_at: null, expected_s: 60 } })).toEqual({ pct: null, text: "Waiting for the AI server · 2 ahead" })
+    expect(aiProgress({ status: "queued", progress: { ahead: 0, started_at: null, expected_s: 60 } }).text).toBe("Starting…")
+  })
+  it("counts towards the usual time and never reaches 100", () => {
+    const p = { ahead: 0, started_at: start, expected_s: 60 }
+    expect(aiProgress({ status: "running", progress: p }, at(30))).toEqual({ pct: 47.5, text: "Writing… about 30 s left" })
+    const late = aiProgress({ status: "running", progress: p }, at(600))
+    expect(late.pct).toBeGreaterThan(95); expect(late.pct).toBeLessThan(99.01)
+    expect(late.text).toBe("Taking longer than usual · 600 s so far")
+  })
+})
+
+describe("productsFor", () => {
+  const products = [{ name: "FortiGate", vendor: "Fortinet" }, { name: "PA-440", vendor: "Palo Alto" }, { name: "Cabling", vendor: "" }]
+  it("offers the chosen vendor's products and the vendor-free ones", () => {
+    expect(productsFor(products, "Fortinet")).toEqual(["FortiGate", "Cabling"])
+  })
+  it("offers everything before a vendor is chosen", () => {
+    expect(productsFor(products, "")).toEqual(["FortiGate", "PA-440", "Cabling"])
+  })
+  it("keeps a project's current product listed", () => {
+    expect(productsFor(products, "Fortinet", "PA-440")).toEqual(["PA-440", "FortiGate", "Cabling"])
   })
 })

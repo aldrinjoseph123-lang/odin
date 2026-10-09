@@ -8,12 +8,12 @@ import { AIHealthWhy } from "@/components/AIHealthWhy"
 import { ApiError, plan as loadPlan, rebaseline, savePlan, type PlanData } from "@/lib/api"
 import { fillSuggested, setDate, workDays, type PlanRow } from "@/lib/plan"
 import { cn } from "@/lib/utils"
+import { DatePicker } from "@/components/DatePicker"
 import { fmtDate } from "@/lib/format"
 
 // The rollout's plan on its project page: health up top, the Gantt, then the
 // dates per stage (editable for the project manager), the baseline controls
 // and the log of what moved. Saving the first plan freezes it as the baseline.
-const input = "h-8 w-[8.5rem] rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-60"
 const slipText = (n: number | null) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 
 // `refresh` changes when something else on the page moves the health (a RAID item).
@@ -88,10 +88,10 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
               return (
                 <tr key={s.id} className={cn("border-b border-border last:border-0", s.status === "current" && "bg-accent/40")}>
                   <td className="px-2 py-2 font-medium">{s.name}{s.status === "current" && <span className="ml-2 text-[11px] font-normal text-primary-text">now</span>}</td>
-                  <td className="px-2 py-1"><input type="date" aria-label={`${s.name} planned start`} className={input} disabled={!editable || busy} value={r.plan_start ?? ""} placeholder={s.suggested_start}
-                    onChange={(e) => e.target.value && setRows(setDate(rows, i, "plan_start", e.target.value, cascade))} /></td>
-                  <td className="px-2 py-1"><input type="date" aria-label={`${s.name} planned end`} className={input} disabled={!editable || busy} value={r.plan_end ?? ""}
-                    onChange={(e) => e.target.value && setRows(setDate(rows, i, "plan_end", e.target.value, cascade))} /></td>
+                  <td className="px-2 py-1"><DatePicker label={`${s.name} planned start`} disabled={!editable || busy} value={r.plan_start ?? ""} placeholder={s.suggested_start ? fmtDate(s.suggested_start) : "—"} clearable={false}
+                    onChange={(v) => v && setRows(setDate(rows, i, "plan_start", v, cascade))} className="h-8 w-[9.5rem]" /></td>
+                  <td className="px-2 py-1"><DatePicker label={`${s.name} planned end`} disabled={!editable || busy} value={r.plan_end ?? ""} placeholder="—" clearable={false} min={r.plan_start ?? undefined}
+                    onChange={(v) => v && setRows(setDate(rows, i, "plan_end", v, cascade))} className="h-8 w-[9.5rem]" /></td>
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{days ?? "—"}</td>
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
                   <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` → ${fmtDate(s.actual_end)}` : " → now"}` : s.status === "skipped" ? "skipped" : "—"}</td>

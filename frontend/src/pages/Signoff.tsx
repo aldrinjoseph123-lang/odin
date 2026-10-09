@@ -16,7 +16,8 @@ import {
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { TemplatePicker } from "@/components/TemplatePicker"
 import { cn } from "@/lib/utils"
-import { fmtDate, fmtWhen, signoffText, toLines } from "@/lib/format"
+import { DatePicker } from "@/components/DatePicker"
+import { fmtDate, fmtWhen, localToday, signoffText, toLines } from "@/lib/format"
 
 // The sign-off: the last step of a rollout. The project manager prepares it
 // (the scope item by item, or what was delivered; what is outstanding; the
@@ -228,7 +229,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
         <Section n title="Summary" sub="drafted from the project; make it yours">
           <AIDraftBar<{ summary: string }> projectId={id} feature="signoff_summary"
             idle="Draft this summary with AI from the scope, dates and deliverables."
-            working="Drafting from the scope, dates and deliverables… about a minute."
+            working="Drafting from the scope, dates and deliverables…"
             note="It fills the summary for you to check word by word: the customer signs under it."
             onUse={(s) => { setSummary(s.payload.summary); setAiDraft(s.id) }} />
           <textarea aria-label="Summary" rows={4} maxLength={4000} value={summary} onChange={(e) => setSummary(e.target.value)} className={area} />
@@ -400,7 +401,7 @@ export default function Signoff(_props: { user: User }) {
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed by<input name="signer_name" required maxLength={120} defaultValue={cur?.content.signer?.name ?? ""} className={input} /></label>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Title<input name="signer_title" maxLength={120} className={input} /></label>
             </div>
-            <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed on<input name="signed_on" type="date" required className={input} /></label>
+            <div className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed on<SignedOn /></div>
             {dialogErr && <p className="text-[13px] text-bad" role="alert">{dialogErr}</p>}
             <div className="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy}>Upload</Button></div>
           </form>
@@ -417,4 +418,10 @@ export default function Signoff(_props: { user: User }) {
       </Dialog>
     </div>
   )
+}
+
+// the paper copy's signing date: today unless changed, never empty, never in the future
+function SignedOn() {
+  const [v, setV] = useState(localToday())
+  return <DatePicker name="signed_on" value={v} onChange={(x) => setV(x || localToday())} label="Signed on" clearable={false} max={localToday()} className="h-9 w-full" />
 }

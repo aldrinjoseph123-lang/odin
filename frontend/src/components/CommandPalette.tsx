@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { CornerDownLeft, FileText, FolderKanban, Search, SquareCheck, TextSearch } from "lucide-react"
 import { search, type SearchResults } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { Kbd } from "@/components/ui/kbd"
 
 export type PaletteItem = { kind: "page" | "project" | "task" | "mention" | "all"; label: string; hint?: string; href: string }
 
@@ -62,7 +63,7 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
           placeholder="Search projects, tasks, notes and documents, or jump to a page" aria-label="Search" role="combobox" aria-expanded aria-controls="palette-list"
           aria-activedescendant={items[active] ? `palette-${active}` : undefined}
           className="h-11 w-full bg-transparent text-[14px] outline-none placeholder:text-muted-foreground" />
-        <kbd className="rounded border border-border px-2 text-[11px] text-muted-foreground">Esc</kbd>
+        <Kbd>Esc</Kbd>
       </div>
       <ul id="palette-list" role="listbox" className="max-h-[50vh] overflow-y-auto p-2">
         {items.map((it, i) => {

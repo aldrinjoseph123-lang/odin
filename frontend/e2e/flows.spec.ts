@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto"
 import { expect, test } from "@playwright/test"
-import { expectClean, signIn, USERS, watch } from "./helpers"
+import { expectClean, pickDate, signIn, USERS, watch } from "./helpers"
 
 // @flow: the journeys, end to end, on the seeded portfolio. Each test leaves
 // the data as it found it where it can (undo, reset, restore), so the order
@@ -248,11 +248,11 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   const errors = watch(page)
   await signIn(page, "admin", "/projects/1")
   const plan = page.locator("#plan")
-  const end = plan.locator("input[aria-label$='planned end']").last()
+  const end = plan.locator("button[aria-label*='planned end']").last()
   await expect(end).toBeEnabled()
-  const was = await end.inputValue()
+  const was = await end.getAttribute("data-value")
   const later = new Date(Date.parse(was || "2026-12-01") + 3 * 864e5).toISOString().slice(0, 10)
-  await end.fill(later)
+  await pickDate(page, end, later)
   await plan.getByRole("textbox", { name: "Why the dates move" }).fill("E2E slip")
   await plan.getByRole("button", { name: /^Save plan/ }).click()
   await expect(plan.getByRole("status")).toHaveText(/Plan saved/)
@@ -366,11 +366,17 @@ test("@flow people: active minutes are counted while the page is in use", async 
 test("@flow settings: an admin switches time on Odin and sign-up links off, then on again", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/settings/people")
-  const save = page.getByRole("button", { name: "Save", exact: true })
-  await page.getByLabel("Record time on Odin").uncheck()
-  await page.getByLabel("Sign-up links work").uncheck()
-  await save.click()
+  // each card saves on its own and leaves the other card's switch alone
+  const time = page.getByRole("region", { name: "Time on Odin" })
+  const signup = page.getByRole("region", { name: "Sign-up links" })
+  await time.getByRole("switch", { name: "Record time on Odin" }).uncheck()
+  await time.getByRole("button", { name: "Save", exact: true }).click()
   await expect(page.getByRole("status")).toContainText("Saved")
+  await expect(signup.getByRole("switch", { name: "Sign-up links work" })).toBeChecked()
+  await signup.getByRole("switch", { name: "Sign-up links work" }).uncheck()
+  await signup.getByRole("button", { name: "Save", exact: true }).click()
+  await expect(page.getByRole("status")).toContainText("Saved")
+  await expect(time.getByRole("switch", { name: "Record time on Odin" })).not.toBeChecked()
   await page.goto("/account")
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
   await expect(page.getByRole("region", { name: "Time on Odin" })).toHaveCount(0)
@@ -379,13 +385,73 @@ test("@flow settings: an admin switches time on Odin and sign-up links off, then
   await expect(page.getByRole("button", { name: "Create link" })).toHaveCount(0)
   // back on, so later journeys see the defaults
   await page.goto("/settings/people")
-  await page.getByLabel("Record time on Odin").check()
-  await page.getByLabel("Sign-up links work").check()
-  await save.click()
+  await time.getByRole("switch", { name: "Record time on Odin" }).check()
+  await time.getByRole("button", { name: "Save", exact: true }).click()
   await expect(page.getByRole("status")).toContainText("Saved")
+  await signup.getByRole("switch", { name: "Sign-up links work" }).check()
+  await signup.getByRole("button", { name: "Save", exact: true }).click()
+  await expect(page.getByRole("status")).toContainText("Saved")
+  // the longer explanation is one tap away
+  await time.getByRole("button", { name: "What is Record time on Odin?" }).click()
+  await expect(page.getByText(/visible and in use/)).toBeVisible()
+  await page.keyboard.press("Escape")
   await page.goto("/account")
   await expect(page.getByRole("region", { name: "Time on Odin" })).toBeVisible()
   expectClean(errors)
+})
+
+test("@flow contacts: tabs, a product under its vendor, rename carries into projects, usage listed", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/contacts")
+  await page.getByRole("tab", { name: /Vendors/ }).click()
+  await expect(page).toHaveURL(/tab=vendors/)
+  await page.getByRole("button", { name: "Add vendor" }).click()
+  await page.getByRole("dialog").getByRole("textbox", { name: "Name" }).fill("E2E Vendor")
+  await page.getByRole("dialog").getByRole("button", { name: "Add", exact: true }).click()
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(page.getByRole("cell", { name: "E2E Vendor", exact: true })).toBeVisible()
+  // a product added under that vendor
+  await page.getByRole("tab", { name: /Products/ }).click()
+  await page.getByRole("button", { name: "Add a product under E2E Vendor" }).click()
+  await page.getByRole("dialog").getByRole("textbox", { name: "Name" }).fill("E2E Box")
+  await expect(page.getByRole("dialog").getByRole("combobox", { name: "Vendor" })).toHaveValue(/\d+/)
+  await page.getByRole("dialog").getByRole("button", { name: "Add", exact: true }).click()
+  await expect(page.getByRole("cell", { name: "E2E Box", exact: true })).toBeVisible()
+  // a duplicate name is refused inside the dialog
+  await page.getByRole("button", { name: "Actions for E2E Box" }).click()
+  await page.getByRole("menuitem", { name: "Edit" }).click()
+  await page.getByRole("dialog").getByRole("textbox", { name: "Name" }).fill("FortiGate")
+  await page.getByRole("dialog").getByRole("button", { name: "Save", exact: true }).click()
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("already exists")
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click()
+  // the project form offers it only with its vendor
+  await page.goto("/projects/new")
+  await page.getByRole("combobox", { name: "Delivery mode" }).selectOption("Distribution/MSSP")
+  const product = page.getByRole("combobox", { name: "Product" })
+  await page.getByRole("combobox", { name: "Vendor" }).selectOption("Fortinet")
+  await expect(product.locator("option", { hasText: "E2E Box" })).toHaveCount(0)
+  await expect(product.locator("option", { hasText: "FortiGate" })).toHaveCount(1)
+  await page.getByRole("combobox", { name: "Vendor" }).selectOption("E2E Vendor")
+  await expect(product.locator("option", { hasText: "E2E Box" })).toHaveCount(1)
+  await page.getByRole("combobox", { name: "Vendor" }).selectOption("")   // back to untouched, so leaving asks nothing
+  // usage: a seeded vendor names its projects
+  await page.goto("/settings/contacts?tab=partners")
+  await expect(page.getByRole("tab", { name: /Partners/ })).toHaveAttribute("aria-selected", "true")
+  await page.getByRole("button", { name: "Redington", exact: true }).click()
+  await expect(page.getByText("meera@redington.example")).toBeVisible()
+  // tidy up
+  await page.goto("/settings/contacts?tab=products")
+  page.once("dialog", (d) => d.accept())
+  await page.getByRole("button", { name: "Actions for E2E Box" }).click()
+  await page.getByRole("menuitem", { name: "Delete" }).click()
+  await expect(page.getByRole("cell", { name: "E2E Box", exact: true })).toHaveCount(0)
+  await page.goto("/settings/contacts?tab=vendors")
+  page.once("dialog", (d) => d.accept())
+  await page.getByRole("button", { name: "Actions for E2E Vendor" }).click()
+  await page.getByRole("menuitem", { name: "Delete" }).click()
+  await expect(page.getByRole("cell", { name: "E2E Vendor", exact: true })).toHaveCount(0)
+  // the refused duplicate answers 400: expected
+  expectClean(errors.filter((e) => !/400 \(BAD REQUEST\)|\/settings\/contacts\/products/.test(e)))
 })
 
 // RFC 6238 in a few lines, to play the authenticator app
@@ -531,7 +597,7 @@ test("@flow tasks: a new task takes a due date and is corrected in place", async
   await signIn(page, "admin", "/board?rollout=1")
   await page.getByRole("button", { name: /^Add a task to / }).first().click()
   await page.getByRole("textbox", { name: /^New task in / }).fill("E2E dated task")
-  await page.getByLabel("Due date").fill("2030-01-15")
+  await pickDate(page, page.getByRole("button", { name: /^Due date:/ }), "2030-01-15")
   await page.getByRole("button", { name: "Add task" }).click()
   await expect(page.getByRole("button", { name: "Edit E2E dated task" })).toBeVisible()
   await expect(page.locator("li", { has: page.getByRole("button", { name: "Edit E2E dated task" }) }).first()).toContainText(/due /)
@@ -558,7 +624,7 @@ test("@flow my work: a due date is set in place, and a tick can be undone", asyn
   await expect(page.getByRole("button", { name: "Edit E2E my task" })).toBeVisible()
   await page.goto("/my-work")
   await page.getByRole("button", { name: "No date. Change the due date of E2E my task" }).click()
-  await page.getByLabel("Due date for E2E my task").fill("2030-02-01")
+  await pickDate(page, page.getByRole("button", { name: /^Due date for E2E my task/ }), "2030-02-01")   // the picker opens by itself
   await expect(page.getByText("E2E my task: due")).toBeVisible()
   await page.getByRole("button", { name: "Complete E2E my task" }).click()
   await expect(page.getByText("Done: E2E my task")).toBeVisible()
@@ -583,5 +649,19 @@ test("@flow notes: an @mention is picked by keyboard, and a note can be shared",
   await expect(page.getByText("internal to the team")).toBeVisible()
   await page.getByRole("checkbox", { name: /Share with the customer/ }).check()
   await expect(page.getByText("Visible to the customer and partners")).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow users: each person is one row; Manage opens their settings and Esc closes it", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/users")
+  const list = page.getByRole("region", { name: "Team members" })
+  await expect(list.getByRole("listitem").filter({ hasText: "Omar Haddad" })).toContainText(/Signed in|Never signed in/)
+  await list.getByRole("button", { name: "Manage Omar Haddad" }).click()
+  const dialog = page.getByRole("dialog", { name: "Omar Haddad" })
+  await expect(dialog.getByRole("textbox", { name: "Email for Omar Haddad" })).toBeVisible()
+  await expect(dialog.getByRole("button", { name: "Deactivate" })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(dialog).toHaveCount(0)
   expectClean(errors)
 })

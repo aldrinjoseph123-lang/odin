@@ -52,7 +52,7 @@ function Roadmap({ rows, today, external = false }: { rows: PortfolioRow[]; toda
               </Link>
               <Tooltip>
                 <TooltipTrigger render={<div />} tabIndex={0} role="img" aria-label={label} className="relative h-9 border-b border-border/60 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-                  <span className="absolute inset-y-0 w-[1.5px] bg-primary/60" style={{ left: `${pct(today)}%` }} aria-hidden />
+                  <span className="absolute inset-y-0 w-[1.5px] bg-foreground/60" style={{ left: `${pct(today)}%` }} aria-hidden />
                   <span className={cn("absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full", SOLID[r.rag])} style={span(r.start, now)} aria-hidden />
                   {end > now && <span className={cn("absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full border", SOFT[r.rag])} style={span(now, end)} aria-hidden />}
                   {r.baseline && <span className="absolute top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-foreground/50" style={{ left: `${pct(r.baseline)}%` }} aria-hidden />}
@@ -69,7 +69,7 @@ function Roadmap({ rows, today, external = false }: { rows: PortfolioRow[]; toda
         <li className="flex items-center gap-2"><span className="h-2.5 w-5 rounded-full border border-border bg-muted" />Forecast</li>
         {rows.some((r) => r.baseline) && <li className="flex items-center gap-2"><span className="h-3 w-[2px] rounded-full bg-foreground/50" />Baseline finish</li>}
         <li className="flex items-center gap-2"><span className="h-3 w-0 border-l-[1.5px] border-dashed border-bad-line" />Target</li>
-        <li className="flex items-center gap-2"><span className="h-3 w-[1.5px] bg-primary/60" />Today</li>
+        <li className="flex items-center gap-2"><span className="h-3 w-[1.5px] bg-foreground/60" />Today</li>
         <li>Bar colour is the rollout's health</li>
       </ul>
     </div>

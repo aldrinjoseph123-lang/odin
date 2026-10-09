@@ -99,8 +99,10 @@ test("@smoke the header: every link lands, every button does something", async (
   // new project, account, log out
   await page.getByRole("link", { name: "New project" }).click()
   await expect(page).toHaveURL(/\/projects\/new/)
-  await page.getByRole("link", { name: "Your account" }).click()
+  await page.getByRole("button", { name: "Your account" }).click()
+  await page.getByRole("link", { name: "Account settings" }).click()
   await expect(page).toHaveURL(/\/account/)
+  await page.getByRole("button", { name: "Your account" }).click()
   await page.getByRole("button", { name: "Log out" }).first().click()
   await expect(page).toHaveURL(/\/login/)
   expectClean(errors)
@@ -113,7 +115,7 @@ test("@smoke the admin's header fits laptop widths without sideways scrolling", 
     await page.setViewportSize({ width, height: 800 })
     const [scroll, inner] = await page.evaluate(() => [document.scrollingElement!.scrollWidth, window.innerWidth])
     expect(scroll, `page width at ${width} px`).toBeLessThanOrEqual(inner)
-    await expect(page.getByRole("link", { name: "Your account" })).toBeInViewport()
+    await expect(page.getByRole("button", { name: "Your account" })).toBeInViewport()
   }
 })
 

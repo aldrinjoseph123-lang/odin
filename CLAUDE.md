@@ -43,6 +43,8 @@ component must read tokens so both themes and every accent follow.
 
 **UI/UX rules (9 Oct 2026, the user's refactoring plan):** six type sizes (11–24 px), spacing on the 4/8 px grid, no card inside a card (tone instead), dark depth by tone not shadow, buttons with a `loading` state, inline field errors (`lib/fieldErrors.ts`), toasts for silent saves (`lib/toast.ts`), receipt rows and chunked lists. Details in DESIGN.md.
 
+**9 Oct 2026 refresh (the user's call):** pastel accents with **red as the default** (a rose-leaning pastel fill; overdue stays the solid `--bad` state with its word), a straight segmented progress bar, a 72 px header with Log out in the avatar menu, app-wide tooltips (`TitleTips`), a stronger settings-menu selection. Details in DESIGN.md.
+
 **Jinja pages keep `static/style.css` (the legacy look) until each is ported.**
 That stylesheet is frozen: fix defects only, no new components, no re-theming —
 the port replaces it page by page.
@@ -198,8 +200,10 @@ Admins see the same page inside Odin (Settings → System map & changes,
 `/settings/map`, framed from `/settings/map/page`), so each release carries the
 map and change log of its own code. The change log is generated from git: each
 tag is a release, and commits after the last tag appear under the version in
-`VERSION`. **Releasing:** set `VERSION` to the new number, regenerate the map,
-commit, let CI pass, then tag `v<VERSION>` on that commit.
+`VERSION`. **Releasing:** set `VERSION` to the new number and **commit it first**, then
+regenerate the map and commit (the generator reads the last commit and refuses
+an uncommitted VERSION; v1.5.0 shipped a map that still said v1.4.1), let CI
+pass, then tag `v<VERSION>` on that commit.
 The Stop hook `scripts/system_map_stale.sh` (`.claude/settings.json`) blocks
 the end of a turn while the generated facts do not match HEAD or a code commit
 is newer than the map's last commit.

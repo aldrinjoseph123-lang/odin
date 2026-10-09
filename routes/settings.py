@@ -12,7 +12,7 @@ from markupsafe import Markup
 
 import graph
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, PERMISSIONS, ROLES
-from core import app, permission_required, undo_button, undo_note, write_required
+from core import app, as_id, permission_required, undo_button, undo_note, write_required
 from db import get_db, get_setting, restore_deleted, soft_delete
 from services.alerts import get_alert_type_settings
 from services import stages as stage_ops
@@ -571,9 +571,15 @@ def settings_contacts_add(list_key):
         flash(problem, "error")
         return redirect(url_for("settings_contacts"))
     db = get_db()
+    vendor_id = _vendor_field(db) if list_key == "products" else None
+    if vendor_id is False:
+        flash("Pick a vendor from the list", "error")
+        return redirect(url_for("settings_contacts"))
     try:
         if meta["has_email"]:
             db.execute(f"INSERT INTO {meta['table']} (name, email) VALUES (?, ?)", (name, email or None))
+        elif list_key == "products":
+            db.execute("INSERT INTO products (name, vendor_id) VALUES (?, ?)", (name, vendor_id))
         else:
             db.execute(f"INSERT INTO {meta['table']} (name) VALUES (?)", (name,))
         db.commit()
@@ -581,6 +587,114 @@ def settings_contacts_add(list_key):
         flash(f"{meta['label']}: '{name}' added")
     except sqlite3.IntegrityError:
         flash(f"'{name}' already exists in {meta['label']}")
+    return redirect(url_for("settings_contacts"))
+
+
+def _vendor_field(db):
+    """The product form's vendor: None for "any vendor", a live vendor's id,
+    or False when the field names something else."""
+    raw = request.form.get("vendor_id", "").strip()
+    if not raw:
+        return None
+    vendor_id = as_id(raw)
+    if vendor_id and db.execute("SELECT 1 FROM vendors WHERE id = ? AND deleted_at IS NULL", (vendor_id,)).fetchone():
+        return vendor_id
+    return False
+
+
+def _carry_rename(db, column, old, new, where="", args=()):
+    """Projects keep a picked name as text: a rename follows it there, so
+    "used in N projects" and the project pages stay true."""
+    if old != new:
+        db.execute(f"UPDATE projects SET {column} = ? WHERE {column} = ?{where}", (new, old, *args))
+
+
+@app.route("/settings/contacts/<list_key>/<int:item_id>/edit", methods=["POST"])
+@permission_required("manage_contacts")
+def settings_contacts_edit(list_key, item_id):
+    if list_key not in CONTACT_LISTS:
+        abort(404)
+    meta = CONTACT_LISTS[list_key]
+    db = get_db()
+    row = db.execute(f"SELECT * FROM {meta['table']} WHERE id = ? AND deleted_at IS NULL", (item_id,)).fetchone()
+    if not row:
+        abort(404)
+    name = request.form.get("name", "").strip()
+    email = (request.form.get("email", "").strip() or None) if meta["has_email"] else None
+    if problem := _name_problem(name, "Name", 120, email):
+        flash(problem, "error")
+        return redirect(url_for("settings_contacts"))
+    vendor_id = _vendor_field(db) if list_key == "products" else None
+    if vendor_id is False:
+        flash("Pick a vendor from the list", "error")
+        return redirect(url_for("settings_contacts"))
+    try:
+        if meta["has_email"]:
+            db.execute(f"UPDATE {meta['table']} SET name = ?, email = ? WHERE id = ?", (name, email, item_id))
+            email_col = meta["column"].replace("_name", "_email")
+            if (row["email"] or None) != email:
+                db.execute(f"UPDATE projects SET {email_col} = ? WHERE {meta['column']} = ? AND COALESCE({email_col}, '') = ?",
+                           (email, row["name"], row["email"] or ""))
+        elif list_key == "products":
+            db.execute("UPDATE products SET name = ?, vendor_id = ? WHERE id = ?", (name, vendor_id, item_id))
+        else:
+            db.execute(f"UPDATE {meta['table']} SET name = ? WHERE id = ?", (name, item_id))
+        _carry_rename(db, meta["column"], row["name"], name)
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash(f"'{name}' already exists in {meta['label']}", "error")
+        return redirect(url_for("settings_contacts"))
+    audit_log("edit_contact", list_key, item_id, name, details=None if row["name"] == name else f"renamed from {row['name']}")
+    flash(f"{meta['label']}: '{name}' saved")
+    return redirect(url_for("settings_contacts"))
+
+
+@app.route("/settings/contacts/partners/<int:partner_id>/edit", methods=["POST"])
+@permission_required("manage_contacts")
+def settings_partner_edit(partner_id):
+    db = get_db()
+    row = db.execute("SELECT * FROM partners WHERE id = ? AND deleted_at IS NULL", (partner_id,)).fetchone()
+    if not row:
+        abort(404)
+    name = request.form.get("name", "").strip()
+    if problem := _name_problem(name, "Partner name", 120):
+        flash(problem, "error")
+        return redirect(url_for("settings_contacts"))
+    try:
+        db.execute("UPDATE partners SET name = ? WHERE id = ?", (name, partner_id))
+        _carry_rename(db, "partner_name", row["name"], name)
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash(f"Partner '{name}' already exists", "error")
+        return redirect(url_for("settings_contacts"))
+    audit_log("edit_partner", "partner", partner_id, name, details=None if row["name"] == name else f"renamed from {row['name']}")
+    flash(f"Partner '{name}' saved")
+    return redirect(url_for("settings_contacts"))
+
+
+@app.route("/settings/contacts/partner-managers/<int:manager_id>/edit", methods=["POST"])
+@permission_required("manage_contacts")
+def settings_partner_manager_edit(manager_id):
+    db = get_db()
+    row = db.execute("SELECT m.*, p.name AS partner FROM partner_account_managers m JOIN partners p ON p.id = m.partner_id "
+                     "WHERE m.id = ? AND m.deleted_at IS NULL", (manager_id,)).fetchone()
+    if not row:
+        abort(404)
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip() or None
+    if problem := _name_problem(name, "Account manager name", 120, email):
+        flash(problem, "error")
+        return redirect(url_for("settings_contacts"))
+    db.execute("UPDATE partner_account_managers SET name = ?, email = ? WHERE id = ?", (name, email, manager_id))
+    if (row["email"] or None) != email:
+        db.execute("UPDATE projects SET partner_account_manager_email = ? WHERE partner_name = ? AND partner_account_manager_name = ? "
+                   "AND COALESCE(partner_account_manager_email, '') = ?", (email, row["partner"], row["name"], row["email"] or ""))
+    _carry_rename(db, "partner_account_manager_name", row["name"], name, " AND partner_name = ?", (row["partner"],))
+    db.commit()
+    audit_log("edit_partner_manager", "partner_manager", manager_id, name, details=None if row["name"] == name else f"renamed from {row['name']}")
+    flash(f"Account manager '{name}' saved")
     return redirect(url_for("settings_contacts"))
 
 

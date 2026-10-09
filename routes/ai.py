@@ -166,6 +166,7 @@ def api_project_ai(project_id, key):
     """Whether the feature can run here now, its latest unused draft, and the
     job drafting a new one, if any."""
     from services.ai import FEATURES, gate
+    from services.ai.health import job_progress
     project = load_project(project_id)
     feature = FEATURES.get(key)
     if feature is None or feature.scope != "project":
@@ -175,13 +176,15 @@ def api_project_ai(project_id, key):
         return jsonify(available=False, reason="Not available to you on this rollout", label=feature.label, options=None, suggestion=None, job=None)
     db = get_db()
     row = db.execute("SELECT * FROM ai_suggestions WHERE project_id = ? AND feature = ? AND status = 'new' ORDER BY id DESC LIMIT 1", (project_id, key)).fetchone()
-    job = db.execute("SELECT id, status, error, result, requested_by, created_at FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id = ? "
+    job = db.execute("SELECT id, feature, status, error, result, requested_by, created_at, started_at FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id = ? "
                      "ORDER BY id DESC LIMIT 1", (key, project_id)).fetchone()
     reason = gate(key, db)
     return jsonify(available=reason is None, reason=reason, label=feature.label, options=feature.options(project_id) if feature.options else None,
                    suggestion=_suggestion_view(row) if row else None,
                    job={"id": job["id"], "status": job["status"], "error": job["error"], "result": json.loads(job["result"]) if job["result"] else None,
-                        "created_at": job["created_at"]} if job else None)
+                        "created_at": job["created_at"],
+                        # queued or running: where it stands, for the progress bar
+                        "progress": job_progress(db, job) if job["status"] in ("queued", "running") else None} if job else None)
 
 
 @app.route("/api/projects/<int:project_id>/ai/<key>", methods=["POST"])

@@ -366,3 +366,26 @@ def trim(db=None):
     db.execute("DELETE FROM ai_suggestions WHERE status != 'new' AND created_at < ?", ((datetime.utcnow() - timedelta(days=90)).isoformat(),))
     db.execute("DELETE FROM ai_calls WHERE at < ?", ((datetime.utcnow() - timedelta(days=90)).isoformat(),))
     db.commit()
+
+
+def job_progress(db, job):
+    """Where a queued or running draft stands, for the page's progress bar:
+    how many jobs are ahead of it, when it started, and how long this feature
+    usually takes (the median of its last real drafts, else its last test,
+    else its time budget). The model does not stream, so this is an estimate
+    the page counts towards; it never claims to be done before the answer is."""
+    from services.ai import latest_check
+    from policies import policy
+    ahead = 0
+    if job["status"] == "queued":
+        ahead = db.execute("SELECT COUNT(*) FROM ai_jobs WHERE id < ? AND status IN ('queued', 'running', 'cancelling')", (job["id"],)).fetchone()[0]
+    times = sorted(r[0] for r in db.execute(
+        "SELECT seconds FROM ai_suggestions WHERE feature = ? AND seconds > 0 ORDER BY id DESC LIMIT 7", (job["feature"],)))
+    expected = times[len(times) // 2] if times else None
+    if expected is None and job["feature"] in FEATURES:
+        check = latest_check(job["feature"], db, current=False)
+        expected = check["seconds"] if check and check["seconds"] else None
+    if expected is None:
+        feature = FEATURES.get(job["feature"])
+        expected = (feature.budget_s if feature and feature.budget_s else None) or policy("ai_budget_s", db)
+    return {"ahead": ahead, "started_at": job["started_at"], "expected_s": round(float(expected), 1)}

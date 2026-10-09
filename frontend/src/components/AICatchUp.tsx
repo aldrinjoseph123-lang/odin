@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AIProgress } from "@/components/AIProgress"
 import { Ago } from "@/components/Ago"
 import { ApiError, cancelAIJob, projectAI, requestProjectAI, type CatchUp, type ProjectAI } from "@/lib/api"
 import { usePoll } from "@/lib/usePoll"
@@ -35,13 +36,14 @@ export function AICatchUp({ projectId }: { projectId: number }) {
         <h2 id="catchup-h" className="min-w-0 flex-1 basis-56 text-[13px] font-semibold text-nav-fg">
           Catch me up<span className="sr-only">, </span>
           <span className="ml-2 font-normal text-muted-foreground" aria-live="polite">
-            {working ? "Reading the rollout… about two minutes." : sug ? <>AI brief, <Ago iso={sug.created_at} /></> : "a one-page brief on this rollout, for whoever takes it over or joins"}
+            {working ? "Reading the rollout…" : sug ? <>AI brief, <Ago iso={sug.created_at} /></> : "a one-page brief on this rollout, for whoever takes it over or joins"}
           </span>
         </h2>
         {sug && !working && <Button size="sm" variant="ghost" className="h-7" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide" : "Show"}</Button>}
         {s.available && !working && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void ask()}>{sug ? "Brief me again" : "Brief me"}</Button>}
         {working && s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
       </div>
+      {working && s.job && <AIProgress job={s.job} />}
       {error && <p className="mt-2 text-[13px] text-bad" role="alert">{error}</p>}
       {sug && open && !working && (
         <div className="mt-3 grid grid-cols-1 gap-3 text-[13px] leading-relaxed lg:grid-cols-2 [&>*]:min-w-0">

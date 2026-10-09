@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { CheckCircle2, CircleDashed, Clock, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Ago } from "@/components/Ago"
 import { aiSettings, ApiError, postForm, type AICheck, type AIFeatureView, type AIView, type Policy } from "@/lib/api"
@@ -67,7 +68,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
   const [key, setKey] = useState("")
   const [check, setCheck] = useState<AICheck | null>(null)
   const [checking, setChecking] = useState(false)
-  const fields = () => ({ ai_base_url: f.ai_base_url, ai_model: f.ai_model, ...(f.ai_enabled ? { ai_enabled: "on" } : {}), ...(f.ai_allow_external ? { ai_allow_external: "on" } : {}) })
+  const fields = () => ({ ai_base_url: f.ai_base_url, ai_model: f.ai_model, ai_enabled: f.ai_enabled ? "on" : "0", ai_allow_external: f.ai_allow_external ? "on" : "0" })
   async function runCheck() {
     setChecking(true)
     try {
@@ -81,7 +82,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
     <Panel title="AI server" hint="any OpenAI-compatible server: Ollama, llama.cpp, vLLM, or a hosted provider">
       <form onSubmit={save} className="grid grid-cols-1 gap-4">
         <label className="flex items-start gap-2 text-[13px] font-medium">
-          <input type="checkbox" checked={f.ai_enabled} onChange={(e) => setF({ ...f, ai_enabled: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />
+          <Switch checked={f.ai_enabled} onCheckedChange={(c) => setF({ ...f, ai_enabled: c })} className="mt-1" />
           <span>{label("ai_enabled")?.label}<span className="block text-[12px] font-normal text-muted-foreground">{label("ai_enabled")?.help}</span></span>
         </label>
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
@@ -105,7 +106,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
             <p className="text-[12px] text-muted-foreground">Stored sealed, like the Microsoft 365 secret, and sent as a bearer token.</p>
           </div>
           <label className="flex items-start gap-2 text-[13px] font-medium">
-            <input type="checkbox" checked={f.ai_allow_external} onChange={(e) => { setF({ ...f, ai_allow_external: e.target.checked }); setCheck(null) }} className="mt-1 h-3.5 w-3.5 accent-primary" />
+            <Switch checked={f.ai_allow_external} onCheckedChange={(c) => { setF({ ...f, ai_allow_external: c }); setCheck(null) }} className="mt-1" />
             <span>{label("ai_allow_external")?.label}<span className="block text-[12px] font-normal text-muted-foreground">{label("ai_allow_external")?.help}</span>
               <span className="block text-[12px] font-normal text-muted-foreground">Check goes by the saved setting: for an address outside the office network, tick this and Save first, then Check.</span></span>
           </label>
