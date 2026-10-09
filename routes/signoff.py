@@ -85,6 +85,17 @@ def api_signoff(project_id):
 
 # ---- scope -------------------------------------------------------------------------
 
+def _scope_locked(project_id):
+    """Why the scope cannot change now, or None: it is final once signed off,
+    and frozen while a version is out for signature (L12) — withdraw it first."""
+    if signoff.completed(project_id):
+        return "The project is signed off; its scope is final"
+    last = signoff.latest(project_id)
+    if last and last["status"] in signoff.OPEN:
+        return f"Version {last['version']} of the sign-off is out for signature; withdraw it before changing the scope"
+    return None
+
+
 @app.route("/api/projects/<int:project_id>/scope")
 @permission_required("view_project_detail")
 def api_scope(project_id):
@@ -98,8 +109,8 @@ def api_scope(project_id):
 @project_role_required("manage_project")
 def api_scope_add(project_id):
     project = load_project(project_id)
-    if signoff.completed(project_id):
-        return _bad("The project is signed off; its scope is final", 409)
+    if locked := _scope_locked(project_id):
+        return _bad(locked, 409)
     try:
         fields = signoff.clean_scope(_body())
     except ValueError as e:
@@ -114,8 +125,8 @@ def api_scope_add(project_id):
 @project_role_required("manage_project")
 def api_scope_item(project_id, item_id):
     project = load_project(project_id)
-    if signoff.completed(project_id):
-        return _bad("The project is signed off; its scope is final", 409)
+    if locked := _scope_locked(project_id):
+        return _bad(locked, 409)
     db = get_db()
     item = db.execute("SELECT * FROM scope_items WHERE id = ? AND project_id = ?", (item_id, project_id)).fetchone()
     if item is None:
@@ -146,13 +157,17 @@ def api_scope_item(project_id, item_id):
 @project_role_required("manage_project")
 def api_signoff_send(project_id):
     project = load_project(project_id)
-    try:
-        row = signoff.send(project, _body(), session["user_name"])
-    except ValueError as e:
-        return _bad(e)
+    suggestion = _body().get("ai_suggestion")
+    if suggestion is not None and (not isinstance(suggestion, int) or isinstance(suggestion, bool)):
+        return _bad("ai_suggestion is the id of an AI draft")   # checked before anything is written (F-M7)
     from routes.ai import use_suggestion
-    ai = use_suggestion(project_id, _body().get("ai_suggestion"), "signoff_summary")
-    get_db().commit()
+    try:
+        row = signoff.send(project, _body(), session["user_name"], commit=False)
+        ai = use_suggestion(project_id, suggestion, "signoff_summary")
+    except ValueError as e:
+        get_db().rollback()
+        return _bad(e)
+    get_db().commit()   # the version and the draft it used, together
     audit_log("signoff_send", "project", project_id, project["name"], f"v{row['version']} to {row['signer_email']} sha256={row['content_hash'][:16]}{ai}")
     notify_users([row["signer_id"]], "approval", project_id, f"Please review and sign off {project['name']}",
                  f"<p>{escape(session['user_name'])} has sent the sign-off for <b>{escape(project['name'])}</b> (version {row['version']}). "
@@ -298,6 +313,9 @@ def api_signoff_upload(project_id, version):
         datetime.strptime(signed_on, "%Y-%m-%d")
     except ValueError:
         return _bad("The signing date must be a date (YYYY-MM-DD)")
+    from policies import local_date, local_today
+    if signed_on > local_today().isoformat() or signed_on < local_date(row["created_at"]).isoformat():   # L19
+        return _bad("The signing date is between the day the version was sent and today")
     if problem := upload_problem(file):
         return _bad(problem)
     if not content_matches_extension(file):
@@ -306,7 +324,10 @@ def api_signoff_upload(project_id, version):
         return _bad("Upload the signed copy of a version that is waiting for signatures")
     original = save_document(project_id, file, SIGNOFF_DOC_CATEGORY, session["user_name"])
     doc_id = get_db().execute("SELECT MAX(id) FROM documents WHERE project_id = ? AND filename = ?", (project_id, original)).fetchone()[0]
-    signoff.record_upload(row, doc_id, name, request.form.get("signer_title", "").strip()[:120], signed_on)
+    try:
+        signoff.record_upload(row, doc_id, name, request.form.get("signer_title", "").strip()[:120], signed_on)
+    except ValueError as e:   # completed or withdrawn by another request meanwhile; the file stays among the documents
+        return _bad(e)
     audit_log("signoff_upload", "project", project_id, project["name"], f"v{version} signed copy {original}, signed by {name} on {signed_on}")
     ids = [r[0] for r in get_db().execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,))]
     notify_users(ids, "approval", project_id, f"{project['name']} is signed off",
