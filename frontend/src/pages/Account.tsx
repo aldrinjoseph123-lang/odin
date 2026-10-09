@@ -64,7 +64,7 @@ export default function Account(_props: { user: User }) {
                 style={{ background: c.swatch }} />
             ))}
           </div>
-          <p className="text-[12px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. There is no red or amber accent: those colours mean overdue and warning.</p>
+          <p className="text-[12px] text-muted-foreground">The accent is the soft colour the app spends on selection and the primary action. Red is the default; overdue items stay a solid red with their words, so they still stand out.</p>
           {me.kind !== "external" && (
             <>
               <div className="mt-1 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Home page">
