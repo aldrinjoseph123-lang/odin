@@ -122,7 +122,7 @@ export default function Settings(_props: { user: User }) {
               <p className="mt-2 text-[12px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
               <SlaCheck templates={data.templates} busy={busy} send={send} />
             </Panel>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+            <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">{/* alert types is a wide table: full width */}
               <Panel title="Document categories" hint="untick to keep a kind from partners and customers">
                 <ul className="grid grid-cols-1 gap-2 text-[13px]">
                   {data.doc_categories.map((c) => (

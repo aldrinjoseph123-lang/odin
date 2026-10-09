@@ -242,6 +242,13 @@
   background-color: color-mix(in srgb, var(--foreground) 3%, var(--card));
 }
 
+/* The chevron's room, outside the base layer so a select's own px-* utility
+   cannot take it away (9 Oct 2026: "Warning" and "Contractor" ran under the
+   chevron). */
+select:not([multiple]):not([data-slot="native-select"]) {
+  padding-right: 32px;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -281,7 +288,6 @@
     background-repeat: no-repeat;
     background-position: right 8px center;
     background-size: 16px 16px;
-    padding-right: 32px;
     }
   select:not([multiple]):focus-visible {
     border-color: var(--ring);
