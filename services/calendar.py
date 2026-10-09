@@ -10,7 +10,7 @@ from datetime import date, timedelta
 
 from db import PROJECT_OPEN_SQL, get_db
 from policies import local_date, local_today
-from services.alerts import build_alerts
+from services.alerts import project_states
 
 
 def month_range(month, today):
@@ -19,6 +19,8 @@ def month_range(month, today):
     try:
         y, m = (int(x) for x in month.split("-"))
         first = date(y, m, 1)
+        if not 2000 <= y <= 2100:   # the grid pads weeks either side: year 1 or 9999 would overflow
+            raise ValueError(month)
     except (ValueError, AttributeError):
         first = today.replace(day=1)
     start = first - timedelta(days=first.weekday() + 7)     # the Monday a week before the grid starts
@@ -33,11 +35,9 @@ def build(month, scope):
     scope_sql, scope_params = scope
     projects = db.execute(
         f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY p.name", scope_params).fetchall()
-    alerts = build_alerts(projects)
-    stuck = {"overdue": {p["id"] for p in alerts["project_overdue"]}, "over_sla": {p["id"] for p in alerts["stage_sla_breach"]},
-             "due_soon": {p["id"] for p in alerts["project_due_soon"]}}
-    state = lambda p: next((k for k in ("overdue", "over_sla", "due_soon") if p["id"] in stuck[k]), "on_track")   # noqa: E731
-    starts = lambda p: p["start_date"] or (p["created_at"] or "")[:10]   # noqa: E731
+    states = project_states(projects)
+    state = lambda p: states[p["id"]]   # noqa: E731
+    starts = lambda p: p["start_date"] or (local_date(p["created_at"]) or today).isoformat()   # noqa: E731
     spans = [{"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "start_date": starts(p),
               "target_end_date": p["target_end_date"], "state": state(p)}
              for p in projects if starts(p) <= e and (p["target_end_date"] or "9999") >= s]

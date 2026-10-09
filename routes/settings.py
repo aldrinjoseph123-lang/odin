@@ -6,7 +6,6 @@ Registration side effects only.
 import csv
 import io
 import sqlite3
-from datetime import datetime
 
 from flask import Response, abort, flash, redirect, render_template, request, session, url_for
 from markupsafe import Markup
@@ -38,8 +37,12 @@ def undo_contact(list_key, item_id):
 @permission_required("manage_contacts")
 def undo_partner(partner_id):
     db = get_db()
-    restore_deleted("partners", partner_id)
-    db.execute("UPDATE partner_account_managers SET deleted_at = NULL WHERE partner_id = ?", (partner_id,))
+    stamp = db.execute("SELECT deleted_at FROM partners WHERE id = ?", (partner_id,)).fetchone()
+    if not stamp or not restore_deleted("partners", partner_id):
+        flash("Too late to undo — the undo window has passed")
+        return redirect(url_for("settings_contacts"))
+    # only the managers that went with the partner (B4): one removed on its own stays removed
+    db.execute("UPDATE partner_account_managers SET deleted_at = NULL WHERE partner_id = ? AND deleted_at = ?", (partner_id, stamp[0]))
     db.commit()
     audit_log("restore_partner", "partner", partner_id)
     flash("Partner and its account managers restored")
@@ -413,7 +416,14 @@ def settings_stage_move(template_id, stage_id):
 @permission_required("manage_settings")
 def settings_stage_delete(template_id, stage_id):
     _template(template_id)
-    return _template_change("delete_template_stage", stage_ops.delete_stage("template", template_id, stage_id), str(stage_id))
+    from constants import SIGNOFF_STAGE
+    rows = stage_ops.list_stages("template", template_id)
+    names = [s["name"] for s in rows]
+    gone = next((s["name"] for s in rows if s["id"] == stage_id), None)
+    error = stage_ops.delete_stage("template", template_id, stage_id)
+    if not error and gone == SIGNOFF_STAGE and len(names) >= 2 and names[-2] == gone:   # R14: allowed, but said
+        flash(f"Removed '{gone}': new projects from this template send their sign-off from the stage before {names[-1]} instead")
+    return _template_change("delete_template_stage", error, str(stage_id))
 
 
 @app.route("/settings/templates/<int:template_id>/sla", methods=["POST"])
@@ -428,11 +438,12 @@ def settings_stage_sla(template_id):
 @permission_required("manage_settings")
 def settings_stage_sla_from_measured(template_id):
     """Adopt each stage's measured average across projects created from this
-    template. Stages nothing has passed through are left alone — no evidence,
+    template, measured in working days like the SLAs themselves (when the
+    workspace counts them). Stages nothing has passed through are left alone — no evidence,
     no made-up number. Rounds up, so the target is never stricter than the
     average it came from."""
     import math
-    from services.analytics import build_cycle_times
+    from services.analytics import build_cycle_times, clock
 
     _template(template_id)
     db = get_db()
@@ -445,14 +456,14 @@ def settings_stage_sla_from_measured(template_id):
     stage_names = [row["name"] for row in stage_ops.list_stages("template", template_id)]
     if not stage_names:
         return _template_change("set_template_slas_from_measured", "Template has no stages")
-    stats = build_cycle_times(projects, notes_by_project, stage_names, stage_names[-1])
+    stats = build_cycle_times(projects, notes_by_project, stage_names, stage_names[-1], clock=clock())
     applied = 0
     for row in stats["stages"]:
         if row["avg_days"] is None or row["stage"] == stage_names[-1]:
             continue
         db.execute(
             "UPDATE stage_template_stages SET sla_days = ? WHERE template_id = ? AND name = ?",
-            (max(1, math.ceil(row["avg_days"])), template_id, row["stage"]),
+            (min(365, max(1, math.ceil(row["avg_days"]))), template_id, row["stage"]),
         )
         applied += 1
     db.commit()
@@ -608,8 +619,8 @@ def settings_partner_add():
 def settings_partner_delete(partner_id):
     db = get_db()
     soft_delete("partners", partner_id)
-    now = datetime.utcnow().isoformat()
-    db.execute("UPDATE partner_account_managers SET deleted_at = ? WHERE partner_id = ?", (now, partner_id))
+    db.execute("UPDATE partner_account_managers SET deleted_at = (SELECT deleted_at FROM partners WHERE id = ?) WHERE partner_id = ? AND deleted_at IS NULL",
+               (partner_id, partner_id))
     db.commit()
     audit_log("delete_partner", "partner", partner_id)
     flash(Markup(f"Partner deleted (its account managers were removed too). {undo_button('Undo', 'undo_partner', partner_id=partner_id)} {undo_note()}"))

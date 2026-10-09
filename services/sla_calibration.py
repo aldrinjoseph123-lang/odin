@@ -11,7 +11,7 @@ proposal through the normal template SLA save, which is audited."""
 import math
 
 from db import get_db
-from policies import policy
+from policies import local_date, policy
 from services import stages as stage_ops
 from services import workdays
 from services.analytics import _parse, stage_timeline
@@ -40,7 +40,7 @@ def proposals(db=None):
             timeline = stage_timeline(p, notes.get(p["id"], []), stages[0]["name"])
             for (name, entered), (_, left) in zip(timeline, timeline[1:]):
                 if name in durations:
-                    durations[name].append(max(1, workdays.between(entered.date(), left.date(), cal)))
+                    durations[name].append(max(1, workdays.between(local_date(entered.isoformat(), db), local_date(left.isoformat(), db), cal)))
         for s in stages[:-1]:   # the last stage is the closed one: no SLA
             visits = durations.get(s["name"]) or []
             if len(visits) < minimum:

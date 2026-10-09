@@ -174,9 +174,19 @@ def status(db=None):
         return {"state": "off"}
     row = db.execute("SELECT value FROM settings WHERE key = ?", (STATUS_SETTING,)).fetchone()
     try:
-        return json.loads(row[0]) if row else {"state": "unknown"}
+        st = json.loads(row[0]) if row else {"state": "unknown"}
     except ValueError:
         return {"state": "unknown"}
+    # a heartbeat older than two beats (15 min at least) says nothing about now:
+    # the worker may be stopped (D15). The gate treats it as not up.
+    from datetime import datetime, timedelta
+    limit = max(15, 2 * policy("ai_heartbeat_minutes", db))
+    if st.get("checked_at") and st["checked_at"] < (datetime.utcnow() - timedelta(minutes=limit)).isoformat():
+        st = {**st, "stale": True, "no_heartbeat_since": st["checked_at"]}
+    return st
+
+
+STALE_KEYS = ("stale", "no_heartbeat_since")   # read-time flags, never stored
 
 
 def switch(key, db=None):
@@ -208,6 +218,8 @@ def gate(key, db=None):
         return "AI is switched off (Settings → AI)"
     if st["state"] != "up":
         return "The AI server is not answering"
+    if st.get("stale"):
+        return f"No heartbeat from the AI server since {st['no_heartbeat_since'][:16].replace('T', ' ')} UTC"
     on, forced = switch(key, db)
     if not on:
         return "This AI feature is switched off"

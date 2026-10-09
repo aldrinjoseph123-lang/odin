@@ -1012,7 +1012,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     @patch("routes.board.ALERTS_PER_PAGE", 10)
     def test_alerts_log_paginates_and_filters_by_type(self):
         self._bulk_projects(25, target_end_date="2020-01-01")
-        self.client.get("/board")   # sync alerts
+        __import__("scheduler").sync_alerts()   # the scheduler records alerts; a page load no longer does
         body = self.client.get("/alerts").data.decode()
         self.assertIn("Page 1 of", body)
         self.assertLessEqual(body.count("<tr>"), 12, "page should be capped")
@@ -1847,7 +1847,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         w = c.get("/api/my-work").get_json()
         self.assertEqual([t["title"] for t in w["tasks"]], ["Late one"]); self.assertLess(w["tasks"][0]["due_date"], w["today"])
         self.assertEqual((w["projects"][0]["name"], w["projects"][0]["state"]), ("Mine", "overdue"))
-        self.client.get("/board")   # syncs alerts
+        __import__("scheduler").sync_alerts()   # the scheduler records alerts; a page load no longer does
         al = c.get("/api/alerts").get_json()
         self.assertEqual(al["rows"][0]["alert_type"], "project_overdue"); self.assertFalse(al["show_resolved"]); self.assertIn("stale", al["types"])
         self.assertEqual(c.get("/api/alerts?type=stale").get_json()["total"], 0)
@@ -1877,7 +1877,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         r = c.post("/projects/new", data={"name": "Made in React", "client": "Globex", "delivery_mode": "Distribution/MSSP", "customer_approval": "1",
                                           "po_document": (io.BytesIO(b"%PDF-1.4 po"), "po.pdf")}, headers=h).get_json()
-        self.assertEqual((r["location"], r["messages"]), ("/board", ["Project created"]))
+        self.assertEqual((r["location"], r["messages"]), ("/projects/2", ["Project created"]))   # straight to the new rollout (P14)
         r = c.post("/projects/new", data={"name": "No PO", "client": "Globex"}, headers=h).get_json()
         self.assertFalse(r["ok"]); self.assertIn("Upload a 'Client PO' document", r["error"])   # a refused form is an error to fetch callers (F-M10)
         r = c.post("/projects/2/edit", data={"name": "Made in React 2", "client": "Globex", "owner_id": "1"}, headers=h).get_json()
@@ -2620,6 +2620,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(data["real_alerts"]["project_overdue"], 1)
         self.assertEqual(data["dashboard"]["total_active"], 1)
         self.assertTrue(data["can_move"])
+        __import__("scheduler").sync_alerts()   # the badge counts recorded alerts; the scheduler records them (B9)
         nav = c.get("/api/session").get_json()["user"]["nav"]
         self.assertGreaterEqual(nav["active_alert_count"], 1)
         self.assertEqual(app_module.app.test_client().get("/api/board").status_code, 302)   # anonymous
@@ -3037,6 +3038,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             ann = db.execute("SELECT id FROM users WHERE email = 'ann@globex.example'").fetchone()
             stages = [r["name"] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position")]
+            # a sign-off is sent from the stage before the finish (D5)
+            db.execute("UPDATE projects SET stage = ? WHERE id = 1", (stages[-2],)); db.commit()
         return c, {"X-CSRF-Token": csrf}, (ann["id"] if ann else None), stages
 
     def _ext(self, email):
@@ -3144,7 +3147,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # version 2 comes back on paper
         c.post("/api/projects/1/signoff", json={"summary": "Done, runbook attached.", "signer_id": ann, "counter_id": 1, "delivered": ["Sensors", "Runbook"]}, headers=h)
         self.assertEqual(c.post("/api/projects/1/signoff/2/upload", data={"signer_name": "Ann Reyes"}, headers=h).status_code, 400)
-        r = c.post("/api/projects/1/signoff/2/upload", data={"signer_name": "Ann Reyes", "signed_on": "2026-09-30", "file": (io.BytesIO(b"%PDF-1.4 signed"), "signed.pdf")},
+        r = c.post("/api/projects/1/signoff/2/upload", data={"signer_name": "Ann Reyes", "signed_on": __import__("policies").local_today(sqlite3.connect(db_module.DB_PATH)).isoformat(), "file": (io.BytesIO(b"%PDF-1.4 signed"), "signed.pdf")},
                    headers=h, content_type="multipart/form-data")
         self.assertEqual(r.status_code, 200)
         cur = c.get("/api/projects/1/signoff").get_json()
@@ -3169,7 +3172,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_a_stage_list_edit_cannot_close_an_unsigned_project(self):
         # test report FN-1: reordering or deleting stages made the current stage terminal, closing it unsigned
         c, h, _, stages = self._signoff_setup()
-        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": "Sign-off"}, headers=h).status_code, 200)
+        self.assertEqual(c.get("/api/projects/1/flow").get_json()["stage"], "Sign-off")   # where the setup leaves it (D5)
         with self.raw_db() as db:
             closed_id = db.execute("SELECT id FROM project_stages WHERE project_id = 1 AND name = 'Closed'").fetchone()["id"]
         hj = {**h, "Accept": "application/json"}
@@ -3324,7 +3327,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="Theirs", client="Initech", target_end_date="2020-01-01")
         self.new_project(name="Mine", client="Globex")
         c, _ = self._api_client()
-        c.get("/api/board")
+        __import__("scheduler").sync_alerts()   # the scheduler records alerts (B9); no board load does
         open_alerts = "SELECT COUNT(*) FROM alerts WHERE resolved = 0"
         with self.raw_db() as db:
             before = db.execute(open_alerts).fetchone()[0]
@@ -3452,7 +3455,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     def test_the_signed_paper_copy_cannot_be_deleted(self):
         c, h, ann, _ = self._signoff_setup()
         c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["All"]}, headers=h)
-        c.post("/api/projects/1/signoff/1/upload", data={"signer_name": "Ann", "signed_on": "2026-09-30", "file": (io.BytesIO(b"%PDF-1.4 s"), "signed.pdf")},
+        c.post("/api/projects/1/signoff/1/upload", data={"signer_name": "Ann", "signed_on": __import__("policies").local_today(sqlite3.connect(db_module.DB_PATH)).isoformat(),
+                                                         "file": (io.BytesIO(b"%PDF-1.4 s"), "signed.pdf")},
                headers=h, content_type="multipart/form-data")
         with self.raw_db() as db:
             doc = db.execute("SELECT document_id FROM signoffs").fetchone()[0]
@@ -3691,7 +3695,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("UPDATE projects SET stage_entered_at = datetime('now', '-9 days') WHERE id = 1"); db.commit()
         d = c.get("/api/projects/1/flow").get_json()
-        self.assertGreaterEqual(d["stages"][1]["days"], 8.9)
+        # in working days, as the Flow's row counts it (nine calendar days hold at least five working ones)
+        self.assertGreaterEqual(d["stages"][1]["days"], 5)
+        self.assertAlmostEqual(d["stages"][1]["days"], c.get("/api/flow").get_json()["rows"][0]["days_in_stage"], delta=0.1)
         self.assertEqual([t["done"] for t in d["tasks"]], [False, True])
         self.assertGreater(d["days_left"], 20000)
         self.assertEqual(c.get("/api/projects/999/flow").status_code, 404)
@@ -4802,6 +4808,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         board = self.client.get("/board").data
         self.assertIn(b"over their stage SLA", board)
         self.assertIn(b"Stuck", board)
+        __import__("scheduler").sync_alerts()   # the scheduler records alerts (B9)
         with self.raw_db() as db:
             self.assertIsNotNone(db.execute(
                 "SELECT 1 FROM alerts WHERE alert_type='stage_sla_breach' AND resolved=0").fetchone())
@@ -5036,14 +5043,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
-        # First board load creates the stale alert
-        self.client.get("/board")
+        # The scheduler's sync creates the stale alert (a board load no longer does, B9)
+        __import__("scheduler").sync_alerts()
         # Project touched again — no longer stale
         with self.raw_db() as db:
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (date.today().isoformat() + "T12:00:00",))
             db.commit()
-        # Second board load should resolve it
-        self.client.get("/board")
+        # the next sync resolves it
+        __import__("scheduler").sync_alerts()
         with self.raw_db() as db:
             alert = db.execute("SELECT * FROM alerts WHERE alert_type = 'stale'").fetchone()
         self.assertEqual(alert["resolved"], 1)
@@ -5100,7 +5107,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
-        self.client.get("/board")
+        __import__("scheduler").sync_alerts()   # the scheduler records alerts and sends their mail (B9)
         sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Project inactive: Proj")]
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0].args[2].startswith("Project: Proj (C)"))
@@ -5971,6 +5978,8 @@ class SignoffSummaryTestCase(AITestBase):
             ann = con.execute("SELECT id FROM users WHERE email = 'ann@globex.example'").fetchone()[0]
             con.execute("INSERT INTO ai_suggestions (project_id, feature, payload, model, status, created_at) VALUES (1, 'signoff_summary', ?, 'P24-AI', 'new', '2026-10-08')",
                         (SIGNOFF_GOOD,))
+            # a sign-off is sent from the stage before the finish (D5)
+            con.execute("UPDATE projects SET stage = (SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position DESC LIMIT 1 OFFSET 1) WHERE id = 1")
         r = self.client.post("/api/projects/1/signoff", json={"summary": "Edited AI words.", "signer_id": ann, "counter_id": 1, "ai_suggestion": 1}, headers=h)
         self.assertEqual(r.get_json()["version"], 1)
         with self._db() as con:

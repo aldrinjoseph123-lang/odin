@@ -11,7 +11,8 @@ Kept:    users, roles/permissions, stages (and their SLAs), doc categories,
          connection, and the audit log.
 Removed: projects and everything hanging off them — status notes, tasks,
          document rows, alerts, each project's own stage list, its team,
-         approval requests and saved reports — plus the uploaded files on
+         approval requests and saved reports, the dashboard's daily counts and
+         the AI's cached portfolio words — plus the uploaded files on
          disk, and every outstanding sign-in link (they belong to demo
          invitations). External accounts created by demo invites are kept
          like any other user; deactivate them from Users if unwanted.
@@ -29,9 +30,11 @@ import sys
 from db import DB_PATH, UPLOAD_DIR
 
 # Children before parents. Any new table keyed by project_id belongs here —
-# the id counter is reset below, so a survivor would attach itself to the
-# next project created (see the "new table" checklist in CLAUDE.md).
-WIPE_TABLES = ["lessons", "doc_text", "ai_calls", "ai_suggestions", "ai_jobs", "signoffs", "scope_items", "plan_changes", "raid_items", "notifications", "status_notes", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
+# a survivor would show the wiped projects' history (or, after a restore that
+# reset the id counter, attach itself to the next project created; see the
+# "new table" checklist in CLAUDE.md). The dashboard's daily counts describe
+# the wiped projects too, so they go first.
+WIPE_TABLES = ["portfolio_snapshots", "lessons", "doc_text", "ai_calls", "ai_suggestions", "ai_jobs", "signoffs", "scope_items", "plan_changes", "raid_items", "notifications", "status_notes", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
                "project_participants", "project_stages", "login_links", "signup_links", "projects"]
 
 
@@ -83,6 +86,10 @@ def main():
     # is on for app connections even though it is off by default here.
     for table in WIPE_TABLES:
         db.execute(f"DELETE FROM {table}")
+    # what was written about the wiped projects: the AI's cached portfolio
+    # words, and the sign-up pointer of accounts that joined through one
+    db.execute("DELETE FROM settings WHERE key LIKE 'ai.latest.%'")
+    db.execute("UPDATE users SET signup_project_id = NULL")
     # The id counters are kept: the audit log survives the reset, and a new
     # project 1 would otherwise show the wiped project 1's history (test report OPS-6).
     from datetime import datetime

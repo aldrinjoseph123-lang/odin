@@ -8,6 +8,8 @@ Every function returns an error message for the user, or None on success.
 from constants import SIGNOFF_STAGE
 from db import get_db
 
+MAX_SLA_DAYS = 365
+
 SCOPES = {
     "template": ("stage_template_stages", "template_id"),
     "project": ("project_stages", "project_id"),
@@ -71,10 +73,11 @@ def rename_stage(scope, scope_id, stage_id, new_name):
     if db.execute(f"SELECT 1 FROM {table} WHERE {col} = ? AND name = ? AND id != ?", (scope_id, new_name, stage_id)).fetchone():
         return "Stage name already in use"
     db.execute(f"UPDATE {table} SET name = ? WHERE id = ?", (new_name, stage_id))
-    if scope == "project":
+    if scope == "project":   # every row that names the stage (B5)
         db.execute("UPDATE projects SET stage = ? WHERE id = ? AND stage = ?", (new_name, scope_id, row["name"]))
-        db.execute("UPDATE status_notes SET stage = ? WHERE project_id = ? AND stage = ?", (new_name, scope_id, row["name"]))
-        db.execute("UPDATE tasks SET stage = ? WHERE project_id = ? AND stage = ?", (new_name, scope_id, row["name"]))
+        for named in ("status_notes", "tasks", "stage_approvals", "raid_items", "plan_changes"):
+            db.execute(f"UPDATE {named} SET stage = ? WHERE project_id = ? AND stage = ?", (new_name, scope_id, row["name"]))
+        db.execute("UPDATE status_notes SET prev_stage = ? WHERE project_id = ? AND prev_stage = ?", (new_name, scope_id, row["name"]))
     db.commit()
     return None
 
@@ -107,8 +110,9 @@ def delete_stage(scope, scope_id, stage_id):
     row = db.execute(f"SELECT * FROM {table} WHERE id = ? AND {col} = ?", (stage_id, scope_id)).fetchone()
     if row is None:
         return "Stage not found"
-    if db.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} = ?", (scope_id,)).fetchone()[0] <= 1:
-        return "Cannot delete the last remaining stage"
+    if db.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} = ?", (scope_id,)).fetchone()[0] <= 2:
+        # one stage would be the finish line alone: a project born closed, never signed off (D13/R14)
+        return "A stage list needs at least two stages: the work and the finish"
     if scope == "project":
         current = db.execute("SELECT stage FROM projects WHERE id = ?", (scope_id,)).fetchone()
         if current and current["stage"] == row["name"]:
@@ -138,8 +142,8 @@ def set_slas(scope, scope_id, form):
             days = int(raw)
         except ValueError:
             return f"SLA for {stage['name']} must be a whole number of days"
-        if days < 1:
-            return f"SLA for {stage['name']} must be at least 1 day"
+        if not 1 <= days <= MAX_SLA_DAYS:   # 3,000,000 broke the plan and reports; 2**70 overflowed SQLite (F-H2)
+            return f"SLA for {stage['name']} must be between 1 and {MAX_SLA_DAYS} days"
         updates.append((days, stage["id"]))
     for days, stage_id in updates:
         db.execute(f"UPDATE {table} SET sla_days = ? WHERE id = ?", (days, stage_id))

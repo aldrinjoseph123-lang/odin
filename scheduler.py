@@ -133,6 +133,9 @@ def run_due():
                         try:   # one failing step must not skip the others
                             step()
                         except Exception as exc:  # noqa: BLE001
+                            # ...nor leave half its work for the next step's commit to make permanent
+                            from db import get_db
+                            get_db().rollback()
                             print(f"[scheduler] housekeeping {step.__name__} failed: {exc}", file=sys.stderr)
         except Exception as exc:  # noqa: BLE001 — one failed job must not stop the clock
             print(f"[scheduler] {job} failed: {exc}", file=sys.stderr)
@@ -149,6 +152,11 @@ def healthy(max_age_minutes=3):
         return bool(row) and datetime.fromisoformat(row[0]) > _utcnow() - timedelta(minutes=max_age_minutes)
     except Exception:  # noqa: BLE001 — no database yet is simply "not healthy"
         return False
+
+
+def alert_quarter(now):
+    """Which quarter hour `now` is in: alerts are recorded once in each."""
+    return now.replace(minute=now.minute - now.minute % 15, second=0, microsecond=0)
 
 
 def sync_alerts():
@@ -196,13 +204,19 @@ if __name__ == "__main__":
         sys.exit(0)
     import threading
     threading.Thread(target=ai_worker, name="ai-worker", daemon=True).start()
-    first = True
+    synced = None   # the quarter hour alerts were last recorded in
     while True:
         try:
             run_due()
-            if first or _utcnow().minute % 15 == 0:
-                sync_alerts()
-            first = False
         except Exception as exc:  # noqa: BLE001 — a bad pass (e.g. the database mid-migration) must not end the service
             print(f"[scheduler] pass failed: {exc}", file=sys.stderr)
+        # alerts every quarter hour, on the first pass after each boundary
+        # even when a long job made this pass late, and whatever run_due did
+        quarter = alert_quarter(_utcnow())
+        if quarter != synced:
+            try:
+                sync_alerts()
+                synced = quarter
+            except Exception as exc:  # noqa: BLE001
+                print(f"[scheduler] alert sync failed: {exc}", file=sys.stderr)
         time.sleep(60 - _utcnow().second)   # wake on the minute

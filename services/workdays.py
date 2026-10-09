@@ -6,13 +6,14 @@ workspace says so (policy count_working_days); gaps between two dates
 "2026-12-02 National Day", or a span "2027-03-20 to 2027-03-22 Eid al-Fitr".
 """
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 
 from policies import WEEKDAYS, policy
 
 LINE = re.compile(r"(\d{4}-\d{2}-\d{2})(?:\s+to\s+(\d{4}-\d{2}-\d{2}))?(?:\s+(.*))?")
 MAX_SPAN = 31
+MAX_ADD = 40000   # working days: more than a century; a bigger count is a bad row, not a plan
 
 
 def parse_holidays(text):
@@ -55,24 +56,51 @@ def is_workday(d, cal):
 
 
 def add(start, n, cal):
-    """The date n working days after start (n <= 0: start itself)."""
-    if not cal[0]:   # no working day at all: fall back to calendar days
-        return start + timedelta(days=max(n, 0))
-    d = start
-    while n > 0:
-        d += timedelta(days=1)
-        if is_workday(d, cal):
-            n -= 1
-    return d
+    """The date n working days after start (n <= 0: start itself). Clamped to
+    MAX_ADD and to the last representable date, so one bad stored number can
+    never hang or crash a shared page."""
+    n = min(max(n, 0), MAX_ADD)
+    try:
+        if not cal[0]:   # no working day at all: fall back to calendar days
+            return start + timedelta(days=n)
+        d = start
+        while n > 0:
+            d += timedelta(days=1)
+            if is_workday(d, cal):
+                n -= 1
+        return d
+    except OverflowError:
+        return date.max
 
 
 def between(a, b, cal):
-    """Working days from a to b: those in (a, b], negative when b is before a."""
+    """Working days from a to b: those in (a, b], negative when b is before a.
+    Whole weeks are counted by arithmetic, so a far-off date costs nothing."""
     if not a or not b:
         return None
     if b < a:
         return -between(b, a, cal)
-    return sum(1 for i in range(1, (b - a).days + 1) if is_workday(a + timedelta(days=i), cal))
+    week, off = cal
+    weeks, rest = divmod((b - a).days, 7)
+    n = weeks * len(week) + sum(1 for i in range(1, rest + 1) if (a + timedelta(days=i)).weekday() in week)
+    return n - sum(1 for h in off if a < h <= b and h.weekday() in week)
+
+
+def elapsed(start, end, cal):
+    """Fractional working days from start to end (naive local datetimes): only
+    the hours that fall on a working day count, part days included, so the
+    figure never goes down as time passes. 0 when end is not after start."""
+    if not start or not end or end <= start:
+        return 0.0
+    if not cal[0]:
+        return (end - start).total_seconds() / 86400
+    if start.date() == end.date():
+        return (end - start).total_seconds() / 86400 if is_workday(start.date(), cal) else 0.0
+    first_midnight = datetime.combine(start.date() + timedelta(days=1), datetime.min.time())
+    last_midnight = datetime.combine(end.date(), datetime.min.time())
+    head = (first_midnight - start).total_seconds() / 86400 if is_workday(start.date(), cal) else 0.0
+    tail = (end - last_midnight).total_seconds() / 86400 if is_workday(end.date(), cal) else 0.0
+    return head + between(start.date(), end.date() - timedelta(days=1), cal) + tail
 
 
 def off_between(a, b, cal):
@@ -87,6 +115,15 @@ if __name__ == "__main__":
     assert between(date(2026, 11, 27), date(2026, 12, 4), week) == 4      # Mon, Tue, Thu, Fri
     assert between(date(2026, 12, 4), date(2026, 11, 27), week) == -4
     assert off_between(date(2026, 11, 27), date(2026, 12, 4), week) == 3  # Sat, Sun, Wed
+    for span in range(0, 40):                                                  # the arithmetic agrees with counting day by day
+        a = date(2026, 11, 20)
+        assert between(a, a + timedelta(days=span), week) == sum(is_workday(a + timedelta(days=i), week) for i in range(1, span + 1))
+    assert add(date(2026, 1, 1), 3_000_000, week) > date(2150, 1, 1)                # clamped, not hung
+    assert add(date(9999, 12, 1), 300, week) == date.max
+    thu = datetime(2026, 11, 26, 10)                                            # a Thursday, 10:00
+    assert round(elapsed(thu, datetime(2026, 11, 27, 23), week), 2) == 1.54   # Fri 23:00
+    assert elapsed(thu, datetime(2026, 11, 28, 1), week) == elapsed(thu, datetime(2026, 11, 29, 16), week)   # the weekend adds nothing
+    assert round(elapsed(datetime(2026, 11, 28, 10), datetime(2026, 11, 30, 10), week), 2) == 0.42          # Sat 10:00 → Mon 10:00
     assert parse_holidays("2027-03-20 to 2027-03-22 Eid\n\n2026-12-02 National Day")[0][2] == "National Day"
     for bad in ("02/12/2026 X", "2026-12-05 to 2026-12-01", "2026-01-01 to 2026-03-01"):
         try:

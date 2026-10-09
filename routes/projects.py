@@ -60,6 +60,7 @@ from db import (
     stage_rows,
     restore_deleted,
     soft_delete,
+    touch_project,
 )
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import sla_by_stage, stage_sla_state
@@ -76,7 +77,7 @@ SORT_COLUMNS = {
     "name": "p.name",
     "client": "p.client",
     "po_number": "p.po_number",
-    "stage": "p.stage",
+    "stage": "(SELECT ps.position FROM project_stages ps WHERE ps.project_id = p.id AND ps.name = p.stage)",   # by place in its own list, not A-Z
     "owner": "u.name",
     "mode": "p.delivery_mode",
     "vendor": "p.vendor_name",
@@ -343,6 +344,10 @@ def project_new():
         if first_stage is None:
             flash(f"Template '{template['name']}' has no stages yet", "error")
             return redirect(url_for("project_new"))
+        # one stage would be the finish line: the project would be born closed, never signed off (D13)
+        if db.execute("SELECT COUNT(*) FROM stage_template_stages WHERE template_id = ?", (template["id"],)).fetchone()[0] < 2:
+            flash(f"Template '{template['name']}' needs at least two stages: the work and the finish")
+            return redirect(url_for("project_new"))
 
         if not request.form.get("name", "").strip() or not request.form.get("client", "").strip():
             flash("Project name and client are required", "error")   # test report FN-5: edit refused this, create did not
@@ -427,9 +432,10 @@ def project_new():
             f"New project: {escape(name)}",
             f"Project '{escape(name)}' for {escape(request.form['client'])} was created"
             + (f" by {escape(session['user_name'])} and assigned to you." if lead_id != session["user_id"] else "."),
+            channels={"email": False, "teams": True},   # the named PM already had "You manage …" by email (D12)
         )
         flash("Project created")
-        return redirect(url_for("board"))
+        return redirect(url_for("project_detail", project_id=project_id))   # straight to the new rollout (P14)
     users = db.execute("SELECT * FROM users ORDER BY name").fetchall()
     source = None
     duplicate_of = request.args.get("from", type=as_id)
@@ -565,6 +571,8 @@ def project_edit(project_id):
         )
         if owner_id != project["owner_id"]:
             set_project_manager(db, project_id, owner_id, session["user_id"])
+        if not request.form.get("customer_approval"):   # no longer asking: an open request is moot (P7)
+            db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
         db.commit()
         if owner_id != project["owner_id"]:
             notify_users([owner_id], "assigned", project_id, f"You now manage {escape(name)}",
@@ -620,10 +628,16 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     if blocked := gate(project, new_stage):
         return blocked
     now = datetime.utcnow().isoformat()
-    db.execute(
-        "UPDATE projects SET stage = ?, updated_at = ?, stage_entered_at = ? WHERE id = ?",
-        (new_stage, now, now, project_id),
-    )
+    # compare-and-set: of two submits racing, only the first moves the project
+    # (a double click used to write two notes and notify twice; F-M5)
+    moved = db.execute(
+        "UPDATE projects SET stage = ?, updated_at = ?, stage_entered_at = ? WHERE id = ? AND stage = ? AND deleted_at IS NULL",
+        (new_stage, now, now, project_id, project["stage"]),
+    ).rowcount
+    if not moved:
+        db.rollback()
+        return f"The project has just moved; it is no longer in {project['stage']}"
+    terminal = new_stage == get_stage_names(project_id)[-1]
     cur = db.execute(
         "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id, prev_stage, prev_entered_at)"
         " VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
@@ -640,9 +654,12 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     )
     g.stage_note_id = cur.lastrowid
     g.stage_undo_url = url_for("undo_stage_change", project_id=project_id, note_id=cur.lastrowid)
+    # A newer change makes an undecided older request moot; closing asks for
+    # no approval (the sign-off is the customer's word on the finish, P7).
+    ask_customer = bool(project["customer_approval"]) and not terminal
     if project["customer_approval"]:
-        # A newer change makes an undecided older request moot.
         db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
+    if ask_customer:
         db.execute(
             "INSERT INTO stage_approvals (project_id, stage, requested_by, requested_at) VALUES (?, ?, ?, ?)",
             (project_id, new_stage, actor_name, now),
@@ -655,10 +672,10 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     body = (f"Stage moved to <b>{escape(new_stage)}</b> by {escape(actor_name)}."
             + (f"<br>{escape(note_text)}" if note_text else ""))
     ask = "<br>Please review and approve this step."
-    notify_event(project, f"Stage changed: {escape(project['name'])}", body + (ask if project["customer_approval"] else ""), channels={"email": False, "teams": True})
+    notify_event(project, f"Stage changed: {escape(project['name'])}", body + (ask if ask_customer else ""), channels={"email": False, "teams": True})
     # the customer is asked to approve as an approval (their own kind), everyone else hears of the move
     customers = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Customer'", (project_id,))] \
-        if project["customer_approval"] else []
+        if ask_customer else []
     team = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,)) if r[0] not in customers]
     notify_users(team, "stage", project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=actor_id)
     if customers:
@@ -691,8 +708,15 @@ def undo_stage_change(project_id, note_id):
     db.execute("UPDATE projects SET stage = ?, stage_entered_at = ?, updated_at = ? WHERE id = ?",
                (note["prev_stage"], note["prev_entered_at"] or now, now, project_id))
     db.execute("DELETE FROM status_notes WHERE id = ?", (note_id,))
-    # The approval this move asked for goes; the one it superseded comes back.
-    db.execute("DELETE FROM stage_approvals WHERE project_id = ? AND stage = ? AND requested_at = ?", (project_id, note["stage"], note["created_at"]))
+    # notes written since the move belong to the stage the project is back in;
+    # left tagged with the undone stage they made a phantom visit in the history (D8)
+    db.execute("UPDATE status_notes SET stage = ? WHERE project_id = ? AND prev_stage IS NULL AND stage = ? AND created_at >= ?",
+               (note["prev_stage"], project_id, note["stage"], note["created_at"]))
+    # The approval this move asked for goes — unless the customer already
+    # decided it: that record stays, superseded. The one it superseded comes back.
+    db.execute("DELETE FROM stage_approvals WHERE project_id = ? AND stage = ? AND requested_at = ? AND status = 'pending'", (project_id, note["stage"], note["created_at"]))
+    db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND stage = ? AND requested_at = ? AND status IN ('approved', 'declined')",
+               (project_id, note["stage"], note["created_at"]))
     db.execute(
         "UPDATE stage_approvals SET status = 'pending' WHERE id = (SELECT id FROM stage_approvals WHERE project_id = ? AND stage = ?"
         " AND status = 'superseded' AND requested_at < ? ORDER BY requested_at DESC LIMIT 1)",
@@ -730,6 +754,7 @@ def decide_approval(project_id, approval_id, decision, comment):
         "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id) VALUES (?, ?, ?, ?, ?, 1, ?)",
         (project_id, session["user_name"], f"{decision.capitalize()} {row['stage']}" + (f": {comment}" if comment else ""), project["stage"], now, session["user_id"]),
     )
+    touch_project(db, project_id)
     db.commit()
     audit_log("approval_decision", "project", project_id, project["name"], f"{row['stage']} {decision}")
     subject = f"{escape(project['name'])}: {escape(row['stage'])} {decision} by the customer"   # HTML in Teams and mail
@@ -818,6 +843,7 @@ def save_document(project_id, file, category, uploaded_by):
            VALUES (?, ?, ?, ?, ?, ?)""",
         (project_id, category, original_name, stored_name, uploaded_by, now),
     )
+    touch_project(db, project_id)
     db.commit()
 
     if get_setting("onedrive_mirror_uploads_enabled") == "1":
@@ -894,6 +920,7 @@ def document_delete(project_id, doc_id):
         flash("That is the signed sign-off copy — it is the record of acceptance and cannot be deleted")
         return redirect(url_for("project_detail", project_id=project_id))
     if doc is not None:
+        touch_project(db, project_id)
         soft_delete("documents", doc_id)
         audit_log("delete_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
         flash(Markup(f"Deleted {escape(doc['filename'])}. {undo_button('Undo', 'undo_document', doc_id=doc_id)} {undo_note()}"))
@@ -911,8 +938,10 @@ def project_delete(project_id):
     if not project:
         abort(404)
     soft_delete("projects", project_id)
-    soft_delete_query = "UPDATE documents SET deleted_at = ? WHERE project_id = ? AND deleted_at IS NULL"
-    db.execute(soft_delete_query, (datetime.utcnow().isoformat(), project_id))
+    # its documents carry the project's own stamp, so undo brings back these
+    # and not ones deleted on their own before (test report B4)
+    db.execute("UPDATE documents SET deleted_at = (SELECT deleted_at FROM projects WHERE id = ?) WHERE project_id = ? AND deleted_at IS NULL",
+               (project_id, project_id))
     db.commit()
     audit_log("delete_project", "project", project_id, project["name"])
     flash(Markup(f"Project deleted. {undo_button('Undo', 'undo_project', project_id=project_id)} {undo_note()}"))
@@ -1147,12 +1176,13 @@ def project_stage_sla(project_id):
 @permission_required("delete_project")
 @project_role_required("manage_project")
 def undo_project(project_id):
-    load_project(project_id, include_deleted=True)   # the row is deleted by definition
+    stamp = load_project(project_id, include_deleted=True)["deleted_at"]   # the row is deleted by definition
     if not restore_deleted("projects", project_id):
         flash("Too late to undo — the undo window has passed")
         return redirect(url_for("projects_list"))
     db = get_db()
-    db.execute("UPDATE documents SET deleted_at = NULL WHERE project_id = ?", (project_id,))
+    # only the documents that went with the project; one deleted on its own stays deleted
+    db.execute("UPDATE documents SET deleted_at = NULL WHERE project_id = ? AND deleted_at = ?", (project_id, stamp))
     db.commit()
     project = db.execute("SELECT name FROM projects WHERE id = ?", (project_id,)).fetchone()
     audit_log("restore_project", "project", project_id, project["name"])
@@ -1197,6 +1227,7 @@ def project_note(project_id):
         "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (project_id, session["user_name"], note_text, project["stage"], now, 1 if shared else 0, session["user_id"]),
     )
+    touch_project(db, project_id)
     db.commit()
     audit_log("add_project_note", "project", project_id, project["name"], ("[shared] " if shared and session.get("kind") != "external" else "") + note_text)
     # an internal note never reaches an outsider, mention or not: they would be mailed words they may not read
@@ -1384,6 +1415,7 @@ def task_add(project_id):
         (project_id, title, assignee_id, parse_date(form.get("due_date")),
          datetime.utcnow().isoformat(), session["user_name"], _task_stage(project_id, form.get("stage"))),
     )
+    touch_project(db, project_id)
     db.commit()
     _notify_assignee(assignee_id, project_id, title)
     audit_log("add_task", "project", project_id, None, title[:80])
@@ -1407,8 +1439,9 @@ def task_toggle(project_id, task_id):
         "UPDATE tasks SET done = ?, done_at = ? WHERE id = ?",
         (new_done, datetime.utcnow().isoformat() if new_done else None, task_id),
     )
+    touch_project(db, project_id)
     db.commit()
-    audit_log("toggle_task", "project", project_id, None, f"task_id={task_id}")
+    audit_log("toggle_task", "project", project_id, None, f"{'done' if new_done else 'reopened'}: {task['title'][:80]}")
     if new_done:
         _tell_pm(project, f"Task done on {escape(project['name'])}",
                  f"{escape(session['user_name'])} completed <b>{escape(task['title'])}</b>.")
@@ -1421,40 +1454,54 @@ def task_toggle(project_id, task_id):
 def task_delete(project_id, task_id):
     load_project(project_id)   # visibility decided in one place
     db = get_db()
+    task = db.execute("SELECT title FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     db.execute("DELETE FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id))
+    touch_project(db, project_id)
     db.commit()
-    audit_log("delete_task", "project", project_id, None, f"task_id={task_id}")
+    audit_log("delete_task", "project", project_id, None, task["title"][:80] if task else f"task {task_id} (already gone)")
     return _task_reply(project_id)
 
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/edit", methods=["POST"])
-@permission_required("edit_project")
-@project_role_required("manage_tasks")
+@login_required
 def task_edit(project_id, task_id):
     """Correct a task in place. Fixing a typo previously meant deleting the
-    task and retyping it, which also threw away its done state."""
+    task and retyping it, which also threw away its done state. Only the
+    fields sent change (title, assignee_id, due_date, stage): a JSON edit of
+    the title keeps the assignee and the due date (L14). Whoever may manage
+    tasks changes any field; the person the task is on, only its due date."""
     load_project(project_id)   # visibility decided in one place
     db = get_db()
-    task = db.execute("SELECT id, assignee_id, stage FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
+    task = db.execute("SELECT id, title, assignee_id, due_date, stage FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
     form = _task_input()
-    title = (form.get("title") or "").strip()[:200]
+    if not project_allows(project_id, "manage_tasks"):
+        if task["assignee_id"] != session["user_id"]:
+            abort(403)
+        # the assignee's own task: the page sends the whole task, so only a changed field other than the date is refused
+        same = {"title": (task["title"], lambda v: (v or "").strip()[:200]), "assignee_id": (task["assignee_id"], lambda v: int(v) if str(v or "").isdigit() else None),
+                "stage": (task["stage"], lambda v: v or None)}
+        if any(k in form and norm(form.get(k)) != old for k, (old, norm) in same.items()):
+            abort(403)
+    title = (form.get("title") or "").strip()[:200] if "title" in form else task["title"]
     if not title:
         return _task_reply(project_id, "Task needs a title")
-    assignee_id = _assignee(db, project_id, form.get("assignee_id"))
+    assignee_id = _assignee(db, project_id, form.get("assignee_id")) if "assignee_id" in form else task["assignee_id"]
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
+    due = parse_date(form.get("due_date")) if "due_date" in form else task["due_date"]
     stage = _task_stage(project_id, form.get("stage")) if "stage" in form else task["stage"]
     db.execute(
         "UPDATE tasks SET title = ?, assignee_id = ?, due_date = ?, stage = ? WHERE id = ?",
-        (title, assignee_id, parse_date(form.get("due_date")), stage, task_id),
+        (title, assignee_id, due, stage, task_id),
     )
+    touch_project(db, project_id)
     db.commit()
     # only ping on a genuine reassignment, not on every title tweak
     if assignee_id and str(assignee_id) != str(task["assignee_id"]):
         _notify_assignee(assignee_id, project_id, title)
-    audit_log("edit_task", "project", project_id, None, f"task_id={task_id}")
+    audit_log("edit_task", "project", project_id, None, title[:80] + (f" (was {task['title'][:60]})" if title != task["title"] else ""))
     return _task_reply(project_id)
 
 
@@ -1491,22 +1538,25 @@ def task_bulk(project_id):
 
     placeholders = ",".join("?" for _ in ids)
     if action == "delete":
-        db.execute(f"DELETE FROM tasks WHERE id IN ({placeholders})", ids)
-        message = f"Deleted {len(ids)} task(s)"
+        changed = db.execute(f"DELETE FROM tasks WHERE id IN ({placeholders})", ids).rowcount
+        message = f"Deleted {changed} task(s)"
     else:
         done = 1 if action == "complete" else 0
-        db.execute(
-            f"UPDATE tasks SET done = ?, done_at = ? WHERE id IN ({placeholders})",
-            [done, datetime.utcnow().isoformat() if done else None, *ids],
-        )
-        message = f"{'Completed' if done else 'Reopened'} {len(ids)} task(s)"
+        # only the tasks whose state changes: a task done last week keeps the day it was done (L13)
+        changed = db.execute(
+            f"UPDATE tasks SET done = ?, done_at = ? WHERE id IN ({placeholders}) AND done != ?",
+            [done, datetime.utcnow().isoformat() if done else None, *ids, done],
+        ).rowcount
+        message = f"{'Completed' if done else 'Reopened'} {changed} task(s)"
+    if changed:
+        touch_project(db, project_id)
     db.commit()
     flash(message)
-    audit_log("bulk_tasks", "project", project_id, None, request.form.get("action", ""))
-    if action == "complete":
+    audit_log("bulk_tasks", "project", project_id, None, f"{action}: {changed} task(s)")
+    if action == "complete" and changed:
         project = load_project(project_id)
-        _tell_pm(project, f"{len(ids)} task{'s' if len(ids) != 1 else ''} done on {escape(project['name'])}",
-                 f"{escape(session['user_name'])} completed {len(ids)} task{'s' if len(ids) != 1 else ''} at once.")
+        _tell_pm(project, f"{changed} task{'s' if changed != 1 else ''} done on {escape(project['name'])}",
+                 f"{escape(session['user_name'])} completed {changed} task{'s' if changed != 1 else ''} at once.")
     return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
 
 

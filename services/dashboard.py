@@ -18,8 +18,8 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 
 from db import PROJECT_OPEN_SQL, avatar_url, get_db, get_setting, get_stage_names, stages_for_projects
-from policies import local_today
-from services.alerts import build_alerts
+from policies import local_date, local_today
+from services.alerts import build_alerts, project_states
 from services.analytics import _parse, sla_by_stage, stage_sla_state
 
 COUNT_KEYS = ("active", "overdue", "over_sla", "due_soon", "awaiting", "idle")
@@ -147,6 +147,11 @@ def user_layout(user_id):
 
 # ---- data --------------------------------------------------------------------
 
+def _day(stamp):
+    d = local_date(stamp)
+    return d.isoformat() if d else None
+
+
 def tasks_due_by(db, until, scope=("", ()), limit=40):
     """Open tasks due on or before `until` (YYYY-MM-DD) on active rollouts,
     soonest first. Shared with the weekly report."""
@@ -165,8 +170,10 @@ def _counts(db, projects, alerts, scope):
         "SELECT COUNT(*) FROM stage_approvals a JOIN projects p ON p.id = a.project_id "
         "WHERE a.status = 'pending' AND a.stage = p.stage AND a.id = (SELECT MAX(id) FROM stage_approvals WHERE project_id = a.project_id) "
         f"AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql}", scope_params).fetchone()[0]
-    return {"active": len(projects), "overdue": len(alerts["project_overdue"]), "over_sla": len(alerts["stage_sla_breach"]),
-            "due_soon": len(alerts["project_due_soon"]), "awaiting": awaiting, "idle": len(alerts["stale"])}
+    # one state per rollout, as the Flow's chips and the state widget count them: an overdue rollout is not also "over SLA"
+    states = Counter(project_states(projects, alerts).values())
+    return {"active": len(projects), "overdue": states["overdue"], "over_sla": states["over_sla"],
+            "due_soon": states["due_soon"], "awaiting": awaiting, "idle": len(alerts["stale"])}
 
 
 def _active(db, scope):
@@ -226,7 +233,7 @@ def _activity(db, scope, limit=30):
 
 def _cycle(db, scope):
     """Lead time and throughput for the first stage template, as Cycle time shows them."""
-    from services.analytics import build_cycle_times
+    from services.analytics import build_cycle_times, clock
     scope_sql, scope_params = scope
     template = db.execute("SELECT id, name FROM stage_templates ORDER BY id LIMIT 1").fetchone()
     if not template:
@@ -238,7 +245,7 @@ def _cycle(db, scope):
     names = [r["name"] for r in db.execute("SELECT name FROM stage_template_stages WHERE template_id = ? ORDER BY position", (template["id"],))]
     if not names:
         return None
-    s = build_cycle_times(projects, notes, names, names[-1])
+    s = build_cycle_times(projects, notes, names, names[-1], clock=clock())
     return {"template": template["name"], "lead_avg": s["lead_avg"], "lead_median": s["lead_median"], "completed_count": s["completed_count"],
             "throughput": s["throughput"][-6:], "slowest": s["slowest"], "measured_projects": s["measured_projects"]}
 
@@ -263,13 +270,15 @@ def build(scope, user_id):
                          ((today - timedelta(days=7)).isoformat(),)).fetchone()
         if row:
             before, since = {k: row[k] for k in COUNT_KEYS}, row["day"]
-        for r in db.execute("SELECT * FROM portfolio_snapshots WHERE day > ? ORDER BY day", ((today - timedelta(days=HISTORY_DAYS)).isoformat(),)):
+        for r in db.execute("SELECT * FROM portfolio_snapshots WHERE day > ? AND day < ? ORDER BY day",
+                            ((today - timedelta(days=HISTORY_DAYS)).isoformat(), today.isoformat())):
             for k in COUNT_KEYS:
                 series[k].append({"day": r["day"], "v": r[k]})
+        for k in COUNT_KEYS:   # today's point is the live count, not the morning's snapshot
+            series[k].append({"day": today.isoformat(), "v": counts[k]})
 
-    stuck = {"overdue": {p["id"] for p in alerts["project_overdue"]}, "over_sla": {p["id"] for p in alerts["stage_sla_breach"]},
-             "due_soon": {p["id"] for p in alerts["project_due_soon"]}}
-    state = lambda p: next((k for k in ("overdue", "over_sla", "due_soon") if p["id"] in stuck[k]), "on_track")   # noqa: E731
+    states = project_states(projects, alerts)
+    state = lambda p: states[p["id"]]   # noqa: E731
     stage_lists = stages_for_projects(ids)
     team = _team_of(db, ids)
     done_steps = current_steps = pending_steps = 0
@@ -279,7 +288,7 @@ def build(scope, user_id):
         at = names.index(p["stage"]) if p["stage"] in names else 0
         done_steps += at; current_steps += 1; pending_steps += max(0, len(names) - 1 - at)
         timeline.append({"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
-                         "start_date": p["start_date"] or (p["created_at"] or "")[:10], "target_end_date": p["target_end_date"],
+                         "start_date": p["start_date"] or _day(p["created_at"]), "target_end_date": p["target_end_date"],
                          "state": state(p), "progress": (at / (len(names) - 1)) if len(names) > 1 else 0,
                          "team": team.get(p["id"], [])})
     timeline.sort(key=lambda r: (r["target_end_date"] or "9999", r["name"]))
@@ -294,8 +303,8 @@ def build(scope, user_id):
     detail = {
         "active": [row(p, STATE_LABEL[state(p)]) for p in projects],
         "overdue": [row(p, f"{(today - date.fromisoformat(p['target_end_date'])).days} d late") for p in alerts["project_overdue"]],
-        "over_sla": [row(p, f"{over_by(p)} d over SLA in {p['stage']}") for p in alerts["stage_sla_breach"]],
-        "due_soon": [row(p, f"due in {(date.fromisoformat(p['target_end_date']) - today).days} d") for p in alerts["project_due_soon"]],
+        "over_sla": [row(p, f"{over_by(p)} d over SLA in {p['stage']}") for p in alerts["stage_sla_breach"] if state(p) == "over_sla"],
+        "due_soon": [row(p, f"due in {(date.fromisoformat(p['target_end_date']) - today).days} d") for p in alerts["project_due_soon"] if state(p) == "due_soon"],
         "idle": [row(p, f"idle {int((now - (_parse(p['updated_at']) or now)).total_seconds() // 86400)} d") for p in alerts["stale"]],
     }
     total_steps = done_steps + current_steps + pending_steps

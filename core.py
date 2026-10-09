@@ -422,12 +422,14 @@ def nav_counts():
         return {"active_alert_count": 0, "my_open_task_count": 0, "unread_notifications": 0, "projects_nav_url": url_for("projects_list")}
     db = get_db()
     scope_sql, scope_params = project_scope()
+    from db import PROJECT_OPEN_SQL
     from services.notifications import visible_clause
     _bell = visible_clause(session.get("user_id"), session.get("kind"))
     return {
-        # alerts are internal (the alert list is staff only): an outsider's badge stays empty
+        # alerts are internal (the alert list is staff only): an outsider's badge stays empty;
+        # staff count the same rows as the Alerts page and My work: live, open projects only
         "active_alert_count": 0 if session.get("kind") == "external" else db.execute(
-            f"SELECT COUNT(*) AS count FROM alerts a JOIN projects p ON p.id = a.project_id WHERE a.resolved = 0{scope_sql}",
+            f"SELECT COUNT(*) AS count FROM alerts a JOIN projects p ON p.id = a.project_id WHERE a.resolved = 0 AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql}",
             scope_params,
         ).fetchone()["count"],
         "unread_notifications": db.execute(
@@ -435,7 +437,7 @@ def nav_counts():
         ).fetchone()[0],
         "my_open_task_count": db.execute(
             "SELECT COUNT(*) AS count FROM tasks t JOIN projects p ON p.id = t.project_id "
-            f"WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL{scope_sql}",
+            f"WHERE t.assignee_id = ? AND t.done = 0 AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql}",
             (session.get("user_id"), *scope_params),
         ).fetchone()["count"],
         # Nav link back into the project list restores the last filter/sort the

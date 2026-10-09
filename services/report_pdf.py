@@ -17,7 +17,14 @@ WIDTH = RIGHT - LEFT
 
 
 def _d(iso):
-    return date.fromisoformat(iso[:10]) if iso else None
+    """A date from a stored value, or None for one that is empty, malformed or
+    absurd: one bad task date must not take the whole PDF (and the weekly
+    email's attachments) down with it (P8)."""
+    try:
+        d = date.fromisoformat(str(iso)[:10]) if iso else None
+    except ValueError:
+        return None
+    return d if d and 1900 <= d.year <= 2200 else None
 
 
 def _fmt(iso):
@@ -144,22 +151,22 @@ class _Doc:
 def _gantt(doc, stages, today, target, customer=False):
     """Plan (outline), actual (solid), forecast (pale), baseline (thin grey), today and target lines."""
     c = doc.c
-    dates = [_d(x) for s in stages for x in (s.get("plan_start"), s.get("plan_end"), s.get("base_start"), s.get("base_end"),
-                                              s.get("actual_start"), s.get("actual_end"), s.get("forecast_start"), s.get("forecast_end")) if x]
+    dates = [d for s in stages for d in map(_d, (s.get("plan_start"), s.get("plan_end"), s.get("base_start"), s.get("base_end"),
+                                                 s.get("actual_start"), s.get("actual_end"), s.get("forecast_start"), s.get("forecast_end"))) if d]
     dates += [d for d in (_d(today), _d(target)) if d]
     if not dates:
         return
     t0, t1 = min(dates) - timedelta(days=3), max(dates) + timedelta(days=3)
     label_w, row_h = 118, 17
     track_x, track_w = LEFT + label_w, WIDTH - label_w
-    x = lambda d: track_x + track_w * ((d - t0).days / max(1, (t1 - t0).days))   # noqa: E731
+    x = lambda d: track_x + track_w * ((d - t0).days / max(1, (t1 - t0).days)) if d else track_x   # noqa: E731   (an unreadable date sits at the left edge)
     doc.room(22 + row_h * min(len(stages), 6))
     # month ticks
     m = date(t0.year, t0.month, 1)
     while m <= t1:
         if m >= t0:
             c.line(x(m), doc.y + 10, x(m), doc.y + 12 + row_h * len(stages), FAINT, 0.6)
-            c.text(x(m) + 2, doc.y, m.strftime("%b %y"), 7, False, MUTED)
+            c.text(x(m) + 2, doc.y, m.strftime("%b '%y"), 7, False, MUTED)
         m = date(m.year + (m.month == 12), m.month % 12 + 1, 1)
     top = doc.y + 12
     for i, s in enumerate(stages):
@@ -251,8 +258,8 @@ def render(data, words, tpl=None):
         if words.get("next_steps"):
             doc.heading("Next steps")
             doc.bullets([x for x in words["next_steps"].splitlines() if x.strip()])
-        if customer and (words.get("asks") or data["needs"].get("approval") or data["needs"].get("tasks")):
-            doc.heading("What we need from you")
+        if words.get("asks") or data["needs"].get("approval") or data["needs"].get("tasks"):   # the internal copy says it too (P23)
+            doc.heading("What we need from you" if customer else "What we need from the customer")
             asks = [x for x in (words.get("asks") or "").splitlines() if x.strip()]
             if data["needs"].get("approval"):
                 asks.append(f"Approve the {data['needs']['approval']['stage']} stage (asked {_fmt(data['needs']['approval']['requested_at'])}).")
@@ -360,17 +367,17 @@ def _roadmap(doc, rows, today):
     """One bar per rollout from its start to its forecast finish: done so far
     solid, the rest pale, the baseline finish as a tick, the target as a dashed tick."""
     c = doc.c
-    dates = [_d(x) for r in rows for x in (r["start"], r["forecast"], r["baseline"], r["target_end_date"]) if x] + [_d(today)]
+    dates = [d for r in rows for d in map(_d, (r["start"], r["forecast"], r["baseline"], r["target_end_date"])) if d] + [_d(today)]
     t0, t1 = min(dates) - timedelta(days=5), max(dates) + timedelta(days=5)
     label_w, row_h = 150, 16
     track_x, track_w = LEFT + label_w, WIDTH - label_w
-    x = lambda d: track_x + track_w * ((d - t0).days / max(1, (t1 - t0).days))   # noqa: E731
+    x = lambda d: track_x + track_w * ((d - t0).days / max(1, (t1 - t0).days)) if d else track_x   # noqa: E731
 
     def ticks():
         m = date(t0.year, t0.month, 1)
         while m <= t1:
             if m >= t0 and x(m) < RIGHT - 20:
-                c.text(x(m) + 2, doc.y, m.strftime("%b %y"), 7, False, MUTED)
+                c.text(x(m) + 2, doc.y, m.strftime("%b '%y"), 7, False, MUTED)
             m = date(m.year + (m.month == 12), m.month % 12 + 1, 1)
         doc.y += 12
     doc.room(40)

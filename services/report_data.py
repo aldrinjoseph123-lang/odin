@@ -19,12 +19,18 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 
 from db import get_db, participants_for
-from policies import local_today, policy
+from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
 from services.analytics import _parse
 
 AUDIENCES = ("internal", "customer")
+
+
+def _day(stamp):
+    """A stored UTC timestamp's workspace-local date, as 'YYYY-MM-DD' ('' when empty)."""
+    d = local_date(stamp)
+    return d.isoformat() if d else ""
 
 
 def _fmt(iso):
@@ -98,14 +104,15 @@ def build(project, audience="internal"):
     weeks, w = [], start - timedelta(days=start.weekday())
     while w <= today:
         end = (w + timedelta(days=7)).isoformat()
-        weeks.append({"week": w.isoformat(), "total": sum(1 for t in tasks if (t["created_at"] or "")[:10] < end),
-                      "done": sum(1 for t in tasks if t["done"] and (t["done_at"] or "")[:10] < end)})
+        weeks.append({"week": w.isoformat(), "total": sum(1 for t in tasks if _day(t["created_at"]) < end),
+                      "done": sum(1 for t in tasks if t["done"] and _day(t["done_at"]) < end)})
         w += timedelta(days=7)
 
-    # history: every stage with its dwell against the SLA; approvals; plan changes; notes
-    dwell = [{"stage": s["name"], "status": s["status"], "entered": s["actual_start"], "left": s["actual_end"], "days": s["actual_days"],
-              "sla": s["sla_days"], "over": (s["actual_days"] - s["sla_days"]) if s["actual_days"] is not None and s["sla_days"] and s["actual_days"] > s["sla_days"] else 0}
-             for s in p["stages"] if s["actual_start"]]
+    # history: every visit (revisits included) with its dwell against the SLA; approvals; plan changes; notes
+    sla_of = {s["name"]: s["sla_days"] for s in p["stages"]}
+    dwell = [{"stage": v["stage"], "status": "done" if v["left"] else "current", "entered": v["entered"], "left": v["left"], "days": v["days"],
+              "sla": sla_of.get(v["stage"]), "over": round(v["days"] - sla_of[v["stage"]], 1) if sla_of.get(v["stage"]) and v["days"] > sla_of[v["stage"]] else 0}
+             for v in p["visits"]]
     approvals = [dict(r) for r in db.execute(
         "SELECT stage, status, requested_by, requested_at, decided_by, decided_at, comment FROM stage_approvals WHERE project_id = ? AND status != 'superseded' ORDER BY id DESC", (pid,))]
     note_sql = "SELECT author, note, stage, created_at FROM status_notes WHERE project_id = ? AND prev_stage IS NULL" + (" AND guest_visible = 1" if audience == "customer" else "") + " ORDER BY created_at DESC LIMIT 15"

@@ -91,6 +91,12 @@ def restore_deleted(table, item_id):
     return bool(done)
 
 
+def touch_project(db, project_id):
+    """Work happened on the project (a note, a task, a document, the plan,
+    RAID, the sign-off): it is not idle. The caller commits."""
+    db.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (datetime.utcnow().isoformat(), project_id))
+
+
 def cleanup_soft_deletes(db=None):
     """Permanently remove rows older than the undo window, and everything that
     hangs off them.
@@ -109,31 +115,42 @@ def cleanup_soft_deletes(db=None):
         "SELECT id FROM projects WHERE deleted_at IS NOT NULL AND deleted_at < ?", (cutoff,)
     )]
 
-    # Delete the files backing any document that is about to disappear —
-    # whether it was deleted on its own or belongs to a project being purged.
+    # The files backing any document that is about to disappear — whether it
+    # was deleted on its own or belongs to a project being purged. They go
+    # only once the rows are gone for good (a failed purge keeps both).
     marks = ",".join("?" for _ in doomed)
     doomed_docs = db.execute(
         "SELECT project_id, stored_name FROM documents "
         f"WHERE (deleted_at IS NOT NULL AND deleted_at < ?){f' OR project_id IN ({marks})' if doomed else ''}",
         (cutoff, *doomed),
     ).fetchall()
+
+    # One transaction: children before parents, and all of it or none of it
+    # (test report B3: a partner with account managers failed the foreign key
+    # half way and left a half-committed purge).
+    try:
+        if doomed:
+            # a sign-up link that named the project keeps working, without the project
+            db.execute(f"UPDATE signup_links SET project_id = NULL, project_role = NULL WHERE project_id IN ({marks})", doomed)
+            db.execute(f"UPDATE lessons SET project_id = NULL WHERE project_id IN ({marks})", doomed)   # the lesson stays in the library
+            for table in ("doc_text", "ai_calls", "signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs", "ai_suggestions"):
+                db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
+
+        gone_docs = "SELECT id FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < ?"
+        db.execute(f"DELETE FROM doc_text WHERE document_id IN ({gone_docs})", (cutoff,))   # the text read from a document goes with it
+        db.execute(f"UPDATE signoffs SET document_id = NULL WHERE document_id IN ({gone_docs})", (cutoff,))   # a deleted signed copy
+        # a partner's account managers go with it, whether or not each was deleted on its own
+        db.execute("DELETE FROM partner_account_managers WHERE partner_id IN (SELECT id FROM partners WHERE deleted_at IS NOT NULL AND deleted_at < ?)", (cutoff,))
+        for table in ["partner_account_managers", "projects", "documents", "account_managers", "partners", "vendors", "products", "outsourcers"]:
+            db.execute(f"DELETE FROM {table} WHERE deleted_at IS NOT NULL AND deleted_at < ?", (cutoff,))
+
+        _purge_orphans(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     for project_id, stored_name in doomed_docs:
         _remove_upload(project_id, stored_name)
-
-    if doomed:
-        # a sign-up link that named the project keeps working, without the project
-        db.execute(f"UPDATE signup_links SET project_id = NULL, project_role = NULL WHERE project_id IN ({marks})", doomed)
-        db.execute(f"UPDATE lessons SET project_id = NULL WHERE project_id IN ({marks})", doomed)   # the lesson stays in the library
-        for table in ("doc_text", "ai_calls", "signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs", "ai_suggestions"):
-            db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
-
-    # the text read from a document goes with it
-    db.execute("DELETE FROM doc_text WHERE document_id IN (SELECT id FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < ?)", (cutoff,))
-    for table in ["projects", "documents", "account_managers", "partners", "partner_account_managers", "vendors", "products", "outsourcers"]:
-        db.execute(f"DELETE FROM {table} WHERE deleted_at IS NOT NULL AND deleted_at < ?", (cutoff,))
-
-    _purge_orphans(db)
-    db.commit()
 
 
 def _remove_upload(project_id, stored_name):
@@ -157,6 +174,8 @@ def _purge_orphans(db):
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
             f"AND {column} NOT IN (SELECT id FROM projects)"
         )
+    # an account that signed up through a project's link keeps no pointer to a project that is gone
+    db.execute("UPDATE users SET signup_project_id = NULL WHERE signup_project_id IS NOT NULL AND signup_project_id NOT IN (SELECT id FROM projects)")
     # Files are never swept here. A folder "not in the database" is also what
     # every upload looks like to an empty, missing or older database (a restore,
     # a volume mix-up), and deleting them then would destroy the documents.
@@ -602,6 +621,23 @@ def migrate_db(db):
     placeholders = ",".join("?" for _ in ALERT_TYPES)
     db.execute(f"DELETE FROM alert_type_settings WHERE alert_type NOT IN ({placeholders})", tuple(ALERT_TYPES))
     db.execute(f"DELETE FROM alerts WHERE alert_type NOT IN ({placeholders})", tuple(ALERT_TYPES))
+
+    # The lookups every page makes (audit viewer and retention, My work, the
+    # nav badges, approvals, purges): without these each scans its table.
+    for name, table, columns in (
+        ("idx_audit_logs_time", "audit_logs", "timestamp"),
+        ("idx_audit_logs_resource", "audit_logs", "resource_type, resource_id"),
+        ("idx_participants_user", "project_participants", "user_id"),
+        ("idx_tasks_assignee", "tasks", "assignee_id, done"),
+        ("idx_approvals_project", "stage_approvals", "project_id, id"),
+        ("idx_alerts_project", "alerts", "project_id"),
+        ("idx_notifications_project", "notifications", "project_id"),
+        ("idx_signoffs_document", "signoffs", "document_id"),
+        ("idx_ai_jobs_status", "ai_jobs", "status"),
+        ("idx_projects_owner", "projects", "owner_id"),
+        ("idx_projects_deleted", "projects", "deleted_at"),
+    ):
+        db.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({columns})")
 
     db.commit()
 
