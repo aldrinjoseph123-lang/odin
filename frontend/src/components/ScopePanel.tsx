@@ -22,9 +22,13 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
   const [edit, setEdit] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const load = useCallback(() => scopeItems(projectId).then(setD), [projectId])
-  useEffect(() => { void load() }, [load])
-  if (!d) return <p className="text-[13px] text-muted-foreground">Loading…</p>
+  const [failed, setFailed] = useState(false)
+  const load = useCallback(() => scopeItems(projectId).then((x) => { setD(x); setFailed(false) }), [projectId])
+  const first = useCallback(() => { setFailed(false); load().catch(() => setFailed(true)) }, [load])
+  useEffect(first, [first])
+  if (!d) return failed
+    ? <p className="flex items-center gap-2 text-[13px] text-muted-foreground" role="alert">Could not load the scope. <Button size="sm" variant="outline" onClick={first}>Try again</Button></p>
+    : <p className="text-[13px] text-muted-foreground">Loading…</p>
   const count = (s: ScopeStatus) => d.items.filter((i) => i.status === s).length
   const set = (patch: Partial<Draft>) => setEdit((x) => (x ? { ...x, ...patch } : x))
 
@@ -46,15 +50,15 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
         <div className={cn("mb-3 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-[13px]", signoffDone ? "bg-ok-soft" : signoff.in_stage ? "bg-warn-soft/60" : "bg-muted/60")}>
           <FileSignature className={cn("h-4 w-4", signoffDone ? "text-ok" : "text-muted-foreground")} aria-hidden />
           <span><span className="font-medium">Sign-off{signoff.version ? ` v${signoff.version}` : ""}:</span> {signoffText(signoff.status)}</span>
-          <Link to={`/projects/${projectId}/signoff`} className={cn(buttonVariants({ variant: signoff.in_stage && !signoffDone ? "default" : "outline", size: "sm" }), "ml-auto h-7 rounded-full")}>
+          {(signoff.status || d.can_edit) && <Link to={`/projects/${projectId}/signoff`} className={cn(buttonVariants({ variant: signoff.in_stage && !signoffDone ? "default" : "outline", size: "sm" }), "ml-auto h-7 rounded-full")}>
             {signoff.status ? "Open the sign-off" : "Prepare the sign-off"}
-          </Link>
+          </Link>}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2 text-[12px]">
         {d.items.length > 0 ? (["delivered", "partial", "descoped", "agreed"] as ScopeStatus[]).filter(count).map((s) =>
           <span key={s} className={cn("rounded-full px-2 py-1", SCOPE_TONE[s].replace("line-through", ""))}>{count(s)} {SCOPE_WORD[s].toLowerCase()}</span>)
-          : <span className="text-muted-foreground">What the customer agreed to, item by item. The sign-off lists it.</span>}
+          : <span className="text-muted-foreground">{d.can_edit ? "What the customer agreed to, item by item. The sign-off lists it." : "No scope recorded yet."}</span>}
         {d.can_edit && <Button size="sm" className="ml-auto rounded-full" onClick={() => { setError(null); setEdit({ title: "", status: "agreed" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
       {d.can_edit && <AISowPlan projectId={projectId} onAdded={() => void load()} />}

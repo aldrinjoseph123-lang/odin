@@ -227,7 +227,7 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
       <form onSubmit={submit} className="grid grid-cols-1 gap-4">
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
           {policies.map((p) => (
-            <div key={p.key} className={cn("grid content-start gap-1", (p.kind === "multi" || p.kind === "dates") && "md:col-span-2")}>
+            <div key={p.key} className={cn("grid min-w-0 content-start gap-1", (p.kind === "multi" || p.kind === "dates") && "md:col-span-2")}>
               {p.kind === "bool" ? (
                 <label className="flex items-start gap-2 text-[13px] font-medium">
                   <input type="checkbox" checked={!!v[p.key]} onChange={(e) => setV({ ...v, [p.key]: e.target.checked })} className="mt-1 h-3.5 w-3.5 accent-primary" />{p.label}
@@ -280,7 +280,7 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
                   })}
                 </fieldset>
               )}
-              {p.help && <p className="text-[12px] text-muted-foreground">{p.help}{p.kind === "int" && p.min != null ? ` ${p.min}–${p.max}.` : ""}</p>}
+              {p.help && <p className="text-[12px] text-muted-foreground wrap-anywhere">{p.help}{p.kind === "int" && p.min != null ? ` ${p.min}–${p.max}.` : ""}</p>}
             </div>
           ))}
         </div>
@@ -299,7 +299,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
   return (
     <>
       <Panel title="New token">
-        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then(() => setName("")) }} className="flex flex-wrap items-end gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then((r) => { if (r) setName("") }) }} className="flex flex-wrap items-end gap-2">
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">What uses it<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Valid for
             <select value={days} onChange={(e) => setDays(e.target.value)} className={selectClass}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
@@ -388,7 +388,7 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
   const status = !sso.configured ? "Not set up: staff sign in with a password." : sso.enforced ? "Required: staff sign in with Microsoft only." : "Set up: staff can use Microsoft or a password."
   return (
     <Panel title="Microsoft sign-in" hint="staff; partners keep their email link">
-      <form onSubmit={(e) => { e.preventDefault(); void send("/settings/sso", { ...f, ...(enforced ? { enforced: "on" } : {}) }).then(() => setF({ ...f, client_secret: "" })) }} className="grid grid-cols-1 gap-3">
+      <form onSubmit={(e) => { e.preventDefault(); void send("/settings/sso", { ...f, ...(enforced ? { enforced: "on" } : {}) }).then((r) => { if (r) setF({ ...f, client_secret: "" }) }) }} className="grid grid-cols-1 gap-3">
         <p className="text-[13px]">{status}</p>
         <div className="grid grid-cols-1 gap-1 text-[13px]">
           <span className="text-muted-foreground">Redirect URI to add to the app registration (Authentication → Web)</span>
@@ -445,7 +445,7 @@ function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData;
 function AddForm({ placeholder, label, button, busy, onSubmit }: { placeholder: string; label: string; button: string; busy: boolean; onSubmit: (name: string) => Promise<unknown> }) {
   const [name, setName] = useState("")
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void onSubmit(name.trim()).then(() => setName("")) }} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+    <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void onSubmit(name.trim()).then((r) => { if (r) setName("") }) }} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} aria-label={label} maxLength={80} className="h-8 w-full text-[13px] sm:w-72" />
       <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!name.trim()}>{button}</Button>
     </form>
@@ -531,7 +531,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
           <button type="button" onClick={() => setEditing(true)} className="ml-2 text-[12px] text-primary-text hover:underline">Edit</button></p>
       )}
       {editing && (
-        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/azure-app", app).then(() => setApp({ ...app, client_secret: "" })) }} className="mb-3 grid grid-cols-1 max-w-md gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/azure-app", app).then((r) => { if (r) setApp({ ...app, client_secret: "" }) }) }} className="mb-3 grid grid-cols-1 max-w-md gap-2">
           {!m.oauth_client_configured && <p className="text-[13px] text-muted-foreground">Enter the details of the app registration made once in the Azure portal (Microsoft Entra ID → App registrations): its tenant ID, client ID and a client secret.</p>}
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[13px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[13px]" /></label>

@@ -10,6 +10,8 @@ import { dayOf, fmtDate, monthTicks } from "@/lib/format"
 // that is running late shows its overrun past the plan in the warn colour.
 // Used on the project page, in the report and (drawn again) in its PDF.
 export function PlanGantt({ stages, today, target, compact = false }: { stages: PlanStage[]; today: string; target?: string | null; compact?: boolean }) {
+  // red only when the target has passed with work still open; otherwise the target is a quiet ink line
+  const overdue = !!target && target < today && stages.some((s) => s.status === "current" || s.status === "next")
   const all = stages.flatMap((s) => [s.plan_start, s.plan_end, s.base_start, s.base_end, s.actual_start, s.actual_end, s.forecast_start, s.forecast_end])
     .concat([today, target ?? null]).filter((x): x is string => !!x).map(dayOf)
   const t0 = Math.min(...all) - 3 * 864e5, t1 = Math.max(...all) + 3 * 864e5
@@ -40,11 +42,11 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
               <Tooltip>
                 <TooltipTrigger render={<div />} tabIndex={0} role="img" aria-label={label} className={cn("relative outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", row)}>
                   <span className="absolute inset-y-0 w-[1.5px] bg-primary/60" style={{ left: pct(today) }} aria-hidden />
-                  {target && <span className="absolute inset-y-0 w-0 border-l border-dashed border-bad-line" style={{ left: pct(target) }} aria-hidden />}
+                  {target && <span className={cn("absolute inset-y-0 w-0 border-l border-dashed", overdue ? "border-bad-line" : "border-foreground/60")} style={{ left: pct(target) }} aria-hidden />}
                   {s.base_start && s.base_end && <span className="absolute bottom-0.5 h-[3px] rounded-full bg-input" style={span(s.base_start, s.base_end)} aria-hidden />}
                   {s.plan_start && s.plan_end && <span className="absolute top-1/2 h-3.5 -translate-y-1/2 rounded-full border-[1.5px] border-primary/70" style={span(s.plan_start, s.plan_end)} aria-hidden />}
                   {s.actual_start && (s.actual_end || s.status === "current") && (
-                    <span className={cn("absolute top-1/2 h-2 -translate-y-1/2 rounded-full", late ? "bg-warn-line" : s.status === "current" ? "bg-primary" : "bg-foreground/70")} style={span(s.actual_start, s.actual_end ?? today)} aria-hidden />
+                    <span className={cn("absolute top-1/2 h-2 -translate-y-1/2 rounded-full", late ? "bg-warn-line" : s.status === "current" ? "bg-primary" : "bg-ok-line")} style={span(s.actual_start, s.actual_end ?? today)} aria-hidden />
                   )}
                   {s.forecast_start && s.forecast_end && (s.status === "next" || (s.status === "current" && s.forecast_end > today)) && (
                     <span className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full bg-primary/30" style={span(s.status === "current" ? today : s.forecast_start, s.forecast_end)} aria-hidden />
@@ -58,12 +60,12 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
       </div>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
         <li className="flex items-center gap-2"><span className="h-3 w-5 rounded-full border-[1.5px] border-primary/70" />Plan</li>
-        <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-foreground/70" />Actual</li>
+        <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-ok-line" />Done</li><li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-primary" />Actual, in progress</li>
         <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-primary/30" />Forecast</li>
         {stages.some((s) => s.base_start) && <li className="flex items-center gap-2"><span className="h-[3px] w-5 rounded-full bg-input" />Baseline</li>}
         <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-warn-line" />Running late</li>
         <li className="flex items-center gap-2"><span className="h-3 w-[1.5px] bg-primary/60" />Today</li>
-        {target && <li className="flex items-center gap-2"><span className="h-3 w-0 border-l border-dashed border-bad-line" />Target</li>}
+        {target && <li className="flex items-center gap-2"><span className={cn("h-3 w-0 border-l border-dashed", overdue ? "border-bad-line" : "border-foreground/60")} />{overdue ? "Target (passed)" : "Target"}</li>}
       </ul>
     </div>
   )

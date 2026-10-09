@@ -11,7 +11,7 @@ import { SCOPE_TONE, SCOPE_WORD } from "@/components/ScopePanel"
 import { SignaturePad, SignatureView } from "@/components/SignaturePad"
 import {
   ApiError, rejectSignoff, sendSignoff, signoff, signoffLink, signSignoff, uploadSignoff, waiveSignoff, withdrawSignoff,
-  type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User,
+  type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User, type SignoffLink,
 } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { TemplatePicker } from "@/components/TemplatePicker"
@@ -169,7 +169,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
 
 // Mail not connected, or the email went astray: a one-time link to hand over yourself.
 function SignerLink({ id, version, name }: { id: number; version: number; name: string }) {
-  const [link, setLink] = useState<{ link: string; minutes: number; email: string } | null>(null)
+  const [link, setLink] = useState<SignoffLink | null>(null)
   const [copied, setCopied] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   async function get() {
@@ -177,13 +177,15 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
     try { setLink(await signoffLink(id, version)) } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not make a link") }
   }
   async function copy() {
-    try { await navigator.clipboard.writeText(link!.link); setCopied(true) } catch { setErr("Select the link and copy it") }
+    try { await navigator.clipboard.writeText(link!.link ?? ""); setCopied(true) } catch { setErr("Select the link and copy it") }
   }
   return (
     <section className="panel grid grid-cols-1 gap-2 p-4">
       <h2 className="text-[13px] font-semibold">Send the link yourself</h2>
       <p className="text-[12px] text-muted-foreground">If {name} did not get the email, give them a one-time sign-in link that opens this sign-off.</p>
-      {link ? (
+      {link && !link.link ? (
+        <p className="text-[13px]" role="status">{link.message || (link.emailed ? `A new one-time link was emailed to ${link.email}.` : "No link was made.")}</p>
+      ) : link?.link ? (
         <>
           <input readOnly value={link.link} aria-label="Sign-in link for the signatory" onFocus={(e) => e.currentTarget.select()} className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
           <Button size="sm" variant="outline" className="rounded-full" onClick={copy}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy the link"}</Button>
@@ -217,7 +219,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
     setBusy(true); setErr(null)
     try {
       const r = await sendSignoff(id, { summary, delivered: toLines(delivered), outstanding: toLines(outstanding), terms: toLines(terms), signer_id: signer, counter_id: counter, template_id: template, ai_suggestion: aiDraft })
-      onSent(`Version ${r.version} sent to ${who?.name}. They get an email with a link to review and sign.`)
+      onSent(`Version ${r.version} sent to ${who?.name}. They get the link by email when mail is set up; otherwise make a one-time link below and pass it on.`)
     } catch (x) { setErr(x instanceof ApiError ? x.message : "That did not send"); setConfirming(false) } finally { setBusy(false) }
   }
   return (
@@ -238,14 +240,14 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
           </Section>
         ) : (
           <Section n title="What was delivered" sub="one per line; drafted from the stages, as no scope was recorded">
-            <textarea aria-label="What was delivered" rows={6} value={delivered} onChange={(e) => setDelivered(e.target.value)} className={area} />
+            <textarea aria-label="What was delivered" rows={6} maxLength={20000} value={delivered} onChange={(e) => setDelivered(e.target.value)} className={area} />
           </Section>
         )}
         <Section n title="Outstanding items" sub="one per line; open tasks and issues, drafted">
-          <textarea aria-label="Outstanding items" rows={4} value={outstanding} onChange={(e) => setOutstanding(e.target.value)} className={area} placeholder="None" />
+          <textarea aria-label="Outstanding items" rows={4} maxLength={20000} value={outstanding} onChange={(e) => setOutstanding(e.target.value)} className={area} placeholder="None" />
         </Section>
         <Section n title="Handover and support" sub="one per line">
-          <textarea aria-label="Handover and support" rows={3} value={terms} onChange={(e) => setTerms(e.target.value)} className={area} />
+          <textarea aria-label="Handover and support" rows={3} maxLength={20000} value={terms} onChange={(e) => setTerms(e.target.value)} className={area} />
         </Section>
         <Section n title="Acceptance" sub="set by an admin in Settings → Workflow"><p className="rounded-lg bg-muted/60 p-3 text-[14px] leading-relaxed">{draft.statement}</p></Section>
       </div>
@@ -259,7 +261,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
               {cand.signers.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
           </label>
-          {cand.signers.length === 0 && <p className="text-[12px] text-muted-foreground">Invite the customer's contact on the <Link to={`/projects/${id}`} className="underline">project page</Link> (Team → Invite, role Customer). They sign with a one-time link sent to their email.</p>}
+          {cand.signers.length === 0 && <p className="text-[12px] text-muted-foreground">Invite the customer's contact on the <Link to={`/projects/${id}`} className="underline">project page</Link> (Team → Invite, role Customer). They sign with a one-time link: by email when mail is set up, or one you pass on.</p>}
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Countersigns for us
             <select className={input} value={counter} onChange={(e) => setCounter(e.target.value ? Number(e.target.value) : "")}>
               {cand.countersigners.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
@@ -323,7 +325,7 @@ export default function Signoff(_props: { user: User }) {
     <div className="mx-auto w-full max-w-6xl px-5 pb-10 pt-2 print:max-w-none print:px-0">
       <PrintBrand />
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <Link to={`/projects/${id}`} className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" />{d.project.name}</Link>
+        <Link to={`/projects/${id}`} className="inline-flex min-w-0 max-w-full items-start gap-1 text-[13px] text-muted-foreground wrap-anywhere hover:text-foreground"><ChevronLeft className="mt-1 h-3.5 w-3.5 shrink-0" />{d.project.name}</Link>
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {d.versions.length > 0 && (
             <select value={v ?? ""} onChange={(e) => setParams(e.target.value ? { v: e.target.value } : {}, { replace: true })} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">

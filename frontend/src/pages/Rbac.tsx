@@ -23,7 +23,7 @@ export default function Rbac(_props: { user: User }) {
     try {
       // the route reads "<permission>::<role>" = "on"; locked cells are forced on server-side anyway
       const fields: Record<string, string> = {}
-      for (const p of data.permissions) for (const r of data.roles) if (matrix[p]?.[r] || data.locked[p]?.includes(r)) fields[`${p}::${r}`] = "on"
+      for (const p of data.permissions) for (const r of data.roles) if ((matrix[p]?.[r] || data.locked[p]?.includes(r)) && !data.forbidden?.[p]?.includes(r)) fields[`${p}::${r}`] = "on"
       const reply = await postForm("/settings/rbac", fields)
       setNotice(reply.messages.join(" ") || null)
       await load()
@@ -55,9 +55,10 @@ export default function Rbac(_props: { user: User }) {
                   <td className="px-3 py-2 text-[13px]">{words(p)}</td>
                   {data.roles.map((r) => {
                     const locked = data.locked[p]?.includes(r)
+                    const forbidden = !!data.forbidden?.[p]?.includes(r)   // the server never grants it to this role
                     return (
-                      <td key={r} className="px-3 py-2 text-center">
-                        <input type="checkbox" checked={locked || !!matrix[p]?.[r]} disabled={locked || busy} aria-label={`${words(p)}, allowed for ${r}`} className="h-3.5 w-3.5 accent-primary disabled:opacity-50"
+                      <td key={r} className="px-3 py-2 text-center" title={forbidden ? `${r} accounts can never have this` : undefined}>
+                        <input type="checkbox" checked={!forbidden && (locked || !!matrix[p]?.[r])} disabled={locked || forbidden || busy} aria-label={`${words(p)}, ${forbidden ? "never" : "allowed"} for ${r}`} className="h-3.5 w-3.5 accent-primary disabled:opacity-50"
                           onChange={(e) => setMatrix({ ...matrix, [p]: { ...matrix[p], [r]: e.target.checked } })} />
                       </td>
                     )

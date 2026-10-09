@@ -34,10 +34,10 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
             {names[s.id] !== undefined && names[s.id] !== s.name && <Button type="submit" size="sm" variant="outline" className="h-7" loading={busy}>Rename</Button>}
           </form>
           <span className="w-16 text-right text-[12px] text-muted-foreground">{s.name === current ? "current" : i === rows.length - 1 ? "closed" : ""}</span>
-          <button type="button" disabled={busy || s.name === current || rows.length <= 1} onClick={() => send(paths.remove(s.id), {}, `Delete stage ${s.name} from ${label}?`)} aria-label={`Delete ${s.name}`} className="text-muted-foreground hover:text-bad disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
+          <button type="button" disabled={busy || s.name === current || rows.length <= 1} onClick={() => send(paths.remove(s.id), {}, `Delete stage ${s.name} from ${label}?`)} aria-label={`Delete ${s.name}`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "ml-1 h-7 w-7 px-0 text-muted-foreground hover:text-bad")}><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
       ))}
-      <form onSubmit={(e) => { e.preventDefault(); if (newName.trim()) void send(paths.add, { name: newName.trim() }).then(() => setNewName("")) }} className="mt-1 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+      <form onSubmit={(e) => { e.preventDefault(); if (newName.trim()) void send(paths.add, { name: newName.trim() }).then((r) => { if (r) setNewName("") }) }} className="mt-1 flex flex-wrap items-center gap-2 border-t border-border pt-3">
         <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New stage name" aria-label={`New stage for ${label}`} maxLength={80} className="h-8 w-full text-[13px] sm:w-56" />
         <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!newName.trim()}>Add stage</Button>
         <span className="text-[12px] text-muted-foreground">Added before the last stage.</span>
@@ -47,7 +47,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
         <div className="flex flex-wrap gap-2">
           {rows.map((s) => (
             <label key={s.id} className="flex items-center gap-2 text-[13px]">
-              <span className="max-w-32 truncate text-muted-foreground">{s.name}</span>
+              <span className="max-w-32 truncate text-muted-foreground" title={s.name}>{s.name}</span>
               <Input type="number" min={1} value={slas[s.id] ?? ""} onChange={(e) => setSlas({ ...slas, [s.id]: e.target.value })} aria-label={`SLA days for ${s.name} in ${label}`} placeholder="—" className="h-7 w-16 text-[13px]" />
             </label>
           ))}

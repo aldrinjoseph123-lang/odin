@@ -13,7 +13,12 @@ export default function Analytics(_props: { user: User }) {
   const [d, setD] = useState<AnalyticsData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const tid = Number(params.get("template")) || null
-  useEffect(() => { document.title = "Cycle time · Odin"; analytics(tid).then(setD).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")) }, [tid])
+  useEffect(() => {
+    document.title = "Cycle time · Odin"
+    let live = true   // only the latest template's answer is shown
+    analytics(tid).then((x) => { if (live) setD(x) }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load") })
+    return () => { live = false }
+  }, [tid])
   if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const s = d.stats

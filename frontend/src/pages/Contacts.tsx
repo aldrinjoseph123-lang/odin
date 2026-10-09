@@ -15,7 +15,7 @@ function AddRow({ withEmail, placeholder, button, busy, onSubmit }: { withEmail:
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void onSubmit(withEmail ? { name: name.trim(), email } : { name: name.trim() }).then(() => { setName(""); setEmail("") }) }} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+    <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void onSubmit(withEmail ? { name: name.trim(), email } : { name: name.trim() }).then((r) => { if (r) { setName(""); setEmail("") } }) }} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} aria-label={placeholder} required className="h-8 w-52 text-[13px]" />
       {withEmail && <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" aria-label={`Email for new ${placeholder.toLowerCase()}`} className="h-8 w-52 text-[13px]" />}
       <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!name.trim()}>{button}</Button>

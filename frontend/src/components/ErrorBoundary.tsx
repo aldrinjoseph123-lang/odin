@@ -2,9 +2,11 @@ import { Component, type ErrorInfo, type ReactNode } from "react"
 
 // A render error in one page must not blank the whole app. The boundary
 // shows a way out and keeps the error in the console for whoever debugs it.
-export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+// `resetKey` (the path) clears the error when the person navigates away.
+export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: string }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
+  componentDidUpdate(prev: { resetKey?: string }) { if (this.state.failed && prev.resetKey !== this.props.resetKey) this.setState({ failed: false }) }
   componentDidCatch(error: Error, info: ErrorInfo) { console.error("Odin page error", error, info.componentStack) }
   render() {
     if (!this.state.failed) return this.props.children

@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { addTask, ApiError, cancelAIJob, closeAISuggestion, dismissAISuggestion, projectAI, requestProjectAI, type MinutesTask, type ProjectAI } from "@/lib/api"
 import { fmtDate } from "@/lib/format"
+import { usePoll } from "@/lib/usePoll"
 
 // Meeting notes to tasks: paste the minutes; the AI lists the actions agreed
 // in them, each with the words that say so. Owners come only from this
@@ -23,11 +24,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
   }, [projectId])
   useEffect(() => { void load() }, [load])
   const working = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  useEffect(() => {
-    if (!working) return
-    const t = window.setInterval(() => void load(), 4000)
-    return () => window.clearInterval(t)
-  }, [working, load])
+  usePoll(working, load)
   if (!s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   const lastJob = s.job && !working && s.job.created_at > (sug?.created_at ?? "") ? s.job : null
@@ -70,7 +67,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
       )}
       <div aria-live="polite" className="text-[13px]">
         {working && <div className="mt-2 flex items-center gap-3 text-muted-foreground">Reading the minutes… about a minute.
-          {s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load)}>Cancel</Button>}</div>}
+          {s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setNote(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}</div>}
         {lastJob?.status === "failed" && <p className="mt-2 text-bad">That did not finish: {lastJob.error}</p>}
         {lastJob?.result?.skipped && <p className="mt-2 text-muted-foreground">{lastJob.result.skipped}</p>}
         {note && <p className="mt-2 text-muted-foreground" role="status">{note}</p>}
@@ -94,7 +91,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
           )}
           <div className="mt-2 flex flex-wrap gap-2">
             {sug.payload.tasks.length > 0 && <Button size="sm" className="h-7" loading={busy} disabled={picked.size === 0} onClick={() => void add()}>Add {picked.size} task{picked.size === 1 ? "" : "s"}</Button>}
-            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void dismissAISuggestion(projectId, sug.id).then(load)}>{sug.payload.tasks.length ? "Dismiss" : "Clear"}</Button>
+            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void dismissAISuggestion(projectId, sug.id).then(load).catch((e: unknown) => setNote(e instanceof ApiError ? e.message : "That did not work"))}>{sug.payload.tasks.length ? "Dismiss" : "Clear"}</Button>
           </div>
         </div>
       )}

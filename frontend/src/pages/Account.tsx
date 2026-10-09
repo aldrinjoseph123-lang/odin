@@ -82,7 +82,7 @@ export default function Account(_props: { user: User }) {
           <div className="flex flex-wrap items-center gap-3">
             <UserAvatar name={me.name} url={me.avatar_url} className="h-14 w-14" textClass="text-[17px]" />
             <div className="grid grid-cols-1 gap-2">
-              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="text-[13px] file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-[13px] file:font-medium" />
+              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="text-[13px] text-muted-foreground file:mr-2 file:h-7 file:cursor-pointer file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-muted" />
               <div className="flex gap-2">
                 <Button type="submit" size="sm" variant="outline" loading={busy}>Upload</Button>
                 {me.avatar_url && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => send("/account/avatar/remove", {})}>Remove</Button>}

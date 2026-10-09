@@ -41,7 +41,9 @@ export default function Projects({ user }: { user: User }) {
   function pickLayout(l: Layout) { setLayout(l); try { localStorage.setItem("odin.projects.layout", l) } catch { /* private window: forgotten on reload, nothing lost */ } }
   const query = params.toString()
   useEffect(() => {
-    projects(query).then((d) => { setData(d); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load projects"))
+    let live = true   // a slower answer to an older query must not replace the newer one
+    projects(query).then((d) => { if (live) { setData(d); setError(null) } }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load projects") })
+    return () => { live = false }
   }, [query])
 
   // change some keys, drop the page (a new filter starts at the top)
@@ -70,10 +72,10 @@ export default function Projects({ user }: { user: User }) {
         <h1 className="text-[17px] font-semibold tracking-tight">Projects</h1>
         <p className="text-[13px] text-muted-foreground">{data.total} {filtered ? "matching" : activeView === "closed" ? "in total" : "active"}</p>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <span className="flex rounded-md border border-border" role="group" aria-label="Layout">
+          <span className="flex h-7 overflow-hidden rounded-md border border-border" role="group" aria-label="Layout">
             {([["table", List, "Table"], ["cards", LayoutGrid, "Cards"]] as const).map(([l, Icon, label]) => (
               <button key={l} type="button" onClick={() => pickLayout(l)} aria-pressed={layout === l} aria-label={label} title={label}
-                className={cn("flex h-7 w-8 items-center justify-center first:rounded-l-md last:rounded-r-md", layout === l ? "bg-foreground text-background" : "text-nav-fg hover:bg-muted")}>
+                className={cn("flex h-full w-8 items-center justify-center", layout === l ? "bg-foreground text-background" : "text-nav-fg hover:bg-muted")}>
                 <Icon className="h-3.5 w-3.5" />
               </button>
             ))}
@@ -124,8 +126,8 @@ export default function Projects({ user }: { user: User }) {
                 <li key={r.id} className="grid grid-cols-1 content-start gap-3 panel p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <a href={`/projects/${r.id}`} className="block truncate text-[14px] font-medium hover:underline">{r.name}</a>
-                      <p className="truncate text-[12px] text-muted-foreground">{r.client} · {r.owner_name}</p>
+                      <a href={`/projects/${r.id}`} title={r.name} className="block truncate text-[14px] font-medium hover:underline">{r.name}</a>
+                      <p className="truncate text-[12px] text-muted-foreground" title={`${r.client} · ${r.owner_name}`}>{r.client} · {r.owner_name}</p>
                     </div>
                     <TeamStack people={r.team} className="flex shrink-0" />
                   </div>
@@ -168,10 +170,11 @@ export default function Projects({ user }: { user: User }) {
               {data.rows.map((r) => (
                 <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted">
                   <td className="px-3 py-2">
-                    <a href={`/projects/${r.id}`} className="font-medium hover:underline">{r.name}</a>
-                    <span className="block text-[12px] text-muted-foreground sm:hidden">{r.client}</span>
+                    {/* a long unbroken name wraps anywhere rather than widening the table */}
+                    <a href={`/projects/${r.id}`} className="font-medium wrap-anywhere hover:underline">{r.name}</a>
+                    <span className="block text-[12px] text-muted-foreground wrap-anywhere sm:hidden">{r.client}</span>
                   </td>
-                  <td className="hidden px-3 py-2 sm:table-cell">{r.client}</td>
+                  <td className="hidden px-3 py-2 wrap-anywhere sm:table-cell">{r.client}</td>
                   <td className="hidden px-3 py-2 text-muted-foreground lg:table-cell">{r.po_number ?? "—"}</td>
                   <td className="px-3 py-2">
                     <a href={`/board?rollout=${r.id}`} className="flex items-center gap-3" title="Open on the flow">

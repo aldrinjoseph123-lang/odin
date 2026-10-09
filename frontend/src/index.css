@@ -204,6 +204,12 @@
   box-shadow: var(--elevation-card);
 }
 
+/* A sideways-scrolling strip of chips fades at both edges, so the cut-off
+   chip reads as "more this way". The fade sits inside the strip's padding. */
+@utility fade-x {
+  mask-image: linear-gradient(to right, transparent, var(--foreground) 16px, var(--foreground) calc(100% - 24px), transparent);   /* alpha only: any opaque token */
+}
+
 /* An invalid field (UI/UX plan 5.2): a red border and ring once the person
    has touched it or submitted, and the browser's own explanation under it
    (lib/fieldErrors.ts puts the note right after the field). Colour is never the only channel. */

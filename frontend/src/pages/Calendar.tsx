@@ -6,7 +6,7 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, calendar, type CalendarData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { fmtDate, addMonths, laneSpans, monthGrid, monthTitle } from "@/lib/format"
+import { fmtDate, addMonths, localToday, laneSpans, monthGrid, monthTitle } from "@/lib/format"
 
 // The Calendar view: a six-week grid of the month. Active rollouts run as
 // bars across their days at the top of each week; under them each day lists
@@ -48,14 +48,18 @@ function Chip({ it, full }: { it: Item; full?: boolean }) {
 
 export function Calendar({ wide }: { wide: boolean }) {
   const [params, setParams] = useSearchParams()
-  const month = /^\d{4}-\d{2}$/.test(params.get("month") ?? "") ? params.get("month")! : new Date().toISOString().slice(0, 7)
+  const month = /^\d{4}-\d{2}$/.test(params.get("month") ?? "") ? params.get("month")! : localToday().slice(0, 7)
   const setMonth = (m: string) => setParams((p) => { const n = new URLSearchParams(p); n.set("month", m); n.delete("day"); return n }, { replace: true })
   const openDay = params.get("day")
   const setOpenDay = (day: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (day) n.set("day", day); else n.delete("day"); return n }, { replace: true })
   const [d, setD] = useState<CalendarData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [show, setShow] = useState<Show>({ tasks: true, targets: true, history: true, spans: true })
-  useEffect(() => { calendar(month).then((x) => { setD(x); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load the calendar")) }, [month])
+  useEffect(() => {
+    let live = true   // paging months quickly: only the month on screen lands
+    calendar(month).then((x) => { if (live) { setD(x); setError(null) } }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load the calendar") })
+    return () => { live = false }
+  }, [month])
   const weeks = useMemo(() => monthGrid(month), [month])
   const byDay = useMemo(() => (d ? items(d, show) : new Map<string, Item[]>()), [d, show])
   if (error) return <LoadError message={error} />

@@ -42,7 +42,7 @@ export default function Login() {
     document.title = emergency ? "Emergency sign-in · Odin" : "Sign in · Odin"
     // e.g. "Your session has ended — please sign in again", queued before the redirect here
     session().then((s) => { setSignin(s.signin ?? { microsoft: false, microsoft_only: false }); if (s.messages?.length) setNotice(s.messages.join(" ")) })
-      .catch(() => setSignin({ microsoft: false, microsoft_only: false }))
+      .catch(() => { setSignin({ microsoft: false, microsoft_only: false }); setNotice("Odin is not answering just now (it may be restarting). Reload in a moment if signing in fails.") })
   }, [emergency])
   const showPassword = emergency || (signin !== null && !signin.microsoft_only)
   const microsoft = !emergency && !codeStep && !!signin?.microsoft

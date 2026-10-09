@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Ago } from "@/components/Ago"
 import { ApiError, cancelAIJob, projectAI, requestProjectAI, type AskAnswer, type ProjectAI } from "@/lib/api"
+import { usePoll } from "@/lib/usePoll"
 
 // Ask this rollout: a question answered only from the rollout's own records,
 // each sentence pointing at the passage it came from. Odin finds the
@@ -19,11 +20,7 @@ export function AIAsk({ projectId }: { projectId: number }) {
   }, [projectId])
   useEffect(() => { void load() }, [load])
   const working = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  useEffect(() => {
-    if (!working) return
-    const t = window.setInterval(() => void load(), 4000)
-    return () => window.clearInterval(t)
-  }, [working, load])
+  usePoll(working, load)
   if (!s || (!s.available && !s.suggestion)) return null
   const a = s.suggestion
   async function ask(e: FormEvent) {
@@ -43,7 +40,7 @@ export function AIAsk({ projectId }: { projectId: number }) {
         <form onSubmit={(e) => void ask(e)} className="mt-2 flex flex-wrap gap-2">
           <Input value={q} onChange={(e) => setQ(e.target.value)} maxLength={300} placeholder="e.g. Why did Design slip? What did the customer decide about phase 2?"
             aria-label="Question about this rollout" disabled={working} className="h-8 min-w-0 flex-1 text-[13px]" />
-          {working && s.job ? <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load)}>Cancel</Button>
+          {working && s.job ? <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>
             : <Button type="submit" size="sm" className="h-8" loading={busy} disabled={q.trim().length < 5}>Ask</Button>}
         </form>
       )}

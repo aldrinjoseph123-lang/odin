@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Ago } from "@/components/Ago"
-import { cancelAIJob, projectAI, requestProjectAI, type CatchUp, type ProjectAI } from "@/lib/api"
+import { ApiError, cancelAIJob, projectAI, requestProjectAI, type CatchUp, type ProjectAI } from "@/lib/api"
+import { usePoll } from "@/lib/usePoll"
 
 // Catch me up: a one-page brief on this rollout for whoever takes it over or
 // joins. Who waits on whom is Odin's own list; the rest is written by the AI
@@ -10,17 +11,14 @@ import { cancelAIJob, projectAI, requestProjectAI, type CatchUp, type ProjectAI 
 export function AICatchUp({ projectId }: { projectId: number }) {
   const [s, setS] = useState<ProjectAI<CatchUp> | null>(null)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const load = useCallback(async () => {
     try { setS(await projectAI<CatchUp>(projectId, "catch_up")) } catch { setS(null) }
   }, [projectId])
   useEffect(() => { void load() }, [load])
   const working = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  useEffect(() => {
-    if (!working) return
-    const t = window.setInterval(() => void load(), 5000)
-    return () => window.clearInterval(t)
-  }, [working, load])
+  usePoll(working, load, 5000)
   if (!s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   async function ask() {
@@ -42,8 +40,9 @@ export function AICatchUp({ projectId }: { projectId: number }) {
         </h2>
         {sug && !working && <Button size="sm" variant="ghost" className="h-7" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide" : "Show"}</Button>}
         {s.available && !working && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void ask()}>{sug ? "Brief me again" : "Brief me"}</Button>}
-        {working && s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load)}>Cancel</Button>}
+        {working && s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
       </div>
+      {error && <p className="mt-2 text-[13px] text-bad" role="alert">{error}</p>}
       {sug && open && !working && (
         <div className="mt-3 grid grid-cols-1 gap-3 text-[13px] leading-relaxed lg:grid-cols-2 [&>*]:min-w-0">
           <div className="grid grid-cols-1 content-start gap-2">
