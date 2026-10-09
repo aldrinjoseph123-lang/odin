@@ -27,6 +27,7 @@ const PAGES: { path: string; h1: RegExp; who?: Who[] }[] = [
   { path: "/settings/workflow", h1: /workflow/i, who: ["admin"] },
   { path: "/settings/notifications", h1: /Notifications/, who: ["admin"] },
   { path: "/settings/integrations", h1: /Integrations/, who: ["admin"] },
+  { path: "/settings/ai", h1: /^AI$/, who: ["admin"] },
   { path: "/settings/reports", h1: /Reports/, who: ["admin"] },
   { path: "/settings/backups", h1: /Backups/, who: ["admin"] },
   { path: "/settings/documents", h1: /Documents/, who: ["admin"] },
@@ -126,6 +127,16 @@ test("@smoke @phoneonly the header folds into a menu that reaches every page", a
   await page.keyboard.press("Escape")
   await expect(menu).toHaveAttribute("aria-expanded", "false")
   await expect(menu).toBeFocused()
+  // a tap outside closes it (V16)
+  await menu.click()
+  await page.mouse.click(8, page.viewportSize()!.height - 8)
+  await expect(menu).toHaveAttribute("aria-expanded", "false")
+  // the notifications list stays inside the window (V1)
+  await page.getByRole("button", { name: /^Notifications/ }).click()
+  const box = (await page.getByRole("dialog", { name: "Notifications" }).boundingBox())!
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  await page.keyboard.press("Escape")
   await menu.click()
   await page.getByRole("navigation").getByRole("link", { name: /^Flow/ }).click()
   await expect(page).toHaveURL(/\/board/)

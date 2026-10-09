@@ -1,6 +1,7 @@
 """User administration: create users, set role/active/email, reset passwords.
 All gated on manage_users. Imported for route registration side effects.
 """
+import re
 from datetime import datetime
 
 from flask import abort, flash, redirect, render_template, request, session, url_for
@@ -34,25 +35,29 @@ def users():
         return spa_index()
     db = get_db()
     if request.method == "POST":
-        username = request.form["username"].strip()
-        name = request.form["name"].strip()
+        username = request.form.get("username", "").strip()
+        name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip()
-        password = request.form["password"]
-        role = request.form.get("role", "Member")
-        if role not in ROLES or role == "External":   # staff accounts; partners are invited to a project instead
-            role = "Member"
+        password = request.form.get("password", "")
+        role = request.form.get("role") or "Member"
         existing = db.execute("SELECT id FROM users WHERE lower(username) = lower(?)", (username,)).fetchone()   # "Pm1" is "pm1"
         problem = password_problem(password)
         if not username or not name:
-            flash("Username and name are required")
+            flash("Username and name are required", "error")
+        elif not re.fullmatch(r"[A-Za-z0-9._@-]{1,64}", username):
+            flash("Username: up to 64 letters, digits, dots, dashes, underscores or @", "error")
+        elif len(name) > 120 or any(ord(ch) < 32 for ch in name):
+            flash("Name: one line, at most 120 characters", "error")
+        elif role not in ROLES or role == "External":   # staff accounts; partners are invited to a project instead
+            flash(f"Pick a role: {', '.join(r for r in ROLES if r != 'External')}", "error")
         elif existing:
-            flash("Username already exists")
+            flash("Username already exists", "error")
         elif email and not valid_email(email):
-            flash("Enter a valid email address")
+            flash("Enter a valid email address", "error")
         elif email and _email_taken(db, email):
-            flash("That address belongs to another account")
+            flash("That address belongs to another account", "error")
         elif problem:
-            flash(problem)
+            flash(problem, "error")
         else:
             cursor = db.execute(
                 # an admin-set password is temporary: the person sets their own at first sign-in
@@ -94,10 +99,10 @@ def users_export():
 def user_set_role(user_id):
     role = request.form.get("role", "")
     if role not in ROLES:
-        flash("Invalid role")
+        flash("Invalid role", "error")
         return redirect(url_for("users"))
     if user_id == session["user_id"] and role != "Admin":
-        flash("You cannot remove your own Admin role")
+        flash("You cannot remove your own Admin role", "error")
         return redirect(url_for("users"))
     db = get_db()
     user = _user_or_404(db, user_id)
@@ -105,7 +110,7 @@ def user_set_role(user_id):
         abort(404)
     if (role == "External") != (user["kind"] == "external"):
         # the role follows the kind of account: partners stay External, staff never become it
-        flash("External is the role of partner accounts only; staff take Admin, Member, Contributor or Viewer")
+        flash("External is the role of partner accounts only; staff take Admin, Member, Contributor or Viewer", "error")
         return redirect(url_for("users"))
     # the role rides in the session cookie: end their sessions so it takes effect now, not at their next sign-in
     db.execute("UPDATE users SET role = ?, session_epoch = session_epoch + 1 WHERE id = ?", (role, user_id))
@@ -119,7 +124,7 @@ def user_set_role(user_id):
 @permission_required("manage_users")
 def user_set_active(user_id):
     if user_id == session["user_id"]:
-        flash("You cannot deactivate your own account")
+        flash("You cannot deactivate your own account", "error")
         return redirect(url_for("users"))
     active = 1 if request.form.get("active") == "1" else 0
     db = get_db()
@@ -136,12 +141,12 @@ def user_set_active(user_id):
 @permission_required("manage_users")
 def user_reset_password(user_id):
     if _user_or_404(get_db(), user_id)["kind"] == "external":
-        flash("External accounts sign in by email link — nothing to reset")
+        flash("External accounts sign in by email link — nothing to reset", "error")
         return redirect(url_for("users"))
     new_password = request.form.get("new_password", "")
     problem = password_problem(new_password)
     if problem:
-        flash(problem)
+        flash(problem, "error")
         return redirect(url_for("users"))
     db = get_db()
     user = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -162,12 +167,12 @@ def user_reset_password(user_id):
 def user_set_email(user_id):
     email = request.form.get("email", "").strip()
     if email and not valid_email(email):
-        flash("Enter a valid email address")
+        flash("Enter a valid email address", "error")
         return redirect(url_for("users"))
     db = get_db()
     user = _user_or_404(db, user_id)
     if email and _email_taken(db, email, user_id):
-        flash("That address belongs to another account")
+        flash("That address belongs to another account", "error")
         return redirect(url_for("users"))
     db.execute("UPDATE users SET email = ? WHERE id = ?", (email or None, user_id))
     db.commit()

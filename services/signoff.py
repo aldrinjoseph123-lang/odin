@@ -16,10 +16,10 @@ completes a version, the project cannot reach its terminal stage
 """
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from constants import SIGNOFF_STAGE
-from db import get_db, get_stage_names, get_terminal_stage, participants_for
+from db import get_db, get_stage_names, get_terminal_stage, participants_for, touch_project
 from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
@@ -69,6 +69,7 @@ def add_scope(project_id, fields, author):
     now = _now()
     cur = db.execute("INSERT INTO scope_items (project_id, position, title, detail, status, note, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                      (project_id, pos, fields["title"], fields["detail"], fields["status"], fields["note"], author, now, now))
+    touch_project(db, project_id)
     db.commit()
     return cur.lastrowid
 
@@ -221,17 +222,39 @@ def draft(project, template_id=None):
             "terms": [x for x in terms.splitlines() if x.strip()], "scope": items, "statement": tpl["texts"].get("statement") or policy("signoff_statement")}
 
 
-def _lines(value, limit=40, width=500):
+def _lines(value, label, limit=40, width=500):
+    """The non-empty lines of a list or text; more than `limit` is refused,
+    never cut silently (D6): a signed document must say everything it was sent with."""
     if isinstance(value, str):
         value = value.splitlines()
-    return [str(x).strip()[:width] for x in (value or []) if str(x).strip()][:limit]
+    out = [str(x).strip()[:width] for x in (value or []) if str(x).strip()]
+    if len(out) > limit:
+        raise ValueError(f"At most {limit} lines under {label} (this has {len(out)}); group them or attach the full list as a document")
+    return out
 
 
-def send(project, body, author):
-    """Freeze a new version and send it for signature. Returns the row or raises ValueError."""
+def sendable(project):
+    """Why the sign-off cannot be sent from the project's stage, or None. It
+    is sent from the stage before the finish (or the Sign-off stage), so a
+    project cannot jump from its first stage to Closed (D5/L22)."""
+    names = get_stage_names(project["id"])
+    if len(names) < 2:
+        return "The project needs a stage before its finish to send a sign-off from"
+    if project["stage"] in (names[-2], SIGNOFF_STAGE) and project["stage"] != names[-1]:
+        return None
+    return f"Send the sign-off once the project is in {names[-2]}, the stage before {names[-1]}"
+
+
+def send(project, body, author, commit=True):
+    """Freeze a new version and send it for signature. Returns the row or
+    raises ValueError. With commit=False the caller commits (and may add to
+    the same transaction)."""
     pid = project["id"]
     if completed(pid):
         raise ValueError("This project is already signed off")
+    why = sendable(project)
+    if why:
+        raise ValueError(why)
     signers, counters = candidates(pid)
     signer = next((s for s in signers if s["id"] == body.get("signer_id")), None)
     counter = next((s for s in counters if s["id"] == body.get("counter_id")), None)
@@ -245,7 +268,7 @@ def send(project, body, author):
     summary = str(body.get("summary") or "").strip()[:4000]
     if not summary:
         raise ValueError("Write the summary")
-    delivered = _lines(body.get("delivered"))
+    delivered = _lines(body.get("delivered"), "Delivered")
     if not items and not delivered:
         raise ValueError("List what was delivered, or record the scope")
     from services.doc_templates import fill, resolve
@@ -255,19 +278,28 @@ def send(project, body, author):
         "template": tpl, "intro": fill(tpl["texts"].get("intro"), values).strip(), "closing": fill(tpl["texts"].get("closing"), values).strip(),
         "project": _meta(project), "summary": summary,
         "scope": [{"title": x["title"], "detail": x["detail"], "status": x["status"], "note": x["note"]} for x in items],
-        "delivered": [] if items else delivered, "outstanding": _lines(body.get("outstanding")), "terms": _lines(body.get("terms")),
+        "delivered": [] if items else delivered, "outstanding": _lines(body.get("outstanding"), "Outstanding"), "terms": _lines(body.get("terms"), "Terms"),
         "statement": fill(tpl["texts"].get("statement"), values).strip() or policy("signoff_statement"),
         "signer": {"name": signer["name"], "email": signer["email"], "role": signer["role"]},
         "countersigner": {"name": counter["name"], "role": counter["role"]},
         "prepared_by": author, "prepared_at": _now(),
     }
     db = get_db()
+    if not db.in_transaction:
+        db.execute("BEGIN IMMEDIATE")   # one sender at a time: the check below and the insert are one step
+    # a double submit (two clicks, two tabs) sends one version, not two (F-M5)
+    last = latest(pid)
+    if last and last["status"] == "sent" and last["created_by"] == author and last["created_at"] >= (datetime.utcnow() - timedelta(seconds=10)).isoformat():
+        db.rollback()
+        raise ValueError(f"Version {last['version']} was sent a moment ago")
     version = db.execute("SELECT COALESCE(MAX(version), 0) + 1 FROM signoffs WHERE project_id = ?", (pid,)).fetchone()[0]
     db.execute(f"UPDATE signoffs SET status = 'withdrawn' WHERE project_id = ? AND status IN ({','.join('?' * len(OPEN))})", (pid, *OPEN))
     db.execute("INSERT INTO signoffs (project_id, version, status, content, content_hash, created_by, created_at, signer_id, signer_email, counter_id) "
                "VALUES (?, ?, 'sent', ?, ?, ?, ?, ?, ?, ?)",
                (pid, version, canonical(content), fingerprint(content), author, content["prepared_at"], signer["id"], signer["email"], counter["id"]))
-    db.commit()
+    touch_project(db, pid)
+    if commit:
+        db.commit()
     return get(pid, version)
 
 
@@ -315,8 +347,12 @@ def sign(row, body, ip, agent):
     name, title = _who(body)
     signature = clean_signature(body)
     db = get_db()
-    db.execute("UPDATE signoffs SET status = 'signed', signer_name = ?, signer_title = ?, signed_at = ?, signed_ip = ?, signed_agent = ?, signature = ? WHERE id = ? AND status = 'sent'",
-               (name, title, _now(), ip, (agent or "")[:300], signature, row["id"]))
+    done = db.execute("UPDATE signoffs SET status = 'signed', signer_name = ?, signer_title = ?, signed_at = ?, signed_ip = ?, signed_agent = ?, signature = ? WHERE id = ? AND status = 'sent'",
+                      (name, title, _now(), ip, (agent or "")[:300], signature, row["id"])).rowcount
+    if not done:   # signed or withdrawn a moment ago, by another request
+        db.rollback()
+        raise ValueError("This version is not waiting for a signature")
+    touch_project(db, row["project_id"])
     db.commit()
 
 
@@ -329,8 +365,12 @@ def countersign(row, body, ip, agent):
     signature = clean_signature(body)
     now = _now()
     db = get_db()
-    db.execute("UPDATE signoffs SET status = 'countersigned', counter_name = ?, counter_title = ?, counter_signed_at = ?, counter_ip = ?, counter_agent = ?, "
-               "counter_signature = ?, completed_at = ? WHERE id = ? AND status = 'signed'", (name, title, now, ip, (agent or "")[:300], signature, now, row["id"]))
+    done = db.execute("UPDATE signoffs SET status = 'countersigned', counter_name = ?, counter_title = ?, counter_signed_at = ?, counter_ip = ?, counter_agent = ?, "
+                      "counter_signature = ?, completed_at = ? WHERE id = ? AND status = 'signed'", (name, title, now, ip, (agent or "")[:300], signature, now, row["id"])).rowcount
+    if not done:
+        db.rollback()
+        raise ValueError("This version is not waiting for our countersignature")
+    touch_project(db, row["project_id"])
     db.commit()
 
 
@@ -343,7 +383,12 @@ def reject(project, row, comment, author):
         raise ValueError("Say what needs to change before you can sign")
     now = _now()
     db = get_db()
-    db.execute("UPDATE signoffs SET status = 'rejected', reject_comment = ?, rejected_at = ? WHERE id = ?", (comment, now, row["id"]))
+    # only a version still waiting: never overwrite one signed meanwhile, and one issue per rejection (F-M4)
+    done = db.execute("UPDATE signoffs SET status = 'rejected', reject_comment = ?, rejected_at = ? WHERE id = ? AND status = 'sent'", (comment, now, row["id"])).rowcount
+    if not done:
+        db.rollback()
+        raise ValueError("This version is not waiting for a signature")
+    touch_project(db, project["id"])
     db.commit()
     raid_service.create(project["id"], {"kind": "issue", "title": f"Sign-off v{row['version']} not accepted"[:200], "detail": f"{author}: {comment}",
                                         "impact": "medium", "likelihood": None, "status": "open", "owner_id": project["owner_id"], "due_date": None,
@@ -354,7 +399,9 @@ def withdraw(row):
     if row["status"] not in OPEN:
         raise ValueError("Only a version waiting for signatures can be withdrawn")
     db = get_db()
-    db.execute("UPDATE signoffs SET status = 'withdrawn' WHERE id = ? AND status IN ('sent', 'signed')", (row["id"],))
+    if not db.execute("UPDATE signoffs SET status = 'withdrawn' WHERE id = ? AND status IN ('sent', 'signed')", (row["id"],)).rowcount:
+        raise ValueError("Only a version waiting for signatures can be withdrawn")
+    touch_project(db, row["project_id"])
     db.commit()
 
 
@@ -364,8 +411,11 @@ def record_upload(row, document_id, name, title, signed_on):
         raise ValueError("Upload the signed copy of a version that is waiting for signatures")
     now = _now()
     db = get_db()
-    db.execute("UPDATE signoffs SET status = 'uploaded', document_id = ?, signer_name = COALESCE(signer_name, ?), signer_title = COALESCE(signer_title, ?), "
-               "signed_at = COALESCE(signed_at, ?), completed_at = ? WHERE id = ? AND status IN ('sent', 'signed')", (document_id, name, title, signed_on, now, row["id"]))
+    if not db.execute("UPDATE signoffs SET status = 'uploaded', document_id = ?, signer_name = COALESCE(signer_name, ?), signer_title = COALESCE(signer_title, ?), "
+                      "signed_at = COALESCE(signed_at, ?), completed_at = ? WHERE id = ? AND status IN ('sent', 'signed')",
+                      (document_id, name, title, signed_on, now, row["id"])).rowcount:
+        raise ValueError("Upload the signed copy of a version that is waiting for signatures")
+    touch_project(db, row["project_id"])
     db.commit()
 
 
@@ -386,6 +436,7 @@ def waive(project, reason, author):
     db.execute("INSERT INTO signoffs (project_id, version, status, content, content_hash, created_by, created_at, waiver_reason, waived_by, completed_at) "
                "VALUES (?, ?, 'waived', ?, ?, ?, ?, ?, ?, ?)",
                (project["id"], version, canonical(content), fingerprint(content), author, content["prepared_at"], reason, author, content["prepared_at"]))
+    touch_project(db, project["id"])
     db.commit()
     return get(project["id"], version)
 

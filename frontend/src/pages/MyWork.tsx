@@ -4,7 +4,8 @@ import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide
 import { buttonVariants } from "@/components/ui/button"
 import { Stepper } from "@/components/Stepper"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
-import { ApiError, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
+import { ApiError, editTask, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
+import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
 import { fmtDate, lateBy, stateText } from "@/lib/format"
@@ -37,6 +38,23 @@ function groupTasks(tasks: WorkTask[], today: string): Group[] {
   return groups.filter((x) => x.tasks.length > 0)
 }
 
+// The due date as a button; a click turns it into a date field that saves on change.
+function DueButton({ t, late, busy, onChange }: { t: WorkTask; late: number; busy: boolean; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  if (open) return (
+    <input type="date" autoFocus defaultValue={t.due_date ?? ""} aria-label={`Due date for ${t.title}`} disabled={busy}
+      onChange={(e) => { setOpen(false); if (e.target.value !== (t.due_date ?? "")) onChange(e.target.value) }}
+      onBlur={() => setOpen(false)} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false) }}
+      className="h-7 shrink-0 rounded-md border border-input bg-background px-2 text-[12px]" />
+  )
+  return (
+    <button type="button" onClick={() => setOpen(true)} aria-label={`${t.due_date ? `Due ${fmtDate(t.due_date)}` : "No date"}. Change the due date of ${t.title}`}
+      className={cn("h-7 shrink-0 whitespace-nowrap rounded-md px-2 text-[12px] hover:bg-muted", late > 0 ? "bg-bad-soft font-medium text-bad hover:bg-bad-soft" : "text-muted-foreground")}>
+      {t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "Set a date"}
+    </button>
+  )
+}
+
 export default function MyWork({ user }: { user: User }) {
   const [d, setD] = useState<MyWorkData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -49,9 +67,20 @@ export default function MyWork({ user }: { user: User }) {
   if (!d) return <PageSkeleton />
   const c = d.counts
   const peak = Math.max(1, ...d.done_by_day.map((x) => x.count))
+  // a tick leaves the list; the toast's Undo brings the task back
   async function tick(t: WorkTask) {
     setBusy(t.id)
-    try { await toggleTask(t.project_id, t.id); await load() } catch (e) { setError(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(null) }
+    try {
+      await toggleTask(t.project_id, t.id)
+      toast(`Done: ${t.title}`, { action: { label: "Undo", run: () => void toggleTask(t.project_id, t.id).then(load).catch(() => toast("Could not reopen it", { tone: "bad" })) } })
+      await load()
+    } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(null) }
+  }
+  // set or move a task's date (the task is the person's own, so it stays assigned to them)
+  async function redate(t: WorkTask, due: string) {
+    setBusy(t.id)
+    try { await editTask(t.project_id, t.id, { title: t.title, assignee_id: user.id, due_date: due || null }); toast(due ? `${t.title}: due ${fmtDate(due)}` : `${t.title}: no date`); await load() }
+    catch (e) { toast(e instanceof ApiError && e.status === 403 ? "Only someone who manages this project's tasks can move its date." : e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(null) }
   }
   const tiles: { label: string; value: number; sub: string; icon: typeof Layers; tone?: "bad" | "warn" }[] = [
     { label: "Open tasks", value: c.open, sub: `${c.due_week} due this week`, icon: CheckSquare },
@@ -70,8 +99,8 @@ export default function MyWork({ user }: { user: User }) {
         {tiles.map((t) => (
           <div key={t.label} className="panel p-4">
             <div className="flex items-center gap-2 text-[12px] text-muted-foreground"><t.icon className="h-3.5 w-3.5" aria-hidden />{t.label}</div>
-            <div className={cn("mt-2 text-[26px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
-            <div className="mt-1 text-[11.5px] text-muted-foreground">{t.sub}</div>
+            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
+            <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
           </div>
         ))}
       </div>
@@ -79,9 +108,9 @@ export default function MyWork({ user }: { user: User }) {
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <section className="panel p-4" aria-label="My tasks">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h2 className="text-[13.5px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h2>
+            <h2 className="text-[14px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h2>
             {d.projects.length > 1 && (
-              <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className="ml-auto h-7 rounded-md border border-input bg-background px-2 text-[12.5px]">
+              <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className="ml-auto h-7 rounded-md border border-input bg-background px-2 text-[13px]">
                 <option value="">Every rollout</option>
                 {d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -101,10 +130,10 @@ export default function MyWork({ user }: { user: User }) {
                         {busy === t.id && <Check className="h-3 w-3 text-muted-foreground" />}
                       </button>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{t.title}</span>
-                        <Link to={`/board?rollout=${t.project_id}`} className="block truncate text-[12px] text-muted-foreground hover:underline">{t.project} · {t.stage || t.project_stage}</Link>
+                        <span className="block truncate font-medium" title={t.title}>{t.title}</span>
+                        <Link to={`/board?rollout=${t.project_id}`} title={t.project} className="block truncate text-[12px] text-muted-foreground hover:underline">{t.project} · {t.stage || t.project_stage}</Link>
                       </span>
-                      <span className={cn("shrink-0 whitespace-nowrap text-[12px]", late > 0 ? "rounded-md bg-bad-soft px-1.5 py-0.5 font-medium text-bad" : "text-muted-foreground")}>{t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "no date"}</span>
+                      <DueButton t={t} late={late} busy={busy === t.id} onChange={(v) => void redate(t, v)} />
                     </li>
                   )
                 })}
@@ -115,7 +144,7 @@ export default function MyWork({ user }: { user: User }) {
 
         <div className="grid grid-cols-1 content-start gap-4">
           <section className="panel p-4" aria-label="Done, the last 14 days">
-            <h2 className="mb-2 text-[13.5px] font-semibold">Done <span className="font-normal text-muted-foreground">the last 14 days</span></h2>
+            <h2 className="mb-2 text-[14px] font-semibold">Done <span className="font-normal text-muted-foreground">the last 14 days</span></h2>
             <ul className="flex h-20 items-end gap-1" aria-label="Tasks done per day">
               {d.done_by_day.map((x) => (
                 <li key={x.day} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
@@ -128,20 +157,20 @@ export default function MyWork({ user }: { user: User }) {
           </section>
 
           <section className="panel p-4" aria-label="My rollouts">
-            <h2 className="mb-2 text-[13.5px] font-semibold">My rollouts <span className="font-normal text-muted-foreground">{d.projects.length} active</span></h2>
+            <h2 className="mb-2 text-[14px] font-semibold">My rollouts <span className="font-normal text-muted-foreground">{d.projects.length} active</span></h2>
             <ul className="divide-y divide-border text-[13px]">
               {d.projects.map((p) => (
                 <li key={p.id} className="py-2">
                   <div className="flex items-center gap-2">
                     <span className={cn("h-2 w-2 shrink-0 rounded-full", p.state === "on_track" ? "bg-transparent" : STATE[p.state].dot)} aria-hidden />
-                    <Link to={`/board?rollout=${p.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{p.role}</span>
+                    <Link to={`/board?rollout=${p.id}`} title={`${p.name} · ${p.client}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
+                    <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
                   </div>
                   <div className="mt-1 flex items-center gap-3 pl-4">
                     <span className="w-24 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
-                    <span className="truncate text-[12.5px]">{p.stage}</span>
+                    <span className="truncate text-[13px]">{p.stage}</span>
                     <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "overdue" ? "font-medium text-bad" : p.state === "on_track" ? "text-muted-foreground" : "font-medium text-warn")}>
-                      {p.state === "on_track" ? (p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target") : stateText({ state: p.state, days_in_stage: null, over_by: null, target_end_date: p.target_end_date })}
+                      {p.state === "on_track" ? (p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target") : stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })}
                     </span>
                   </div>
                 </li>

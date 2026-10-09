@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { FlowState } from "@/lib/api"
 import { STATE } from "@/lib/state"
@@ -12,7 +13,9 @@ export function Stepper({ stages, index, state, selected, columns }: { stages: s
   const pos = (i: number) => `${((columns && columns.length > 1 ? Math.max(0, columns.indexOf(stages[i])) : i) / n) * 100}%`
   const last = stages.length - 1
   return (
-    <div className="relative mx-1.5 h-3" role="img" aria-label={`Stage ${index + 1} of ${stages.length}: ${stages[index]}`}>
+    // dots shrink (to 6 px) before they touch: their size follows the row's width (a container query)
+    <div className="relative mx-2 h-3 [container-type:inline-size]" role="img" aria-label={`Stage ${index + 1} of ${stages.length}: ${stages[index]}`}
+      style={{ "--dot": `clamp(6px, calc(100cqw / ${(n + 1) * 1.5}), 12px)` } as CSSProperties}>
       <span className="absolute top-1/2 h-[1.5px] -translate-y-1/2 bg-input" style={{ left: pos(0), width: `calc(${pos(last)} - ${pos(0)})` }} aria-hidden />
       {index > 0 && <span className="absolute top-1/2 h-[1.5px] -translate-y-1/2 bg-ok-line" style={{ left: pos(0), width: `calc(${pos(index)} - ${pos(0)})` }} aria-hidden />}
       {stages.map((s, i) => (
@@ -21,7 +24,7 @@ export function Stepper({ stages, index, state, selected, columns }: { stages: s
             render={<span />}
             style={{ left: pos(i) }}
             className={cn(
-              "absolute top-0 block h-3 w-3 -translate-x-1/2 rounded-full border-[1.5px]",
+              "absolute top-1/2 block size-(--dot) -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px]",
               selected ? "bg-accent" : "bg-card",   // opaque, so the line stops at the ring
               i < index && "border-ok-line bg-ok-line",
               i === index && cn("ring-[3px]", STATE[state].ring, selected && "scale-110"),

@@ -33,3 +33,4 @@ __pycache__/
 
 # --- stray tool caches at the root ---
 node_modules/
+.claude/worktrees/

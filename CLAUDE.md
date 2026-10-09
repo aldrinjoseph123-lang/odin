@@ -41,6 +41,8 @@ both set before first paint by the script in `frontend/index.html` and kept in
 user row (`users.theme`, `users.accent`). Never hard-code a colour: every
 component must read tokens so both themes and every accent follow.
 
+**UI/UX rules (9 Oct 2026, the user's refactoring plan):** six type sizes (11–24 px), spacing on the 4/8 px grid, no card inside a card (tone instead), dark depth by tone not shadow, buttons with a `loading` state, inline field errors (`lib/fieldErrors.ts`), toasts for silent saves (`lib/toast.ts`), receipt rows and chunked lists. Details in DESIGN.md.
+
 **Jinja pages keep `static/style.css` (the legacy look) until each is ported.**
 That stylesheet is frozen: fix defects only, no new components, no re-theming —
 the port replaces it page by page.
@@ -99,6 +101,41 @@ DATA_DIR/brand, which backups include. Document renderers take a template config
 every stage-move path (`change_stage`, the vendor guest link) calls
 `signoff.gate()`; a new path must too. A sent version is frozen (canonical JSON +
 SHA-256); never edit `signoffs.content` after sending — withdraw and send anew.
+
+# AI framework (8 Oct 2026, the user's call)
+
+Odin's AI is a framework in `services/ai/`, Settings → AI (`/settings/ai`,
+routes in `routes/ai.py`). The server is shared with Zeus and managed outside
+this repo: an Ollama container on the office LAN serving the alias **P24-AI**.
+Odin depends on the contract, never on that server:
+- **One protocol:** the OpenAI-compatible API (`{base}/models`,
+  `{base}/chat/completions` with `response_format` JSON schema), standard
+  fields only. Never Ollama's own `/api/*`, never `num_ctx`/`num_thread`/
+  `keep_alive` in a request (tuning lives on the server).
+- **Everything about the server is a policy** (areas `ai` and `ai_schedule`);
+  the key is sealed (`ai.api_key`). Addresses outside the private network are
+  refused unless `ai_allow_external` is on.
+- **A feature is one `AIFeature` spec** registered in `services.ai.FEATURES`
+  (`services/ai/features/<key>.py`, prompt in `services/ai/prompts/<key>.vN.txt`):
+  gather (scope applied), JSON schema, fallback, and a synthetic fixture with
+  graders (`services/ai/graders.py`). `register()` refuses a spec without them.
+- **The gate:** a feature runs only when AI is on, the heartbeat says up, the
+  feature is switched on, and it passed validation on the current model
+  fingerprint (`id@created` from `/models`) with the current prompt hash — or an
+  admin forced it (audited). Otherwise the caller uses the fallback.
+- **Never call the model from a web request.** Queue an `ai_jobs` row; the
+  scheduler's AI worker thread (`scheduler.ai_worker`, `services/ai/health.tick`)
+  runs heartbeats, the daily validation and jobs. Model output lands as a
+  suggestion a person accepts through the normal audited route.
+- **One door:** nothing outside `services/ai/` calls the server; a meta-test
+  enforces it. Tests use `FakeAIServer` in test_app.py, never a real model.
+- **The AI server's integration guide (8 Oct 2026)** binds Odin as one of its
+  two client apps: every system prompt starts with the identity line (policy
+  `ai_identity`); input at most `ai_max_input_chars` (4,000; `fit()` trims,
+  documents are read in parts); replies capped at 1,000 tokens; one request
+  at a time (the single AI worker); every request logged in `ai_calls`;
+  cancel on every draft; arithmetic in code, never in the model. Odin does
+  not stream: its AI work is queued, not watched token by token.
 
 # Front end migration — React + shadcn/ui (in progress)
 

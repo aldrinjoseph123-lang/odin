@@ -137,18 +137,21 @@
     --foreground: #E7E8EC;
     --card: #171A21;
     --card-foreground: #E7E8EC;
-    --popover: #1B1F27;
+    --popover: #1D2129;
     --popover-foreground: #E7E8EC;
     --primary-foreground: #FFFFFF;
     --secondary: #1E222A;
     --secondary-foreground: #E7E8EC;
-    --muted: #222731;
+    --muted: #252A34;
     --muted-foreground: #9AA0AB;
     --destructive: #F27C75;
     --border: #262B34;
     --input: #363C48;
-    --elevation-card: 0 0 0 1px rgb(255 255 255 / 0.03), 0 10px 28px -14px rgb(0 0 0 / 0.6);
-    --elevation-pop: 0 0 0 1px rgb(255 255 255 / 0.05), 0 16px 40px -12px rgb(0 0 0 / 0.7);
+    /* Depth in dark is tone, not shadow: ground #0E1014 → card #171A21 →
+       popover #1D2129 (hover #252A34), each with a faint light edge. A drop shadow vanishes
+       on ink and only muddies the ground. */
+    --elevation-card: 0 0 0 1px rgb(255 255 255 / 0.03);
+    --elevation-pop: 0 0 0 1px rgb(255 255 255 / 0.07);
     --chart-2: #E7E8EC;
     --chart-3: #9AA0AB;
     --chart-4: #363C48;
@@ -201,6 +204,37 @@
   box-shadow: var(--elevation-card);
 }
 
+/* A sideways-scrolling strip of chips fades at both edges, so the cut-off
+   chip reads as "more this way". The fade sits inside the strip's padding. */
+@utility fade-x {
+  mask-image: linear-gradient(to right, transparent, var(--foreground) 16px, var(--foreground) calc(100% - 24px), transparent);   /* alpha only: any opaque token */
+}
+
+/* An invalid field (UI/UX plan 5.2): a red border and ring once the person
+   has touched it or submitted, and the browser's own explanation under it
+   (lib/fieldErrors.ts puts the note right after the field). Colour is never the only channel. */
+:is(input, select, textarea):user-invalid, :is(input, select, textarea)[aria-invalid="true"] {
+  border-color: var(--destructive);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--destructive) 20%, transparent);
+}
+.field-error {
+  margin: 4px 0 0;
+  color: var(--destructive);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* No card inside a card (UI/UX plan, stage 2): a panel that sits inside
+   another loses its own box and becomes a faint tone step, so a section
+   reads by alignment, not by stacked borders. Floating surfaces (menus,
+   listboxes, dialogs) keep theirs. */
+.panel .panel:not([role="listbox"], [role="dialog"], [role="menu"], .shadow-pop) {
+  border-color: transparent;
+  box-shadow: none;
+  background-color: color-mix(in srgb, var(--foreground) 3%, var(--card));
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -221,6 +255,14 @@
   p a:not([data-slot="button"]) {
     text-decoration-line: underline;
     text-underline-offset: 2px;
+    }
+  /* every control says what it is under the pointer: a hand when it acts,
+     not-allowed when it is switched off (Base UI buttons set the same) */
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]), summary, select:not(:disabled), label:has(> input[type="checkbox"], > input[type="radio"]) {
+    cursor: pointer;
+    }
+  button:disabled, [aria-disabled="true"], select:disabled, input:disabled, textarea:disabled {
+    cursor: not-allowed;
     }
   /* on a touch screen every button is at least 24 x 24 px to hit (WCAG 2.5.8,
      test report UX-21: delete, remove and copy icons were 14 px) */

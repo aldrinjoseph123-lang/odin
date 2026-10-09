@@ -20,7 +20,7 @@ export default function LinkContinue() {
         <input type="hidden" name="_csrf" value={csrf ?? ""} />
         <Button type="submit" className="h-11 w-full text-sm" disabled={!csrf} autoFocus>Continue to Odin</Button>
       </form>
-      <p className="mt-6 text-[13.5px] text-muted-foreground">Link expired? <a href="/auth/link" className="text-primary-text hover:underline">Request a new one</a></p>
+      <p className="mt-6 text-[14px] text-muted-foreground">Link expired? <a href="/auth/link" className="text-primary-text hover:underline">Request a new one</a></p>
     </AuthLayout>
   )
 }

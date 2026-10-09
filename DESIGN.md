@@ -71,12 +71,12 @@ typography:
     lineHeight: 1.5
   body-strong:
     fontFamily: "Inter, system-ui, -apple-system, sans-serif"
-    fontSize: "13.5px"
+    fontSize: "14px"
     fontWeight: 500
     lineHeight: 1.5
   secondary:
     fontFamily: "Inter, system-ui, -apple-system, sans-serif"
-    fontSize: "12.5px"
+    fontSize: "13px"
     fontWeight: 400
     lineHeight: 1.5
   label:
@@ -87,7 +87,7 @@ typography:
     letterSpacing: "normal"
   caption:
     fontFamily: "Inter, system-ui, -apple-system, sans-serif"
-    fontSize: "11.5px"
+    fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.5
   micro:
@@ -340,7 +340,7 @@ Loaded from Google Fonts at 400 / 500 / 600 / 700; `font-feature-settings: "cv11
 ### Named Rules
 **The Sentence-Case Rule.** No uppercase, no letter-spaced labels in the UI. A label is 12 px, weight 600, chrome text. Tracked caps belong to the brand surfaces only (panel, byline, eyebrows, print header, email).
 
-**The Thirteen Rule.** 13 px is body. Sizes step by half-pixels (13.5 / 12.5 / 11.5) to separate levels without visibly changing scale; do not add sizes above 17 px outside the sign-in card titles and the brand tagline.
+**The Six-Size Rule (9 Oct 2026, replaces the Thirteen Rule).** The app uses six sizes: 11 (micro), 12 (captions, labels, chips), 13 (body), 14 (names, buttons), 17 (page and pane titles) and 24 (display titles and figures). Nothing in the app goes above 24 px or below 11 px; the half-pixel steps are gone. Hierarchy beyond that is carried by weight and by grey level (muted text), never by another size. Brand surfaces keep their own sizes (the 52 px tagline, the 10.5 px byline), and phone inputs stay 16 px so iOS does not zoom.
 
 ## Layout
 
@@ -364,9 +364,11 @@ Breakpoints are Tailwind defaults as used: `sm` 640 px, `md` 768 px, `lg` 1024 p
 
 ## Elevation & Depth
 
-Three levels. The **ground** is the tinted page (`--background`). A **card** (`panel` utility: `bg-card`, 1 px `--border`, `rounded-lg`, `shadow-card` = `0 1px 2px ink/4% + 0 10px 28px -14px ink/14%`) is where content lives; cards may nest (a stage node inside the flow card) and the inner card keeps the same shadow. A **popover** (menus, the phone nav sheet, dialogs) uses `shadow-pop` (`0 2px 6px ink/6% + 0 16px 40px -12px ink/22%`). In dark both shadows become a 1 px white-at-3–5% ring plus a deep black drop, since a shadow alone vanishes on ink. Hover raises a surface to Muted Fill; selection raises it to Accent Wash with an accent border. Tooltips stay inverted (ink on white). Focus is a 3 px ring of the accent at 50% (`ring-ring/50`) with the border switched to the accent.
+Three levels. The **ground** is the tinted page (`--background`). A **card** (`panel` utility: `bg-card`, 1 px `--border`, `rounded-lg`, `shadow-card` = `0 1px 2px ink/4% + 0 10px 28px -14px ink/14%`) is where content lives. A **popover** (menus, the phone nav sheet, dialogs, toasts) uses `shadow-pop`. **No card inside a card (9 Oct 2026):** a `panel` inside another loses its border and shadow and becomes a 3% tone step (`index.css`, `.panel .panel`), so settings sections, the flow rail and AI drafts read by alignment and tone; floating surfaces (listbox, dialog, menu, `shadow-pop`) keep their box. Inner boxes are never hand-drawn with a border: use a tone (`bg-muted/60`, a state's `-soft`). **Dark has no drop shadows:** depth is tone — ground `#0E1014`, card `#171A21`, popover `#1D2129`, hover `#252A34` — each with a faint 1 px light edge. Hover raises a surface to Muted Fill; selection raises it to Accent Wash with an accent border. Tooltips and toasts stay inverted (ink on white). Focus is a 3 px ring of the accent at 50% with the border switched to the accent.
 
-**The Card Rule.** Nothing sits bare on the ground: a page's content is one or more `panel`s. Never hand-roll `border border-border rounded-lg`; use `panel`. Never invent a shadow value; the two tokens are the scale.
+**The Card Rule.** Content sits on a `panel`, and a panel never sits inside another one (it becomes a tone step). Never hand-roll `border border-border rounded-lg`; use `panel` or a tone. Never invent a shadow value; the two tokens are the scale.
+
+**The Grid Rule (9 Oct 2026).** Every padding, margin and gap is a multiple of 4 px (4, 8, 12, 16, 24, 32…): no 2, 6, 10 or 14 px steps (`*-0.5`, `*-1.5`, `*-2.5`, `*-3.5`) in spacing. Icon sizes are not spacing and keep their steps.
 
 ## Shapes
 
@@ -382,7 +384,7 @@ Components are shadcn/ui **base-nova** (Base UI primitives, not Radix). Composit
 Quiet, small, and rarely blue: one primary per view.
 - **Shape:** 8 px radius (`rounded-lg`); size `sm` drops to 6.4 px.
 - **Primary (default):** Accent Blue fill, white text, 32 px tall, 10 px side padding, 14 px medium (`sm`: 28 px, 12.8 px text). Used for "New project" (nav, `sm`) and "Advance to {stage}" (rail, `sm`, full width, trailing arrow). Login uses the default size full-width.
-- **Hover / Focus / Active:** hover to blue at 80%; focus-visible = accent border + 3 px ring at 50%; active nudges 1 px down; disabled at 50% opacity.
+- **Five states (9 Oct 2026):** default; hover (blue at 80%, only while enabled); pressed (scale 0.98); disabled (40% opacity, not-allowed cursor); **loading** (`<Button loading>`: same size, label hidden behind a spinner, `aria-busy`, no second click). Focus-visible = accent border + 3 px ring at 50%. Every form's submit button and a panel's single primary action use `loading`; a big form never greys out its button until complete, it explains instead (below).
 - **Outline:** hairline border, white fill, ink text, hover Muted Fill — "Open project" with an external-link icon. `buttonVariants()` is applied to plain `<a>` when the target is a Jinja page.
 - **Secondary / Ghost / Destructive / Link:** present in `button.tsx` but not yet used on a built screen.
 
@@ -493,6 +495,16 @@ Ink fill, white 12 px text, 6.4 px radius, 12 px / 6 px padding, 10 px rotated-s
 
 ### Avatar
 A round picture when the person uploaded one, otherwise initials: 24 px in rows and 20 px under tasks with Paper fill and 11 px / 10 px semibold chrome-text initials; 28 px in the nav with Accent Wash fill and accent-text initials. A hairline ring is drawn inside the circle.
+
+### Feedback: toasts and inline errors (9 Oct 2026)
+- **Toast** (`toast()` in `lib/toast.ts`, `Toaster` in the shell): an action that changed something and shows nothing else answers with one short line, bottom centre, ink with a green check (red alert icon for `tone: "bad"`), leaving after 4 s (8 s with an action such as Undo); at most three. The region is a polite live region without a status role, so page notices keep `role="status"`. Errors that need reading stay inline, next to their field or panel.
+- **Inline errors** (`lib/fieldErrors.ts`, installed once in `main.tsx`): on submit the first invalid field gets `aria-invalid`, focus, a red border and ring, and the browser's own explanation right under it (`role="alert"`, 12 px, `--destructive`); every other invalid field is outlined (`:user-invalid`). Both clear the moment the value is valid. Forms rely on `required` / `minLength` / `type` for this; one-field quick adds (a task, a note) may stay disabled until typed.
+
+### Lists: receipts and chunks (9 Oct 2026)
+- **Receipt rows:** what the row is about on the left (title, its context under it); its weight, age, state and actions on the right, right-aligned. The default state is quiet grey text (an alert's "Open", a passed AI feature); only exceptions carry a fill.
+- **Chunks:** a long list reads in groups that match its sort, under a 12 px semibold `rowgroup` header on a muted tone: the audit log by day (`dayBucket`: Today, Yesterday, then the date), alerts by severity (a state dot) with resolved last, My work by Overdue / Today / This week / Later.
+- **Faces for names:** a person in a row or rail is an avatar beside the name (20–24 px).
+- **Copy:** a heading is about seven words at most, its subtext about fourteen; detail moves to the point of action (a hint by the field, a confirmation).
 
 ## Do's and Don'ts
 

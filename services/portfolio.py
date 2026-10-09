@@ -6,7 +6,7 @@ so a rollout's health and forecast read the same in both places."""
 from collections import Counter
 from datetime import datetime, timedelta
 
-from db import get_db
+from db import get_db, stages_for_projects
 from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
@@ -24,13 +24,28 @@ def build(projects, customer=False):
     db = get_db()
     today = local_today()
     rows, risks = [], []
+    # everything per project in one query each, not one per project (the report of all rollouts)
+    ids = [p["id"] for p in projects]
+    marks = ",".join("?" * len(ids)) or "NULL"
+    stage_rows = stages_for_projects(ids)
+    notes, raid, latest_of = {}, {}, {}
+    for n in db.execute(f"SELECT project_id, stage, created_at FROM status_notes WHERE project_id IN ({marks}) ORDER BY created_at", ids):
+        notes.setdefault(n["project_id"], []).append(n)
+    for r in db.execute(
+            f"SELECT r.*, u.name AS owner_name FROM raid_items r LEFT JOIN users u ON u.id = r.owner_id WHERE r.project_id IN ({marks}) "
+            "ORDER BY r.status IN ('closed', 'decided'), CASE r.kind WHEN 'blocker' THEN 0 WHEN 'issue' THEN 1 WHEN 'risk' THEN 2 ELSE 3 END, "
+            "CASE r.impact WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, r.due_date IS NULL, r.due_date, r.id", ids):
+        raid.setdefault(r["project_id"], []).append(dict(r) | {"customer_visible": bool(r["customer_visible"]), "open": r["status"] not in raid_service.DONE})
+    for r in db.execute(f"SELECT project_id, version, kind, created_at FROM project_reports WHERE project_id IN ({marks}) ORDER BY version", ids):
+        latest_of[r["project_id"]] = r
     for p in projects:
-        pl = plan_service.build(p)
-        items = raid_service.items(p["id"], customer=customer)
+        every = raid.get(p["id"], [])
+        pl = plan_service.build(p, stage_rows.get(p["id"]) or [], notes.get(p["id"], []), [r for r in every if r["open"]])
+        items = [r for r in every if r["customer_visible"]] if customer else every
         f = pl["finish"]
         cur = next((i for i, s in enumerate(pl["stages"]) if s["status"] == "current"), 0)
         first = pl["stages"][0] if pl["stages"] else {}
-        latest = db.execute("SELECT version, kind, created_at FROM project_reports WHERE project_id = ? ORDER BY version DESC LIMIT 1", (p["id"],)).fetchone()
+        latest = latest_of.get(p["id"])
         open_items = [r for r in items if r["open"]]
         rows.append({
             **{k: p[k] for k in ("id", "name", "client", "stage", "owner_name", "delivery_mode", "vendor_name", "product_name", "target_end_date")},

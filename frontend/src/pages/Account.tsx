@@ -44,15 +44,15 @@ export default function Account(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">{me.name} · {me.username}{me.kind === "external" ? " · partner access" : ""}</p>
       </div>
       {me.must_change_password && <Alert className="mt-3"><AlertDescription>Set a new password before continuing. The one you were given is a shared secret.</AlertDescription></Alert>}
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-2 text-[13px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
       <div className="mt-3 grid grid-cols-1 max-w-3xl gap-4 lg:grid-cols-2">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Appearance <span className="font-normal text-muted-foreground">yours, on every device you sign in on</span></h2>
-          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Theme">
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Theme">
             {THEMES.map((t) => (
               <button key={t} type="button" role="radio" aria-checked={me.theme === t} disabled={busy}
                 onClick={() => { applyTheme(t, me.accent as Accent); void send("/account/appearance", { theme: t, accent: me.accent }) }}
-                className={cn("h-7 rounded-full border px-3 text-[12.5px] font-medium capitalize transition-colors", me.theme === t ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{t}</button>
+                className={cn("h-7 rounded-full border px-3 text-[13px] font-medium capitalize transition-colors", me.theme === t ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{t}</button>
             ))}
           </div>
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Accent colour">
@@ -63,39 +63,39 @@ export default function Account(_props: { user: User }) {
                 style={{ background: c.swatch }} />
             ))}
           </div>
-          <p className="text-[11.5px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. There is no red or amber accent: those colours mean overdue and warning.</p>
+          <p className="text-[12px] text-muted-foreground">The accent is the one colour the app spends on selection and the primary action. There is no red or amber accent: those colours mean overdue and warning.</p>
           {me.kind !== "external" && (
             <>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Home page">
-                <span className="mr-1 text-[12.5px] text-muted-foreground">Home page</span>
+              <div className="mt-1 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Home page">
+                <span className="mr-1 text-[13px] text-muted-foreground">Home page</span>
                 {([["dashboard", "Dashboard"], ["board", "Flow"]] as const).map(([k, label]) => (
                   <button key={k} type="button" role="radio" aria-checked={me.home === k} disabled={busy} onClick={() => void send("/account/home", { home: k }, load)}
-                    className={cn("h-7 rounded-full border px-3 text-[12.5px] font-medium transition-colors", me.home === k ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{label}</button>
+                    className={cn("h-7 rounded-full border px-3 text-[13px] font-medium transition-colors", me.home === k ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{label}</button>
                 ))}
               </div>
-              <p className="text-[11.5px] text-muted-foreground">Where sign-in and the Odin logo land.</p>
+              <p className="text-[12px] text-muted-foreground">Where sign-in and the Odin logo land.</p>
             </>
           )}
         </section>
         <form onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); if ((fd.get("avatar") as File | null)?.name) void send("/account/avatar", fd, () => e.currentTarget?.reset?.()) }} className="grid grid-cols-1 content-start gap-3 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Picture <span className="font-normal text-muted-foreground">shown wherever your name is</span></h2>
           <div className="flex flex-wrap items-center gap-3">
-            <UserAvatar name={me.name} url={me.avatar_url} className="h-14 w-14" textClass="text-[18px]" />
+            <UserAvatar name={me.name} url={me.avatar_url} className="h-14 w-14" textClass="text-[17px]" />
             <div className="grid grid-cols-1 gap-2">
-              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="text-[12.5px] file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-[12.5px] file:font-medium" />
+              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="text-[13px] text-muted-foreground file:mr-2 file:h-7 file:cursor-pointer file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-muted" />
               <div className="flex gap-2">
-                <Button type="submit" size="sm" variant="outline" disabled={busy}>Upload</Button>
+                <Button type="submit" size="sm" variant="outline" loading={busy}>Upload</Button>
                 {me.avatar_url && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => send("/account/avatar/remove", {})}>Remove</Button>}
               </div>
-              <p className="text-[11.5px] text-muted-foreground">PNG, JPG, GIF or WebP, up to 2 MB. Square images look best.</p>
+              <p className="text-[12px] text-muted-foreground">PNG, JPG, GIF or WebP, up to 2 MB. Square images look best.</p>
             </div>
           </div>
         </form>
         <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (name.trim()) void send("/account/name", { name: name.trim() }, () => window.setTimeout(() => window.location.reload(), 400)) }} className="grid grid-cols-1 content-start gap-2 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Name <span className="font-normal text-muted-foreground">as others see it</span></h2>
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} aria-label="Your name" className="h-8 text-[13px]" />
-          <div><Button type="submit" size="sm" variant="outline" disabled={busy || !name.trim() || name.trim() === me.name}>Save name</Button></div>
-          <p className="text-[11.5px] text-muted-foreground">Notes you already wrote keep the name they were written under.</p>
+          <div><Button type="submit" size="sm" variant="outline" loading={busy} disabled={!name.trim() || name.trim() === me.name}>Save name</Button></div>
+          <p className="text-[12px] text-muted-foreground">Notes you already wrote keep the name they were written under.</p>
         </form>
         <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email, password: emailPw }, () => setEmailPw("")) }} className="grid grid-cols-1 content-start gap-2 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Email <span className="font-normal text-muted-foreground">for notifications</span></h2>
@@ -104,26 +104,26 @@ export default function Account(_props: { user: User }) {
           {me.has_password && email !== (me.email ?? "") && (
             <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Current password<Input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} required autoComplete="current-password" className="h-8 text-[13px]" /></label>
           )}
-          <div><Button type="submit" size="sm" variant="outline" disabled={busy || email === (me.email ?? "") || (me.has_password && !emailPw)}>Save email</Button></div>
+          <div><Button type="submit" size="sm" variant="outline" loading={busy} disabled={email === (me.email ?? "") || (me.has_password && !emailPw)}>Save email</Button></div>
         </form>
         {me.kind === "internal" && (
           <section className="grid grid-cols-1 content-start gap-2 panel p-4" aria-label="How Odin reaches you">
             <h2 data-n className="text-[12px] font-semibold text-nav-fg">Reach me by <span className="font-normal text-muted-foreground">besides the bell</span></h2>
-            <div className="flex rounded-full bg-muted p-0.5" role="radiogroup" aria-label="Reach me by">
+            <div className="flex rounded-full bg-muted p-1" role="radiogroup" aria-label="Reach me by">
               {(["email", "teams"] as const).map((v) => (
                 <button key={v} type="button" role="radio" aria-checked={me.notify_via === v} disabled={busy} onClick={() => void send("/account/notify-via", { notify_via: v })}
-                  className={cn("h-7 flex-1 rounded-full text-[12.5px]", me.notify_via === v ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{v === "email" ? "Email" : "Microsoft Teams"}</button>
+                  className={cn("h-7 flex-1 rounded-full text-[13px]", me.notify_via === v ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{v === "email" ? "Email" : "Microsoft Teams"}</button>
               ))}
             </div>
-            {me.notify_via === "teams" && !me.teams_ready && <p className="text-[11.5px] text-muted-foreground">Teams is not connected on this installation yet; you get email until it is.</p>}
+            {me.notify_via === "teams" && !me.teams_ready && <p className="text-[12px] text-muted-foreground">Teams is not connected on this installation yet; you get email until it is.</p>}
           </section>
         )}
         {me.kind === "internal" ? (
           <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" })) }} className={cn("grid grid-cols-1 content-start gap-2 panel p-4", me.must_change_password && "order-first ring-2 ring-primary lg:col-span-2")}>
             <h2 data-n className="text-[12px] font-semibold text-nav-fg">Change password</h2>
             <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Current password<Input autoFocus={me.must_change_password} type="password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required autoComplete="current-password" aria-label="Current password" className="h-8 text-[13px]" /></label>
-            <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">New password<Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={8} autoComplete="new-password" aria-label="New password" className="h-8 text-[13px]" /><span className="text-[11.5px]">Use a few unrelated words: at least 12 characters, unless your admin set another length.</span></label>
-            <div><Button type="submit" size="sm" disabled={busy || !pw.current_password || pw.new_password.length < 8}>Update password</Button></div>
+            <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">New password<Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={8} autoComplete="new-password" aria-label="New password" className="h-8 text-[13px]" /><span className="text-[12px]">Use a few unrelated words: at least 12 characters, unless your admin set another length.</span></label>
+            <div><Button type="submit" size="sm" loading={busy}>Update password</Button></div>
           </form>
         ) : (
           <p className="panel p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
@@ -138,14 +138,14 @@ export default function Account(_props: { user: User }) {
               <span>{k.label}</span>
             </label>
           ))}
-          {!me.mail_enabled && <p className="text-[11.5px] text-muted-foreground">Email is not connected on this installation yet, so for now only the bell is used.</p>}
-          <div><Button type="submit" size="sm" variant="outline" disabled={busy}>Save</Button></div>
+          {!me.mail_enabled && <p className="text-[12px] text-muted-foreground">Email is not connected on this installation yet, so for now only the bell is used.</p>}
+          <div><Button type="submit" size="sm" variant="outline" loading={busy}>Save</Button></div>
         </form>
         {me.kind !== "external" && <TwoStepPanel />}
         {me.activity && <ActivityPanel a={me.activity} note={`Odin counts the minutes it is open, visible and in use (idle time never counts) and when you were last seen. ${viewersText(me.activity_viewers)}`} />}
         <section className="grid grid-cols-1 content-start gap-2 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Sessions</h2>
-          <p className="text-[12.5px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>
+          <p className="text-[13px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>
           <div><Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { if (window.confirm("Sign out of every other device?")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>
         </section>
       </div>

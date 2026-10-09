@@ -16,6 +16,7 @@ export type User = {
   avatar_url: string | null
   home: "dashboard" | "board"
   prefs?: { date_format: DateFormat; undo_minutes: number; activity_idle_minutes?: number }
+  external_role?: string | null   // an external's project role ("Customer", "Vendor", …) when the server names it
 }
 
 export type SignIn = { microsoft: boolean; microsoft_only: boolean; link_minutes?: number }
@@ -23,12 +24,6 @@ type SessionResponse = { csrf: string; user: User | null; messages?: string[]; s
 
 let csrfToken: string | null = null
 
-export async function session(): Promise<SessionResponse> {
-  const res = await fetch("/api/session", { credentials: "same-origin" })
-  const data = (await res.json()) as SessionResponse
-  csrfToken = data.csrf
-  return data
-}
 
 export class ApiError extends Error {
   status: number
@@ -62,6 +57,35 @@ async function call(path: string, init?: RequestInit): Promise<Response> {
   }
 }
 
+// A failed session check (a 502 page while Odin restarts, a dropped
+// connection) is an ApiError like any other, so the page can offer a retry
+// instead of going blank.
+export async function session(): Promise<SessionResponse> {
+  const res = await call("/api/session")
+  const data = res.ok ? ((await res.json().catch(() => null)) as SessionResponse | null) : null
+  if (!data) throw new ApiError(res.ok ? 500 : res.status, failureText(res.ok ? 500 : res.status))
+  csrfToken = data.csrf
+  return data
+}
+
+// A mutation with the CSRF token. A stale token (the session was renewed in
+// another tab, Odin restarted) answers 400 with a fresh one: take it (or ask
+// /api/session) and send once more, so saves do not fail until a reload.
+export function csrfRejected(status: number, data: { csrf?: string; error?: string } | null): boolean {
+  return status === 400 && !!data && (!!data.csrf || /csrf/i.test(data.error ?? ""))
+}
+async function withToken(path: string, init: RequestInit): Promise<Response> {
+  if (!csrfToken) await session()
+  const go = () => call(path, { ...init, headers: { ...(init.headers as Record<string, string>), "X-CSRF-Token": csrfToken ?? "" } })
+  const res = await go()
+  if (res.status !== 400) return res
+  const data = (await res.clone().json().catch(() => null)) as { csrf?: string; error?: string } | null
+  if (!csrfRejected(res.status, data)) return res
+  if (data?.csrf) csrfToken = data.csrf
+  else await session().catch(() => null)
+  return go()
+}
+
 // The error for a failed response: the server's own words when it gave some;
 // a 400/401 from a session that has ended (the CSRF check fails first) says so.
 async function failure(res: Response, said?: string): Promise<ApiError> {
@@ -74,10 +98,9 @@ async function failure(res: Response, said?: string): Promise<ApiError> {
 
 // One JSON request with the CSRF token; every mutation goes through here.
 async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
-  if (!csrfToken) await session()
-  const res = await call(path, {
+  const res = await withToken(path, {
     method,
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken ?? "" },
+    headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string; csrf?: string } & T
@@ -99,7 +122,8 @@ export function loginCode(code: string) {
 
 export type TwoStep = { enabled: boolean; enabled_at: string | null; required: boolean; recovery_left: number; password: boolean }
 export const twoStep = () => getJson<TwoStep>("/api/account/two-step")
-export const twoStepSetup = (password: string) => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup", { password })
+// re-enrolling while two-step is on also needs a current code (or a recovery code)
+export const twoStepSetup = (password: string, code?: string) => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup", code ? { password, code } : { password })
 export const twoStepConfirm = (code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/confirm", { code })
 export const twoStepOff = (password: string, code: string) => post<{ ok: true }>("/api/account/two-step/off", { password, code })
 export const twoStepCodes = (password: string, code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/recovery-codes", { password, code })
@@ -200,7 +224,7 @@ export type PlanData = {
 }
 export const plan = (id: number) => getJson<PlanData>(`/api/projects/${id}/plan`)
 export const savePlan = (id: number, stages: { id: number; plan_start: string | null; plan_end: string | null }[], reason: string) =>
-  send<{ ok: true; changed: number; baselined: boolean }>(`/api/projects/${id}/plan`, "PUT", { stages, reason })
+  send<{ ok: true; changed: number; baselined: boolean; warning?: string }>(`/api/projects/${id}/plan`, "PUT", { stages, reason })
 export const rebaseline = (id: number, reason: string) => post<{ ok: true }>(`/api/projects/${id}/plan/baseline`, { reason })
 export type ReportWords = { summary: string; next_steps: string; asks: string; suggested?: { summary: string; next_steps: string; asks: string }; blocks?: ["h" | "li" | "p", string][] }
 export type ReportPayload = {
@@ -228,8 +252,44 @@ export type RolloutReport = {
 }
 export const rolloutReport = (id: number, audience: string, v?: number | null, template?: number | null) =>
   getJson<RolloutReport>(`/api/projects/${id}/rollout-report?${new URLSearchParams({ audience, ...(v ? { v: String(v) } : {}), ...(template ? { template: String(template) } : {}) })}`)
-export const saveRolloutReport = (id: number, words: { summary: string; next_steps: string; asks: string }, template_id?: number | null) =>
-  post<{ ok: true; version: number }>(`/api/projects/${id}/rollout-report`, { ...words, template_id: template_id ?? null })
+export const saveRolloutReport = (id: number, words: { summary: string; next_steps: string; asks: string }, template_id?: number | null, ai_suggestion?: number | null) =>
+  post<{ ok: true; version: number }>(`/api/projects/${id}/rollout-report`, { ...words, template_id: template_id ?? null, ai_suggestion: ai_suggestion ?? null })
+// An AI feature on one rollout (routes/ai.py): can it run, its latest unused
+// draft, and the job writing a new one. Drafts are used or dismissed by a person.
+export type AISuggestion<T> = { id: number; payload: T; model: string | null; seconds: number | null; created_at: string; status: string }
+export type ProjectAI<T> = {
+  available: boolean; reason: string | null; label: string; suggestion: AISuggestion<T> | null
+  options?: { documents?: SowDocument[]; waiting?: WaitingItem[]; contact?: { name: string; email: string | null } | null } | null
+  job: { id: number; status: "queued" | "running" | "done" | "failed"; error: string | null; result: { skipped?: string; suggestion?: number } | null; created_at: string } | null
+}
+export type WeeklyWordsDraft = { summary: string; next_steps: string[]; asks: string[] }
+export const projectAI = <T,>(id: number, key: string) => getJson<ProjectAI<T>>(`/api/projects/${id}/ai/${key}`)
+export const requestProjectAI = (id: number, key: string, input?: unknown) => post<{ ok: true; job: number }>(`/api/projects/${id}/ai/${key}`, input === undefined ? undefined : { input })
+export const cancelAIJob = (id: number, job: number) => post<{ ok: true }>(`/api/projects/${id}/ai/jobs/${job}/cancel`)
+export const dismissAISuggestion = (id: number, suggestion: number) => post<{ ok: true }>(`/api/projects/${id}/ai/suggestions/${suggestion}/dismiss`)
+export type WaitingItem = { what: string; since?: string; days_waiting?: number; due?: string; days_overdue?: number }
+export type ChaseDraft = { subject: string; body: string }
+export type SlaProposal = { key: string; template_id: number; template: string; stage_id: number; stage: string; current: number | null; proposed: number
+  visits: number; median: number; p80: number; unit: string; reason: string | null }
+export const slaProposals = () => getJson<{ proposals: SlaProposal[]; model: string | null }>("/api/settings/sla-proposals")
+export type Lesson = { id?: number; kind: "avoid" | "repeat"; text: string; evidence: string | null }
+export type SimilarRollout = { id: number; name: string; client: string; stage: string; why: string[]; lessons: Lesson[]
+  risks: { kind: string; title: string; impact: string; status: string; resolution: string | null }[] }
+export type LessonsData = { lessons: (Lesson & { id: number; created_by: string; created_at: string })[]; similar: SimilarRollout[]; can_edit: boolean; can_add_risk: boolean }
+export const lessonsOf = (id: number) => getJson<LessonsData>(`/api/projects/${id}/lessons`)
+export const saveLessons = (id: number, items: Lesson[], ai_suggestion?: number | null) => post<{ ok: true; saved: number }>(`/api/projects/${id}/lessons`, { items, ai_suggestion: ai_suggestion ?? null })
+export const deleteLesson = (id: number, lesson: number) => post<{ ok: true }>(`/api/projects/${id}/lessons/${lesson}/delete`)
+export type MinutesTask = { title: string; owner: string | null; assignee_id: number | null; stage: string | null; due_date: string | null; due_text: string; quote: string }
+export type AskAnswer = { question: string; answer: string; found: boolean; sources: { n: number; kind: string; from: string; href: string }[] }
+export type CatchUp = { where_it_stands: string; who_is_who: string; what_changed: string; waiting: string[]; watch_out: string[] }
+export type SowItem = { title: string; detail?: string; stage?: string | null; quote?: string }
+export type SowPlan = { scope_items: SowItem[]; tasks: SowItem[]; customer_obligations: SowItem[]; key_dates: { what: string; date: string }[]; exclusions: string[] }
+export type SowDocument = { id: number; filename: string; category: string; likely: boolean }
+export const closeAISuggestion = (id: number, suggestion: number, taken: number) => post<{ ok: true }>(`/api/projects/${id}/ai/suggestions/${suggestion}/close`, { taken })
+export type RaidProposal = { kind: "risk" | "issue" | "blocker" | "decision"; title: string; detail: string; impact: "low" | "medium" | "high"; likelihood: "low" | "medium" | "high" | null; evidence: string }
+export type RaidProposals = { proposals: RaidProposal[]; decisions?: Record<string, { decision: "accepted" | "dismissed"; by: string; raid_id: number | null }> }
+export const decideAIProposal = (id: number, suggestion: number, index: number, decision: "accepted" | "dismissed", raid_id?: number) =>
+  post<{ ok: true; status: string }>(`/api/projects/${id}/ai/suggestions/${suggestion}/items/${index}`, { decision, raid_id: raid_id ?? null })
 export type RaidKind = "risk" | "issue" | "decision" | "blocker"
 export type RaidItem = {
   id: number; kind: RaidKind; title: string; detail: string | null; impact: "low" | "medium" | "high"; likelihood: "low" | "medium" | "high" | null
@@ -283,16 +343,17 @@ export type SignoffData = {
 export type SignBody = { name: string; title: string; accept: boolean; signature: Signature }
 export const signoff = (id: number, v?: number | null, template?: number | null) =>
   getJson<SignoffData>(`/api/projects/${id}/signoff${v ? `?v=${v}` : template ? `?template=${template}` : ""}`)
-export const sendSignoff = (id: number, body: { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; signer_id: number; counter_id: number; template_id?: number | null }) =>
+export const sendSignoff = (id: number, body: { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; signer_id: number; counter_id: number; template_id?: number | null; ai_suggestion?: number | null }) =>
   post<{ ok: true; version: number }>(`/api/projects/${id}/signoff`, body)
 export const signSignoff = (id: number, v: number, body: SignBody, counter = false) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/${counter ? "countersign" : "sign"}`, body)
 export const rejectSignoff = (id: number, v: number, comment: string) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/reject`, { comment })
-export const signoffLink = (id: number, v: number) => post<{ ok: true; link: string; minutes: number; email: string }>(`/api/projects/${id}/signoff/${v}/link`)
+// link is null when the server emailed it instead (or will not hand it out): then `message` says what happened
+export type SignoffLink = { ok: true; link: string | null; minutes: number; email: string; emailed?: boolean; message?: string }
+export const signoffLink = (id: number, v: number) => post<SignoffLink>(`/api/projects/${id}/signoff/${v}/link`)
 export const withdrawSignoff = (id: number, v: number) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/withdraw`)
 export const waiveSignoff = (id: number, reason: string) => post<{ ok: true; version: number }>(`/api/projects/${id}/signoff/waive`, { reason })
 export async function uploadSignoff(id: number, v: number, form: FormData): Promise<{ ok: true }> {
-  if (!csrfToken) await session()
-  const res = await call(`/api/projects/${id}/signoff/${v}/upload`, { method: "POST", body: form, headers: { "X-CSRF-Token": csrfToken ?? "" } })
+  const res = await withToken(`/api/projects/${id}/signoff/${v}/upload`, { method: "POST", body: form })
   const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: true }
   if (!res.ok) throw await failure(res, data.error)
   return data as { ok: true }
@@ -327,12 +388,12 @@ export type DashboardData = {
     progress: { done: number; current: number; pending: number; pct: number }
     stages: { stage: string; count: number }[]
     completion: { day: string; count: number }[]
-    schedule: { due: { id: number; project_id: number; title: string; due_date: string; project: string; stage: string; who: string | null; avatar_url: string | null }[]
+    schedule: { due: { id: number; project_id: number; title: string; due_date: string; project: string; stage: string | null; who: string | null; avatar_url: string | null }[]
                 approvals: { project_id: number; project: string; stage: string; requested_at: string }[] }
     team: { people: { id: number; name: string; avatar_url: string | null; role: string; projects: number; open: number; late: number }[]; unassigned: number }
     activity: { kind: "move" | "note" | "approval" | "task" | "document"; at: string; who: string | null; project_id: number; project: string; text: string }[]
     alerts: { id: number; project_id: number; project: string; type: string; title: string; severity: string; created_at: string }[]
-    mywork: { tasks: { id: number; title: string; project_id: number; project: string; due_date: string | null; stage: string }[]; owned: number }
+    mywork: { tasks: { id: number; title: string; project_id: number; project: string; due_date: string | null; stage: string | null }[]; owned: number }
     cycle: { template: string; lead_avg: number | null; lead_median: number | null; completed_count: number; throughput: [string, number][]; slowest: { stage: string; avg_days: number } | null; measured_projects: number } | null
   }
 }
@@ -374,18 +435,22 @@ export const projectExtras = (id: number) => getJson<ProjectExtras>(`/api/projec
 // answer differs because we ask for JSON.
 export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null }
 export async function postForm(path: string, fields: Record<string, string> | FormData = {}): Promise<FormReply> {
-  if (!csrfToken) await session()
   const body = fields instanceof FormData ? fields : new URLSearchParams(fields)
-  const res = await call(path, { method: "POST", body, headers: { Accept: "application/json", "X-CSRF-Token": csrfToken ?? "" } })
-  if (!res.ok) throw await failure(res, res.status === 403 ? "You cannot do that on this project" : undefined)
-  const data = (await res.json().catch(() => null)) as FormReply | null
+  const res = await withToken(path, { method: "POST", body, headers: { Accept: "application/json" } })
+  if (!res.ok) {
+    // a refused form answers 400 {ok: false, error, messages}: its own words
+    const d = (await res.json().catch(() => null)) as { error?: string; messages?: string[] } | null
+    throw await failure(res, res.status === 403 ? "You cannot do that on this project" : d?.messages?.join(" ") || d?.error || undefined)
+  }
+  const data = (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
   if (!data) throw new ApiError(res.status, "Your session has ended — sign in again")
+  if (data.ok === false) throw new ApiError(400, data.messages?.join(" ") || data.error || "That did not save")
   return data
 }
 
 // ---- settings ----
 export type Policy = {
-  key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "backups" | "reports" | "audit"
+  key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "ai" | "ai_schedule" | "backups" | "reports" | "audit"
   kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines" | "dates"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
 }
@@ -411,10 +476,30 @@ export type SettingsData = {
   policies: Policy[]
   sso: { client_id: string | null; tenant_id: string | null; has_secret: boolean; configured: boolean; enforced: boolean; redirect_uri: string; password_admins: number }
 }
+// Settings → AI (routes/ai.py): the server's state, each feature's latest
+// validation and the last validation runs.
+export type AIState = "off" | "unknown" | "up" | "down"
+export type AIFeatureView = {
+  key: string; label: string; description: string; runs: string; on: boolean; forced: boolean
+  state: "passed" | "slow" | "failed" | "pending"; current: boolean; checked_at: string | null; model: string | null
+  seconds: number | null; detail: string | null; output: unknown; prompt: string; prompt_hash: string
+}
+export type AIView = {
+  status: { state: AIState; since?: string; checked_at?: string; misses?: number; fingerprint?: string; model?: string; error?: string | null; seconds?: number | null; stale?: boolean }
+  has_key: boolean; scheduler_alive: boolean
+  usage: { calls: number; failed: number | null; avg_s: number | null; max_s: number | null; tokens_in: number | null; tokens_out: number | null }
+  features: AIFeatureView[]
+  jobs: { id: number; status: "queued" | "running" | "done" | "failed"; requested_by: string | null; created_at: string; started_at: string | null; finished_at: string | null
+    result: { ok: boolean; reason?: string; model?: string; seconds?: number; features?: Record<string, string> } | null; error: string | null; payload: { reason?: string } | null }[]
+  run_checks: { kind: "connect" | "smoke"; state: string; seconds: number | null; detail: string | null; model: string | null; created_at: string }[]
+}
+export type AICheck = { ok: boolean; reason?: string | null; model?: string; fingerprint?: string; models?: string[] }
+export const aiSettings = () => getJson<AIView>("/api/settings/ai")
 export const settingsData = (section: string, teamId = "") =>
   getJson<SettingsData>(`/api/settings?section=${encodeURIComponent(section)}${teamId ? `&team_id=${encodeURIComponent(teamId)}` : ""}`)
 
-export type RbacData = { roles: string[]; permissions: string[]; matrix: Record<string, Record<string, boolean>>; locked: Record<string, string[]> }
+// locked: always on for that role; forbidden: never allowed for it (e.g. External), both shown and not editable
+export type RbacData = { roles: string[]; permissions: string[]; matrix: Record<string, Record<string, boolean>>; locked: Record<string, string[]>; forbidden?: Record<string, string[]> }
 export const rbac = () => getJson<RbacData>("/api/settings/rbac")
 export type ContactsData = {
   lists: { key: string; label: string; has_email: boolean; items: { id: number; name: string; email: string | null }[] }[]
@@ -494,8 +579,7 @@ export const deleteDocTemplate = (id: number) => send<{ ok: true }>(`/api/doc-te
 export const defaultDocTemplate = (id: number) => post<{ ok: true }>(`/api/doc-templates/${id}/default`)
 export const docTemplateChoices = (kind: DocKind) => getJson<{ choices: { id: number; name: string; is_default: boolean }[] }>(`/api/doc-templates/choices?kind=${kind}`)
 async function raw(path: string, body: BodyInit, json = false): Promise<Response> {
-  if (!csrfToken) await session()
-  const res = await call(path, { method: "POST", body, headers: { "X-CSRF-Token": csrfToken ?? "", ...(json ? { "Content-Type": "application/json" } : {}) } })
+  const res = await withToken(path, { method: "POST", body, headers: json ? { "Content-Type": "application/json" } : {} })
   if (!res.ok) { const d = (await res.json().catch(() => ({}))) as { error?: string }; throw await failure(res, d.error) }
   return res
 }
@@ -508,7 +592,8 @@ export async function previewDocTemplate(kind: DocKind, config: DocConfig): Prom
 }
 export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
 export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
-export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string }
+export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string
+  days_in_stage?: number | null; over_by?: number | null }
 export type MyWorkData = {
   today: string; tasks: WorkTask[]; done_by_day: { day: string; count: number }[]; projects: WorkProject[]
   counts: { open: number; overdue: number; due_week: number; done_week: number; rollouts: number; stuck: number }
@@ -548,7 +633,8 @@ export const analytics = (templateId?: number | null) => getJson<AnalyticsData>(
 export type ActivityRow = { when: string; who: string; action: string; label: string; details: string }
 export const projectActivity = (id: number) => getJson<{ rows: ActivityRow[] }>(`/api/projects/${id}/activity`)
 
-export type SearchResults = { projects: { id: number; name: string; client: string; stage: string }[]; tasks: { id: number; title: string; done: boolean; project_id: number; project_name: string }[] }
+export type SearchMention = { kind: "note" | "risk" | "scope" | "document"; project_id: number; project_name: string; snippet: string; href: string }
+export type SearchResults = { projects: { id: number; name: string; client: string; stage: string }[]; tasks: { id: number; title: string; done: boolean; project_id: number; project_name: string }[]; mentions?: SearchMention[] }
 export const search = (q: string) => getJson<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`)
 
 // ---- notifications ----
@@ -575,4 +661,7 @@ export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/pro
 export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null }) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)
 export const toggleTask = (projectId: number, taskId: number) => post<{ ok: true; done: boolean }>(`/projects/${projectId}/tasks/${taskId}/toggle`, {})
+// a task corrected in place: the route takes the whole task (title, assignee, due date)
+export const editTask = (projectId: number, taskId: number, task: { title: string; assignee_id: number | null; due_date: string | null }) =>
+  post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, task)
 export const deleteTask = (projectId: number, taskId: number) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/delete`, {})

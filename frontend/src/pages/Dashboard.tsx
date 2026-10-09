@@ -32,7 +32,7 @@ const tip = {
 }
 const axis = { tickLine: false, axisLine: false, tick: { fontSize: 11, fill: "var(--muted-foreground)" } }
 const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 rounded-full px-3 text-[12px]")
-const chip = "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+const chip = "rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const dayLabel = (iso: string) => WEEKDAY[new Date(`${iso}T00:00:00`).getDay()]
 
@@ -43,9 +43,9 @@ function Widget({ title, sub, action, onExpand, children }: { title: string; sub
   const menu = useContext(MenuSlot)
   return (
     <section className="panel flex h-full min-w-0 flex-col p-4" aria-label={title}>
-      <header className="mb-3 flex items-start justify-between gap-3">
-        <h2 className="text-[13.5px] font-semibold">{title}{sub && <span className="sr-only">, </span>}{sub && <span className="ml-1.5 font-normal text-muted-foreground">{sub}</span>}</h2>
-        <span className="flex shrink-0 items-center gap-1">
+      <header className="mb-3 flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+        <h2 className="min-w-0 text-[14px] font-semibold">{title}{sub && <span className="sr-only">, </span>}{sub && <span className="ml-2 font-normal text-muted-foreground">{sub}</span>}</h2>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
           {action}
           {onExpand && <button type="button" onClick={onExpand} aria-label={`Expand ${title}`} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><Maximize2 className="h-3.5 w-3.5" /></button>}
           {menu}
@@ -61,10 +61,10 @@ const Empty = ({ children }: { children: ReactNode }) => <p className="py-2 text
 function Bars({ rows, link }: { rows: Aggregate; link?: (key: string) => string }) {
   const peak = Math.max(0, ...rows.map((r) => r.count))
   return (
-    <ul className="grid grid-cols-1 gap-1.5 text-[13px]">
+    <ul className="grid grid-cols-1 gap-2 text-[13px]">
       {rows.map((r) => (
         <li key={r.key} className="flex items-center gap-3">
-          {link ? <Link to={link(r.key)} className="w-32 truncate text-[12.5px] hover:underline">{r.key}</Link> : <span className="w-32 truncate text-[12.5px]">{r.key}</span>}
+          {link ? <Link to={link(r.key)} className="w-32 truncate text-[13px] hover:underline">{r.key}</Link> : <span className="w-32 truncate text-[13px]">{r.key}</span>}
           <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-primary" style={{ width: `${peak ? (r.count / peak) * 100 : 0}%` }} /></span>
           <span className="w-6 text-right tabular-nums">{r.count}</span>
         </li>
@@ -86,10 +86,10 @@ function Donut({ rows, total, unit, link, large }: { rows: Aggregate; total: num
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[22px] font-semibold leading-none">{total}</span><span className="text-[11px] text-muted-foreground">{unit}</span>
+          <span className="text-[17px] font-semibold leading-none">{total}</span><span className="text-[11px] text-muted-foreground">{unit}</span>
         </div>
       </div>
-      <ul className="min-w-0 flex-1 text-[12.5px]">
+      <ul className="min-w-0 flex-1 text-[13px]">
         {rows.map((r, i) => (
           <li key={r.key} className="flex items-center gap-2 py-1">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary" style={{ opacity: 0.25 + (0.75 * (i + 1)) / rows.length }} aria-hidden />
@@ -127,10 +127,10 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
             className="panel flex min-w-0 flex-col p-4 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50">
             <span className="flex items-center gap-2 text-[12px] text-muted-foreground"><t.icon className="h-3.5 w-3.5" aria-hidden />{t.label}</span>
             <span className="mt-2 flex items-baseline gap-2">
-              <span className={cn("text-[26px] font-semibold leading-none tracking-tight", n > 0 && t.tone === "bad" && "text-bad", n > 0 && t.tone === "warn" && "text-warn")}>{n}</span>
-              {before != null && <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-medium", tone)}>{deltaText(n, before)}</span>}
+              <span className={cn("text-[24px] font-semibold leading-none tracking-tight", n > 0 && t.tone === "bad" && "text-bad", n > 0 && t.tone === "warn" && "text-warn")}>{n}</span>
+              {before != null && <span className={cn("rounded-full px-2 py-1 text-[11px] font-medium", tone)}>{deltaText(n, before)}</span>}
             </span>
-            <span className="mt-1 text-[11.5px] text-muted-foreground">
+            <span className="mt-1 text-[12px] text-muted-foreground">
               {t.key === "active" ? `${k.moved_this_week} stage move${k.moved_this_week === 1 ? "" : "s"} this week` : before != null ? `since ${fmtDate(k.since)}` : "no history yet"}
             </span>
             {trend !== "none" && series.length > 1 && (
@@ -174,7 +174,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
   return (
     <Widget title="Timeline" sub="every active rollout, start to target" action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
       {shown.length === 0 ? <Empty>No active rollouts{s.show === "attention" ? " need attention" : ""}.</Empty> : (
-        <div className="grid grid-cols-[minmax(96px,176px)_minmax(0,1fr)] gap-x-3 overflow-x-clip text-[12.5px]">
+        <div className="grid grid-cols-[minmax(96px,176px)_minmax(0,1fr)] gap-x-3 overflow-x-clip text-[13px]">
           <span />
           <div ref={measure} className={cn("relative text-[11px] text-muted-foreground", crowded ? "h-9" : "h-5")}>
             {months.map((tk) => <span key={tk.t} className="absolute top-0 -translate-x-1/2" style={{ left: pct(tk.t) }}>{tk.label}</span>)}
@@ -186,8 +186,9 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
             const fill = r.state === "on_track" ? "bg-primary" : STATE[r.state].dot
             return (
               <Fragment key={r.id}>
-                <Link to={`/board?rollout=${r.id}`} className="truncate py-1.5 font-medium hover:underline">{r.name}{r.state === "overdue" && <span className="ml-1.5 text-[11px] font-semibold text-bad">late</span>}<span className="ml-1.5 font-normal text-muted-foreground">{r.client}</span></Link>
-                <div className="relative py-1.5">
+                <Link to={`/board?rollout=${r.id}`} title={`${r.name} · ${r.client}`} className="flex min-w-0 items-baseline gap-2 py-2 font-medium hover:underline">
+                  <span className="truncate">{r.name}</span>{r.state === "overdue" && <span className="shrink-0 text-[11px] font-semibold text-bad">late</span>}<span className="hidden min-w-0 truncate font-normal text-muted-foreground sm:inline">{r.client}</span></Link>
+                <div className="relative py-2">
                   <span className="absolute inset-y-0 w-[1.5px] bg-primary/60" style={{ left: pct(now) }} aria-hidden />
                   <Tooltip>
                     <TooltipTrigger render={<span />} tabIndex={0} role="img"
@@ -198,7 +199,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
                     </TooltipTrigger>
                     <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} → {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
                   </Tooltip>
-                  {r.team.length > 0 && <TeamStack people={r.team} className="absolute top-1/2 flex -translate-y-1/2 pl-1.5 [&_span]:h-[22px] [&_span]:w-[22px] [&_span]:text-[11px]" style={{ left: pct(to) }} />}
+                  {r.team.length > 0 && <TeamStack people={r.team} avatarClass="h-5 w-5" className="absolute top-1/2 flex -translate-y-1/2 pl-2" style={{ left: pct(to) }} />}
                 </div>
               </Fragment>
             )
@@ -215,10 +216,10 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
   const total = p.done + p.current + p.pending
   const legend = (
     <ul className="mt-2 grid grid-cols-3 gap-2 text-center text-[12px]">
-      {[["Completed", p.done, "bg-primary"], ["In progress", p.current, "bg-primary/40"], ["Pending", p.pending, "bg-muted"]].map(([l, n, c]) => (
+      {[["Completed", p.done, "bg-ok-line"], ["In progress", p.current, "bg-primary/40"], ["Pending", p.pending, "bg-input"]].map(([l, n, c]) => (
         <li key={String(l)} className="rounded-xl bg-muted/50 py-2">
           <span className={cn("mx-auto mb-1 block h-2 w-2 rounded-full", String(c))} aria-hidden />
-          <span className="block text-[15px] font-semibold leading-none">{n}</span>
+          <span className="block text-[14px] font-semibold leading-none">{n}</span>
           <span className="text-muted-foreground">{l}</span>
         </li>
       ))}
@@ -228,9 +229,9 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
     <Widget title="Portfolio progress" sub="stage steps across active rollouts" onExpand={onExpand}>
       {total === 0 ? <Empty>No active rollouts.</Empty> : s.chart === "bar" ? (
         <>
-          <div className="flex items-baseline gap-2"><span className="text-[34px] font-semibold leading-none tracking-tight">{p.pct}%</span><span className="text-[11.5px] text-muted-foreground">of stages done</span></div>
+          <div className="flex items-baseline gap-2"><span className="text-[24px] font-semibold leading-none tracking-tight">{p.pct}%</span><span className="text-[12px] text-muted-foreground">of stages done</span></div>
           <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${p.done} done, ${p.current} in progress, ${p.pending} pending`}>
-            <span className="bg-primary" style={{ width: `${(p.done / total) * 100}%` }} /><span className="bg-primary/40" style={{ width: `${(p.current / total) * 100}%` }} />
+            <span className="bg-ok-line" style={{ width: `${(p.done / total) * 100}%` }} /><span className="bg-primary/40" style={{ width: `${(p.current / total) * 100}%` }} />
           </div>
           {legend}
         </>
@@ -240,12 +241,12 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
             <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart innerRadius="72%" outerRadius="100%" startAngle={210} endAngle={-30} data={[{ v: p.pct }]} barSize={14}>
                 <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                <RadialBar dataKey="v" fill="var(--primary)" cornerRadius={8} background={{ fill: "var(--muted)" }} isAnimationActive={false} />
+                <RadialBar dataKey="v" fill="var(--ok-line)" cornerRadius={8} background={{ fill: "var(--muted)" }} isAnimationActive={false} />
               </RadialBarChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pt-4">
-              <span className="text-[34px] font-semibold leading-none tracking-tight">{p.pct}%</span>
-              <span className="mt-1 text-[11.5px] text-muted-foreground">of stages done</span>
+              <span className="text-[24px] font-semibold leading-none tracking-tight">{p.pct}%</span>
+              <span className="mt-1 text-[12px] text-muted-foreground">of stages done</span>
             </div>
           </div>
           {legend}
@@ -261,26 +262,33 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
   const until = new Date(`${today}T00:00:00Z`); until.setUTCDate(until.getUTCDate() + days)
   const due = sch.due.filter((t) => t.due_date <= until.toISOString().slice(0, 10))
   const cap = large ? 100 : 6
+  const lateCount = due.filter((t) => lateBy(t.due_date, today) > 0).length
+  const group = "border-0 bg-muted/60 px-2 py-1 text-[12px] font-semibold text-nav-fg"
   return (
-    <Widget title="Schedule" sub={`next ${days} days`} action={<Link to="/my-work" className={pill}>My work</Link>} onExpand={onExpand}>
+    <Widget title="Schedule" sub={lateCount ? `${lateCount} late · next ${days} days` : `next ${days} days`} action={<Link to="/my-work" className={pill}>My work</Link>} onExpand={onExpand}>
       <ul className="divide-y divide-border text-[13px]">
-        {due.slice(0, cap).map((t) => {
+        {due.slice(0, cap).map((t, i) => {
           const late = lateBy(t.due_date, today)
+          // due is sorted by date: late items first, then the window, each under its own heading
+          const head = i === 0 && late > 0 ? "Late" : (i === 0 || lateBy(due[i - 1].due_date, today) > 0) && late <= 0 ? `Next ${days} days` : null
           return (
-            <li key={t.id} className="flex items-center gap-3 py-2">
+            <Fragment key={t.id}>
+            {head && <li className={group}>{head}</li>}
+            <li className="flex items-center gap-3 py-2">
               <span className={cn("w-14 shrink-0 whitespace-nowrap rounded-lg px-1 py-1 text-center text-[11px] leading-tight", late > 0 ? "bg-bad-soft text-bad" : "bg-muted text-muted-foreground")}>
                 <span className="block text-[13px] font-semibold text-foreground">{t.due_date.slice(8, 10)}</span>{late > 0 ? `${late} d late` : dayLabel(t.due_date)}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{t.title}</span>
-                <span className="block truncate text-[12px] text-muted-foreground">{t.project}{t.who ? ` · ${t.who}` : ""}</span>
+                <span className="block truncate text-[12px] text-muted-foreground">{[t.project, t.stage, t.who].filter(Boolean).join(" · ")}</span>
               </span>
               <Link to={`/board?rollout=${t.project_id}`} className={pill}>Open</Link>
             </li>
+            </Fragment>
           )
         })}
         {due.length === 0 && <li><Empty>Nothing falls due in the next {days} days.</Empty></li>}
-        {due.length > cap && <li className="py-1.5 text-[12px]"><Link to="/my-work" className="text-muted-foreground hover:text-foreground">{due.length - cap} more due</Link></li>}
+        {due.length > cap && <li className="py-2 text-[12px]"><Link to="/my-work" className="text-muted-foreground hover:text-foreground">{due.length - cap} more due</Link></li>}
       </ul>
       {sch.approvals.length > 0 && (
         <>
@@ -293,7 +301,7 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
                 <Link to={`/board?rollout=${a.project_id}`} className={pill}>Open</Link>
               </li>
             ))}
-            {!large && sch.approvals.length > 4 && <li className="py-1.5 text-[12px]"><Link to="/board?filter=customer" className="text-muted-foreground hover:text-foreground">{sch.approvals.length - 4} more waiting</Link></li>}
+            {!large && sch.approvals.length > 4 && <li className="py-2 text-[12px]"><Link to="/board?filter=customer" className="text-muted-foreground hover:text-foreground">{sch.approvals.length - 4} more waiting</Link></li>}
           </ul>
         </>
       )}
@@ -311,10 +319,11 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
   const data = now.map((x) => ({ ...x, label: n <= 7 ? dayLabel(x.day).slice(0, 1) : x.day.slice(8, 10) }))
   return (
     <Widget title="Tasks completed" sub={`last ${n} days`} onExpand={onExpand}>
+      {total === 0 ? <Empty>No tasks completed in the last {n} days{prev ? ` (${prev} in the ${n} days before)` : ""}.</Empty> : <>
       <div className="mb-2 flex items-baseline gap-2">
-        <span className="text-[26px] font-semibold leading-none tracking-tight">{total}</span>
-        {change && <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-medium", change.startsWith("+") ? "bg-ok-soft text-ok" : change.startsWith("-") ? "bg-warn-soft text-warn" : "bg-muted text-muted-foreground")}>{change}</span>}
-        <span className="text-[11.5px] text-muted-foreground">vs the {n} days before ({prev})</span>
+        <span className="text-[24px] font-semibold leading-none tracking-tight">{total}</span>
+        {change && <span className={cn("rounded-full px-2 py-1 text-[11px] font-medium", change.startsWith("+") ? "bg-ok-soft text-ok" : change.startsWith("-") ? "bg-warn-soft text-warn" : "bg-muted text-muted-foreground")}>{change}</span>}
+        <span className="text-[12px] text-muted-foreground">vs the {n} days before ({prev})</span>
       </div>
       <div className={large ? "h-72" : "h-36"}>
         <ResponsiveContainer width="100%" height="100%">
@@ -338,6 +347,7 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
         </ResponsiveContainer>
       </div>
       <p className="sr-only">{data.map((x) => `${fmtDate(x.day)}: ${x.count}`).join(", ")}</p>
+      </>}
     </Widget>
   )
 }
@@ -388,12 +398,12 @@ function ActivityFeed({ rows, s, onExpand, large }: { rows: D["activity"]; s: S;
   const limit = large ? 100 : Number(s.limit ?? 10)
   return (
     <Widget title="Recent activity" sub="across the portfolio" onExpand={onExpand}>
-      <ul className="grid grid-cols-1 gap-2.5 text-[12.5px]">
+      <ul className="grid grid-cols-1 gap-3 text-[13px]">
         {rows.slice(0, limit).map((a, i) => {
           const k = KIND[a.kind]
           return (
-            <li key={i} className="flex gap-2.5">
-              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><k.icon className="h-3.5 w-3.5" aria-hidden /></span>
+            <li key={i} className="flex gap-3">
+              <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><k.icon className="h-3.5 w-3.5" aria-hidden /></span>
               <span className="min-w-0">
                 <span className="block leading-snug">{a.who ? <><span className="font-medium">{a.who}</span> {k.verb} </> : a.kind === "task" ? "Task done on " : "On "}<Link to={`/board?rollout=${a.project_id}`} className="font-medium hover:underline">{a.project}</Link></span>
                 <span className="block truncate text-muted-foreground">{a.text}</span>
@@ -438,7 +448,7 @@ function MyWork({ m, today, onExpand }: { m: D["mywork"]; today: string; onExpan
           return (
             <li key={t.id} className="flex items-center gap-3 border-b border-border py-2">
               <span className={cn("w-16 shrink-0 text-[12px]", late > 0 ? "font-medium text-bad" : "text-muted-foreground")}>{t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "no date"}</span>
-              <span className="min-w-0 flex-1"><Link to={`/board?rollout=${t.project_id}`} className="block truncate font-medium hover:underline">{t.title}</Link><span className="block truncate text-[12px] text-muted-foreground">{t.project} · {t.stage}</span></span>
+              <span className="min-w-0 flex-1"><Link to={`/board?rollout=${t.project_id}`} className="block truncate font-medium hover:underline">{t.title}</Link><span className="block truncate text-[12px] text-muted-foreground">{[t.project, t.stage].filter(Boolean).join(" · ")}</span></span>
             </li>
           )
         })}
@@ -458,7 +468,7 @@ function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () =
         <>
           <div className="grid grid-cols-3 gap-2 text-center">
             {[["Lead time avg", d1(c.lead_avg), "days"], ["Median", d1(c.lead_median), "days"], ["Closed", String(c.completed_count), "rollouts"]].map(([l, v, u]) => (
-              <div key={l} className="rounded-xl bg-muted/50 py-2"><span className="block text-[18px] font-semibold leading-none">{v}</span><span className="text-[11px] text-muted-foreground">{u}</span><span className="block text-[11px] text-muted-foreground">{l}</span></div>
+              <div key={l} className="rounded-xl bg-muted/50 py-2"><span className="block text-[17px] font-semibold leading-none">{v}</span><span className="text-[11px] text-muted-foreground">{u}</span><span className="block text-[11px] text-muted-foreground">{l}</span></div>
             ))}
           </div>
           {c.slowest && <p className="mt-2 text-[12px] text-muted-foreground">Slowest stage <span className="font-medium text-foreground">{c.slowest.stage}</span>, {d1(c.slowest.avg_days)} days on average</p>}
@@ -496,12 +506,12 @@ function Custom({ agg, s, onExpand, large }: { agg: D["aggregates"]; s: S; onExp
       {rows.length === 0 ? <Empty>Nothing to count yet.</Empty>
         : chart === "number" ? (
           <div>
-            <div className="flex items-baseline gap-2"><span className="text-[34px] font-semibold leading-none tracking-tight">{total}</span><span className="text-[11.5px] text-muted-foreground">{unit}</span></div>
-            <p className="mt-2 text-[12.5px] text-muted-foreground">Most: <span className="font-medium text-foreground">{rows[0].key}</span> with {rows[0].count}</p>
+            <div className="flex items-baseline gap-2"><span className="text-[24px] font-semibold leading-none tracking-tight">{total}</span><span className="text-[12px] text-muted-foreground">{unit}</span></div>
+            <p className="mt-2 text-[13px] text-muted-foreground">Most: <span className="font-medium text-foreground">{rows[0].key}</span> with {rows[0].count}</p>
           </div>
         ) : chart === "pie" ? <Donut rows={rows} total={total} unit={unit} link={link} large={large} />
         : chart === "list" ? (
-          <ul className="divide-y divide-border text-[13px]">{rows.map((r) => <li key={r.key} className="flex items-center justify-between gap-3 py-1.5"><span className="truncate">{r.key}</span><span className="tabular-nums font-medium">{r.count}</span></li>)}</ul>
+          <ul className="divide-y divide-border text-[13px]">{rows.map((r) => <li key={r.key} className="flex items-center justify-between gap-3 py-2"><span className="truncate">{r.key}</span><span className="tabular-nums font-medium">{r.count}</span></li>)}</ul>
         ) : <Bars rows={rows} link={link} />}
     </Widget>
   )
@@ -518,7 +528,7 @@ function tableFor(item: LayoutItem, d: D): Table | null {
     case "stages": return { columns: ["Stage", "Rollouts"], rows: d.stages.map((s) => [s.stage, s.count]) }
     case "activity": return { columns: ["When", "Who", "Rollout", "What"], rows: d.activity.map((a) => [a.at.slice(0, 16).replace("T", " "), a.who ?? "—", a.project, a.text]) }
     case "alerts": return { columns: ["Severity", "Alert", "Rollout", "Raised"], rows: d.alerts.map((a) => [a.severity, a.title, a.project, a.created_at.slice(0, 10)]) }
-    case "mywork": return { columns: ["Due", "Task", "Rollout", "Stage"], rows: d.mywork.tasks.map((t) => [t.due_date ? fmtDate(t.due_date) : "—", t.title, t.project, t.stage]) }
+    case "mywork": return { columns: ["Due", "Task", "Rollout", "Stage"], rows: d.mywork.tasks.map((t) => [t.due_date ? fmtDate(t.due_date) : "—", t.title, t.project, t.stage ?? "—"]) }
     case "cycle": return d.cycle ? { columns: ["Month", "Closed"], rows: d.cycle.throughput.map(([m, n]) => [m, n]) } : null
     case "custom": { const rows = d.aggregates[String(item.settings.measure ?? "rollouts_by_stage")] ?? []; return { columns: ["Key", "Count"], rows: rows.map((r) => [r.key, r.count]) } }
     default: return null
@@ -556,7 +566,7 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
   return (
     <Popover>
       <PopoverTrigger render={<button type="button" />} aria-label={`Customise ${title}`} className={tool}><MoreHorizontal className="h-4 w-4" /></PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-3 text-[12.5px]">
+      <PopoverContent align="end" className="w-80 p-3 text-[13px]">
         <div className="mb-2 font-semibold">{title}</div>
         {info.settings.length > 0 && (
           <div className="grid grid-cols-1 gap-2 border-b border-border pb-3">
@@ -565,11 +575,11 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
               const id = `${keyOf(item)}-${s.key}`
               if (s.kind === "multi") return (
                 <fieldset key={s.key}><legend className="mb-1 text-muted-foreground">{s.label}</legend>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-2">
                     {s.choices?.map((c) => {
                       const on = (v as string[]).includes(c)
                       return <button key={c} type="button" aria-pressed={on} onClick={() => onSettings({ [s.key]: on ? (v as string[]).filter((x) => x !== c) : [...(v as string[]), c] })}
-                        className={cn("h-7 rounded-full border px-2.5 text-[12px]", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{TILES.find((t) => t.key === c)?.label ?? c}</button>
+                        className={cn("h-7 rounded-full border px-3 text-[12px]", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{TILES.find((t) => t.key === c)?.label ?? c}</button>
                     })}
                   </div>
                 </fieldset>
@@ -577,11 +587,11 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
               return (
                 <label key={s.key} htmlFor={id} className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{s.label}</span>
                   {s.kind === "choice" ? (
-                    <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 max-w-[60%] rounded-md border border-input bg-background px-2 text-[12.5px]">
+                    <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 max-w-[60%] rounded-md border border-input bg-background px-2 text-[13px]">
                       {s.choices?.map((c) => <option key={c} value={c}>{MEASURE_LABEL[c] ?? c}</option>)}
                     </select>
-                  ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 w-40 rounded-md border border-input bg-background px-2 text-[12.5px]" />
-                  : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[12.5px]" />}
+                  ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 w-40 rounded-md border border-input bg-background px-2 text-[13px]" />
+                  : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[13px]" />}
                 </label>
               )
             })}
@@ -589,19 +599,19 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
         )}
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-muted-foreground">Width</span>
-          <span className="flex rounded-full bg-muted p-0.5" role="group" aria-label={`Width of ${title}`}>
+          <span className="flex rounded-full bg-muted p-1" role="group" aria-label={`Width of ${title}`}>
             {WIDTHS.map((x) => (
               <button key={x.w} type="button" onClick={() => onResize(x.w)} aria-pressed={item.w === x.w}
-                className={cn("h-6 rounded-full px-2.5 text-[11.5px] font-medium", item.w === x.w ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground")}>{x.label}</button>
+                className={cn("h-6 rounded-full px-3 text-[12px] font-medium", item.w === x.w ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground")}>{x.label}</button>
             ))}
           </span>
         </div>
         <div className="mt-2 flex items-center gap-1">
           <span className="mr-auto text-muted-foreground">Position</span>
-          <button type="button" onClick={() => onMove(-1)} disabled={first} className={cn(tool, "w-auto px-2.5 text-[12px]")} aria-label={`Move ${title} earlier`}><ChevronUp className="h-3.5 w-3.5" /> Earlier</button>
-          <button type="button" onClick={() => onMove(1)} disabled={last} className={cn(tool, "w-auto px-2.5 text-[12px]")} aria-label={`Move ${title} later`}><ChevronDown className="h-3.5 w-3.5" /> Later</button>
+          <button type="button" onClick={() => onMove(-1)} disabled={first} className={cn(tool, "w-auto px-3 text-[12px]")} aria-label={`Move ${title} earlier`}><ChevronUp className="h-3.5 w-3.5" /> Earlier</button>
+          <button type="button" onClick={() => onMove(1)} disabled={last} className={cn(tool, "w-auto px-3 text-[12px]")} aria-label={`Move ${title} later`}><ChevronDown className="h-3.5 w-3.5" /> Later</button>
         </div>
-        <button type="button" onClick={onRemove} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-border py-1.5 text-[12px] text-bad hover:bg-bad-soft" aria-label={`Remove ${title}`}><Trash2 className="h-3.5 w-3.5" /> Remove from my dashboard</button>
+        <button type="button" onClick={onRemove} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-border py-2 text-[12px] text-bad hover:bg-bad-soft" aria-label={`Remove ${title}`}><Trash2 className="h-3.5 w-3.5" /> Remove from my dashboard</button>
       </PopoverContent>
     </Popover>
   )
@@ -636,11 +646,13 @@ export default function Dashboard({ user }: { user: User }) {
   const [tile, setTile] = useState<DashKey | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const version = useRef<number | null>(null)
+  const saved = useRef<{ layout: DashboardData["layout"]; is_custom: boolean } | null>(null)   // the arrangement the server holds
+  const pending = useRef(false)
 
   const load = useCallback(async () => {
     try {
       const next = await dashboard()
-      setD(next); version.current = next.version; setUpdatedAt(new Date().toISOString()); setError(null)
+      setD(next); version.current = next.version; saved.current = { layout: next.layout, is_custom: next.is_custom }; setUpdatedAt(new Date().toISOString()); setError(null)
     } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load") }
   }, [])
   useEffect(() => { document.title = "Dashboard · Odin"; void load() }, [load])
@@ -648,7 +660,7 @@ export default function Dashboard({ user }: { user: User }) {
   useEffect(() => {
     let stop = false
     const check = async () => {
-      if (stop || document.hidden) return
+      if (stop || document.hidden || pending.current) return
       try {
         const { version: v } = await dashboardVersion()
         if (version.current != null && v !== version.current) await load()
@@ -675,8 +687,16 @@ export default function Dashboard({ user }: { user: User }) {
     setD({ ...d, layout: next, is_custom: true })
     setUndo(before)
     window.clearTimeout(saveTimer.current)
+    pending.current = true
     saveTimer.current = window.setTimeout(() => {
-      saveLayout(next).then(() => setNotice(label)).catch((e) => setNotice(e instanceof ApiError ? e.message : "That did not save"))
+      saveLayout(next).then(() => { saved.current = { layout: next, is_custom: true }; setNotice(label) })
+        .catch((e) => {
+          const back = saved.current
+          if (back) setD((cur) => (cur ? { ...cur, ...back } : cur))
+          setUndo(null)
+          setNotice(`${e instanceof ApiError ? e.message : "That did not save"} The dashboard is back as it was saved.`)
+        })
+        .finally(() => { pending.current = false })
     }, settle)
   }
   const add = (w: WidgetInfo) => commit((l) => [...l, { id: w.id, w: w.w, settings: Object.fromEntries(w.settings.map((s) => [s.key, s.default])), ...(w.multiple ? { uid: newUid() } : {}) }], `${w.title} added.`)
@@ -698,18 +718,18 @@ export default function Dashboard({ user }: { user: User }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, {user.name.split(" ")[0]}</h1>
         <p className="text-[13px] text-muted-foreground">the portfolio this week · {fmtDate(d.today)}{d.is_custom && " · your arrangement"}</p>
-        <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+        <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
           <span className="h-1.5 w-1.5 rounded-full bg-ok-line" aria-hidden />live · updated <Ago iso={updatedAt} />
         </p>
         <span className="ml-auto flex items-center gap-2">
           <Popover>
             <PopoverTrigger render={<button type="button" />} className={pill}><Plus className="h-3.5 w-3.5" /> Add widget</PopoverTrigger>
-            <PopoverContent align="end" className="w-80 p-2 text-[12.5px]">
-              <ul className="grid grid-cols-1 gap-0.5">
+            <PopoverContent align="end" className="w-80 p-2 text-[13px]">
+              <ul className="grid grid-cols-1 gap-1">
                 {[...hidden, ...repeatable].map((w) => (
-                  <li key={w.id}><button type="button" onClick={() => add(w)} className="grid grid-cols-1 w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
-                    <span className="font-medium">{w.title}{w.multiple && <span className="ml-1.5 font-normal text-muted-foreground">add another</span>}</span>
-                    <span className="text-[11.5px] text-muted-foreground">{w.blurb}</span></button></li>
+                  <li key={w.id}><button type="button" onClick={() => add(w)} className="grid grid-cols-1 w-full gap-1 rounded-lg px-3 py-2 text-left hover:bg-muted">
+                    <span className="font-medium">{w.title}{w.multiple && <span className="ml-2 font-normal text-muted-foreground">add another</span>}</span>
+                    <span className="text-[12px] text-muted-foreground">{w.blurb}</span></button></li>
                 ))}
               </ul>
             </PopoverContent>
@@ -717,18 +737,18 @@ export default function Dashboard({ user }: { user: User }) {
           {(admin || d.is_custom) && (
             <Popover>
               <PopoverTrigger render={<button type="button" />} aria-label="Dashboard layout" className={cn(pill, "px-2")}><MoreHorizontal className="h-4 w-4" /></PopoverTrigger>
-              <PopoverContent align="end" className="w-72 p-2 text-[12.5px]">
-                {admin && <button type="button" disabled={busy} onClick={saveDefault} className="grid grid-cols-1 w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
-                  <span className="font-medium">Save as workspace default</span><span className="text-[11.5px] text-muted-foreground">Everyone without their own arrangement sees this one</span></button>}
-                {d.is_custom && <button type="button" disabled={busy} onClick={reset} className="grid grid-cols-1 w-full gap-0.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-muted">
-                  <span className="font-medium">Reset to default</span><span className="text-[11.5px] text-muted-foreground">Drop your arrangement and use the workspace's</span></button>}
+              <PopoverContent align="end" className="w-72 p-2 text-[13px]">
+                {admin && <button type="button" disabled={busy} onClick={saveDefault} className="grid grid-cols-1 w-full gap-1 rounded-lg px-3 py-2 text-left hover:bg-muted">
+                  <span className="font-medium">Save as workspace default</span><span className="text-[12px] text-muted-foreground">Everyone without their own arrangement sees this one</span></button>}
+                {d.is_custom && <button type="button" disabled={busy} onClick={reset} className="grid grid-cols-1 w-full gap-1 rounded-lg px-3 py-2 text-left hover:bg-muted">
+                  <span className="font-medium">Reset to default</span><span className="text-[12px] text-muted-foreground">Drop your arrangement and use the workspace's</span></button>}
               </PopoverContent>
             </Popover>
           )}
         </span>
       </div>
       {notice && (
-        <p className="mt-2 text-[12.5px] text-muted-foreground" role="status">{notice}
+        <p className="mt-2 text-[13px] text-muted-foreground" role="status">{notice}
           {undo && <button type="button" onClick={() => { const back = undo; commit(() => back, "Change undone."); setUndo(null) }} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}
         </p>
       )}
@@ -749,7 +769,7 @@ export default function Dashboard({ user }: { user: User }) {
               onDragOver={(e) => { if (dragging) e.preventDefault() }} onDrop={(e) => { e.preventDefault(); if (dragging && dragging !== key) commit((l) => reorder(l, dragging, key)); setDragging(null); setGrip(null) }}>
               {/* drag by the grip (mouse); the menu's Earlier / Later does the same from the keyboard */}
               <span onPointerDown={() => setGrip(key)} onPointerUp={() => setGrip(null)} aria-hidden
-                className="absolute left-1.5 top-1.5 z-10 hidden cursor-grab rounded-md p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 md:block">
+                className="absolute left-1.5 top-1.5 z-10 hidden cursor-grab rounded-md p-1 text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 md:block">
                 <GripVertical className="h-4 w-4" /></span>
               {item.id === "kpis" && <div className="absolute -top-2 right-0 z-10 rounded-full bg-card opacity-0 shadow-card transition-opacity focus-within:opacity-100 group-hover/cell:opacity-100">{menu}</div>}
               <MenuSlot.Provider value={item.id === "kpis" ? null : menu}>
@@ -793,9 +813,9 @@ export default function Dashboard({ user }: { user: User }) {
               <div className="max-h-[75vh] overflow-auto">
                 <div className="[&_section]:border-0 [&_section]:p-0 [&_section]:shadow-none [&_section>header_button]:hidden">{renderWidget(expandedItem, d.data, d.today, { tile: setTile }, true)}</div>
                 {table && table.rows.length > 0 && (
-                  <table className="mt-4 w-full border-collapse text-[12.5px]">
-                    <thead><tr className="border-b border-border text-left text-[11.5px] text-muted-foreground">{table.columns.map((c) => <th key={c} className="px-2 py-1.5 font-normal">{c}</th>)}</tr></thead>
-                    <tbody>{table.rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn("px-2 py-1.5", typeof c === "number" && "tabular-nums")}>{c}</td>)}</tr>)}</tbody>
+                  <table className="mt-4 w-full border-collapse text-[13px]">
+                    <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">{table.columns.map((c) => <th key={c} className="px-2 py-2 font-normal">{c}</th>)}</tr></thead>
+                    <tbody>{table.rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn("px-2 py-2", typeof c === "number" && "tabular-nums")}>{c}</td>)}</tr>)}</tbody>
                   </table>
                 )}
               </div>

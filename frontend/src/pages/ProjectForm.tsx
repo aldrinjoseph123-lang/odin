@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,9 +9,10 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
 const selectClass = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
+const MISSING = "This project does not exist, or you cannot edit it."
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">{label}{hint && <span className="ml-1 text-[11.5px]">({hint})</span>}{children}</label>
+  return <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">{label}{hint && <span className="ml-1 text-[12px]">({hint})</span>}{children}</label>
 }
 
 export default function ProjectForm(_props: { user: User }) {
@@ -22,6 +23,7 @@ export default function ProjectForm(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const sending = useRef(false)   // a double click sends once: state updates too late to stop the second
   const [f, setF] = useState<Record<string, string>>({})
   const [team, setTeam] = useState<string[]>([])
   const [approval, setApproval] = useState(false)
@@ -45,7 +47,7 @@ export default function ProjectForm(_props: { user: User }) {
       setApproval(data.mode === "new" ? data.defaults.customer_approval : !!p.customer_approval)
       setInitial("pending")   // the snapshot is taken on the next render, once f is set
       document.title = `${data.mode === "edit" ? "Edit" : data.mode === "duplicate" ? "Duplicate" : "New"} project · Odin`
-    }).catch((e) => setError(e instanceof ApiError && e.status === 403 ? "You cannot edit this project." : e instanceof ApiError ? e.message : "Could not load the form"))
+    }).catch((e) => setError(editId && e instanceof ApiError && (e.status === 403 || e.status === 404) ? MISSING : e instanceof ApiError && e.status === 403 ? "You cannot create projects." : e instanceof ApiError ? e.message : "Could not load the form"))
   }, [query])
 
   useEffect(() => { if (initial === "pending") setInitial(JSON.stringify(f)) }, [initial, f])
@@ -59,16 +61,21 @@ export default function ProjectForm(_props: { user: User }) {
     for (const [k, v] of Object.entries(f)) fd.set(k, v)
     fd.delete("team_user_ids"); for (const id of team) fd.append("team_user_ids", id)
     if (approval) fd.set("customer_approval", "1"); else fd.delete("customer_approval")
+    if (sending.current) return
+    sending.current = true
     setBusy(true)
     try {
       const r = await postForm(d.mode === "edit" ? `/projects/${d.id}/edit` : "/projects/new", fd)
       const failed = r.location && (r.location.endsWith("/projects/new") || r.location.endsWith("/edit"))
+      // saved: stay busy until the next page (the new project's own page once the server names it)
       if (r.location && !failed) { setSaved(true); window.setTimeout(() => window.location.assign(r.location!), 0); return }
       setNotice(r.messages.join(" ") || "Not saved")
-    } catch (err) { setNotice(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
+    } catch (err) { setNotice(err instanceof ApiError ? err.message : "That did not save") }
+    sending.current = false
+    setBusy(false)
   }
 
-  if (error) return <LoadError message={error} />
+  if (error) return <LoadError message={error} back={error === MISSING ? { href: "/projects", label: "All projects" } : undefined} />
   if (!d) return <PageSkeleton />
   const editing = d.mode === "edit"
   const title = editing ? "Edit project" : d.mode === "duplicate" ? "Duplicate project" : "New project"
@@ -76,11 +83,11 @@ export default function ProjectForm(_props: { user: User }) {
   return (
     <div className="px-5 pb-8 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <a href="/projects" className="text-[12.5px] text-muted-foreground hover:text-foreground">Projects</a><span className="text-[12.5px] text-muted-foreground">/</span>
+        <a href="/projects" className="text-[13px] text-muted-foreground hover:text-foreground">Projects</a><span className="text-[13px] text-muted-foreground">/</span>
         <h1 className="text-[17px] font-semibold tracking-tight">{title}</h1>
         {editing && <a href={`/projects/${d.id}`} className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Cancel</a>}
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-1.5 text-[12.5px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
 
       <p className="mt-3 text-[12px] text-muted-foreground">Fields marked * are required.</p>   {/* test report UX-26 */}
       <form onSubmit={submit} className="mt-2 grid grid-cols-1 max-w-3xl gap-4 lg:grid-cols-2">
@@ -109,9 +116,9 @@ export default function ProjectForm(_props: { user: User }) {
           <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} className="h-3.5 w-3.5 accent-primary" /> Ask the customer contact to approve each stage change</label>
           <Field label="PO number"><Input value={f.po_number} onChange={set("po_number")} maxLength={100} aria-label="PO number" className="h-8 text-[13px]" /></Field>
           <div className="grid grid-cols-3 gap-2">
-            <Field label="PO date"><Input type="date" value={f.po_date} onChange={(e) => setF({ ...f, po_date: e.target.value, start_date: f.start_date || e.target.value })} aria-label="PO date" className="h-8 text-[12.5px]" /></Field>
-            <Field label="Start date"><Input type="date" value={f.start_date} onChange={set("start_date")} aria-label="Start date" className="h-8 text-[12.5px]" /></Field>
-            <Field label="Target end"><Input type="date" value={f.target_end_date} onChange={set("target_end_date")} aria-label="Target end date" className="h-8 text-[12.5px]" /></Field>
+            <Field label="PO date"><Input type="date" value={f.po_date} onChange={(e) => setF({ ...f, po_date: e.target.value, start_date: f.start_date || e.target.value })} aria-label="PO date" className="h-8 text-[13px]" /></Field>
+            <Field label="Start date"><Input type="date" value={f.start_date} onChange={set("start_date")} aria-label="Start date" className="h-8 text-[13px]" /></Field>
+            <Field label="Target end"><Input type="date" value={f.target_end_date} onChange={set("target_end_date")} aria-label="Target end date" className="h-8 text-[13px]" /></Field>
           </div>
           {!editing && (
             <>
@@ -119,7 +126,7 @@ export default function ProjectForm(_props: { user: User }) {
                 <select name="stage_template_id" value={f.stage_template_id} onChange={set("stage_template_id")} aria-label="Stage template" className={selectClass}>{d.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
               </Field>
               <Field label="Client PO document *" hint="required — no project without the PO on file">
-                <input type="file" name="po_document" required aria-label="Client PO document" className="text-[12.5px] file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-[12.5px] file:font-medium" />
+                <input type="file" name="po_document" required aria-label="Client PO document" className="text-[13px] text-muted-foreground file:mr-2 file:h-7 file:cursor-pointer file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-muted" />
               </Field>
             </>
           )}
@@ -171,8 +178,8 @@ export default function ProjectForm(_props: { user: User }) {
         </section>
 
         <div className="flex items-center gap-3 lg:col-span-2">
-          <Button type="submit" size="sm" disabled={busy || !f.name?.trim() || !f.client?.trim()}>{busy ? "Saving…" : editing ? "Save changes" : "Create project"}</Button>
-          {!editing && <span className="text-[11.5px] text-muted-foreground">Pick-lists are managed under Settings → Contacts & partners.</span>}
+          <Button type="submit" size="sm" loading={busy}>{editing ? "Save changes" : "Create project"}</Button>
+          {!editing && <span className="text-[12px] text-muted-foreground">Pick-lists are managed under Settings → Contacts & partners.</span>}
         </div>
       </form>
     </div>

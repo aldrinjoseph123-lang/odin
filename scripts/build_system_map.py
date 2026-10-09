@@ -78,6 +78,8 @@ FILES = {
     "docs/system-map.html": "This page: the Odin System Map, published as an artifact.",
     "schema.sql": "The database schema: every table, created on first start; later columns are added by migrations in db.py.",
     "test_app.py": "The Python test suite: routes, permissions, audit coverage, sign-in, reports, sign-off, scheduler jobs.",
+    "test_fix_security.py": "Tests for the 9 Oct security and input-validation round: data exposure, sign-in links, typed inputs, JSON errors.",
+    "test_fix_logic.py": "Tests for the 9 Oct logic round: working-day clocks, counts that agree, sign-off rules, purge and undo.",
     ".env.example": "The settings a deployment needs in .env (SECRET_KEY first).",
     ".dockerignore": "Keeps secrets, data and dev state out of the Docker image.",
     "frontend/src/main.tsx": "Entry point: mounts the React app with its router.",
@@ -216,9 +218,8 @@ def tree():
 
 
 def python_tests():
-    mod = ast.parse(HEAD.get("test_app.py", ""))
     classes = []
-    for node in mod.body:
+    for node in [n for f in ("test_app.py", "test_fix_security.py", "test_fix_logic.py") for n in ast.parse(HEAD.get(f, "")).body]:
         if isinstance(node, ast.ClassDef):
             tests = [f.name[5:].replace("_", " ") for f in node.body if isinstance(f, ast.FunctionDef) and f.name.startswith("test_")]
             if tests:
@@ -298,7 +299,7 @@ def releases():
 
 # Which part of Odin a changed file belongs to, first match wins.
 AREAS = [
-    ("Tests", r"^(test_app\.py|frontend/e2e/|.*\.test\.tsx?$)"),
+    ("Tests", r"^(test_\w+\.py|frontend/e2e/|.*\.test\.tsx?$)"),
     ("Screens", r"^frontend/"),
     ("Deployment", r"^(Dockerfile|docker-compose|deploy/|\.github/|docker-entrypoint\.sh|requirements\.txt|preflight\.py|\.dockerignore|\.gitignore|\.env\.example|VERSION$)"),
     ("Docs", r"(\.md$|^docs/)"),

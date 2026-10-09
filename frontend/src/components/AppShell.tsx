@@ -7,6 +7,7 @@ import { logout, postForm, type User } from "@/lib/api"
 import { Logo } from "@/components/Brand"
 import { UserAvatar } from "@/components/UserAvatar"
 import { CommandPalette } from "@/components/CommandPalette"
+import { Toaster } from "@/components/Toaster"
 import { NotificationBell } from "@/components/NotificationBell"
 import { applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
@@ -19,13 +20,13 @@ type Item = { href: string; label: string; count?: number; match: (path: string)
 
 function NavLink({ item, current, onClick }: { item: Item; current: boolean; onClick?: () => void }) {
   const className = cn(
-    "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-medium transition-colors",
+    "inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-full px-3 text-[13px] font-medium transition-colors",
     current ? "bg-primary text-primary-foreground" : "text-nav-fg hover:bg-muted hover:text-foreground",
   )
   const text = (
     <>
       {item.label}
-      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-1.5 text-[11px] text-foreground" variant="secondary">{item.count}</Badge> : null}
+      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-2 text-[11px] text-foreground" variant="secondary">{item.count > 99 ? "99+" : item.count}</Badge> : null}
     </>
   )
   return REACT_PAGES.has(item.href) ? (
@@ -42,12 +43,23 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   const navRef = useRef<HTMLElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
   // the phone menu: focus moves into it, Escape closes it and returns to the button (test report UX-12)
+  // a tap outside closes it, and Tab cycles inside it (the menu button included)
   useEffect(() => {
     if (!open) return
     navRef.current?.querySelector<HTMLElement>("a, button")?.focus()
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); menuButton.current?.focus() } }
+    const inside = (t: EventTarget | null) => t instanceof Node && (!!navRef.current?.contains(t) || !!menuButton.current?.contains(t))
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); menuButton.current?.focus(); return }
+      if (e.key !== "Tab" || !navRef.current) return
+      const stops = [...navRef.current.querySelectorAll<HTMLElement>("a[href], button:not(:disabled)"), menuButton.current!].filter((el) => el && el.offsetParent !== null)
+      const at = stops.indexOf(document.activeElement as HTMLElement)
+      const to = e.shiftKey ? (at <= 0 ? stops.length - 1 : at - 1) : (at === stops.length - 1 || at < 0 ? 0 : at + 1)
+      e.preventDefault(); stops[to]?.focus()
+    }
+    const onDown = (e: PointerEvent) => { if (!inside(e.target)) setOpen(false) }
     window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
+    document.addEventListener("pointerdown", onDown)
+    return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("pointerdown", onDown) }
   }, [open])
   const [theme, setTheme] = useState<Theme>(user.theme)
   const [palette, setPalette] = useState(false)
@@ -88,7 +100,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   return (
     <div className="flex min-h-svh flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">Skip to content</a>
-      <header className="flex h-14 shrink-0 items-center gap-4 px-5 print:hidden xl:gap-6">
+      <header className="flex h-14 shrink-0 items-center gap-4 px-5 print:hidden">
         <Link to={user.home === "board" ? "/board" : "/dashboard"} aria-label="Odin, home" className="shrink-0"><Logo markClass="h-7 w-7" wordClass="h-[15px]" /></Link>
         {/* The admin's full row needs ~1,250 px (test report UX-1): below xl the
             links fold into the menu, and up to 2xl search is just its icon;
@@ -105,10 +117,10 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           </button>
           {user.permissions.includes("create_project") && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
-          {user.kind === "external" && <Badge variant="secondary">Partner access</Badge>}
+          {user.kind === "external" && <Badge variant="secondary">{user.external_role === "Customer" ? "Customer access" : user.external_role ? "Partner access" : "External access"}</Badge>}
           <button type="button" onClick={signOut} className="text-left text-[13px] font-medium text-nav-fg hover:text-foreground xl:hidden">Log out</button>
         </nav>
-        <div className="ml-auto flex items-center gap-1.5 xl:ml-0 xl:gap-3">
+        <div className="ml-auto flex items-center gap-2 xl:ml-0 xl:gap-3">
           <NotificationBell initialUnread={user.nav.unread_notifications ?? 0} />
           <button type="button" onClick={cycleTheme} aria-label={`Theme: ${theme}. Switch`} title={`Theme: ${theme}`}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-nav-fg hover:bg-muted hover:text-foreground">
@@ -117,17 +129,18 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           <a href="/account" className="flex items-center text-[13px] text-nav-fg hover:text-foreground" title={user.name} aria-label="Your account">
             <UserAvatar name={user.name} url={user.avatar_url} className="h-7 w-7" textClass="text-[11px] bg-accent text-accent-foreground" />
           </a>
-          <button type="button" onClick={signOut} className="hidden whitespace-nowrap text-[13px] font-medium text-nav-fg hover:text-foreground xl:ml-1.5 xl:inline">Log out</button>
+          <button type="button" onClick={signOut} className="hidden whitespace-nowrap text-[13px] font-medium text-nav-fg hover:text-foreground xl:ml-2 xl:inline">Log out</button>
           <button ref={menuButton} type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted xl:hidden"><Menu className="h-5 w-5" /></button>
         </div>
       </header>
       {messages.length > 0 && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-full bg-card px-4 py-2 text-[12.5px] shadow-card print:hidden" role="status">
+        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-full bg-card px-4 py-2 text-[13px] shadow-card print:hidden" role="status">
           <span>{messages.join(" ")}</span>
           <button type="button" className="font-medium" onClick={onDismiss} aria-label="Dismiss">×</button>
         </div>
       )}
       <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">{children}</main>
+      <Toaster />
       <CommandPalette open={palette} onClose={() => setPalette(false)}
         pages={[...items.map((i) => ({ label: i.label, href: i.href })), { label: "Account", href: "/account" },
           ...(user.permissions.includes("create_project") && user.kind !== "external" ? [{ label: "New project", href: "/projects/new" }] : [])]} />

@@ -9,7 +9,7 @@ from markupsafe import escape
 
 import graph
 from constants import SIGNOFF_DOC_CATEGORY
-from core import admin_required, app, external_url, login_required, permission_required, project_allows, project_role_required
+from core import admin_required, app, json_body, external_url, login_required, permission_required, project_allows, project_role_required
 from db import get_db, get_setting
 from routes.projects import load_project, save_document
 from policies import policy
@@ -29,7 +29,7 @@ def _link(project_id):
 
 
 def _body():
-    return request.get_json(silent=True) or {}
+    return json_body()
 
 
 def _bad(error, status=400):
@@ -85,6 +85,17 @@ def api_signoff(project_id):
 
 # ---- scope -------------------------------------------------------------------------
 
+def _scope_locked(project_id):
+    """Why the scope cannot change now, or None: it is final once signed off,
+    and frozen while a version is out for signature (L12) — withdraw it first."""
+    if signoff.completed(project_id):
+        return "The project is signed off; its scope is final"
+    last = signoff.latest(project_id)
+    if last and last["status"] in signoff.OPEN:
+        return f"Version {last['version']} of the sign-off is out for signature; withdraw it before changing the scope"
+    return None
+
+
 @app.route("/api/projects/<int:project_id>/scope")
 @permission_required("view_project_detail")
 def api_scope(project_id):
@@ -98,8 +109,8 @@ def api_scope(project_id):
 @project_role_required("manage_project")
 def api_scope_add(project_id):
     project = load_project(project_id)
-    if signoff.completed(project_id):
-        return _bad("The project is signed off; its scope is final", 409)
+    if locked := _scope_locked(project_id):
+        return _bad(locked, 409)
     try:
         fields = signoff.clean_scope(_body())
     except ValueError as e:
@@ -114,8 +125,8 @@ def api_scope_add(project_id):
 @project_role_required("manage_project")
 def api_scope_item(project_id, item_id):
     project = load_project(project_id)
-    if signoff.completed(project_id):
-        return _bad("The project is signed off; its scope is final", 409)
+    if locked := _scope_locked(project_id):
+        return _bad(locked, 409)
     db = get_db()
     item = db.execute("SELECT * FROM scope_items WHERE id = ? AND project_id = ?", (item_id, project_id)).fetchone()
     if item is None:
@@ -146,11 +157,18 @@ def api_scope_item(project_id, item_id):
 @project_role_required("manage_project")
 def api_signoff_send(project_id):
     project = load_project(project_id)
+    suggestion = _body().get("ai_suggestion")
+    if suggestion is not None and (not isinstance(suggestion, int) or isinstance(suggestion, bool)):
+        return _bad("ai_suggestion is the id of an AI draft")   # checked before anything is written (F-M7)
+    from routes.ai import use_suggestion
     try:
-        row = signoff.send(project, _body(), session["user_name"])
+        row = signoff.send(project, _body(), session["user_name"], commit=False)
+        ai = use_suggestion(project_id, suggestion, "signoff_summary")
     except ValueError as e:
+        get_db().rollback()
         return _bad(e)
-    audit_log("signoff_send", "project", project_id, project["name"], f"v{row['version']} to {row['signer_email']} sha256={row['content_hash'][:16]}")
+    get_db().commit()   # the version and the draft it used, together
+    audit_log("signoff_send", "project", project_id, project["name"], f"v{row['version']} to {row['signer_email']} sha256={row['content_hash'][:16]}{ai}")
     notify_users([row["signer_id"]], "approval", project_id, f"Please review and sign off {project['name']}",
                  f"<p>{escape(session['user_name'])} has sent the sign-off for <b>{escape(project['name'])}</b> (version {row['version']}). "
                  "It lists what was delivered against the agreed scope. Please review it, then sign — or say what needs to change.</p>",
@@ -246,13 +264,27 @@ def api_signoff_reject(project_id, version):
 @project_role_required("manage_project")
 def api_signoff_link(project_id, version):
     """A one-time sign-in link for the signatory, landing on the sign-off: for
-    when mail is not connected, or the email went astray. Carried by hand."""
+    when mail is not connected, or the email went astray. Carried by hand —
+    but only for a signatory on this project alone: an account that is on
+    other projects too gets the link by email, never in this reply, or the
+    project manager could act as that person elsewhere."""
     project = load_project(project_id)
     row = _version(project_id, version)
     if row["status"] != "sent":
         return _bad("Only a version waiting for the customer's signature needs their link")
-    link = external_url("auth_link_consume", token=issue_login_link(row["signer_id"], session["user_id"]), next=_link(project_id))
-    db = get_db()   # disclosed on the signing record: the signatory's sign-in came by hand from this person
+    db = get_db()
+    signer = db.execute("SELECT * FROM users WHERE id = ?", (row["signer_id"],)).fetchone()
+    raw = issue_login_link(row["signer_id"], session["user_id"])
+    if signer is None or signer["kind"] != "external" or db.execute(
+            "SELECT 1 FROM project_participants WHERE user_id = ? AND project_id != ?", (row["signer_id"], project_id)).fetchone():
+        from routes.auth import send_login_link
+        sent, _error = send_login_link(signer, raw, session["user_name"], project["name"], project_id) if signer else (False, None)
+        audit_log("signoff_link", "project", project_id, project["name"], f"v{version} sign-in link for {row['signer_email']} {'emailed' if sent else 'not sent'}")
+        return jsonify(ok=True, link=None, emailed=sent, minutes=policy("link_minutes"), email=row["signer_email"],
+                       message=f"A sign-in link was emailed to {row['signer_email']}" if sent else
+                       f"Email could not be sent; {row['signer_email']} can ask for a sign-in link on the sign-in page")
+    link = external_url("auth_link_consume", token=raw, next=_link(project_id))
+    # disclosed on the signing record: the signatory's sign-in came by hand from this person
     db.execute("UPDATE signoffs SET link_issued_by = ?, link_issued_at = ? WHERE id = ?", (session["user_name"], datetime.utcnow().isoformat(), row["id"]))
     db.commit()
     audit_log("signoff_link", "project", project_id, project["name"], f"v{version} sign-in link for {row['signer_email']}")
@@ -295,6 +327,9 @@ def api_signoff_upload(project_id, version):
         datetime.strptime(signed_on, "%Y-%m-%d")
     except ValueError:
         return _bad("The signing date must be a date (YYYY-MM-DD)")
+    from policies import local_date, local_today
+    if signed_on > local_today().isoformat() or signed_on < local_date(row["created_at"]).isoformat():   # L19
+        return _bad("The signing date is between the day the version was sent and today")
     if problem := upload_problem(file):
         return _bad(problem)
     if not content_matches_extension(file):
@@ -303,7 +338,10 @@ def api_signoff_upload(project_id, version):
         return _bad("Upload the signed copy of a version that is waiting for signatures")
     original = save_document(project_id, file, SIGNOFF_DOC_CATEGORY, session["user_name"])
     doc_id = get_db().execute("SELECT MAX(id) FROM documents WHERE project_id = ? AND filename = ?", (project_id, original)).fetchone()[0]
-    signoff.record_upload(row, doc_id, name, request.form.get("signer_title", "").strip()[:120], signed_on)
+    try:
+        signoff.record_upload(row, doc_id, name, request.form.get("signer_title", "").strip()[:120], signed_on)
+    except ValueError as e:   # completed or withdrawn by another request meanwhile; the file stays among the documents
+        return _bad(e)
     audit_log("signoff_upload", "project", project_id, project["name"], f"v{version} signed copy {original}, signed by {name} on {signed_on}")
     ids = [r[0] for r in get_db().execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,))]
     notify_users(ids, "approval", project_id, f"{project['name']} is signed off",

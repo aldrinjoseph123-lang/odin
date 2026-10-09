@@ -51,7 +51,7 @@ export function Byline({ className }: { className?: string }) {
 
 export function Logo({ byline, className, markClass, wordClass }: { byline?: boolean; className?: string; markClass?: string; wordClass?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
+    <span className={cn("inline-flex items-center gap-3", className)}>
       <RavenMark className={markClass} />
       <Wordmark className={wordClass} />
       {byline && <><span className="h-[1.1em] w-px bg-current opacity-30" aria-hidden /><Byline className="text-current/70" /></>}
@@ -82,7 +82,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         <Logo byline markClass="h-8 w-8 lg:h-9 lg:w-9" wordClass="h-[18px] lg:h-5" />
         <div>
           <Eyebrow n={1} className="hidden text-brand-muted lg:block">Project lifecycle</Eyebrow>
-          <p className="font-display text-[22px] font-bold uppercase leading-[1.02] tracking-tight sm:text-[28px] lg:mt-3 lg:text-[52px]">
+          <p className="font-display text-[22px] font-bold uppercase leading-[1.1] tracking-tight sm:text-[28px] lg:mt-3 lg:text-[52px]">
             Every project.<br className="hidden lg:block" /><span className="whitespace-nowrap text-brand-red"> On watch.</span>
           </p>
           <p className="mt-4 hidden max-w-sm text-[14px] leading-relaxed text-brand-muted lg:block">Every rollout, stage and deadline, from kickoff to handover. Nothing stalls unseen.</p>
@@ -94,7 +94,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       </aside>
       <div className="flex flex-col px-5 py-8 sm:px-10 lg:px-16">
         <div className="w-full max-w-[400px] sm:mx-auto lg:my-auto">{children}</div>
-        <p className="mt-10 w-full max-w-[400px] text-[12.5px] text-muted-foreground sm:mx-auto lg:mt-0">Trouble signing in? Ask your Odin admin.</p>
+        <p className="mt-10 w-full max-w-[400px] text-[13px] text-muted-foreground sm:mx-auto lg:mt-0">Trouble signing in? Ask your Odin admin.</p>
       </div>
     </main>
   )
@@ -105,7 +105,7 @@ export function AuthHeading({ title, children }: { title: string; children?: Rea
   return (
     <div className="mb-6">
       <h1 className="text-2xl font-semibold leading-tight tracking-tight">{title}</h1>
-      {children && <p className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground">{children}</p>}
+      {children && <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">{children}</p>}
     </div>
   )
 }

@@ -11,7 +11,9 @@ import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const fmt = (iso: string | null, withTime = false) => fmtWhen(iso, withTime)
-const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-[12.5px] disabled:opacity-60"
+const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-[13px] disabled:opacity-60"
+// the actions column stays in view when the table scrolls sideways
+const pinned = "sticky right-0 bg-card"
 
 export default function Users(_props: { user: User }) {
   const [data, setData] = useState<UsersData | null>(null)
@@ -23,14 +25,16 @@ export default function Users(_props: { user: User }) {
   }, [])
   useEffect(() => { void load(); document.title = "Users · Odin" }, [load])
 
-  async function send(path: string, fields: Record<string, string>, confirmText?: string) {
-    if (confirmText && !window.confirm(confirmText)) return
+  // true when the save went through: forms clear what was typed only then
+  async function send(path: string, fields: Record<string, string>, confirmText?: string): Promise<boolean> {
+    if (confirmText && !window.confirm(confirmText)) return false
     setBusy(true)
     try {
       const r = await postForm(path, fields)
       setNotice(r.messages.join(" ") || null)
       await load()
-    } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+      return true
+    } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save"); return false } finally { setBusy(false) }
   }
 
   if (error) return <LoadError message={error} />
@@ -48,7 +52,7 @@ export default function Users(_props: { user: User }) {
         </div>
       </div>
       {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
           <span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
       )}
@@ -59,8 +63,8 @@ export default function Users(_props: { user: User }) {
         <div className="min-w-0 overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
             <thead className="bg-card">
-              <tr className="border-b border-border text-left text-[11.5px] font-normal text-muted-foreground">
-                {["Name", "Username", "Email", "Role", "Status", "Sign-in", "Last sign-in", "Created", ""].map((h, i) => <th key={i} className={cn("px-3 py-2 font-normal", (i === 1 || i >= 6) && i !== 8 && "hidden xl:table-cell")}>{h}</th>)}
+              <tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">
+                {["Name", "Username", "Email", "Role", "Status", "Sign-in", "Last sign-in", "Created", ""].map((h, i) => <th key={i} className={cn("px-3 py-2 font-normal", (i === 1 || i === 6 || i === 7) && "hidden 2xl:table-cell", i === 8 && pinned)}><span className={i === 8 ? "sr-only" : undefined}>{h || "Actions"}</span></th>)}
               </tr>
             </thead>
             <tbody>
@@ -79,10 +83,10 @@ export default function Users(_props: { user: User }) {
 
 // Colleagues who signed in with Microsoft for the first time: an admin lets
 // them in with a role, or declines (the account stays, inactive).
-function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<void> }) {
+function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean> }) {
   const [role, setRole] = useState<Record<number, string>>({})
   return (
-    <section className="mt-3 rounded-lg border border-warn-line bg-warn-soft/40 p-4" aria-label="Waiting for approval">
+    <section className="mt-3 rounded-lg bg-warn-soft/60 p-4" aria-label="Waiting for approval">
       <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Waiting for approval <span className="font-normal text-muted-foreground">asked to use Odin, not yet allowed in</span></h2>
       <ul className="grid grid-cols-1 gap-2">
         {people.map((u) => (
@@ -102,19 +106,19 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
   )
 }
 
-function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles: string[]; me: number; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<void> }) {
+function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles: string[]; me: number; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean> }) {
   const [email, setEmail] = useState(u.email ?? "")   // the row remounts (key) when the saved email changes
   const [pw, setPw] = useState("")
   const [resetting, setResetting] = useState(false)
   const self = u.id === me
   return (
     <tr className={cn("border-b border-border last:border-0", !u.active && "text-muted-foreground")}>
-      <td className="px-3 py-2 font-medium"><span className="inline-flex items-center gap-2"><UserAvatar name={u.name} url={u.avatar_url} className="h-6 w-6" /><span title={u.username}>{u.name}</span></span>{u.kind === "external" && <Badge variant="secondary" className="ml-1.5">External</Badge>}{self && <span className="ml-1.5 text-[11.5px] font-normal text-muted-foreground">you</span>}</td>
-      <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{u.username}</td>
+      <td className="px-3 py-2 font-medium"><span className="inline-flex items-center gap-2"><UserAvatar name={u.name} url={u.avatar_url} className="h-6 w-6" /><span title={u.username}>{u.name}</span></span>{u.kind === "external" && <Badge variant="secondary" className="ml-2">External</Badge>}{self && <span className="ml-2 text-[12px] font-normal text-muted-foreground">you</span>}</td>
+      <td className="hidden px-3 py-2 text-muted-foreground 2xl:table-cell">{u.username}</td>
       <td className="px-3 py-2">
         <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="flex items-center gap-1">
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" aria-label={`Email for ${u.name}`} className="h-7 w-40 text-[12.5px]" />
-          {email !== (u.email ?? "") && <Button type="submit" size="sm" variant="outline" className="h-7" disabled={busy}>Save</Button>}
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" aria-label={`Email for ${u.name}`} className="h-7 w-40 text-[13px]" />
+          {email !== (u.email ?? "") && <Button type="submit" size="sm" variant="outline" className="h-7" loading={busy}>Save</Button>}
         </form>
       </td>
       <td className="px-3 py-2">
@@ -125,29 +129,29 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
         </select>
       </td>
       <td className="px-3 py-2">{u.active ? "Active" : <span className="text-muted-foreground">Deactivated</span>}</td>
-      <td className="px-3 py-2 text-[12.5px]">
+      <td className="px-3 py-2 text-[13px]">
         {u.kind === "external" ? <span className="text-muted-foreground">Email link</span> : (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {u.microsoft && <Badge variant="secondary">Microsoft</Badge>}
             {u.two_step && <span className="inline-flex items-center gap-1"><Badge variant="secondary">Two-step</Badge>
-              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" disabled={busy} aria-label={`Reset two-step sign-in for ${u.name}`}
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-[12px]" disabled={busy} aria-label={`Reset two-step sign-in for ${u.name}`}
                 onClick={() => send(`/users/${u.id}/two-step-reset`, {}, `Reset two-step sign-in for ${u.name}? Use this when they lost their phone and recovery codes. Their sessions end.`)}>Reset</Button></span>}
-            <label className="flex items-center gap-1.5 whitespace-nowrap" title="Keeps a password when staff must use Microsoft: the emergency way in">
+            <label className="flex items-center gap-2 whitespace-nowrap" title="Keeps a password when staff must use Microsoft: the emergency way in">
               <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => send(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-3.5 w-3.5 accent-primary" />
               Password
             </label>
           </span>
         )}
       </td>
-      <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground xl:table-cell">{u.last_login_at ? <Ago iso={u.last_login_at} /> : "—"}</td>
-      <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground xl:table-cell">{fmt(u.created_at)}</td>
-      <td className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1.5">
+      <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground 2xl:table-cell">{u.last_login_at ? <Ago iso={u.last_login_at} /> : "—"}</td>
+      <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground 2xl:table-cell">{fmt(u.created_at)}</td>
+      <td className={cn("px-3 py-2", pinned)}>
+        <div className="flex flex-wrap items-center gap-2">
           {!self && <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined)}>{u.active ? "Deactivate" : "Reactivate"}</Button>}
           {u.kind !== "external" && (!microsoftOnly || u.password_login) && (resetting ? (
-            <form onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then(() => { setPw(""); setResetting(false) }) }} className="flex items-center gap-1">
-              <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password" aria-label={`New password for ${u.name}`} minLength={12} required className="h-7 w-36 text-[12.5px]" />
-              <Button type="submit" size="sm" className="h-7" disabled={busy || pw.length < 12}>Set</Button>
+            <form onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then((ok) => { if (ok) { setPw(""); setResetting(false) } }) }} className="flex items-center gap-1">
+              <Input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password" aria-label={`New password for ${u.name}`} minLength={12} required className="h-7 w-36 text-[13px]" />
+              <Button type="submit" size="sm" className="h-7" loading={busy} disabled={pw.length < 12}>Set</Button>
               <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setResetting(false)}>Cancel</Button>
             </form>
           ) : <Button size="sm" variant="ghost" className="h-7" onClick={() => setResetting(true)}>Reset password</Button>)}
@@ -157,34 +161,34 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
   )
 }
 
-function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>) => Promise<void> }) {
+function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>) => Promise<boolean> }) {
   const [f, setF] = useState({ name: "", username: "", email: "", password: "", role: "Member" })
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
   function submit(e: FormEvent) {
     e.preventDefault()
-    void send("/users", f).then(() => setF({ name: "", username: "", email: "", password: "", role: "Member" }))
+    void send("/users", f).then((ok) => { if (ok) setF({ name: "", username: "", email: "", password: "", role: "Member" }) })
   }
   return (
     <form onSubmit={submit} className="grid grid-cols-1 content-start gap-2 panel p-4">
       <h2 className="text-[12px] font-semibold text-nav-fg">Add a team member</h2>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Full name<Input value={f.name} onChange={set("name")} required aria-label="Full name" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Username<Input value={f.username} onChange={set("username")} required aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" aria-label="Email" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Full name<Input value={f.name} onChange={set("name")} required maxLength={120} aria-label="Full name" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Username<Input value={f.username} onChange={set("username")} required maxLength={80} aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" maxLength={254} aria-label="Email" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Role
         <select value={f.role} onChange={set("role")} aria-label="Role" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]">
           {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </label>
-      <Button type="submit" size="sm" className="mt-1" disabled={busy || !f.name || !f.username || f.password.length < 12}>Create user</Button>
-      <p className="text-[11.5px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
+      <Button type="submit" size="sm" className="mt-1" loading={busy}>Create user</Button>
+      <p className="text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
     </form>
   )
 }
 
 // Sign-up links: a link for a new colleague to request an account themselves.
 // Requests land in "Waiting for approval" above; nothing is active until approved.
-const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[12.5px]"
+const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 function SignupLinksPanel() {
   const [d, setD] = useState<SignupLinks | null>(null)
   const [f, setF] = useState({ label: "", role: "Contributor", project_id: "", project_role: "Coordinator", days: 0, max_uses: 1 })
@@ -208,8 +212,8 @@ function SignupLinksPanel() {
     <section className="panel p-4" aria-label="Sign-up links">
       <h2 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
       <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
-      {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-2.5 text-[12.5px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
-      {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[12.5px]">
+      {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-3 text-[13px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
+      {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[13px]">
         <label className="grid grid-cols-1 gap-1 font-medium">For<input className={field} required maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Omar, field engineer" /></label>
         <div className="grid grid-cols-2 gap-2">
           <label className="grid grid-cols-1 gap-1 font-medium">Role<select className={field} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{d.roles.map((r) => <option key={r}>{r}</option>)}</select></label>
@@ -219,29 +223,30 @@ function SignupLinksPanel() {
           <label className="grid grid-cols-1 gap-1 font-medium">Uses<select className={field} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: Number(e.target.value) })}>{[1, 5, 10, 25].map((n) => <option key={n} value={n}>{n === 1 ? "One person" : `Up to ${n}`}</option>)}</select></label>
         </div>
         {err && <p className="text-bad" role="alert">{err}</p>}
-        <Button type="submit" size="sm" disabled={busy || !f.label.trim()}>Create link</Button>
+        <Button type="submit" size="sm" loading={busy} disabled={!f.label.trim()}>Create link</Button>
       </form>}
       {made && (
-        <div className="mt-3 grid grid-cols-1 gap-1.5 rounded-lg bg-muted/60 p-2.5">
-          <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[11.5px]" />
+        <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
+          <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
           <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => {})}>{copied ? "Copied" : "Copy the link"}</Button>
-          <p className="text-[11.5px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
+          <p className="text-[12px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
         </div>
       )}
       {d.links.length > 0 && (
-        <ul className="mt-3 divide-y divide-border text-[12.5px]">
+        <ul className="mt-3 divide-y divide-border text-[13px]">
           {d.links.slice(0, 12).map((l) => (
-            <li key={l.id} className="flex items-center gap-2 py-1.5">
-              <span className="min-w-0 flex-1"><span className="block truncate font-medium">{l.label}</span>
-                <span className="block truncate text-[11.5px] text-muted-foreground">{l.role}{l.project ? ` · ${l.project}` : ""} · {l.uses}/{l.max_uses} used · {l.state === "open" ? `until ${fmtWhen(l.expires_at)}` : l.state}</span></span>
-              {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={() => { if (confirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load) }}>Revoke</Button>}
+            <li key={l.id} className="flex items-center gap-2 py-2">
+              <span className="min-w-0 flex-1"><span className="block truncate font-medium" title={l.label}>{l.label}</span>
+                <span className="block truncate text-[12px] text-muted-foreground">{l.role}{l.project ? ` · ${l.project}` : ""} · {l.uses}/{l.max_uses} used · {l.state === "open" ? `until ${fmtWhen(l.expires_at)}` : l.state}</span></span>
+              {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={() => { if (confirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the link")) }}>Revoke</Button>}
             </li>
           ))}
         </ul>
       )}
-      {open.length === 0 && d.links.length > 0 && <p className="mt-2 text-[11.5px] text-muted-foreground">No open links.</p>}
+      {err && !d.enabled && <p className="mt-2 text-[13px] text-bad" role="alert">{err}</p>}
+      {open.length === 0 && d.links.length > 0 && <p className="mt-2 text-[12px] text-muted-foreground">No open links.</p>}
       {open.length > 1 && <Button size="sm" variant="ghost" className="mt-2 h-7 text-bad" disabled={busy}
-        onClick={() => { if (confirm(`Revoke all ${open.length} open links? Anyone holding one can no longer sign up with it.`)) void revokeAllSignupLinks().then(load) }}>Revoke all open links</Button>}
+        onClick={() => { if (confirm(`Revoke all ${open.length} open links? Anyone holding one can no longer sign up with it.`)) void revokeAllSignupLinks().then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the links")) }}>Revoke all open links</Button>}
     </section>
   )
 }

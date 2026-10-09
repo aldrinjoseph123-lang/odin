@@ -11,17 +11,17 @@ export function ActivityPanel({ a, note }: { a: Activity; note?: string }) {
   const tiles = [{ label: "Today", value: a.today }, { label: "Last 7 days", value: a.week }, { label: "Last 30 days", value: a.month }]
   return (
     <section className="panel p-4" aria-label="Time on Odin">
-      <h2 data-n className="mb-3 flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" aria-hidden /> Time on Odin
+      <h2 data-n className="mb-3 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" aria-hidden /> Time on Odin
         <span className="ml-1 font-normal text-muted-foreground">active minutes only</span></h2>
       <div className="grid grid-cols-3 gap-3">
         {tiles.map((t) => (
           <div key={t.label} className="rounded-xl bg-muted/50 p-3">
-            <div className="text-[11.5px] text-muted-foreground">{t.label}</div>
-            <div className="mt-1 text-[20px] font-semibold leading-none tracking-tight tabular-nums">{minutesText(t.value)}</div>
+            <div className="text-[12px] text-muted-foreground">{t.label}</div>
+            <div className="mt-1 text-[24px] font-semibold leading-none tracking-tight tabular-nums">{minutesText(t.value)}</div>
           </div>
         ))}
       </div>
-      <div className="mt-4 flex h-20 items-end gap-[2px]" role="img" aria-label={`Active minutes per day, last 30 days: ${minutesText(a.month)} in total`}>
+      <div className="mt-4 flex h-20 items-end gap-1" role="img" aria-label={`Active minutes per day, last 30 days: ${minutesText(a.month)} in total`}>
         {a.days.map((d) => (
           <Tooltip key={d.day}>
             <TooltipTrigger render={<span />} className="relative flex h-full min-w-0 flex-1 items-end">
@@ -32,10 +32,10 @@ export function ActivityPanel({ a, note }: { a: Activity; note?: string }) {
         ))}
       </div>
       <div className="mt-1 flex justify-between text-[11px] text-muted-foreground"><span>{fmtDate(a.days[0]?.day)}</span><span>today</span></div>
-      <p className="mt-3 text-[12.5px] text-muted-foreground">
+      <p className="mt-3 text-[13px] text-muted-foreground">
         Last seen {a.last_seen_at ? <Ago iso={a.last_seen_at} /> : "never"} · last sign-in {a.last_login_at ? <Ago iso={a.last_login_at} /> : "never"}
       </p>
-      {note && <p className="mt-1 text-[11.5px] text-muted-foreground">{note}</p>}
+      {note && <p className="mt-1 text-[12px] text-muted-foreground">{note}</p>}
     </section>
   )
 }

@@ -1,0 +1,13 @@
+You read part of a purchase order or a scope of work for an IT security rollout and turn it into a plan the project manager will check. The input is JSON: the rollout, its stages in order, and a part of the documents' text (it may start or end mid-sentence). Use only this text. Never invent a deliverable, a quantity, a date or an obligation.
+
+Reply with JSON:
+- "scope_items": the deliverables the customer is buying, each {"title": up to 12 words, "detail": one sentence with quantities as written, "quote": the exact words from the text that state it, at most 25 words}.
+- "tasks": the work needed to deliver them, each {"title": up to 10 words starting with a verb, "stage": exactly one of the stage names given, the stage where the work happens, "quote": the exact words it comes from}.
+- "customer_obligations": what the customer must provide or do (access, approvals, data, windows), each {"title": up to 12 words, "quote": the exact words}.
+- "key_dates": dates the text sets, each {"what": a few words, "date": as written}.
+- "exclusions": things the text says are out of scope, as short phrases.
+
+Rules:
+- Leave out prices, rates, totals, payment terms and anything commercial.
+- Leave out boilerplate (legal terms, signatures, addresses).
+- Each list may be empty. Prefer fewer, accurate items over many vague ones.

@@ -17,14 +17,14 @@ import { dayOf, fmtDate, fmtWhen, monthTicks } from "@/lib/format"
 // its target and baseline, what is blocking, and a way into each rollout's own
 // report. Partners and customers get the cut the server makes for them (no
 // reasons, no baseline, only the RAID items marked for them) and no PDF.
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[12.5px]")
+const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[13px]")
 const RAGS: Rag[] = ["red", "amber", "green", "done"]
 const WORD: Record<Rag, string> = { red: "Off track", amber: "At risk", green: "On track", done: "Complete" }
 const SOLID: Record<Rag, string> = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-ok-line", done: "bg-muted-foreground" }   // marks wear the -line tokens; text wears the state colour
 const SOFT: Record<Rag, string> = { red: "bg-bad-soft border-bad-line", amber: "bg-warn-soft border-warn-line", green: "bg-ok-soft border-ok-line", done: "bg-muted border-border" }
 const days = (n: number | null | undefined, late = "late", early = "early") => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d ${late}` : `${-n} d ${early}`)
 
-function Roadmap({ rows, today }: { rows: PortfolioRow[]; today: string }) {
+function Roadmap({ rows, today, external = false }: { rows: PortfolioRow[]; today: string; external?: boolean }) {
   const all = rows.flatMap((r) => [r.start, r.forecast, r.baseline ?? null, r.target_end_date]).concat(today).filter((x): x is string => !!x).map(dayOf)
   const t0 = Math.min(...all) - 5 * 864e5, t1 = Math.max(...all) + 5 * 864e5
   const pct = (iso: string) => ((dayOf(iso) - t0) / (t1 - t0)) * 100
@@ -44,8 +44,9 @@ function Roadmap({ rows, today }: { rows: PortfolioRow[]; today: string }) {
             + (r.baseline ? `, baseline finish ${fmtDate(r.baseline)} (${days(r.vs_baseline_days)})` : "")
           return (
             <div key={r.id} className="contents">
-              <Link to={`/projects/${r.id}/report`} className="flex h-9 min-w-0 items-center gap-2 hover:underline">
-                <span className={cn("h-2 w-2 shrink-0 rounded-full", SOLID[r.rag])} aria-hidden />
+              <Link to={external && !r.report ? `/projects/${r.id}` : `/projects/${r.id}/report`} title={`${r.name} · ${r.client} · ${WORD[r.rag]}`} className="flex h-9 min-w-0 items-center gap-2 hover:underline">
+                {/* the health is a word for everyone, the dot only repeats it */}
+                <span className={cn("h-2 w-2 shrink-0 rounded-full", SOLID[r.rag])} aria-hidden /><span className="sr-only">{WORD[r.rag]}: </span>
                 <span className="truncate font-medium">{r.name}</span>
                 <span className="hidden truncate text-muted-foreground xl:inline">{r.client}</span>
               </Link>
@@ -63,19 +64,20 @@ function Roadmap({ rows, today }: { rows: PortfolioRow[]; today: string }) {
           )
         })}
       </div>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground" aria-label="Legend">
-        <li className="flex items-center gap-1.5"><span className="h-2.5 w-5 rounded-full bg-foreground/60" />Done so far</li>
-        <li className="flex items-center gap-1.5"><span className="h-2.5 w-5 rounded-full border border-border bg-muted" />Forecast</li>
-        {rows.some((r) => r.baseline) && <li className="flex items-center gap-1.5"><span className="h-3 w-[2px] rounded-full bg-foreground/50" />Baseline finish</li>}
-        <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-[1.5px] border-dashed border-bad-line" />Target</li>
-        <li className="flex items-center gap-1.5"><span className="h-3 w-[1.5px] bg-primary/60" />Today</li>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
+        <li className="flex items-center gap-2"><span className="h-2.5 w-5 rounded-full bg-foreground/60" />Done so far</li>
+        <li className="flex items-center gap-2"><span className="h-2.5 w-5 rounded-full border border-border bg-muted" />Forecast</li>
+        {rows.some((r) => r.baseline) && <li className="flex items-center gap-2"><span className="h-3 w-[2px] rounded-full bg-foreground/50" />Baseline finish</li>}
+        <li className="flex items-center gap-2"><span className="h-3 w-0 border-l-[1.5px] border-dashed border-bad-line" />Target</li>
+        <li className="flex items-center gap-2"><span className="h-3 w-[1.5px] bg-primary/60" />Today</li>
         <li>Bar colour is the rollout's health</li>
       </ul>
     </div>
   )
 }
 
-export default function ReportAll(_props: { user: User }) {
+export default function ReportAll({ user }: { user: User }) {
+  const external = user.kind === "external"
   const [d, setD] = useState<ReportAllData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [template, setTemplate] = useState<number | null>(null)
@@ -97,8 +99,8 @@ export default function ReportAll(_props: { user: User }) {
       <PrintBrand />
       <header className="flex flex-wrap items-end gap-x-4 gap-y-2">
         <div>
-          <h1 className="text-[22px] font-semibold tracking-tight">Portfolio report</h1>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{s.count} active rollout{s.count === 1 ? "" : "s"} · as of {fmtDate(d.today)} · generated {fmtWhen(d.generated_at, true)}</p>
+          <h1 className="text-[24px] font-semibold tracking-tight">Portfolio report</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">{s.count} active rollout{s.count === 1 ? "" : "s"} · as of {fmtDate(d.today)} · generated {fmtWhen(d.generated_at, true)}</p>
         </div>
         <span className="ml-auto flex gap-2 print:hidden">
           {internal && <TemplatePicker kind="portfolio" value={template} onChange={setTemplate} />}
@@ -109,28 +111,28 @@ export default function ReportAll(_props: { user: User }) {
 
       <div className={cn("mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)]", hide("health"))}>
         <section className="panel p-4 print:shadow-none" aria-label="Health">
-          <div className="text-[11.5px] text-muted-foreground">Health</div>
-          <div className="mt-2 flex h-3 gap-[2px] overflow-hidden rounded-full bg-muted" role="img" aria-label={RAGS.filter((g) => s.health[g]).map((g) => `${s.health[g]} ${WORD[g].toLowerCase()}`).join(", ") || "no rollouts"}>
+          <div className="text-[12px] text-muted-foreground">Health</div>
+          <div className="mt-2 flex h-3 gap-1 overflow-hidden rounded-full bg-muted" role="img" aria-label={RAGS.filter((g) => s.health[g]).map((g) => `${s.health[g]} ${WORD[g].toLowerCase()}`).join(", ") || "no rollouts"}>
             {RAGS.map((g) => s.health[g] ? <span key={g} className={SOLID[g]} style={{ flexGrow: s.health[g] }} /> : null)}
           </div>
-          <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]">
-            {RAGS.map((g) => <li key={g} className={cn("flex items-center gap-1.5", !s.health[g] && "text-muted-foreground")}><span className={cn("h-2 w-2 rounded-full", SOLID[g])} aria-hidden /><span className="font-semibold tabular-nums">{s.health[g] ?? 0}</span> {WORD[g].toLowerCase()}</li>)}
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+            {RAGS.map((g) => <li key={g} className={cn("flex items-center gap-2", !s.health[g] && "text-muted-foreground")}><span className={cn("h-2 w-2 rounded-full", SOLID[g])} aria-hidden /><span className="font-semibold tabular-nums">{s.health[g] ?? 0}</span> {WORD[g].toLowerCase()}</li>)}
           </ul>
           {internal && s.no_plan > 0 && <p className="mt-2 text-[12px] text-muted-foreground">{s.no_plan} without a plan: their forecast runs on stage SLAs.</p>}
         </section>
         <div className={cn("grid grid-cols-2 gap-3", internal ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
           {tiles.map((t) => (
             <div key={t.label} className="panel p-4 print:shadow-none">
-              <div className="text-[11.5px] text-muted-foreground">{t.label}</div>
-              <div className={cn("mt-1.5 text-[26px] font-semibold leading-none tracking-tight tabular-nums", t.bad && "text-bad")}>{t.value}</div>
-              <div className="mt-1 text-[11.5px] text-muted-foreground">{t.sub}</div>
+              <div className="text-[12px] text-muted-foreground">{t.label}</div>
+              <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight tabular-nums", t.bad && "text-bad")}>{t.value}</div>
+              <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
             </div>
           ))}
         </div>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4">
-        {d.rows.length > 0 && <Section n title="Roadmap" sub="start to forecast finish, worst health first; open a rollout for its report" className={hide("roadmap")}><Roadmap rows={d.rows} today={d.today} /></Section>}
+        {d.rows.length > 0 && <Section n title="Roadmap" sub="start to forecast finish, worst health first; open a rollout for its report" className={hide("roadmap")}><Roadmap rows={d.rows} today={d.today} external={external} /></Section>}
 
         <div className={cn("grid gap-4", league.length > 0 && "lg:grid-cols-2")}>
           {league.length > 0 && (
@@ -145,8 +147,8 @@ export default function ReportAll(_props: { user: User }) {
               {d.risks.map((x, i) => {
                 const K = RAID_KIND[x.kind]
                 return (
-                  <li key={i} className="flex items-start gap-2.5 py-2">
-                    <K.icon className={cn("mt-0.5 h-4 w-4 shrink-0", x.kind === "blocker" ? "text-bad" : "text-muted-foreground")} aria-hidden />
+                  <li key={i} className="flex items-start gap-3 py-2">
+                    <K.icon className={cn("mt-1 h-4 w-4 shrink-0", x.kind === "blocker" ? "text-bad" : "text-muted-foreground")} aria-hidden />
                     <span className="min-w-0 flex-1">
                       <span className="block font-medium">{x.title}</span>
                       <span className="block text-[12px] text-muted-foreground"><Link to={`/projects/${x.project_id}`} className="hover:underline">{x.project}</Link> · {K.label}{x.owner_name && ` · ${x.owner_name}`}{x.due_date && ` · due ${fmtDate(x.due_date)}`}</span>
@@ -162,14 +164,15 @@ export default function ReportAll(_props: { user: User }) {
         <Section n title="Every rollout" className={hide("table")}>
           <Table head={["Rollout", "Health", "Stage", "Done", "Forecast", "Target", "PM", "Report"]}
             rows={d.rows.map((r) => [
-              <span key="n"><Link to={`/projects/${r.id}`} className="font-medium hover:underline">{r.name}</Link><span className="block text-[11.5px] text-muted-foreground">{r.client}</span></span>,
+              <span key="n"><Link to={`/projects/${r.id}`} className="font-medium hover:underline">{r.name}</Link><span className="block text-[12px] text-muted-foreground">{r.client}</span></span>,
               <RagPill key="h" rag={r.rag} className="whitespace-nowrap" />,
               <span key="s" className="whitespace-nowrap">{r.stage_number}/{r.stage_count} · {r.stage}</span>,
               <span key="p" className="flex items-center gap-2"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${r.pct_complete}%` }} /></span><span className="tabular-nums">{r.pct_complete}%</span></span>,
-              <span key="f" className="whitespace-nowrap">{fmtDate(r.forecast)}{r.vs_target_days != null && r.vs_target_days > 0 && <span className="block text-[11.5px] text-bad">{r.vs_target_days} d after target</span>}</span>,
+              <span key="f" className="whitespace-nowrap">{fmtDate(r.forecast)}{r.vs_target_days != null && r.vs_target_days > 0 && <span className="block text-[12px] text-bad">{r.vs_target_days} d after target</span>}</span>,
               <span key="t" className="whitespace-nowrap">{fmtDate(r.target_end_date)}</span>,
               r.owner_name,
-              <Link key="r" to={`/projects/${r.id}/report`} className="whitespace-nowrap text-primary-text hover:underline">{r.report ? `v${r.report.version} · ${fmtDate(r.report.created_at)}` : "Live"}</Link>,
+              external && !r.report ? <span key="r" className="whitespace-nowrap text-muted-foreground">Not published yet</span>
+                : <Link key="r" to={`/projects/${r.id}/report`} className="whitespace-nowrap text-primary-text hover:underline">{r.report ? `v${r.report.version} · ${fmtDate(r.report.created_at)}` : "Live"}</Link>,
             ])} />
           {d.rows.length === 0 && <p className="py-4 text-center text-[13px] text-muted-foreground">No active rollouts.</p>}
         </Section>

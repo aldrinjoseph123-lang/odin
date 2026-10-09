@@ -6,7 +6,6 @@ Registration side effects only.
 import csv
 import io
 import sqlite3
-from datetime import datetime
 
 from flask import Response, abort, flash, redirect, render_template, request, session, url_for
 from markupsafe import Markup
@@ -17,7 +16,7 @@ from core import app, permission_required, undo_button, undo_note, write_require
 from db import get_db, get_setting, restore_deleted, soft_delete
 from services.alerts import get_alert_type_settings
 from services import stages as stage_ops
-from security import safe_csv_writer
+from security import safe_csv_writer, valid_email
 from services.audit import audit_log
 from spa import spa_index, spa_serves
 
@@ -38,8 +37,12 @@ def undo_contact(list_key, item_id):
 @permission_required("manage_contacts")
 def undo_partner(partner_id):
     db = get_db()
-    restore_deleted("partners", partner_id)
-    db.execute("UPDATE partner_account_managers SET deleted_at = NULL WHERE partner_id = ?", (partner_id,))
+    stamp = db.execute("SELECT deleted_at FROM partners WHERE id = ?", (partner_id,)).fetchone()
+    if not stamp or not restore_deleted("partners", partner_id):
+        flash("Too late to undo — the undo window has passed")
+        return redirect(url_for("settings_contacts"))
+    # only the managers that went with the partner (B4): one removed on its own stays removed
+    db.execute("UPDATE partner_account_managers SET deleted_at = NULL WHERE partner_id = ? AND deleted_at = ?", (partner_id, stamp[0]))
     db.commit()
     audit_log("restore_partner", "partner", partner_id)
     flash("Partner and its account managers restored")
@@ -175,7 +178,9 @@ def settings():
 
 
 # Settings is one page with a side menu; each area has its own address.
-SETTINGS_SECTIONS = ("general", "security", "people", "workflow", "notifications", "integrations", "reports", "documents", "backups", "api", "audit", "map")
+SETTINGS_SECTIONS = ("general", "security", "people", "workflow", "notifications", "integrations", "ai", "reports", "documents", "backups", "api", "audit", "map")
+# A policy area drawn inside another area's page.
+AREA_SECTION = {"ai_schedule": "ai"}
 
 
 @app.route("/settings/map/page")
@@ -211,9 +216,21 @@ def settings_policies(area):
     from policies import POLICIES, save_policies
     if area not in {e["area"] for e in POLICIES.values()}:
         abort(404)
+    if area == "ai":
+        # the address guard, before anything is stored (services/ai/client.py)
+        from policies import POLICIES as P, _parse
+        from services.ai.client import address_problem
+        try:
+            url = _parse(P["ai_base_url"], request.form.get("ai_base_url", ""))
+        except ValueError:
+            url = ""   # save_policies reports the format
+        problem = url and address_problem(url, request.form.get("ai_allow_external") == "on")
+        if problem:
+            flash("Not saved. " + problem, "error")
+            return redirect(url_for("settings_section", section="ai"))
     changed, errors = save_policies(area, request.form)
     if errors:
-        flash("Not saved. " + "; ".join(errors))
+        flash("Not saved. " + "; ".join(errors), "error")
     elif changed:
         audit_log("update_policies", "settings", None, area, ", ".join(changed))
         if any(c.startswith("mfa_required=") for c in changed):
@@ -229,10 +246,22 @@ def settings_policies(area):
                 db.commit()
                 if n:
                     audit_log("end_sessions_for_two_step", "settings", None, area, f"{n} account(s) must set up two-step sign-in")
-        flash("Saved")
+        if area == "ai" and any(c.split("=")[0] in ("ai_enabled", "ai_base_url", "ai_model") for c in changed):
+            from services.ai import STATUS_SETTING, status
+            from services.ai.health import heartbeat, queue
+            db = get_db()
+            db.execute("DELETE FROM settings WHERE key = ?", (STATUS_SETTING,))   # a new server starts unknown
+            db.commit()
+            if status(db)["state"] != "off":
+                queue(db, "validate", payload={"reason": "the AI settings changed"}, actor=session.get("user_name"))
+                flash("Saved. Every AI feature is now being validated on this server; this page updates as it goes.")
+            else:
+                flash("Saved")
+        else:
+            flash("Saved")
     else:
         flash("Nothing changed")
-    return redirect(url_for("settings_section", section=area))
+    return redirect(url_for("settings_section", section=AREA_SECTION.get(area, area)))
 
 
 @app.route("/settings/rbac")
@@ -253,6 +282,12 @@ def settings_rbac():
 @permission_required("manage_settings")
 def settings_rbac_update():
     db = get_db()
+    refused = [p for p in PERMISSIONS if p not in EXTERNAL_ALLOWED and request.form.get(f"{p}::External") == "on"]
+    if refused:
+        flash(f"Not saved: partner and customer accounts (External) can only view, comment and download, not {', '.join(refused)}", "error")
+        return redirect(url_for("settings_rbac"))
+    before = {(r["permission"], r["role"]): bool(r["allowed"]) for r in db.execute("SELECT * FROM role_permissions")}
+    changes = []
     for permission in PERMISSIONS:
         for role in ROLES:
             # Admin always keeps manage_settings + manage_users — otherwise an
@@ -267,10 +302,18 @@ def settings_rbac_update():
                 "UPDATE role_permissions SET allowed = ? WHERE permission = ? AND role = ?",
                 (allowed, permission, role),
             )
+            if before.get((permission, role), False) != bool(allowed):
+                changes.append(f"{permission}: {role} {'on' if allowed else 'off'}")
     db.commit()
-    audit_log("update_role_permissions", details="RBAC matrix updated")
-    flash("Permissions updated")
+    audit_log("update_role_permissions", details="; ".join(changes) or "no change")
+    flash("Permissions updated" if changes else "Nothing changed")
     return redirect(url_for("settings_rbac"))
+
+
+# What an External (partner or customer) account may ever be granted: its
+# seeded rights, which only view, comment and download. Anything else would
+# hand an outsider staff or admin powers from one tick in the matrix.
+EXTERNAL_ALLOWED = frozenset(p for p, roles in PERMISSIONS.items() if "External" in roles)
 
 
 # ---- stage templates: what a new project copies its stage list from ---------
@@ -373,7 +416,14 @@ def settings_stage_move(template_id, stage_id):
 @permission_required("manage_settings")
 def settings_stage_delete(template_id, stage_id):
     _template(template_id)
-    return _template_change("delete_template_stage", stage_ops.delete_stage("template", template_id, stage_id), str(stage_id))
+    from constants import SIGNOFF_STAGE
+    rows = stage_ops.list_stages("template", template_id)
+    names = [s["name"] for s in rows]
+    gone = next((s["name"] for s in rows if s["id"] == stage_id), None)
+    error = stage_ops.delete_stage("template", template_id, stage_id)
+    if not error and gone == SIGNOFF_STAGE and len(names) >= 2 and names[-2] == gone:   # R14: allowed, but said
+        flash(f"Removed '{gone}': new projects from this template send their sign-off from the stage before {names[-1]} instead")
+    return _template_change("delete_template_stage", error, str(stage_id))
 
 
 @app.route("/settings/templates/<int:template_id>/sla", methods=["POST"])
@@ -388,11 +438,12 @@ def settings_stage_sla(template_id):
 @permission_required("manage_settings")
 def settings_stage_sla_from_measured(template_id):
     """Adopt each stage's measured average across projects created from this
-    template. Stages nothing has passed through are left alone — no evidence,
+    template, measured in working days like the SLAs themselves (when the
+    workspace counts them). Stages nothing has passed through are left alone — no evidence,
     no made-up number. Rounds up, so the target is never stricter than the
     average it came from."""
     import math
-    from services.analytics import build_cycle_times
+    from services.analytics import build_cycle_times, clock
 
     _template(template_id)
     db = get_db()
@@ -405,14 +456,14 @@ def settings_stage_sla_from_measured(template_id):
     stage_names = [row["name"] for row in stage_ops.list_stages("template", template_id)]
     if not stage_names:
         return _template_change("set_template_slas_from_measured", "Template has no stages")
-    stats = build_cycle_times(projects, notes_by_project, stage_names, stage_names[-1])
+    stats = build_cycle_times(projects, notes_by_project, stage_names, stage_names[-1], clock=clock())
     applied = 0
     for row in stats["stages"]:
         if row["avg_days"] is None or row["stage"] == stage_names[-1]:
             continue
         db.execute(
             "UPDATE stage_template_stages SET sla_days = ? WHERE template_id = ? AND name = ?",
-            (max(1, math.ceil(row["avg_days"])), template_id, row["stage"]),
+            (min(365, max(1, math.ceil(row["avg_days"]))), template_id, row["stage"]),
         )
         applied += 1
     db.commit()
@@ -420,15 +471,27 @@ def settings_stage_sla_from_measured(template_id):
     return _template_change("set_template_slas_from_measured", None, f"{applied} stage(s)")
 
 
+def _name_problem(name, label, limit, email=None):
+    """A pick-list entry's name (and address, when it has one): required,
+    one line, at most `limit` characters."""
+    if not name:
+        return f"{label} required"
+    if len(name) > limit or any(ord(ch) < 32 for ch in name):
+        return f"{label}: one line, at most {limit} characters"
+    if email and not valid_email(email):
+        return "Enter a valid email address"
+    return None
+
+
 @app.route("/settings/doc-categories/add", methods=["POST"])
 @permission_required("manage_settings")
 def settings_category_add():
     name = request.form.get("name", "").strip()
     db = get_db()
-    if not name:
-        flash("Category name required")
+    if problem := _name_problem(name, "Category name", 80):
+        flash(problem, "error")
     elif db.execute("SELECT 1 FROM doc_categories WHERE name = ?", (name,)).fetchone():
-        flash("Category already exists")
+        flash("Category already exists", "error")
     else:
         db.execute("INSERT INTO doc_categories (name) VALUES (?)", (name,))
         db.commit()
@@ -503,10 +566,10 @@ def settings_contacts_add(list_key):
         abort(404)
     meta = CONTACT_LISTS[list_key]
     name = request.form.get("name", "").strip()
-    if not name:
-        flash("Name required")
-        return redirect(url_for("settings_contacts"))
     email = request.form.get("email", "").strip() if meta["has_email"] else None
+    if problem := _name_problem(name, "Name", 120, email):
+        flash(problem, "error")
+        return redirect(url_for("settings_contacts"))
     db = get_db()
     try:
         if meta["has_email"]:
@@ -537,8 +600,8 @@ def settings_contacts_delete(list_key, item_id):
 @permission_required("manage_contacts")
 def settings_partner_add():
     name = request.form.get("name", "").strip()
-    if not name:
-        flash("Partner name required")
+    if problem := _name_problem(name, "Partner name", 120):
+        flash(problem, "error")
         return redirect(url_for("settings_contacts"))
     db = get_db()
     try:
@@ -556,8 +619,8 @@ def settings_partner_add():
 def settings_partner_delete(partner_id):
     db = get_db()
     soft_delete("partners", partner_id)
-    now = datetime.utcnow().isoformat()
-    db.execute("UPDATE partner_account_managers SET deleted_at = ? WHERE partner_id = ?", (now, partner_id))
+    db.execute("UPDATE partner_account_managers SET deleted_at = (SELECT deleted_at FROM partners WHERE id = ?) WHERE partner_id = ? AND deleted_at IS NULL",
+               (partner_id, partner_id))
     db.commit()
     audit_log("delete_partner", "partner", partner_id)
     flash(Markup(f"Partner deleted (its account managers were removed too). {undo_button('Undo', 'undo_partner', partner_id=partner_id)} {undo_note()}"))
@@ -571,10 +634,10 @@ def settings_partner_manager_add(partner_id):
     if not db.execute("SELECT 1 FROM partners WHERE id = ? AND deleted_at IS NULL", (partner_id,)).fetchone():
         abort(404)
     name = request.form.get("name", "").strip()
-    if not name:
-        flash("Account manager name required")
-        return redirect(url_for("settings_contacts"))
     email = request.form.get("email", "").strip() or None
+    if problem := _name_problem(name, "Account manager name", 120, email):
+        flash(problem, "error")
+        return redirect(url_for("settings_contacts"))
     db.execute(
         "INSERT INTO partner_account_managers (partner_id, name, email) VALUES (?, ?, ?)",
         (partner_id, name, email),
@@ -605,10 +668,10 @@ def settings_alerts():
         raw_threshold = request.form.get(f"threshold::{alert_type}", "").strip()
         threshold_days = None
         if raw_threshold:
-            try:
-                threshold_days = max(0, int(raw_threshold))
-            except ValueError:
-                flash(f"Threshold for {ALERT_TYPE_TITLES[alert_type]} must be a number")
+            # bounded: a day count past a year is a typo, and a huge one overflowed every page that adds it to a date
+            threshold_days = int(raw_threshold) if raw_threshold.isascii() and raw_threshold.isdigit() and len(raw_threshold) <= 3 else None
+            if threshold_days is None or threshold_days > 365:
+                flash(f"Threshold for {ALERT_TYPE_TITLES[alert_type]}: a whole number of days, 0 to 365", "error")
                 return redirect(url_for("settings"))
 
         severity = request.form.get(f"severity::{alert_type}", "warning")

@@ -143,6 +143,18 @@ docker compose exec app python preflight.py
 The archive holds `odin.db`, `uploads/`, `avatars/`, `brand/` (document template logos), `audit-archive/` and `manifest.json`. `init_db()` runs on boot and
 applies any migrations the archive predates.
 
+### AI server (optional)
+
+Odin's AI features use any OpenAI-compatible server (today the shared
+`P24-AI` model on the office LAN). Nothing is installed in Odin's containers:
+after the release, an admin opens **Settings → AI**, enters the base address
+(e.g. `http://192.168.1.238:11434/v1`, better a LAN name) and the model name,
+presses **Check**, then **Save**. The `scheduler` service's AI worker then
+validates every feature on it; nothing calls the server until it is switched
+on there. The app container must be able to reach that address (Docker's
+default bridge reaches the LAN); an address outside the private network is
+refused unless "Allow an external AI provider" is ticked.
+
 ### Upgrades
 
 ```bash

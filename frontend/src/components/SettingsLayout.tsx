@@ -12,6 +12,7 @@ const SETTINGS_GROUPS: { label: string; items: { href: string; label: string }[]
   { label: "Delivery", items: [{ href: "/settings/workflow", label: "Projects & workflow" }, { href: "/settings/contacts", label: "Contacts & partners" },
     { href: "/settings/documents", label: "Documents" }] },
   { label: "Connections", items: [{ href: "/settings/notifications", label: "Notifications" }, { href: "/settings/integrations", label: "Integrations" },
+    { href: "/settings/ai", label: "AI" },
     { href: "/settings/reports", label: "Reports" }, { href: "/settings/backups", label: "Backups" }, { href: "/settings/api", label: "API tokens" }] },
   { label: "Compliance", items: [{ href: "/audit-logs", label: "Audit log" }, { href: "/settings/audit", label: "Retention" },
     { href: "/settings/map", label: "System map & changes" }] },
@@ -28,13 +29,13 @@ export function SettingsLayout({ user, children }: { user: User; children: React
         {/* phones: one scrolling row of areas; md+: a grouped column */}
         <div className="flex gap-1 overflow-x-auto px-3 py-2 md:sticky md:top-0 md:grid md:gap-4 md:overflow-visible md:px-3 md:py-4">
           {SETTINGS_GROUPS.map((g) => (
-            <div key={g.label} className="flex shrink-0 gap-1 md:grid md:gap-0.5">
-              <p className="hidden px-2 pb-1 text-[11.5px] text-muted-foreground md:block">{g.label}</p>
+            <div key={g.label} className="flex shrink-0 gap-1 md:grid md:gap-1">
+              <p className="hidden px-2 pb-1 text-[12px] text-muted-foreground md:block">{g.label}</p>
               {g.items.map((i) => {
                 const on = pathname === i.href
                 return (
                   <Link key={i.href} to={i.href} aria-current={on ? "page" : undefined}
-                    className={cn("whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                    className={cn("whitespace-nowrap rounded-md px-2 py-2 text-[13px] font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                       on ? "bg-accent text-accent-foreground" : "text-nav-fg hover:bg-muted hover:text-foreground")}>{i.label}</Link>
                 )
               })}

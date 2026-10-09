@@ -9,15 +9,15 @@ from policies import local_today, policy, policy_view
 from datetime import date, datetime
 
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
-from core import app, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
+from core import app, as_id, json_body, parse_date, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
-from db import PROJECT_OPEN_SQL, current_approval, get_db, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
+from db import PROJECT_OPEN_SQL, current_approval, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
 from security import csrf_token, file_stem, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
-from services.analytics import _parse, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline
+from services.analytics import _parse, clock, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline, working_days
 from services.audit import audit_log
 from services import signoff as signoff_service
 from services.activity import enabled as activity_enabled, summary as activity_summary
@@ -53,6 +53,9 @@ def _current_user():
         "avatar_url": avatar_url(me) if me else None,
         "role": session.get("role"),
         "kind": session.get("kind", "internal"),
+        # an external's project role, for the header badge: "Customer" when they
+        # are the customer on any open project, else their first role
+        "external_role": _external_role(session["user_id"]) if session.get("kind") == "external" else None,
         # where sign-in and the logo land; partners always get the flow
         "home": "board" if session.get("kind") == "external" or not me or me["home"] == "board" else "dashboard",
         "must_change_password": bool(session.get("must_change_password")),
@@ -63,6 +66,13 @@ def _current_user():
         "prefs": {"date_format": policy("date_format"), "undo_minutes": policy("undo_minutes"),
                   "activity_idle_minutes": policy("activity_idle_minutes") if policy("activity_tracking") else 0},
     }
+
+
+def _external_role(user_id):
+    roles = [r["role"] for r in get_db().execute(
+        "SELECT pp.role FROM project_participants pp JOIN projects p ON p.id = pp.project_id "
+        "WHERE pp.user_id = ? AND p.deleted_at IS NULL ORDER BY pp.id", (user_id,))]
+    return "Customer" if "Customer" in roles else (roles[0] if roles else None)
 
 
 @app.route("/api/session")
@@ -88,8 +98,11 @@ def api_session():
 
 @app.route("/api/login", methods=["POST"])
 def api_login():
-    data = request.get_json(silent=True) or {}
-    ok, message = attempt_login((data.get("username") or "").strip(), data.get("password") or "")
+    data = json_body()
+    username, password = data.get("username") or "", data.get("password") or ""
+    if not isinstance(username, str) or not isinstance(password, str):
+        return jsonify(error="Send a username and a password as text"), 400
+    ok, message = attempt_login(username.strip(), password)
     if message == MFA_NEEDED:
         return jsonify({"code_needed": True, "csrf": csrf_token()})
     if not ok:
@@ -140,7 +153,9 @@ def api_board():
 @app.route("/api/projects/<int:project_id>/approvals/<int:approval_id>", methods=["POST"])
 @login_required
 def api_approval_decide(project_id, approval_id):
-    body = request.get_json(silent=True) or {}
+    body = json_body()
+    if body.get("comment") is not None and not isinstance(body.get("comment"), str):
+        return jsonify(error="Send the comment as text"), 400
     error = decide_approval(project_id, approval_id, body.get("decision"), body.get("comment"))
     if error:
         return jsonify(error=error), 400
@@ -244,12 +259,15 @@ def _sso_view():
 def api_settings_rbac():
     """The role/permission matrix. Locked cells are what the save route
     forces on regardless: an admin can never lock every account out."""
+    from routes.settings import EXTERNAL_ALLOWED
     rows = get_db().execute("SELECT * FROM role_permissions").fetchall()
     allowed = {(r["permission"], r["role"]) for r in rows if r["allowed"]}
     return jsonify(
         roles=list(ROLES), permissions=list(PERMISSIONS),
         matrix={p: {r: (p, r) in allowed for r in ROLES} for p in PERMISSIONS},
         locked={p: ["Admin"] if (p in ("manage_settings", "manage_users") or p.startswith("view_")) else [] for p in PERMISSIONS},
+        # cells the save route refuses to turn on (External is capped to view, comment, download)
+        forbidden={p: [] if p in EXTERNAL_ALLOWED else ["External"] for p in PERMISSIONS},
     )
 
 
@@ -294,7 +312,7 @@ def api_audit():
     db = get_db()
     where, params, filters = _audit_filter()
     limit = 100
-    page = max(1, request.args.get("page", 1, type=int))
+    page = max(1, request.args.get("page", type=as_id) or 1)
     total = db.execute(f"SELECT COUNT(*) AS c FROM audit_logs{where}", params).fetchone()["c"]
     total_pages = max(1, (total + limit - 1) // limit)
     page = min(page, total_pages)
@@ -320,7 +338,7 @@ def _portfolio():
 @permission_required("view_reports")
 def api_report_all():
     from services.doc_templates import resolve
-    return jsonify({**_portfolio(), "template": resolve("portfolio", request.args.get("template", type=int))})
+    return jsonify({**_portfolio(), "template": resolve("portfolio", request.args.get("template", type=as_id))})
 
 
 @app.route("/reports/all.pdf")
@@ -333,7 +351,7 @@ def portfolio_pdf():
         abort(404)            # the PDF is the internal cut
     from services.doc_templates import resolve
     data = _portfolio()
-    return Response(render_portfolio(data, resolve("portfolio", request.args.get("template", type=int))), mimetype="application/pdf",
+    return Response(render_portfolio(data, resolve("portfolio", request.args.get("template", type=as_id))), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="portfolio-report-{data["today"]}.pdf"'})
 
 
@@ -372,15 +390,19 @@ def _rollout_report(project_id, audience, version):
     if row is not None and row["kind"] == "snapshot":
         data = json.loads(row["data"]) if audience == "internal" else report_data.customer_view(row["data"])
         words = {"summary": row["summary"] or "", "next_steps": row["next_steps"] or "", "asks": row["asks"] or ""}
+        if audience == "customer":
+            words = report_data.customer_words(project_id, words, json.loads(row["data"]))
     elif row is not None:                       # an old plain-text version
         data, words = None, {"blocks": render_blocks(row["body"])}
     else:
         from services.doc_templates import resolve
         data = report_data.build(project, audience)
-        data["template"] = resolve("rollout", request.args.get("template", type=int))   # a saved version keeps the one it was saved with
+        data["template"] = resolve("rollout", request.args.get("template", type=as_id))   # a saved version keeps the one it was saved with
         last = db.execute("SELECT summary, next_steps, asks FROM project_reports WHERE project_id = ? AND kind = 'snapshot' ORDER BY version DESC LIMIT 1", (project_id,)).fetchone()
         words = {k: (last[k] if last and last[k] else data["draft"][k]) for k in ("summary", "next_steps", "asks")}
         words["suggested"] = data.pop("draft")
+        if audience == "customer":
+            words = report_data.customer_words(project_id, words)
     return project, audience, words, data, versions, row
 
 
@@ -389,7 +411,7 @@ def _rollout_report(project_id, audience, version):
 def api_rollout_report(project_id):
     audience = request.args.get("audience", "internal")
     audience = audience if audience in ("internal", "customer") else "internal"
-    project, audience, words, data, versions, row = _rollout_report(project_id, audience, request.args.get("v", type=int))
+    project, audience, words, data, versions, row = _rollout_report(project_id, audience, request.args.get("v", type=as_id))
     external = session.get("kind") == "external"
     return jsonify(audience=audience, words=words, data=data, is_live=row is None,
                    version=None if row is None else {"version": row["version"], "kind": row["kind"], "created_by": row["created_by"], "created_at": row["created_at"]},
@@ -405,7 +427,7 @@ def rollout_report_pdf(project_id):
     from flask import Response
     from services.report_pdf import render
     audience = request.args.get("audience", "internal")
-    project, audience, words, data, _versions, row = _rollout_report(project_id, audience if audience in ("internal", "customer") else "internal", request.args.get("v", type=int))
+    project, audience, words, data, _versions, row = _rollout_report(project_id, audience if audience in ("internal", "customer") else "internal", request.args.get("v", type=as_id))
     if data is None:
         abort(404)            # an old plain-text version has no PDF of this kind
     safe = file_stem(project["name"])
@@ -422,27 +444,35 @@ def api_rollout_report_save(project_id):
     from services import report_data
     from services.plan import snapshot_json
     project = load_project(project_id)
-    body = request.get_json(silent=True) or {}
-    words = {k: str(body.get(k) or "").strip()[:6000] for k in ("summary", "next_steps", "asks")}
+    body = json_body()
+    try:
+        words = {k: text_field(body.get(k), 6000, label, multiline=True)
+                 for k, label in (("summary", "Summary"), ("next_steps", "Next steps"), ("asks", "What we need"))}
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     if not words["summary"]:
         return jsonify(error="Write the summary first — two or three lines on where it stands"), 400
     db = get_db()
-    version = (db.execute("SELECT MAX(version) FROM project_reports WHERE project_id = ?", (project_id,)).fetchone()[0] or 0) + 1
     from services.doc_templates import resolve
     snap = report_data.snapshot(project)
-    snap["template"] = resolve("rollout", body.get("template_id"))   # frozen: a later template edit never changes an issued version
-    db.execute("INSERT INTO project_reports (project_id, version, body, created_by, created_at, kind, data, summary, next_steps, asks) VALUES (?, ?, ?, ?, ?, 'snapshot', ?, ?, ?, ?)",
-               (project_id, version, words["summary"], session["user_name"], datetime.utcnow().isoformat(), snapshot_json(snap),
-                words["summary"], words["next_steps"], words["asks"]))
+    snap["template"] = resolve("rollout", as_id(body.get("template_id")))   # frozen: a later template edit never changes an issued version
+    # the number is taken inside the INSERT: two saves at once cannot pick the same one
+    cur = db.execute("INSERT INTO project_reports (project_id, version, body, created_by, created_at, kind, data, summary, next_steps, asks) "
+                     "SELECT ?, COALESCE(MAX(version), 0) + 1, ?, ?, ?, 'snapshot', ?, ?, ?, ? FROM project_reports WHERE project_id = ?",
+                     (project_id, words["summary"], session["user_name"], datetime.utcnow().isoformat(), snapshot_json(snap),
+                      words["summary"], words["next_steps"], words["asks"], project_id))
+    version = db.execute("SELECT version FROM project_reports WHERE id = ?", (cur.lastrowid,)).fetchone()[0]
+    from routes.ai import use_suggestion
+    ai = use_suggestion(project_id, body.get("ai_suggestion"), ("weekly_words", "customer_words"))
     db.commit()
-    audit_log("save_report", "project", project_id, project["name"], f"version {version}")
+    audit_log("save_report", "project", project_id, project["name"], f"version {version}{ai}")
     return jsonify(ok=True, version=version)
 
 
 @app.route("/api/account")
 @login_required
 def api_account():
-    from constants import NOTIFICATION_KINDS
+    from constants import ADMIN_KINDS, NOTIFICATION_KINDS
     from db import get_setting
     u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, notify_via, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
@@ -450,7 +480,7 @@ def api_account():
                    has_password=bool(u["password_hash"] and "$" in u["password_hash"]),
                    theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u), home=u["home"],
                    email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
-                                if k != "access" or session.get("role") == "Admin"],   # access requests reach admins only
+                                if k not in ADMIN_KINDS or session.get("role") == "Admin"],   # access requests and AI health reach admins only
                    mail_enabled=get_setting("notify_email_enabled") == "1",
                    activity=activity_summary(session["user_id"]) if activity_enabled() else None,
                    activity_viewers=policy("activity_roles"), notify_via=u["notify_via"],
@@ -506,14 +536,14 @@ def api_person_notify(user_id):
     from services.notifications import notify_users
     if session.get("kind") == "external" or session.get("role") not in ("Admin", "Member", "Contributor") or user_id == session["user_id"]:
         abort(403)
-    body = request.get_json(silent=True) or {}
-    message = str(body.get("message") or "").strip()[:1000]
+    body = json_body()
+    message = body.get("message").strip()[:1000] if isinstance(body.get("message"), str) else ""
     if not message:
         abort(400)
     target = get_db().execute("SELECT id, name FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (user_id,)).fetchone()
     if not target:
         abort(404)
-    project_id = body.get("project_id") if isinstance(body.get("project_id"), int) else None
+    project_id = as_id(body.get("project_id"))
     if project_id and not get_db().execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
         return jsonify(error="That rollout does not exist"), 400   # test report FN-12: it was a 500
     notify_users([user_id], "nudge", project_id, f"{session.get('user_name')} sent you a note", f"<p>{_esc(message)}</p>", link=f"/board?rollout={project_id}" if project_id else "/my-work")
@@ -533,8 +563,12 @@ def api_dashboard():
 @app.route("/api/calendar")
 @permission_required("view_board")
 def api_calendar():
+    import re
     from services import calendar
-    return jsonify(calendar.build(request.args.get("month", ""), project_scope()))
+    month = request.args.get("month", "")
+    if not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", month):   # the window parse_date keeps; year 1 overflowed the grid's arithmetic
+        month = ""   # the current month
+    return jsonify(calendar.build(month, project_scope()))
 
 
 @app.route("/api/kibana")
@@ -549,7 +583,7 @@ def api_kibana():
     scope_sql, scope_params = project_scope()
     rollouts = [{"id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"]} for r in db.execute(
         f"SELECT p.id, p.name, p.client, p.po_number FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY p.name", scope_params)]
-    wanted = request.args.get("rollout", type=int)
+    wanted = request.args.get("rollout", type=as_id)
     current = next((r for r in rollouts if r["id"] == wanted), None)
     # {project}, {client} and {po} in an address take the chosen rollout's values (URL-encoded)
     def fill(url):
@@ -581,7 +615,7 @@ def api_dashboard_layout():
         db.commit()
         audit_log("dashboard_layout_reset", "user", session["user_id"], session.get("user_name"))
         return jsonify(ok=True, layout=dashboard.default_layout(), is_custom=False)
-    layout = dashboard.normalize_layout((request.get_json(silent=True) or {}).get("layout"))
+    layout = dashboard.normalize_layout(json_body().get("layout"))
     if layout is None:
         abort(400)
     db.execute("UPDATE users SET dashboard_layout = ? WHERE id = ?", (json.dumps(layout), session["user_id"]))
@@ -597,7 +631,7 @@ def api_dashboard_default_layout():
     import json
     from db import set_setting
     from services import dashboard
-    layout = dashboard.normalize_layout((request.get_json(silent=True) or {}).get("layout"))
+    layout = dashboard.normalize_layout(json_body().get("layout"))
     if layout is None:
         abort(400)
     set_setting(dashboard.LAYOUT_KEY, json.dumps(layout))
@@ -621,10 +655,12 @@ def api_alerts():
 @app.route("/api/analytics")
 @permission_required("view_reports")
 def api_analytics():
-    from services.analytics import build_cycle_times
+    from services.analytics import build_cycle_times, clock
+    if session.get("kind") == "external":   # internal cycle times: staff only
+        abort(403)
     db = get_db()
     templates = db.execute("SELECT id, name FROM stage_templates ORDER BY id").fetchall()
-    template_id = request.args.get("template", type=int) or (templates[0]["id"] if templates else None)
+    template_id = request.args.get("template", type=as_id) or (templates[0]["id"] if templates else None)
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
         f"WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{project_scope()[0]}", (template_id, *project_scope()[1])
@@ -634,7 +670,7 @@ def api_analytics():
         notes.setdefault(n["project_id"], []).append(n)
     rows = db.execute("SELECT name, sla_days FROM stage_template_stages WHERE template_id = ? ORDER BY position", (template_id,)).fetchall() if template_id else []
     names = [r["name"] for r in rows]
-    stats = build_cycle_times(projects, notes, names, names[-1]) if names else None
+    stats = build_cycle_times(projects, notes, names, names[-1], clock=clock()) if names else None
     return jsonify(
         templates=[{"id": t["id"], "name": t["name"]} for t in templates], template_id=template_id,
         slas={r["name"]: r["sla_days"] for r in rows},
@@ -656,7 +692,7 @@ def api_project_form():
     needs manage_project on that project; otherwise create_project."""
     from db import get_contact_lists
     db = get_db()
-    edit_id, from_id = request.args.get("edit", type=int), request.args.get("from", type=int)
+    edit_id, from_id = request.args.get("edit", type=as_id), request.args.get("from", type=as_id)
     role = session.get("role")
     if edit_id:
         if not project_allows(edit_id, "manage_project"):
@@ -710,7 +746,7 @@ def api_projects():
     direction = "asc" if args.get("dir") == "asc" else "desc"
     view, stage, mode = args.get("view", ""), args.get("stage", ""), args.get("delivery_mode", "")
     closed, q = args.get("closed") == "1", args.get("q", "").strip()
-    page = max(1, args.get("page", 1, type=int))
+    page = max(1, args.get("page", type=as_id) or 1)
     # the nav's Projects link returns to this filter (page deliberately not kept)
     session["projects_query"] = {k: v for k, v in args.items() if k in ("view", "stage", "delivery_mode", "closed", "q", "sort", "dir") and v}
     db = get_db()
@@ -917,8 +953,9 @@ def _flow_state(project, sla, schedule):
 
 
 def _days_since(iso, now):
+    """Calendar days since a stored timestamp, unrounded (round only to show)."""
     parsed = _parse(iso) if iso else None
-    return round((now - parsed).total_seconds() / 86400, 1) if parsed else None
+    return (now - parsed).total_seconds() / 86400 if parsed else None
 
 
 def _flow_urgency(r, now):
@@ -976,7 +1013,9 @@ def api_flow():
             next_task[t["project_id"]] = {"title": t["title"], "due_date": t["due_date"], "assignee": t["assignee_name"], "here": here}
     for v in next_task.values():
         del v["here"]
-    stale_days = (get_alert_type_settings().get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
+    alert_settings = get_alert_type_settings()
+    stale_days = (alert_settings.get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
+    soon_days = (alert_settings.get("project_due_soon") or DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
     rows = []
     for p in projects:
         own = stage_lists.get(p["id"]) or []
@@ -984,10 +1023,10 @@ def api_flow():
         terminal = stages[-1] if stages else None
         slas = sla_by_stage(own)
         sla = stage_sla_state(p, slas, terminal, now)
-        schedule = schedule_status(p, terminal_stage=terminal)
+        schedule = schedule_status(p, soon_days=soon_days, terminal_stage=terminal)
         state = _flow_state(p, sla, schedule)
         idle = _days_since(p["updated_at"], now)
-        in_stage = days_in_stage(p["stage_entered_at"], now)
+        in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
@@ -998,7 +1037,7 @@ def api_flow():
             "sla_days": slas.get(p["stage"]), "over_by": round(sla["over_by"], 1) if sla else None,
             "state": state, "open_tasks": p["open_tasks"], "total_tasks": p["total_tasks"],
             "next_task": next_task.get(p["id"]), "updated_at": p["updated_at"],
-            "idle_days": idle, "stale": idle is not None and idle >= stale_days,
+            "idle_days": None if idle is None else round(idle, 1), "stale": idle is not None and idle >= stale_days,
         })
     rows.sort(key=lambda r: (STATE_RANK[r["state"]], _flow_urgency(r, now)))
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}
@@ -1036,12 +1075,13 @@ def api_plan_save(project_id):
     body = request.get_json(silent=True) or {}
     reason = str(body.get("reason") or "").strip()[:300]
     try:
-        changed, baselined = plan.save(project, body.get("stages"), reason, session["user_name"])
+        changed, baselined, warning = plan.save(project, body.get("stages"), reason, session["user_name"])
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     if changed or baselined:
         audit_log("save_plan", "project", project_id, project["name"], f"{changed} date(s) changed{'; baseline set' if baselined else ''}{f'; {reason}' if reason else ''}")
-    return jsonify(ok=True, changed=changed, baselined=baselined)
+    # warning: the plan ends after the target date (said, never blocking)
+    return jsonify(ok=True, changed=changed, baselined=baselined, warning=warning)
 
 
 @app.route("/api/projects/<int:project_id>/plan/baseline", methods=["POST"])
@@ -1054,7 +1094,10 @@ def api_plan_rebaseline(project_id):
     reason = str((request.get_json(silent=True) or {}).get("reason") or "").strip()[:300]
     if not reason:
         return jsonify(error="Say why the baseline moves"), 400
-    plan.rebaseline(project, reason, session["user_name"])
+    try:
+        plan.rebaseline(project, reason, session["user_name"])
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     audit_log("rebaseline_plan", "project", project_id, project["name"], reason)
     return jsonify(ok=True)
 
@@ -1088,9 +1131,10 @@ def api_raid_create(project_id):
     from services import raid
     project = load_project(project_id)
     try:
-        fields = raid.clean(request.get_json(silent=True) or {})
+        fields = raid.clean(json_body(), project_id)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
+    touch_project(get_db(), project_id)
     rid = raid.create(project_id, fields, session["user_name"])
     audit_log("add_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:80]}")
     _raid_notify_owner(project, fields["title"], fields["owner_id"])
@@ -1111,13 +1155,15 @@ def api_raid_item(project_id, item_id):
         if not project_allows(project_id, "manage_project"):
             abort(403)
         db.execute("DELETE FROM raid_items WHERE id = ?", (item_id,))
+        touch_project(db, project_id)
         db.commit()
         audit_log("delete_raid_item", "project", project_id, project["name"], f"{item['kind']}: {item['title'][:80]}")
         return jsonify(ok=True)
     try:
-        fields = raid.clean(request.get_json(silent=True) or {}, existing=item)
+        fields = raid.clean(json_body(), project_id, existing=item)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
+    touch_project(db, project_id)
     raid.update(item, fields)
     audit_log("update_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:60]} → {fields['status']}")
     _raid_notify_owner(project, fields["title"], fields["owner_id"], before=item["owner_id"])
@@ -1135,17 +1181,18 @@ def api_project_flow(project_id):
     notes = db.execute("SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at", (project_id,)).fetchall()
     timeline = stage_timeline(project, notes, stages[0])
     # Dwell per stage: the last visit's span (a stage can be revisited; the
-    # latest visit is what the current SLA measures).
+    # latest visit is what the current SLA measures), in the SLA's own days.
+    clk = clock()
     visits = {}
     for i, (stage, entered) in enumerate(timeline):
         left = timeline[i + 1][1] if i + 1 < len(timeline) else now
-        visits[stage] = {"entered_at": entered.isoformat(), "days": round((left - entered).total_seconds() / 86400, 1)}
+        visits[stage] = {"entered_at": entered.isoformat(), "days": round(working_days(entered, left, clk), 1)}
     current = stages.index(project["stage"]) if project["stage"] in stages else 0
     # The current stage's clock is stage_entered_at (what change_stage sets and
     # the SLA measures); the note history can lag it, e.g. after a backdate.
     entered_now = _parse(project["stage_entered_at"]) if project["stage_entered_at"] else None
     if entered_now and project["stage"] in stages:
-        visits[project["stage"]] = {"entered_at": entered_now.isoformat(), "days": round((now - entered_now).total_seconds() / 86400, 1)}
+        visits[project["stage"]] = {"entered_at": entered_now.isoformat(), "days": round(working_days(entered_now, now, clk), 1)}
     stage_rows = []
     for i, name in enumerate(stages):
         status = "done" if i < current else "current" if i == current else "next"
@@ -1158,7 +1205,8 @@ def api_project_flow(project_id):
     sla = stage_sla_state(project, slas, terminal, now)
     schedule = schedule_status(project, terminal_stage=terminal)
     target = date.fromisoformat(project["target_end_date"]) if project["target_end_date"] else None
-    start = project["start_date"] or project["created_at"][:10]
+    from policies import local_date
+    start = project["start_date"] or local_date(project["created_at"]).isoformat()
     return jsonify({
         "id": project["id"], "name": project["name"], "client": project["client"],
         "vendor_name": project["vendor_name"], "product_name": project["product_name"],
@@ -1214,15 +1262,15 @@ def api_notifications_read():
     """Mark one (id) or all of this user's notifications read. Only ever the
     caller's own rows."""
     from services.notifications import visible_clause
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     db = get_db()
     now = datetime.utcnow().isoformat()
     # what the bell shows, no more (test report FN-14): hidden rows are neither marked nor counted
     where, vis = visible_clause(session["user_id"], session.get("kind"))
     if body.get("all"):
         db.execute(f"UPDATE notifications AS n SET read_at = ? WHERE n.user_id = ? AND n.read_at IS NULL{where}", (now, session["user_id"], *vis))
-    elif isinstance(body.get("id"), int):
-        db.execute("UPDATE notifications SET read_at = ? WHERE id = ? AND user_id = ? AND read_at IS NULL", (now, body["id"], session["user_id"]))
+    elif as_id(body.get("id")):
+        db.execute("UPDATE notifications SET read_at = ? WHERE id = ? AND user_id = ? AND read_at IS NULL", (now, as_id(body["id"]), session["user_id"]))
     else:
         return jsonify(error="Say which: {id} or {all: true}"), 400
     db.commit()
@@ -1232,11 +1280,13 @@ def api_notifications_read():
 @app.route("/api/search")
 @permission_required("view_projects")
 def api_search():
-    """The command palette: projects by name, client or PO, and tasks by
-    title, within what this session may see (externals: their projects)."""
+    """The command palette: projects by name, client or PO, tasks by title,
+    and the words inside notes, RAID items, scope items and uploaded
+    documents (services/doctext), within what this session may see:
+    externals only their projects, and of those only what is shown to them."""
     q = request.args.get("q", "").strip()[:100]
     if len(q) < 2:
-        return jsonify(projects=[], tasks=[])
+        return jsonify(projects=[], tasks=[], mentions=[])
     db = get_db()
     like = f"%{q}%"
     scope_sql, scope_params = project_scope()
@@ -1250,7 +1300,30 @@ def api_search():
         f"WHERE p.deleted_at IS NULL{scope_sql} AND t.title LIKE ? ORDER BY t.done, t.id DESC LIMIT 8",
         (*scope_params, like),
     ).fetchall()
-    return jsonify(projects=[dict(r) for r in projects], tasks=[dict(r) | {"done": bool(r["done"])} for r in tasks])
+    external = session.get("kind") == "external"
+    sources = (
+        ("note", "/projects/{pid}", f"SELECT n.project_id, p.name AS project_name, n.note AS text, n.created_at AS at FROM status_notes n JOIN projects p ON p.id = n.project_id "
+                                    f"WHERE p.deleted_at IS NULL{scope_sql} AND n.prev_stage IS NULL AND n.note LIKE ?{' AND n.guest_visible = 1' if external else ''}"),
+        ("risk", "/projects/{pid}#raid", f"SELECT r.project_id, p.name AS project_name, r.title || ': ' || COALESCE(r.detail, '') || ' ' || COALESCE(r.resolution, '') AS text, r.updated_at AS at "
+                                         f"FROM raid_items r JOIN projects p ON p.id = r.project_id WHERE p.deleted_at IS NULL{scope_sql} "
+                                         f"AND (r.title LIKE ? OR r.detail LIKE ? OR r.resolution LIKE ?){' AND r.customer_visible = 1' if external else ''}"),
+        ("scope", "/projects/{pid}#scope", f"SELECT s.project_id, p.name AS project_name, s.title || ': ' || COALESCE(s.detail, '') || ' ' || COALESCE(s.note, '') AS text, p.updated_at AS at "
+                                           f"FROM scope_items s JOIN projects p ON p.id = s.project_id WHERE p.deleted_at IS NULL{scope_sql} AND (s.title LIKE ? OR s.detail LIKE ? OR s.note LIKE ?)"),
+        ("document", "/projects/{pid}", f"SELECT d.project_id, p.name AS project_name, d.filename || ': ' || t.text AS text, d.uploaded_at AS at FROM doc_text t "
+                                        f"JOIN documents d ON d.id = t.document_id AND d.deleted_at IS NULL JOIN projects p ON p.id = d.project_id "
+                                        f"LEFT JOIN doc_categories c ON c.name = d.category WHERE p.deleted_at IS NULL{scope_sql} AND t.text LIKE ?"
+                                        f"{' AND COALESCE(c.partners, 0) = 1' if external else ''}"),
+    )
+    mentions = []
+    for kind, link, sql in sources:
+        for r in db.execute(sql + " ORDER BY at DESC LIMIT 6", (*scope_params, *([like] * sql.count("LIKE ?")))):
+            text = r["text"] or ""
+            at = text.lower().find(q.lower())
+            start = max(0, at - 70)
+            snippet = ("…" if start else "") + " ".join(text[start:at + len(q) + 90].split()) + ("…" if at + len(q) + 90 < len(text) else "")
+            mentions.append({"kind": kind, "project_id": r["project_id"], "project_name": r["project_name"], "snippet": snippet,
+                             "href": link.format(pid=r["project_id"])})
+    return jsonify(projects=[dict(r) for r in projects], tasks=[dict(r) | {"done": bool(r["done"])} for r in tasks], mentions=mentions[:16])
 
 
 # The brand files at the site root: favicon, home-screen icon, link preview.

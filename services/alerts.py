@@ -105,6 +105,11 @@ def sync_alerts_to_db(alerts):
             if inserted:
                 project = id_to_project[project_id]
                 title, body = ALERT_TYPE_TITLES[alert_type], f"Project: {escape(project['name'])} ({escape(project['client'])})"
+                # the AI's plain-words reason and first move, when one was written in the last day and a half (services/ai)
+                from services.ai import latest_project
+                why = latest_project("health_explained", project_id, db)
+                if why:
+                    body += f"<p>{escape(why['why'])}</p><p><b>First move:</b> {escape(why['first_move'])}</p><p style='color:#6B7280'>Written by AI from Odin's figures.</p>"
                 # the owner and the staff on the project: always in the bell, by
                 # email when the type says so (each person's email choices apply)
                 team = [r[0] for r in db.execute(
@@ -130,7 +135,42 @@ def alert_context_for(project, alert_type):
     if alert_type == "stage_sla_breach":
         # dismissal survives until the project moves on to another stage
         return project["stage_entered_at"]
+    if alert_type == "approval_waiting":
+        return project["stage"]   # until the next stage's approval
+    if alert_type in ("blocker_open", "task_unowned", "customer_quiet"):
+        # the items behind it: a new blocker or task brings the alert back
+        return _bottlenecks([project["id"]], get_alert_type_settings(), local_today()).get(project["id"], {}).get(alert_type)
     return None
+
+
+def _bottlenecks(project_ids, thresholds, today):
+    """Per project, which bottleneck rules hold — an approval waiting, a
+    blocker left open, an overdue task nobody owns, a customer task overdue —
+    as {project id: {rule: "ids of the items behind it"}}. One query each
+    over all the projects."""
+    from datetime import timedelta as _td
+    if not project_ids:
+        return {}
+    db = get_db()
+    days = {k: thresholds.get(k, DEFAULT_ALERT_TYPE_SETTINGS[k])["threshold_days"] or 0
+            for k in ("approval_waiting", "blocker_open", "task_unowned", "customer_quiet")}
+    before = lambda k: (today - _td(days=days[k])).isoformat()   # noqa: E731
+    marks = ",".join("?" * len(project_ids))
+    hits = {}
+    for (rule, sql, cutoff) in (
+        ("approval_waiting", f"SELECT a.project_id, a.id FROM stage_approvals a JOIN projects p ON p.id = a.project_id "
+                             f"WHERE a.status = 'pending' AND a.stage = p.stage AND substr(a.requested_at, 1, 10) <= ? AND a.project_id IN ({marks})", before("approval_waiting")),
+        ("blocker_open", f"SELECT project_id, id FROM raid_items WHERE kind = 'blocker' AND status NOT IN ('closed', 'decided') "
+                         f"AND substr(created_at, 1, 10) <= ? AND project_id IN ({marks})", before("blocker_open")),
+        ("task_unowned", f"SELECT project_id, id FROM tasks WHERE done = 0 AND assignee_id IS NULL AND due_date IS NOT NULL "
+                         f"AND due_date < ? AND project_id IN ({marks})", before("task_unowned")),
+        ("customer_quiet", f"SELECT t.project_id, t.id FROM tasks t JOIN project_participants pp ON pp.project_id = t.project_id AND pp.user_id = t.assignee_id "
+                           f"WHERE t.done = 0 AND pp.role = 'Customer' AND t.due_date IS NOT NULL AND t.due_date < ? AND t.project_id IN ({marks})", before("customer_quiet")),
+    ):
+        for pid, item in db.execute(sql + " ORDER BY 2", (cutoff, *project_ids)):
+            found = hits.setdefault(pid, {})
+            found[rule] = f"{found[rule]},{item}" if rule in found else str(item)
+    return hits
 
 
 def schedule_status(project, today=None, soon_days=None, terminal_stage=None):
@@ -161,11 +201,11 @@ def get_dismissed_alerts():
     return session.get("dismissed_alerts", {})
 
 
-def is_alert_dismissed(dismissed, project, alert_type):
+def is_alert_dismissed(dismissed, project, alert_type, context=None):
     key = f"{project['id']}:{alert_type}"
     if key not in dismissed:
         return False
-    return dismissed[key] == alert_context_for(project, alert_type)
+    return dismissed[key] == (context if context is not None else alert_context_for(project, alert_type))
 
 
 def build_alerts(projects, dismissed=None):
@@ -175,7 +215,9 @@ def build_alerts(projects, dismissed=None):
     soon_days = thresholds.get("project_due_soon", DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
     today = local_today()
     stage_lists = stages_for_projects([p["id"] for p in projects])
-    alerts = {"project_overdue": [], "project_due_soon": [], "stage_sla_breach": [], "stale": []}
+    alerts = {"project_overdue": [], "project_due_soon": [], "stage_sla_breach": [], "stale": [],
+              "approval_waiting": [], "blocker_open": [], "task_unowned": [], "customer_quiet": []}
+    bottlenecks = _bottlenecks([p["id"] for p in projects], thresholds, today)
     for p in projects:
         rows = stage_lists.get(p["id"]) or []
         terminal = rows[-1]["name"] if rows else None
@@ -190,7 +232,19 @@ def build_alerts(projects, dismissed=None):
             alerts["stage_sla_breach"].append(p)
         if datetime.fromisoformat(p["updated_at"]) < stale_cutoff and not is_alert_dismissed(dismissed, p, "stale"):
             alerts["stale"].append(p)
+        for rule, items in bottlenecks.get(p["id"], {}).items():
+            if not is_alert_dismissed(dismissed, p, rule, None if rule == "approval_waiting" else items):
+                alerts[rule].append(p)
     return alerts
+
+
+def project_states(projects, alerts=None):
+    """project id -> overdue | over_sla | due_soon | on_track: one state each,
+    in the Flow's order (routes/api._flow_state), so every count agrees."""
+    alerts = build_alerts(projects) if alerts is None else alerts
+    stuck = {"overdue": {p["id"] for p in alerts["project_overdue"]}, "over_sla": {p["id"] for p in alerts["stage_sla_breach"]},
+             "due_soon": {p["id"] for p in alerts["project_due_soon"]}}
+    return {p["id"]: next((k for k in ("overdue", "over_sla", "due_soon") if p["id"] in stuck[k]), "on_track") for p in projects}
 
 
 def build_dashboard(projects):

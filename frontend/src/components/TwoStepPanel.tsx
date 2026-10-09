@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, twoStep, twoStepCodes, twoStepConfirm, twoStepOff, twoStepSetup, type TwoStep } from "@/lib/api"
+import { toast } from "@/lib/toast"
 import { fmtDate } from "@/lib/format"
 
 // Two-step sign-in on the Account page: set up with an authenticator app (QR
@@ -42,25 +43,25 @@ export function TwoStepPanel() {
     a.click(); URL.revokeObjectURL(url)
   }
   const codeField = (label: string) => (
-    <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">{label}
+    <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">{label}
       <Input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" inputMode="numeric" maxLength={12} className="h-8 w-40 tracking-[0.15em] tabular-nums" />
     </label>
   )
 
   return (
     <section className="grid grid-cols-1 content-start gap-3 panel p-4" aria-label="Two-step sign-in">
-      <h2 data-n className="flex items-center gap-1.5 text-[12px] font-semibold text-nav-fg"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Two-step sign-in
+      <h2 data-n className="flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Two-step sign-in
         <span className="font-normal text-muted-foreground">{s.enabled ? `on since ${fmtDate(s.enabled_at)}` : s.required ? "required by your admin" : "off"}</span></h2>
       {s.required && !s.enabled && !codes && <Alert><AlertDescription>Your admin requires two-step sign-in. Set it up to continue using Odin.</AlertDescription></Alert>}
-      {err && <p className="text-[12.5px] text-bad" role="alert">{err}</p>}
+      {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
 
       {codes && (
         <div className="grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
-          <p className="text-[12.5px] font-medium">Your recovery codes: keep them somewhere safe. Each works once if you lose your phone; they are not shown again.</p>
-          <ul className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-[12.5px]" aria-label="Recovery codes">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
+          <p className="text-[13px] font-medium">Your recovery codes: keep them somewhere safe. Each works once if you lose your phone; they are not shown again.</p>
+          <ul className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[13px]" aria-label="Recovery codes">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={save}>Download as a file</Button>
-            <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(codes.join("\n")).catch(() => {})}>Copy</Button>
+            <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(codes.join("\n")).then(() => toast("Recovery codes copied")).catch(() => toast("Select the codes and copy them", { tone: "bad" }))}>Copy</Button>
             <Button size="sm" onClick={() => { setCodes(null); if (s.required) window.location.assign("/") }}>I have saved them</Button>
           </div>
         </div>
@@ -68,11 +69,11 @@ export function TwoStepPanel() {
 
       {!s.enabled && !setup && !codes && (
         <>
-          <p className="text-[12.5px] text-muted-foreground">After your password, Odin also asks for a code from an authenticator app on your phone (Microsoft Authenticator, Google Authenticator, 1Password and the like), so a stolen password alone is not enough.</p>
+          <p className="text-[13px] text-muted-foreground">After your password, Odin also asks for a code from an authenticator app on your phone (Microsoft Authenticator, Google Authenticator, 1Password and the like), so a stolen password alone is not enough.</p>
           {!asking ? <div><Button size="sm" disabled={busy} onClick={() => setAsking(true)}>Set up two-step sign-in</Button></div> : (
             <form onSubmit={start} className="flex flex-wrap items-end gap-2">
-              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Your password<Input type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 w-56" /></label>
-              <Button type="submit" size="sm" disabled={busy || !password}>Continue</Button>
+              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Your password<Input type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 w-56" /></label>
+              <Button type="submit" size="sm" loading={busy} disabled={!password}>Continue</Button>
               <Button type="button" size="sm" variant="ghost" onClick={() => { setAsking(false); setPassword("") }}>Cancel</Button>
             </form>
           )}
@@ -81,19 +82,19 @@ export function TwoStepPanel() {
 
       {setup && (
         <form onSubmit={confirm} className="grid grid-cols-1 gap-3">
-          <p className="text-[12.5px] text-muted-foreground">1. In your authenticator app, add an account and scan this code.</p>
+          <p className="text-[13px] text-muted-foreground">1. In your authenticator app, add an account and scan this code.</p>
           {/* black on white whatever the theme: scanners need the contrast */}
           <div className="w-fit rounded-lg bg-white p-2" role="img" aria-label="QR code for your authenticator app" dangerouslySetInnerHTML={{ __html: setup.qr_svg }} />
-          <p className="text-[12.5px] text-muted-foreground">Can't scan? Type this key instead: <code className="select-all break-all rounded bg-muted px-1 font-mono text-[12px] text-foreground">{setup.secret.match(/.{1,4}/g)!.join(" ")}</code></p>
-          <p className="text-[12.5px] text-muted-foreground">2. Enter the 6-digit code the app shows.</p>
-          <div className="flex flex-wrap items-end gap-2">{codeField("Code")}<Button type="submit" size="sm" disabled={busy || code.replace(/\D/g, "").length !== 6}>Turn on</Button>
+          <p className="text-[13px] text-muted-foreground">Can't scan? Type this key instead: <code className="select-all break-all rounded bg-muted px-1 font-mono text-[12px] text-foreground">{setup.secret.match(/.{1,4}/g)!.join(" ")}</code></p>
+          <p className="text-[13px] text-muted-foreground">2. Enter the 6-digit code the app shows.</p>
+          <div className="flex flex-wrap items-end gap-2">{codeField("Code")}<Button type="submit" size="sm" loading={busy} disabled={code.replace(/\D/g, "").length !== 6}>Turn on</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setSetup(null)}>Cancel</Button></div>
         </form>
       )}
 
       {s.enabled && !codes && (
         <>
-          <p className="text-[12.5px] text-muted-foreground">{s.recovery_left} recovery code{s.recovery_left === 1 ? "" : "s"} left.{s.recovery_left <= 2 ? " Make new ones now." : ""}</p>
+          <p className="text-[13px] text-muted-foreground">{s.recovery_left} recovery code{s.recovery_left === 1 ? "" : "s"} left.{s.recovery_left <= 2 ? " Make new ones now." : ""}</p>
           {!mode && (
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => setMode("codes")}>New recovery codes</Button>
@@ -102,10 +103,10 @@ export function TwoStepPanel() {
           )}
           {mode && (
             <form onSubmit={prove} className="grid grid-cols-1 gap-2">
-              <p className="text-[12.5px] text-muted-foreground">{mode === "off" ? "Confirm it is you to turn two-step sign-in off." : "Confirm it is you. The old codes stop working."}</p>
-              <label className="grid grid-cols-1 gap-1 text-[12.5px] font-medium">Password<Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 max-w-xs" /></label>
+              <p className="text-[13px] text-muted-foreground">{mode === "off" ? "Confirm it is you to turn two-step sign-in off." : "Confirm it is you. The old codes stop working."}</p>
+              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Password<Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 max-w-xs" /></label>
               {codeField("Authenticator or recovery code")}
-              <div className="flex gap-2"><Button type="submit" size="sm" variant={mode === "off" ? "destructive" : "default"} disabled={busy || !password || !code}>{mode === "off" ? "Turn off" : "Make new codes"}</Button>
+              <div className="flex gap-2"><Button type="submit" size="sm" variant={mode === "off" ? "destructive" : "default"} loading={busy} disabled={!password || !code}>{mode === "off" ? "Turn off" : "Make new codes"}</Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => { setMode(null); setErr(null) }}>Cancel</Button></div>
             </form>
           )}

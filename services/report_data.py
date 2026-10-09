@@ -19,12 +19,18 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 
 from db import get_db, participants_for
-from policies import local_today, policy
+from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
 from services.analytics import _parse
 
 AUDIENCES = ("internal", "customer")
+
+
+def _day(stamp):
+    """A stored UTC timestamp's workspace-local date, as 'YYYY-MM-DD' ('' when empty)."""
+    d = local_date(stamp)
+    return d.isoformat() if d else ""
 
 
 def _fmt(iso):
@@ -98,14 +104,15 @@ def build(project, audience="internal"):
     weeks, w = [], start - timedelta(days=start.weekday())
     while w <= today:
         end = (w + timedelta(days=7)).isoformat()
-        weeks.append({"week": w.isoformat(), "total": sum(1 for t in tasks if (t["created_at"] or "")[:10] < end),
-                      "done": sum(1 for t in tasks if t["done"] and (t["done_at"] or "")[:10] < end)})
+        weeks.append({"week": w.isoformat(), "total": sum(1 for t in tasks if _day(t["created_at"]) < end),
+                      "done": sum(1 for t in tasks if t["done"] and _day(t["done_at"]) < end)})
         w += timedelta(days=7)
 
-    # history: every stage with its dwell against the SLA; approvals; plan changes; notes
-    dwell = [{"stage": s["name"], "status": s["status"], "entered": s["actual_start"], "left": s["actual_end"], "days": s["actual_days"],
-              "sla": s["sla_days"], "over": (s["actual_days"] - s["sla_days"]) if s["actual_days"] is not None and s["sla_days"] and s["actual_days"] > s["sla_days"] else 0}
-             for s in p["stages"] if s["actual_start"]]
+    # history: every visit (revisits included) with its dwell against the SLA; approvals; plan changes; notes
+    sla_of = {s["name"]: s["sla_days"] for s in p["stages"]}
+    dwell = [{"stage": v["stage"], "status": "done" if v["left"] else "current", "entered": v["entered"], "left": v["left"], "days": v["days"],
+              "sla": sla_of.get(v["stage"]), "over": round(v["days"] - sla_of[v["stage"]], 1) if sla_of.get(v["stage"]) and v["days"] > sla_of[v["stage"]] else 0}
+             for v in p["visits"]]
     approvals = [dict(r) for r in db.execute(
         "SELECT stage, status, requested_by, requested_at, decided_by, decided_at, comment FROM stage_approvals WHERE project_id = ? AND status != 'superseded' ORDER BY id DESC", (pid,))]
     note_sql = "SELECT author, note, stage, created_at FROM status_notes WHERE project_id = ? AND prev_stage IS NULL" + (" AND guest_visible = 1" if audience == "customer" else "") + " ORDER BY created_at DESC LIMIT 15"
@@ -135,14 +142,16 @@ def build(project, audience="internal"):
         "history": {"dwell": dwell, "approvals": approvals, "notes": notes},
         "needs": {"approval": pending_approval, "tasks": customer_tasks},
     }
-    data["draft"] = draft_words(project, p, items, audience)   # from the full plan, before the customer's cut removes the slip
+    # The words are saved once and the customer reads them, so the suggestion
+    # is always the customer's: no baseline, no blocker they cannot see.
+    data["draft"] = draft_words(project, p, items, "customer")
     if audience == "internal":
         data["people"] = [{"name": k, **v} for k, v in sorted(people.items(), key=lambda kv: (-kv[1]["late"], -kv[1]["open"]))]
         data["plan_changes"] = plan_service.changes(pid, 30)
         data["documents"] = documents
     else:
         # the customer's health is the word, not the internal reasons
-        data["health"] = {"rag": p["health"]["rag"], "reasons": [], "confidence": p["health"]["confidence"]}
+        data["health"] = customer_health(data)
         for s in data["stages"]:
             s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
         data["finish"] = {k: v for k, v in p["finish"].items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
@@ -151,12 +160,63 @@ def build(project, audience="internal"):
     return data
 
 
+def customer_health(d):
+    """The colour a customer sees, worked out again from what they may see:
+    only the RAID items marked for them count, and the baseline (an internal
+    yardstick) does not, so a hidden blocker never turns their report red.
+    No reasons: the customer's health is the word. Works on live data and on
+    a saved snapshot alike."""
+    h = d["health"]
+    if h["rag"] == "done":
+        return {"rag": "done", "reasons": [], "confidence": h.get("confidence")}
+    stages = d.get("stages", [])
+    cur = next((i for i, s in enumerate(stages) if s.get("status") == "current"), 0)
+    finish = {**d.get("finish", {}), "vs_baseline_days": None}
+    finish.setdefault("vs_target_days", None); finish.setdefault("target", None)
+    risks = [r for r in d.get("raid", []) if r.get("customer_visible") and r.get("open")]
+    today = date.fromisoformat(d["today"]) if d.get("today") else local_today()
+    rag = plan_service._health(None, stages, cur, finish, risks, today, False, d.get("has_plan"))["rag"]
+    return {"rag": rag, "reasons": [], "confidence": h.get("confidence")}
+
+
+def customer_words(project_id, words, snapshot=None):
+    """The project manager's words as the customer copy shows them: a
+    sentence or line naming a RAID item that is not marked for the customer
+    (now, or in the saved snapshot) is left out, and so is one about the
+    baseline. Words written before the suggestion became customer-safe may
+    still carry them."""
+    import re
+    hidden = {r["title"].strip().lower() for r in get_db().execute(
+        "SELECT title FROM raid_items WHERE project_id = ? AND customer_visible = 0", (project_id,))}
+    if snapshot:
+        hidden |= {str(r.get("title") or "").strip().lower() for r in snapshot.get("raid", []) if not r.get("customer_visible")}
+    hidden = {t for t in hidden if len(t) >= 3}
+
+    def keep(sentence):
+        low = sentence.lower()
+        return "baseline" not in low and not any(t in low for t in hidden)
+
+    out = {}
+    for k, text in words.items():
+        if k not in ("summary", "next_steps", "asks") or not isinstance(text, str):
+            out[k] = text
+            continue
+        lines = []
+        for line in text.split("\n"):
+            parts = re.split(r"(?<=[.!?])\s+", line)
+            kept = [s for s in parts if keep(s)]
+            if kept or not line.strip():
+                lines.append(" ".join(kept))
+        out[k] = "\n".join(lines).strip()
+    return out
+
+
 def customer_view(snapshot):
     """A saved internal snapshot, cut down to what the customer may see."""
     d = json.loads(snapshot) if isinstance(snapshot, str) else dict(snapshot)
     d = json.loads(json.dumps(d))   # a deep copy
     d["audience"] = "customer"
-    d["health"] = {"rag": d["health"]["rag"], "reasons": [], "confidence": d["health"].get("confidence")}
+    d["health"] = customer_health(d)
     for s in d.get("stages", []):
         s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
     d["finish"] = {k: v for k, v in d.get("finish", {}).items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}

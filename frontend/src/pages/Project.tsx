@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useParams } from "react-router-dom"
 import { Copy, Trash2 } from "lucide-react"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -10,6 +10,11 @@ import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { PlanPanel } from "@/components/PlanPanel"
 import { RaidPanel } from "@/components/RaidPanel"
 import { ScopePanel } from "@/components/ScopePanel"
+import { AIChase } from "@/components/AIChase"
+import { AICatchUp } from "@/components/AICatchUp"
+import { AIAsk } from "@/components/AIAsk"
+import { AINotesTasks } from "@/components/AINotesTasks"
+import { LessonsPanel } from "@/components/LessonsPanel"
 import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
@@ -17,6 +22,8 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const fmtDate = (iso: string) => fmtWhen(iso)
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
+// a 14 px bin with a 24 px target (the pseudo-element), kept clear of its neighbours
+const hit = "relative ml-1 shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-bad"
 const LABELS: Record<string, string> = {
   client: "Client", via: "Via", partner_name: "Partner", partner_account_manager_name: "Account manager (partner)", account_manager_name: "Account manager",
   po_number: "PO number", po_date: "PO date", start_date: "Start date", target_end_date: "Target end date", delivery_mode: "Delivery mode",
@@ -32,7 +39,7 @@ function Panel({ title, hint, children, id }: { title: string; hint?: string; ch
   )
 }
 
-export default function Project(_props: { user: User }) {
+export default function Project({ user }: { user: User }) {
   const id = Number(useParams().id)
   const [d, setD] = useState<FlowDetail | null>(null)
   const [x, setX] = useState<ProjectExtras | null>(null)
@@ -40,6 +47,7 @@ export default function Project(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ text: string; undo?: string | null } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [planRefresh, setPlanRefresh] = useState(0)   // a RAID change moves the health
 
   const reload = useCallback(async () => {
     try {
@@ -54,13 +62,14 @@ export default function Project(_props: { user: User }) {
   async function send(path: string, fields: Record<string, string> | FormData = {}, confirmText?: string): Promise<FormReply | null> {
     if (confirmText && !window.confirm(confirmText)) return null
     setBusy(true)
+    let leaving = false
     try {
       const r = await postForm(path, fields)
-      if (r.location === "/board") { window.location.assign("/board"); return r }
+      if (r.location === "/board") { leaving = true; window.location.assign("/board"); return r }
       setNotice(r.messages.length ? { text: r.messages.join(" "), undo: r.undo } : null)
       await reload()
       return r
-    } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save" }); return null } finally { setBusy(false) }
+    } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save" }); return null } finally { if (!leaving) setBusy(false) }
   }
   async function undo() {
     if (!notice?.undo) return
@@ -70,13 +79,15 @@ export default function Project(_props: { user: User }) {
   if (error) return <LoadError message={error} back={error === "This project does not exist, or you are not on it." ? { href: "/projects", label: "All projects" } : undefined} />
   if (!d || !x) return <PageSkeleton />
   const can = x.can
+  const staff = user.kind !== "external"
+  const closed = !d.next_stage && d.stage_index === d.stages.length - 1
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="flex flex-wrap items-center gap-2 px-5 pt-4">
-        <a href="/projects" className="text-[12.5px] text-muted-foreground hover:text-foreground">Projects</a>
-        <span className="text-[12.5px] text-muted-foreground">/</span>
-        <span className="text-[12.5px] font-medium">{x.name}</span>
+        <a href="/projects" className="text-[13px] text-muted-foreground hover:text-foreground">Projects</a>
+        <span className="text-[13px] text-muted-foreground">/</span>
+        <span className="text-[13px] font-medium">{x.name}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a href={`/board?rollout=${id}`} className={buttonVariants({ variant: "ghost", size: "sm" })}>On the flow</a>
           <a href={`/projects/${id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>
@@ -85,7 +96,7 @@ export default function Project(_props: { user: User }) {
         </div>
       </div>
       {notice && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status">
+        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
           <span>{notice.text}{notice.undo && <button type="button" onClick={undo} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}</span>
           <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
@@ -94,12 +105,17 @@ export default function Project(_props: { user: User }) {
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
       <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
 
-      <div className="grid grid-cols-1 gap-4 px-5 pb-6 lg:grid-cols-2 [&>*]:min-w-0">
-        <div className="lg:col-span-2"><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} /></Panel></div>
-        <div className="lg:col-span-2"><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} /></Panel></div>
+      <div className="grid grid-cols-1 items-start gap-4 px-5 pb-6 lg:grid-cols-2 [&>*]:min-w-0">
+        <div className="empty:hidden lg:col-span-2"><AICatchUp projectId={id} /></div>
+        <div className="empty:hidden lg:col-span-2"><AIAsk projectId={id} /></div>
+        <div className="empty:hidden lg:col-span-2"><AINotesTasks projectId={id} /></div>
+        {!closed && <div className="empty:hidden lg:col-span-2"><AIChase projectId={id} /></div>}
+        <div className="lg:col-span-2"><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} refresh={planRefresh} /></Panel></div>
+        <div className="lg:col-span-2"><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} onChanged={() => setPlanRefresh((n) => n + 1)} /></Panel></div>
+        {staff && <div className="empty:hidden lg:col-span-2"><LessonsPanel projectId={id} /></div>}
         <div className="lg:col-span-2"><Panel title="Scope and sign-off" hint="what was agreed, what was delivered, and the customer's signature" id="scope"><ScopePanel projectId={id} signoff={d.signoff} /></Panel></div>
         <Panel title="Details">
-          <dl className="grid grid-cols-[minmax(96px,auto)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">
+          <dl className="grid grid-cols-[minmax(96px,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">
             {Object.entries(LABELS).filter(([k]) => {
               const via = x.details.via
               if (k === "partner_name" || k === "partner_account_manager_name") return via === "Partner"
@@ -116,7 +132,8 @@ export default function Project(_props: { user: User }) {
         </Panel>
 
         <Panel title="Notes" hint={`${x.notes.length}`}>
-          {can.note && <NoteForm busy={busy} people={x.participants.filter((m) => m.active).map((m) => m.name)} onSubmit={(note) => send(`/projects/${id}/note`, { note })} />}
+          {can.note && <NoteForm busy={busy} staff={staff} people={x.participants.filter((m) => m.active).map((m) => m.name)}
+            onSubmit={(note, share) => send(`/projects/${id}/note`, share ? { note, share: "1" } : { note })} />}
           <ul className="mt-3 grid grid-cols-1 gap-2">
             {x.notes.map((n) => <NoteRow key={`${n.id}:${n.note}`} n={n} busy={busy}
               onEdit={(text) => send(`/projects/${id}/notes/${n.id}/edit`, { note: text })}
@@ -126,15 +143,15 @@ export default function Project(_props: { user: User }) {
         </Panel>
 
         <Panel title="Team" hint="who is on this project, and as what" id="team">
-          <ul className="grid grid-cols-1 gap-1.5">
+          <ul className="grid grid-cols-1 gap-2">
             {x.participants.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-[13px]">
                 <UserAvatar name={m.name} url={m.avatar_url} />
-                <span className="min-w-0 flex-1 truncate font-medium">{m.name}{!m.active && <span className="ml-1 font-normal text-muted-foreground">(deactivated)</span>}</span>
+                <span className="min-w-0 flex-1 truncate font-medium" title={m.name}>{m.name}{!m.active && <span className="ml-1 font-normal text-muted-foreground">(deactivated)</span>}</span>
                 <span className="text-muted-foreground">{m.role}</span>
                 {m.email && <span className="hidden text-[12px] text-muted-foreground sm:inline">{m.email}</span>}
                 {can.manage && m.user_id !== x.owner_id && (
-                  <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`)} aria-label={`Remove ${m.name}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`, {}, `Remove ${m.name} from this project?`)} aria-label={`Remove ${m.name}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>
                 )}
               </li>
             ))}
@@ -143,7 +160,7 @@ export default function Project(_props: { user: User }) {
             <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border pt-3">
               <TeamAddForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/add`, f)} />
               <InviteForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/invite`, f)} />
-              <p className="text-[11.5px] text-muted-foreground">The owner is the project manager; change it on Edit. Invited people get a one-time sign-in link and see only their projects.</p>
+              <p className="text-[12px] text-muted-foreground">The owner is the project manager; change it on Edit. Invited people get a one-time sign-in link and see only their projects.</p>
             </div>
           )}
         </Panel>
@@ -157,13 +174,13 @@ export default function Project(_props: { user: User }) {
 
         <Panel title="Documents" hint={`${x.documents.length}`}>
           {can.docs && <UploadForm x={x} busy={busy} onSubmit={(fd) => send(`/projects/${id}/documents`, fd)} />}
-          <ul className="mt-3 grid grid-cols-1 gap-1.5">
+          <ul className="mt-3 grid grid-cols-1 gap-2">
             {x.documents.map((doc) => (
               <li key={doc.id} className="flex items-center gap-3 text-[13px]">
                 <span className="w-28 shrink-0 truncate text-[12px] text-muted-foreground">{doc.category}</span>
                 {can.download ? <a href={`/projects/${id}/documents/${doc.id}/download`} className="min-w-0 flex-1 truncate font-medium hover:underline">{doc.filename}</a> : <span className="min-w-0 flex-1 truncate font-medium">{doc.filename}</span>}
                 <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtDate(doc.uploaded_at)}</span>
-                {can.delete_doc && <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}?`)} aria-label={`Delete ${doc.filename}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>}
+                {can.delete_doc && <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}?`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
               </li>
             ))}
             {x.documents.length === 0 && <li className="text-[13px] text-muted-foreground">No documents uploaded yet.</li>}
@@ -173,7 +190,7 @@ export default function Project(_props: { user: User }) {
         {activity.length > 0 && (
           <Panel title="Activity" hint="everything recorded on this project, newest first">
             <a href={`/projects/${id}/activity.csv`} className="mb-2 inline-block text-[12px] text-primary-text hover:underline">Export CSV</a>
-            <ul className="grid grid-cols-1 gap-1.5 text-[12.5px]">
+            <ul className="grid grid-cols-1 gap-2 text-[13px]">
               {activity.map((a, i) => (
                 <li key={i} className="flex gap-2">
                   <Ago iso={a.when} className="w-24 shrink-0 whitespace-nowrap text-muted-foreground" />
@@ -187,7 +204,7 @@ export default function Project(_props: { user: User }) {
           <Panel title="Sharing">
             {x.guest_links.customer && <LinkRow label="Customer link (view and comment, no sign-in)" url={x.guest_links.customer} />}
             {x.guest_links.vendor && <LinkRow label="Vendor link (may advance the stage)" url={x.guest_links.vendor} />}
-            {!x.guest_links_enabled && <p className="text-[12.5px] text-muted-foreground">Anonymous guest links are switched off in Settings. Partners and customers are invited from the Team panel instead.</p>}
+            {!x.guest_links_enabled && <p className="text-[13px] text-muted-foreground">Anonymous guest links are switched off in Settings. Partners and customers are invited from the Team panel instead.</p>}
             {can.manage && (
               <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
                 {x.guest_links_enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => send(`/projects/${id}/rotate-token`, {}, "Rotate both guest links? The current links stop working immediately.")}>Rotate guest links</Button>}
@@ -217,7 +234,7 @@ function LinkRow({ label, url }: { label: string; url: string }) {
   )
 }
 
-function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][number]; busy: boolean; onEdit: (text: string) => Promise<unknown>; onDelete: () => Promise<unknown> }) {
+function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][number]; busy: boolean; onEdit: (text: string) => Promise<FormReply | null>; onDelete: () => Promise<unknown> }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(n.note)
   return (
@@ -232,13 +249,13 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
         )}
       </div>
       {editing ? (
-        <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then(() => setEditing(false)) }} className="mt-1 grid grid-cols-1 gap-1.5">
+        <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then((r) => { if (r) setEditing(false) }) }} className="mt-1 grid grid-cols-1 gap-2">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={5000} aria-label="Edit note" autoFocus
             className="w-full rounded-md border border-input bg-background p-2 text-[13px]" onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={busy || !text.trim() || text.trim() === n.note}>Save</Button>
+            <Button type="submit" size="sm" loading={busy} disabled={!text.trim() || text.trim() === n.note}>Save</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(false); setText(n.note) }}>Cancel</Button>
-            {n.stage_entry && <span className="self-center text-[11.5px] text-muted-foreground">Records a stage change: it can be corrected, not deleted.</span>}
+            {n.stage_entry && <span className="self-center text-[12px] text-muted-foreground">Records a stage change: it can be corrected, not deleted.</span>}
           </div>
         </form>
       ) : <div className="whitespace-pre-wrap">{n.note}</div>}
@@ -246,74 +263,115 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
   )
 }
 
-function NoteForm({ busy, people, onSubmit }: { busy: boolean; people: string[]; onSubmit: (note: string) => Promise<unknown> }) {
+// The note box. "@" + letters before the caret offers the team: ↑/↓ choose,
+// Enter or a click writes "@Full Name " at the caret, Esc closes the list.
+// Staff notes are internal unless shared with the customer and partners.
+function NoteForm({ busy, staff, people, onSubmit }: { busy: boolean; staff: boolean; people: string[]; onSubmit: (note: string, share: boolean) => Promise<FormReply | null> }) {
   const [note, setNote] = useState("")
-  // "@" + letters at the end of the text offers the team; picking one writes "@Full Name "
-  const token = /(^|\s)@([^\s@]*)$/.exec(note)
-  const matches = token ? people.filter((n) => n.toLowerCase().includes(token[2].toLowerCase())).slice(0, 6) : []
-  function pick(name: string) { setNote(note.slice(0, note.length - (token?.[2].length ?? 0) - 1) + `@${name} `) }
+  const [share, setShare] = useState(false)
+  const [caret, setCaret] = useState(0)
+  const [active, setActive] = useState(0)
+  const [closedAt, setClosedAt] = useState<string | null>(null)   // Esc hides the list until the text changes
+  const ref = useRef<HTMLInputElement>(null)
+  const before = note.slice(0, caret)
+  const token = /(^|\s)@([^\s@]*)$/.exec(before)
+  const matches = token && closedAt !== note ? people.filter((n) => n.toLowerCase().includes(token[2].toLowerCase())).slice(0, 6) : []
+  const at = Math.min(active, Math.max(0, matches.length - 1))
+  function pick(name: string) {
+    const head = before.slice(0, before.length - (token?.[2].length ?? 0) - 1) + `@${name} `
+    setNote(head + note.slice(caret)); setCaret(head.length); setActive(0)
+    requestAnimationFrame(() => { ref.current?.focus(); ref.current?.setSelectionRange(head.length, head.length) })
+  }
+  const track = (e: { currentTarget: HTMLInputElement }) => setCaret(e.currentTarget.selectionStart ?? e.currentTarget.value.length)
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (note.trim()) void onSubmit(note.trim()).then(() => setNote("")) }} className="relative">
+    <form onSubmit={(e) => { e.preventDefault(); if (note.trim()) void onSubmit(note.trim(), staff && share).then((r) => { if (r) { setNote(""); setCaret(0); setShare(false) } }) }} className="relative">
       <div className="flex gap-2">
-        <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note — type @ to notify someone on the team" aria-label="Add a note" maxLength={5000} className="h-8 text-[13px]"
-          onKeyDown={(e) => { if (e.key === "Enter" && matches.length) { e.preventDefault(); pick(matches[0]) } }} />
-        <Button type="submit" size="sm" disabled={busy || !note.trim()}>Add</Button>
+        <Input ref={ref} value={note} onChange={(e) => { setNote(e.target.value); track(e); setActive(0) }} onSelect={track} placeholder="Add a note — type @ to notify someone on the team" aria-label="Add a note" maxLength={5000} className="h-8 text-[13px]"
+          role="combobox" aria-autocomplete="list" aria-expanded={matches.length > 0} aria-controls="mention-list" aria-activedescendant={matches.length ? `mention-${at}` : undefined}
+          onKeyDown={(e) => {
+            if (!matches.length) return
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setActive((at + (e.key === "ArrowDown" ? 1 : matches.length - 1)) % matches.length) }
+            else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pick(matches[at]) }
+            else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setClosedAt(note) }
+          }} />
+        <Button type="submit" size="sm" loading={busy} disabled={!note.trim()}>Add</Button>
       </div>
+      {staff && (
+        <label className="mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+          <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} className="h-3.5 w-3.5 accent-primary" /> Share with the customer
+          {share ? <span className="font-medium text-foreground">· Visible to the customer and partners</span> : <span>· internal to the team</span>}
+        </label>
+      )}
       {matches.length > 0 && (
-        <ul role="listbox" aria-label="Mention someone" className="absolute left-0 top-9 z-20 w-64 overflow-hidden panel bg-popover py-1 text-[13px] shadow-pop">
-          {matches.map((n) => <li key={n} role="option" aria-selected={false}><button type="button" onClick={() => pick(n)} className="w-full px-3 py-1.5 text-left hover:bg-muted">@{n}</button></li>)}
+        <ul id="mention-list" role="listbox" aria-label="Mention someone" className="absolute left-0 top-9 z-20 w-64 overflow-hidden panel bg-popover py-1 text-[13px] shadow-pop">
+          {matches.map((n, i) => (
+            // mousedown is cancelled so the text box keeps its focus and caret
+            <li key={n} id={`mention-${i}`} role="option" aria-selected={i === at} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(n)}
+              className={cn("cursor-pointer px-3 py-2", i === at ? "bg-muted" : "hover:bg-muted")}>@{n}</li>
+          ))}
         </ul>
       )}
     </form>
   )
 }
 
-function TeamAddForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; onSubmit: (f: Record<string, string>) => Promise<unknown> }) {
+// People not on the team yet come first; someone already on it can only have
+// their role changed (the route updates an existing member's role).
+function TeamAddForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; onSubmit: (f: Record<string, string>) => Promise<FormReply | null> }) {
   const [userId, setUserId] = useState("")
   const [role, setRole] = useState(x.roles[0] ?? "")
+  const onTeam = new Map(x.participants.map((m) => [m.user_id, m.role]))
   const candidates = x.users.filter((u) => u.id !== x.owner_id)
+  const fresh = candidates.filter((u) => !onTeam.has(u.id)), members = candidates.filter((u) => onTeam.has(u.id))
+  const member = onTeam.get(Number(userId))
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (userId) void onSubmit({ user_id: userId, role }).then(() => setUserId("")) }} className="flex flex-wrap items-center gap-2">
-      <select value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Add a person" className={cn(selectClass, "min-w-40")}>
-        <option value="">Add a person…</option>
-        {candidates.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-      </select>
-      <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role" className={selectClass}>
-        {x.roles.map((r) => <option key={r} value={r}>{r}</option>)}
-      </select>
-      <Button type="submit" size="sm" variant="outline" disabled={busy || !userId}>Add</Button>
+    <form onSubmit={(e) => { e.preventDefault(); if (userId) void onSubmit({ user_id: userId, role }).then((r) => { if (r) setUserId("") }) }} className="grid grid-cols-1 gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Add a person" className={cn(selectClass, "min-w-40")}>
+          <option value="">Add a person…</option>
+          {fresh.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          {members.length > 0 && <optgroup label="On the team: change their role">{members.map((u) => <option key={u.id} value={u.id}>{u.name} ({onTeam.get(u.id)})</option>)}</optgroup>}
+        </select>
+        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role" className={selectClass}>
+          {x.roles.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!userId || member === role}>{member ? "Change role" : "Add"}</Button>
+      </div>
+      <p className="text-[12px] text-muted-foreground">A project role adds no powers beyond the person's account: a Viewer stays read-only in any role.</p>
     </form>
   )
 }
 
-function InviteForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; onSubmit: (f: Record<string, string>) => Promise<unknown> }) {
+function InviteForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; onSubmit: (f: Record<string, string>) => Promise<FormReply | null> }) {
   const [email, setEmail] = useState("")
   const [name, setName] = useState("")
   const [role, setRole] = useState(x.external_roles[0] ?? "")
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (email) void onSubmit({ email, name, role }).then(() => { setEmail(""); setName("") }) }} className="flex flex-wrap items-center gap-2">
+    <form onSubmit={(e) => { e.preventDefault(); if (email) void onSubmit({ email, name, role }).then((r) => { if (r) { setEmail(""); setName("") } }) }} className="flex flex-wrap items-center gap-2">
       <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Invite by email" aria-label="Invite by email" required className="h-8 w-56 text-[13px]" />
       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" aria-label="Name" maxLength={80} className="h-8 w-36 text-[13px]" />
       <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Their role" className={selectClass}>
         {x.external_roles.map((r) => <option key={r} value={r}>{r}</option>)}
       </select>
-      <Button type="submit" size="sm" variant="outline" disabled={busy || !email}>Invite</Button>
+      <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!email}>Invite</Button>
     </form>
   )
 }
 
-function UploadForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; onSubmit: (fd: FormData) => Promise<unknown> }) {
+function UploadForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; onSubmit: (fd: FormData) => Promise<FormReply | null> }) {
   const [category, setCategory] = useState("")
   const [files, setFiles] = useState<File[]>([])
   const [over, setOver] = useState(false)
   // One POST per file through the same route, so each keeps its own checks and audit row.
   async function upload() {
     if (!category || !files.length) return
-    for (const f of files) {
-      const fd = new FormData(); fd.append("category", category); fd.append("file", f)
-      await onSubmit(fd)
+    const left = [...files]
+    while (left.length) {
+      const fd = new FormData(); fd.append("category", category); fd.append("file", left[0])
+      if (!(await onSubmit(fd))) break   // the failed file and the rest stay picked
+      left.shift()
     }
-    setFiles([])
+    setFiles(left)
   }
   return (
     <div onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
@@ -324,7 +382,7 @@ function UploadForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; on
           <option value="">Category…</option>
           {x.doc_categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <label className="cursor-pointer text-[12.5px] font-medium text-primary-text hover:underline">
+        <label className="cursor-pointer text-[13px] font-medium text-primary-text hover:underline">
           Choose files<input type="file" multiple aria-label="Documents to upload" className="sr-only" onChange={(e) => setFiles([...(e.target.files ?? [])])} />
         </label>
         <span className="text-[12px] text-muted-foreground">or drop them here</span>

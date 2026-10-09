@@ -23,7 +23,7 @@ export default function Rbac(_props: { user: User }) {
     try {
       // the route reads "<permission>::<role>" = "on"; locked cells are forced on server-side anyway
       const fields: Record<string, string> = {}
-      for (const p of data.permissions) for (const r of data.roles) if (matrix[p]?.[r] || data.locked[p]?.includes(r)) fields[`${p}::${r}`] = "on"
+      for (const p of data.permissions) for (const r of data.roles) if ((matrix[p]?.[r] || data.locked[p]?.includes(r)) && !data.forbidden?.[p]?.includes(r)) fields[`${p}::${r}`] = "on"
       const reply = await postForm("/settings/rbac", fields)
       setNotice(reply.messages.join(" ") || null)
       await load()
@@ -39,12 +39,12 @@ export default function Rbac(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">which global role may do what; project roles narrow it further</p>
         <a href="/users" className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Users</a>
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-[12.5px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-2 text-[13px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
       <form onSubmit={submit} className="mt-3">
         <div className="overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
             <thead className="bg-card">
-              <tr className="border-b border-border text-[11.5px] font-normal text-muted-foreground">
+              <tr className="border-b border-border text-[12px] font-normal text-muted-foreground">
                 <th className="px-3 py-2 text-left font-normal">Permission</th>
                 {data.roles.map((r) => <th key={r} className="px-3 py-2 text-center font-normal">{r}</th>)}
               </tr>
@@ -52,12 +52,13 @@ export default function Rbac(_props: { user: User }) {
             <tbody>
               {data.permissions.map((p) => (
                 <tr key={p} className="border-b border-border last:border-0 hover:bg-muted">
-                  <td className="px-3 py-1.5 text-[13px]">{words(p)}</td>
+                  <td className="px-3 py-2 text-[13px]">{words(p)}</td>
                   {data.roles.map((r) => {
                     const locked = data.locked[p]?.includes(r)
+                    const forbidden = !!data.forbidden?.[p]?.includes(r)   // the server never grants it to this role
                     return (
-                      <td key={r} className="px-3 py-1.5 text-center">
-                        <input type="checkbox" checked={locked || !!matrix[p]?.[r]} disabled={locked || busy} aria-label={`${words(p)}, allowed for ${r}`} className="h-3.5 w-3.5 accent-primary disabled:opacity-50"
+                      <td key={r} className="px-3 py-2 text-center" title={forbidden ? `${r} accounts can never have this` : undefined}>
+                        <input type="checkbox" checked={!forbidden && (locked || !!matrix[p]?.[r])} disabled={locked || forbidden || busy} aria-label={`${words(p)}, ${forbidden ? "never" : "allowed"} for ${r}`} className="h-3.5 w-3.5 accent-primary disabled:opacity-50"
                           onChange={(e) => setMatrix({ ...matrix, [p]: { ...matrix[p], [r]: e.target.checked } })} />
                       </td>
                     )
@@ -68,8 +69,8 @@ export default function Rbac(_props: { user: User }) {
           </table>
         </div>
         <div className="mt-3 flex items-center gap-3">
-          <Button type="submit" size="sm" disabled={busy || !dirty}>Save permissions</Button>
-          <span className="text-[11.5px] text-muted-foreground">Admin always keeps Manage settings, Manage users and every view right, so this page cannot lock everyone out.</span>
+          <Button type="submit" size="sm" loading={busy} disabled={!dirty}>Save permissions</Button>
+          <span className="text-[12px] text-muted-foreground">Admin always keeps Manage settings, Manage users and every view right, so this page cannot lock everyone out.</span>
         </div>
       </form>
     </div>
