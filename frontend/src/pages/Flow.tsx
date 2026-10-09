@@ -341,7 +341,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   return (
     <div className="relative mt-4 h-[68px] border-t border-border">
       {ticks.map((tk) => (
-        <span key={tk.l} className={cn("absolute whitespace-nowrap text-[11px]", tk.row ? "top-5" : "top-1", tk.l === "today" ? "font-semibold text-primary-text" : "text-muted-foreground")}
+        <span key={tk.l} className={cn("absolute whitespace-nowrap text-[11px]", tk.row ? "top-5" : "top-1", tk.l === "today" ? "font-semibold text-foreground" : "text-muted-foreground")}
           style={{ left: pct(tk.t), transform: frac(tk.t) > 0.85 ? "translateX(-100%)" : frac(tk.t) < 0.1 ? "none" : "translateX(-50%)" }}>{tk.l}</span>
       ))}
       <span className="absolute top-10 h-1.5 rounded-full bg-muted" style={{ left: pct(Math.min(start, end)), width: `calc(${pct(Math.max(start, end))} - ${pct(Math.min(start, end))})` }} aria-hidden />
@@ -356,7 +356,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
           </Tooltip>
         )
       })}
-      <span className="absolute top-8 h-6 w-[1.5px] bg-primary" style={{ left: pct(today) }} aria-hidden />
+      <span className="absolute top-8 h-6 w-[1.5px] bg-foreground" style={{ left: pct(today) }} aria-hidden />
     </div>
   )
 }

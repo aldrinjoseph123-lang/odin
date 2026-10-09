@@ -512,6 +512,7 @@ A round picture when the person uploaded one, otherwise initials: 24 px in rows 
 - **Header.** 72 px tall; pills 36 px with 16 px sides in a 6 px-padded white pill bar; Log out and Account settings live in the avatar menu ("Your account"), so the bar fits 1,280 px.
 - **Tooltips everywhere.** `TitleTips` turns any `title` and any icon-only control's aria-label into one styled ink tooltip (12 px, after 450 ms hover, at once on keyboard focus, gone on leave, scroll or Esc); the Tooltip component stays for richer content.
 - **Settings menu.** The open area is a white block with the card shadow, bold ink text and a 4 px accent bar on its left.
+- **Today is ink.** The today line and label on the plan chart, the dashboard timeline, the flow's time strip and the portfolio roadmap are ink (foreground), not the accent: with a red accent an accent line read as an overdue warning.
 - **Widget handle.** Dashboard widgets are dragged by a small horizontal handle centred in the card's top margin, shown on hover; it never covers a title.
 
 ### shadcn components in use (9 Oct 2026)

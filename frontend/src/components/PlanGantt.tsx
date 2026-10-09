@@ -33,7 +33,7 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
   const grid = (
     <>
       {weeks.map((w) => <span key={w} className="absolute inset-y-0 w-px bg-border" style={{ left: at(w) }} aria-hidden />)}
-      <span className="absolute inset-y-0 w-[1.5px] bg-primary-text" style={{ left: pct(today) }} aria-hidden />
+      <span className="absolute inset-y-0 w-[1.5px] bg-foreground" style={{ left: pct(today) }} aria-hidden />
       {target && <span className={cn("absolute inset-y-0 w-0 border-l border-dashed", overdue ? "border-bad-line" : "border-foreground/60")} style={{ left: pct(target) }} aria-hidden />}
     </>
   )
@@ -45,7 +45,7 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
         <div ref={measure} className={cn("relative text-[11px] text-muted-foreground", weekLabels ? "h-10" : "h-6")}>
           {months.map((m) => <span key={m.t} className="absolute top-0 -translate-x-1/2 font-medium text-foreground" style={{ left: at(m.t) }}>{m.label}</span>)}
           {weekLabels && weeks.map((w) => <span key={w} className="absolute top-5 -translate-x-1/2 tabular-nums" style={{ left: at(w) }}>{new Date(w).getUTCDate()}</span>)}
-          <span className="absolute bottom-0 h-1.5 w-[1.5px] bg-primary-text" style={{ left: pct(today) }} aria-hidden />
+          <span className="absolute bottom-0 h-1.5 w-[1.5px] bg-foreground" style={{ left: pct(today) }} aria-hidden />
         </div>
         {stages.map((s) => {
           const late = s.status === "current" && s.plan_end && s.forecast_end && s.forecast_end > s.plan_end
@@ -81,7 +81,7 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
         <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-foreground/15" />Forecast</li>
         {stages.some((s) => s.base_start) && <li className="flex items-center gap-2"><span className="h-[3px] w-5 rounded-full bg-input" />Baseline</li>}
         <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-warn-line" />Running late</li>
-        <li className="flex items-center gap-2"><span className="h-3 w-[1.5px] bg-primary-text" />Today, {fmtDate(today)}</li>
+        <li className="flex items-center gap-2"><span className="h-3 w-[1.5px] bg-foreground" />Today, {fmtDate(today)}</li>
         {target && <li className="flex items-center gap-2"><span className={cn("h-3 w-0 border-l border-dashed", overdue ? "border-bad-line" : "border-foreground/60")} />{overdue ? "Target (passed)" : "Target"}, {fmtDate(target)}</li>}
         <li>Light lines mark each Monday.</li>
       </ul>

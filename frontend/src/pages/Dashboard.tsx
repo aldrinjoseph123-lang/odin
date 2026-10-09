@@ -178,7 +178,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
           <span />
           <div ref={measure} className={cn("relative text-[11px] text-muted-foreground", crowded ? "h-9" : "h-5")}>
             {months.map((tk) => <span key={tk.t} className="absolute top-0 -translate-x-1/2" style={{ left: pct(tk.t) }}>{tk.label}</span>)}
-            <span className={cn("absolute -translate-x-1/2 font-semibold text-primary-text", crowded ? "top-4" : "top-0")} style={{ left: pct(now) }}>today</span>
+            <span className={cn("absolute -translate-x-1/2 font-semibold text-foreground", crowded ? "top-4" : "top-0")} style={{ left: pct(now) }}>today</span>
           </div>
           {list.map((r) => {
             const a = dayOf(r.start_date), b = r.target_end_date ? dayOf(r.target_end_date) : now
@@ -189,7 +189,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
                 <Link to={`/board?rollout=${r.id}`} title={`${r.name} · ${r.client}`} className="flex min-w-0 items-baseline gap-2 py-2 font-medium hover:underline">
                   <span className="truncate">{r.name}</span>{r.state === "overdue" && <span className="shrink-0 text-[11px] font-semibold text-bad">late</span>}<span className="hidden min-w-0 truncate font-normal text-muted-foreground sm:inline">{r.client}</span></Link>
                 <div className="relative py-2">
-                  <span className="absolute inset-y-0 w-[1.5px] bg-primary/60" style={{ left: pct(now) }} aria-hidden />
+                  <span className="absolute inset-y-0 w-[1.5px] bg-foreground/60" style={{ left: pct(now) }} aria-hidden />
                   <Tooltip>
                     <TooltipTrigger render={<span />} tabIndex={0} role="img"
                       aria-label={`${r.name}: ${fmtDate(r.start_date)} to ${r.target_end_date ? fmtDate(r.target_end_date) : "no target"}, ${Math.round(r.progress * 100)} percent of stages done, ${STATE[r.state].label}`}
