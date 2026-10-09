@@ -65,7 +65,7 @@ def code_at(secret, step):
 
 def matching_step(secret, code, after=0, now=None):
     """The time step (±1 for clock drift) this code belongs to, if later than `after`."""
-    code = "".join(ch for ch in str(code or "") if ch.isdigit())
+    code = "".join(ch for ch in str(code or "") if ch in "0123456789")   # ASCII only: compare_digest raises on any other
     if len(code) != DIGITS or not secret:
         return None
     step = int((now or time.time()) // STEP)

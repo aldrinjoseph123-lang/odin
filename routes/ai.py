@@ -54,14 +54,20 @@ def settings_ai_check():
     from services.ai.client import address_problem, config
     from services.ai.health import connect
     cfg = config()
+    saved_url = cfg["base_url"]
     try:
         cfg["base_url"] = _parse(POLICIES["ai_base_url"], request.form.get("ai_base_url", ""))
         cfg["model"] = _parse(POLICIES["ai_model"], request.form.get("ai_model", ""))
     except ValueError as exc:
         return jsonify(ok=False, messages=[f"Not checked: {exc}"], result={"ok": False, "reason": str(exc)})
-    cfg["allow_external"] = request.form.get("ai_allow_external") == "on"
+    # The saved switch, not the form's tick: an outside address is checked only
+    # once an admin has saved "allow external" (an audited policy change).
+    # The saved key goes only to the saved address; any other gets the key
+    # typed with this check, or none.
     if request.form.get("api_key"):
         cfg["key"] = request.form["api_key"]
+    elif cfg["base_url"] != saved_url:
+        cfg["key"] = ""
     problem = address_problem(cfg["base_url"], cfg["allow_external"])
     result = {"ok": False, "reason": problem} if problem else connect(cfg)
     audit_log("check_ai_server", "settings", None, "ai", f"{cfg['base_url']} {cfg['model']}: {'ok' if result['ok'] else result['reason']}")
@@ -136,6 +142,19 @@ def _feature_for(project, key):
     return feature
 
 
+def _may_decide(project, key, job_id):
+    """Dismissing, closing or cancelling a draft changes what everyone on the
+    rollout sees: it takes write rights on the rollout (the feature's own
+    project role, else manage_tasks), or being the person who asked for it."""
+    feature = _feature_for(project, key)
+    if project_allows(project["id"], feature.project_role or "manage_tasks"):
+        return feature
+    job = get_db().execute("SELECT requested_by FROM ai_jobs WHERE id = ?", (job_id,)).fetchone() if job_id else None
+    if job is None or job["requested_by"] != session.get("user_name"):
+        abort(403)
+    return feature
+
+
 def _suggestion_view(row):
     return {"id": row["id"], "payload": json.loads(row["payload"]), "model": row["model"], "seconds": row["seconds"],
             "created_at": row["created_at"], "status": row["status"]}
@@ -196,7 +215,7 @@ def api_project_ai_dismiss(project_id, suggestion_id):
     row = db.execute("SELECT * FROM ai_suggestions WHERE id = ? AND project_id = ?", (suggestion_id, project_id)).fetchone()
     if row is None:
         abort(404)
-    _feature_for(project, row["feature"])
+    _may_decide(project, row["feature"], row["job_id"])
     db.execute("UPDATE ai_suggestions SET status = 'dismissed', decided_by = ?, decided_at = ? WHERE id = ? AND status = 'new'",
                (session.get("user_name"), datetime.utcnow().isoformat(), suggestion_id))
     db.commit()
@@ -208,6 +227,7 @@ def use_suggestion(project_id, suggestion_id, features):
     """Mark a draft as used by the save that is about to happen. Returns the
     words for the audit row ("with the AI draft …"), or "" when there is none."""
     from datetime import datetime
+    suggestion_id = as_id(suggestion_id)
     if not suggestion_id:
         return ""
     db = get_db()
@@ -233,7 +253,7 @@ def api_project_ai_item(project_id, suggestion_id, index):
     row = db.execute("SELECT * FROM ai_suggestions WHERE id = ? AND project_id = ? AND status = 'new'", (suggestion_id, project_id)).fetchone()
     if row is None:
         abort(404)
-    _feature_for(project, row["feature"])
+    _may_decide(project, row["feature"], row["job_id"])
     body = json_body()
     decision = body.get("decision")
     payload = json.loads(row["payload"])
@@ -241,7 +261,7 @@ def api_project_ai_item(project_id, suggestion_id, index):
     if decision not in ("accepted", "dismissed") or not 0 <= index < len(items):
         return jsonify(error="Unknown proposal or decision"), 400
     decisions = payload.setdefault("decisions", {})
-    decisions[str(index)] = {"decision": decision, "by": session.get("user_name"), "raid_id": body.get("raid_id")}
+    decisions[str(index)] = {"decision": decision, "by": session.get("user_name"), "raid_id": as_id(body.get("raid_id"))}
     status = row["status"]
     if len(decisions) == len(items):
         status = "used" if any(d["decision"] == "accepted" for d in decisions.values()) else "dismissed"
@@ -249,7 +269,7 @@ def api_project_ai_item(project_id, suggestion_id, index):
                (json.dumps(payload, ensure_ascii=False), status, session.get("user_name"), datetime.utcnow().isoformat(), suggestion_id))
     db.commit()
     audit_log("decide_ai_proposal", "project", project_id, project["name"], f"{row['feature']} suggestion {suggestion_id} item {index}: {decision}"
-              + (f", RAID item {body['raid_id']}" if body.get("raid_id") else ""))
+              + (f", RAID item {as_id(body.get('raid_id'))}" if as_id(body.get("raid_id")) else ""))
     return jsonify(ok=True, status=status)
 
 
@@ -265,8 +285,8 @@ def api_project_ai_close(project_id, suggestion_id):
     row = db.execute("SELECT * FROM ai_suggestions WHERE id = ? AND project_id = ? AND status = 'new'", (suggestion_id, project_id)).fetchone()
     if row is None:
         abort(404)
-    _feature_for(project, row["feature"])
-    taken = int(json_body().get("taken") or 0)
+    _may_decide(project, row["feature"], row["job_id"])
+    taken = as_id(json_body().get("taken")) or 0
     db.execute("UPDATE ai_suggestions SET status = ?, decided_by = ?, decided_at = ? WHERE id = ?",
                ("used" if taken else "dismissed", session.get("user_name"), datetime.utcnow().isoformat(), suggestion_id))
     db.commit()
@@ -285,7 +305,7 @@ def api_project_ai_cancel(project_id, job_id):
     job = db.execute("SELECT id, feature FROM ai_jobs WHERE id = ? AND project_id = ? AND kind = 'feature'", (job_id, project_id)).fetchone()
     if job is None:
         abort(404)
-    _feature_for(project, job["feature"])
+    _may_decide(project, job["feature"], job_id)
     cancel(db, job_id)
     audit_log("cancel_ai_draft", "project", project_id, project["name"], f"{job['feature']} job {job_id}")
     return jsonify(ok=True)
@@ -328,8 +348,9 @@ def api_lessons_save(project_id):
     if session.get("kind") == "external" or not project_allows(project_id, "manage_project"):
         abort(403)
     body = json_body()
-    items = [i for i in body.get("items") or [] if isinstance(i, dict)][:12]
-    n = lessons.save(project, items, session["user_name"])
+    raw_items = body.get("items") or []
+    items = [i for i in (raw_items if isinstance(raw_items, list) else []) if isinstance(i, dict)][:12]
+    n = lessons.save(project, items, session["user_name"])   # not committed yet: one commit, then the audit row
     if not n:
         return jsonify(error="Nothing to save"), 400
     ai = use_suggestion(project_id, body.get("ai_suggestion"), "lessons")
