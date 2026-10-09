@@ -110,15 +110,19 @@ export default function Project({ user }: { user: User }) {
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
       <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
 
-      <div className="grid grid-cols-1 items-start gap-4 px-5 pb-6 lg:grid-cols-2 [&>*]:min-w-0">
-        <div className="empty:hidden lg:col-span-2"><AICatchUp projectId={id} /></div>
-        <div className="empty:hidden lg:col-span-2"><AIAsk projectId={id} /></div>
-        <div className="empty:hidden lg:col-span-2"><AINotesTasks projectId={id} /></div>
-        {!closed && <div className="empty:hidden lg:col-span-2"><AIChase projectId={id} /></div>}
-        <div className="lg:col-span-2"><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} refresh={planRefresh} /></Panel></div>
-        <div className="lg:col-span-2"><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} onChanged={() => setPlanRefresh((n) => n + 1)} /></Panel></div>
-        {staff && <div className="empty:hidden lg:col-span-2"><LessonsPanel projectId={id} /></div>}
-        <div className="lg:col-span-2"><Panel title="Scope and sign-off" hint="what was agreed, what was delivered, and the customer's signature" id="scope"><ScopePanel projectId={id} signoff={d.signoff} /></Panel></div>
+      <div className="grid grid-cols-1 gap-4 px-5 pb-4 [&>*]:min-w-0">
+        <div className="empty:hidden"><AICatchUp projectId={id} /></div>
+        <div className="empty:hidden"><AIAsk projectId={id} /></div>
+        <div className="empty:hidden"><AINotesTasks projectId={id} /></div>
+        {!closed && <div className="empty:hidden"><AIChase projectId={id} /></div>}
+        <div><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} refresh={planRefresh} /></Panel></div>
+        <div><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} onChanged={() => setPlanRefresh((n) => n + 1)} /></Panel></div>
+        {staff && <div className="empty:hidden"><LessonsPanel projectId={id} /></div>}
+        <div><Panel title="Scope and sign-off" hint="what was agreed, what was delivered, and the customer's signature" id="scope"><ScopePanel projectId={id} signoff={d.signoff} /></Panel></div>
+      </div>
+      {/* the half-width panels as a masonry: two columns from lg, each panel
+          under the one above it, so a short panel never leaves a gap */}
+      <div className="gap-4 px-5 pb-6 lg:columns-2 [&>*]:mb-4 [&>*]:min-w-0 [&>*]:break-inside-avoid">
         <Panel title="Details">
           <dl className="grid grid-cols-[minmax(96px,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">
             {Object.entries(LABELS).filter(([k]) => {
@@ -130,7 +134,7 @@ export default function Project({ user }: { user: User }) {
               return true
             }).map(([k, label]) => {
               const email = k === "account_manager_name" ? x.details.account_manager_email : k === "partner_account_manager_name" ? x.details.partner_account_manager_email : k === "outsourcer_name" ? x.details.outsourcer_email : null
-              return <div key={k} className="contents"><dt className="text-muted-foreground">{label}</dt><dd>{x.details[k] ?? "—"}{email ? <span className="text-muted-foreground"> · {email}</span> : null}</dd></div>
+              return <div key={k} className="contents"><dt className="text-muted-foreground">{label}</dt><dd>{k.endsWith("_date") && x.details[k] ? fmtWhen(x.details[k]) : (x.details[k] ?? "—")}{email ? <span className="text-muted-foreground"> · {email}</span> : null}</dd></div>
             })}
             <dt className="text-muted-foreground">Customer approval</dt><dd>{x.customer_approval ? "Asked on every stage change" : "Off"}</dd>
           </dl>
