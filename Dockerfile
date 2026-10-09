@@ -4,8 +4,9 @@
 # just Python + the three runtime dependencies. gunicorn serves the app; nginx
 # in front of it terminates TLS and serves /static (see docker-compose.yml).
 # Stage 1: the React front end. Only its build output crosses into the runtime
-# image — Node never ships.
-FROM node:22-alpine AS frontend
+# image — Node never ships. Debian (glibc), not Alpine: v1.5.1's fresh npm ci
+# on Alpine left rolldown (Vite's bundler) unable to load its native binary.
+FROM node:22-slim AS frontend
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
