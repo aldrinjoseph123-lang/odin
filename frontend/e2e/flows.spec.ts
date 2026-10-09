@@ -226,8 +226,8 @@ test("@flow settings: a policy saves and takes effect; Kibana dashboards appear 
   await expect(page.getByText("No Kibana dashboards yet")).toBeVisible()
   await page.getByRole("link", { name: "Open Integrations" }).click()
   await expect(page).toHaveURL(/\/settings\/integrations/)
-  // the frame is blocked for the Kibana test host: expected, not an error
-  expectClean(errors.filter((e) => !/kibana\.example\.com/.test(e)))
+  // the frame is blocked for the Kibana test host, and the bad line's save is refused with a 400: both expected
+  expectClean(errors.filter((e) => !/kibana\.example\.com|\/settings\/policies\/integrations|400 \(BAD REQUEST\)/.test(e)))
 })
 
 test("@flow account: the home page is a choice", async ({ page }) => {
@@ -308,6 +308,14 @@ test("@flow portfolio report: health, roadmap into a rollout's report, the PDF",
 test("@flow scope and sign-off: mark the last item, send, see it waiting, withdraw; the gate holds", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/projects/1")
+  // a sign-off goes out from the Sign-off stage (the stage before the finish): take the rollout there, and back at the end
+  const move = (stage: string) => page.evaluate(async (stage) => {
+    const s = await (await fetch("/api/session")).json()
+    return (await fetch("/api/projects/1/stage", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": s.csrf }, body: JSON.stringify({ stage, note: "e2e: sign-off journey" }) })).status
+  }, stage)
+  const before = await page.evaluate(async () => (await (await fetch("/api/projects/1/flow")).json()).stage as string)
+  expect(await move("Sign-off")).toBe(200)
+  await page.reload()
   const scope = page.locator("#scope")
   await expect(scope).toContainText("1 agreed")
   await scope.getByRole("button", { name: /^Alerts forwarded/ }).click()
@@ -340,6 +348,7 @@ test("@flow scope and sign-off: mark the last item, send, see it waiting, withdr
   await page.getByRole("button", { name: "Withdraw and revise" }).click()
   await expect(page.getByRole("status")).toHaveText(/withdrawn/)
   await expect(page.getByRole("button", { name: "Send for signature" })).toBeVisible()
+  expect(await move(before)).toBe(200)
   expectClean(errors.filter((e) => !/\/api\/projects\/1\/stage|400 \(BAD REQUEST\)/.test(e)))   // the refused move is the point
 })
 

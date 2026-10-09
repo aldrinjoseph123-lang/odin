@@ -26,7 +26,7 @@ function NavLink({ item, current, onClick }: { item: Item; current: boolean; onC
   const text = (
     <>
       {item.label}
-      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-2 text-[11px] text-foreground" variant="secondary">{item.count}</Badge> : null}
+      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-2 text-[11px] text-foreground" variant="secondary">{item.count > 99 ? "99+" : item.count}</Badge> : null}
     </>
   )
   return REACT_PAGES.has(item.href) ? (
@@ -100,7 +100,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   return (
     <div className="flex min-h-svh flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground">Skip to content</a>
-      <header className="flex h-14 shrink-0 items-center gap-4 px-5 print:hidden xl:gap-6">
+      <header className="flex h-14 shrink-0 items-center gap-4 px-5 print:hidden">
         <Link to={user.home === "board" ? "/board" : "/dashboard"} aria-label="Odin, home" className="shrink-0"><Logo markClass="h-7 w-7" wordClass="h-[15px]" /></Link>
         {/* The admin's full row needs ~1,250 px (test report UX-1): below xl the
             links fold into the menu, and up to 2xl search is just its icon;
