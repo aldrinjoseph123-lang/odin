@@ -56,7 +56,10 @@ def send_due_reminders(db):
     today = local_today(db).isoformat()
     rows = db.execute(
         "SELECT t.title, t.due_date, t.assignee_id, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
+        "JOIN users u ON u.id = t.assignee_id "
         f"WHERE t.done = 0 AND t.assignee_id IS NOT NULL AND t.due_date IS NOT NULL AND t.due_date <= ? AND p.deleted_at IS NULL AND {OPEN} "
+        # an outsider hears only about projects they are still on (a removed partner is not told a project's task names)
+        "AND (u.kind = 'internal' OR EXISTS (SELECT 1 FROM project_participants pp WHERE pp.project_id = t.project_id AND pp.user_id = t.assignee_id)) "
         "ORDER BY t.assignee_id, t.due_date", (today,),
     ).fetchall()
     by_person = {}

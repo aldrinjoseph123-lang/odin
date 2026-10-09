@@ -4,7 +4,7 @@ per-project alert dismissal. Imported for route registration side effects.
 from flask import abort, redirect, render_template, request, session, url_for
 
 from constants import ALERT_TYPES, ALERT_TYPE_TITLES
-from core import app, login_required, permission_required, project_scope
+from core import app, as_id, login_required, permission_required, project_scope
 from db import PROJECT_OPEN_SQL, get_db, get_stage_names, get_terminal_stage, stages_for_projects
 from services.analytics import build_cycle_times
 from spa import spa_index, spa_serves
@@ -163,11 +163,13 @@ def analytics():
     # Stage timings only compare across projects that share a stage list, so
     # the report is per template. Projects on a bespoke list are their own
     # history and are counted in the picker as "custom".
+    if session.get("kind") == "external":   # internal cycle times across every rollout
+        abort(403)
     if spa_serves("analytics"):
         return spa_index()
     db = get_db()
     templates = db.execute("SELECT id, name FROM stage_templates ORDER BY id").fetchall()
-    template_id = request.args.get("template", type=int) or (templates[0]["id"] if templates else None)
+    template_id = request.args.get("template", type=as_id) or (templates[0]["id"] if templates else None)
     template = next((t for t in templates if t["id"] == template_id), None)
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
@@ -200,13 +202,16 @@ def alerts_log_view():
 
 
 def alerts_page_data():
-    """The alert list for Jinja and JSON alike."""
+    """The alert list for Jinja and JSON alike. Staff only: an alert is an
+    internal judgement (over SLA, stale, overdue) partners do not read."""
+    if session.get("kind") == "external":
+        abort(403)
     db = get_db()
     show_resolved = request.args.get("resolved") == "1"
     alert_type = request.args.get("type", "")
     if alert_type not in ALERT_TYPES:
         alert_type = ""
-    page = max(1, request.args.get("page", 1, type=int))
+    page = max(1, request.args.get("page", type=as_id) or 1)
 
     where, params = [], []
     if not show_resolved:
@@ -214,9 +219,6 @@ def alerts_page_data():
     if alert_type:
         where.append("a.alert_type = ?")
         params.append(alert_type)
-    if session.get("kind") == "external":   # a partner sees alerts on their own projects only
-        where.append("a.project_id IN (SELECT project_id FROM project_participants WHERE user_id = ?)")
-        params.append(session["user_id"])
     clause = (" WHERE " + " AND ".join(where)) if where else ""
     order = ("a.resolved ASC, " if show_resolved else "") + \
             "CASE a.severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, a.created_at DESC"
@@ -235,12 +237,15 @@ def alerts_page_data():
                 page=page, total_pages=total_pages, total=total)
 
 
-@app.route("/alerts/<int:project_id>/dismiss/<alert_type>")
+@app.route("/alerts/<int:project_id>/dismiss/<alert_type>", methods=["POST"])
 @login_required
 def alert_dismiss(project_id, alert_type):
+    """POST, like every change of state: a GET could be fired by any page's <img>."""
     from routes.projects import load_project
+    from services.audit import audit_log
     load_project(project_id)   # 404 unless the caller may see it (test report SEC-8: a redirect told a partner which ids exist)
     dismiss_alert(project_id, alert_type)
+    audit_log("dismiss_alert", "project", project_id, None, alert_type)
     if request.args.get("next") == "board":
         return redirect(url_for("board") + "#alerts")
     return redirect(url_for("project_detail", project_id=project_id))

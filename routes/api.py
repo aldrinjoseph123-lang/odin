@@ -144,6 +144,8 @@ def api_board():
 @login_required
 def api_approval_decide(project_id, approval_id):
     body = json_body()
+    if body.get("comment") is not None and not isinstance(body.get("comment"), str):
+        return jsonify(error="Send the comment as text"), 400
     error = decide_approval(project_id, approval_id, body.get("decision"), body.get("comment"))
     if error:
         return jsonify(error=error), 400
@@ -247,12 +249,15 @@ def _sso_view():
 def api_settings_rbac():
     """The role/permission matrix. Locked cells are what the save route
     forces on regardless: an admin can never lock every account out."""
+    from routes.settings import EXTERNAL_ALLOWED
     rows = get_db().execute("SELECT * FROM role_permissions").fetchall()
     allowed = {(r["permission"], r["role"]) for r in rows if r["allowed"]}
     return jsonify(
         roles=list(ROLES), permissions=list(PERMISSIONS),
         matrix={p: {r: (p, r) in allowed for r in ROLES} for p in PERMISSIONS},
         locked={p: ["Admin"] if (p in ("manage_settings", "manage_users") or p.startswith("view_")) else [] for p in PERMISSIONS},
+        # cells the save route refuses to turn on (External is capped to view, comment, download)
+        forbidden={p: [] if p in EXTERNAL_ALLOWED else ["External"] for p in PERMISSIONS},
     )
 
 
@@ -297,7 +302,7 @@ def api_audit():
     db = get_db()
     where, params, filters = _audit_filter()
     limit = 100
-    page = max(1, request.args.get("page", 1, type=int))
+    page = max(1, request.args.get("page", type=as_id) or 1)
     total = db.execute(f"SELECT COUNT(*) AS c FROM audit_logs{where}", params).fetchone()["c"]
     total_pages = max(1, (total + limit - 1) // limit)
     page = min(page, total_pages)
@@ -323,7 +328,7 @@ def _portfolio():
 @permission_required("view_reports")
 def api_report_all():
     from services.doc_templates import resolve
-    return jsonify({**_portfolio(), "template": resolve("portfolio", request.args.get("template", type=int))})
+    return jsonify({**_portfolio(), "template": resolve("portfolio", request.args.get("template", type=as_id))})
 
 
 @app.route("/reports/all.pdf")
@@ -336,7 +341,7 @@ def portfolio_pdf():
         abort(404)            # the PDF is the internal cut
     from services.doc_templates import resolve
     data = _portfolio()
-    return Response(render_portfolio(data, resolve("portfolio", request.args.get("template", type=int))), mimetype="application/pdf",
+    return Response(render_portfolio(data, resolve("portfolio", request.args.get("template", type=as_id))), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="portfolio-report-{data["today"]}.pdf"'})
 
 
@@ -375,15 +380,19 @@ def _rollout_report(project_id, audience, version):
     if row is not None and row["kind"] == "snapshot":
         data = json.loads(row["data"]) if audience == "internal" else report_data.customer_view(row["data"])
         words = {"summary": row["summary"] or "", "next_steps": row["next_steps"] or "", "asks": row["asks"] or ""}
+        if audience == "customer":
+            words = report_data.customer_words(project_id, words, json.loads(row["data"]))
     elif row is not None:                       # an old plain-text version
         data, words = None, {"blocks": render_blocks(row["body"])}
     else:
         from services.doc_templates import resolve
         data = report_data.build(project, audience)
-        data["template"] = resolve("rollout", request.args.get("template", type=int))   # a saved version keeps the one it was saved with
+        data["template"] = resolve("rollout", request.args.get("template", type=as_id))   # a saved version keeps the one it was saved with
         last = db.execute("SELECT summary, next_steps, asks FROM project_reports WHERE project_id = ? AND kind = 'snapshot' ORDER BY version DESC LIMIT 1", (project_id,)).fetchone()
         words = {k: (last[k] if last and last[k] else data["draft"][k]) for k in ("summary", "next_steps", "asks")}
         words["suggested"] = data.pop("draft")
+        if audience == "customer":
+            words = report_data.customer_words(project_id, words)
     return project, audience, words, data, versions, row
 
 
@@ -392,7 +401,7 @@ def _rollout_report(project_id, audience, version):
 def api_rollout_report(project_id):
     audience = request.args.get("audience", "internal")
     audience = audience if audience in ("internal", "customer") else "internal"
-    project, audience, words, data, versions, row = _rollout_report(project_id, audience, request.args.get("v", type=int))
+    project, audience, words, data, versions, row = _rollout_report(project_id, audience, request.args.get("v", type=as_id))
     external = session.get("kind") == "external"
     return jsonify(audience=audience, words=words, data=data, is_live=row is None,
                    version=None if row is None else {"version": row["version"], "kind": row["kind"], "created_by": row["created_by"], "created_at": row["created_at"]},
@@ -408,7 +417,7 @@ def rollout_report_pdf(project_id):
     from flask import Response
     from services.report_pdf import render
     audience = request.args.get("audience", "internal")
-    project, audience, words, data, _versions, row = _rollout_report(project_id, audience if audience in ("internal", "customer") else "internal", request.args.get("v", type=int))
+    project, audience, words, data, _versions, row = _rollout_report(project_id, audience if audience in ("internal", "customer") else "internal", request.args.get("v", type=as_id))
     if data is None:
         abort(404)            # an old plain-text version has no PDF of this kind
     safe = file_stem(project["name"])
@@ -426,17 +435,23 @@ def api_rollout_report_save(project_id):
     from services.plan import snapshot_json
     project = load_project(project_id)
     body = json_body()
-    words = {k: str(body.get(k) or "").strip()[:6000] for k in ("summary", "next_steps", "asks")}
+    try:
+        words = {k: text_field(body.get(k), 6000, label, multiline=True)
+                 for k, label in (("summary", "Summary"), ("next_steps", "Next steps"), ("asks", "What we need"))}
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     if not words["summary"]:
         return jsonify(error="Write the summary first — two or three lines on where it stands"), 400
     db = get_db()
-    version = (db.execute("SELECT MAX(version) FROM project_reports WHERE project_id = ?", (project_id,)).fetchone()[0] or 0) + 1
     from services.doc_templates import resolve
     snap = report_data.snapshot(project)
-    snap["template"] = resolve("rollout", body.get("template_id"))   # frozen: a later template edit never changes an issued version
-    db.execute("INSERT INTO project_reports (project_id, version, body, created_by, created_at, kind, data, summary, next_steps, asks) VALUES (?, ?, ?, ?, ?, 'snapshot', ?, ?, ?, ?)",
-               (project_id, version, words["summary"], session["user_name"], datetime.utcnow().isoformat(), snapshot_json(snap),
-                words["summary"], words["next_steps"], words["asks"]))
+    snap["template"] = resolve("rollout", as_id(body.get("template_id")))   # frozen: a later template edit never changes an issued version
+    # the number is taken inside the INSERT: two saves at once cannot pick the same one
+    cur = db.execute("INSERT INTO project_reports (project_id, version, body, created_by, created_at, kind, data, summary, next_steps, asks) "
+                     "SELECT ?, COALESCE(MAX(version), 0) + 1, ?, ?, ?, 'snapshot', ?, ?, ?, ? FROM project_reports WHERE project_id = ?",
+                     (project_id, words["summary"], session["user_name"], datetime.utcnow().isoformat(), snapshot_json(snap),
+                      words["summary"], words["next_steps"], words["asks"], project_id))
+    version = db.execute("SELECT version FROM project_reports WHERE id = ?", (cur.lastrowid,)).fetchone()[0]
     from routes.ai import use_suggestion
     ai = use_suggestion(project_id, body.get("ai_suggestion"), ("weekly_words", "customer_words"))
     db.commit()
@@ -512,13 +527,13 @@ def api_person_notify(user_id):
     if session.get("kind") == "external" or session.get("role") not in ("Admin", "Member", "Contributor") or user_id == session["user_id"]:
         abort(403)
     body = json_body()
-    message = str(body.get("message") or "").strip()[:1000]
+    message = body.get("message").strip()[:1000] if isinstance(body.get("message"), str) else ""
     if not message:
         abort(400)
     target = get_db().execute("SELECT id, name FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (user_id,)).fetchone()
     if not target:
         abort(404)
-    project_id = body.get("project_id") if isinstance(body.get("project_id"), int) else None
+    project_id = as_id(body.get("project_id"))
     if project_id and not get_db().execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
         return jsonify(error="That rollout does not exist"), 400   # test report FN-12: it was a 500
     notify_users([user_id], "nudge", project_id, f"{session.get('user_name')} sent you a note", f"<p>{_esc(message)}</p>", link=f"/board?rollout={project_id}" if project_id else "/my-work")
@@ -538,8 +553,12 @@ def api_dashboard():
 @app.route("/api/calendar")
 @permission_required("view_board")
 def api_calendar():
+    import re
     from services import calendar
-    return jsonify(calendar.build(request.args.get("month", ""), project_scope()))
+    month = request.args.get("month", "")
+    if not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", month):   # the window parse_date keeps; year 1 overflowed the grid's arithmetic
+        month = ""   # the current month
+    return jsonify(calendar.build(month, project_scope()))
 
 
 @app.route("/api/kibana")
@@ -554,7 +573,7 @@ def api_kibana():
     scope_sql, scope_params = project_scope()
     rollouts = [{"id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"]} for r in db.execute(
         f"SELECT p.id, p.name, p.client, p.po_number FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY p.name", scope_params)]
-    wanted = request.args.get("rollout", type=int)
+    wanted = request.args.get("rollout", type=as_id)
     current = next((r for r in rollouts if r["id"] == wanted), None)
     # {project}, {client} and {po} in an address take the chosen rollout's values (URL-encoded)
     def fill(url):
@@ -627,9 +646,11 @@ def api_alerts():
 @permission_required("view_reports")
 def api_analytics():
     from services.analytics import build_cycle_times
+    if session.get("kind") == "external":   # internal cycle times: staff only
+        abort(403)
     db = get_db()
     templates = db.execute("SELECT id, name FROM stage_templates ORDER BY id").fetchall()
-    template_id = request.args.get("template", type=int) or (templates[0]["id"] if templates else None)
+    template_id = request.args.get("template", type=as_id) or (templates[0]["id"] if templates else None)
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
         f"WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{project_scope()[0]}", (template_id, *project_scope()[1])
@@ -661,7 +682,7 @@ def api_project_form():
     needs manage_project on that project; otherwise create_project."""
     from db import get_contact_lists
     db = get_db()
-    edit_id, from_id = request.args.get("edit", type=int), request.args.get("from", type=int)
+    edit_id, from_id = request.args.get("edit", type=as_id), request.args.get("from", type=as_id)
     role = session.get("role")
     if edit_id:
         if not project_allows(edit_id, "manage_project"):
@@ -715,7 +736,7 @@ def api_projects():
     direction = "asc" if args.get("dir") == "asc" else "desc"
     view, stage, mode = args.get("view", ""), args.get("stage", ""), args.get("delivery_mode", "")
     closed, q = args.get("closed") == "1", args.get("q", "").strip()
-    page = max(1, args.get("page", 1, type=int))
+    page = max(1, args.get("page", type=as_id) or 1)
     # the nav's Projects link returns to this filter (page deliberately not kept)
     session["projects_query"] = {k: v for k, v in args.items() if k in ("view", "stage", "delivery_mode", "closed", "q", "sort", "dir") and v}
     db = get_db()
@@ -1093,7 +1114,7 @@ def api_raid_create(project_id):
     from services import raid
     project = load_project(project_id)
     try:
-        fields = raid.cleanjson_body()
+        fields = raid.clean(json_body(), project_id)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     rid = raid.create(project_id, fields, session["user_name"])
@@ -1120,7 +1141,7 @@ def api_raid_item(project_id, item_id):
         audit_log("delete_raid_item", "project", project_id, project["name"], f"{item['kind']}: {item['title'][:80]}")
         return jsonify(ok=True)
     try:
-        fields = raid.clean(json_body(), existing=item)
+        fields = raid.clean(json_body(), project_id, existing=item)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     raid.update(item, fields)
@@ -1226,8 +1247,8 @@ def api_notifications_read():
     where, vis = visible_clause(session["user_id"], session.get("kind"))
     if body.get("all"):
         db.execute(f"UPDATE notifications AS n SET read_at = ? WHERE n.user_id = ? AND n.read_at IS NULL{where}", (now, session["user_id"], *vis))
-    elif isinstance(body.get("id"), int):
-        db.execute("UPDATE notifications SET read_at = ? WHERE id = ? AND user_id = ? AND read_at IS NULL", (now, body["id"], session["user_id"]))
+    elif as_id(body.get("id")):
+        db.execute("UPDATE notifications SET read_at = ? WHERE id = ? AND user_id = ? AND read_at IS NULL", (now, as_id(body["id"]), session["user_id"]))
     else:
         return jsonify(error="Say which: {id} or {all: true}"), 400
     db.commit()

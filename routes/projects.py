@@ -271,13 +271,18 @@ def report_single(project_id):
 
 
 def report_context(project_id):
-    """The report page's data, for Jinja and JSON alike."""
+    """The report page's data, for Jinja and JSON alike. The plain-text
+    report is internal (drafted from every note and the document list, the
+    Client PO among them): partners and customers read the customer cut of
+    a saved version on the rollout report instead."""
     from services.reports import draft_report, render_blocks, report_versions
     db = get_db()
     project = load_project(project_id)
+    if session.get("kind") == "external":
+        abort(404)
     can_edit = project_allows(project_id, "manage_project")
     versions = report_versions(project_id)
-    wanted = request.args.get("v", type=int)
+    wanted = request.args.get("v", type=as_id)
     current = None
     if versions:
         current = db.execute(
@@ -427,7 +432,7 @@ def project_new():
         return redirect(url_for("board"))
     users = db.execute("SELECT * FROM users ORDER BY name").fetchall()
     source = None
-    duplicate_of = request.args.get("from", type=int)
+    duplicate_of = request.args.get("from", type=as_id)
     # only a project you may see can be duplicated; a stale link gives a blank form, not a 404
     if duplicate_of and db.execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (duplicate_of,)).fetchone():
         source = load_project(duplicate_of)
@@ -580,11 +585,12 @@ def project_edit(project_id):
 @permission_required("edit_project_stage")
 @project_role_required("move_stage")
 def project_stage(project_id):
-    error = change_stage(project_id, request.form["stage"], request.form.get("note", "").strip()[:5000])
+    stage = request.form.get("stage", "")
+    error = change_stage(project_id, stage, request.form.get("note", "").strip()[:5000])
     if error:
-        flash(error)
+        flash(error, "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    flash(Markup(f"Moved to {escape(request.form['stage'])}. {undo_button('Undo', 'undo_stage_change', project_id=project_id, note_id=g.stage_note_id)} {undo_note()}"))
+    flash(Markup(f"Moved to {escape(stage)}. {undo_button('Undo', 'undo_stage_change', project_id=project_id, note_id=g.stage_note_id)} {undo_note()}"))
     if request.form.get("redirect") == "board":
         return redirect(url_for("board"))
     return redirect(url_for("project_detail", project_id=project_id))
@@ -726,7 +732,7 @@ def decide_approval(project_id, approval_id, decision, comment):
     )
     db.commit()
     audit_log("approval_decision", "project", project_id, project["name"], f"{row['stage']} {decision}")
-    subject = f"{project['name']}: {row['stage']} {decision} by the customer"
+    subject = f"{escape(project['name'])}: {escape(row['stage'])} {decision} by the customer"   # HTML in Teams and mail
     body = f"{escape(session['user_name'])} {decision} <b>{escape(row['stage'])}</b>." + (f"<br>{escape(comment)}" if comment else "")
     notify_event(project, subject, body, channels={"email": False, "teams": True})
     notify_participants(project_id, subject, body, exclude_user_id=session["user_id"], kind="approval")
@@ -767,7 +773,7 @@ def _date_problem(form):
     return _field_problem(form)
 
 
-PROJECT_TEXT_FIELDS = (("name", "Project name", 200), ("client", "Client", 200), ("po_number", "PO number", 100),
+PROJECT_TEXT_FIELDS = (("po_number", "PO number", 100),   # name and client are capped where they are stored
                        ("account_manager_name", "Account manager", 200), ("partner_name", "Partner", 200),
                        ("partner_account_manager_name", "Partner account manager", 200), ("outsourcer_name", "Outsourcer", 200),
                        ("vendor_name", "Vendor", 200), ("product_name", "Product", 200))
@@ -1002,14 +1008,15 @@ def participant_invite(project_id):
     db = get_db()
     from policies import email_domain_allowed, policy
     if not valid_email(email):
-        flash("Enter a valid email address")
+        flash("Enter a valid email address", "error")
     elif not db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND kind = 'internal'", (email,)).fetchone() and not email_domain_allowed(email):
-        flash(f"Partners can only be invited from: {', '.join(policy('external_domains'))} (Settings → Sign-in & security)")
+        flash(f"Partners can only be invited from: {', '.join(policy('external_domains'))} (Settings → Sign-in & security)", "error")
     elif role not in EXTERNAL_PROJECT_ROLES:
-        flash("Pick a role")
+        flash("Pick a role", "error")
     else:
         user = db.execute("SELECT * FROM users WHERE lower(email) = ?", (email,)).fetchone()
         now = datetime.utcnow().isoformat()
+        created = user is None   # only a brand-new account may have its first link carried by hand
         if user is None:
             db.execute(
                 "INSERT INTO users (username, password_hash, name, role, active, email, created_at, kind, theme, accent) "
@@ -1019,10 +1026,10 @@ def participant_invite(project_id):
             user = db.execute("SELECT * FROM users WHERE lower(email) = ?", (email,)).fetchone()
             audit_log("create_user", "user", user["id"], email, "external, invited")
         if user["id"] == project["owner_id"]:
-            flash("That is the project manager")
+            flash("That is the project manager", "error")
             return redirect(url_for("project_detail", project_id=project_id) + "#team")
         if _wrong_kind_for_role(user, role):   # the invite is a second way onto the team (system map #14)
-            flash(_WRONG_KIND)
+            flash(_WRONG_KIND, "error")
             return redirect(url_for("project_detail", project_id=project_id) + "#team")
         db.execute(
             "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) "
@@ -1038,6 +1045,11 @@ def participant_invite(project_id):
             ok, error = send_login_link(user, raw, session["user_name"], project["name"], project_id)
             if ok:
                 flash(f"{user['name']} added as {role} — sign-in link emailed to {email}")
+            elif not created:
+                # An account that already existed may be on other projects: a link
+                # handed to the inviter would let them act as that person there.
+                flash(f"{user['name']} added as {role}. Email could not be sent ({error or 'not configured'}); "
+                      "they can ask for a sign-in link on the sign-in page.")
             else:
                 # No mail yet (Microsoft 365 not connected) — the inviter carries
                 # the link by hand. It still works once and expires in 30 minutes.
@@ -1170,23 +1182,25 @@ def undo_document(doc_id):
 @app.route("/projects/<int:project_id>/note", methods=["POST"])
 @permission_required("add_project_note")
 def project_note(project_id):
-    note_text = request.form["note"].strip()[:5000]
+    project = load_project(project_id)
+    note_text = request.form.get("note", "").strip()[:5000]
     if not note_text:
+        flash("Write the note first", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     db = get_db()
-    project = load_project(project_id)
-    if project is None:
-        abort(404)
     now = datetime.utcnow().isoformat()
     # An external participant's note is theirs to see again — and the
-    # project's other outsiders may see it too. Staff notes stay internal.
+    # project's other outsiders may see it too. A staff note stays internal
+    # unless it was written for the customer (share=1).
+    shared = session.get("kind") == "external" or request.form.get("share") == "1"
     db.execute(
         "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (project_id, session["user_name"], note_text, project["stage"], now, 1 if session.get("kind") == "external" else 0, session["user_id"]),
+        (project_id, session["user_name"], note_text, project["stage"], now, 1 if shared else 0, session["user_id"]),
     )
     db.commit()
-    audit_log("add_project_note", "project", project_id, project["name"], note_text)
-    mentioned = mentions_in(project_id, note_text)
+    audit_log("add_project_note", "project", project_id, project["name"], ("[shared] " if shared and session.get("kind") != "external" else "") + note_text)
+    # an internal note never reaches an outsider, mention or not: they would be mailed words they may not read
+    mentioned = mentions_in(project_id, note_text, staff_only=not shared)
     html = f"{escape(session['user_name'])} wrote:<br>{escape(note_text)}"
     if mentioned:
         notify_users(mentioned, "mention", project_id, f"{escape(session['user_name'])} mentioned you on {escape(project['name'])}", html,
@@ -1217,6 +1231,10 @@ def _own_note(project_id, note_id):
         abort(404)
     if note["author_id"] is None or note["author_id"] != session["user_id"]:
         abort(403)   # only the author corrects their words
+    # the note written with a customer's approval decision is part of that record (decide_approval)
+    if get_db().execute("SELECT 1 FROM stage_approvals WHERE project_id = ? AND decided_at = ? AND decided_by = ?",
+                        (project_id, note["created_at"], note["author"])).fetchone():
+        abort(403, description="This note records an approval decision, so it stays as written")
     return note
 
 
@@ -1251,16 +1269,17 @@ def note_delete(project_id, note_id):
     return redirect(url_for("project_detail", project_id=project_id))
 
 
-def mentions_in(project_id, text):
+def mentions_in(project_id, text, staff_only=False):
     """User ids a note mentions: "@Full Name", "@username", or "@First" when
     only one person on the team has that first name. Only people on the
-    project can be mentioned — a mention never reaches an outsider."""
+    project can be mentioned — a mention never reaches an outsider — and
+    with `staff_only` (an internal note) only staff."""
     low = (text or "").lower()
     if "@" not in low:
         return []
     team = get_db().execute(
         "SELECT u.id, u.name, u.username FROM project_participants pp JOIN users u ON u.id = pp.user_id "
-        "WHERE pp.project_id = ? AND u.active = 1", (project_id,),
+        "WHERE pp.project_id = ? AND u.active = 1" + (" AND u.kind = 'internal'" if staff_only else ""), (project_id,),
     ).fetchall()
     firsts = {}
     for r in team:

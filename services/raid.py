@@ -6,7 +6,7 @@ An item is internal unless marked for the customer, in which case the
 customer's version of the report shows it. Open blockers and high-impact
 risks and issues count against the rollout's health (services/plan.py).
 """
-from datetime import date, datetime
+from datetime import datetime
 
 from db import get_db
 
@@ -26,8 +26,12 @@ def items(project_id, customer=False):
     return [dict(r) | {"customer_visible": bool(r["customer_visible"]), "open": r["status"] not in DONE} for r in rows]
 
 
-def clean(body, existing=None):
+def clean(body, project_id, existing=None):
     """A validated dict of fields from a posted body, or raise ValueError."""
+    from core import as_id, parse_date
+    for k in ("title", "detail", "stage", "resolution", "due_date"):
+        if body.get(k) is not None and not isinstance(body.get(k), str):
+            raise ValueError(f"Send the {k.replace('_', ' ')} as text")
     kind = body.get("kind", existing["kind"] if existing else None)
     if kind not in KINDS:
         raise ValueError("Pick a kind: risk, issue, decision or blocker")
@@ -43,16 +47,18 @@ def clean(body, existing=None):
     status = body.get("status", existing["status"] if existing and existing["kind"] == kind else STATUSES[kind][0])
     if status not in STATUSES[kind]:
         raise ValueError(f"A {kind} is {', '.join(STATUSES[kind])}")
-    due = body.get("due_date", existing["due_date"] if existing else None) or None
-    if due:
-        try:
-            due = date.fromisoformat(str(due)[:10]).isoformat()
-        except ValueError:
-            raise ValueError("Due date like 2026-10-31") from None
+    try:
+        due = parse_date(body.get("due_date", existing["due_date"] if existing else None))
+    except ValueError as exc:
+        raise ValueError(f"Due date: {exc}") from None
     owner = body.get("owner_id", existing["owner_id"] if existing else None) or None
     if owner is not None:
-        if not isinstance(owner, int) or not get_db().execute("SELECT 1 FROM users WHERE id = ? AND active = 1", (owner,)).fetchone():
+        # the task assignee's rule: staff, or an outsider on this project (never a partner from elsewhere)
+        if as_id(owner) is None or not get_db().execute(
+                "SELECT 1 FROM users u WHERE u.id = ? AND u.active = 1 AND (u.kind = 'internal' OR EXISTS "
+                "(SELECT 1 FROM project_participants pp WHERE pp.project_id = ? AND pp.user_id = u.id))", (as_id(owner), project_id)).fetchone():
             raise ValueError("Pick an owner from the list")
+        owner = as_id(owner)
     return {
         "kind": kind, "title": title, "impact": impact, "likelihood": likelihood, "status": status, "due_date": due, "owner_id": owner,
         "detail": (str(body.get("detail", existing["detail"] if existing else "") or "").strip()[:4000]) or None,

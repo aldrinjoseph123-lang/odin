@@ -137,7 +137,9 @@ def notify_event(project, subject, message_html, channels=None):
         owner = db.execute(
             "SELECT id, email, kind FROM users WHERE id = ?", (project["owner_id"],)
         ).fetchone()
-        if owner and owner["email"]:
+        from flask import has_request_context, session
+        acting = session.get("user_id") if has_request_context() else None
+        if owner and owner["email"] and owner["id"] != acting:   # never mail someone about their own action
             # alert digests and creation pass a bare {"owner_id"}; only a real
             # project row has an id to link to
             link = project_link(project["id"], owner) if "id" in project.keys() else ""

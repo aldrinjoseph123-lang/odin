@@ -425,7 +425,8 @@ def nav_counts():
     from services.notifications import visible_clause
     _bell = visible_clause(session.get("user_id"), session.get("kind"))
     return {
-        "active_alert_count": db.execute(
+        # alerts are internal (the alert list is staff only): an outsider's badge stays empty
+        "active_alert_count": 0 if session.get("kind") == "external" else db.execute(
             f"SELECT COUNT(*) AS count FROM alerts a JOIN projects p ON p.id = a.project_id WHERE a.resolved = 0{scope_sql}",
             scope_params,
         ).fetchone()["count"],
