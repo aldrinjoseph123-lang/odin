@@ -295,7 +295,7 @@ test("@flow portfolio report: health, roadmap into a rollout's report, the PDF",
   await expect(page.locator("section[aria-label='Health']")).toContainText(/off track|at risk|on track/)
   const roadmap = page.locator("section[aria-label='Roadmap']")
   const first = roadmap.getByRole("link").first()
-  const name = (await first.textContent())!.trim()
+  const name = (await first.locator("span.font-medium").textContent())!.trim()   // the name, not the health word said before it
   const r = await page.request.get("/reports/all.pdf")
   expect(r.status()).toBe(200)
   expect(r.headers()["content-type"]).toContain("application/pdf")
@@ -506,6 +506,7 @@ test("@flow feedback: a missing field is named under it, a finished task says so
   // a state change answers with a toast, and putting it back answers too
   await page.goto("/board?rollout=1")
   const toggles = page.locator('button[aria-label^="Complete "], button[aria-label^="Reopen "]')
+  await expect(toggles.first()).toBeVisible()   // the rollout's detail has loaded
   const labels = await toggles.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""))
   const bare = (l: string) => l.replace(/^(Complete|Reopen) /, "")
   const title = bare(labels.find((l) => l.startsWith("Complete ") && labels.filter((x) => bare(x) === bare(l)).length === 1)!)   // a task named once
@@ -513,5 +514,65 @@ test("@flow feedback: a missing field is named under it, a finished task says so
   await expect(page.getByText(`Done: ${title}`)).toBeVisible()
   await page.getByRole("button", { name: `Reopen ${title}` }).click()
   await expect(page.getByText(`Reopened ${title}`)).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow tasks: a new task takes a due date and is corrected in place", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?rollout=1")
+  await page.getByRole("button", { name: /^Add a task to / }).first().click()
+  await page.getByRole("textbox", { name: /^New task in / }).fill("E2E dated task")
+  await page.getByLabel("Due date").fill("2030-01-15")
+  await page.getByRole("button", { name: "Add task" }).click()
+  await expect(page.getByRole("button", { name: "Edit E2E dated task" })).toBeVisible()
+  await expect(page.locator("li", { has: page.getByRole("button", { name: "Edit E2E dated task" }) }).first()).toContainText(/due /)
+  // the title opens it: title, who and when, saved in place
+  await page.getByRole("button", { name: "Edit E2E dated task" }).click()
+  await page.getByRole("textbox", { name: "Task title" }).fill("E2E renamed task")
+  await page.getByRole("button", { name: "Save E2E dated task" }).click()
+  await expect(page.getByText("Task saved")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Edit E2E renamed task" })).toBeVisible()
+  await page.getByRole("button", { name: "Complete E2E renamed task" }).hover()
+  await page.getByRole("button", { name: "Delete E2E renamed task" }).click()
+  await expect(page.getByRole("button", { name: /E2E renamed task/ })).toHaveCount(0)
+  expectClean(errors)
+})
+
+test("@flow my work: a due date is set in place, and a tick can be undone", async ({ page }) => {
+  const errors = watch(page)
+  // a task of the admin's own, so the date is theirs to move
+  await signIn(page, "admin", "/board?rollout=1")
+  await page.getByRole("button", { name: /^Add a task to / }).first().click()
+  await page.getByRole("textbox", { name: /^New task in / }).fill("E2E my task")
+  await page.getByRole("combobox", { name: "Assign to" }).selectOption({ label: "Admin" })
+  await page.getByRole("button", { name: "Add task" }).click()
+  await expect(page.getByRole("button", { name: "Edit E2E my task" })).toBeVisible()
+  await page.goto("/my-work")
+  await page.getByRole("button", { name: "No date. Change the due date of E2E my task" }).click()
+  await page.getByLabel("Due date for E2E my task").fill("2030-02-01")
+  await expect(page.getByText("E2E my task: due")).toBeVisible()
+  await page.getByRole("button", { name: "Complete E2E my task" }).click()
+  await expect(page.getByText("Done: E2E my task")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Complete E2E my task" })).toHaveCount(0)
+  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.getByRole("button", { name: "Complete E2E my task" })).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow notes: an @mention is picked by keyboard, and a note can be shared", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/1")
+  const box = page.getByRole("combobox", { name: "Add a note" })
+  await box.fill("Thanks @")
+  await expect(page.getByRole("listbox", { name: "Mention someone" })).toBeVisible()
+  await box.press("ArrowDown")
+  await box.press("Enter")
+  await expect(page.getByRole("listbox", { name: "Mention someone" })).toHaveCount(0)
+  await expect(box).toBeFocused()
+  await expect(box).toHaveValue(/^Thanks @\S.* $/)
+  // internal unless shared, and the form says so
+  await expect(page.getByText("internal to the team")).toBeVisible()
+  await page.getByRole("checkbox", { name: /Share with the customer/ }).check()
+  await expect(page.getByText("Visible to the customer and partners")).toBeVisible()
   expectClean(errors)
 })

@@ -122,7 +122,8 @@ export function loginCode(code: string) {
 
 export type TwoStep = { enabled: boolean; enabled_at: string | null; required: boolean; recovery_left: number; password: boolean }
 export const twoStep = () => getJson<TwoStep>("/api/account/two-step")
-export const twoStepSetup = (password: string) => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup", { password })
+// re-enrolling while two-step is on also needs a current code (or a recovery code)
+export const twoStepSetup = (password: string, code?: string) => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup", code ? { password, code } : { password })
 export const twoStepConfirm = (code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/confirm", { code })
 export const twoStepOff = (password: string, code: string) => post<{ ok: true }>("/api/account/two-step/off", { password, code })
 export const twoStepCodes = (password: string, code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/recovery-codes", { password, code })
@@ -346,7 +347,9 @@ export const sendSignoff = (id: number, body: { summary: string; delivered: stri
   post<{ ok: true; version: number }>(`/api/projects/${id}/signoff`, body)
 export const signSignoff = (id: number, v: number, body: SignBody, counter = false) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/${counter ? "countersign" : "sign"}`, body)
 export const rejectSignoff = (id: number, v: number, comment: string) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/reject`, { comment })
-export const signoffLink = (id: number, v: number) => post<{ ok: true; link: string; minutes: number; email: string }>(`/api/projects/${id}/signoff/${v}/link`)
+// link is null when the server emailed it instead (or will not hand it out): then `message` says what happened
+export type SignoffLink = { ok: true; link: string | null; minutes: number; email: string; emailed?: boolean; message?: string }
+export const signoffLink = (id: number, v: number) => post<SignoffLink>(`/api/projects/${id}/signoff/${v}/link`)
 export const withdrawSignoff = (id: number, v: number) => post<{ ok: true }>(`/api/projects/${id}/signoff/${v}/withdraw`)
 export const waiveSignoff = (id: number, reason: string) => post<{ ok: true; version: number }>(`/api/projects/${id}/signoff/waive`, { reason })
 export async function uploadSignoff(id: number, v: number, form: FormData): Promise<{ ok: true }> {
@@ -495,7 +498,8 @@ export const aiSettings = () => getJson<AIView>("/api/settings/ai")
 export const settingsData = (section: string, teamId = "") =>
   getJson<SettingsData>(`/api/settings?section=${encodeURIComponent(section)}${teamId ? `&team_id=${encodeURIComponent(teamId)}` : ""}`)
 
-export type RbacData = { roles: string[]; permissions: string[]; matrix: Record<string, Record<string, boolean>>; locked: Record<string, string[]> }
+// locked: always on for that role; forbidden: never allowed for it (e.g. External), both shown and not editable
+export type RbacData = { roles: string[]; permissions: string[]; matrix: Record<string, Record<string, boolean>>; locked: Record<string, string[]>; forbidden?: Record<string, string[]> }
 export const rbac = () => getJson<RbacData>("/api/settings/rbac")
 export type ContactsData = {
   lists: { key: string; label: string; has_email: boolean; items: { id: number; name: string; email: string | null }[] }[]

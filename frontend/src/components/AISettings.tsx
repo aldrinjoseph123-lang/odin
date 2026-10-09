@@ -106,7 +106,8 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
           </div>
           <label className="flex items-start gap-2 text-[13px] font-medium">
             <input type="checkbox" checked={f.ai_allow_external} onChange={(e) => { setF({ ...f, ai_allow_external: e.target.checked }); setCheck(null) }} className="mt-1 h-3.5 w-3.5 accent-primary" />
-            <span>{label("ai_allow_external")?.label}<span className="block text-[12px] font-normal text-muted-foreground">{label("ai_allow_external")?.help}</span></span>
+            <span>{label("ai_allow_external")?.label}<span className="block text-[12px] font-normal text-muted-foreground">{label("ai_allow_external")?.help}</span>
+              <span className="block text-[12px] font-normal text-muted-foreground">Check goes by the saved setting: for an address outside the office network, tick this and Save first, then Check.</span></span>
           </label>
         </div>
         {check && (

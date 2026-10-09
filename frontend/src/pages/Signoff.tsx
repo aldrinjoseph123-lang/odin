@@ -11,7 +11,7 @@ import { SCOPE_TONE, SCOPE_WORD } from "@/components/ScopePanel"
 import { SignaturePad, SignatureView } from "@/components/SignaturePad"
 import {
   ApiError, rejectSignoff, sendSignoff, signoff, signoffLink, signSignoff, uploadSignoff, waiveSignoff, withdrawSignoff,
-  type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User,
+  type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User, type SignoffLink,
 } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { TemplatePicker } from "@/components/TemplatePicker"
@@ -169,7 +169,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
 
 // Mail not connected, or the email went astray: a one-time link to hand over yourself.
 function SignerLink({ id, version, name }: { id: number; version: number; name: string }) {
-  const [link, setLink] = useState<{ link: string; minutes: number; email: string } | null>(null)
+  const [link, setLink] = useState<SignoffLink | null>(null)
   const [copied, setCopied] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   async function get() {
@@ -177,13 +177,15 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
     try { setLink(await signoffLink(id, version)) } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not make a link") }
   }
   async function copy() {
-    try { await navigator.clipboard.writeText(link!.link); setCopied(true) } catch { setErr("Select the link and copy it") }
+    try { await navigator.clipboard.writeText(link!.link ?? ""); setCopied(true) } catch { setErr("Select the link and copy it") }
   }
   return (
     <section className="panel grid grid-cols-1 gap-2 p-4">
       <h2 className="text-[13px] font-semibold">Send the link yourself</h2>
       <p className="text-[12px] text-muted-foreground">If {name} did not get the email, give them a one-time sign-in link that opens this sign-off.</p>
-      {link ? (
+      {link && !link.link ? (
+        <p className="text-[13px]" role="status">{link.message || (link.emailed ? `A new one-time link was emailed to ${link.email}.` : "No link was made.")}</p>
+      ) : link?.link ? (
         <>
           <input readOnly value={link.link} aria-label="Sign-in link for the signatory" onFocus={(e) => e.currentTarget.select()} className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
           <Button size="sm" variant="outline" className="rounded-full" onClick={copy}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy the link"}</Button>

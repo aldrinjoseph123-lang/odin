@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, SIGNED_OUT, csrfRejected, failureText, markRead, session } from "./api"
+import { ApiError, SIGNED_OUT, csrfRejected, failureText, markRead, postForm, session } from "./api"
 
 describe("failureText", () => {
   it("says what went wrong and what to do, never a bare status (test report UX-6)", () => {
@@ -34,6 +34,13 @@ describe("the CSRF token and the session check", () => {
     }))
     await expect(markRead({ all: true })).resolves.toEqual({ ok: true })
     expect(tokens).toEqual(["old", "new"])
+  })
+
+  it("a refused form says the server's own words, not 'error 400'", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path === "/api/session"
+      ? reply(200, { csrf: "t", user: { id: 1 } })
+      : reply(400, { ok: false, error: "Username already taken", messages: ["Username already taken"] })))
+    await expect(postForm("/users", { username: "x" })).rejects.toThrow("Username already taken")
   })
 
   it("a 502 page from /api/session is an ApiError, not a crash (FE3)", async () => {
