@@ -28,7 +28,7 @@ jobs:
       - name: Python tests
         shell: bash   # -o pipefail: without it the pipe into tail hides a failing test
         # -u: print() output must not flush after the summary and push it out of the tail
-        run: python -u -m unittest test_app -v 2>&1 | grep -v "^Created default user" | tail -60
+        run: python -u -m unittest test_app test_fix_security test_fix_logic -v 2>&1 | grep -v "^Created default user" | tail -60
       - name: Server updater self-check
         run: sh deploy/test-odin-update.sh
       - name: Dependency advisories (pip-audit)
