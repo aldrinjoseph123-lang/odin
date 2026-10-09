@@ -1012,7 +1012,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     @patch("routes.board.ALERTS_PER_PAGE", 10)
     def test_alerts_log_paginates_and_filters_by_type(self):
         self._bulk_projects(25, target_end_date="2020-01-01")
-        self.client.get("/board")   # sync alerts
+        __import__("scheduler").sync_alerts()   # the scheduler records alerts; a page load no longer does
         body = self.client.get("/alerts").data.decode()
         self.assertIn("Page 1 of", body)
         self.assertLessEqual(body.count("<tr>"), 12, "page should be capped")
@@ -1848,7 +1848,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         w = c.get("/api/my-work").get_json()
         self.assertEqual([t["title"] for t in w["tasks"]], ["Late one"]); self.assertLess(w["tasks"][0]["due_date"], w["today"])
         self.assertEqual((w["projects"][0]["name"], w["projects"][0]["state"]), ("Mine", "overdue"))
-        self.client.get("/board")   # syncs alerts
+        __import__("scheduler").sync_alerts()   # the scheduler records alerts; a page load no longer does
         al = c.get("/api/alerts").get_json()
         self.assertEqual(al["rows"][0]["alert_type"], "project_overdue"); self.assertFalse(al["show_resolved"]); self.assertIn("stale", al["types"])
         self.assertEqual(c.get("/api/alerts?type=stale").get_json()["total"], 0)

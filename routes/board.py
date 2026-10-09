@@ -14,7 +14,6 @@ from services.alerts import (
     build_dashboard,
     get_dismissed_alerts,
     schedule_status,
-    sync_alerts_to_db,
 )
 
 ALERTS_PER_PAGE = 50
@@ -113,9 +112,9 @@ def board_data():
     # notifications (the alerts banner) respect this login's dismissals;
     # the real_alerts counts feeding the stat tiles never do — dismissing a
     # notification hides it from the banner, it doesn't change the real data
+    # A read stays a read: the scheduler records alerts and sends their
+    # notifications (scheduler.sync_alerts), never a page load in the reader's name.
     real_alerts = build_alerts(projects)
-    if not project_scope()[0]:   # only a view of every project may resolve alerts; a partner's narrow view would close the rest
-        sync_alerts_to_db(real_alerts)
     alerts = build_alerts(projects, get_dismissed_alerts())
     dashboard = build_dashboard(projects)
     outside = session.get("kind") == "external"   # partners: their projects, customer-visible notes only
@@ -208,9 +207,9 @@ def alerts_page_data():
         alert_type = ""
     page = max(1, request.args.get("page", 1, type=int))
 
-    where, params = [], []
+    where, params = ["p.deleted_at IS NULL"], []   # a deleted project's alerts went with it (the nav badge counts the same)
     if not show_resolved:
-        where.append("a.resolved = 0")
+        where.append(f"a.resolved = 0 AND {PROJECT_OPEN_SQL}")
     if alert_type:
         where.append("a.alert_type = ?")
         params.append(alert_type)
@@ -221,12 +220,12 @@ def alerts_page_data():
     order = ("a.resolved ASC, " if show_resolved else "") + \
             "CASE a.severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, a.created_at DESC"
 
-    total = db.execute(f"SELECT COUNT(*) AS c FROM alerts a{clause}", params).fetchone()["c"]
+    total = db.execute(f"SELECT COUNT(*) AS c FROM alerts a JOIN projects p ON p.id = a.project_id{clause}", params).fetchone()["c"]
     total_pages = max(1, (total + ALERTS_PER_PAGE - 1) // ALERTS_PER_PAGE)
     page = min(page, total_pages)
     rows = db.execute(
         f"SELECT a.*, p.name AS project_name FROM alerts a "
-        f"LEFT JOIN projects p ON p.id = a.project_id{clause} "
+        f"JOIN projects p ON p.id = a.project_id{clause} "
         f"ORDER BY {order} LIMIT ? OFFSET ?",
         (*params, ALERTS_PER_PAGE, (page - 1) * ALERTS_PER_PAGE),
     ).fetchall()

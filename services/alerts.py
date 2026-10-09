@@ -137,13 +137,17 @@ def alert_context_for(project, alert_type):
         return project["stage_entered_at"]
     if alert_type == "approval_waiting":
         return project["stage"]   # until the next stage's approval
+    if alert_type in ("blocker_open", "task_unowned", "customer_quiet"):
+        # the items behind it: a new blocker or task brings the alert back
+        return _bottlenecks([project["id"]], get_alert_type_settings(), local_today()).get(project["id"], {}).get(alert_type)
     return None
 
 
 def _bottlenecks(project_ids, thresholds, today):
-    """Per project, which bottleneck rules hold: an approval waiting, a
-    blocker left open, an overdue task nobody owns, a customer task overdue.
-    One query each over all the projects."""
+    """Per project, which bottleneck rules hold — an approval waiting, a
+    blocker left open, an overdue task nobody owns, a customer task overdue —
+    as {project id: {rule: "ids of the items behind it"}}. One query each
+    over all the projects."""
     from datetime import timedelta as _td
     if not project_ids:
         return {}
@@ -154,17 +158,18 @@ def _bottlenecks(project_ids, thresholds, today):
     marks = ",".join("?" * len(project_ids))
     hits = {}
     for (rule, sql, cutoff) in (
-        ("approval_waiting", f"SELECT DISTINCT a.project_id FROM stage_approvals a JOIN projects p ON p.id = a.project_id "
+        ("approval_waiting", f"SELECT a.project_id, a.id FROM stage_approvals a JOIN projects p ON p.id = a.project_id "
                              f"WHERE a.status = 'pending' AND a.stage = p.stage AND substr(a.requested_at, 1, 10) <= ? AND a.project_id IN ({marks})", before("approval_waiting")),
-        ("blocker_open", f"SELECT DISTINCT project_id FROM raid_items WHERE kind = 'blocker' AND status NOT IN ('closed', 'decided') "
+        ("blocker_open", f"SELECT project_id, id FROM raid_items WHERE kind = 'blocker' AND status NOT IN ('closed', 'decided') "
                          f"AND substr(created_at, 1, 10) <= ? AND project_id IN ({marks})", before("blocker_open")),
-        ("task_unowned", f"SELECT DISTINCT project_id FROM tasks WHERE done = 0 AND assignee_id IS NULL AND due_date IS NOT NULL "
+        ("task_unowned", f"SELECT project_id, id FROM tasks WHERE done = 0 AND assignee_id IS NULL AND due_date IS NOT NULL "
                          f"AND due_date < ? AND project_id IN ({marks})", before("task_unowned")),
-        ("customer_quiet", f"SELECT DISTINCT t.project_id FROM tasks t JOIN project_participants pp ON pp.project_id = t.project_id AND pp.user_id = t.assignee_id "
+        ("customer_quiet", f"SELECT t.project_id, t.id FROM tasks t JOIN project_participants pp ON pp.project_id = t.project_id AND pp.user_id = t.assignee_id "
                            f"WHERE t.done = 0 AND pp.role = 'Customer' AND t.due_date IS NOT NULL AND t.due_date < ? AND t.project_id IN ({marks})", before("customer_quiet")),
     ):
-        for (pid,) in db.execute(sql, (cutoff, *project_ids)):
-            hits.setdefault(pid, set()).add(rule)
+        for pid, item in db.execute(sql + " ORDER BY 2", (cutoff, *project_ids)):
+            found = hits.setdefault(pid, {})
+            found[rule] = f"{found[rule]},{item}" if rule in found else str(item)
     return hits
 
 
@@ -196,11 +201,11 @@ def get_dismissed_alerts():
     return session.get("dismissed_alerts", {})
 
 
-def is_alert_dismissed(dismissed, project, alert_type):
+def is_alert_dismissed(dismissed, project, alert_type, context=None):
     key = f"{project['id']}:{alert_type}"
     if key not in dismissed:
         return False
-    return dismissed[key] == alert_context_for(project, alert_type)
+    return dismissed[key] == (context if context is not None else alert_context_for(project, alert_type))
 
 
 def build_alerts(projects, dismissed=None):
@@ -227,8 +232,8 @@ def build_alerts(projects, dismissed=None):
             alerts["stage_sla_breach"].append(p)
         if datetime.fromisoformat(p["updated_at"]) < stale_cutoff and not is_alert_dismissed(dismissed, p, "stale"):
             alerts["stale"].append(p)
-        for rule in bottlenecks.get(p["id"], ()):
-            if not is_alert_dismissed(dismissed, p, rule):
+        for rule, items in bottlenecks.get(p["id"], {}).items():
+            if not is_alert_dismissed(dismissed, p, rule, None if rule == "approval_waiting" else items):
                 alerts[rule].append(p)
     return alerts
 
