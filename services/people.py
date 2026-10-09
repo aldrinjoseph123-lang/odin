@@ -4,7 +4,7 @@ and the tasks on them; "contribution" is what the person finished, noted
 and moved, counted from the same rows the flow keeps.
 """
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from db import PROJECT_OPEN_SQL, avatar_url, get_db, stages_for_projects
 from policies import local_date, local_today, policy

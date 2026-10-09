@@ -327,14 +327,12 @@ def _validate_csrf():
 # --- transport/browser: response headers ------------------------------------
 
 # Scripts run from this origin, or inline with this response's nonce (system
-# map #19): the React shell's theme snippet and the Jinja pages' small scripts
-# carry it. Only the old Jinja twins of ported pages, which still use inline
-# event handlers (onclick=…), get 'unsafe-inline' (LEGACY_TEMPLATES); in
-# production React serves those pages. Styles keep 'unsafe-inline' (React
-# style attributes). No third-party scripts, no framing, no plugins, and forms
-# post back to this origin only.
-LEGACY_TEMPLATES = {"project_detail.html", "project_form.html", "report_all.html", "report_single.html",
-                    "settings.html", "settings_contacts.html", "users.html"}
+# map #19): the React shell's theme snippet and the last Jinja pages' small
+# scripts carry it. The 'unsafe-inline' below is replaced by the nonce in
+# _csp(); only the self-contained system map page (Settings → System map)
+# keeps it. Styles keep 'unsafe-inline' (React style attributes). No
+# third-party scripts, no framing, no plugins, and forms post back to this
+# origin only.
 CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "
@@ -358,20 +356,12 @@ def csp_nonce():
     return g.csp_nonce
 
 
-def _note_legacy(sender, template, context, **extra):
-    from flask import g
-    if template.name in LEGACY_TEMPLATES:
-        g.legacy_inline = True
-
-
 def _csp():
-    """The policy above, strict unless an old template with inline handlers
-    was rendered; the Flow page (which draws the Kibana view) may
+    """The policy above with this response's nonce instead of
+    'unsafe-inline'; the Flow page (which draws the Kibana view) may
     additionally frame the origins of the configured Kibana dashboards."""
     from flask import g, request
-    policy = CSP
-    if not g.get("legacy_inline"):
-        policy = CSP.replace("script-src 'self' 'unsafe-inline'; ", "script-src 'self'%s; " % (f" 'nonce-{g.csp_nonce}'" if "csp_nonce" in g else ""))
+    policy = CSP.replace("script-src 'self' 'unsafe-inline'; ", "script-src 'self'%s; " % (f" 'nonce-{g.csp_nonce}'" if "csp_nonce" in g else ""))
     if request.endpoint != "board":
         return policy
     from urllib.parse import urlsplit
@@ -430,6 +420,4 @@ def init_security(app):
     app.after_request(_security_headers)
     app.jinja_env.globals["csrf_token"] = csrf_token
     app.jinja_env.globals["csp_nonce"] = csp_nonce
-    from flask import template_rendered
-    template_rendered.connect(_note_legacy, app)
     return app

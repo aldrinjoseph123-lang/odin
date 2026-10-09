@@ -5,7 +5,6 @@ is in the input; the project manager ticks the ones to save to the library
 (services/lessons.py). On demand from the project page."""
 from services.ai import AIFeature, register
 from services.ai.features.sow_plan import _norm, _supported
-from services.ai.features.weekly_words import _fmt
 from services.ai.graders import finds, never_says
 
 SCHEMA = {"type": "object", "required": ["lessons"], "properties": {"lessons": {"type": "array", "maxItems": 8, "items": {

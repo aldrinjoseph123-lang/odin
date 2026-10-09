@@ -45,9 +45,10 @@ component must read tokens so both themes and every accent follow.
 
 **9 Oct 2026 refresh (the user's call):** pastel accents with **red as the default** (a rose-leaning pastel fill; overdue stays the solid `--bad` state with its word), a straight segmented progress bar, a 72 px header with Log out in the avatar menu, app-wide tooltips (`TitleTips`), a stronger settings-menu selection. Details in DESIGN.md.
 
-**Jinja pages keep `static/style.css` (the legacy look) until each is ported.**
-That stylesheet is frozen: fix defects only, no new components, no re-theming —
-the port replaces it page by page.
+**The last Jinja pages keep `static/style.css`:** the guest project page and
+the sign-in form's fallback (`templates/base.html`, `guest_project.html`,
+`login.html`; `error.html` stands alone). That stylesheet is frozen at what
+they use: fix defects only, no new components, no re-theming.
 
 # Admin settings
 
@@ -85,7 +86,7 @@ A table keyed by `project_id` (or holding per-user secrets) must be wired into
 every place that walks the schema, or the next reset leaves rows that attach
 themselves to the next project created:
 `reset_data.WIPE_TABLES` (children before parents) · the purge cascade in
-`db.py` (`cleanup_soft_deletes`, run at boot and nightly by the scheduler) · `services/reports.draft_report` if it is
+`db.py` (`cleanup_soft_deletes`, run at boot and nightly by the scheduler) · `services/report_data.py` if it is
 project history · `scripts/seed_uat.py` if UAT needs rows · a purge for
 anything that only grows (`login_links` is trimmed as links are minted).
 `plan_changes` and `raid_items` (30 Sep 2026) are wired this way; plan dates live
@@ -139,18 +140,19 @@ Odin depends on the contract, never on that server:
   cancel on every draft; arithmetic in code, never in the model. Odin does
   not stream: its AI work is queued, not watched token by token.
 
-# Front end migration — React + shadcn/ui (in progress)
+# Front end — React + shadcn/ui
 
-Decision (8 Sep 2026): the UI moves to **Vite + React + TypeScript + shadcn/ui**
-in `frontend/`, Flask becomes the JSON API. **Strangler rollout**: a Jinja page
-stays live until its React replacement has passed tests and UAT; then its
-endpoint name is added to `SPA_PAGES` in `spa.py` and Flask serves the built
-bundle for it. Order: login ✅ → board ✅ → projects ✅ → project detail ✅ → users ✅ /
-audit ✅ → settings ✅ → RBAC ✅ / contacts ✅ → new/edit project form ✅ →
-account ✅ / my-work ✅ / analytics ✅ / alerts ✅ / reports ✅ / dashboard ✅ (new page, no Jinja twin: without a build it redirects to the flow). Still Jinja: the guest
-pages (public, token-based, to retire), the login fallback form, error page.
+Decision (8 Sep 2026): the UI is **Vite + React + TypeScript + shadcn/ui**
+in `frontend/`, Flask is the JSON API. The migration finished and the old
+Jinja pages were removed on 9 Oct 2026: every page route checks its
+permission (and `load_project` for a project) and returns `spa_index()`
+(`spa.py`; 503 with how to build when there is no build). Still Jinja: the
+guest pages (public, token-based, to retire), the sign-in form's fallback for
+a failed non-JS POST, and the error page. Python tests point `SPA_DIST` at a
+stub shell (`test_app.STUB_DIST`) and assert on the `/api/*` JSON, never on
+page HTML; a flash left for the next page is read with `flashed(client)`.
 
-Rules while both UIs exist:
+Rules:
 - Style only through the tokens in `frontend/src/index.css` and shadcn
   components; colour is a state, never decoration. See DESIGN.md.
 - New pages get a JSON route in `routes/api.py` that reuses the existing

@@ -17,7 +17,7 @@ ten-minute validation never delays a backup or the digest).
 import json
 from datetime import datetime, timedelta
 
-from services.ai import FEATURES, GOOD_STATES, STALE_KEYS, STATUS_SETTING, prompt_of, run, status
+from services.ai import FEATURES, STALE_KEYS, STATUS_SETTING, prompt_of, run, status
 from services.ai.client import AIError, chat, config, find_model, fingerprint, list_models
 
 SMOKE_SCHEMA = {"type": "object", "properties": {"status": {"type": "string", "enum": ["ready"]}, "echo": {"type": "integer"}},

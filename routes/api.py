@@ -8,13 +8,13 @@ from policies import local_today, policy, policy_view
 
 from datetime import date, datetime
 
-from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
-from core import app, as_id, json_body, parse_date, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
+from constants import CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
+from core import app, as_id, json_body, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
-from routes.board import BANNER_NAMES, COLUMN_CARDS, alerts_page_data, board_data, dismiss_alert
-from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, report_context, stage_entry_note_ids
+from routes.board import alerts_page_data
+from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, stage_entry_note_ids
 from security import csrf_token, file_stem, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, clock, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline, working_days
@@ -117,37 +117,6 @@ def api_logout():
     from core import end_session
     end_session()
     return jsonify({"ok": True, "csrf": csrf_token()})
-
-
-def _card(p):
-    return {
-        "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
-        "owner_name": p["owner_name"], "delivery_mode": p["delivery_mode"],
-        "task_total": p["task_total"], "task_done": p["task_done"], "updated_at": p["updated_at"],
-    }
-
-
-@app.route("/api/board")
-@permission_required("view_board")
-def api_board():
-    data = board_data()
-    return jsonify({
-        "stages": get_stage_names(),
-        "delivery_modes": list(DELIVERY_MODES),
-        "alert_titles": ALERT_TYPE_TITLES,
-        "columns": {stage: [_card(p) for p in cards] for stage, cards in data["columns"].items()},
-        "alerts": {key: [{"id": p["id"], "name": p["name"]} for p in items] for key, items in data["alerts"].items()},
-        "real_alerts": {key: len(items) for key, items in data["real_alerts"].items()},
-        "dashboard": data["dashboard"],
-        "recent_notes": [
-            {"id": n["id"], "author": n["author"], "project_id": n["project_id"], "project_name": n["project_name"],
-             "stage": n["stage"], "created_at": n["created_at"], "note": n["note"]}
-            for n in data["recent_notes"]
-        ],
-        "banner_names": BANNER_NAMES,
-        "column_cards": COLUMN_CARDS,
-        "can_move": role_has_permission(session.get("role"), "edit_project_stage"),
-    })
 
 
 @app.route("/api/projects/<int:project_id>/approvals/<int:approval_id>", methods=["POST"])
@@ -369,18 +338,6 @@ def portfolio_pdf():
     data = _portfolio()
     return Response(render_portfolio(data, resolve("portfolio", request.args.get("template", type=as_id))), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="portfolio-report-{data["today"]}.pdf"'})
-
-
-@app.route("/api/projects/<int:project_id>/report")
-@permission_required("view_reports")
-def api_report(project_id):
-    c = report_context(project_id)
-    return jsonify(
-        project={"id": c["project"]["id"], "name": c["project"]["name"], "client": c["project"]["client"], "owner_name": c["project"]["owner_name"], "stage": c["project"]["stage"]},
-        versions=[{"version": v["version"], "created_by": v["created_by"], "created_at": v["created_at"]} for v in c["versions"]],
-        current=None if c["current"] is None else {"version": c["current"]["version"], "created_by": c["current"]["created_by"], "created_at": c["current"]["created_at"]},
-        blocks=c["blocks"], editor_text=c["editor_text"], can_edit=c["can_edit"], is_draft=c["is_draft"],
-    )
 
 
 def _rollout_report(project_id, audience, version):
@@ -944,15 +901,6 @@ def api_project_stage(project_id):
     if error:
         return jsonify({"error": error}), 400
     return jsonify({"ok": True, "undo": g.stage_undo_url})
-
-
-@app.route("/api/alerts/<int:project_id>/dismiss/<alert_type>", methods=["POST"])
-@login_required
-def api_alert_dismiss(project_id, alert_type):
-    load_project(project_id)
-    dismiss_alert(project_id, alert_type)
-    audit_log("dismiss_alert", "project", project_id, None, alert_type)
-    return jsonify({"ok": True})
 
 
 # ---- Flow: the first screen. Every active rollout, stuck first; then one

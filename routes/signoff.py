@@ -4,7 +4,7 @@ waiver and the PDF. Every route goes through load_project; mutations are
 audited; signing is decided by who the version names, not by role."""
 from datetime import datetime
 
-from flask import Response, abort, jsonify, redirect, request, session, url_for
+from flask import Response, abort, jsonify, request, session
 from markupsafe import escape
 
 import graph
@@ -17,7 +17,7 @@ from security import content_matches_extension, file_stem, issue_login_link, upl
 from services import signoff
 from services.audit import audit_log
 from services.notifications import notify_users
-from spa import spa_index, spa_serves
+from spa import spa_index
 
 
 def _staff():
@@ -42,9 +42,7 @@ def _bad(error, status=400):
 @permission_required("view_project_detail")
 def project_signoff(project_id):
     load_project(project_id)
-    if spa_serves("project_signoff"):
-        return spa_index()
-    return redirect(url_for("project_detail", project_id=project_id))
+    return spa_index()
 
 
 @app.route("/api/projects/<int:project_id>/signoff")

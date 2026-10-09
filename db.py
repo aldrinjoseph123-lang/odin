@@ -7,7 +7,6 @@ import graph — routes and services import from here, not the reverse.
 import os
 import re
 import secrets
-import shutil
 import sqlite3
 from datetime import datetime, timedelta
 
@@ -463,6 +462,11 @@ def migrate_db(db):
     if "partners" not in {row[1] for row in db.execute("PRAGMA table_info(doc_categories)")}:
         db.execute("ALTER TABLE doc_categories ADD COLUMN partners INTEGER NOT NULL DEFAULT 1")
         db.execute("UPDATE doc_categories SET partners = 0 WHERE name = ?", (CLIENT_PO_DOC_CATEGORY,))
+    # Every project has a vendor guest-link token. The old Jinja project page
+    # minted a missing one on view; since the page is React (9 Oct 2026) this
+    # fills them once instead.
+    for (pid,) in db.execute("SELECT id FROM projects WHERE access_token IS NULL").fetchall():
+        db.execute("UPDATE projects SET access_token = ? WHERE id = ?", (secrets.token_urlsafe(16), pid))
     # A product belongs to one vendor (9 Oct 2026, the user's call); older
     # products stay "any vendor" until an admin picks one.
     if "vendor_id" not in {row[1] for row in db.execute("PRAGMA table_info(products)")}:

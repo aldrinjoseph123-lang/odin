@@ -134,38 +134,8 @@ export function logout() {
 
 export type Nav = { active_alert_count: number; my_open_task_count: number; unread_notifications: number; projects_nav_url: string }
 
-export type Card = {
-  id: number; name: string; client: string; stage: string; owner_name: string
-  delivery_mode: string; task_total: number; task_done: number; updated_at: string
-}
-
-export type BoardData = {
-  stages: string[]
-  terminal: string
-  delivery_modes: string[]
-  alert_titles: Record<string, string>
-  columns: Record<string, Card[]>
-  alerts: Record<string, { id: number; name: string }[]>
-  real_alerts: Record<string, number>
-  dashboard: { stage_counts: Record<string, number>; max_stage_count: number; delivery_counts: Record<string, number>; total_active: number }
-  recent_notes: { id: number; author: string; project_id: number; project_name: string; stage: string; created_at: string; note: string }[]
-  banner_names: number
-  column_cards: number
-  can_move: boolean
-}
-
-export async function board(): Promise<BoardData> {
-  const res = await call("/api/board")
-  if (!res.ok) throw await failure(res)
-  return res.json()
-}
-
 export function changeStage(projectId: number, stage: string, note = "") {
   return post<{ ok: true; undo: string }>(`/api/projects/${projectId}/stage`, { stage, note })
-}
-
-export function dismissAlert(projectId: number, alertType: string) {
-  return post<{ ok: true }>(`/api/alerts/${projectId}/dismiss/${alertType}`)
 }
 
 // ---- Flow: first screen ----
@@ -542,13 +512,6 @@ export type ReportAllData = {
   risks: { project_id: number; project: string; kind: RaidKind; title: string; impact: string; status: string; owner_name: string | null; due_date: string | null }[]
 }
 export const reportAll = (template?: number | null) => getJson<ReportAllData>(`/api/reports/all${template ? `?template=${template}` : ""}`)
-export type ReportData = {
-  project: { id: number; name: string; client: string; owner_name: string; stage: string }
-  versions: { version: number; created_by: string; created_at: string }[]
-  current: { version: number; created_by: string; created_at: string } | null
-  blocks: ["h" | "li" | "p", string][]; editor_text: string; can_edit: boolean; is_draft: boolean
-}
-export const report = (id: number, query: string) => getJson<ReportData>(`/api/projects/${id}/report${query ? `?${query}` : ""}`)
 
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; has_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null

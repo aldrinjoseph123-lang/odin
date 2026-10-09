@@ -536,7 +536,7 @@ const LOOPS = [
     impact: "Stalled projects, and Contributors holding manager powers by accident.",
     fix: "Ask for a manager who may move stages when the project is created (the edit form already checks this), or keep project creation to Members.",
     ref: "routes/projects.py:388", on: ["lc-create"] },
-  { id: 11, fixed: "v1.3.0", done: "The project manager's new and old owner, staff added to a project (and the team at creation), a colleague whose access is approved, a signer whose sign-off is withdrawn, and the project manager after a bulk completion are all told. An alert clearing stays quiet: the Alerts page shows it.", sev: "medium", area: "Notifications", title: "Several events tell nobody",
+  { id: 11, fixed: "v1.3.0", done: "The project manager's new and old owner, staff added to a project (and the team at creation), a colleague whose access is approved, a signer whose sign-off is withdrawn, and the project manager when a task is done are all told. An alert clearing stays quiet: the Alerts page shows it.", sev: "medium", area: "Notifications", title: "Several events tell nobody",
     what: "No one is told when the project manager changes, when staff are added to a project, when an access request is approved or declined (the requester never hears), when a sign-off is withdrawn (the signer is not told), when tasks are completed in bulk, or when an alert clears.",
     impact: "People learn of changes that affect them by accident.",
     fix: "Add a bell notification for each.",
@@ -576,7 +576,7 @@ const LOOPS = [
     impact: "Anyone with log access can reuse a live guest link.",
     fix: "Retire guest links; keep token paths out of the access log.",
     ref: "Dockerfile:48", on: ["cf", "d-guest"] },
-  { id: 19, fixed: "v1.4.0", done: "Scripts run from Odin or inline with a per-response nonce (the React shell and the Jinja pages carry it); only the old Jinja twins of ported pages, which React serves in production, keep inline handlers.", sev: "low", area: "Security", title: "The Content Security Policy allows inline scripts",
+  { id: 19, fixed: "v1.4.0", done: "Scripts run from Odin or inline with a per-response nonce (the React shell and the last Jinja pages carry it). Since the old Jinja twins were removed (9 Oct 2026) no page keeps inline handlers; only the self-contained system map page allows inline scripts.", sev: "low", area: "Security", title: "The Content Security Policy allows inline scripts",
     what: "script-src includes 'unsafe-inline', which weakens the browser's defence if a script injection is ever found.",
     impact: "Less defence in depth against cross-site scripting.",
     fix: "Move to a nonce-based policy.",
@@ -848,7 +848,7 @@ const ARCH = {
     </g>
     ${box("cloudflared", 460, 80, 160, 56, "cloudflared", ["systemd, on the host"])}
     ${box("nginx", 460, 180, 160, 56, "nginx", ["127.0.0.1:8080"])}
-    ${box("app", 660, 80, 200, 250, "Odin app", ["gunicorn · Flask", "", "React screens", "JSON API", "legacy Jinja pages", "sign-in, sessions, CSRF", "permission checks", "audit trail"])}
+    ${box("app", 660, 80, 200, 250, "Odin app", ["gunicorn · Flask", "", "React screens", "JSON API", "guest + error pages", "sign-in, sessions, CSRF", "permission checks", "audit trail"])}
     ${box("scheduler", 660, 356, 200, 118, "Scheduler", ["digest · reminders", "backups · weekly report", "housekeeping 03:30", "alerts / 15 min · AI worker"])}
     ${box("data", 460, 500, 400, 118, "Data volume /data", ["odin.db (SQLite, WAL)", "uploads · avatars · brand", "backups · audit-archive"])}
     <rect x="460" y="356" width="160" height="118" rx="9" class="zone-dash"/>
@@ -1124,7 +1124,7 @@ let pickFolder = () => {};
     ["Shared gates, not copies.", "Every stage move calls the sign-off gate; every password sign-in goes through attempt_login and the two-step check; durations count working days through services/workdays.py."],
     ["The front end reads tokens.", "Colours, radius and type come from frontend/src/index.css; a page never hard-codes a colour. Pure logic lives in src/lib, with unit tests."],
     ["Every screen is tested.", "A new page or control gets a smoke line, a new journey a test in flows.spec.ts, and the look is pinned by golden screenshots."],
-    ["Jinja retires page by page.", "A Jinja page stays until its React replacement passes tests and UAT; then spa.py serves the bundle for it."],
+    ["Every page is React.", "Each page route checks its permission and returns the React shell (spa.py); the old Jinja twins were removed on 9 Oct 2026. Only the guest pages, the sign-in form's fallback and the error page are Jinja."],
   ];
   $("#rules").innerHTML = RULES.map(([a, b]) => `<li><b style="font-weight:600">${a}</b> ${b}</li>`).join("");
 

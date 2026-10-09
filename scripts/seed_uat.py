@@ -11,7 +11,6 @@ admin / Glacier-Harbour-4471. Never point this at production.
 import io
 import os
 import random
-import re
 import sqlite3
 import sys
 from datetime import date, datetime, timedelta
@@ -31,7 +30,6 @@ random.seed(7)   # the same portfolio every time
 if os.path.exists(DB_PATH):
     sys.exit(f"{DB_PATH} already exists — seed a fresh ODIN_DATA_DIR")
 init_db()
-app.config["SERVE_SPA"] = False   # the Jinja forms carry the CSRF field the seed needs
 
 STAFF = [("pm1", "Priya Menon", "Member"), ("pm2", "Tom Keller", "Member"), ("sales1", "Sara Lind", "Contributor"),
          ("eng1", "Omar Haddad", "Contributor"), ("eng2", "Lena Fischer", "Contributor"), ("vw1", "Viewer One", "Viewer")]
@@ -45,8 +43,8 @@ NOTES = ["Kick-off held, scope agreed with the customer.", "Waiting on the chang
          "Customer asked to add the branch office; PO amendment requested.", "Runbook draft shared for review.", "Cutover done over the weekend."]
 
 with app.test_client() as c:
-    def csrf(path="/login"):
-        return re.search(r'name="_csrf" value="([^"]+)"', c.get(path).data.decode()).group(1)
+    def csrf():
+        return c.get("/api/session").get_json()["csrf"]
 
     def post(path, **data):
         data.setdefault("_csrf", token)
@@ -54,9 +52,15 @@ with app.test_client() as c:
         assert r.status_code in (200, 302), (path, r.status_code)
         return r
 
+    def move(pid, stage, note):
+        # the one stage-change door; a refused move (the sign-off gate) answers 400 and is fine here
+        r = c.post(f"/api/projects/{pid}/stage", json={"stage": stage, "note": note}, headers={"X-CSRF-Token": token})
+        assert r.status_code in (200, 400), (pid, stage, r.status_code)
+        return r
+
     c.post("/login", data={"username": "admin", "password": "changeme", "_csrf": csrf()})
-    c.post("/account", data={"current_password": "changeme", "new_password": ADMIN_PASSWORD, "_csrf": csrf("/account")})
-    token = csrf("/board")
+    c.post("/account", data={"current_password": "changeme", "new_password": ADMIN_PASSWORD, "_csrf": csrf()})
+    token = csrf()
 
     for u, name, r in STAFF:
         post("/users", username=u, name=name, password=STAFF_PASSWORD, role=r)
@@ -107,12 +111,12 @@ with app.test_client() as c:
              **({"customer_approval": "1"} if i % 5 == 0 else {}))   # a checkbox: present means on
 
     # the first three, as before: real moves through the routes
-    post("/projects/1/stage", stage="Scoping", note="Scope agreed")
-    post("/projects/1/stage", stage="Sensor pilot", note="Pilot group of 50 endpoints")
+    move(1, "Scoping", "Scope agreed")
+    move(1, "Sensor pilot", "Pilot group of 50 endpoints")
     post("/projects/1/tasks", title="Collect asset inventory", assignee_id="4", due_date=(today - timedelta(days=4)).isoformat())
     post("/projects/1/tasks", title="Deploy sensors to pilot group", due_date=(today + timedelta(days=3)).isoformat(), stage="Sensor pilot")
     for s in ["Scoping", "Kickoff", "Deployment", "Log source onboarding"]:
-        post("/projects/2/stage", stage=s, note=f"Now in {s}")
+        move(2, s, f"Now in {s}")
     post("/projects/2/tasks", title="Onboard firewall logs", assignee_id="2", stage="Log source onboarding")
     post("/projects/1/participants/invite", email="jane@vendorco.example", name="Jane Okafor", role="Contractor")
     post("/projects/1/participants/invite", email="ann@globex.example", name="Ann Reyes", role="Customer")
@@ -130,7 +134,7 @@ with app.test_client() as c:
     con.close()
     for pid, path in plan.items():
         for s in path:
-            post(f"/projects/{pid}/stage", stage=s, note=f"Now in {s}")   # the last stage waits for the sign-off: those stop in Sign-off
+            move(pid, s, f"Now in {s}")   # the last stage waits for the sign-off: those stop in Sign-off
 
     # the agreed scope of the first rollout: three delivered, one still open (the journey test marks it)
     hdr = {"X-CSRF-Token": token}
@@ -170,7 +174,7 @@ with app.test_client() as c:
                 con = sqlite3.connect(DB_PATH)
                 last = con.execute("SELECT name FROM project_stages WHERE project_id = ? ORDER BY position DESC LIMIT 1", (pid,)).fetchone()[0]
                 con.close()
-                post(f"/projects/{pid}/stage", stage=last, note="Signed off by the customer")
+                move(pid, last, "Signed off by the customer")
 
 # ---- history straight into the tables: a month of work, spread out ----
 con = sqlite3.connect(DB_PATH)

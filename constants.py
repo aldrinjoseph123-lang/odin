@@ -43,7 +43,7 @@ DEFAULT_SETTINGS = {
 }
 
 # The one document category the project can't be created without — its upload
-# is the create-project trigger. See has_required_document() / project_new.
+# is the create-project trigger (routes/projects.project_new).
 CLIENT_PO_DOC_CATEGORY = "Client PO"
 
 DELIVERY_MODES = ["Distribution/MSSP", "Outsourced"]

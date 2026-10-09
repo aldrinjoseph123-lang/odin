@@ -22,7 +22,6 @@ from db import get_db, participants_for
 from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
-from services.analytics import _parse
 
 AUDIENCES = ("internal", "customer")
 

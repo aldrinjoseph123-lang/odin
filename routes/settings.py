@@ -3,22 +3,19 @@ RBAC matrix, lifecycle stages, document categories, contacts/partners
 management, per-type alert config, and the contact/partner undo restores.
 Registration side effects only.
 """
-import csv
 import io
 import sqlite3
 
-from flask import Response, abort, flash, redirect, render_template, request, session, url_for
+from flask import Response, abort, flash, redirect, request, session, url_for
 from markupsafe import Markup
 
-import graph
 from constants import ALERT_TYPE_TITLES, CONTACT_LISTS, PERMISSIONS, ROLES
-from core import app, as_id, permission_required, undo_button, undo_note, write_required
-from db import get_db, get_setting, restore_deleted, soft_delete
-from services.alerts import get_alert_type_settings
+from core import app, as_id, permission_required, undo_button, undo_note
+from db import get_db, restore_deleted, soft_delete
 from services import stages as stage_ops
 from security import safe_csv_writer, valid_email
 from services.audit import audit_log
-from spa import spa_index, spa_serves
+from spa import spa_index
 
 
 @app.route("/undo/contact/<list_key>/<int:item_id>", methods=["POST"])
@@ -105,76 +102,13 @@ def audit_logs_export():
 @app.route("/audit-logs")
 @permission_required("manage_settings")
 def audit_logs_view():
-    if spa_serves("audit_logs_view"):
-        return spa_index()
-    db = get_db()
-    page = request.args.get("page", 1, type=int)
-    where, params, filters = _audit_filter()
-    limit = 100
-    offset = (page - 1) * limit
-    logs = db.execute(
-        f"SELECT * FROM audit_logs{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?",
-        (*params, limit, offset),
-    ).fetchall()
-    total = db.execute(f"SELECT COUNT(*) as count FROM audit_logs{where}", params).fetchone()["count"]
-    total_pages = max(1, (total + limit - 1) // limit)
-
-    usernames = [row["username"] for row in db.execute("SELECT DISTINCT username FROM audit_logs ORDER BY username")]
-    actions = [row["action"] for row in db.execute("SELECT DISTINCT action FROM audit_logs ORDER BY action")]
-    projects = db.execute("SELECT id, name FROM projects ORDER BY name").fetchall()
-
-    return render_template(
-        "audit_logs.html",
-        logs=logs,
-        page=page,
-        total_pages=total_pages,
-        total=total,
-        usernames=usernames,
-        actions=actions,
-        projects=projects,
-        filters=filters,
-    )
+    return spa_index()
 
 
 @app.route("/settings")
 @permission_required("manage_settings")
 def settings():
-    if spa_serves("settings"):
-        return spa_index()
-    db = get_db()
-    templates = [
-        {"id": t["id"], "name": t["name"], "stages": stage_ops.list_stages("template", t["id"]),
-         "projects": db.execute("SELECT COUNT(*) FROM projects WHERE stage_template_id = ? AND deleted_at IS NULL", (t["id"],)).fetchone()[0]}
-        for t in db.execute("SELECT * FROM stage_templates ORDER BY id").fetchall()
-    ]
-    doc_categories = db.execute("SELECT * FROM doc_categories ORDER BY name").fetchall()
-
-    connection = graph.get_connection()
-    teams_list, channels_list, teams_error = [], [], None
-    selected_team_id = request.args.get("team_id", "")
-    if connection and connection["refresh_token"]:
-        teams_list, teams_error = graph.list_joined_teams()
-        if selected_team_id:
-            channels_list, teams_error = graph.list_channels(selected_team_id)
-
-    return render_template(
-        "settings.html",
-        templates=templates,
-        doc_categories=doc_categories,
-        alert_type_settings=get_alert_type_settings(),
-        alert_type_titles=ALERT_TYPE_TITLES,
-        oauth_client_configured=graph.oauth_client_configured(),
-        azure_app=graph.azure_app_credentials(),
-        connection=connection,
-        teams_list=teams_list,
-        channels_list=channels_list,
-        teams_error=teams_error,
-        selected_team_id=selected_team_id,
-        notify_email_enabled=get_setting("notify_email_enabled") == "1",
-        notify_teams_enabled=get_setting("notify_teams_enabled") == "1",
-        onedrive_mirror_uploads_enabled=get_setting("onedrive_mirror_uploads_enabled") == "1",
-        onedrive_backup_enabled=get_setting("onedrive_backup_enabled") == "1",
-    )
+    return spa_index()
 
 
 # Settings is one page with a side menu; each area has its own address.
@@ -204,9 +138,7 @@ def settings_map_page():
 def settings_section(section):
     if section not in SETTINGS_SECTIONS:
         abort(404)
-    if spa_serves("settings_section"):
-        return spa_index()
-    return redirect(url_for("settings"))
+    return spa_index()
 
 
 @app.route("/settings/policies/<area>", methods=["POST"])
@@ -267,15 +199,7 @@ def settings_policies(area):
 @app.route("/settings/rbac")
 @permission_required("manage_settings")
 def settings_rbac():
-    if spa_serves("settings_rbac"):
-        return spa_index()
-    db = get_db()
-    rows = db.execute("SELECT * FROM role_permissions").fetchall()
-    matrix = {perm: {role: False for role in ROLES} for perm in PERMISSIONS}
-    for row in rows:
-        if row["permission"] in matrix:
-            matrix[row["permission"]][row["role"]] = bool(row["allowed"])
-    return render_template("settings_rbac.html", matrix=matrix, permissions=list(PERMISSIONS), roles=ROLES)
+    return spa_index()
 
 
 @app.route("/settings/rbac", methods=["POST"])
@@ -539,24 +463,7 @@ def settings_category_partners(cat_id):
 @app.route("/settings/contacts")
 @permission_required("manage_contacts")
 def settings_contacts():
-    if spa_serves("settings_contacts"):
-        return spa_index()
-    db = get_db()
-    partners = db.execute("SELECT * FROM partners WHERE deleted_at IS NULL ORDER BY name").fetchall()
-    partner_managers = db.execute("SELECT * FROM partner_account_managers WHERE deleted_at IS NULL ORDER BY name").fetchall()
-    managers_by_partner = {}
-    for row in partner_managers:
-        managers_by_partner.setdefault(row["partner_id"], []).append(row)
-    return render_template(
-        "settings_contacts.html",
-        contact_lists=CONTACT_LISTS,
-        lists={
-            key: db.execute(f"SELECT * FROM {meta['table']} WHERE deleted_at IS NULL ORDER BY name").fetchall()
-            for key, meta in CONTACT_LISTS.items()
-        },
-        partners=partners,
-        managers_by_partner=managers_by_partner,
-    )
+    return spa_index()
 
 
 @app.route("/settings/contacts/<list_key>/add", methods=["POST"])

@@ -2,7 +2,7 @@
 left, the terms, the acceptance statement, both signature blocks (drawn
 signatures as vector strokes) and the signing record with the document's
 fingerprint. Drawn with the report PDF's page builder (services/report_pdf)."""
-from services.report_pdf import BAD_LINE, FAINT, HAIR, INK, LEFT, MUTED, RAG, RIGHT, WIDTH, _Doc, _fmt
+from services.report_pdf import BAD_LINE, FAINT, HAIR, INK, LEFT, MUTED, RAG, WIDTH, _Doc, _fmt
 
 STATUS = {
     "sent": ("amber", "Awaiting the customer's signature"), "signed": ("amber", "Signed by the customer, awaiting our countersignature"),

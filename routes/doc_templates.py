@@ -1,10 +1,9 @@
 """Document templates (services/doc_templates.py): Settings → Documents for
 admins, and the choice of template for everyone who writes a document."""
-import json
 
 from flask import Response, abort, jsonify, request, send_file, session
 
-from core import app, as_id, json_body, text_field, login_required, permission_required
+from core import app, json_body, text_field, login_required, permission_required
 from services import doc_templates as dt
 from services.audit import audit_log
 

@@ -182,19 +182,6 @@ class AlertsTestCase(FixBase):
         scheduler.sync_alerts()
         self.assertEqual(self.sql("SELECT COUNT(*) FROM alerts WHERE resolved = 0")[0][0], 1)
 
-    def test_dismissed_blocker_comes_back_for_a_new_blocker(self):
-        self.new_project(name="B", client="C")
-        self.sql("UPDATE alert_type_settings SET threshold_days = 0 WHERE alert_type = 'blocker_open'")
-        c, csrf = self._api_client()
-        h = {"X-CSRF-Token": csrf}
-        self.assertEqual(c.post("/api/projects/1/raid", json={"kind": "blocker", "title": "Firewall"}, headers=h).status_code, 200)
-        names = lambda: [p["name"] for p in c.get("/api/board").get_json()["alerts"]["blocker_open"]]   # noqa: E731
-        self.assertEqual(names(), ["B"])
-        c.post("/api/alerts/1/dismiss/blocker_open", headers=h)
-        self.assertEqual(names(), [])
-        c.post("/api/projects/1/raid", json={"kind": "blocker", "title": "Licences"}, headers=h)
-        self.assertEqual(names(), ["B"])   # a new blocker is a new alert
-
     def test_badges_leave_out_deleted_and_closed_projects(self):
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
         self.new_project(name="Done", client="C")
@@ -276,10 +263,10 @@ class LifecycleTestCase(FixBase):
         self.new_project(name="U", client="C", customer_approval="1")
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         s = self.stages()
-        self.client.post("/projects/1/stage", data={"stage": s[1]})
+        self.client.post("/api/projects/1/stage", json={"stage": s[1]})
         e = self._external_client("ann@acme.example")
         aid = self.sql("SELECT id FROM stage_approvals WHERE status = 'pending'")[0][0]
-        e.post(f"/projects/1/approvals/{aid}/decide", data={"decision": "approved"})
+        e.post(f"/api/projects/1/approvals/{aid}", json={"decision": "approved"})
         self.client.post("/projects/1/note", data={"note": "after the move"})
         self.assertEqual(self.sql("SELECT stage FROM status_notes WHERE note = 'after the move'")[0][0], s[1])
         move = self.sql("SELECT id FROM status_notes WHERE prev_stage IS NOT NULL")[0][0]
@@ -324,8 +311,8 @@ class LifecycleTestCase(FixBase):
         for sid in ids[:-2]:
             self.client.post(f"/settings/templates/{tid}/stages/{sid}/delete")
         self.assertEqual(len(self.sql("SELECT id FROM stage_template_stages WHERE template_id = ?", tid)), 2)
-        r = self.client.post(f"/settings/templates/{tid}/stages/{ids[-1]}/delete", follow_redirects=True)
-        self.assertIn(b"at least two stages", r.data)
+        self.client.post(f"/settings/templates/{tid}/stages/{ids[-1]}/delete")
+        self.assertIn("at least two stages", test_app.flashed(self.client))
         self.assertEqual(len(self.sql("SELECT id FROM stage_template_stages WHERE template_id = ?", tid)), 2)
         # a template cut to one stage outside the app cannot give birth to a closed project
         self.sql("DELETE FROM stage_template_stages WHERE id = ?", ids[-2])
@@ -346,8 +333,8 @@ class LifecycleTestCase(FixBase):
     def test_sla_bounds(self):
         sid = self.sql("SELECT id FROM stage_template_stages WHERE template_id = 1 ORDER BY position")[0][0]
         for bad in ("3000000", str(2 ** 70), "366"):
-            r = self.client.post("/settings/templates/1/sla", data={f"sla::{sid}": bad}, follow_redirects=True)
-            self.assertIn(b"between 1 and 365", r.data, bad)
+            self.client.post("/settings/templates/1/sla", data={f"sla::{sid}": bad})
+            self.assertIn("between 1 and 365", test_app.flashed(self.client), bad)
         self.client.post("/settings/templates/1/sla", data={f"sla::{sid}": "365"})
         self.assertEqual(self.sql("SELECT sla_days FROM stage_template_stages WHERE id = ?", sid)[0][0], 365)
 
@@ -415,16 +402,6 @@ class TasksTestCase(FixBase):
         self.assertEqual(e.post("/projects/1/tasks/1/edit", json={**whole, "title": "renamed"}, headers=h).status_code, 403)
         self.assertEqual(e.post("/projects/1/tasks/2/edit", json={"due_date": "2026-12-20"}, headers=h).status_code, 403)
         self.assertEqual(self.sql("SELECT title FROM tasks WHERE id = 1")[0][0], "mine")
-
-    def test_bulk_complete_keeps_the_day_a_task_was_done(self):
-        self.new_project(name="P", client="C")
-        for t in ("a", "b"):
-            self.client.post("/projects/1/tasks", data={"title": t})
-        self.sql("UPDATE tasks SET done = 1, done_at = '2026-01-01T00:00:00' WHERE title = 'a'")
-        self.client.post("/projects/1/tasks/bulk", data={"action": "complete", "task_ids": ["1", "2"]})
-        self.assertEqual(self.sql("SELECT done_at FROM tasks WHERE title = 'a'")[0][0], "2026-01-01T00:00:00")
-        self.assertEqual(self.sql("SELECT done FROM tasks WHERE title = 'b'")[0][0], 1)
-
 
 class SignoffRulesTestCase(FixBase):
     """D5/D6/L12/L19/F-M4/F-M5/F-M7."""
@@ -497,7 +474,7 @@ class ReportPdfAndAITestCase(FixBase):
     def test_one_bad_date_does_not_take_the_pdf_down(self):
         self.new_project(name="P", client="C", customer_approval="1")
         s = self.stages()
-        self.client.post("/projects/1/stage", data={"stage": s[1]})   # an approval waits on the customer
+        self.client.post("/api/projects/1/stage", json={"stage": s[1]})   # an approval waits on the customer
         self.client.post("/projects/1/tasks", data={"title": "t"})
         self.sql("UPDATE tasks SET due_date = 'not-a-date'")
         self.sql("UPDATE project_stages SET base_start = 'garbage', base_end = '9999-12-31', plan_start = '2026-10-01', plan_end = '9999-12-31' WHERE position = 0")

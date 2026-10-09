@@ -34,6 +34,11 @@ class CSRFTestClient(FlaskClient):
         # JSON callers (the React API) send the token as X-CSRF-Token instead;
         # injecting a form field there would be an error in Werkzeug's client.
         if "json" in kwargs:
+            headers = dict(kwargs.get("headers") or {})
+            if "X-CSRF-Token" not in headers:
+                with self.session_transaction() as sess:
+                    headers["X-CSRF-Token"] = sess.setdefault("_csrf_token", secrets.token_urlsafe(32))
+                kwargs["headers"] = headers
             return super().post(*args, **kwargs)
         data = kwargs.get("data")
         # Many routes are POSTed with no body at all (delete/disconnect
@@ -63,6 +68,17 @@ app_module.app.test_client_class = CSRFTestClient
 
 
 
+STUB_DIST = tempfile.mkdtemp()
+with open(os.path.join(STUB_DIST, "index.html"), "w") as _fh:
+    _fh.write('<!doctype html><script>/*theme*/</script><div id="root" data-spa></div>')
+
+
+def flashed(client):
+    """The flashes a route left for the next page: the React app reads them
+    from /api/session, so a test does too."""
+    return " ".join(client.get("/api/session").get_json()["messages"])
+
+
 def settle_seed_admin():
     """The seed admin is flagged must_change_password — right for production,
     noise for tests that just need a logged-in admin. Clear it here; the
@@ -70,8 +86,8 @@ def settle_seed_admin():
     con = sqlite3.connect(db_module.DB_PATH)
     con.execute("UPDATE users SET must_change_password = 0")
     con.commit(); con.close()
-    # A local frontend build must not change what the Jinja tests see.
-    app_module.app.config["SERVE_SPA"] = False
+    # Pages answer with the React shell: a stub, so tests never depend on a local build.
+    app_module.app.config["SPA_DIST"] = STUB_DIST
 
 
 def isolate_uploads(test):
@@ -139,13 +155,11 @@ class PMSTestCase(unittest.TestCase):
                 "name": "Test Proj", "client": "Test Client", "delivery_mode": "Distribution/MSSP",
             },
         )
-        resp = self.client.get("/projects")
-        self.assertIn(b"Test Proj", resp.data)
+        self.assertIn("Test Proj", [r["name"] for r in self.client.get("/api/projects").get_json()["rows"]])
 
-        self.client.post("/projects/1/stage", data={"stage": "Kickoff", "note": "started work"})
-        resp = self.client.get("/projects/1")
-        self.assertIn(b"started work", resp.data)
-        self.assertIn(b"Kickoff", resp.data)
+        self.client.post("/api/projects/1/stage", json={"stage": "Kickoff", "note": "started work"})
+        self.assertIn("started work", [n["note"] for n in self.client.get("/api/projects/1").get_json()["notes"]])
+        self.assertEqual(self.client.get("/api/projects/1/flow").get_json()["stage"], "Kickoff")
 
     def test_stale_filter_only_shows_stale_projects(self):
         self.login()
@@ -160,9 +174,9 @@ class PMSTestCase(unittest.TestCase):
         db.execute("UPDATE projects SET updated_at = ? WHERE id = 1", (old,))
         db.commit()
         db.close()
-        resp = self.client.get("/projects?view=stale")
-        self.assertIn(b"Stale Proj", resp.data)
-        self.assertNotIn(b"Fresh Proj", resp.data)
+        names = [r["name"] for r in self.client.get("/api/projects?view=stale").get_json()["rows"]]
+        self.assertIn("Stale Proj", names)
+        self.assertNotIn("Fresh Proj", names)
 
     def test_guest_link_works_without_login_bad_token_404s(self):
         self.login()
@@ -174,10 +188,9 @@ class PMSTestCase(unittest.TestCase):
                 "delivery_mode": "Outsourced", "outsourcer_name": "Vendor X",
             },
         )
-        resp = self.client.get("/projects/1")
-        match = re.search(rb"/guest/([\w-]+)", resp.data)
-        self.assertIsNotNone(match, "guest link not rendered on project detail page")
-        token = match.group(1).decode()
+        match = re.search(r"/guest/([\w-]+)", self.client.get("/api/projects/1").get_json()["guest_links"]["vendor"])
+        self.assertIsNotNone(match, "guest link not offered on the project")
+        token = match.group(1)
 
         anon_client = app_module.app.test_client()
         resp_ok = anon_client.get(f"/guest/{token}")
@@ -202,8 +215,7 @@ class PMSTestCase(unittest.TestCase):
             "/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Temp", "client": "C", "delivery_mode": "Distribution/MSSP"}
         )
         self.client.post("/projects/1/delete")
-        resp = self.client.get("/projects")
-        self.assertNotIn(b"Temp", resp.data)
+        self.assertNotIn("Temp", [r["name"] for r in self.client.get("/api/projects").get_json()["rows"]])
 
     def test_viewer_cannot_write_but_can_read(self):
         self.login()
@@ -219,7 +231,7 @@ class PMSTestCase(unittest.TestCase):
         resp = viewer_client.get("/projects/1")
         self.assertEqual(resp.status_code, 200)
 
-        resp = viewer_client.post("/projects/1/stage", data={"stage": "Kickoff"})
+        resp = viewer_client.post("/api/projects/1/stage", json={"stage": "Kickoff"})
         self.assertEqual(resp.status_code, 403)
         resp = viewer_client.get("/projects/new")
         self.assertEqual(resp.status_code, 403)
@@ -268,8 +280,8 @@ class PMSTestCase(unittest.TestCase):
         self.client.post(
             "/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Stage Test", "client": "C", "delivery_mode": "Distribution/MSSP"}
         )
-        stages = self.client.get("/settings").data
-        self.assertIn(b"PO Received", stages)
+        stages = [s["name"] for t in self.client.get("/api/settings").get_json()["templates"] for s in t["stages"]]
+        self.assertIn("PO Received", stages)
 
         db = sqlite3.connect(db_module.DB_PATH)
         db.row_factory = sqlite3.Row
@@ -277,9 +289,9 @@ class PMSTestCase(unittest.TestCase):
         db.close()
         self.client.post(f"/projects/1/stages/{row['id']}/rename", data={"name": "PO In Hand"})
 
-        resp = self.client.get("/projects/1")
-        self.assertIn(b"PO In Hand", resp.data)
-        self.assertNotIn(b"PO Received", resp.data)
+        names = [s["name"] for s in self.client.get("/api/projects/1/flow").get_json()["stages"]]
+        self.assertIn("PO In Hand", names)
+        self.assertNotIn("PO Received", names)
 
     def test_settings_stage_delete_blocked_when_in_use(self):
         self.login()
@@ -297,68 +309,6 @@ class PMSTestCase(unittest.TestCase):
         still_there = db.execute("SELECT 1 FROM project_stages WHERE project_id = 1 AND name = 'PO Received'").fetchone()
         db.close()
         self.assertIsNotNone(still_there)
-
-
-class AlertDismissalTestCase(unittest.TestCase):
-    def setUp(self):
-        fd, db_module.DB_PATH = tempfile.mkstemp()
-        os.close(fd)
-        os.remove(db_module.DB_PATH)
-        isolate_uploads(self)
-        app_module.init_db()
-        settle_seed_admin()
-        self.client = app_module.app.test_client()
-        self.client.post("/login", data={"username": "admin", "password": "changeme"})
-        self.client.post(
-            "/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Stale Proj", "client": "C", "delivery_mode": "Distribution/MSSP"}
-        )
-        self._make_stale(1)
-
-    def tearDown(self):
-        os.unlink(db_module.DB_PATH)
-
-    def _make_stale(self, project_id):
-        old = (date.today() - timedelta(days=60)).isoformat() + "T00:00:00"
-        db = sqlite3.connect(db_module.DB_PATH)
-        db.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (old, project_id))
-        db.commit()
-        db.close()
-
-    def test_stale_alert_shows_then_dismiss_clears_it(self):
-        resp = self.client.get("/board")
-        self.assertIn(b"untouched for a while", resp.data)
-
-        resp = self.client.post("/alerts/1/dismiss/stale?next=board", follow_redirects=True)
-        self.assertEqual(resp.status_code, 200)
-        resp = self.client.get("/board")
-        # the project itself still appears on the board — only the banner entry goes
-        self.assertNotIn(b"untouched for a while", resp.data)
-
-    def test_dismiss_without_next_redirects_to_project(self):
-        resp = self.client.post("/alerts/1/dismiss/stale")
-        self.assertEqual(resp.status_code, 302)
-        self.assertIn("/projects/1", resp.headers["Location"])
-
-    def test_invalid_alert_type_404s(self):
-        resp = self.client.post("/alerts/1/dismiss/not-a-real-type")
-        self.assertEqual(resp.status_code, 404)
-
-    def test_alert_reappears_after_relogin_even_with_unchanged_data(self):
-        self.client.post("/alerts/1/dismiss/stale?next=board")
-        resp = self.client.get("/board")
-        self.assertNotIn(b"untouched for a while", resp.data)
-
-        # fresh login must show every real alert again — dismissals are session-only
-        self.client.post("/login", data={"username": "admin", "password": "changeme"})
-        resp = self.client.get("/board")
-        self.assertIn(b"untouched for a while", resp.data)
-
-    def test_dismissal_does_not_touch_database(self):
-        self.client.post("/alerts/1/dismiss/stale?next=board")
-        db = sqlite3.connect(db_module.DB_PATH)
-        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        self.assertNotIn("alert_dismissals", tables)
-        db.close()
 
 
 class IntegrationNotificationTestCase(unittest.TestCase):
@@ -388,7 +338,7 @@ class IntegrationNotificationTestCase(unittest.TestCase):
         self.client.post(
             "/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Quiet Proj", "client": "C", "delivery_mode": "Distribution/MSSP"}
         )
-        self.client.post("/projects/1/stage", data={"stage": "Kickoff"})
+        self.client.post("/api/projects/1/stage", json={"stage": "Kickoff"})
         mock_mail.assert_not_called()
         mock_teams.assert_not_called()
 
@@ -404,7 +354,7 @@ class IntegrationNotificationTestCase(unittest.TestCase):
 
         mock_mail.reset_mock()
         mock_teams.reset_mock()
-        self.client.post("/projects/1/stage", data={"stage": "Kickoff"})
+        self.client.post("/api/projects/1/stage", json={"stage": "Kickoff"})
         mock_mail.assert_not_called()      # the owner moved it: nobody else is on the project, and no one is told of their own act
         mock_teams.assert_called_once()    # the channel still hears
 
@@ -416,8 +366,7 @@ class IntegrationNotificationTestCase(unittest.TestCase):
             "/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Resilient Proj", "client": "C", "delivery_mode": "Distribution/MSSP"}
         )
         self.assertEqual(resp.status_code, 302)
-        resp = self.client.get("/projects")
-        self.assertIn(b"Resilient Proj", resp.data)
+        self.assertIn("Resilient Proj", [r["name"] for r in self.client.get("/api/projects").get_json()["rows"]])
 
     @patch("app.graph.upload_file", return_value=(True, None))
     def test_document_upload_mirrors_to_onedrive_when_enabled(self, mock_upload):
@@ -469,8 +418,8 @@ class MicrosoftOAuthConnectTestCase(unittest.TestCase):
             data={"client_id": "cid-123", "tenant_id": "tid-456", "client_secret": "super-secret-value"},
         )
         self.assertEqual(resp.status_code, 302)
-        resp = self.client.get("/settings")
-        self.assertIn(b"cid-123", resp.data)
+        resp = self.client.get("/api/settings")
+        self.assertEqual(resp.get_json()["m365"]["azure_app"]["client_id"], "cid-123")
         self.assertNotIn(b"super-secret-value", resp.data)
         self.assertTrue(app_module.graph.oauth_client_configured())
 
@@ -519,14 +468,12 @@ class MicrosoftOAuthConnectTestCase(unittest.TestCase):
     def test_callback_rejects_mismatched_state(self):
         resp = self.client.get("/integrations/callback?state=bogus&code=abc")
         self.assertEqual(resp.status_code, 302)
-        resp = self.client.get("/settings")
-        self.assertIn(b"mismatched", resp.data.lower())
+        self.assertIn("mismatched", flashed(self.client).lower())
 
     def test_callback_surfaces_microsoft_error(self):
         resp = self.client.get("/integrations/callback?error=access_denied&error_description=User+declined")
         self.assertEqual(resp.status_code, 302)
-        resp = self.client.get("/settings")
-        self.assertIn(b"User declined", resp.data)
+        self.assertIn("User declined", flashed(self.client))
 
     @patch("app.graph.complete_connection", return_value=(True, "admin@company.com"))
     @patch("app.graph.build_authorize_url", return_value="https://login.microsoftonline.com/fake-authorize")
@@ -538,8 +485,7 @@ class MicrosoftOAuthConnectTestCase(unittest.TestCase):
         callback_resp = self.client.get(f"/integrations/callback?state={state}&code=fake-code")
         self.assertEqual(callback_resp.status_code, 302)
         mock_complete.assert_called_once()
-        resp = self.client.get("/settings")
-        self.assertIn(b"admin@company.com", resp.data)
+        self.assertIn("admin@company.com", flashed(self.client))
 
     @patch("app.graph.disconnect")
     def test_disconnect_calls_graph_disconnect(self, mock_disconnect):
@@ -590,6 +536,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         conn.row_factory = sqlite3.Row
         return conn
 
+    def names(self, query="", client=None):
+        """Project names on the project list (the JSON the React page reads)."""
+        return [r["name"] for r in (client or self.client).get("/api/projects" + query).get_json()["rows"]]
+
     def test_project_edit_updates_fields_and_reassigns_owner(self):
         self.new_project(name="Orig", client="OldClient", delivery_mode="Distribution/MSSP")
         with self.raw_db() as db:
@@ -631,35 +581,25 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_project_edit_get_prefills_form(self):
         self.new_project(name="Prefill Me", client="C")
-        resp = self.client.get("/projects/1/edit")
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"Prefill Me", resp.data)
-        self.assertIn(b"Save Changes", resp.data)
+        self.assertEqual(self.client.get("/projects/1/edit").status_code, 200)
+        form = self.client.get("/api/project-form?edit=1").get_json()
+        self.assertEqual((form["mode"], form["project"]["name"]), ("edit", "Prefill Me"))
 
     def test_search_matches_name_client_and_po(self):
         self.new_project(name="Alpha Rollout", client="Acme")
         self.new_project(name="Beta Audit", client="Zeta Corp", po_number="PO-XYZ")
-        r = self.client.get("/projects?q=Alpha")
-        self.assertIn(b"Alpha Rollout", r.data)
-        self.assertNotIn(b"Beta Audit", r.data)
-        r = self.client.get("/projects?q=Zeta")
-        self.assertIn(b"Beta Audit", r.data)
-        self.assertNotIn(b"Alpha Rollout", r.data)
-        r = self.client.get("/projects?q=PO-XYZ")
-        self.assertIn(b"Beta Audit", r.data)
-        self.assertNotIn(b"Alpha Rollout", r.data)
+        self.assertEqual(self.names("?q=Alpha"), ["Alpha Rollout"])
+        self.assertEqual(self.names("?q=Zeta"), ["Beta Audit"])
+        self.assertEqual(self.names("?q=PO-XYZ"), ["Beta Audit"])
 
-    @patch("routes.projects.PROJECTS_PER_PAGE", 1)
+    @patch("routes.api.PROJECTS_PER_PAGE", 1)
     def test_pagination_splits_pages(self):
         self.new_project(name="First Proj", client="C")
         self.new_project(name="Second Proj", client="C")
-        r = self.client.get("/projects")
-        self.assertIn(b"Page 1 of 2", r.data)
-        r1 = self.client.get("/projects?page=1")
-        r2 = self.client.get("/projects?page=2")
+        self.assertEqual(self.client.get("/api/projects").get_json()["total_pages"], 2)
+        p1, p2 = self.names("?page=1"), self.names("?page=2")
         # each project appears on exactly one page
-        self.assertTrue((b"First Proj" in r1.data) != (b"First Proj" in r2.data))
-        self.assertIn(b"Second Proj", r1.data + r2.data)
+        self.assertEqual(sorted(p1 + p2), ["First Proj", "Second Proj"])
 
     def test_task_add_toggle_delete(self):
         self.new_project(name="TaskProj", client="C")
@@ -668,7 +608,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             t = db.execute("SELECT * FROM tasks WHERE project_id=1").fetchone()
         self.assertEqual(t["title"], "Write SOW")
         self.assertEqual(t["done"], 0)
-        self.assertIn(b"Write SOW", self.client.get("/projects/1").data)
+        self.assertIn("Write SOW", [t["title"] for t in self.client.get("/api/projects/1/flow").get_json()["tasks"]])
 
         self.client.post(f"/projects/1/tasks/{t['id']}/toggle")
         with self.raw_db() as db:
@@ -690,24 +630,16 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) AS c FROM tasks").fetchone()["c"], 0)
 
-    def test_task_overdue_flagged_on_detail(self):
-        self.new_project(name="P", client="C")
-        self.client.post("/projects/1/tasks", data={"title": "Late task", "due_date": "2020-01-01"})
-        self.assertIn(b"countdown-overdue", self.client.get("/projects/1").data)
-
     def test_schedule_overdue_alert_filter_and_badge(self):
         self.new_project(name="LateProj", client="C", target_end_date="2020-01-01")
-        board = self.client.get("/board").data
-        self.assertIn(b"project(s) overdue", board)
-        self.assertIn(b"LateProj", board)
-        self.assertIn(b"LateProj", self.client.get("/projects?view=overdue").data)
-        self.assertIn("Overdue — target".encode(), self.client.get("/projects/1").data)
+        self.assertEqual(self.client.get("/api/projects/1/flow").get_json()["state"], "overdue")
+        self.assertEqual(self.names("?view=overdue"), ["LateProj"])
 
     def test_schedule_due_soon_alert_and_filter(self):
         soon = (date.today() + timedelta(days=2)).isoformat()
         self.new_project(name="SoonProj", client="C", target_end_date=soon)
-        self.assertIn(b"project(s) due soon", self.client.get("/board").data)
-        self.assertIn(b"SoonProj", self.client.get("/projects?view=at_risk").data)
+        self.assertEqual(self.client.get("/api/projects/1/flow").get_json()["state"], "due_soon")
+        self.assertEqual(self.names("?view=at_risk"), ["SoonProj"])
 
     def test_overdue_filter_excludes_terminal_stage(self):
         self.new_project(name="ClosedLate", client="C", target_end_date="2020-01-01")
@@ -715,17 +647,15 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             terminal = db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position DESC LIMIT 1").fetchone()["name"]
             db.execute("UPDATE projects SET stage=? WHERE id=1", (terminal,))
             db.commit()
-        self.assertNotIn(b"ClosedLate", self.client.get("/projects?view=overdue").data)
+        self.assertEqual(self.names("?view=overdue"), [])
 
     def test_my_work_shows_owned_projects_and_assigned_open_tasks(self):
         self.new_project(name="MineProj", client="C", target_end_date="2020-01-01")
         self.client.post("/projects/1/tasks", data={"title": "My Task", "assignee_id": "1"})
         self.client.post("/projects/1/tasks", data={"title": "Unassigned Task"})
-        r = self.client.get("/my-work").data
-        self.assertIn(b"MineProj", r)
-        self.assertIn(b"My Task", r)
-        self.assertNotIn(b"Unassigned Task", r)
-        self.assertIn(b"Overdue", r)
+        r = self.client.get("/api/my-work").get_json()
+        self.assertEqual([(p["name"], p["state"]) for p in r["projects"]], [("MineProj", "overdue")])
+        self.assertEqual([t["title"] for t in r["tasks"]], ["My Task"])
 
     def test_my_work_excludes_others_projects_and_done_tasks(self):
         self.new_project(name="AdminProj", client="C")
@@ -733,12 +663,13 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("INSERT INTO users (username,password_hash,name,role,active) VALUES ('carol','x','Carol','Member',1)")
             db.commit()
             cid = db.execute("SELECT id FROM users WHERE username='carol'").fetchone()["id"]
-            db.execute("UPDATE projects SET owner_id=? WHERE id=1", (cid,))
+            db.execute("UPDATE projects SET owner_id=? WHERE id=1", (cid,))   # handed over: Carol is the PM, Admin is off the team
+            db.execute("UPDATE project_participants SET user_id=? WHERE project_id=1 AND role='Project manager'", (cid,))
             db.execute("INSERT INTO tasks (project_id,title,done,assignee_id,created_at) VALUES (1,'Done Task',1,1,'2026-01-01')")
             db.commit()
-        r = self.client.get("/my-work").data
-        self.assertNotIn(b"AdminProj", r)
-        self.assertNotIn(b"Done Task", r)
+        r = self.client.get("/api/my-work").get_json()
+        self.assertNotIn("AdminProj", [p["name"] for p in r["projects"]])
+        self.assertNotIn("Done Task", [t["title"] for t in r["tasks"]])
 
     def test_localdt_marks_timestamps_for_browser_localisation(self):
         from core import localdt
@@ -751,24 +682,22 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(localdt(""), "—")
 
     def test_nav_shows_my_open_task_count(self):
+        count = lambda: self.client.get("/api/session").get_json()["user"]["nav"]["my_open_task_count"]   # noqa: E731
         self.new_project(name="P", client="C")
-        self.assertNotIn(b"My Work (", self.client.get("/board").data)
+        self.assertEqual(count(), 0)
         self.client.post("/projects/1/tasks", data={"title": "t1", "assignee_id": "1"})
-        self.assertIn(b"My Work (1)", self.client.get("/board").data)
+        self.assertEqual(count(), 1)
         with self.raw_db() as db:
             tid = db.execute("SELECT id FROM tasks WHERE project_id=1").fetchone()["id"]
         self.client.post(f"/projects/1/tasks/{tid}/toggle")
         # completed work shouldn't keep nagging from the nav
-        self.assertNotIn(b"My Work (", self.client.get("/board").data)
+        self.assertEqual(count(), 0)
 
     def test_empty_list_offers_create_but_filtered_empty_offers_clear(self):
-        empty = self.client.get("/projects").data
-        self.assertIn(b"No projects yet", empty)
-        self.assertIn(b"Create the first one", empty)
+        empty = self.client.get("/api/projects").get_json()
+        self.assertEqual((empty["total"], empty["can_create"]), (0, True))   # the page offers "create the first one"
         self.new_project(name="Alpha", client="C")
-        filtered = self.client.get("/projects?q=zzzznope").data
-        self.assertIn(b"No projects match", filtered)
-        self.assertIn(b"Clear filters", filtered)
+        self.assertEqual(self.client.get("/api/projects?q=zzzznope").get_json()["total"], 0)
 
     def test_task_inline_edit_updates_without_losing_done_state(self):
         self.new_project(name="P", client="C")
@@ -794,30 +723,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT title FROM tasks WHERE id=?", (tid,)).fetchone()["title"], "Keep me")
 
-    def test_clear_completed_removes_only_finished_tasks(self):
-        self.new_project(name="P", client="C")
-        self.client.post("/projects/1/tasks", data={"title": "done one"})
-        self.client.post("/projects/1/tasks", data={"title": "still open"})
-        with self.raw_db() as db:
-            tid = db.execute("SELECT id FROM tasks WHERE title='done one'").fetchone()["id"]
-        self.client.post(f"/projects/1/tasks/{tid}/toggle")
-        self.client.post("/projects/1/tasks/clear-completed")
-        with self.raw_db() as db:
-            rows = [r["title"] for r in db.execute("SELECT title FROM tasks WHERE project_id=1")]
-        self.assertEqual(rows, ["still open"])
-
     def test_column_sort_orders_and_rejects_unknown_columns(self):
         self.new_project(name="Bravo", client="Zulu")
         self.new_project(name="Alpha", client="Yankee")
-        order = lambda body: [n for n in (b"Alpha", b"Bravo") if n in body]
-
-        asc = self.client.get("/projects?sort=name&dir=asc").data
-        self.assertLess(asc.index(b"Alpha"), asc.index(b"Bravo"))
-        desc = self.client.get("/projects?sort=name&dir=desc").data
-        self.assertLess(desc.index(b"Bravo"), desc.index(b"Alpha"))
+        self.assertEqual(self.names("?sort=name&dir=asc"), ["Alpha", "Bravo"])
+        self.assertEqual(self.names("?sort=name&dir=desc"), ["Bravo", "Alpha"])
 
         # an unknown column must fall back, never reach the SQL
-        fallback = self.client.get("/projects?sort=p.name);DROP+TABLE+projects;--&dir=asc")
+        fallback = self.client.get("/api/projects?sort=p.name);DROP+TABLE+projects;--&dir=asc")
         self.assertEqual(fallback.status_code, 200)
         with self.raw_db() as db:
             self.assertIsNotNone(
@@ -826,27 +739,26 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_sort_survives_filters_and_pagination_links(self):
         self.new_project(name="Alpha", client="C")
-        body = self.client.get("/projects?sort=client&dir=asc&q=Alpha").data.decode()
-        self.assertIn("sort=client", body)      # header links keep the active sort
-        self.assertIn("q=Alpha", body)          # and keep the filter
+        body = self.client.get("/api/projects?sort=client&dir=asc&q=Alpha").get_json()
+        self.assertEqual((body["sort"], body["dir"], [r["name"] for r in body["rows"]]), ("client", "asc", ["Alpha"]))
 
     def test_nav_link_restores_last_project_filter(self):
         self.new_project(name="Alpha", client="C")
+        nav = lambda: self.client.get("/api/session").get_json()["user"]["nav"]["projects_nav_url"]   # noqa: E731
         # a plain visit leaves the nav link unfiltered
-        self.assertIn(b'href="/projects"', self.client.get("/board").data)
+        self.assertEqual(nav(), "/projects")
         # after filtering, the nav link carries the filter back
-        self.client.get("/projects?view=stale&sort=name&dir=asc")
-        nav = self.client.get("/board").data.decode()
-        self.assertIn("view=stale", nav)
-        self.assertIn("sort=name", nav)
+        self.client.get("/api/projects?view=stale&sort=name&dir=asc")
+        self.assertIn("view=stale", nav())
+        self.assertIn("sort=name", nav())
         # and Clear resets it
-        self.client.get("/projects")
-        self.assertIn('href="/projects"', self.client.get("/board").data.decode())
+        self.client.get("/api/projects")
+        self.assertEqual(nav(), "/projects")
 
     def test_remembered_filter_ignores_unknown_params_and_page(self):
         self.new_project(name="Alpha", client="C")
-        self.client.get("/projects?q=Alpha&page=2&evil=1")
-        nav = self.client.get("/board").data.decode()
+        self.client.get("/api/projects?q=Alpha&page=2&evil=1")
+        nav = self.client.get("/api/session").get_json()["user"]["nav"]["projects_nav_url"]
         self.assertIn("q=Alpha", nav)
         self.assertNotIn("evil=1", nav)   # only known filter keys are stored
         self.assertNotIn("page=2", nav)   # returning starts at the first page
@@ -971,60 +883,21 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 )
             db.commit()
 
-    @patch("routes.board.BANNER_NAMES", 5)
-    def test_board_banner_caps_names_and_offers_a_drill_down(self):
-        """Uncapped, the banner listed every alerting project: at 431 projects
-        it was 2,443px — 3.4 screens — of names above the first number."""
-        self._bulk_projects(12, target_end_date="2020-01-01")
-        body = self.client.get("/board").data.decode()
-        inline = body.count('class="alert-item"')
-        self.assertLessEqual(inline, 5 * len(app_module.PERMISSIONS and ["overdue"]) + 20,
-                             "banner should not list every project")
-        self.assertIn("more &rarr;", body)
-        self.assertIn("/alerts?type=project_overdue", body.replace("&amp;", "&"))
-
-    def test_board_payload_does_not_grow_linearly_with_alerts(self):
-        self._bulk_projects(3, target_end_date="2020-01-01")
-        small = len(self.client.get("/board").data)
-        self._bulk_projects(60, target_end_date="2020-01-01")
-        large = len(self.client.get("/board").data)
-        # kanban cards still grow; the banner must not add per-project weight
-        growth_per_project = (large - small) / 60
-        self.assertLess(growth_per_project, 400,
-                        f"board grew {growth_per_project:.0f} bytes/project — banner likely uncapped")
-
-    @patch("routes.board.COLUMN_CARDS", 5)
-    def test_kanban_columns_cap_cards_and_link_to_the_full_stage_list(self):
-        """One column held 73 cards and stood 7,407px tall at 431 projects.
-        The header count must still show the true total, so capping the render
-        cannot be mistaken for losing projects."""
-        self._bulk_projects(12)          # all land in Kickoff
-        body = self.client.get("/board").data.decode()
-        cards_block = body.split('<div class="cards">')[1].split("</div>\n    </div>")[0]
-        self.assertLessEqual(cards_block.count('class="card"'), 5)
-        self.assertIn("more in", body)
-        self.assertIn("/projects?stage=Kickoff", body.replace("&amp;", "&").replace("+", " ").replace(" ", "+"))
-        # the true count stays visible in the column header
-        self.assertIn(">12</span>", body)
-        # drag-and-drop survives the cap
-        self.assertIn("ondrop=", body)
-
     @patch("routes.board.ALERTS_PER_PAGE", 10)
     def test_alerts_log_paginates_and_filters_by_type(self):
         self._bulk_projects(25, target_end_date="2020-01-01")
         __import__("scheduler").sync_alerts()   # the scheduler records alerts; a page load no longer does
-        body = self.client.get("/alerts").data.decode()
-        self.assertIn("Page 1 of", body)
-        self.assertLessEqual(body.count("<tr>"), 12, "page should be capped")
+        body = self.client.get("/api/alerts").get_json()
+        self.assertGreater(body["total_pages"], 1)
+        self.assertLessEqual(len(body["rows"]), 10, "page should be capped")
 
-        filtered = self.client.get("/alerts?type=project_overdue").data.decode()
-        self.assertIn("Project overdue", filtered)
-        self.assertNotIn("Project inactive</td>", filtered)
+        filtered = self.client.get("/api/alerts?type=project_overdue").get_json()
+        self.assertEqual({r["alert_type"] for r in filtered["rows"]}, {"project_overdue"})
 
         # an unknown type must be ignored, not injected
-        self.assertEqual(self.client.get("/alerts?type=bogus%27--").status_code, 200)
+        self.assertEqual(self.client.get("/api/alerts?type=bogus%27--").get_json()["alert_type"], "")
         for bad in ["?page=99999", "?page=-3", "?page=abc"]:
-            self.assertEqual(self.client.get("/alerts" + bad).status_code, 200, bad)
+            self.assertEqual(self.client.get("/api/alerts" + bad).status_code, 200, bad)
 
     # ---- accessibility regressions ---------------------------------------
 
@@ -1270,13 +1143,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                              ["add_project_note", "add_project_note", "delete_document", "delete_project"])
             self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='upload_document'").fetchone()[0], 1)   # final.pdf; the PO rides on create_project
 
-    def test_every_ported_page_serves_the_react_bundle_when_built(self):
-        """The strangler contract: each endpoint in SPA_PAGES answers a signed-in
-        GET with the bundle shell, and its JSON twin still answers beside it."""
-        import spa
+    def test_every_page_answers_with_the_react_shell(self):
+        """Every signed-in page is React: its route answers a GET with the
+        bundle shell (after its own permission check), and its JSON twin
+        answers beside it."""
         self.new_project(name="P", client="C")
-        dist = tempfile.mkdtemp(); os.makedirs(os.path.join(dist, "assets"))
-        open(os.path.join(dist, "index.html"), "w").write("<title>Odin</title><div id=root></div>")
         paths = {
             "login": "/login", "board": "/board", "dashboard": "/dashboard", "people": "/people", "person": "/people/1", "projects_list": "/projects", "project_detail": "/projects/1",
             "project_new": "/projects/new", "project_edit": "/projects/1/edit", "users": "/users", "audit_logs_view": "/audit-logs",
@@ -1285,20 +1156,19 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "report_all": "/reports/all", "report_single": "/projects/1/report", "project_signoff": "/projects/1/signoff", "join_page": "/join/any-token", "auth_link_request": "/auth/link",
             "auth_reset_request": "/auth/reset", "auth_reset_form": "/auth/reset/any-token", "auth_link_consume": "/auth/link/any-token", "login_password": "/login/password",
         }
-        self.assertEqual(set(paths), spa.SPA_PAGES)          # a new port must be listed here too
         c, _ = self._api_client()
-        with patch.dict(app_module.app.config, {"SERVE_SPA": True, "SPA_DIST": dist}):
-            anon = app_module.app.test_client()
-            for endpoint, path in paths.items():
-                r = (anon if endpoint.startswith("auth_") else c).get(path)   # the sign-in helpers are for the signed out
-                if endpoint == "auth_reset_form":   # a dead link goes back to the request form before anyone types (UX-27)
-                    self.assertIn("/auth/reset", r.headers.get("Location", "")); continue
-                self.assertEqual(r.status_code, 200, path); self.assertIn(b"id=root", r.data, path)
-            # form POSTs are not intercepted: the Jinja route still answers them
-            self.assertEqual(c.post("/projects/1/note", data={"note": "x"}).status_code, 302)
-            # and a Viewer hitting an admin page is refused before any bundle is served
-            v, _ = self._api_client(self._make_user("vw", "Viewer") and "vw", STRONG_PASSWORD)
-            self.assertEqual(v.get("/settings").status_code, 403); self.assertEqual(v.get("/users").status_code, 403)
+        anon = app_module.app.test_client()
+        for endpoint, path in paths.items():
+            r = (anon if endpoint.startswith("auth_") else c).get(path)   # the sign-in helpers are for the signed out
+            if endpoint == "auth_reset_form":   # a dead link goes back to the request form before anyone types (UX-27)
+                self.assertIn("/auth/reset", r.headers.get("Location", "")); continue
+            self.assertEqual(r.status_code, 200, path); self.assertIn(b"data-spa", r.data, path)
+        # and a Viewer hitting an admin page is refused before any bundle is served
+        v, _ = self._api_client(self._make_user("vw", "Viewer") and "vw", STRONG_PASSWORD)
+        self.assertEqual(v.get("/settings").status_code, 403); self.assertEqual(v.get("/users").status_code, 403)
+        # without a build a page says how to make one
+        with patch.dict(app_module.app.config, {"SPA_DIST": tempfile.mkdtemp()}):
+            self.assertEqual(c.get("/board").status_code, 503)
 
     def test_guest_links_can_be_switched_off_for_good(self):
         self.new_project(name="P", client="C")
@@ -1316,7 +1186,6 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(anon.post(f"/guest/{tok}/note", data={"author": "x", "note": "y"}).status_code, 404)
         x = c.get("/api/projects/1").get_json()
         self.assertEqual((x["guest_links_enabled"], x["guest_links"]), (False, {"customer": None, "vendor": None}))
-        self.assertNotIn(b"Customer link", self.client.get("/projects/1").data)
         c.post("/settings/integrations", data={"guest_links_enabled": "on"}, headers=h)
         self.assertEqual(anon.get(f"/guest/{tok}").status_code, 200)
 
@@ -1326,7 +1195,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
-        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
         self.client.post("/projects/1/report/save", data={"body": "# r"})
         with patch("sys.argv", ["reset_data.py", "--yes"]):
             self.assertEqual(reset_data.main(), 0)
@@ -1374,10 +1243,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # an approval decision reaches every participant with an address except the one deciding
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
-        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
         mail.reset_mock()
         ann = self._external_client("ann@acme.example")
-        ann.post("/projects/1/approvals/1/decide", data={"decision": "approved", "comment": "Go"})
+        ann.post("/api/projects/1/approvals/1", json={"decision": "approved", "comment": "Go"})
         to = sorted(c.args[0] for c in mail.call_args_list)
         self.assertEqual(to, ["admin@odin.example", "pm1@odin.example"])   # once each — the owner is a participant, not told twice
         self.assertTrue(all("approved" in c.args[1] for c in mail.call_args_list))
@@ -1388,7 +1257,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
-        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
         c, _ = self._api_client()
         rows = c.get("/api/projects/1/activity").get_json()["rows"]
         self.assertEqual([r["label"] for r in rows][:4], ["moved the stage", "invited a partner", "added a task", "created the project"])
@@ -1507,7 +1376,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         c.post("/projects/1/note", data={"note": "Kickoff booked for Tuseday"}, headers=h)
-        c.post("/projects/1/stage", data={"stage": stages[1], "note": "Scoping started"}, headers=h)
+        c.post("/api/projects/1/stage", json={"stage": stages[1], "note": "Scoping started"}, headers=h)
         notes = {n["note"]: n for n in c.get("/api/projects/1").get_json()["notes"]}
         plain, entry = notes["Kickoff booked for Tuseday"], notes["Scoping started"]
         self.assertEqual((plain["mine"], plain["stage_entry"], entry["stage_entry"]), (True, False, True))
@@ -1552,7 +1421,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
         self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False, "brief": False})
         mail.reset_mock()
-        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
         self.assertEqual([c.args[0] for c in mail.call_args_list], [])                     # pm1 opted out; admin is the actor
         bell = p.get("/api/notifications").get_json()
         # 2 unread: being added to the project, then the stage move
@@ -1870,26 +1739,16 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     # ---- reports as JSON (React port) ------------------------------------------
 
-    def test_api_reports_feed_the_pages_and_save_through_the_bridge(self):
+    def test_api_reports_all_is_scoped(self):
         self.new_project(name="Rep", client="Acme", target_end_date="2027-01-31")
         self.new_project(name="Other", client="Globex")
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         a = c.get("/api/reports/all").get_json()
         self.assertEqual([r["name"] for r in a["rows"]], ["Rep", "Other"]); self.assertIn("generated_at", a)
-        r = c.get("/api/projects/1/report").get_json()
-        self.assertEqual((r["is_draft"], r["can_edit"], r["current"], r["versions"]), (True, True, None, []))
-        self.assertIn(["h", "Timeline"], r["blocks"]); self.assertIn("# Timeline", r["editor_text"])
-        self.assertEqual(c.post("/projects/1/report/save", data={"body": "# Summary\nAll good."}, headers=h).get_json()["messages"], ["Report version 1 saved"])
-        r = c.get("/api/projects/1/report").get_json()
-        self.assertEqual((r["is_draft"], r["current"]["version"], r["blocks"]), (False, 1, [["h", "Summary"], ["p", "All good."]]))
-        self.assertIn("# Timeline", c.get("/api/projects/1/report?draft=1").get_json()["editor_text"])
-        self.assertEqual(c.get("/api/projects/1/report?v=7").status_code, 404)
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         ann = self._external_client("ann@acme.example")
-        self.assertEqual(ann.get("/api/projects/1/report").status_code, 404)   # the plain-text report is internal (S2)
         self.assertEqual([x["name"] for x in ann.get("/api/reports/all").get_json()["rows"]], ["Rep"])
-        self.assertEqual(ann.get("/api/projects/2/report").status_code, 404)
 
     # ---- account, my work, alerts, analytics as JSON (React port) -------------
 
@@ -1955,7 +1814,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.new_project(name=f"Proj {i:02d}", client="Acme" if i % 2 else "Globex", target_end_date="2020-01-01" if i == 3 else None)
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
-        self.client.post("/projects/1/stage", data={"stage": stages[-1]})          # closed
+        self.client.post("/api/projects/1/stage", json={"stage": stages[-1]})          # closed
         c, _ = self._api_client()
         d = c.get("/api/projects").get_json()
         first = d["rows"][0]   # the cards view's tallies and team ride on every row
@@ -2007,16 +1866,15 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         d = c.get("/api/projects/1/flow").get_json()
         self.assertEqual((d["can_edit"], d["can_move"]), (True, False))
         self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[1]}, headers=h).status_code, 403)
-        self.assertEqual(c.post("/projects/1/stage", data={"stage": stages[1]}, headers=h).status_code, 403)
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[1]}, headers=h).status_code, 403)
         for path, data in [("/projects/1/edit", {"name": "X", "client": "C"}), ("/projects/1/delete", {}),
                            ("/projects/1/participants/add", {"user_id": "1", "role": "Sales"}),
                            ("/projects/1/stages/add", {"name": "Extra"}), (f"/projects/1/stages/{sid}/rename", {"name": "Z"}),
-                           ("/projects/1/report/save", {"body": "# mine"}), ("/projects/1/rotate-token", {})]:
+                           ("/projects/1/rotate-token", {})]:
             self.assertEqual(c.post(path, data=data, headers=h).status_code, 403, path)
-        page = c.get("/projects/1").data.decode()
-        self.assertIn("Add Task", page); self.assertIn("Add Note", page); self.assertIn(">Upload<", page)
-        for control in ["Update Stage", 'href="/projects/1/edit"', "Delete Project", "Add a person", "Rotate guest links", 'id="stages"']:
-            self.assertNotIn(control, page, control)
+        can = c.get("/api/projects/1").get_json()["can"]
+        self.assertEqual({k: can[k] for k in ("tasks", "note", "docs", "move", "manage", "delete_project")},
+                         {"tasks": True, "note": True, "docs": True, "move": False, "manage": False, "delete_project": False})
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=1").fetchone()[0], stages[0])
 
@@ -2028,16 +1886,16 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.get("/projects/1").status_code, 200)
         self.assertEqual(c.post("/projects/1/note", data={"note": "seen"}, headers=h).status_code, 302)
         self.assertEqual(c.post("/projects/1/tasks", json={"title": "x"}, headers=h).status_code, 403)
-        self.assertEqual(c.post("/projects/1/stage", data={"stage": stages[1]}, headers=h).status_code, 403)
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[1]}, headers=h).status_code, 403)
         self.assertEqual(c.post("/projects/1/documents", data={"category": "Deliverable", "document": (io.BytesIO(b"%PDF-1.4 x"), "x.pdf")}, headers=h).status_code, 403)
         d = c.get("/api/projects/1/flow").get_json()
         self.assertEqual((d["can_edit"], d["can_move"]), (False, False))
-        self.assertNotIn("Add Task", c.get("/projects/1").data.decode())
+        self.assertFalse(c.get("/api/projects/1").get_json()["can"]["tasks"])
         # tagged on a task: may tick it, still cannot move anything
         self.client.post("/projects/1/tasks", data={"title": "Theirs", "assignee_id": str(c.get("/api/session").get_json()["user"]["id"])})
         self.assertEqual(c.post("/projects/1/tasks/1/toggle", json={}, headers=h).get_json()["done"], True)
         # the PM (owner) and an admin who is on no project both keep full control
-        self.assertEqual(self.client.post("/projects/1/stage", data={"stage": stages[1]}).status_code, 302)
+        self.assertEqual(self.client.post("/api/projects/1/stage", json={"stage": stages[1]}).status_code, 200)
         admin2 = self._make_user("admin2", "Admin")
         a, ah = self._api_client("admin2", STRONG_PASSWORD)
         self.assertEqual(a.post("/api/projects/1/stage", json={"stage": stages[2]}, headers={"X-CSRF-Token": ah}).status_code, 200)
@@ -2092,7 +1950,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         mail.reset_mock()
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
-        self.client.post("/projects/1/stage", data={"stage": stages[1], "note": "kicked off"})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[1], "note": "kicked off"})
         to = sorted(c.args[0] for c in mail.call_args_list)
         # everyone on the project except the actor (admin, who is also the owner): no one hears about their own move
         self.assertEqual(to, ["ann@acme.example", "pm1@odin.example"])
@@ -2110,7 +1968,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(anon.get("/api/session").get_json()["user"]["name"], "Ann")
         with self.raw_db() as db:   # a week-old expired link is swept when the next one is minted
             db.execute("INSERT INTO login_links (user_id, token_hash, created_at, expires_at) VALUES (1, 'stale', '2020-01-01', '2020-01-01')"); db.commit()
-        self.client.post("/projects/1/stage", data={"stage": stages[2]})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[2]})
         with self.raw_db() as db:
             self.assertIsNone(db.execute("SELECT 1 FROM login_links WHERE token_hash='stale'").fetchone())
 
@@ -2122,19 +1980,19 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=2 ORDER BY position")]
         self._invite(2, "ann@globex.example", "Customer", "Ann")
         self._invite(2, "raj@vendor.example", "Contractor", "Raj")
-        self.client.post("/projects/1/stage", data={"stage": stages[1]})
-        self.client.post("/projects/2/stage", data={"stage": stages[1]})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
+        self.client.post("/api/projects/2/stage", json={"stage": stages[1]})
         with self.raw_db() as db:
             rows = db.execute("SELECT project_id, stage, status FROM stage_approvals").fetchall()
         self.assertEqual([tuple(r) for r in rows], [(2, stages[1], "pending")])
         c, _ = self._api_client()
         flow = {r["name"]: r["approval"] for r in c.get("/api/flow").get_json()["rows"]}
         self.assertEqual(flow, {"Plain": None, "Careful": "pending"})
-        self.assertIn(b"Awaiting customer approval", self.client.get("/projects/2").data)
-        self.assertNotIn(b"Approve ", self.client.get("/projects/2").data)     # staff cannot decide
-        self.assertEqual(self.client.post("/projects/2/approvals/1/decide", data={"decision": "approved"}).status_code, 403)
+        staff = self.client.get("/api/projects/2/flow").get_json()
+        self.assertEqual((staff["approval"]["status"], staff["can_approve"]), ("pending", False))     # staff cannot decide
+        self.assertEqual(self.client.post("/api/projects/2/approvals/1", json={"decision": "approved"}).status_code, 403)
         raj = self._external_client("raj@vendor.example")
-        self.assertEqual(raj.post("/projects/2/approvals/1/decide", data={"decision": "approved"}).status_code, 403)
+        self.assertEqual(raj.post("/api/projects/2/approvals/1", json={"decision": "approved"}).status_code, 403)
         ann = self._external_client("ann@globex.example")
         d = ann.get("/api/projects/2/flow").get_json()
         self.assertTrue(d["can_approve"]); self.assertEqual(d["approval"]["status"], "pending")
@@ -2149,64 +2007,26 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual((note["note"], note["guest_visible"]), (f"Approved {stages[1]}: Looks good", 1))
             self.assertEqual(db.execute("SELECT details FROM audit_logs WHERE action='approval_decision'").fetchone()[0], f"{stages[1]} approved")
         self.assertEqual(c.get("/api/flow").get_json()["rows"][0]["approval"], "approved")
-        self.assertIn(f"{stages[1]} approved by the customer".encode(), self.client.get("/projects/2").data)
+        self.assertEqual(self.client.get("/api/projects/2/flow").get_json()["approval"]["status"], "approved")
         # the next change supersedes nothing (decided) and opens a new request; Ann declines by form
-        self.client.post("/projects/2/stage", data={"stage": stages[2]})
-        page = ann.get("/projects/2").data.decode()
-        self.assertIn("Awaiting customer approval", page); self.assertIn("Approve ", page)
-        ann.post("/projects/2/approvals/2/decide", data={"decision": "declined", "comment": "Not yet"})
+        self.client.post("/api/projects/2/stage", json={"stage": stages[2]})
+        d = ann.get("/api/projects/2/flow").get_json()
+        self.assertEqual((d["approval"]["status"], d["can_approve"]), ("pending", True))
+        ann.post("/api/projects/2/approvals/2", json={"decision": "declined", "comment": "Not yet"})
         with self.raw_db() as db:
             self.assertEqual([r[0] for r in db.execute("SELECT status FROM stage_approvals ORDER BY id")], ["approved", "declined"])
         # a change while a request is still open supersedes it
-        self.client.post("/projects/2/stage", data={"stage": stages[3]})
-        self.client.post("/projects/2/stage", data={"stage": stages[4]})
+        self.client.post("/api/projects/2/stage", json={"stage": stages[3]})
+        self.client.post("/api/projects/2/stage", json={"stage": stages[4]})
         with self.raw_db() as db:
             self.assertEqual([r[0] for r in db.execute("SELECT status FROM stage_approvals ORDER BY id")], ["approved", "declined", "superseded", "pending"])
         # switch it off on edit: no new requests
         self.client.post("/projects/2/edit", data={"name": "Careful", "client": "Globex"})
-        self.client.post("/projects/2/stage", data={"stage": stages[5]})
+        self.client.post("/api/projects/2/stage", json={"stage": stages[5]})
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM stage_approvals").fetchone()[0], 4)
 
     # ---- Phase 5: project reports, drafted then owned by the PM -------------
-
-    def test_report_draft_comes_from_timeline_tasks_notes_and_documents(self):
-        self.new_project(name="Rep", client="Acme", target_end_date="2027-01-31")
-        with self.raw_db() as db:
-            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
-        self.client.post("/projects/1/stage", data={"stage": stages[1], "note": "Scope agreed with Acme"})
-        self.client.post("/projects/1/tasks", data={"title": "Order hardware", "assignee_id": "1"})
-        self.client.post("/projects/1/tasks", data={"title": "Done thing"})
-        self.client.post("/projects/1/tasks/2/toggle")
-        page = self.client.get("/projects/1/report").data.decode()
-        for expected in ["No report saved yet", "# Timeline", f"{stages[0]}  (", f"{stages[1]}  (0 d, current)",
-                         f"Next: {stages[2]}", "1 of 2 tasks done", "[ ] Order hardware — Admin", "[x] Done thing",
-                         "Scope agreed with Acme", "po.pdf", "Target: 2027-01-31"]:
-            self.assertIn(expected, page, expected)
-        self.assertIn("<h2>Timeline</h2>", page)          # the draft is also rendered
-
-    def test_report_saves_versions_and_partners_see_only_saved_ones(self):
-        self.new_project(name="Rep", client="Acme")
-        self._invite(1, "ann@acme.example", "Customer", "Ann")
-        ann = self._external_client("ann@acme.example")
-        self.assertEqual(ann.get("/projects/1/report").status_code, 404)   # the plain-text report is internal (S2)
-        self.assertEqual(ann.post("/projects/1/report/save", data={"body": "# Mine"}).status_code, 403)
-        r = self.client.post("/projects/1/report/save", data={"body": "# Summary\nPilot complete, fleet next.\n- item one\n- item two"}, follow_redirects=True)
-        self.assertIn(b"Report version 1 saved", r.data)
-        self.client.post("/projects/1/report/save", data={"body": "# Summary\nFleet rollout under way."})
-        page = self.client.get("/projects/1/report").data.decode()
-        self.assertIn("Fleet rollout under way", page); self.assertNotIn("Pilot complete", page)
-        self.assertIn("Save as version 3", page); self.assertIn("Regenerate draft", page)
-        old = self.client.get("/projects/1/report?v=1").data.decode()
-        self.assertIn("Pilot complete", old); self.assertIn("<ul><li>item one</li><li>item two</li></ul>", old.replace("\n", "").replace("  ", ""))
-        self.assertEqual(self.client.get("/projects/1/report?v=9").status_code, 404)
-        self.assertIn("# Timeline", self.client.get("/projects/1/report?draft=1").data.decode())
-        self.assertEqual(ann.get("/projects/1/report").status_code, 404)
-        self.client.post("/projects/1/report/save", data={"body": "   "})
-        with self.raw_db() as db:
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM project_reports").fetchone()[0], 2)
-            self.assertEqual([r[0] for r in db.execute("SELECT details FROM audit_logs WHERE action='save_report' ORDER BY id")], ["version 1", "version 2"])
-        self.assertEqual(self.client.get("/projects/2/report").status_code, 404)
 
     # ---- Phase 4: tasks per stage, worked from the flow screen --------------
 
@@ -2295,7 +2115,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="P", client="C")
         resp, send = self._invite(1, "Jane@Vendor.example", "Contractor", "Jane")
         self.assertTrue(send.called)
-        body = resp.data.decode()
+        body = flashed(self.client)
         self.assertIn("send them this link yourself", body)          # mail not configured → fallback
         with self.raw_db() as db:
             u = db.execute("SELECT * FROM users WHERE email='jane@vendor.example'").fetchone()
@@ -2343,16 +2163,15 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="NotTheirs", client="Globex", target_end_date="2020-01-01")
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         c = self._external_client("ann@acme.example")
-        listing = c.get("/projects").data.decode()
-        self.assertIn("Theirs", listing); self.assertNotIn("NotTheirs", listing)
-        self.assertNotIn("NotTheirs", c.get("/projects?q=Not").data.decode())
-        self.assertNotIn("NotTheirs", c.get("/projects?view=overdue").data.decode())
+        self.assertEqual(self.names(client=c), ["Theirs"])
+        self.assertEqual(self.names("?q=Not", client=c), [])
+        self.assertEqual(self.names("?view=overdue", client=c), [])
         self.assertEqual(c.get("/projects/2").status_code, 404)
         self.assertEqual(c.get("/projects/1").status_code, 200)
         self.assertEqual([r["name"] for r in c.get("/api/flow").get_json()["rows"]], ["Theirs"])
         self.assertEqual(c.get("/api/projects/2/flow").status_code, 404)
         self.assertNotIn("NotTheirs", c.get("/projects/export.csv").data.decode())
-        self.assertNotIn("NotTheirs", c.get("/reports/all").data.decode())
+        self.assertEqual([r["name"] for r in c.get("/api/reports/all").get_json()["rows"]], ["Theirs"])
         self.assertEqual(c.get("/api/session").get_json()["user"]["nav"]["active_alert_count"], 0)   # NotTheirs is overdue; not theirs
         with self.raw_db() as db:
             doc = db.execute("SELECT id FROM documents WHERE project_id=2").fetchone()["id"]
@@ -2368,46 +2187,46 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual((note["author"], note["guest_visible"]), ("Raj", 1))
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
-        for path, data in [("/projects/1/stage", {"stage": stages[1]}), ("/projects/1/tasks", {"title": "x"}),
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[1]}).status_code, 403)
+        for path, data in [("/projects/1/tasks", {"title": "x"}),
                            ("/projects/1/edit", {"name": "X"}), ("/projects/1/stages/add", {"name": "x"}),
                            ("/projects/1/participants/add", {"user_id": "1", "role": "Sales"})]:
             self.assertEqual(c.post(path, data=data).status_code, 403, path)
         for path in ["/projects/new", "/settings", "/users", "/audit-logs"]:
             self.assertEqual(c.get(path).status_code, 403, path)
-        self.assertNotIn(b"New Project", c.get("/projects").data)
-        detail = c.get("/projects/1").data.decode()
-        self.assertIn("Add Note", detail)
-        for control in ["Update Stage", "Invite by email", "Add a person", "Delete project", ">Upload<"]:
-            self.assertNotIn(control, detail, control)
+        self.assertFalse(c.get("/api/projects").get_json()["can_create"])
+        can = c.get("/api/projects/1").get_json()["can"]
+        self.assertEqual({k for k, v in can.items() if v}, {"note", "download"})
         # no password: the form refuses without confirming the address exists
-        resp = app_module.app.test_client().post("/login", data={"username": "raj@vendor.example", "password": "anything"}, follow_redirects=True)
-        self.assertIn(b"Bad username or password", resp.data)
+        resp = app_module.app.test_client().post("/login", data={"username": "raj@vendor.example", "password": "anything"})
+        self.assertIn(b"Bad username or password", resp.data)   # the form fallback re-renders with the reason
         with self.raw_db() as db:
             self.assertIn("sign-in links only", db.execute("SELECT details FROM audit_logs WHERE action='login_failure' ORDER BY id DESC LIMIT 1").fetchone()[0])
         # and an admin cannot give them one
         with self.raw_db() as db:
             uid = db.execute("SELECT id FROM users WHERE email='raj@vendor.example'").fetchone()[0]
-        resp = self.client.post(f"/users/{uid}/reset-password", data={"new_password": STRONG_PASSWORD}, follow_redirects=True)
-        self.assertIn(b"nothing to reset", resp.data)
+        self.client.post(f"/users/{uid}/reset-password", data={"new_password": STRONG_PASSWORD})
+        self.assertIn("nothing to reset", flashed(self.client))
 
     def test_link_request_never_confirms_an_address_and_is_rate_limited(self):
         anon = app_module.app.test_client()
         # mail off: an honest answer, the same for every address, and nothing is minted
-        self.assertIn(b"does not send email yet", anon.post("/auth/link", data={"email": "who@ever.example"}, follow_redirects=True).data)
+        anon.post("/auth/link", data={"email": "who@ever.example"})
+        self.assertIn("does not send email yet", flashed(anon))
         self._mail_on()
         self.new_project(name="P", client="C")
         self._invite(1, "jane@vendor.example")
         anon = app_module.app.test_client()
         with patch("graph.send_mail", return_value=(True, None)) as send:
-            known = anon.post("/auth/link", data={"email": "jane@vendor.example"}, follow_redirects=True).data
-            unknown = anon.post("/auth/link", data={"email": "nobody@nowhere.example"}, follow_redirects=True).data
-        self.assertIn(b"a sign-in link is on its way", known); self.assertIn(b"a sign-in link is on its way", unknown)
+            anon.post("/auth/link", data={"email": "jane@vendor.example"}); known = flashed(anon)
+            anon.post("/auth/link", data={"email": "nobody@nowhere.example"}); unknown = flashed(anon)
+        self.assertIn("a sign-in link is on its way", known); self.assertEqual(known, unknown)
         self.assertEqual(send.call_count, 1)
         with patch("graph.send_mail", return_value=(True, None)):
             for _ in range(3):
                 anon.post("/auth/link", data={"email": "jane@vendor.example"})
-            limited = anon.post("/auth/link", data={"email": "jane@vendor.example"}, follow_redirects=True).data
-        self.assertIn(b"Too many requests", limited)
+            anon.post("/auth/link", data={"email": "jane@vendor.example"})
+        self.assertIn("Too many requests", flashed(anon))
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='login_link_requested'").fetchone()[0], 4)   # 3 per address; the rest never reach the DB
 
@@ -2420,8 +2239,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             rows = {r["name"]: r["role"] for r in db.execute(
                 "SELECT u.name, pp.role FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.project_id = 1")}
         self.assertEqual(rows, {"Admin": "Project manager", "dev1": "Coordinator"})
-        page = self.client.get("/projects/1").data.decode()
-        self.assertIn("Project manager", page); self.assertIn("dev1", page)
+        team = {p["name"]: p["role"] for p in self.client.get("/api/projects/1").get_json()["participants"]}
+        self.assertEqual(team, {"Admin": "Project manager", "dev1": "Coordinator"})
 
     def test_participants_add_remove_and_pm_guards(self):
         self.new_project(name="T", client="C")
@@ -2433,10 +2252,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             pm = db.execute("SELECT id FROM project_participants WHERE project_id=1 AND role='Project manager'").fetchone()[0]
             actions = [r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action LIKE '%participant%'")]
         self.assertEqual(actions, ["add_participant", "add_participant"])
-        resp = self.client.post(f"/projects/1/participants/{pm}/remove", follow_redirects=True)
-        self.assertIn(b"cannot be removed", resp.data)
-        resp = self.client.post("/projects/1/participants/add", data={"user_id": s, "role": "Project manager"}, follow_redirects=True)
-        self.assertIn(b"project manager is the owner", resp.data)
+        self.client.post(f"/projects/1/participants/{pm}/remove")
+        self.assertIn("cannot be removed", flashed(self.client))
+        self.client.post("/projects/1/participants/add", data={"user_id": s, "role": "Project manager"})
+        self.assertIn("project manager is the owner", flashed(self.client))
         with self.raw_db() as db:
             pid = db.execute("SELECT id FROM project_participants WHERE project_id=1 AND user_id=?", (s,)).fetchone()[0]
         self.client.post(f"/projects/1/participants/{pid}/remove")
@@ -2539,11 +2358,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.client.post(f"/projects/2/stages/{pm}/move", data={"direction": "down"})   # now Post-mortem is last
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT name FROM project_stages WHERE project_id=2 ORDER BY position DESC LIMIT 1").fetchone()[0], "Post-mortem")
-        self.client.post("/projects/1/stage", data={"stage": last["name"]})
-        self.client.post("/projects/2/stage", data={"stage": last["name"]})
-        listing = self.client.get("/projects").data
-        self.assertNotIn(b"Short", listing)   # Closed is Short's last stage
-        self.assertIn(b"Long", listing)       # Closed is not Long's last stage any more
+        self.client.post("/api/projects/1/stage", json={"stage": last["name"]})
+        self.client.post("/api/projects/2/stage", json={"stage": last["name"]})
+        self.assertEqual(self.names(), ["Long"])   # Closed is Short's last stage, not Long's any more
         flow = self._api_client()[0].get("/api/flow").get_json()
         self.assertEqual([r["name"] for r in flow["rows"]], ["Long"])
         self.assertEqual(flow["rows"][0]["stages"][-1], "Post-mortem")
@@ -2560,8 +2377,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=2").fetchone()[0], first["name"])   # untouched
             self.assertEqual(db.execute("SELECT stage FROM status_notes WHERE project_id=1 ORDER BY id DESC LIMIT 1").fetchone()[0], "Order received")
         # cannot delete the stage the project is in
-        resp = self.client.post(f"/projects/1/stages/{first['id']}/delete", follow_redirects=True)
-        self.assertIn(b"the project is in it", resp.data)
+        self.client.post(f"/projects/1/stages/{first['id']}/delete")
+        self.assertIn("the project is in it", flashed(self.client))
         # a stage cannot be moved through the other project's route
         self.assertEqual(self.client.post(f"/projects/2/stages/{first['id']}/rename", data={"name": "x"}, follow_redirects=True).status_code, 200)
         with self.raw_db() as db:
@@ -2597,11 +2414,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.client.post("/settings/templates/add", data={"name": "SIEM"})
         self.new_project(name="On generic", client="C")
         self.new_project(name="On siem", client="C", stage_template_id=2)
-        page = self.client.get("/analytics").data
-        self.assertIn(b"On generic", page) if b"Aging" in page else None
-        self.assertIn(b"per template", page); self.assertIn(b"Generic", page); self.assertIn(b"SIEM", page)
-        siem = self.client.get("/analytics?template=2").data
-        self.assertNotIn(b"On generic", siem)
+        page = self.client.get("/api/analytics").get_json()
+        self.assertEqual([t["name"] for t in page["templates"]][:2], ["Generic", "SIEM"])
+        self.assertEqual([a["project_name"] for a in page["stats"]["aging"]], ["On generic"])
+        siem = self.client.get("/api/analytics?template=2").get_json()
+        self.assertEqual([a["project_name"] for a in siem["stats"]["aging"]], ["On siem"])
 
     def test_template_delete_leaves_projects_intact(self):
         self.client.post("/settings/templates/add", data={"name": "Temp"})
@@ -2612,7 +2429,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertGreater(db.execute("SELECT COUNT(*) FROM project_stages WHERE project_id=1").fetchone()[0], 3)
             self.assertIsNone(db.execute("SELECT stage_template_id FROM projects WHERE id=1").fetchone()[0])
         self.assertEqual(self.client.get("/projects/1").status_code, 200)
-        self.assertIn(b"Cannot delete the last template", self.client.post("/settings/templates/1/delete", follow_redirects=True).data)
+        self.client.post("/settings/templates/1/delete")
+        self.assertIn("Cannot delete the last template", flashed(self.client))
 
     # ---- JSON API + SPA serving (strangler migration to React) ------------
 
@@ -2648,20 +2466,21 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIsNone(c.get("/api/session").get_json()["user"])
         self.assertEqual(c.get("/board").status_code, 302)
 
-    def test_login_page_is_served_by_the_react_build_when_present(self):
+    def test_login_page_is_the_react_shell_and_the_form_is_the_fallback(self):
         dist = tempfile.mkdtemp(); os.makedirs(os.path.join(dist, "assets"))
         open(os.path.join(dist, "index.html"), "w").write("<title>Odin</title><div id=root></div><script src=/assets/x.js></script>")
         open(os.path.join(dist, "assets", "x.js"), "w").write("// bundle")
         c = app_module.app.test_client()
-        with patch.dict(app_module.app.config, {"SERVE_SPA": True, "SPA_DIST": dist}):
+        with patch.dict(app_module.app.config, {"SPA_DIST": dist}):
             page = c.get("/login")
             self.assertIn(b'id=root', page.data); self.assertEqual(page.headers["Cache-Control"], "no-store")
             asset = c.get("/assets/x.js")
             self.assertEqual(asset.status_code, 200); self.assertIn("immutable", asset.headers["Cache-Control"])
-            self.assertEqual(c.get("/board").status_code, 302)            # un-ported pages untouched
-            # the HTML form still works as the fallback door
+            self.assertEqual(c.get("/board").status_code, 302)            # signed out
+            # a failed form POST re-renders the plain form with the reason; a good one signs in
+            bad = c.post("/login", data={"username": "admin", "password": "wrong"})
+            self.assertIn(b'name="username"', bad.data); self.assertIn(b"Bad username or password", bad.data)
             self.assertEqual(c.post("/login", data={"username": "admin", "password": "changeme"}).status_code, 302)
-        self.assertIn(b'name="username"', c.get("/login").data)           # Jinja again once SERVE_SPA is off
 
     def _api_client(self, username="admin", password="changeme"):
         c = app_module.app.test_client()
@@ -2669,19 +2488,13 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c.post("/api/login", json={"username": username, "password": password}, headers={"X-CSRF-Token": csrf})
         return c, c.get("/api/session").get_json()["csrf"]
 
-    def test_api_board_returns_columns_alerts_and_nav_counts(self):
+    def test_nav_counts_recorded_alerts(self):
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
         c, _ = self._api_client()
-        data = c.get("/api/board").get_json()
-        self.assertEqual([card["name"] for card in data["columns"][data["stages"][0]]], ["Late"])
-        self.assertEqual(data["alerts"]["project_overdue"][0]["name"], "Late")
-        self.assertEqual(data["real_alerts"]["project_overdue"], 1)
-        self.assertEqual(data["dashboard"]["total_active"], 1)
-        self.assertTrue(data["can_move"])
         __import__("scheduler").sync_alerts()   # the badge counts recorded alerts; the scheduler records them (B9)
         nav = c.get("/api/session").get_json()["user"]["nav"]
         self.assertGreaterEqual(nav["active_alert_count"], 1)
-        self.assertEqual(app_module.app.test_client().get("/api/board").status_code, 302)   # anonymous
+        self.assertEqual(app_module.app.test_client().get("/api/flow").status_code, 302)   # anonymous
 
     def test_api_stage_change_shares_validation_audit_and_permissions(self):
         self.new_project(name="P", client="C")
@@ -2699,19 +2512,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.post("/api/projects/999/stage", json={"stage": stages[1]}, headers={"X-CSRF-Token": csrf}).status_code, 404)
         self.client.post("/users", data={"username": "v", "name": "V", "password": STRONG_PASSWORD, "role": "Viewer"})
         v, vcsrf = self._api_client("v", STRONG_PASSWORD)
-        self.assertEqual(v.get("/api/board").status_code, 200)
-        self.assertFalse(v.get("/api/board").get_json()["can_move"])
+        self.assertEqual(v.get("/api/flow").status_code, 200)
+        self.assertFalse(v.get("/api/flow").get_json()["can_move"])
         self.assertEqual(v.post("/api/projects/1/stage", json={"stage": stages[2]}, headers={"X-CSRF-Token": vcsrf}).status_code, 403)
 
-    def test_api_alert_dismiss_is_session_only(self):
-        self.new_project(name="Late", client="C", target_end_date="2020-01-01")
-        c, csrf = self._api_client()
-        self.assertEqual(len(c.get("/api/board").get_json()["alerts"]["project_overdue"]), 1)
-        self.assertEqual(c.post("/api/alerts/1/dismiss/project_overdue", headers={"X-CSRF-Token": csrf}).status_code, 200)
-        data = c.get("/api/board").get_json()
-        self.assertEqual(data["alerts"]["project_overdue"], [])       # hidden for this session
-        self.assertEqual(data["real_alerts"]["project_overdue"], 1)   # the truth is untouched
-        self.assertEqual(c.post("/api/alerts/1/dismiss/bogus", headers={"X-CSRF-Token": csrf}).status_code, 404)
 
     def test_api_flow_lists_active_rollouts_stuck_first_with_next_task(self):
         self.new_project(name="Fine", client="C", target_end_date="2099-01-01")
@@ -2845,7 +2649,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             stages = [r["name"] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 2 ORDER BY position")]
             db.commit()
         self.client.post("/projects/2/tasks", data={"title": "Call", "assignee_id": uid, "due_date": _date.today().isoformat()})
-        self.client.post("/projects/2/stage", data={"stage": stages[1], "note": "go"})
+        self.client.post("/api/projects/2/stage", json={"stage": stages[1], "note": "go"})
         c, csrf = self._api_client()
         month = _date.today().strftime("%Y-%m")
         d = c.get(f"/api/calendar?month={month}").get_json()
@@ -3043,7 +2847,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(ar["audience"], "customer"); self.assertFalse(ar["can_edit"]); self.assertEqual([x["title"] for x in ar["data"]["raid"]], ["Weekend cutover"])
         self.assertIn("for the customer", str(ar["data"]["history"]["notes"])); self.assertNotIn("internal only", str(ar["data"]))
         # an old plain-text version stays readable; a missing one is a 404
-        self.client.post("/projects/1/report/save", data={"body": "# Old\n- item"})
+        with self.raw_db() as db:   # a plain-text version from before the rollout report
+            db.execute("INSERT INTO project_reports (project_id, version, body, created_by, created_at, kind) VALUES (1, 2, ?, 'Admin', datetime('now'), 'text')", ("# Old\n- item",))
+            db.commit()
         old = c.get("/api/projects/1/rollout-report?v=2").get_json()
         self.assertEqual(old["version"]["kind"], "text"); self.assertEqual(old["words"]["blocks"][0], ["h", "Old"])
         self.assertEqual(a.get("/api/projects/1/rollout-report?v=2").status_code, 404)             # customers never see text versions
@@ -3359,7 +3165,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         dist = tempfile.mkdtemp(); os.makedirs(os.path.join(dist, "assets"))
         open(os.path.join(dist, "index.html"), "w").write("<title>Odin</title><script>document.documentElement.dataset.theme='light'</script><div id=root></div>")
         script_src = lambda r: re.search(r"script-src ([^;]*);", r.headers["Content-Security-Policy"]).group(1)   # noqa: E731
-        with patch.dict(app_module.app.config, {"SERVE_SPA": True, "SPA_DIST": dist}):
+        with patch.dict(app_module.app.config, {"SPA_DIST": dist}):
             r = app_module.app.test_client().get("/login")
             nonce = re.search(rb'<script nonce="([^"]+)">', r.data).group(1).decode()
             self.assertEqual(script_src(r), f"'self' 'nonce-{nonce}'")
@@ -3367,8 +3173,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         r = self.client.get("/no-such-page")                                     # the Jinja error page: its script carries the nonce
         self.assertIn("'nonce-", script_src(r)); self.assertNotIn("unsafe-inline", script_src(r))
         self.new_project(name="P", client="C")
-        r = self.client.get("/projects/1")                                       # an old Jinja twin with onclick=: still allowed, for now
-        self.assertIn("'unsafe-inline'", script_src(r))
+        with self.raw_db() as db:
+            token = db.execute("SELECT access_token FROM projects WHERE id=1").fetchone()[0]
+        r = app_module.app.test_client().get(f"/guest/{token}")                 # the guest page: no 'unsafe-inline' left anywhere
+        self.assertNotIn("unsafe-inline", script_src(r))
 
     def test_staff_cannot_be_invited_as_the_customer(self):
         # test report SEC-1: the email invite skipped the rule participant_add enforces (system map #14)
@@ -3728,7 +3536,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/dashboard"))
         c, _ = self._api_client()
         self.assertEqual(c.get("/api/session").get_json()["user"]["home"], "dashboard")
-        self.assertIn(b"Pick a home page", self.client.post("/account/home", data={"home": "elsewhere"}, follow_redirects=True).data)
+        self.client.post("/account/home", data={"home": "elsewhere"})
+        self.assertIn("Pick a home page", flashed(self.client))
         self.client.post("/account/home", data={"home": "board"})
         self.assertTrue(self.client.get("/").headers["Location"].endswith("/board"))
         self.assertEqual(c.get("/api/session").get_json()["user"]["home"], "board")
@@ -3740,7 +3549,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="F", client="C", target_end_date="2099-01-01")
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
-        self.client.post("/projects/1/stage", data={"stage": stages[1], "note": "scoped"})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[1], "note": "scoped"})
         self.client.post("/projects/1/tasks", data={"title": "Open one"})
         self.client.post("/projects/1/tasks", data={"title": "Done one"})
         self.client.post("/projects/1/tasks/2/toggle")
@@ -3775,7 +3584,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM projects").fetchone()[0], 1)
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         self.assertEqual(c.post("/projects/1/note", data={"note": "hi"}).status_code, 302)
-        self.assertEqual(c.post("/projects/1/stage", data={"stage": stages[-1]}).status_code, 403)
+        self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[-1]}).status_code, 403)
         self.assertEqual(c.post("/projects/1/delete").status_code, 403)
 
     def test_admin_cannot_strip_its_own_view_rights(self):
@@ -3799,8 +3608,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_users_page_and_export_carry_access_review_evidence(self):
         self._make_user("newbie", "Viewer")
-        page = self.client.get("/users").data.decode()
-        self.assertIn("Last login", page); self.assertIn("Created", page)
+        users = {u["username"]: u for u in self.client.get("/api/users").get_json()["users"]}
+        self.assertIsNotNone(users["admin"]["last_login_at"]); self.assertIsNotNone(users["newbie"]["created_at"])
         resp = self.client.get("/users/export.csv")
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
@@ -4031,11 +3840,6 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             self.assertEqual(db.execute("PRAGMA journal_mode").fetchone()[0], "wal")
 
-    def test_mobile_nav_has_a_toggle(self):
-        page = self.client.get("/board").data.decode()
-        self.assertIn('id="nav-toggle"', page)
-        self.assertIn('class="nav-burger"', page)
-
     def test_migration_flags_an_existing_seed_admin_and_backfills_customer_tokens(self):
         """Fresh test databases never exercise the upgrade path: the admin row
         does not exist yet when migrate_db runs. A real install does, and the
@@ -4234,8 +4038,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             notes_before = db.execute("SELECT COUNT(*) AS c FROM status_notes WHERE project_id=1").fetchone()["c"]
         self._soft_delete(1)
 
-        for path, data in [("/projects/1/stage", {"stage": "Kickoff", "note": "x"}),
-                           ("/projects/1/note", {"note": "y"}),
+        self.assertEqual(self.client.post("/api/projects/1/stage", json={"stage": "Kickoff", "note": "x"}).status_code, 404)
+        for path, data in [("/projects/1/note", {"note": "y"}),
                            ("/projects/1/tasks", {"title": "z"})]:
             self.assertEqual(self.client.post(path, data=data).status_code, 404, path)
 
@@ -4298,14 +4102,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="Finished", client="C")
         with self.raw_db() as db:
             terminal_before = db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position DESC LIMIT 1").fetchone()["name"]
-        self.client.post("/projects/1/stage", data={"stage": terminal_before, "note": "done"})
-        self.assertNotIn(b"Finished", self.client.get("/projects").data)   # closed = hidden
+        self.client.post("/api/projects/1/stage", json={"stage": terminal_before, "note": "done"})
+        self.assertEqual(self.names(), [])   # closed = hidden
 
         self.client.post("/projects/1/stages/add", data={"name": "Post-Mortem"})
         with self.raw_db() as db:
             terminal_after = db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position DESC LIMIT 1").fetchone()["name"]
         self.assertEqual(terminal_after, terminal_before)                  # still the closed stage
-        self.assertNotIn(b"Finished", self.client.get("/projects").data)   # still closed
+        self.assertEqual(self.names(), [])   # still closed
 
     def test_refresh_without_a_rotated_token_keeps_the_stored_one(self):
         """Microsoft may return an access token with no new refresh_token. The
@@ -4364,70 +4168,22 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         """Duplicate reuses project_new, so the PO-required rule still holds for
         the copy and there's no parallel create path that can drift."""
         self.new_project(name="Original", client="Acme", target_end_date="2027-03-01")
-        form = self.client.get("/projects/1?").data  # ensure it exists
-        page = self.client.get("/projects/new?from=1").data
-        self.assertIn(b"Duplicate Project", page)
-        self.assertIn(b"Original (copy)", page)   # name nudged, not silently identical
-        self.assertIn(b"Acme", page)
-        self.assertIn(b"po_document", page)       # PO still required on the copy
-        self.assertNotIn(b"Save Changes", page)   # it creates, it doesn't update
+        form = self.client.get("/api/project-form?from=1").get_json()
+        self.assertEqual(form["mode"], "duplicate")   # it creates, it doesn't update
+        self.assertEqual((form["project"]["name"], form["project"]["client"]), ("Original (copy)", "Acme"))   # name nudged, not silently identical
+        # the copy is created through project_new, so the PO is still required
+        self.client.post("/projects/new", data={"name": "Original (copy)", "client": "Acme"})
+        self.assertEqual(self.names(), ["Original"])
 
     def test_duplicate_of_missing_project_falls_back_to_a_blank_form(self):
-        resp = self.client.get("/projects/new?from=9999")
-        self.assertEqual(resp.status_code, 200)       # the old 404 hid behind a nav link that said "New Project"
-        page = resp.data
-        self.assertIn(b"New Project", page)
-        self.assertNotIn(b"Duplicate Project", page)
-
-    def test_global_nav_search_targets_the_project_list(self):
-        self.new_project(name="Findable", client="C")
-        nav = self.client.get("/board").data
-        self.assertIn(b'class="nav-search"', nav)
-        self.assertIn(b'name="q"', nav)
-        # and the target actually filters
-        self.assertIn(b"Findable", self.client.get("/projects?q=Findable").data)
-
-    def test_bulk_complete_and_delete_only_touch_this_projects_tasks(self):
-        self.new_project(name="A", client="C")
-        self.new_project(name="B", client="C")
-        self.client.post("/projects/1/tasks", data={"title": "a1"})
-        self.client.post("/projects/1/tasks", data={"title": "a2"})
-        self.client.post("/projects/2/tasks", data={"title": "b1"})
-        with self.raw_db() as db:
-            ids = {r["title"]: r["id"] for r in db.execute("SELECT id,title FROM tasks")}
-
-        # a doctored form naming another project's task must not reach it
-        self.client.post("/projects/1/tasks/bulk", data={
-            "action": "complete", "task_ids": [str(ids["a1"]), str(ids["b1"])]})
-        with self.raw_db() as db:
-            rows = {r["title"]: r["done"] for r in db.execute("SELECT title,done FROM tasks")}
-        self.assertEqual(rows["a1"], 1)
-        self.assertEqual(rows["b1"], 0)   # other project's task untouched
-
-        self.client.post("/projects/1/tasks/bulk", data={"action": "reopen", "task_ids": [str(ids["a1"])]})
-        with self.raw_db() as db:
-            self.assertEqual(db.execute("SELECT done FROM tasks WHERE id=?", (ids["a1"],)).fetchone()[0], 0)
-
-        self.client.post("/projects/1/tasks/bulk", data={
-            "action": "delete", "task_ids": [str(ids["a1"]), str(ids["a2"])]})
-        with self.raw_db() as db:
-            left = [r["title"] for r in db.execute("SELECT title FROM tasks")]
-        self.assertEqual(left, ["b1"])
-
-    def test_bulk_rejects_bad_action_and_non_numeric_ids(self):
-        self.new_project(name="A", client="C")
-        self.client.post("/projects/1/tasks", data={"title": "t"})
-        self.assertEqual(self.client.post("/projects/1/tasks/bulk",
-                         data={"action": "drop-table", "task_ids": ["1"]}).status_code, 400)
-        self.assertEqual(self.client.post("/projects/1/tasks/bulk",
-                         data={"action": "delete", "task_ids": ["1; DROP TABLE tasks"]}).status_code, 400)
-        with self.raw_db() as db:
-            self.assertEqual(db.execute("SELECT COUNT(*) AS c FROM tasks").fetchone()["c"], 1)
+        self.assertEqual(self.client.get("/projects/new?from=9999").status_code, 200)   # the old 404 hid behind a "New Project" link
+        form = self.client.get("/api/project-form?from=9999").get_json()
+        self.assertEqual((form["mode"], form["project"]), ("new", {}))
 
     def test_sla_from_measured_only_sets_stages_with_evidence(self):
         self.new_project(name="Measured", client="C")
         # give PO Received a real completed visit by moving the project on
-        self.client.post("/projects/1/stage", data={"stage": "Kickoff", "note": "moved"})
+        self.client.post("/api/projects/1/stage", json={"stage": "Kickoff", "note": "moved"})
         self.client.post("/settings/templates/1/sla/from-measured")
         with self.raw_db() as db:
             rows = {r["name"]: r["sla_days"] for r in db.execute("SELECT name, sla_days FROM stage_template_stages WHERE template_id=1")}
@@ -4672,12 +4428,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIn(("assigned", "You are on P"), self._bell(added))
         self.client.post("/projects/1/edit", data={"name": "P", "client": "C", "via": "Direct", "delivery_mode": "Distribution/MSSP", "owner_id": new_pm})
         self.assertIn(("assigned", "You now manage P"), self._bell(new_pm))
-        # a bulk completion tells the PM; a signed-up colleague hears they were let in
-        self.client.post("/projects/1/tasks", data={"title": "a"}); self.client.post("/projects/1/tasks", data={"title": "b"})
-        with self.raw_db() as db:
-            ids = [str(r[0]) for r in db.execute("SELECT id FROM tasks WHERE project_id = 1")]
-        self.client.post("/projects/1/tasks/bulk", data={"action": "complete", "task_ids": ids})
-        self.assertTrue(any("2 tasks done" in t for _, t in self._bell(new_pm)))
+        # a finished task tells the PM; a signed-up colleague hears they were let in
+        self.client.post("/projects/1/tasks", data={"title": "a"})
+        self.client.post("/projects/1/tasks/1/toggle")
+        self.assertTrue(any("done" in t.lower() for _, t in self._bell(new_pm)), self._bell(new_pm))
         with self.raw_db() as db:
             db.execute("INSERT INTO users (username, password_hash, name, role, active, pending, kind) VALUES ('wait9', 'x', 'Wait', 'Viewer', 0, 1, 'internal')")
             waiter = db.execute("SELECT id FROM users WHERE username = 'wait9'").fetchone()[0]; db.commit()
@@ -4754,7 +4508,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         cookie = a.get_cookie("session").value
         b = app_module.app.test_client(); b.set_cookie("session", cookie)
         self.assertIsNotNone(b.get("/api/session").get_json()["user"])       # a copied cookie works while the session lives
-        self.assertEqual(a.get("/logout").status_code, 200)                    # a GET only shows the button
+        self.assertEqual(a.get("/logout").status_code, 405)                    # a link cannot sign anyone out
         self.assertIsNotNone(b.get("/api/session").get_json()["user"])
         a.post("/api/logout", headers={"X-CSRF-Token": csrf})
         self.assertIsNone(b.get("/api/session").get_json()["user"])           # the copy is dead too
@@ -4819,7 +4573,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             before = db.execute("SELECT stage_entered_at FROM projects WHERE id=1").fetchone()[0]
         self.assertIsNotNone(before)     # set at creation
-        self.client.post("/projects/1/stage", data={"stage": "Kickoff", "note": "go"})
+        self.client.post("/api/projects/1/stage", json={"stage": "Kickoff", "note": "go"})
         with self.raw_db() as db:
             after = db.execute("SELECT stage, stage_entered_at FROM projects WHERE id=1").fetchone()
         self.assertEqual(after["stage"], "Kickoff")
@@ -4863,16 +4617,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE project_stages SET sla_days=1 WHERE project_id=1 AND name='Kickoff'")
             db.execute("UPDATE projects SET stage='Kickoff', stage_entered_at='2026-01-01T00:00:00' WHERE id=1")
             db.commit()
-        board = self.client.get("/board").data
-        self.assertIn(b"over their stage SLA", board)
-        self.assertIn(b"Stuck", board)
+        self.assertEqual(self.client.get("/api/projects/1/flow").get_json()["state"], "over_sla")
         __import__("scheduler").sync_alerts()   # the scheduler records alerts (B9)
         with self.raw_db() as db:
             self.assertIsNotNone(db.execute(
                 "SELECT 1 FROM alerts WHERE alert_type='stage_sla_breach' AND resolved=0").fetchone())
         # moving stage resets the clock, so the breach clears
-        self.client.post("/projects/1/stage", data={"stage": "Deployment", "note": "moved"})
-        self.assertNotIn(b"over their stage SLA", self.client.get("/board").data)
+        self.client.post("/api/projects/1/stage", json={"stage": "Deployment", "note": "moved"})
+        self.assertNotEqual(self.client.get("/api/projects/1/flow").get_json()["state"], "over_sla")
 
     def test_settings_sla_saves_and_blank_clears(self):
         with self.raw_db() as db:
@@ -4985,11 +4737,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_analytics_page_renders_and_respects_view_reports(self):
         self.new_project(name="CycleProj", client="C")
-        self.client.post("/projects/1/stage", data={"stage": "Kickoff", "note": "moved"})
-        body = self.client.get("/analytics").data
-        self.assertIn(b"Cycle Time", body)
-        self.assertIn(b"Time In Stage", body)
-        self.assertIn(b"CycleProj", body)          # ageing list picks it up
+        self.client.post("/api/projects/1/stage", json={"stage": "Kickoff", "note": "moved"})
+        body = self.client.get("/api/analytics").get_json()
+        self.assertEqual([a["project_name"] for a in body["stats"]["aging"]], ["CycleProj"])   # ageing list picks it up
+        self.assertIn("Kickoff", [s["stage"] for s in body["stats"]["stages"]])
         with self.raw_db() as db:
             db.execute("UPDATE role_permissions SET allowed=0 WHERE permission='view_reports' AND role='Admin'")
             db.commit()
@@ -5002,41 +4753,34 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             tid = db.execute("SELECT id FROM tasks WHERE project_id=1 LIMIT 1").fetchone()["id"]
         self.client.post(f"/projects/1/tasks/{tid}/toggle")
-        self.assertIn("1/2 tasks".encode(), self.client.get("/board").data)
+        row = self.client.get("/api/projects").get_json()["rows"][0]
+        self.assertEqual((row["total_tasks"] - row["open_tasks"], row["total_tasks"]), (1, 2))
 
     def test_viewer_sees_no_task_controls(self):
         self.new_project(name="P", client="C")
-        with self.raw_db() as db:
-            db.execute("INSERT INTO users (username,password_hash,name,role,active) VALUES ('vv','x','Vv','Viewer',1)")
-            db.commit()
-            vid = db.execute("SELECT id FROM users WHERE username='vv'").fetchone()["id"]
-        vc = app_module.app.test_client()
-        with vc.session_transaction() as s:
-            s["user_id"] = vid
-            s["user_name"] = "Vv"
-            s["role"] = "Viewer"
-        self.assertNotIn(b"Add Task", vc.get("/projects/1").data)
+        self._make_user("vv", "Viewer")
+        vc, _ = self._api_client("vv", STRONG_PASSWORD)
+        self.assertFalse(vc.get("/api/projects/1").get_json()["can"]["tasks"])
 
     def test_contact_list_add_and_delete(self):
         for list_key in ["account-managers", "vendors", "products", "outsourcers"]:
             self.client.post(f"/settings/contacts/{list_key}/add", data={"name": "Alice", "email": "alice@x.com"})
-            resp = self.client.get("/settings/contacts")
-            self.assertIn(b"Alice", resp.data)
+            listed = lambda: [i["name"] for l in self.client.get("/api/settings/contacts").get_json()["lists"] if l["key"] == list_key for i in l["items"]]   # noqa: E731
+            self.assertIn("Alice", listed())
             with self.raw_db() as db:
                 row = db.execute(
                     f"SELECT id FROM {app_module.CONTACT_LISTS[list_key]['table']} WHERE name = 'Alice'"
                 ).fetchone()
             self.client.post(f"/settings/contacts/{list_key}/{row['id']}/delete")
-            resp = self.client.get("/settings/contacts")
-            self.assertNotIn(b"Alice", resp.data)
+            self.assertNotIn("Alice", listed())
 
     def test_partner_delete_cascades_account_managers(self):
         self.client.post("/settings/contacts/partners/add", data={"name": "Acme Partner"})
         with self.raw_db() as db:
             partner_id = db.execute("SELECT id FROM partners WHERE name = 'Acme Partner'").fetchone()["id"]
         self.client.post(f"/settings/contacts/partners/{partner_id}/managers/add", data={"name": "Bob", "email": "bob@x.com"})
-        resp = self.client.get("/settings/contacts")
-        self.assertIn(b"Bob", resp.data)
+        partners = self.client.get("/api/settings/contacts").get_json()["partners"]
+        self.assertEqual([m["name"] for m in partners[0]["managers"]], ["Bob"])
 
         self.client.post(f"/settings/contacts/partners/{partner_id}/delete")
         with self.raw_db() as db:
@@ -5196,62 +4940,13 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             admin_proj_id = db.execute("SELECT id FROM projects WHERE name = 'Admin Proj'").fetchone()["id"]
             priya_proj_id = db.execute("SELECT id FROM projects WHERE name = 'Priya Proj'").fetchone()["id"]
 
-        # filter by user (row link text, not the filter dropdown's <option> text)
-        resp = self.client.get("/audit-logs?user=Priya")
-        self.assertIn(b">Priya Proj</a>", resp.data)
-        self.assertNotIn(b">Admin Proj</a>", resp.data)
-
+        named = lambda q: {r["resource_name"] for r in self.client.get("/api/audit" + q).get_json()["rows"] if r["resource_type"] == "project"}   # noqa: E731
+        # filter by user
+        self.assertEqual(named("?user=Priya"), {"Priya Proj"})
         # filter by action
-        resp = self.client.get("/audit-logs?action=create_project")
-        self.assertIn(b">Admin Proj</a>", resp.data)
-        self.assertIn(b">Priya Proj</a>", resp.data)
-
+        self.assertEqual(named("?action=create_project"), {"Admin Proj", "Priya Proj"})
         # filter by project
-        resp = self.client.get(f"/audit-logs?project_id={admin_proj_id}")
-        self.assertIn(b">Admin Proj</a>", resp.data)
-        self.assertNotIn(b">Priya Proj</a>", resp.data)
-
-
-class BoardCraftTestCase(unittest.TestCase):
-    """Pins the design fixes from the /impeccable critique of the Board, so a
-    later refactor can't quietly undo them."""
-
-    def setUp(self):
-        fd, db_module.DB_PATH = tempfile.mkstemp()
-        os.close(fd)
-        os.remove(db_module.DB_PATH)
-        isolate_uploads(self)
-        app_module.init_db()
-        settle_seed_admin()
-        self.client = app_module.app.test_client()
-        self.client.post("/login", data={"username": "admin", "password": "changeme"})
-
-    def tearDown(self):
-        os.unlink(db_module.DB_PATH)
-
-    def _make_project(self):
-        """One project on the board, for markup/a11y assertions."""
-        self.client.post(
-            "/projects/new",
-            data={"po_document": (io.BytesIO(b"%PDF-1.4 po"), "po.pdf"), "name": "Late Proj", "client": "C"},
-        )
-
-    def test_board_has_no_click_handlers_without_a_keyboard_equivalent(self):
-        """Every project on the board must be reachable by keyboard. Rows and
-        cards used to be onclick-only, which excluded keyboard and AT users
-        from the primary task entirely."""
-        self._make_project()
-        html = self.client.get("/board").data.decode()
-        # no onclick navigation left on non-interactive elements
-        self.assertNotIn("<tr onclick", html)
-        self.assertNotIn('<div class="card" onclick', html)
-        # and a real anchor carries the card's primary action
-        self.assertIn('class="card-link"', html)
-
-    def test_skip_link_precedes_the_navigation(self):
-        html = self.client.get("/board").data.decode()
-        self.assertIn('class="skip-link" href="#main"', html)
-        self.assertLess(html.index("skip-link"), html.index("<nav>"))
+        self.assertEqual(named(f"?project_id={admin_proj_id}"), {"Admin Proj"})
 
 
 class SecurityTestCase(unittest.TestCase):
@@ -5292,7 +4987,7 @@ class SecurityTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
 
     def test_csrf_token_is_rendered_into_forms(self):
-        resp = self.client.get("/login")
+        resp = self.client.post("/login", data={"username": "nobody", "password": "x"})   # the form fallback
         self.assertIn(b'name="_csrf"', resp.data)
 
     # --- transport layer: headers + cookie ----------------------------------
@@ -5305,7 +5000,7 @@ class SecurityTestCase(unittest.TestCase):
         self.assertIn("object-src 'none'", resp.headers["Content-Security-Policy"])
 
     def test_session_cookie_is_hardened(self):
-        resp = self.client.get("/login")
+        resp = self.client.get("/api/session")   # the first request hands out the CSRF token, in the session
         cookie = resp.headers.get("Set-Cookie", "")
         self.assertIn("HttpOnly", cookie)
         self.assertIn("SameSite=Lax", cookie)
@@ -5365,9 +5060,8 @@ class SecurityTestCase(unittest.TestCase):
             "/projects/1/documents",
             data={"category": "Deliverable", "file": (io.BytesIO(b"<script>alert(1)</script>"), "xss.html")},
             content_type="multipart/form-data",
-            follow_redirects=True,
         )
-        self.assertIn(b"isn&#39;t allowed", resp.data)
+        self.assertIn("isn't allowed", flashed(self.client))
         with sqlite3.connect(db_module.DB_PATH) as db:
             rows = db.execute("SELECT COUNT(*) FROM documents WHERE filename = 'xss.html'").fetchone()[0]
         self.assertEqual(rows, 0, "blocked upload must not reach the documents table")

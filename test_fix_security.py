@@ -11,7 +11,7 @@ from unittest.mock import patch
 import app as app_module
 import db as db_module
 import test_app as T
-from test_app import STRONG_PASSWORD, FakeAIServer
+from test_app import STRONG_PASSWORD, FakeAIServer, flashed
 
 
 class Base(unittest.TestCase):
@@ -111,7 +111,7 @@ class SharedHelpersTest(Base):
 
     def test_form_keys_missing_are_not_500s(self):   # R13 / F-L6
         self.new_project(name="P", client="C")
-        self.assertEqual(self.client.post("/projects/1/stage", data={}).status_code, 302)
+        self.assertEqual(self.client.post("/api/projects/1/stage", json={}).status_code, 400)
         self.assertEqual(self.client.post("/projects/1/note", data={}).status_code, 302)
         self.assertEqual(self.client.post("/users", data={}).status_code, 302)
         self.assertEqual(self.client.post("/account", data={}).status_code, 302)
@@ -164,10 +164,11 @@ class DatesAndFieldsTest(Base):   # B1, F-H1, F-L2/L3
 class ExposureTest(Base):
     def test_existing_external_invited_gets_no_link_by_hand(self):   # S1
         self.new_project(name="A", client="Acme"); self.new_project(name="B", client="Acme")
-        resp, _ = self._invite(1, "ann@acme.example", "Customer", "Ann")
-        self.assertIn(b"send them this link yourself", resp.data)               # a brand-new account: by hand is fine
-        resp, _ = self._invite(2, "ann@acme.example", "Customer", "Ann")
-        self.assertNotIn(b"/auth/link/", resp.data); self.assertIn(b"ask for a sign-in link", resp.data)
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        self.assertIn("send them this link yourself", flashed(self.client))     # a brand-new account: by hand is fine
+        self._invite(2, "ann@acme.example", "Customer", "Ann")
+        said = flashed(self.client)
+        self.assertNotIn("/auth/link/", said); self.assertIn("ask for a sign-in link", said)
 
     def test_signoff_link_for_a_signer_on_other_projects_is_emailed_not_returned(self):   # S1
         c, h, ann, _ = self._signoff_setup()
@@ -223,7 +224,7 @@ class ExposureTest(Base):
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position")]
-        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
         ann = self._external_client("ann@acme.example")
         h = self.csrf(ann)
         aid = ann.get("/api/projects/1/flow").get_json()["approval"]["id"]
@@ -245,9 +246,8 @@ class ExposureTest(Base):
     def test_legacy_guest_links_only_for_managers(self):   # S11
         self.new_project(name="P", client="Acme")
         self._make_user("viewer", "Viewer")
-        page = self.login_as("viewer").get("/projects/1").data.decode()
-        self.assertNotIn("/guest/", page)
-        self.assertIn("/guest/", self.client.get("/projects/1").data.decode())
+        self.assertEqual(self.login_as("viewer").get("/api/projects/1").get_json()["guest_links"], {"customer": None, "vendor": None})
+        self.assertIn("/guest/", self.client.get("/api/projects/1").get_json()["guest_links"]["customer"])
 
 
 class AccessControlTest(Base):
@@ -318,17 +318,12 @@ class AccessControlTest(Base):
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position")]
             db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('notify_teams_enabled', '1')"); db.commit()
-        self.client.post("/projects/1/stage", data={"stage": stages[1]})
+        self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
         ann = self._external_client("ann@acme.example")
         aid = ann.get("/api/projects/1/flow").get_json()["approval"]["id"]
         with patch("graph.send_teams_message", return_value=(True, None)) as teams:
             ann.post(f"/api/projects/1/approvals/{aid}", json={"decision": "approved"}, headers=self.csrf(ann))
         self.assertIn("&lt;b&gt;P&lt;/b&gt;", teams.call_args.args[0]); self.assertNotIn("<b>P</b>", teams.call_args.args[0])
-
-    def test_legacy_alert_dismiss_is_post_only(self):   # S10
-        self.new_project(name="Late", client="Acme", target_end_date="2020-01-01")
-        self.assertEqual(self.client.get("/alerts/1/dismiss/project_overdue").status_code, 405)
-        self.assertEqual(self.client.post("/alerts/1/dismiss/project_overdue").status_code, 302)
 
 
 class SignInTest(Base):
@@ -421,10 +416,10 @@ class RobustnessTest(Base):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM users WHERE pending = 1").fetchone()[0], 1)
 
     def test_report_versions_number_inside_the_insert(self):   # F-M6
-        from services.reports import save_report
         self.new_project(name="P", client="C")
-        with app_module.app.test_request_context():
-            self.assertEqual([save_report(1, "a", "x"), save_report(1, "b", "x")], [1, 2])
+        h = self.csrf()
+        save = lambda: self.client.post("/api/projects/1/rollout-report", json={"summary": "x"}, headers=h).get_json()["version"]   # noqa: E731
+        self.assertEqual([save(), save()], [1, 2])
 
     def test_lessons_save_is_one_commit_with_its_audit_row(self):   # F-M7
         self.new_project(name="P", client="C")
