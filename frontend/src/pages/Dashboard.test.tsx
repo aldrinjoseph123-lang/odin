@@ -4,6 +4,7 @@ import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import Dashboard from "./Dashboard"
+import { Toaster } from "@/components/Toaster"
 import { admin, dashboard } from "./fixtures"
 
 vi.mock("@/lib/api", async (orig) => ({
@@ -15,7 +16,7 @@ vi.mock("@/lib/api", async (orig) => ({
 }))
 import { resetLayout, saveLayout } from "@/lib/api"
 
-const mount = () => render(<MemoryRouter><Dashboard user={admin} /></MemoryRouter>)
+const mount = () => render(<MemoryRouter><Dashboard user={admin} /><Toaster /></MemoryRouter>)   // saves answer in a toast
 const titles = () => screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"))
 
 describe("Dashboard", () => {
@@ -72,7 +73,7 @@ describe("Dashboard", () => {
     await waitFor(() => expect(saveLayout).toHaveBeenLastCalledWith([
       { id: "kpis", w: 3, settings: { tiles: ["active", "overdue"] } }, { id: "progress", w: 1, settings: {} },
       { id: "timeline", w: 2, settings: { show: "all", limit: 12 } }, { id: "alerts", w: 1, settings: { limit: 8 } }]))
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved to your dashboard.")
+    expect((await screen.findAllByText("Saved to your dashboard.")).length).toBeGreaterThan(0)
     await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "Customise Timeline" }))
     await user.click(within(screen.getByRole("group", { name: "Width of Timeline" })).getByRole("button", { name: "Full" }))
@@ -81,7 +82,9 @@ describe("Dashboard", () => {
     await user.click(screen.getByRole("button", { name: "Customise Open alerts" }))
     await user.click(screen.getByRole("button", { name: "Remove Open alerts" }))
     expect(titles()).not.toContain("Open alerts")
-    await user.click(screen.getByRole("button", { name: "Undo" }))
+    await screen.findByText("Open alerts removed.")
+    const undos = screen.getAllByRole("button", { name: "Undo" })   // the newest toast's Undo is the last
+    await user.click(undos[undos.length - 1])
     expect(titles()).toContain("Open alerts")
     await waitFor(() => expect(saveLayout).toHaveBeenLastCalledWith([
       { id: "kpis", w: 3, settings: { tiles: ["active", "overdue"] } }, { id: "progress", w: 1, settings: {} },
@@ -104,7 +107,7 @@ describe("Dashboard", () => {
     mount()
     await user.click(await screen.findByRole("button", { name: "Customise Timeline" }))
     await user.click(screen.getByRole("button", { name: "Remove Timeline" }))
-    await screen.findByRole("status")
+    await screen.findByText("Timeline removed.")
     await user.click(screen.getByRole("button", { name: "Dashboard layout" }))
     await user.click(screen.getByRole("button", { name: /Reset to default/ }))
     expect(resetLayout).toHaveBeenCalled()

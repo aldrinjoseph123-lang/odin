@@ -12,7 +12,7 @@ const stages = ["PO Received", "Scoping", "Sensor pilot", "Deployment", "Closed"
 export const flowRow = (over: Partial<FlowRow>): FlowRow => ({
   id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", stages, stage_index: 1, owner_name: "Admin User", mine: true,
   team: [{ id: 1, name: "Admin User", avatar_url: null }], approval: null, delivery_mode: "Direct", target_end_date: "2026-12-01",
-  days_in_stage: 3, sla_days: 5, over_by: null, state: "on_track", open_tasks: 1, total_tasks: 2,
+  days_in_stage: 3, sla_days: 5, over_by: null, state: "on_track", open_tasks: 1, total_tasks: 2, late_tasks: 0, late_since: null,
   next_task: { title: "Collect asset inventory", due_date: "2026-10-02", assignee: "Priya" }, updated_at: "2026-09-28T10:00:00", idle_days: 1, stale: false, ...over,
 })
 export const flow: FlowData = {
@@ -23,7 +23,7 @@ export const flow: FlowData = {
     flowRow({ id: 3, name: "Fine one" }),
     flowRow({ id: 4, name: "Other fine", client: "Initech", stage: "Deployment", stage_index: 3, mine: false, approval: "pending" }),
   ],
-  counts: { overdue: 1, over_sla: 1, due_soon: 0, on_track: 2 },
+  counts: { overdue: 1, over_sla: 1, due_soon: 0, on_track: 2, late_tasks: 0 },
 }
 
 export const dashboard: DashboardData = {

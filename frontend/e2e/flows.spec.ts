@@ -14,7 +14,7 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   // a widget's own menu: move, width, a setting — each saved at once
   await page.getByRole("button", { name: "Customise Portfolio progress" }).click()
   await page.getByRole("button", { name: "Move Portfolio progress earlier" }).click()
-  await expect(page.getByRole("status")).toHaveText(/Saved to your dashboard/)
+  await expect(page.getByText(/Saved to your dashboard/).first()).toBeVisible()   // a toast
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Customise Timeline" }).click()
   await page.getByRole("group", { name: "Width of Timeline" }).getByRole("button", { name: "Full" }).click()
@@ -23,7 +23,8 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   await page.getByRole("button", { name: "Customise Open alerts" }).click()
   await page.getByRole("button", { name: "Remove Open alerts" }).click()
   await expect(page.locator("main section[aria-label='Open alerts']")).toHaveCount(0)
-  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.getByText("Open alerts removed.")).toBeVisible()
+  await page.getByRole("button", { name: "Undo" }).last().click()   // the newest toast's Undo
   await expect(page.locator("main section[aria-label='Open alerts']")).toHaveCount(1)
   // no gaps: every row of the three-column grid is full
   const rowsFull = await page.locator("main .grid.grid-cols-3 > div").evaluateAll((cells) => {
@@ -45,14 +46,14 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   // reset returns to the workspace default
   await page.getByRole("button", { name: "Dashboard layout" }).click()
   await page.getByRole("button", { name: /Reset to default/ }).click()
-  await expect(page.getByRole("status")).toHaveText(/Back to the workspace default/)
+  await expect(page.getByText(/Back to the workspace default/).first()).toBeVisible()   // a toast
   await expect(page.locator("main section[aria-label='Custom metric']")).toHaveCount(0)
   // an admin sets the default; a member without their own arrangement sees it
   await page.getByRole("button", { name: "Customise Cycle time" }).click()
   await page.getByRole("button", { name: "Remove Cycle time" }).click()
   await page.getByRole("button", { name: "Dashboard layout" }).click()
   await page.getByRole("button", { name: /Save as workspace default/ }).click()
-  await expect(page.getByRole("status")).toHaveText(/Saved as the workspace default/)
+  await expect(page.getByText(/Saved as the workspace default/).first()).toBeVisible()   // a toast
   await signIn(page, "member", "/dashboard")
   await expect(page.locator("main section[aria-label='Timeline']")).toBeVisible()
   await expect(page.locator("main section[aria-label='Cycle time']")).toHaveCount(0)
@@ -65,7 +66,7 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Dashboard layout" }).click()
   await page.getByRole("button", { name: /Save as workspace default/ }).click()
-  await expect(page.getByRole("status")).toHaveText(/Saved as the workspace default/)
+  await expect(page.getByText(/Saved as the workspace default/).first()).toBeVisible()   // a toast
   expectClean(errors)
 })
 

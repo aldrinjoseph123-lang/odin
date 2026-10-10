@@ -52,7 +52,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
   })
   const f = d.finish
   const tiles: { label: string; value: string; sub?: string; tone?: "bad" | "warn" | "ok" }[] = [
-    { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: f.vs_target_days != null && f.vs_target_days > 0 ? "bad" : "ok" },
+    { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: f.vs_target_days != null && f.vs_target_days > 0 ? (f.target && d.today > f.target ? "bad" : "warn") : "ok" },
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
     { label: "Against baseline", value: f.vs_baseline_days == null ? "—" : slipText(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", tone: f.vs_baseline_days && f.vs_baseline_days > 0 ? "warn" : undefined },
     { label: "Complete", value: `${d.pct_complete}%`, sub: `confidence ${d.health.confidence}` },
@@ -96,8 +96,9 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
                   <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` → ${fmtDate(s.actual_end)}` : " → now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
                   <td className="px-2 py-2">{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
-                  {/* a stage running late is amber; red only once the rollout's forecast misses its target (critique 10 Oct) */}
-                  <td className={cn("px-2 py-2 whitespace-nowrap", s.slip_days && s.slip_days > 0 ? (f.vs_target_days != null && f.vs_target_days > 0 ? "font-medium text-bad" : "text-warn") : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
+                  {/* a finished stage's slip is history (muted); a running or coming stage that slips is amber;
+                      red only once the target date itself has passed: red means overdue (critique 10 Oct) */}
+                  <td className={cn("px-2 py-2 whitespace-nowrap", s.slip_days && s.slip_days > 0 && s.status !== "done" ? (f.target && d.today > f.target ? "font-medium text-bad" : "text-warn") : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
                 </tr>
               )
             })}

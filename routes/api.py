@@ -964,10 +964,13 @@ def api_flow():
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name, "
         "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.done = 0) AS open_tasks, "
-        "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_tasks "
+        "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_tasks, "
+        # open tasks past their date: a rollout inside its SLA can still need attention (critique 10 Oct)
+        "(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.done = 0 AND t.due_date < ?) AS late_tasks, "
+        "(SELECT MIN(t.due_date) FROM tasks t WHERE t.project_id = p.id AND t.done = 0 AND t.due_date < ?) AS late_since "
         "FROM projects p JOIN users u ON u.id = p.owner_id "
         f"WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{project_scope()[0]} ORDER BY p.updated_at DESC",
-        project_scope()[1],
+        (local_today().isoformat(), local_today().isoformat(), *project_scope()[1]),
     ).fetchall()
     stage_lists = stages_for_projects([p["id"] for p in projects])
     mine = my_project_ids(session["user_id"])
@@ -1023,11 +1026,13 @@ def api_flow():
             "target_end_date": p["target_end_date"], "days_in_stage": None if in_stage is None else round(in_stage, 1),
             "sla_days": slas.get(p["stage"]), "over_by": round(sla["over_by"], 1) if sla else None,
             "state": state, "open_tasks": p["open_tasks"], "total_tasks": p["total_tasks"],
+            "late_tasks": p["late_tasks"], "late_since": p["late_since"],
             "next_task": next_task.get(p["id"]), "updated_at": p["updated_at"],
             "idle_days": None if idle is None else round(idle, 1), "stale": idle is not None and idle >= stale_days,
         })
-    rows.sort(key=lambda r: (STATE_RANK[r["state"]], _flow_urgency(r, now)))
+    rows.sort(key=lambda r: (STATE_RANK[r["state"]], 0 if r["late_tasks"] else 1, _flow_urgency(r, now)))
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}
+    counts["late_tasks"] = sum(1 for r in rows if r["state"] == "on_track" and r["late_tasks"])   # on track, but a task is late
     return jsonify({"stages": get_stage_names(), "rows": rows, "counts": counts, "today": local_today().isoformat(),
                     "can_move": role_has_permission(session.get("role"), "edit_project_stage")})
 

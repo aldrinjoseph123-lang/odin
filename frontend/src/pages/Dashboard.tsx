@@ -12,6 +12,7 @@ import { Ago } from "@/components/Ago"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, dashboard, dashboardVersion, resetLayout, saveLayout, type Aggregate, type DashboardData, type DashKey, type DetailRow, type User, type WidgetInfo } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { toast } from "@/lib/toast"
 import { STATE } from "@/lib/state"
 import { dayOf, deltaText, fmtDate, lateBy, monthTicks, timelineDomain } from "@/lib/format"
 import { configure, GRID_CLASS, keyOf, move, newUid, pack, pctChange, remove, reorder, resize, SPAN_CLASS, splitWindow, type LayoutItem, type Width } from "@/lib/dashboard"
@@ -57,7 +58,7 @@ function Widget({ title, sub, action, onExpand, children }: { title: string; sub
     </section>
   )
 }
-const Empty = ({ children }: { children: ReactNode }) => <p className="py-2 text-[13px] text-muted-foreground">{children}</p>
+const Empty = ({ children }: { children: ReactNode }) => <p className="max-w-prose py-2 text-[13px] text-muted-foreground">{children}</p>
 
 // Thin horizontal bars for a ranked list: label, bar, count.
 function Bars({ rows, link }: { rows: Aggregate; link?: (key: string) => string }) {
@@ -177,7 +178,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
   const months = monthTicks(t0, t1, width ? Math.max(2, Math.floor(width / 64)) : 8)
   const crowded = months.some((tk) => Math.abs(tk.t - now) / (t1 - t0) * (width || 800) < 44)
   return (
-    <Widget title="Timeline" sub="every active rollout, start to target" action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
+    <Widget title="Timeline" sub="start to target; grey is the share of stages done, red hatching is time past the target" action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
       {shown.length === 0 ? <Empty>No active rollouts{s.show === "attention" ? " need attention" : ""}.</Empty> : (
         <div className="grid grid-cols-[minmax(160px,256px)_minmax(0,1fr)_auto] gap-x-3 overflow-x-clip text-[13px]">
           <span />
@@ -189,7 +190,9 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
           {list.map((r) => {
             const a = dayOf(r.start_date), b = r.target_end_date ? dayOf(r.target_end_date) : now
             const from = Math.min(a, b), to = Math.max(a, b)
-            const fill = r.state === "on_track" ? "bg-muted-foreground/45" : STATE[r.state].dot   // on track is neutral grey; colour is for trouble
+            // the bar runs start → target and its grey fill is the share of stages done; lateness is its own
+            // hatched red stretch from the target to today, with the days written at its end (critique 10 Oct)
+            const over = r.target_end_date && b < now ? Math.round((now - b) / 864e5) : 0
             return (
               <Fragment key={r.id}>
                 {/* name over client · stage; a rollout in trouble says which trouble in words, not colour alone */}
@@ -201,11 +204,16 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
                   <span className="absolute inset-y-0 w-[1.5px] bg-foreground/60" style={{ left: pct(now) }} aria-hidden />
                   <Tooltip>
                     <TooltipTrigger render={<span />} role="img"
-                      aria-label={`${r.name}: ${fmtDate(r.start_date)} to ${r.target_end_date ? fmtDate(r.target_end_date) : "no target"}, ${Math.round(r.progress * 100)} percent of stages done, ${STATE[r.state].label}`}
+                      aria-label={`${r.name}: ${fmtDate(r.start_date)} to ${r.target_end_date ? fmtDate(r.target_end_date) : "no target"}, ${Math.round(r.progress * 100)} percent of stages done, ${STATE[r.state].label}${over > 0 ? `, ${over} days past the target` : ""}`}
                       className="absolute top-1/2 block h-2.5 min-w-2 -translate-y-1/2 overflow-hidden rounded-full bg-muted"
                       style={{ left: pct(from), width: `calc(${pct(to)} - ${pct(from)})` }}>
-                      <span className={cn("block h-full rounded-full", fill)} style={{ width: `${Math.max(4, r.progress * 100)}%` }} />
+                      <span className="block h-full rounded-full bg-nav-fg/50" style={{ width: `${Math.max(4, r.progress * 100)}%` }} />
                     </TooltipTrigger>
+                    {over > 0 && <>
+                      <span className="absolute top-1/2 block h-2.5 -translate-y-1/2 rounded-r-full" aria-hidden
+                        style={{ left: pct(b), width: `calc(${pct(now)} - ${pct(b)})`, background: "repeating-linear-gradient(135deg, var(--bad-line) 0 3px, transparent 3px 6px)" }} />
+                      <span className="absolute top-1/2 -translate-y-1/2 pl-2 text-[11px] font-semibold text-bad" style={{ left: pct(now) }} aria-hidden>{over} d</span>
+                    </>}
                     <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} → {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
                   </Tooltip>
                 </div>
@@ -422,7 +430,7 @@ function Stages({ rows, s, onExpand, large }: { rows: D["stages"]; s: S; onExpan
 }
 
 // ---- needs attention: one answer to "what is stuck", worst first ------------
-const REASON_TONE: Record<string, string> = { overdue: "bg-bad-soft text-bad", over_sla: "bg-warn-soft text-warn", due_soon: "bg-warn-soft text-warn", awaiting: "bg-muted text-nav-fg", idle: "bg-muted text-nav-fg" }
+const REASON_TONE: Record<string, string> = { late_task: "bg-bad-soft text-bad", overdue: "bg-bad-soft text-bad", over_sla: "bg-warn-soft text-warn", due_soon: "bg-warn-soft text-warn", awaiting: "bg-muted text-nav-fg", idle: "bg-muted text-nav-fg" }
 function Attention({ rows, s, onExpand, large }: { rows: D["attention"]; s: S; onExpand?: () => void; large?: boolean }) {
   const limit = large ? 200 : Number(s.limit ?? 8)
   return (
@@ -432,9 +440,10 @@ function Attention({ rows, s, onExpand, large }: { rows: D["attention"]; s: S; o
           {rows.slice(0, limit).map((r) => (
             <li key={r.id} className="py-2">
               <Link to={`/board?rollout=${r.id}`} className="block min-w-0 hover:underline"><span className="block truncate font-medium">{r.name}</span>
-                <span className="block truncate text-[12px] text-muted-foreground">{[r.client, r.stage].filter(Boolean).join(" · ")}</span></Link>
+                <span className="block truncate text-[12px] text-muted-foreground">{[r.client, r.stage].filter(Boolean).join(" · ")}</span>
+                <span className="sr-only">: {r.reasons.map((x) => x.text).join(", ")}</span></Link>
               <span className="mt-1 flex flex-wrap gap-1">
-                {r.reasons.map((x) => <span key={x.kind} className={cn("rounded-full px-2 py-1 text-[11px] font-medium leading-none", REASON_TONE[x.kind])}>{x.text}</span>)}
+                {r.reasons.map((x) => <span key={x.kind} className={cn("rounded-full px-2 py-1 text-[12px] font-medium leading-none", REASON_TONE[x.kind])}>{x.text}</span>)}
               </span>
             </li>
           ))}
@@ -685,11 +694,9 @@ export default function Dashboard({ user }: { user: User }) {
   // customising: every change saves at once (typing settles first), with an Undo
   const [dragging, setDragging] = useState<string | null>(null)
   const [grip, setGrip] = useState<string | null>(null)
-  const [undo, setUndo] = useState<LayoutItem[] | null>(null)
   const saveTimer = useRef<number | undefined>(undefined)
   const cols = useColumns()
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
   const [tile, setTile] = useState<DashKey | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const version = useRef<number | null>(null)
@@ -727,29 +734,31 @@ export default function Dashboard({ user }: { user: User }) {
   const hidden = d.catalogue.filter((w) => !w.multiple && !layout.some((x) => x.id === w.id))
   const repeatable = d.catalogue.filter((w) => w.multiple)
   const admin = user.permissions.includes("manage_settings")
-  // one door for every change: show it now, save it (debounced for typing), offer Undo
-  const commit = (fn: (l: LayoutItem[]) => LayoutItem[], label = "Saved to your dashboard.", settle = 0) => {
+  // one door for every change: show it now, save it (debounced for typing), then a toast with Undo
+  // where the eye is, not a line at the top of a long page (critique 10 Oct)
+  const commit = (fn: (l: LayoutItem[]) => LayoutItem[], label = "Saved to your dashboard.", settle = 0, undoable = true) => {
     const before = layout
     const next = fn(layout)
-    setD({ ...d, layout: next, is_custom: true })
-    setUndo(before)
+    setD((cur) => (cur ? { ...cur, layout: next, is_custom: true } : cur))
     window.clearTimeout(saveTimer.current)
     pending.current = true
     saveTimer.current = window.setTimeout(() => {
-      saveLayout(next).then(() => { saved.current = { layout: next, is_custom: true }; setNotice(label) })
+      saveLayout(next).then(() => {
+        saved.current = { layout: next, is_custom: true }
+        toast(label, undoable ? { action: { label: "Undo", run: () => commit(() => before, "Change undone.", 0, false) } } : {})
+      })
         .catch((e) => {
           const back = saved.current
           if (back) setD((cur) => (cur ? { ...cur, ...back } : cur))
-          setUndo(null)
-          setNotice(`${e instanceof ApiError ? e.message : "That did not save"} The dashboard is back as it was saved.`)
+          toast(`${e instanceof ApiError ? e.message : "That did not save."} The dashboard is back as it was saved.`, { tone: "bad" })
         })
         .finally(() => { pending.current = false })
     }, settle)
   }
   const add = (w: WidgetInfo) => commit((l) => [...l, { id: w.id, w: w.w, settings: Object.fromEntries(w.settings.map((s) => [s.key, s.default])), ...(w.multiple ? { uid: newUid() } : {}) }], `${w.title} added.`)
   async function run(label: string, fn: () => Promise<{ layout: DashboardData["layout"]; is_custom?: boolean }>, after: (r: { layout: DashboardData["layout"]; is_custom?: boolean }) => void) {
-    setBusy(true); setNotice(null)
-    try { const r = await fn(); after(r); setNotice(label); setUndo(null) } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+    setBusy(true)
+    try { const r = await fn(); after(r); toast(label) } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(false) }
   }
   const saveDefault = () => run("Saved as the workspace default.", () => saveLayout(layout, "default"), () => {})
   const reset = () => run("Back to the workspace default.", () => resetLayout(), (r) => setD({ ...d, layout: r.layout, is_custom: false }))
@@ -794,11 +803,6 @@ export default function Dashboard({ user }: { user: User }) {
           )}
         </span>
       </div>
-      {notice && (
-        <p className="mt-2 text-[13px] text-muted-foreground" role="status">{notice}
-          {undo && <button type="button" onClick={() => { const back = undo; commit(() => back, "Change undone."); setUndo(null) }} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}
-        </p>
-      )}
 
       <div className={cn("mt-3 grid gap-4", GRID_CLASS[cols])}>
         {packed.map(({ item, span }) => {

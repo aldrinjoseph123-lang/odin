@@ -98,7 +98,8 @@ export default function Project({ user }: { user: User }) {
   const closed = !d.next_stage && d.stage_index === d.stages.length - 1
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div>
+      {/* the window scrolls (not this box), so the section index and the reply bar can stick */}
       <div className="flex flex-wrap items-center gap-2 px-5 pt-4">
         <Breadcrumb className="min-w-0 text-[13px]">
           <BreadcrumbList>

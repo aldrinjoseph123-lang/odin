@@ -135,6 +135,7 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
 }
 
 // ---- top pane: every active rollout, stuck first -------------------------------
+const needsAttention = (r: FlowRow) => r.state !== "on_track" || r.late_tasks > 0
 type Filter = "all" | "attention" | "customer" | "mine"
 // Pills share one size: 32 px, 40 px under a finger.
 const pill = "flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 text-[13px] font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 pointer-coarse:h-10"
@@ -212,8 +213,9 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
   stage: string | null; setStage: (s: string | null) => void
   group: FlowGroupBy | null; setGroup: (g: FlowGroupBy | null) => void
 }) {
+  // attention: off track, or on track with a task past its date (critique 10 Oct; the state stays On track)
   const match = useCallback((r: FlowRow, f: Filter) =>
-    f === "attention" ? r.state !== "on_track" : f === "customer" ? r.approval === "pending" : f === "mine" ? r.mine : true, [])
+    f === "attention" ? needsAttention(r) : f === "customer" ? r.approval === "pending" : f === "mine" ? r.mine : true, [])
   const rows = useMemo(() => data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage)), [data.rows, filter, stage, match])
   // Every row's stages in one column order, so a stage lines up down the list.
   const columns = useMemo(() => stageColumns(data.rows.map((r) => r.stages)), [data.rows])
@@ -222,7 +224,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
     for (const r of data.rows) if (match(r, filter)) n.set(r.stage, (n.get(r.stage) ?? 0) + 1)
     return n
   }, [data.rows, filter, match])
-  const stuck = data.counts.overdue + data.counts.over_sla + data.counts.due_soon
+  const stuck = data.rows.filter(needsAttention).length
   const count = (f: Filter) => data.rows.filter((r) => match(r, f)).length
   const chips = ([
     { key: "all", label: "All", n: data.rows.length },
@@ -233,10 +235,10 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
     // a filter that changes nothing is noise: "Mine" for someone on every rollout, "Waiting" with none waiting
     .filter((c) => c.key === filter || c.key === "all" || (c.n > 0 && c.n < data.rows.length) || (c.key === "attention" && c.n > 0))
   // On track needs no attention: folded into one line while anything else does.
-  const calm = group ? [] : rows.filter((r) => r.state === "on_track")
+  const calm = group ? [] : rows.filter((r) => !needsAttention(r))
   const [showCalm, setShowCalm] = useState(false)
   const fold = calm.length > 0 && calm.length < rows.length && !showCalm && !calm.some((r) => r.id === selectedId)
-  const shown = fold ? rows.filter((r) => r.state !== "on_track") : rows
+  const shown = fold ? rows.filter(needsAttention) : rows
   // One tab stop for the whole list; ↑/↓ or j/k move between rows, Enter opens.
   function onKeys(e: KeyboardEvent<HTMLUListElement>) {
     const step = e.key === "ArrowDown" || e.key === "j" ? 1 : e.key === "ArrowUp" || e.key === "k" ? -1 : 0
@@ -259,6 +261,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
           {data.counts.overdue ? <> · <span className="font-medium text-bad">{data.counts.overdue} overdue</span></> : null}
           {data.counts.over_sla ? <> · <span className="font-medium text-warn">{data.counts.over_sla} over SLA</span></> : null}
           {data.counts.due_soon ? <> · <span className="font-medium text-warn">{data.counts.due_soon} due soon</span></> : null}
+          {data.counts.late_tasks ? <> · <span className="font-medium text-bad">{data.counts.late_tasks} on track with late tasks</span></> : null}
         </p>
         <div className="flex flex-wrap items-center gap-2 md:ml-auto">
           {chips.map((c) => (
@@ -292,14 +295,14 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
       </nav>
       <ScrollArea className="min-h-0 flex-1">
         <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-2 text-[12px] text-muted-foreground md:grid">
-          <span>Rollout · next step <span className="ml-1 text-[11px]">(↑↓ or j/k, Enter opens)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
+          <span>Rollout · next step <span className="ml-1">(↑↓ or j/k, Enter opens)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid grid-cols-1 gap-1 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {group ? groupRows(shown, group).map((g) => (
             <li key={g.key} className="mt-2 first:mt-0">
               <p className="flex items-baseline gap-2 border-b border-border px-3 pb-1 text-[13px] font-semibold">
                 {g.key}<span className="font-normal text-muted-foreground">{g.rows.length}
-                  {(() => { const bad = g.rows.filter((r) => r.state !== "on_track").length; return bad ? ` · ${bad} ${bad === 1 ? "needs" : "need"} attention` : "" })()}</span>
+                  {(() => { const bad = g.rows.filter(needsAttention).length; return bad ? ` · ${bad} ${bad === 1 ? "needs" : "need"} attention` : "" })()}</span>
               </p>
               <ul className="mt-1 grid grid-cols-1 gap-1">{g.rows.map(row)}</ul>
             </li>
@@ -318,7 +321,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
               {data.rows.length === 0 ? (partner ? "No rollout is shared with you yet. It appears here once a project manager adds you." : "No active rollouts yet. Create one from a client PO and it appears here.")
                 : stage ? `No rollout in ${stage} matches this filter.`
                 : filter === "customer" ? "No rollout is waiting on a customer's approval."
-                : "Nothing needs attention — every rollout is inside its stage SLA and on schedule."}
+                : "Nothing needs attention — every rollout is inside its stage SLA, on schedule, and no task is late."}
             </EmptyDescription></EmptyHeader></Empty></li>
           )}
         </ul>

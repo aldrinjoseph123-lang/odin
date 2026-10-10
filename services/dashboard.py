@@ -68,7 +68,7 @@ WIDGETS = {
                                  "top": dict(kind="int", min=3, max=12, default=6, label="Top")}),
 }
 DEFAULT_LAYOUT = [
-    {"id": "attention", "w": 1}, {"id": "timeline", "w": 2}, {"id": "kpis", "w": 3}, {"id": "progress", "w": 1},
+    {"id": "kpis", "w": 3}, {"id": "attention", "w": 1}, {"id": "timeline", "w": 2}, {"id": "progress", "w": 1},
     {"id": "schedule", "w": 1}, {"id": "completion", "w": 1}, {"id": "team", "w": 1},
     {"id": "stages", "w": 1}, {"id": "activity", "w": 1}, {"id": "alerts", "w": 1},
     {"id": "mywork", "w": 2}, {"id": "cycle", "w": 1},
@@ -367,8 +367,13 @@ def build(scope, user_id):
 
     detail["awaiting"] = [{"id": a["project_id"], "name": a["project"], "client": "", "stage": a["stage"], "text": f"asked {a['requested_at'][:10]}"} for a in approvals]
 
-    # Needs attention: the tiles' rows folded per rollout, worst reason first (one answer to "what is stuck")
-    worst = ("overdue", "over_sla", "due_soon", "awaiting", "idle")
+    # Needs attention: the tiles' rows folded per rollout, worst reason first (one answer to "what is stuck");
+    # a rollout on track whose tasks run late counts too (its state stays On track)
+    late = {r[0]: (r[1], r[2]) for r in db.execute(
+        "SELECT t.project_id, COUNT(*), MIN(t.due_date) FROM tasks t WHERE t.done = 0 AND t.due_date < ? GROUP BY t.project_id", (today.isoformat(),))}
+    detail["late_task"] = [row(p, f"{late[p['id']][0]} task{'s' if late[p['id']][0] != 1 else ''} late, oldest {(today - date.fromisoformat(late[p['id']][1])).days} d")
+                           for p in projects if p["id"] in late]
+    worst = ("overdue", "over_sla", "due_soon", "late_task", "awaiting", "idle")
     reason = {"awaiting": lambda r: f"waiting on the customer, {r['text']}"}
     by_id = {}
     for kind in worst:
@@ -376,8 +381,11 @@ def build(scope, user_id):
             entry = by_id.setdefault(r["id"], {"id": r["id"], "name": r["name"], "client": r["client"], "stage": r["stage"], "worst": kind, "reasons": []})
             entry["reasons"].append({"kind": kind, "text": reason.get(kind, lambda r: r["text"])(r)})
             entry["client"] = entry["client"] or r["client"]
-    days = lambda e: int((re.search(r"\d+", e["reasons"][0]["text"]) or [0])[0])   # noqa: E731  the worst reason's days: most late first
-    attention = sorted(by_id.values(), key=lambda e: (worst.index(e["worst"]), -days(e), e["name"]))
+    def urgency(e):   # within a kind: most late first; "due in n d" soonest first; late tasks by the oldest
+        nums = [int(n) for n in re.findall(r"\d+", e["reasons"][0]["text"])] or [0]
+        n = nums[-1] if e["worst"] == "late_task" else nums[0]
+        return n if e["worst"] == "due_soon" else -n
+    attention = sorted(by_id.values(), key=lambda e: (worst.index(e["worst"]), urgency(e), e["name"]))
 
     # what a custom widget may count
     agg = lambda values: [{"key": k or "—", "count": n} for k, n in Counter(values).most_common()]   # noqa: E731

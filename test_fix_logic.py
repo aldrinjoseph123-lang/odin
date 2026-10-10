@@ -665,7 +665,7 @@ class SimulationLogicTestCase(FixBase):
         self.assertEqual(att[0]["worst"], "overdue")
         self.assertRegex(att[0]["reasons"][0]["text"], r"d late$")
         self.assertEqual(sum(s["late"] for s in d["data"]["stages"]), 1)
-        self.assertEqual(d["layout"][0]["id"], "attention")
+        self.assertEqual([x["id"] for x in d["layout"][:3]], ["kpis", "attention", "timeline"])
         self.assertEqual(c.get("/api/session").get_json()["user"]["accent"], "blue")
         self.sql("UPDATE users SET accent = 'red'")
         self.sql("DELETE FROM settings WHERE key = 'migrated.accent_blue'")
