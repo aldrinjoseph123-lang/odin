@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
+import { EmptyState } from "@/components/EmptyState"
 import { chip, pill } from "@/lib/ui"
 import { Link, useSearchParams } from "react-router-dom"
 import { AlarmClock, ArrowRight, CheckSquare, ChevronLeft, ChevronRight, ShieldCheck, Target } from "lucide-react"
@@ -96,7 +97,7 @@ export function Calendar({ wide }: { wide: boolean }) {
               {(byDay.get(day) ?? []).map((it) => <Chip key={it.key} it={it} full />)}
             </li>
           ))}
-          {days.length === 0 && <li className="py-6 text-center text-[13px] text-muted-foreground">Nothing in {monthTitle(month)}.</li>}
+          {days.length === 0 && <EmptyState as="li">Nothing in {monthTitle(month)}.</EmptyState>}
         </ul>
       </div>
     )

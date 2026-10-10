@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { EmptyState } from "@/components/EmptyState"
 import { StatTile } from "@/components/StatTile"
 import { pill } from "@/lib/ui"
 import { Link } from "react-router-dom"
@@ -88,7 +89,7 @@ export default function MyWork({ user }: { user: User }) {
     { label: "My rollouts", value: c.rollouts, sub: c.stuck ? `${c.stuck} need attention` : "all on track", icon: Layers, tone: c.stuck ? "warn" : undefined },
   ]
   return (
-    <div className="px-5 pb-8 pt-2">
+    <div className="px-5 pb-8 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">My work</h1>
         <p className="text-[13px] text-muted-foreground">{user.name.split(" ")[0]}, here is what is on you · {fmtDate(d.today)}</p>
@@ -111,7 +112,7 @@ export default function MyWork({ user }: { user: User }) {
               </select>
             )}
           </div>
-          {groups.length === 0 && <p className="py-4 text-center text-[13px] text-muted-foreground">Nothing open{project ? " on this rollout" : ""}. Enjoy it.</p>}
+          {groups.length === 0 && <EmptyState>Nothing open{project ? " on this rollout" : ""}. Enjoy it.</EmptyState>}
           {groups.map((g) => (
             <div key={g.key} className="mb-3 last:mb-0">
               <h3 className={cn("mb-1 flex items-baseline gap-2 text-[12px] font-semibold", g.tone === "bad" ? "text-bad" : g.tone === "warn" ? "text-warn" : "text-nav-fg")}>{g.title}<span className="font-normal text-muted-foreground">{g.tasks.length} · {g.hint}</span></h3>

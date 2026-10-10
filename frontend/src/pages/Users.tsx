@@ -50,7 +50,7 @@ export default function Users(_props: { user: User }) {
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">Users</h1>
-        <p className="text-[13px] text-muted-foreground">{people.filter((u) => u.active).length} active · {people.filter((u) => u.kind === "external").length} external{pending.length ? ` · ${pending.length} waiting` : ""}</p>
+        <p className="max-w-prose text-[13px] text-muted-foreground">{people.filter((u) => u.active).length} active · {people.filter((u) => u.kind === "external").length} external{pending.length ? ` · ${pending.length} waiting` : ""}</p>
         <div className="ml-auto flex items-center gap-2">
           <a href="/users/export.csv" className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
         </div>
@@ -181,7 +181,7 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
         {u.kind !== "external" && (
           <div className={section}>
             <p className="text-[12px] font-medium">Sign-in</p>
-            <p className="text-[13px] text-muted-foreground">{signInText(u, microsoftOnly).replace(/^./, (c) => c.toUpperCase())}.</p>
+            <p className="max-w-prose text-[13px] text-muted-foreground">{signInText(u, microsoftOnly).replace(/^./, (c) => c.toUpperCase())}.</p>
             {microsoftOnly && (
               <label className="flex items-center gap-2 text-[13px]">
                 <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => act(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-4 w-4 accent-primary" />
@@ -205,7 +205,7 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
                 <Button type="submit" size="sm" loading={busy}>Set</Button>
               </span>
             </label>
-            <p className="text-[12px] text-muted-foreground">They must change it at their next sign-in; their sessions end.</p>
+            <p className="max-w-prose text-[12px] text-muted-foreground">They must change it at their next sign-in; their sessions end.</p>
           </form>
         )}
         {!self && (
@@ -243,7 +243,7 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
       </label>
       {problem && <p className="field-error" role="alert">{problem}</p>}
       <Button type="submit" size="sm" className="mt-1" loading={busy}>Create user</Button>
-      <p className="text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
+      <p className="max-w-prose text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
     </form>
   )
 }
@@ -272,7 +272,7 @@ function SignupLinksPanel() {
   return (
     <section className="panel p-4" aria-label="Sign-up links">
       <h2 className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
-      <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
+      <p className="max-w-prose mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
       {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-3 text-[13px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
       {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[13px]">
         <label className="grid grid-cols-1 gap-1 font-medium">For<input className={field} required maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Omar, field engineer" /></label>
@@ -290,7 +290,7 @@ function SignupLinksPanel() {
         <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
           <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
           <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => {})}>{copied ? "Copied" : "Copy the link"}</Button>
-          <p className="text-[12px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
+          <p className="max-w-prose text-[12px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
         </div>
       )}
       {d.links.length > 0 && (
@@ -305,7 +305,7 @@ function SignupLinksPanel() {
         </ul>
       )}
       {err && !d.enabled && <p className="mt-2 text-[13px] text-destructive" role="alert">{err}</p>}
-      {open.length === 0 && d.links.length > 0 && <p className="mt-2 text-[12px] text-muted-foreground">No open links.</p>}
+      {open.length === 0 && d.links.length > 0 && <p className="max-w-prose mt-2 text-[12px] text-muted-foreground">No open links.</p>}
       {open.length > 1 && <Button size="sm" variant="ghost" className="mt-2 h-7 text-bad" disabled={busy}
         onClick={async () => { if (await askConfirm(`Revoke all ${open.length} open links? Anyone holding one can no longer sign up with it.`)) void revokeAllSignupLinks().then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the links")) }}>Revoke all open links</Button>}
     </section>

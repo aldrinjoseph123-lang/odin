@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { EmptyState } from "@/components/EmptyState"
 import { field } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { ArrowDown, ArrowUp, Copy, Eye, FileText, ImageUp, Plus, Star, Trash2, X } from "lucide-react"
@@ -64,7 +65,7 @@ export function DocTemplates() {
               <h2 data-n className="text-[12px] font-semibold text-nav-fg">{d.kinds[kind].label}</h2>
               <Button size="sm" variant="outline" className="ml-auto h-7 rounded-full" onClick={() => startNew(kind)}><Plus className="h-3.5 w-3.5" /> New template</Button>
             </div>
-            {list.length === 0 && <p className="text-[13px] text-muted-foreground">No templates yet: documents use the built-in layout.</p>}
+            {list.length === 0 && <EmptyState>No templates yet: documents use the built-in layout.</EmptyState>}
             <ul className="divide-y divide-border text-[13px]">
               {list.map((t) => <Row key={t.id} t={t} busy={busy}
                 onEdit={() => { setPreview(null); setEdit({ id: t.id, kind: t.kind, name: t.name, config: structuredClone(t.config) }) }}

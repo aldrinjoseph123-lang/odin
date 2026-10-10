@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { EmptyState } from "@/components/EmptyState"
 import { toast } from "@/lib/toast"
 import { PanelTitle } from "@/components/PanelTitle"
 import { fieldAuto } from "@/lib/ui"
@@ -178,7 +179,7 @@ export default function Settings(_props: { user: User }) {
           <>
             {policyForm("audit")}
             <Panel title="Archives" hint="written nightly before rows are removed; included in every backup">
-              {data.audit_archives.length === 0 ? <p className="text-[13px] text-muted-foreground">Nothing archived yet: no row is older than the retention period.</p> : (
+              {data.audit_archives.length === 0 ? <EmptyState>Nothing archived yet: no row is older than the retention period.</EmptyState> : (
                 <ul className="grid grid-cols-1 gap-1 text-[13px]">{data.audit_archives.map((a) => <li key={a.name} className="flex justify-between gap-3"><span className="font-mono text-[12px]">{a.name}</span><span className="text-muted-foreground">{bytes(a.size)}</span></li>)}</ul>
               )}
               <p className="mt-3 text-[12px] text-muted-foreground">The full trail is on the <a href="/audit-logs" className="text-primary-text hover:underline">Audit log</a> page, with a CSV export.</p>
@@ -339,7 +340,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
         </p>
       </Panel>
       <Panel title="Tokens">
-        {tokens.length === 0 ? <p className="text-[13px] text-muted-foreground">No tokens yet.</p> : (
+        {tokens.length === 0 ? <EmptyState>No tokens yet.</EmptyState> : (
           <div className="overflow-x-auto"><table className="w-full text-[13px]">
             <thead><tr className="text-left text-[12px] text-muted-foreground">{["Name", "Made", "Last used", "Expires", ""].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
             <tbody>
@@ -386,7 +387,7 @@ const bytes = (n: number | null) => (n == null ? "—" : n > 1048576 ? `${(n / 1
 function BackupHistory({ runs }: { runs: BackupRun[] }) {
   return (
     <Panel title="History" hint="the last 20 runs">
-      {runs.length === 0 ? <p className="text-[13px] text-muted-foreground">No backups yet. Back up now to make the first one.</p> : (
+      {runs.length === 0 ? <EmptyState>No backups yet. Back up now to make the first one.</EmptyState> : (
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
           <thead><tr className="text-left text-[12px] text-muted-foreground">{["When", "Result", "Restore test", "Copies", "Size"].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
           <tbody>

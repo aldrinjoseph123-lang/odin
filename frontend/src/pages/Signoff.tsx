@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { StatusPill } from "@/components/PlanGantt"
 import { toast } from "@/lib/toast"
 import { field, pill } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
@@ -34,10 +35,7 @@ const TONE: Record<SignoffStatus, string> = {
   waived: "bg-muted text-muted-foreground", rejected: "bg-bad-soft text-bad", withdrawn: "bg-muted text-muted-foreground",
 }
 
-function StatusPill({ status }: { status: SignoffStatus | null }) {
-  return <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold", status ? TONE[status] : "bg-muted text-muted-foreground")}>
-    <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{signoffText(status)}</span>
-}
+const SignoffPill = ({ status }: { status: SignoffStatus | null }) => <StatusPill tone={status ? TONE[status] : "bg-muted text-muted-foreground"}>{signoffText(status)}</StatusPill>
 
 function Facts({ p }: { p: SignoffContent["project"] }) {
   const rows: [string, ReactNode][] = [
@@ -345,7 +343,7 @@ export default function Signoff(_props: { user: User }) {
         <h1 className="text-[24px] font-semibold tracking-tight">Sign-off</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">{d.project.name} · {d.project.client} · now in {d.project.stage}</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <StatusPill status={composing ? null : cur?.status ?? null} />
+          <SignoffPill status={composing ? null : cur?.status ?? null} />
           {cur && !composing && <span className="text-[13px] text-muted-foreground">Version {cur.version}, sent {fmtWhen(cur.created_at, true)}</span>}
         </div>
       </header>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { EmptyState } from "@/components/EmptyState"
 import { Link } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
@@ -18,7 +19,7 @@ export default function People(_props: { user: User }) {
   if (!d) return <PageSkeleton />
   const list = d.people.filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.role.toLowerCase().includes(q.toLowerCase()))
   return (
-    <div className="px-5 pb-8 pt-2">
+    <div className="px-5 pb-8 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">People</h1>
         <p className="text-[13px] text-muted-foreground">{d.people.length} on active rollouts</p>
@@ -49,7 +50,7 @@ export default function People(_props: { user: User }) {
             </Link>
           </li>
         ))}
-        {list.length === 0 && <li className="col-span-full py-10 text-center text-[13px] text-muted-foreground">{q ? `Nobody matches “${q}”.` : "Nobody is on active work yet."}</li>}
+        {list.length === 0 && <EmptyState as="li" className="col-span-full">{q ? `Nobody matches “${q}”.` : "Nobody is on active work yet."}</EmptyState>}
       </ul>
     </div>
   )

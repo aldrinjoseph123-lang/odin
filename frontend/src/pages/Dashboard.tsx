@@ -57,7 +57,7 @@ function Widget({ title, sub, action, onExpand, children }: { title: string; sub
     </section>
   )
 }
-const Empty = ({ children }: { children: ReactNode }) => <p className="max-w-prose py-2 text-[13px] text-muted-foreground">{children}</p>
+const Quiet = ({ children }: { children: ReactNode }) => <p className="max-w-prose py-2 text-[13px] text-muted-foreground">{children}</p>
 
 // Thin horizontal bars for a ranked list: label, bar, count.
 function Bars({ rows, link }: { rows: Aggregate; link?: (key: string) => string }) {
@@ -178,7 +178,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
   const crowded = months.some((tk) => Math.abs(tk.t - now) / (t1 - t0) * (width || 800) < 44)
   return (
     <Widget title="Timeline" sub="start to target; grey is the share of stages done, red hatching is time past the target" action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
-      {shown.length === 0 ? <Empty>No active rollouts{s.show === "attention" ? " need attention" : ""}.</Empty> : (
+      {shown.length === 0 ? <Quiet>No active rollouts{s.show === "attention" ? " need attention" : ""}.</Quiet> : (
         <div className="grid grid-cols-[minmax(160px,256px)_minmax(0,1fr)_auto] gap-x-3 overflow-x-clip text-[13px]">
           <span />
           <div ref={measure} className={cn("relative text-[11px] text-muted-foreground", crowded ? "h-9" : "h-5")}>
@@ -243,7 +243,7 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
   )
   return (
     <Widget title="Portfolio progress" sub="stage steps across active rollouts" onExpand={onExpand}>
-      {total === 0 ? <Empty>No active rollouts.</Empty> : s.chart === "bar" ? (
+      {total === 0 ? <Quiet>No active rollouts.</Quiet> : s.chart === "bar" ? (
         <>
           <div className="flex items-baseline gap-2"><span className="text-[24px] font-semibold leading-none tracking-tight">{p.pct}%</span><span className="text-[12px] text-muted-foreground">of stages done</span></div>
           <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${p.done} done, ${p.current} in progress, ${p.pending} pending`}>
@@ -302,7 +302,7 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
             </Fragment>
           )
         })}
-        {due.length === 0 && <li><Empty>Nothing falls due in the next {days} days.</Empty></li>}
+        {due.length === 0 && <li><Quiet>Nothing falls due in the next {days} days.</Quiet></li>}
         {due.length > cap && <li className="py-2 text-[12px]"><Link to="/my-work" className="text-muted-foreground hover:text-foreground">{due.length - cap} more due</Link></li>}
       </ul>
       {sch.approvals.length > 0 && (
@@ -333,7 +333,7 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
   const data = now.map((x) => ({ ...x, label: n <= 7 ? dayLabel(x.day).slice(0, 1) : x.day.slice(8, 10) }))
   return (
     <Widget title="Tasks completed" sub={`last ${n} days`} onExpand={onExpand}>
-      {total === 0 ? <Empty>No tasks completed in the last {n} days{prev ? ` (${prev} in the ${n} days before)` : ""}.</Empty> : <>
+      {total === 0 ? <Quiet>No tasks completed in the last {n} days{prev ? ` (${prev} in the ${n} days before)` : ""}.</Quiet> : <>
       <div className="mb-2 flex items-baseline gap-2">
         <span className="text-[24px] font-semibold leading-none tracking-tight">{total}</span>
         {change && <span className={cn("rounded-full px-2 py-1 text-[11px] font-medium", change.startsWith("+") ? "bg-ok-soft text-ok" : change.startsWith("-") ? "bg-warn-soft text-warn" : "bg-muted text-muted-foreground")}>{change}</span>}
@@ -373,7 +373,7 @@ function Team({ t, s, onExpand, large }: { t: D["team"]; s: S; onExpand?: () => 
   return (
     <Widget title="Team" sub="rollouts and open work per person" action={<Link to="/people" className={pill}>People</Link>} onExpand={onExpand}>
       {s.chart === "bar" ? (
-        people.length === 0 ? <Empty>No open tasks are assigned.</Empty> : <Bars rows={people.map((m) => ({ key: m.name, count: m.open }))} link={(k) => `/people/${t.people.find((m) => m.name === k)?.id ?? ""}`} />
+        people.length === 0 ? <Quiet>No open tasks are assigned.</Quiet> : <Bars rows={people.map((m) => ({ key: m.name, count: m.open }))} link={(k) => `/people/${t.people.find((m) => m.name === k)?.id ?? ""}`} />
       ) : (
         <ul className="divide-y divide-border text-[13px]">
           {people.map((m) => (
@@ -386,7 +386,7 @@ function Team({ t, s, onExpand, large }: { t: D["team"]; s: S; onExpand?: () => 
               <span className={badge}>{m.role}</span>
             </li>
           ))}
-          {t.people.length === 0 && <li><Empty>No open tasks are assigned.</Empty></li>}
+          {t.people.length === 0 && <li><Quiet>No open tasks are assigned.</Quiet></li>}
         </ul>
       )}
       {t.unassigned > 0 && <p className="mt-2 text-[12px] text-muted-foreground">{t.unassigned} open task{t.unassigned === 1 ? "" : "s"} unassigned</p>}
@@ -421,7 +421,7 @@ function Stages({ rows, s, onExpand, large }: { rows: D["stages"]; s: S; onExpan
   const agg = rows.map((r) => ({ key: r.stage, count: r.count }))
   return (
     <Widget title="Rollouts per stage" sub={`${total} active`} onExpand={onExpand}>
-      {total === 0 ? <Empty>No active rollouts.</Empty> : s.chart === "bar" ? <Bars rows={agg} link={link} /> : s.chart === "donut" ? <Donut rows={agg} total={total} unit="active" link={link} large={large} /> : <StageFlow rows={rows} link={link} />}
+      {total === 0 ? <Quiet>No active rollouts.</Quiet> : s.chart === "bar" ? <Bars rows={agg} link={link} /> : s.chart === "donut" ? <Donut rows={agg} total={total} unit="active" link={link} large={large} /> : <StageFlow rows={rows} link={link} />}
     </Widget>
   )
 }
@@ -432,7 +432,7 @@ function Attention({ rows, s, onExpand, large }: { rows: D["attention"]; s: S; o
   const limit = large ? 200 : Number(s.limit ?? 8)
   return (
     <Widget title="Needs attention" sub={rows.length ? `${rows.length} rollout${rows.length === 1 ? "" : "s"}` : undefined} action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
-      {rows.length === 0 ? <Empty>Nothing is stuck: every active rollout is on track.</Empty> : (
+      {rows.length === 0 ? <Quiet>Nothing is stuck: every active rollout is on track.</Quiet> : (
         <ul className="divide-y divide-border text-[13px]">
           {rows.slice(0, limit).map((r) => (
             <li key={r.id} className="py-2">
@@ -481,7 +481,7 @@ function ActivityFeed({ rows, s, onExpand, large }: { rows: D["activity"]; s: S;
             </li>
           )
         })}
-        {rows.length === 0 && <li><Empty>Nothing has happened yet.</Empty></li>}
+        {rows.length === 0 && <li><Quiet>Nothing has happened yet.</Quiet></li>}
       </ul>
     </Widget>
   )
@@ -501,7 +501,7 @@ function Alerts({ rows, s, onExpand, large }: { rows: D["alerts"]; s: S; onExpan
             <span className="shrink-0 text-[11px] text-muted-foreground"><Ago iso={a.created_at} /></span>
           </li>
         ))}
-        {rows.length === 0 && <li><Empty>No open alerts.</Empty></li>}
+        {rows.length === 0 && <li><Quiet>No open alerts.</Quiet></li>}
       </ul>
     </Widget>
   )
@@ -521,7 +521,7 @@ function MyWork({ m, today, onExpand }: { m: D["mywork"]; today: string; onExpan
             </li>
           )
         })}
-        {m.tasks.length === 0 && <li><Empty>Nothing is assigned to you.</Empty></li>}
+        {m.tasks.length === 0 && <li><Quiet>Nothing is assigned to you.</Quiet></li>}
       </ul>
     </Widget>
   )
@@ -533,7 +533,7 @@ function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () =
   const data = c?.throughput.map(([m, n]) => ({ m: m.slice(5), n })) ?? []
   return (
     <Widget title="Cycle time" sub={c?.template} action={<Link to="/analytics" className={pill}>Detail</Link>} onExpand={onExpand}>
-      {!c ? <Empty>No stage template yet.</Empty> : c.completed_count === 0 ? <Empty>No rollout on {c.template} has closed yet; lead times appear after the first one does.</Empty> : (
+      {!c ? <Quiet>No stage template yet.</Quiet> : c.completed_count === 0 ? <Quiet>No rollout on {c.template} has closed yet; lead times appear after the first one does.</Quiet> : (
         <>
           <div className="grid grid-cols-3 gap-2 text-center">
             {[["Lead time avg", d1(c.lead_avg), "days"], ["Median", d1(c.lead_median), "days"], ["Closed", String(c.completed_count), "rollouts"]].map(([l, v, u]) => (
@@ -578,7 +578,7 @@ function Custom({ agg, s, onExpand, large }: { agg: D["aggregates"]; s: S; onExp
   const link = measure === "rollouts_by_stage" ? (k: string) => `/board?stage=${encodeURIComponent(k)}` : undefined
   return (
     <Widget title={String(s.title || "Custom metric")} sub={MEASURE_LABEL[measure]} onExpand={onExpand}>
-      {rows.length === 0 ? <Empty>Nothing to count yet.</Empty>
+      {rows.length === 0 ? <Quiet>Nothing to count yet.</Quiet>
         : chart === "number" ? (
           <div>
             <div className="flex items-baseline gap-2"><span className="text-[24px] font-semibold leading-none tracking-tight">{total}</span><span className="text-[12px] text-muted-foreground">{unit}</span></div>
@@ -786,7 +786,7 @@ export default function Dashboard({ user }: { user: User }) {
   const titleOf = (item: LayoutItem) => (item.id === "custom" ? String(item.settings.title || "Custom metric") : info(item.id).title)
 
   return (
-    <div className="px-5 pb-24 pt-2">
+    <div className="px-5 pb-24 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, {user.name.split(" ")[0]}</h1>
         <p className="text-[13px] text-muted-foreground">The portfolio this week · {fmtDate(d.today)}{d.is_custom && " · your arrangement"}</p>

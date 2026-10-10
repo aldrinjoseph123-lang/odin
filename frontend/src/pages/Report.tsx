@@ -161,7 +161,7 @@ export default function Report({ user }: { user: User }) {
         </div>
       </header>
 
-      {intro && <p className="mt-3 whitespace-pre-line text-[14px] leading-relaxed">{intro}</p>}
+      {intro && <p className="mt-3 max-w-prose whitespace-pre-line text-[14px] leading-relaxed">{intro}</p>}
       <div className={cn("mt-4 grid grid-cols-2 gap-3", customer ? "lg:grid-cols-4" : "lg:grid-cols-5", hide("numbers"))}>
         {tiles.map((t) => (
           <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.bad ? "bad" : t.warn ? "warn" : undefined} className="print:shadow-none" />
@@ -320,7 +320,7 @@ export default function Report({ user }: { user: User }) {
           </div>
         </Section>
       </div>
-      {closing && <p className="mt-4 whitespace-pre-line text-[14px] leading-relaxed">{closing}</p>}
+      {closing && <p className="mt-4 max-w-prose whitespace-pre-line text-[14px] leading-relaxed">{closing}</p>}
       <p className="mt-4 text-[12px] text-muted-foreground">Odin · {d.company} · {customer ? "customer copy" : "internal"} · generated {fmtWhen(d.generated_at, true)}</p>
     </div>
   )

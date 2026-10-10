@@ -64,7 +64,7 @@ export default function Alerts(_props: { user: User }) {
               </tr>
               </Fragment>)
             })}
-            {d.rows.length === 0 && <tr><td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">No alerts — every rollout is inside its dates and SLAs.</td></tr>}
+            {d.rows.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-[13px] text-muted-foreground">No alerts — every rollout is inside its dates and SLAs.</td></tr>}
           </tbody>
         </table>
       </div>

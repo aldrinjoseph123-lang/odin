@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-10T08:25:07Z",
+  "generatedAt": "2026-10-10T11:05:18Z",
   "title": "Design System: Odin",
   "extensions": {
     "colorMeta": {
@@ -750,7 +750,7 @@
       },
       {
         "name": "The One Accent Rule",
-        "body": "The accent appears only as selection (row border + wash, the current nav pill), the primary action, the focus ring and chart marks. It never labels a state, never decorates, never appears as a heading colour, and never marks today (today is ink, so a red accent never reads as overdue).",
+        "body": "The accent appears only as selection (row border + wash, the current nav pill), the primary action and the focus ring; charts are grey. It never labels a state, never decorates, never appears as a heading colour, and never marks today (today is ink, so a red accent never reads as overdue).",
         "section": "colors"
       },
       {
@@ -765,7 +765,7 @@
       },
       {
         "name": "The Accent-as-Text Rule",
-        "body": "When the accent is text or a thin mark on white, use `--primary-text` (`#B4143C` for red), not `--primary`; the pastel fill carries only `--primary-foreground`.",
+        "body": "When the accent is text or a thin mark on white, use `--primary-text` (`#2F47D6` for blue), not `--primary`; the pastel fill carries only `--primary-foreground`.",
         "section": "colors"
       },
       {
@@ -794,18 +794,18 @@
         "section": "elevation"
       },
       {
-        "name": "The Same-Column Rule",
-        "body": "Every row places its dots on one shared column order (the union of all rows' stage lists, each list keeping its own order), so a stage sits in the same column on every row and the lead can read down a column; a stage a project doesn't have leaves a gap on its line. Above the list, on every width, a scrolling strip of named stage pills (\"PO Received 13\") counts the rollouts in each stage under the current filter; a pill filters the list to that stage (lit ink with ×, kept in the URL). Pills and filter chips are 32 px, 40 px under a coarse pointer; a filter that would change nothing (\"Mine\" when you are on every rollout) is not offered. Done: `ok-line` fill and border, green connector. Current: white dot, state-line border, 3 px state-soft ring (ink border + Muted Fill ring when on track); scales to 110% when the row is selected. Upcoming: Stroke-grey border, white fill, grey connector. Each dot is a tooltip trigger (\"Scoping · done\"); the whole stepper carries an `aria-label` naming the current stage.",
+        "name": "The State-Safe Accent Rule",
+        "body": "an accent whose text or wash could pass for a state keeps its hue only in the pastel fill. Red (overdue) and green (done) are offered, but their accent text, wash and ring fall back to ink and neutral (`index.css`, the state-safe block), so a selected row or a link never reads as late or finished. Blue is the default because the 10 Oct critique found the red accent's text (`#B4143C`) matched overdue (`#B4231C`). Today is drawn in ink.",
         "section": "components"
       },
       {
-        "name": "The State-Safe Accent Rule",
-        "body": "An accent whose text or wash could pass for a state keeps its hue only in the pastel fill; red and green fall back to ink for text, wash and ring. Blue is the default.",
+        "name": "The Same-Column Rule",
+        "body": "Every row places its dots on one shared column order (the union of all rows' stage lists, each list keeping its own order), so a stage sits in the same column on every row and the lead can read down a column; a stage a project doesn't have leaves a gap on its line. Above the list, on every width, a scrolling strip of named stage pills (\"PO Received 13\") counts the rollouts in each stage under the current filter; a pill filters the list to that stage (lit ink with ×, kept in the URL). Pills and filter chips are 32 px, 40 px under a coarse pointer; a filter that would change nothing (\"Mine\" when you are on every rollout) is not offered. Done: `ok-line` fill and border, green connector. Current: white dot, state-line border, 3 px state-soft ring (ink border + Muted Fill ring when on track); scales to 110% when the row is selected. Upcoming: Stroke-grey border, white fill, grey connector. Each dot is a tooltip trigger (\"Scoping · done\"); the whole stepper carries an `aria-label` naming the current stage.",
         "section": "components"
       }
     ],
     "dos": [
-      "**Do** keep the accent to selection, the single primary action, focus and chart marks; today is ink (The One Accent Rule).",
+      "**Do** keep the accent to selection, the single primary action and focus; charts are grey and today is ink (The One Accent Rule).",
       "**Do** map rollout state to its triplet exactly: `overdue` → `bad`, `due_soon` and `over_sla` → `warn`, done stages → `ok`; `on_track` gets no colour.",
       "**Do** pair every state colour with a second channel — the chip text, a visually-hidden label, the check glyph, dashed vs solid borders.",
       "**Do** use `--primary-text` for accent-coloured text on white.",
@@ -815,7 +815,7 @@
       "**Do** put every piece of content on a `panel`; convey depth inside a card with fill steps (Card → Muted Fill → Accent Wash)."
     ],
     "donts": [
-      "**Don't** add a third shadow value or a gradient; the ground tint is the accent at 7% and never a second hue.",
+      "**Don't** add a third shadow value or a gradient; the ground tint is the accent at 7% and never a second hue. The one exception is a mark, not a surface: time past a target is drawn as a 135° hatch of `--bad-line` (the dashboard Timeline and the Flow's time strip, 10 Oct 2026), so lateness reads as \"beyond the line\" without a new colour.",
       "**Don't** uppercase or letter-space UI labels, or bring back the retired dark nav, 2 px corners, or the 8 Sep flat white ground. Brand red and Chakra Petch are allowed only where \"Brand surfaces\" lists them; red never marks anything in the UI except `--bad` state.",
       "**Don't** use green for \"on track\" rows or amber/red for anything that is not a lateness state; don't use `--destructive` for rollout state.",
       "**Don't** put a state's text shade in a fill or its line shade under text.",

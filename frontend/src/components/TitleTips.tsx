@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { tipText } from "@/lib/tips"
+import { CUT, tipText } from "@/lib/tips"
 
 // Tooltips for the whole app, from what the markup already says: an element's
 // `title` (truncated names, icon hints) or, for an icon-only control, its
@@ -26,7 +26,7 @@ export function TitleTips() {
         setTip({ text, x: Math.min(Math.max(r.left + r.width / 2, 128), window.innerWidth - 128), y: below ? r.bottom + 8 : r.top - 8, below })
       }, delay)
     }
-    const target = (e: Event) => (e.target instanceof Element ? e.target.closest<HTMLElement>("[title], [data-tip], button[aria-label], a[aria-label], [role='button'][aria-label]") : null)
+    const target = (e: Event) => (e.target instanceof Element ? e.target.closest<HTMLElement>(`[title], [data-tip], button[aria-label], a[aria-label], [role='button'][aria-label], ${CUT}`) : null)
     const over = (e: PointerEvent) => {
       const el = target(e)
       if (!el || el.closest("[data-slot='tooltip-trigger']")) return

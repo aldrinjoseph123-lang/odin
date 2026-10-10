@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { EmptyState } from "@/components/EmptyState"
 import { StatTile } from "@/components/StatTile"
 import { pill } from "@/lib/ui"
 import { Link } from "react-router-dom"
@@ -170,7 +171,7 @@ export default function ReportAll({ user }: { user: User }) {
               external && !r.report ? <span key="r" className="whitespace-nowrap text-muted-foreground">Not published yet</span>
                 : <Link key="r" to={`/projects/${r.id}/report`} className="whitespace-nowrap text-primary-text hover:underline">{r.report ? `v${r.report.version} · ${fmtDate(r.report.created_at)}` : "Live"}</Link>,
             ])} />
-          {d.rows.length === 0 && <p className="py-4 text-center text-[13px] text-muted-foreground">No active rollouts.</p>}
+          {d.rows.length === 0 && <EmptyState>No active rollouts.</EmptyState>}
         </Section>
       </div>
     </div>
