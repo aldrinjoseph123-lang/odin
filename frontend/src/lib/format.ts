@@ -140,8 +140,13 @@ export function fitStages(statuses: ("done" | "current" | "next")[], capacity: n
   if (n <= capacity) return all
   const current = Math.max(0, statuses.indexOf("current"))
   const lastDone = statuses.lastIndexOf("done")
-  const head: FlowItem[] = lastDone >= 1 ? [{ kind: "done", from: 0, to: lastDone }] : statuses.slice(0, lastDone + 1).map((_, index) => ({ kind: "stage", index }))
   const rest = all.slice(lastDone + 1)
+  // fold only the oldest finished stages, and only as many as needed: the chart fills its room
+  if (lastDone >= 1 && rest.length + 1 <= capacity) {
+    const foldTo = lastDone - (capacity - 1 - rest.length)   // ≥ 1, so a fold is never a node of one
+    return [{ kind: "done", from: 0, to: foldTo }, ...all.slice(foldTo + 1)]
+  }
+  const head: FlowItem[] = lastDone >= 1 ? [{ kind: "done", from: 0, to: lastDone }] : statuses.slice(0, lastDone + 1).map((_, index) => ({ kind: "stage", index }))
   if (head.length + rest.length <= capacity) return [...head, ...rest]
   // keep: head, current, as many next stages as fit, a "later" node, the last stage
   const room = Math.max(0, capacity - head.length - 3)

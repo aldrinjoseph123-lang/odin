@@ -162,8 +162,8 @@ function NextLine({ r, today }: { r: FlowRow; today: string }) {
   )
 }
 
-function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
-  r: FlowRow; selected: boolean; tabStop: boolean; onSelect: (id: number) => void; columns: string[]; today: string; me: number
+function RolloutRow({ r, selected, tabStop, onSelect, today, me }: {
+  r: FlowRow; selected: boolean; tabStop: boolean; onSelect: (id: number) => void; today: string; me: number
 }) {
   const chip = <span className={cn("whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
     <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
@@ -176,15 +176,17 @@ function RolloutRow({ r, selected, tabStop, onSelect, columns, today, me }: {
         aria-label={`${r.name}, ${r.client}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
         className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
           "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] md:gap-x-4 md:gap-y-1",
-          selected ? "border-primary bg-accent" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
+          selected ? "border-transparent bg-muted shadow-[inset_3px_0_0_var(--ring)]" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
         <span className="flex min-w-0 items-center gap-2 md:col-start-1 md:row-start-1">
           <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
           <span className="truncate text-[14px] font-medium" title={r.name}>{r.name}</span>
           <span className="hidden truncate text-[12px] text-muted-foreground sm:inline" title={r.client}>{r.client}</span>
         </span>
         <span className="justify-self-end md:hidden">{chip}</span>
-        <span className="hidden md:col-start-2 md:row-span-2 md:row-start-1 md:block">
-          <Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} columns={columns} />
+        {/* the row's own stages, so the bar reads on its own (shared columns left unlabelled gaps: critique 10 Oct) */}
+        <span className="hidden md:col-start-2 md:row-span-2 md:row-start-1 md:grid md:gap-1">
+          <Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={selected} />
+          <span className="text-[11px] text-muted-foreground" aria-hidden>stage {r.stage_index + 1} of {r.stages.length}</span>
         </span>
         {/* phones: the stage and a progress bar in place of the dots */}
         <span className="col-span-2 flex min-w-0 items-center gap-2 pl-4 md:col-span-1 md:col-start-3 md:row-span-2 md:row-start-1 md:grid md:gap-1 md:pl-0">
@@ -246,7 +248,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
     buttons[to].focus()
   }
   const tabStop = shown.some((r) => r.id === selectedId) ? selectedId : shown[0]?.id
-  const row = (r: FlowRow) => <RolloutRow key={r.id} r={r} selected={r.id === selectedId} tabStop={r.id === tabStop} onSelect={onSelect} columns={columns} today={data.today} me={me} />
+  const row = (r: FlowRow) => <RolloutRow key={r.id} r={r} selected={r.id === selectedId} tabStop={r.id === tabStop} onSelect={onSelect} today={data.today} me={me} />
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
@@ -290,7 +292,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
       </nav>
       <ScrollArea className="min-h-0 flex-1">
         <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-2 text-[12px] text-muted-foreground md:grid">
-          <span>Rollout · next step</span><span>Progress</span><span>Stage · status</span><span>Team</span>
+          <span>Rollout · next step <span className="ml-1 text-[11px]">(↑↓ or j/k, Enter opens)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid grid-cols-1 gap-1 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {group ? groupRows(shown, group).map((g) => (
@@ -349,13 +351,14 @@ function TimeStrip({ d }: { d: FlowDetail }) {
     .map((tk, i, all) => ({ ...tk, row: i > 0 && frac(tk.t) - frac(all[i - 1].t) < 0.12 ? 1 : 0 }))
   const visited = d.stages.filter((s) => s.entered_at)
   const late = d.state === "over_sla" || d.state === "overdue"
+  const lateBar = d.state === "overdue" ? "bg-bad-line" : "bg-warn-line"   // overdue is red here as everywhere else
   return (
     <section className="mt-4 border-t border-border pt-3" aria-label="Timeline">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <p className="text-[13px]"><span className="font-semibold">Timeline</span><span className="text-muted-foreground"> · {timelineSummary(d.start_date, d.today, d.target_end_date, d.stage_index === d.stages.length - 1)}</span></p>
         {drawn && (
           <p className="flex items-center gap-3 text-[11px] text-muted-foreground" aria-hidden>
-            {[["h-1.5 w-3 rounded-full bg-ok-line", "stage done"], [cn("h-1.5 w-3 rounded-full", late ? "bg-warn-line" : "bg-foreground"), "current stage"], ["h-3 w-[1.5px] bg-foreground", "today"]].map(([swatch, label]) => (
+            {[["h-1.5 w-3 rounded-full bg-ok-line", "stage done"], [cn("h-1.5 w-3 rounded-full", late ? lateBar : "bg-foreground"), "current stage"], ["h-3 w-[1.5px] bg-foreground", "today"]].map(([swatch, label]) => (
               <span key={label} className="flex items-center gap-1"><span className={swatch} />{label}</span>
             ))}
           </p>
@@ -373,7 +376,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
             const to = i + 1 < visited.length ? parseStamp(visited[i + 1].entered_at!).getTime() : today
             return (
               <Tooltip key={s.name}>
-                <TooltipTrigger render={<span />} className={cn("absolute top-9 h-1.5 rounded-full", s.status === "current" && late ? "bg-warn-line" : s.status === "done" ? "bg-ok-line" : "bg-foreground")}
+                <TooltipTrigger render={<span />} className={cn("absolute top-9 h-1.5 rounded-full", s.status === "current" && late ? lateBar : s.status === "done" ? "bg-ok-line" : "bg-foreground")}
                   style={{ left: pct(from), width: `max(6px, calc(${pct(to)} - ${pct(from)}))` }} />
                 <TooltipContent>{s.name} · {days(s.days)}</TooltipContent>
               </Tooltip>
@@ -417,6 +420,14 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
   // the terminal stage is the end: the project is closed, nothing is "next"
   const closed = !d.next_stage && d.stage_index === d.stages.length - 1
   const closedOn = closed ? d.stages[d.stage_index]?.entered_at ?? null : null
+  const risky = openHere > 0 || approvalPending || (d.approval?.status === "declined" && d.approval.stage === d.stage)
+  const confirmAt = useRef(0)
+  const advanceRef = useRef<HTMLButtonElement>(null)
+  const cancelMove = () => { setConfirming(false); requestAnimationFrame(() => advanceRef.current?.focus()) }
+  // with no open task, "next" is the move itself: ready to advance, or the sign-off, or nothing to do here
+  const nextMove = d.can_move && d.next_stage
+    ? d.signoff?.needed ? `Sign-off: ${signoffText(d.signoff.status)}` : `Ready to move to ${d.next_stage}`
+    : `No open task in ${d.stage}`
   async function advance() {
     if (!d.next_stage) return
     setBusy(true); setErr(null)
@@ -454,7 +465,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             stacked list and nothing folds */}
         {(() => {
           const stacked = typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches
-          const capacity = showAll || stacked || !flowWidth ? Infinity : Math.max(4, Math.floor((flowWidth + 12) / NODE))
+          const capacity = showAll || stacked ? Infinity : !flowWidth ? 6 : Math.max(4, Math.floor((flowWidth + 12) / NODE))   // unmeasured: a safe guess, never an overflow
           const items = fitStages(d.stages.map((st) => st.status), capacity)
           const itemDone = (it: (typeof items)[number]) => it.kind === "done" || (it.kind === "stage" && d.stages[it.index].status === "done")
           return (
@@ -502,15 +513,21 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                         {st.status === "next" ? (st.sla_days ? `SLA ${st.sla_days} d` : "—") : st.status === "done" ? days(st.days) : `${days(st.days)}${st.sla_days ? ` · SLA ${st.sla_days}` : ""}`}
                       </div>
                     </div>
-                    {/* every stage carries its own tasks — work happens here, not on the project page */}
-                    <StageTasks d={d} stage={st.name} done={st.status === "done" || closed} reload={reload} onError={setErr} />
-                    {st.status === "current" && openHere > 0 && <p className="mt-1 text-[12px] text-muted-foreground">{openHere} open before moving on</p>}
+                    {/* every stage carries its own tasks — work happens here, not on the project page; the
+                        current stage's list sits full width under the chart, and the last stage takes none */}
+                    {st.status !== "current" && <StageTasks d={d} stage={st.name} done={st.status === "done" || closed || i === d.stages.length - 1} reload={reload} onError={setErr} />}
                   </li>
                 )
               })}
             </ol>
           )
         })()}
+        {!closed && (
+          <section className="mt-3 max-w-2xl" aria-label={`Tasks in ${d.stage}`}>
+            <h3 className="text-[12px] font-semibold text-nav-fg">In {d.stage} <span className="font-normal text-muted-foreground">· {openHere ? `${openHere} open` : "nothing open"}</span></h3>
+            <StageTasks d={d} stage={d.stage} done={d.stage_index === d.stages.length - 1} reload={reload} onError={setErr} />
+          </section>
+        )}
         {showAll && flowWidth > 0 && d.stages.length * NODE > flowWidth + 12 && (
           <button type="button" onClick={() => setShowAll(false)} className="mt-1 text-[12px] text-muted-foreground hover:text-foreground">Fold stages to fit</button>
         )}
@@ -523,30 +540,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
 
       {/* right rail: what to do next, when it's due, how we got here */}
       <aside className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:grid-cols-1">
-        {!closed && <section className="panel p-3">
-          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
-          {next ? (
-            <>
-              <p className="font-medium">{next.title}</p>
-              <p className="mt-1 flex items-center gap-3 text-muted-foreground">
-                <span className="flex items-center gap-1">{next.assignee ? <UserAvatar name={next.assignee} url={next.assignee_avatar_url} className="h-5 w-5" /> : <UserRound className="h-3.5 w-3.5" />}{next.assignee ?? "Unassigned"}</span>
-                {next.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /><DueDate due={next.due_date} today={d.today} className="inline text-[13px]" /></span>}
-              </p>
-            </>
-          ) : <p className="text-muted-foreground">Nothing queued — add a task under a stage.</p>}
-        </section>}
-        <section className="panel p-3">
-          {/* the target the customer was given (the plan's forecast lives on the project page) */}
-          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> {closed ? "Closed" : "Target"}</h3>
-          {closed ? (
-            <p><span className="font-medium">{closedOn ? fmtDate(closedOn) : "—"}</span>
-              {d.target_end_date && <span className="ml-2 text-muted-foreground">target {fmtDate(d.target_end_date)}</span>}</p>
-          ) : d.target_end_date ? (
-            <p><span className="font-medium">{fmtDate(d.target_end_date)}</span>
-              <span className={cn("ml-2", d.days_left != null && d.days_left < 0 ? "text-bad" : "text-muted-foreground")}>{d.days_left == null ? "" : d.days_left < 0 ? `${-d.days_left} d late` : `${d.days_left} d left`}</span></p>
-          ) : <p className="text-muted-foreground">No target date set.</p>}
-          <p className="mt-1 text-muted-foreground">{d.documents} document{d.documents === 1 ? "" : "s"} · {d.tasks.filter((t) => t.done).length}/{d.tasks.length} tasks done</p>
-        </section>
+        {/* the rail leads with what someone must do now (decide, sign, move), then what is next, then the date */}
         {d.approval && d.approval.stage === d.stage && d.approval.status === "pending" && d.can_approve && (
           <section className="rounded-lg bg-warn-soft p-3">
             <h3 className="mb-1 text-[12px] font-semibold text-nav-fg">Your approval</h3>
@@ -576,7 +570,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           </section>
         )}
         {d.can_move && d.next_stage && !d.signoff?.needed && (
-          <section className="panel p-3" onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); setConfirming(false) } }}>
+          <section className="panel p-3" aria-labelledby={`move-h-${d.id}`} onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); cancelMove() } }}>
+            <h3 id={`move-h-${d.id}`} className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ArrowRight className="h-3.5 w-3.5" /> Move to {d.next_stage}</h3>
             {/* what the move will do, next to the button that does it */}
             <ul className="mb-2 grid grid-cols-1 gap-1 text-[13px] text-muted-foreground">
               {openHere > 0 && <li className="font-medium text-warn">{openHere} open task{openHere === 1 ? "" : "s"} still in {d.stage}</li>}
@@ -586,17 +581,45 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             </ul>
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Stage change note, shared with the customer and partners" aria-describedby={`move-note-${d.id}`} maxLength={5000} className="h-8 text-[13px]" />
             <p id={`move-note-${d.id}`} className="mt-1 text-[12px] text-muted-foreground">Shared with the customer and partners.</p>
+            {/* the confirm names the risk, opens with Cancel first when there is one, and
+                ignores a second click that lands within a moment of the first (a double-click) */}
             {confirming ? (
               <div className="mt-2 grid grid-cols-1 gap-2" role="group" aria-label={`Confirm the move to ${d.next_stage}`}>
-                <Button size="sm" onClick={advance} loading={busy} autoFocus>{`Move to ${d.next_stage} now`}</Button>
-                <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
+                {risky && <Button size="sm" variant="outline" onClick={cancelMove} disabled={busy} autoFocus>Cancel</Button>}
+                <Button size="sm" onClick={() => { if (Date.now() - confirmAt.current > 400) void advance() }} loading={busy} autoFocus={!risky}>
+                  {openHere > 0 ? `Move with ${openHere} open task${openHere === 1 ? "" : "s"}` : approvalPending ? "Move without the customer's approval" : `Move to ${d.next_stage} now`}</Button>
+                {!risky && <Button size="sm" variant="ghost" onClick={cancelMove} disabled={busy}>Cancel</Button>}
               </div>
             ) : (
-              <Button className="mt-2 w-full" size="sm" onClick={() => setConfirming(true)} disabled={busy}>Advance to {d.next_stage} <ArrowRight className="h-3.5 w-3.5" /></Button>
+              <Button ref={advanceRef} className="mt-2 w-full" size="sm" onClick={() => { confirmAt.current = Date.now(); setConfirming(true) }} disabled={busy}>Advance to {d.next_stage} <ArrowRight className="h-3.5 w-3.5" /></Button>
             )}
             {err && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
           </section>
         )}
+        {!closed && <section className="panel p-3">
+          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
+          {next ? (
+            <>
+              <p className="font-medium">{next.title}</p>
+              <p className="mt-1 flex items-center gap-3 text-muted-foreground">
+                <span className="flex items-center gap-1">{next.assignee ? <UserAvatar name={next.assignee} url={next.assignee_avatar_url} className="h-5 w-5" /> : <UserRound className="h-3.5 w-3.5" />}{next.assignee ?? "Unassigned"}</span>
+                {next.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /><DueDate due={next.due_date} today={d.today} className="inline text-[13px]" /></span>}
+              </p>
+            </>
+          ) : <p className="text-muted-foreground">{nextMove}</p>}
+        </section>}
+        <section className="panel p-3">
+          {/* the target the customer was given (the plan's forecast lives on the project page) */}
+          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> {closed ? "Closed" : "Target"}</h3>
+          {closed ? (
+            <p><span className="font-medium">{closedOn ? fmtDate(closedOn) : "—"}</span>
+              {d.target_end_date && <span className="ml-2 text-muted-foreground">target {fmtDate(d.target_end_date)}</span>}</p>
+          ) : d.target_end_date ? (
+            <p><span className="font-medium">{fmtDate(d.target_end_date)}</span>
+              <span className={cn("ml-2", d.days_left != null && d.days_left < 0 ? "text-bad" : "text-muted-foreground")}>{d.days_left == null ? "" : d.days_left < 0 ? `${-d.days_left} d late` : `${d.days_left} d left`}</span></p>
+          ) : <p className="text-muted-foreground">No target date set.</p>}
+          <p className="mt-1 text-muted-foreground">{d.documents} document{d.documents === 1 ? "" : "s"} · {d.tasks.filter((t) => t.done).length}/{d.tasks.length} tasks done</p>
+        </section>
       </aside>
 
       {/* who and what happened: under the flowchart on wide screens, after the rail otherwise */}
@@ -760,6 +783,8 @@ export default function Flow({ user }: { user: User }) {
                   <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
                 </div>
               )}
+              {/* always present, so a screen reader hears which rollout opened; the list keeps the focus */}
+              <p className="sr-only" aria-live="polite">{detail && detail.id === selectedId ? `${detail.name} open below: ${detail.stage}${detail.state !== "on_track" ? `, ${STATE[detail.state].label}` : ""}` : ""}</p>
               {detailError ? (
                 <div className="flex flex-wrap items-center gap-3 px-5 py-4 text-[13px]" role="alert">
                   <span className="min-w-0 flex-1">{detailError}</span>

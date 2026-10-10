@@ -127,6 +127,10 @@ describe("fitStages", () => {
     expect(kinds(fitStages([...edr], 5))).toEqual(["done:0-1", 2, 3, "later:4-6", 7])
     expect(kinds(fitStages(["current", "next", "next", "next", "next", "next", "next"], 5))).toEqual([0, 1, 2, "later:3-5", 6])
   })
+  it("folds only as many finished stages as it must, oldest first", () => {
+    const late = ["done", "done", "done", "done", "done", "done", "done", "current", "next"] as const
+    expect(kinds(fitStages([...late], 6))).toEqual(["done:0-3", 4, 5, 6, 7, 8])
+  })
   it("never folds a single finished stage into a node of one", () => {
     expect(kinds(fitStages(["done", "current", "next", "next", "next"], 4))).toEqual([0, 1, "later:2-3", 4])
   })

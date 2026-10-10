@@ -126,7 +126,10 @@ test("@flow flow detail: advance with the confirm step, then undo", async ({ pag
   const advance = page.getByRole("button", { name: /^Advance to / })
   const next = (await advance.textContent())!.replace("Advance to", "").trim()
   await advance.click()
-  await page.getByRole("button", { name: `Move to ${next} now` }).click()
+  // the confirm names the risk (open tasks, no approval yet) and ignores a click within 400 ms of the first
+  const move = page.getByRole("group", { name: `Confirm the move to ${next}` }).getByRole("button", { name: /^Move / })
+  await page.waitForTimeout(450)
+  await move.click()
   await expect(page.getByRole("status")).toHaveText(new RegExp(`moved to ${next}`))
   await expect(page.locator("button[data-row][aria-current='true']")).toHaveAttribute("aria-label", new RegExp(next))
   await page.getByRole("button", { name: "Undo" }).click()
