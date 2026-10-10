@@ -9,6 +9,7 @@ import { Logo } from "@/components/Brand"
 import { UserAvatar } from "@/components/UserAvatar"
 import { CommandPalette } from "@/components/CommandPalette"
 import { Toaster } from "@/components/Toaster"
+import { ConfirmHost } from "@/components/ConfirmHost"
 import { TitleTips } from "@/components/TitleTips"
 import { NotificationBell } from "@/components/NotificationBell"
 import { applyTheme, type Accent, type Theme } from "@/lib/theme"
@@ -155,6 +156,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
       )}
       <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">{children}</main>
       <Toaster />
+      <ConfirmHost />
       <TitleTips />
       <CommandPalette open={palette} onClose={() => setPalette(false)}
         pages={[...items.map((i) => ({ label: i.label, href: i.href })), { label: "Account", href: "/account" },

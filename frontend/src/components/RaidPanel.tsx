@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { AlertOctagon, Eye, Gavel, Plus, ShieldAlert, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -53,7 +54,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
     } catch (err) { setError(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
   }
   async function remove() {
-    if (!edit?.id || !confirm("Delete this item? The log keeps a line that it existed.")) return
+    if (!edit?.id || !(await askConfirm("Delete this item? The log keeps a line that it existed."))) return
     setBusy(true)
     try { await deleteRaid(projectId, edit.id); toast("Deleted from the log"); setEdit(null); await load(); onChanged?.() } catch (err) { setError(err instanceof ApiError ? err.message : "That did not delete") } finally { setBusy(false) }
   }

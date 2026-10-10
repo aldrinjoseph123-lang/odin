@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { Inbox, ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -71,8 +72,13 @@ function TaskForm({ d, label, init, busy, onSave, onCancel, submitLabel }: {
 }
 
 // ---- tasks under a stage box: tick, add, correct, remove — no page change ------
-function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage: string; done: boolean; reload: () => Promise<void>; onError: (m: string | null) => void }) {
-  const tasks = d.tasks.filter((t) => t.stage === stage)
+// `quiet` (stages other than the current one): finished tasks fold to "n done" and
+// "+ Task" shows on hover or focus, so the chart is not a wall of links (critique 10 Oct)
+function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: FlowDetail; stage: string; done: boolean; reload: () => Promise<void>; onError: (m: string | null) => void; quiet?: boolean }) {
+  const all = d.tasks.filter((t) => t.stage === stage)
+  const finished = all.filter((t) => t.done).length
+  const [showDone, setShowDone] = useState(false)
+  const tasks = quiet && !showDone ? all.filter((t) => !t.done) : all
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
@@ -114,19 +120,23 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
               </span>
               {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[11px]" />}
               {d.can_edit && (
-                <button type="button" disabled={busy} onClick={() => run(() => deleteTask(d.id, t.id), `Deleted ${t.title}`)} aria-label={`Delete ${t.title}`}
+                <button type="button" disabled={busy} onClick={async () => {
+                  // a deleted task comes back with Undo: the same title, person, date and stage
+                  if (await run(() => deleteTask(d.id, t.id))) toast(`Deleted ${t.title}`, { action: { label: "Undo", run: () => void run(() => addTask(d.id, { title: t.title, stage: t.stage, assignee_id: t.assignee_id, due_date: t.due_date }), `${t.title} is back`) } })
+                }} aria-label={`Delete ${t.title}`}
                   className="relative hidden shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-bad group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
             </li>
           ))}
         </ul>
       )}
+      {quiet && finished > 0 && <button type="button" onClick={() => setShowDone(!showDone)} className="mt-1 text-[12px] text-muted-foreground hover:text-foreground">{showDone ? "Hide finished" : `${finished} done`}</button>}
       {/* a finished stage keeps its tasks but takes no new ones */}
       {d.can_edit && !done && (adding ? (
         <TaskForm d={d} label={`New task in ${stage}`} submitLabel="Add task" busy={busy} init={{ title: "", assignee: "", due: "" }} onCancel={() => setAdding(false)}
           onSave={(v) => run(() => addTask(d.id, { stage, ...fields(v) }), `Task added to ${stage}`)} />
       ) : (
-        <button type="button" onClick={() => setAdding(true)} aria-label={`Add a task to ${stage}`} className="mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text">
+        <button type="button" onClick={() => setAdding(true)} aria-label={`Add a task to ${stage}`} className={cn("mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text", quiet && "opacity-0 transition-opacity focus:opacity-100 group-hover/node:opacity-100")}>
           <Plus className="h-3 w-3" /> Task
         </button>
       ))}
@@ -174,14 +184,14 @@ function RolloutRow({ r, selected, tabStop, onSelect, today, me }: {
   return (
     <li>
       <button type="button" data-row data-id={r.id} onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={tabStop ? 0 : -1}
-        aria-label={`${r.name}, ${r.client}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
+        aria-label={`${r.name}${r.name.includes(r.client) ? "" : `, ${r.client}`}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
         className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
           "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] md:gap-x-4 md:gap-y-1",
           selected ? "border-transparent bg-muted shadow-[inset_3px_0_0_var(--ring)]" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
         <span className="flex min-w-0 items-center gap-2 md:col-start-1 md:row-start-1">
-          <span className={cn("h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
+          <span className={cn("h-2 w-2 shrink-0 rounded-full md:hidden", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
           <span className="truncate text-[14px] font-medium" title={r.name}>{r.name}</span>
-          <span className="hidden truncate text-[12px] text-muted-foreground sm:inline" title={r.client}>{r.client}</span>
+          {!r.name.includes(r.client) && <span className="hidden truncate text-[12px] text-muted-foreground sm:inline" title={r.client}>{r.client}</span>}
         </span>
         <span className="justify-self-end md:hidden">{chip}</span>
         {/* the row's own stages, so the bar reads on its own (shared columns left unlabelled gaps: critique 10 Oct) */}
@@ -325,7 +335,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
           {rows.length === 0 && (
             <li><Empty className="rounded-lg bg-muted/40 py-12"><EmptyHeader><EmptyMedia variant="icon"><Inbox /></EmptyMedia><EmptyDescription>
               {data.rows.length === 0 ? (partner ? "No rollout is shared with you yet. It appears here once a project manager adds you." : "No active rollouts yet. Create one from a client PO and it appears here.")
-                : stage ? `No rollout in ${stage} matches this filter.`
+                : stage ? <>No rollout in {stage} matches this filter. <button type="button" onClick={() => { setStage(null); setFilter("all") }} className="font-medium text-foreground underline underline-offset-2">Show every rollout</button></>
                 : filter === "customer" ? "No rollout is waiting on a customer's approval."
                 : "Nothing needs attention — every rollout is inside its stage SLA, on schedule, and no task is late."}
             </EmptyDescription></EmptyHeader></Empty></li>
@@ -417,7 +427,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
   async function decide(decision: "approved" | "declined") {
     if (!d.approval) return
     // a decline cannot be taken back: ask, and say what it does (sim roles-9)
-    if (decision === "declined" && !window.confirm(`Decline ${d.approval.stage}? The project manager is told; your comment goes with it. This cannot be undone.`)) return
+    if (decision === "declined" && !(await askConfirm(`Decline ${d.approval.stage}? The project manager is told; your comment goes with it. This cannot be undone.`))) return
     setBusy(true); setErr(null)
     try {
       await decideApproval(d.id, d.approval.id, decision, comment)
@@ -454,7 +464,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not move the stage") } finally { setBusy(false) }
   }
   // Next up, as a panel: first in the rail while work is open in the stage, after the move otherwise
-  const nextUpPanel = closed ? null : (
+  // (with no task left and the sign-off panel showing, it would only repeat that panel)
+  const nextUpPanel = closed || (!next && d.can_move && d.next_stage && d.signoff?.needed) ? null : (
 <section className="panel p-3">
           <H className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</H>
           {next ? (
@@ -541,7 +552,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                 }
                 const i = it.index, st = d.stages[i]
                 return (
-                  <li key={st.name} className="relative min-w-0 md:px-2 md:first:pl-0 md:last:pr-0">
+                  <li key={st.name} className="group/node relative min-w-0 md:px-2 md:first:pl-0 md:last:pr-0">
                     {arrow}
                     <div className={cn("min-h-[58px] rounded-lg border-[1.5px] bg-card px-3 py-2",
                       st.status === "done" && "border-ok-line bg-ok-soft",
@@ -551,12 +562,12 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                         {st.status === "done" && <Check className="mt-px h-3.5 w-3.5 shrink-0 text-ok" />}<span className="line-clamp-2 [overflow-wrap:normal] hyphens-auto" title={st.name}>{st.name}</span>
                       </div>
                       <div className="mt-1 truncate text-[12px] text-muted-foreground">
-                        {st.status === "next" ? (st.sla_days ? `SLA ${st.sla_days} d` : "—") : st.status === "done" ? days(st.days) : `${days(st.days)}${st.sla_days ? ` · SLA ${st.sla_days}` : ""}`}
+                        {st.status === "next" ? (st.sla_days ? `SLA ${st.sla_days} d` : "") : st.status === "done" ? days(st.days) : `${days(st.days)}${st.sla_days ? ` · SLA ${st.sla_days}` : ""}`}
                       </div>
                     </div>
                     {/* every stage carries its own tasks — work happens here, not on the project page; the
                         current stage's list sits full width under the chart, and the last stage takes none */}
-                    {st.status !== "current" && <StageTasks d={d} stage={st.name} done={st.status === "done" || closed || i === d.stages.length - 1} reload={reload} onError={setErr} />}
+                    {st.status !== "current" && <StageTasks d={d} stage={st.name} done={st.status === "done" || closed || i === d.stages.length - 1} reload={reload} onError={setErr} quiet />}
                   </li>
                 )
               })}
@@ -605,7 +616,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           </section>
         )}
         {workFirst && nextUpPanel}
-        {d.can_move && d.next_stage && d.signoff?.needed && (
+        {d.can_move && d.next_stage && d.signoff?.needed && !d.signoff.awaiting_me && (
           <section className="panel p-3">
             <H className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</H>
             <p className="mb-2 text-[13px] text-muted-foreground">{signoffText(d.signoff.status)}. The project closes once the customer has signed and we have countersigned.</p>
@@ -748,6 +759,14 @@ export default function Flow({ user }: { user: User }) {
     }
   }, [])
   useEffect(() => { void load() }, [load])
+  // the list keeps itself current: a minute's poll while the tab is visible, and on coming back to it
+  // (a colleague's move shows without a reload; the open rollout's own pane is left alone)
+  useEffect(() => {
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") void load() }, 60_000)
+    const back = () => void load()
+    window.addEventListener("focus", back)
+    return () => { window.clearInterval(t); window.removeEventListener("focus", back) }
+  }, [load])
   useEffect(() => { setDetailError(null); if (selectedId != null) void loadDetail(selectedId) }, [selectedId, loadDetail])
   // Only after a click. On load the list must open at the top, where the
   // stuck rows are — scrolling to a deep-linked row would hide them.

@@ -33,7 +33,7 @@ describe("Dashboard", () => {
   it("a tile opens the rollouts behind its number; a widget expands with its data as a table", async () => {
     const user = userEvent.setup()
     mount()
-    await user.click(await screen.findByRole("button", { name: "Overdue: 1. Show them" }))
+    await user.click(await screen.findByRole("button", { name: /^Overdue: 1, .* since .*\. Show them$/ }))
     const dialog = await screen.findByRole("dialog")
     expect(within(dialog).getByText("Overdue · 1")).toBeInTheDocument()
     expect(within(dialog).getByRole("link", { name: "EDR Rollout - Globex" })).toHaveAttribute("href", "/board?rollout=1")

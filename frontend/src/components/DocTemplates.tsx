@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { ArrowDown, ArrowUp, Copy, Eye, FileText, ImageUp, Plus, Star, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -69,7 +70,7 @@ export function DocTemplates() {
                 onEdit={() => { setPreview(null); setEdit({ id: t.id, kind: t.kind, name: t.name, config: structuredClone(t.config) }) }}
                 onCopy={() => { setPreview(null); setEdit({ kind: t.kind, name: `${t.name} (copy)`, config: structuredClone(t.config) }) }}
                 onDefault={() => run(() => defaultDocTemplate(t.id), `${t.name} is now the default.`)}
-                onDelete={() => { if (confirm(`Delete the template ${t.name}? Documents already issued keep their look.`)) void run(() => deleteDocTemplate(t.id), "Template deleted.") }} />)}
+                onDelete={async () => { if (await askConfirm(`Delete the template ${t.name}? Documents already issued keep their look.`)) void run(() => deleteDocTemplate(t.id), "Template deleted.") }} />)}
             </ul>
           </section>
         )

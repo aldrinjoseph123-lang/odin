@@ -186,7 +186,8 @@ def _health(project, stages, cur, finish, risks, today, closed, has_plan):
         reasons_amber.append(f"{vs_b} d behind the baseline.")
     c = stages[cur] if stages else None
     if c and c["sla_days"] and c["actual_days"] is not None and c["actual_days"] > c["sla_days"]:
-        reasons_amber.append(f"{c['name']} is {round(c['actual_days'] - c['sla_days'], 1):g} d over its {c['sla_days']} d SLA.")
+        # whole days, as the stage chips count them ("6 over SLA"), so one fact reads one way everywhere
+        reasons_amber.append(f"{c['name']} is {round(c['actual_days'] - c['sla_days'])} d over its {c['sla_days']} d SLA.")
     blockers = [r for r in risks if r["kind"] == "blocker"]
     high = [r for r in risks if r["kind"] in ("risk", "issue") and r["impact"] == "high"]
     if blockers:

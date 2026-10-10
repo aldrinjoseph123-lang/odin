@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -147,7 +148,7 @@ export default function Account({ user }: { user: User }) {
         <section className="grid grid-cols-1 content-start gap-2 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Sessions</h2>
           <p className="text-[13px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>
-          <div><Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { if (window.confirm("Sign out of every other device?")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>
+          <div><Button type="button" size="sm" variant="outline" disabled={busy} onClick={async () => { if (await askConfirm("Sign out of every other device? Anyone signed in as you elsewhere has to sign in again.", "Sign out")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>
         </section>
       </div>
     </div>

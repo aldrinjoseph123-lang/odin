@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { CalendarRange, History, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { PlanGantt, RagPill } from "@/components/PlanGantt"
+import { PlanGantt } from "@/components/PlanGantt"
 import { Ago } from "@/components/Ago"
 import { AIHealthWhy } from "@/components/AIHealthWhy"
 import { ApiError, plan as loadPlan, rebaseline, savePlan, type PlanData } from "@/lib/api"
@@ -61,10 +61,8 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
   ]
   return (
     <div>
-      <div className="flex flex-wrap items-start gap-3">
-        <RagPill rag={d.health.rag} />
-        <ul className="min-w-0 flex-1 text-[13px] text-muted-foreground">{d.health.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
-      </div>
+      {/* the verdict and its first reason sit in the page's title row; here only the full list, when there is more */}
+      {d.health.reasons.length > 1 && <ul className="min-w-0 text-[13px] text-muted-foreground">{d.health.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
       <AIHealthWhy projectId={projectId} rag={d.health.rag} />
       <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {tiles.map((t) => (
@@ -116,7 +114,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
       {editable && !open && <Button size="sm" variant="outline" className="mt-3 rounded-full" onClick={() => setEditing(true)}><CalendarRange className="h-3.5 w-3.5" /> Edit dates</Button>}
       {open && (
         <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void save() }}>
-          <Button type="button" size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Fill the gaps from SLAs</Button>
+          <Button type="button" size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Suggest dates from the SLAs</Button>
           <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
           {/* once there is a baseline, every move says why (the log and the customer read it) */}
           {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} required placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="h-8 min-w-0 flex-1 basis-60 rounded-md border border-input bg-background px-2 text-[13px]" />}
@@ -153,7 +151,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
           <input id="rebase-reason" autoFocus value={rebase ?? ""} onChange={(e) => setRebase(e.target.value)} maxLength={300} placeholder="Scope change agreed with the customer on 3 Oct" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]" />
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setRebase(null)}>Cancel</Button>
-            <Button size="sm" className="rounded-full" disabled={busy || !rebase?.trim()} onClick={() => { const why = rebase!.trim(); setRebase(null); void run(async () => { await rebaseline(projectId, why); return "The current plan is the new baseline." }) }}>Re-baseline</Button>
+            <Button size="sm" className="rounded-full" loading={busy} disabled={!rebase?.trim()} onClick={() => { const why = rebase!.trim(); void run(async () => { await rebaseline(projectId, why); setRebase(null); return "The current plan is the new baseline." }) }}>Re-baseline</Button>
           </div>
         </DialogContent>
       </Dialog>

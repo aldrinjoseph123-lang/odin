@@ -331,3 +331,11 @@ describe("timelineSummary", () => {
     expect(timelineSummary("2026-09-01", "2026-10-09", "2026-10-09")).toMatch(/, due today$/)
   })
 })
+
+import { confirmParts } from "./confirm"
+describe("confirmParts", () => {
+  it("titles the question, describes the rest, and puts the verb on the button", () => {
+    expect(confirmParts("Remove Ann Reyes from this project? They lose access.")).toEqual({ title: "Remove Ann Reyes from this project?", detail: "They lose access.", verb: "Remove", danger: true })
+    expect(confirmParts("Save this version?")).toEqual({ title: "Save this version?", detail: "", verb: "Save", danger: false })
+  })
+})

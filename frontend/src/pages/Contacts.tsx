@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { ChevronRight, MoreHorizontal, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -139,7 +140,7 @@ export default function Contacts(_props: { user: User }) {
   const pick = (t: TabKey) => { setTab(t); const u = new URL(window.location.href); u.searchParams.set("tab", t); window.history.replaceState(window.history.state, "", u) }
 
   const send: Send = async (path, fields = {}, confirmText, onError) => {
-    if (confirmText && !window.confirm(confirmText)) return false
+    if (confirmText && !(await askConfirm(confirmText))) return false
     setBusy(true)
     try {
       const r = await postForm(path, fields)

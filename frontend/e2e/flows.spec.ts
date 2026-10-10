@@ -136,8 +136,8 @@ test("@flow flow detail: advance with the confirm step, then undo", async ({ pag
   await page.getByRole("button", { name: "Undo" }).click()
   await expect(page.getByRole("status")).toHaveText(/Moved back/)
   await expect(page.locator("button[data-row][aria-current='true']")).not.toHaveAttribute("aria-label", new RegExp(`\\. ${next},`))
-  // a task can be added, ticked and removed from the flowchart
-  await page.getByRole("button", { name: /^Add a task to / }).first().click()
+  // a task can be added, ticked and removed in the current stage's list under the flowchart
+  await page.getByRole("region", { name: /^Tasks in / }).getByRole("button", { name: /^Add a task to / }).click()
   await page.getByRole("textbox", { name: /^New task in / }).fill("E2E task")
   await page.getByRole("button", { name: "Add task" }).click()
   await page.getByRole("button", { name: "Complete E2E task" }).click()
@@ -274,8 +274,8 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   await page.getByRole("checkbox", { name: "Show in the customer's report" }).check()
   await page.getByRole("button", { name: "Save" }).click()
   await raid.getByRole("button", { name: /E2E risk/ }).click()
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Delete" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(raid.getByRole("button", { name: /E2E risk/ })).toHaveCount(0)
 
   // the report: the customer copy hides the baseline; a saved version is listed; both PDFs render
@@ -286,8 +286,9 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   await expect(page.locator("main")).not.toContainText(/baseline/i)
   await page.getByRole("button", { name: "Internal" }).click()
   await page.getByRole("textbox", { name: "What we need from the customer" }).fill("E2E: confirm the change window.")
-  page.once("dialog", (d) => { expect(d.message()).toMatch(/Partners and customers/); void d.accept() })
   await page.getByRole("button", { name: "Save as version" }).click()
+  await expect(page.getByRole("alertdialog")).toContainText(/Partners and customers/)
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByRole("status")).toHaveText(/Version \d+ saved/)
   for (const audience of ["internal", "customer"]) {
     const r = await page.request.get(`/projects/1/report.pdf?audience=${audience}`)
@@ -353,8 +354,8 @@ test("@flow scope and sign-off: mark the last item, send, see it waiting, withdr
   // no mail on day one: the PM hands the signatory a one-time link
   await page.getByRole("button", { name: "Get a sign-in link" }).click()
   await expect(page.getByRole("textbox", { name: "Sign-in link for the signatory" })).toHaveValue(/\/auth\/link\/[^?]+\?next=%2Fprojects%2F1%2Fsignoff|\/auth\/link\/.+next=\/projects\/1\/signoff/)
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Withdraw and revise" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByRole("status")).toHaveText(/withdrawn/)
   await expect(page.getByRole("button", { name: "Send for signature" })).toBeVisible()
   expect(await move(before)).toBe(200)
@@ -450,14 +451,14 @@ test("@flow contacts: tabs, a product under its vendor, rename carries into proj
   await expect(page.getByText("meera@redington.example")).toBeVisible()
   // tidy up
   await page.goto("/settings/contacts?tab=products")
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Actions for E2E Box" }).click()
   await page.getByRole("menuitem", { name: "Delete" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByRole("cell", { name: "E2E Box", exact: true })).toHaveCount(0)
   await page.goto("/settings/contacts?tab=vendors")
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Actions for E2E Vendor" }).click()
   await page.getByRole("menuitem", { name: "Delete" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByRole("cell", { name: "E2E Vendor", exact: true })).toHaveCount(0)
   // the refused duplicate answers 400: expected
   expectClean(errors.filter((e) => !/400 \(BAD REQUEST\)|\/settings\/contacts\/products/.test(e)))
@@ -570,8 +571,8 @@ test("@flow document templates: brand, sections and wording; previewed, saved, p
   await expect(page.getByRole("combobox", { name: "Document template" })).toContainText("E2E certificate (default)")
   // clean up: delete it
   await page.goto("/settings/documents")
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Delete E2E certificate" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByRole("status")).toHaveText(/Template deleted/)
   expectClean(errors)
 })
@@ -695,7 +696,7 @@ test("@flow project page: health in the title row, a section index, rare setting
   // removing someone asks in the app's own dialog, with what it does; Cancel keeps them
   const remove = page.locator("#team").getByRole("button", { name: /^Remove / }).first()
   await remove.click()
-  const ask = page.getByRole("dialog")
+  const ask = page.getByRole("alertdialog")
   await expect(ask).toContainText("They lose access")
   await ask.getByRole("button", { name: "Cancel" }).click()
   await expect(ask).toHaveCount(0)

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { AIDraftBar } from "@/components/AIDraftBar"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { CheckCircle2, ChevronLeft, Copy, Download, FileSignature, Link2, Printer, ShieldCheck, Upload } from "lucide-react"
@@ -383,7 +384,7 @@ export default function Signoff(_props: { user: User }) {
                   <h2 className="text-[13px] font-semibold">If the customer signs on paper</h2>
                   <p className="text-[12px] text-muted-foreground">Send them the PDF; upload the signed copy when it comes back.</p>
                   {d.can.upload && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setDialogErr(null); setDialog("upload") }}><Upload className="h-3.5 w-3.5" /> Upload the signed copy</Button>}
-                  {d.can.withdraw && <Button size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={() => { if (confirm("Withdraw this version? The signatory can no longer sign it; you can then send a new one.")) void act(() => withdrawSignoff(id, cur.version), `Version ${cur.version} withdrawn. Revise it and send again.`) }}>Withdraw and revise</Button>}
+                  {d.can.withdraw && <Button size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={async () => { if (await askConfirm("Withdraw this version? The signatory can no longer sign it; you can then send a new one.")) void act(() => withdrawSignoff(id, cur.version), `Version ${cur.version} withdrawn. Revise it and send again.`) }}>Withdraw and revise</Button>}
                 </section>
               )}
             </aside>

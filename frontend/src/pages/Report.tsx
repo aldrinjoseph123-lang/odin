@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
 import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTip, XAxis, YAxis } from "recharts"
@@ -63,7 +64,7 @@ export default function Report({ user }: { user: User }) {
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
     // the words are shared: say so before they go out, not after (sim roles-3)
-    if (!window.confirm("Save this version? Partners and customers on the project will read these words in their copy of the report.")) return
+    if (!(await askConfirm("Save this version? Partners and customers on the project will read these words in their copy of the report."))) return
     setBusy(true); setNotice(null)
     try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }

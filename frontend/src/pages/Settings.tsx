@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { Navigate, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -59,7 +60,7 @@ export default function Settings(_props: { user: User }) {
   useEffect(() => { if (TITLES[section]) { document.title = `${TITLES[section].title} · Settings · Odin`; setNotice(null); void load() } }, [load, section])
 
   const send: Send = async (path, fields = {}, confirmText) => {
-    if (confirmText && !window.confirm(confirmText)) return null
+    if (confirmText && !(await askConfirm(confirmText))) return null
     setBusy(true)
     try {
       const r = await postForm(path, fields)

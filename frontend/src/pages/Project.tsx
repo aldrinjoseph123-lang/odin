@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Link, useParams } from "react-router-dom"
 import { Copy, MoreHorizontal, Trash2 } from "lucide-react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { askConfirm } from "@/lib/confirm"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { RagPill } from "@/components/PlanGantt"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -36,7 +36,9 @@ const LABELS: Record<string, string> = {
 function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
   return (
     <section id={id} className="panel scroll-mt-16 p-4">
-      <h2 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="sr-only">, </span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h2>
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-2 text-[12px]">
+        <h2 data-n className="font-semibold text-nav-fg">{title}</h2>{hint && <span className="text-muted-foreground">{hint}</span>}
+      </div>
       {children}
     </section>
   )
@@ -54,10 +56,6 @@ export default function Project({ user }: { user: User }) {
   const stageSeen = useRef<string | null>(null)
   const [health, setHealth] = useState<PlanData["health"] | null>(null)
   useEffect(() => { plan(id).then((p) => setHealth(p.health)).catch(() => setHealth(null)) }, [id, planRefresh])
-  // a styled confirm instead of the browser's: the question, what it does, and the verb on the button
-  const [ask, setAsk] = useState<{ text: string; resolve: (ok: boolean) => void } | null>(null)
-  const confirmFirst = (text: string) => new Promise<boolean>((resolve) => setAsk({ text, resolve }))
-  const answer = (ok: boolean) => { ask?.resolve(ok); setAsk(null) }
   const [adding, setAdding] = useState(false)
   const [editStages, setEditStages] = useState(false)
   const [allNotes, setAllNotes] = useState(false)
@@ -76,7 +74,7 @@ export default function Project({ user }: { user: User }) {
 
   // one door for every form post: show what Flask said, then refetch
   async function send(path: string, fields: Record<string, string> | FormData = {}, confirmText?: string): Promise<FormReply | null> {
-    if (confirmText && !(await confirmFirst(confirmText))) return null
+    if (confirmText && !(await askConfirm(confirmText))) return null
     setBusy(true)
     let leaving = false
     try {
@@ -133,7 +131,7 @@ export default function Project({ user }: { user: User }) {
         {[["notes", "Notes"], ["plan", "Plan"], ["raid", "Risks & issues"], ["scope", "Scope & sign-off"], ["details", "Details"], ["team", "Team"],
           ...(can.manage ? [["stages", "Stages"]] : []), ["documents", "Documents"], ...(activity.length ? [["activity", "Activity"]] : []),
           ...((x.guest_links.customer || can.manage) ? [["sharing", "Sharing"]] : [])].map(([k, label]) => (
-          <a key={k} href={`#${k}`} className="shrink-0 rounded-full px-3 py-1 text-nav-fg hover:bg-muted hover:text-foreground">{label}</a>
+          <a key={k} href={`#${k}`} className="shrink-0 rounded-full px-3 py-1 text-nav-fg outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">{label}</a>
         ))}
       </nav>
       {/* sticky: a reply to the Team or Notes panel far down the page (an invite link) shows where the person is */}
@@ -174,13 +172,13 @@ export default function Project({ user }: { user: User }) {
       <div className="gap-4 px-5 pb-6 lg:columns-2 [&>*]:mb-4 [&>*]:min-w-0 [&>*]:break-inside-avoid">
         <Panel title="Details" id="details">
           <dl className="grid grid-cols-[minmax(96px,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">
-            {Object.entries(LABELS).filter(([k]) => {
+            {Object.entries(LABELS).filter(([k]) => !!x.details[k]).filter(([k]) => {
               const via = x.details.via
               if (k === "partner_name" || k === "partner_account_manager_name") return via === "Partner"
               if (k === "account_manager_name") return via !== "Partner"
               if (k === "outsourcer_name") return x.details.delivery_mode === "Outsourced"
               if (k === "vendor_name" || k === "product_name") return x.details.delivery_mode !== "Outsourced"
-              return !!x.details[k]   // an empty field says nothing; Edit shows them all
+              return true   // empty fields are already out: they say nothing, and Edit shows them all
             }).map(([k, label]) => {
               const email = k === "account_manager_name" ? x.details.account_manager_email : k === "partner_account_manager_name" ? x.details.partner_account_manager_email : k === "outsourcer_name" ? x.details.outsourcer_email : null
               return <div key={k} className="contents"><dt className="text-muted-foreground">{label}</dt><dd>{k.endsWith("_date") && x.details[k] ? fmtWhen(x.details[k]) : (x.details[k] ?? "—")}{email ? <span className="text-muted-foreground"> · {email}</span> : null}</dd></div>
@@ -192,13 +190,13 @@ export default function Project({ user }: { user: User }) {
         <Panel title="Team" hint="who is on this project, and as what" id="team">
           <ul className="grid grid-cols-1 gap-2">
             {x.participants.map((m) => (
-              <li key={m.id} className="flex items-center gap-2 text-[13px]">
+              <li key={m.id} className="group flex items-center gap-2 text-[13px]">
                 <UserAvatar name={m.name} url={m.avatar_url} />
                 <span className="min-w-0 flex-1 truncate font-medium" title={m.name}>{m.name}{!m.active && <span className="ml-1 font-normal text-muted-foreground">(deactivated)</span>}</span>
                 <span className="text-muted-foreground">{m.role}</span>
                 {m.email && <span className="hidden text-[12px] text-muted-foreground sm:inline">{m.email}</span>}
                 {can.manage && m.user_id !== x.owner_id && (
-                  <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`, {}, `Remove ${m.name} from this project? They lose access to it and stop hearing about it; their notes and tasks stay.`)} aria-label={`Remove ${m.name}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`, {}, `Remove ${m.name} from this project? They lose access to it and stop hearing about it; their notes and tasks stay.`)} aria-label={`Remove ${m.name}`} className={cn(hit, "opacity-0 focus:opacity-100 group-hover:opacity-100")}><Trash2 className="h-3.5 w-3.5" /></button>
                 )}
               </li>
             ))}
@@ -270,23 +268,6 @@ export default function Project({ user }: { user: User }) {
           </Panel>
         )}
       </div>
-      <Dialog open={ask !== null} onOpenChange={(o) => { if (!o) answer(false) }}>
-        <DialogContent className="sm:max-w-md">
-          {(() => {
-            const text = ask?.text ?? ""
-            const cut = text.indexOf("? ")
-            const title = cut > 0 ? text.slice(0, cut + 1) : text
-            const verb = title.split(" ")[0]
-            return <>
-              <DialogHeader><DialogTitle>{title}</DialogTitle>{cut > 0 && <DialogDescription>{text.slice(cut + 2)}</DialogDescription>}</DialogHeader>
-              <div className="flex justify-end gap-2">
-                <Button size="sm" variant="ghost" onClick={() => answer(false)} autoFocus>Cancel</Button>
-                <Button size="sm" variant={/^(Delete|Remove)$/.test(verb) ? "destructive" : "default"} onClick={() => answer(true)}>{verb}</Button>
-              </div>
-            </>
-          })()}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
@@ -298,7 +279,7 @@ function LinkRow({ label, url }: { label: string; url: string }) {
       <div className="text-[12px] text-muted-foreground">{label}</div>
       <div className="flex items-center gap-2">
         <a href={url} className="min-w-0 truncate text-primary-text hover:underline">{url}</a>
-        <button type="button" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="Copy link"
+        <button type="button" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label={`Copy the ${label.split(" (")[0].toLowerCase()}`}
           onClick={() => navigator.clipboard?.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })}>
           {copied ? <span className="text-[12px]">Copied</span> : <Copy className="h-3.5 w-3.5" />}
         </button>

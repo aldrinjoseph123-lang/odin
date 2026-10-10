@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { ArrowDown, ArrowUp, FileSignature, Plus } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -99,7 +100,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
                 <input className={field} maxLength={1000} required={edit.status === "partial" || edit.status === "descoped"} value={edit.note ?? ""} onChange={(e) => set({ note: e.target.value })} /></label>
               {error && <p className="text-[13px] text-bad" role="alert">{error}</p>}
               <div className="flex gap-2">
-                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-bad" disabled={busy} onClick={() => { if (confirm("Remove this scope item?")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item removed") }) }}>Remove</Button>}
+                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-bad" disabled={busy} onClick={async () => { if (await askConfirm("Remove this scope item?")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item removed") }) }}>Remove</Button>}
                 <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
               </div>
             </form>

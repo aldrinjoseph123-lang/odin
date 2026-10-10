@@ -134,7 +134,7 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
         // the trend is grey; it takes its state's line colour only while the tile counts trouble
         const mark = n > 0 && t.tone === "bad" ? "var(--bad-line)" : n > 0 && t.tone === "warn" ? "var(--warn-line)" : "var(--nav-fg)"
         return (
-          <button key={t.key} type="button" onClick={() => onTile(t.key)} aria-label={`${t.label}: ${n}. Show them`}
+          <button key={t.key} type="button" onClick={() => onTile(t.key)} aria-label={`${t.label}: ${n}${before != null ? `, ${deltaText(n, before)} since ${fmtDate(k.since)}` : ""}. Show them`}
             className="panel flex min-w-0 flex-col p-4 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50">
             <span className="flex items-center gap-2 text-[12px] text-muted-foreground"><t.icon className="h-3.5 w-3.5" aria-hidden />{t.label}</span>
             <span className="mt-2 flex items-baseline gap-2">
@@ -151,7 +151,7 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
                     <BarChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} accessibilityLayer={false}><Bar dataKey="v" fill={mark} fillOpacity={0.6} radius={[2, 2, 0, 0]} isAnimationActive={false} /></BarChart>
                   ) : (
                     <AreaChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} accessibilityLayer={false}>
-                      <Area type="monotone" dataKey="v" stroke={mark} strokeWidth={1.5} fill={mark} fillOpacity={0.12} isAnimationActive={false} />
+                      <Area type="stepAfter" dataKey="v" stroke={mark} strokeWidth={1.5} fill={mark} fillOpacity={0.12} isAnimationActive={false} />
                     </AreaChart>
                   )}
                 </ResponsiveContainer>
@@ -408,7 +408,7 @@ function StageFlow({ rows, link }: { rows: D["stages"]; link: (k: string) => str
           <span className={cn("absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-[1.5px] bg-card", r.late ? "border-bad-line" : r.warn ? "border-warn-line" : "border-input")} aria-hidden />
           <Link to={link(r.stage)} className="w-32 shrink-0 truncate hover:underline" title={r.stage}>{r.stage}</Link>
           <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-nav-fg/60" style={{ width: `${(r.count / peak) * 100}%` }} /></span>
-          <span className="w-6 text-right font-medium tabular-nums">{r.count}</span>
+          <span className="w-6 text-right font-medium tabular-nums">{r.count}<span className="sr-only"> rollouts</span></span>
           <span className="w-24 shrink-0 text-[12px]">{r.late > 0 && <span className="font-medium text-bad">{r.late} late</span>}{r.late > 0 && r.warn > 0 && <span className="text-muted-foreground"> · </span>}{r.warn > 0 && <span className="text-warn">{r.warn} slipping</span>}</span>
         </li>
       ))}
@@ -453,19 +453,29 @@ function Attention({ rows, s, onExpand, large }: { rows: D["attention"]; s: S; o
 }
 
 // ---- recent activity --------------------------------------------------------
+// the same act by the same person, one after another (a PO filed on nine rollouts), reads as one line
+function collapse(rows: D["activity"]): (D["activity"][number] & { more: number })[] {
+  const out: (D["activity"][number] & { more: number })[] = []
+  for (const a of rows) {
+    const last = out[out.length - 1]
+    if (last && last.kind === a.kind && last.who === a.who && last.text === a.text) last.more++
+    else out.push({ ...a, more: 0 })
+  }
+  return out
+}
 const KIND = { move: { icon: ArrowRight, verb: "moved" }, note: { icon: MessageSquare, verb: "noted on" }, approval: { icon: ShieldCheck, verb: "decided on" }, task: { icon: CheckSquare, verb: "ticked off on" }, document: { icon: FileText, verb: "added to" } }
 function ActivityFeed({ rows, s, onExpand, large }: { rows: D["activity"]; s: S; onExpand?: () => void; large?: boolean }) {
   const limit = large ? 100 : Number(s.limit ?? 10)
   return (
     <Widget title="Recent activity" sub="across the portfolio" onExpand={onExpand}>
       <ul className="grid grid-cols-1 gap-3 text-[13px]">
-        {rows.slice(0, limit).map((a, i) => {
+        {collapse(rows).slice(0, limit).map((a, i) => {
           const k = KIND[a.kind]
           return (
             <li key={i} className="flex gap-3">
               <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><k.icon className="h-3.5 w-3.5" aria-hidden /></span>
               <span className="min-w-0">
-                <span className="block leading-snug">{a.who ? <><span className="font-medium">{a.who}</span> {k.verb} </> : a.kind === "task" ? "Task done on " : "On "}<Link to={`/board?rollout=${a.project_id}`} className="font-medium hover:underline">{a.project}</Link></span>
+                <span className="block leading-snug">{a.who ? <><span className="font-medium">{a.who}</span> {k.verb} </> : a.kind === "task" ? "Task done on " : "On "}<Link to={`/board?rollout=${a.project_id}`} className="font-medium hover:underline">{a.project}</Link>{a.more > 0 && <span className="text-muted-foreground"> and {a.more} more rollout{a.more === 1 ? "" : "s"}</span>}</span>
                 <span className="block truncate text-muted-foreground">{a.text}</span>
                 <span className="block text-[11px] text-muted-foreground"><Ago iso={a.at} /></span>
               </span>
@@ -550,6 +560,12 @@ function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () =
 }
 
 // ---- a custom metric: any aggregate as a number, bars, a pie or a list ------
+// what a widget setting's choices read as in its menu (the stored values stay short)
+const CHOICE_LABEL: Record<string, string> = {
+  all: "Every rollout", attention: "Only those needing attention", area: "Area", bars: "Bars", bar: "Bars", line: "Line", none: "None",
+  radial: "Gauge", donut: "Donut", flow: "Stage flow", list: "List", number: "Number", pie: "Pie",
+  active: "Active", overdue: "Overdue", over_sla: "Over stage SLA", due_soon: "Due soon", awaiting: "Waiting on customer", idle: "Idle",
+}
 const MEASURE_LABEL: Record<string, string> = {
   rollouts_by_stage: "Rollouts by stage", rollouts_by_client: "Rollouts by client", rollouts_by_state: "Rollouts by state", rollouts_by_owner: "Rollouts by owner",
   rollouts_by_mode: "Rollouts by delivery mode", open_tasks_by_person: "Open tasks by person", done_tasks_by_person: "Tasks finished by person, 30 days", tasks_done_per_day: "Tasks finished per day, 14 days",
@@ -650,7 +666,7 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
                 <label key={s.key} htmlFor={id} className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{s.label}</span>
                   {s.kind === "choice" ? (
                     <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 max-w-[60%] rounded-md border border-input bg-background px-2 text-[13px]">
-                      {s.choices?.map((c) => <option key={c} value={c}>{MEASURE_LABEL[c] ?? c}</option>)}
+                      {s.choices?.map((c) => <option key={c} value={c}>{MEASURE_LABEL[c] ?? CHOICE_LABEL[c] ?? c}</option>)}
                     </select>
                   ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 w-40 rounded-md border border-input bg-background px-2 text-[13px]" />
                   : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[13px]" />}
@@ -774,9 +790,9 @@ export default function Dashboard({ user }: { user: User }) {
     <div className="px-5 pb-24 pt-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, {user.name.split(" ")[0]}</h1>
-        <p className="text-[13px] text-muted-foreground">the portfolio this week · {fmtDate(d.today)}{d.is_custom && " · your arrangement"}</p>
+        <p className="text-[13px] text-muted-foreground">The portfolio this week · {fmtDate(d.today)}{d.is_custom && " · your arrangement"}</p>
         <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
-          <span className="h-1.5 w-1.5 rounded-full bg-ok-line" aria-hidden />live · updated <Ago iso={updatedAt} />
+          <span className="h-1.5 w-1.5 rounded-full bg-nav-fg" aria-hidden />live · updated <Ago iso={updatedAt} />
         </p>
         <span className="ml-auto flex items-center gap-2">
           <Popover>
@@ -864,7 +880,7 @@ export default function Dashboard({ user }: { user: User }) {
             <>
               <DialogHeader><DialogTitle>{titleOf(expandedItem)}</DialogTitle><DialogDescription>{expandedItem.id === "custom" ? MEASURE_LABEL[String(expandedItem.settings.measure)] : info(expandedItem.id).blurb}</DialogDescription></DialogHeader>
               <div className="max-h-[75vh] overflow-auto">
-                <div className="[&_section]:border-0 [&_section]:p-0 [&_section]:shadow-none [&_section>header_button]:hidden">{renderWidget(expandedItem, d.data, d.today, { tile: setTile }, true)}</div>
+                <div className="[&_section]:border-0 [&_section]:p-0 [&_section]:shadow-none [&_section>header_button]:hidden [&_section>header>h2]:sr-only">{renderWidget(expandedItem, d.data, d.today, { tile: setTile }, true)}</div>
                 {table && table.rows.length > 0 && (
                   <table className="mt-4 w-full border-collapse text-[13px]">
                     <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">{table.columns.map((c) => <th key={c} className="px-2 py-2 font-normal">{c}</th>)}</tr></thead>

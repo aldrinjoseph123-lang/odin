@@ -38,7 +38,7 @@ WIDGETS = {
     "kpis":       dict(title="Headline numbers", blurb="Active, overdue, over SLA, due soon, waiting on customer and idle, with the week's change and a 14-day trend.", w=3,
                        settings={"tiles": dict(kind="multi", choices=COUNT_KEYS, default=list(COUNT_KEYS), label="Tiles"),
                                  "trend": dict(kind="choice", choices=("area", "bars", "none"), default="area", label="Trend")}),
-    "timeline":   dict(title="Timeline", blurb="Every active rollout from start to target on one axis, its team on the bar.", w=2,
+    "timeline":   dict(title="Timeline", blurb="Every active rollout from start to target on one axis, with the time past the target hatched and the team beside it.", w=2,
                        settings={"show": dict(kind="choice", choices=("all", "attention"), default="all", label="Show"),
                                  "limit": dict(kind="int", min=5, max=50, default=12, label="Rows")}),
     "progress":   dict(title="Portfolio progress", blurb="How far the portfolio is through its stages: done, in progress, still to come.", w=1,
