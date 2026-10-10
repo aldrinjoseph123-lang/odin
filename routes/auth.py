@@ -233,13 +233,13 @@ def auth_reset_form(token):
     account ends, as after an admin reset."""
     if request.method == "GET":
         if reset_link_row(token) is None:   # say so before anyone types a password (test report UX-27)
-            flash("That reset link is invalid or has expired — request a new one")
+            flash("That reset link is invalid or has expired — request a new one", "error")
             return redirect(url_for("auth_reset_request"))
         return spa_index()
     row = reset_link_row(token)
     if row is None:
         audit_log("password_reset_rejected", details="invalid, expired, used or wrong kind of link", actor="link")
-        flash("That reset link is invalid or has expired — request a new one")
+        flash("That reset link is invalid or has expired — request a new one", "error")
         return redirect(url_for("auth_reset_request"))
     new_password = request.form.get("new_password", "")
     problem = password_problem(new_password)
@@ -270,7 +270,7 @@ def auth_link_consume(token):
     user = consume_login_link(token)
     if user is None:
         audit_log("login_link_rejected", details="invalid, expired, used, or account inactive", actor="link")
-        flash("That sign-in link is invalid or has expired — request a new one")
+        flash("That sign-in link is invalid or has expired — request a new one", "error")
         return redirect(url_for("auth_link_request", expired=1))   # the React page reads ?expired
     start_session(user)
     audit_log("login_success", "user", user["id"], user["username"], "sign-in link", actor=user["username"])
@@ -302,7 +302,7 @@ def login():
         ok, message = attempt_login(request.form.get("username", "").strip(), request.form.get("password", ""))
         if ok:
             return redirect(safe_next_url() or home_url())
-        flash("Two-step sign-in needs Odin's web app to enter the code" if message == MFA_NEEDED else message)
+        flash("Two-step sign-in needs Odin's web app to enter the code" if message == MFA_NEEDED else message, "error")
         return render_template("login.html")   # the form fallback for a non-JS client's failed POST
     return spa_index()
 

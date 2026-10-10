@@ -35,7 +35,7 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, as_id, json_body, parse_date, login_required, permission_required, project_allows, project_role_required, role_has_permission, offer_undo, undo_note, project_scope
+from core import app, as_id, json_body, like_any, parse_date, sees_po, login_required, permission_required, project_allows, project_role_required, role_has_permission, offer_undo, undo_note, project_scope
 from security import content_matches_extension, upload_problem, valid_email, safe_csv_writer
 from policies import local_today, policy
 from spa import spa_index
@@ -142,9 +142,15 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
     if search:
         # free-text across the fields a user searches by. LIKE is parameterised;
         # the % wrapping is on the value, never interpolated into the SQL.
-        query += " AND (p.name LIKE ? OR p.client LIKE ? OR p.po_number LIKE ?)"
-        like = f"%{search}%"
-        params.extend([like, like, like])
+        like = like_any(search)
+        if session.get("kind") == "external":   # partners never see the PO, so they cannot search or sort by it
+            query += " AND (p.name LIKE ? ESCAPE '\\' OR p.client LIKE ? ESCAPE '\\')"
+            params.extend([like, like])
+        else:
+            query += " AND (p.name LIKE ? ESCAPE '\\' OR p.client LIKE ? ESCAPE '\\' OR p.po_number LIKE ? ESCAPE '\\')"
+            params.extend([like, like, like])
+    if sort == "po_number" and session.get("kind") == "external":
+        sort = DEFAULT_SORT
     column = SORT_COLUMNS.get(sort, SORT_COLUMNS[DEFAULT_SORT])
     direction = "ASC" if str(direction).lower() == "asc" else "DESC"
     # NULLs last either way — an empty PO number shouldn't win the top of the list
@@ -172,11 +178,13 @@ def projects_export_csv():
             "Start Date", "Target End Date", "Updated At",
         ]
     )
+    external = session.get("kind") == "external"
     for p in projects:
+        po = sees_po(p["id"])   # partners: no PO, no outsourcer (as the project page)
         writer.writerow(
             [
-                p["name"], p["client"], p["po_number"], p["po_date"], p["stage"],
-                p["owner_name"], p["delivery_mode"], p["outsourcer_name"], p["vendor_name"],
+                p["name"], p["client"], p["po_number"] if po else "", p["po_date"] if po else "", p["stage"],
+                p["owner_name"], p["delivery_mode"], "" if external else p["outsourcer_name"], p["vendor_name"],
                 p["product_name"], p["start_date"], p["target_end_date"], p["updated_at"],
             ]
         )
@@ -230,7 +238,7 @@ def project_new():
         return redirect(url_for("project_new"))
     # one stage would be the finish line: the project would be born closed, never signed off (D13)
     if db.execute("SELECT COUNT(*) FROM stage_template_stages WHERE template_id = ?", (template["id"],)).fetchone()[0] < 2:
-        flash(f"Template '{template['name']}' needs at least two stages: the work and the finish")
+        flash(f"Template '{template['name']}' needs at least two stages: the work and the finish", "error")
         return redirect(url_for("project_new"))
 
     if not request.form.get("name", "").strip() or not request.form.get("client", "").strip():
@@ -501,7 +509,7 @@ def undo_stage_change(project_id, note_id):
         "SELECT 1 FROM status_notes WHERE project_id = ? AND prev_stage IS NOT NULL AND id > ?", (project_id, note_id)).fetchone()
     if (note is None or note["author_id"] != session["user_id"] or note["created_at"] < cutoff
             or later_move or project["stage"] != note["stage"] or note["prev_stage"] not in get_stage_names(project_id)):
-        flash("That move can no longer be undone: it is too old, was made by someone else, or the project has moved since")
+        flash("That move can no longer be undone: it is too old, was made by someone else, or the project has moved since", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     now = datetime.utcnow().isoformat()
     db.execute("UPDATE projects SET stage = ?, stage_entered_at = ?, updated_at = ? WHERE id = ?",
@@ -646,16 +654,16 @@ def document_upload(project_id):
     file = request.files.get("file")
     category = request.form.get("category", "")
     if not file or not file.filename:
-        flash("No file selected")
+        flash("No file selected", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     if problem := upload_problem(file):
-        flash(problem)
+        flash(problem, "error")
         return redirect(url_for("project_detail", project_id=project_id))
     if not content_matches_extension(file):
-        flash("That file's contents don't match its extension")
+        flash("That file's contents don't match its extension", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     if category not in get_doc_category_names():
-        flash("Invalid category")
+        flash("Invalid category", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     original_name = save_document(project_id, file, category, session["user_name"])
     audit_log("upload_document", "project", project_id, None, f"{category}: {original_name}")
@@ -698,7 +706,7 @@ def document_delete(project_id, doc_id):
         "SELECT * FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL", (doc_id, project_id)
     ).fetchone()
     if doc is not None and db.execute("SELECT 1 FROM signoffs WHERE document_id = ?", (doc_id,)).fetchone():
-        flash("That is the signed sign-off copy — it is the record of acceptance and cannot be deleted")
+        flash("That is the signed sign-off copy — it is the record of acceptance and cannot be deleted", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     if doc is not None:
         touch_project(db, project_id)
@@ -782,15 +790,15 @@ def participant_add(project_id):
     db = get_db()
     user = db.execute("SELECT id, name, kind FROM users WHERE id = ? AND active = 1", (raw,)).fetchone() if raw.isdigit() else None
     if user is None:
-        flash("Pick an active user")
+        flash("Pick an active user", "error")
     elif role not in PROJECT_ROLES:
-        flash("Pick a role")
+        flash("Pick a role", "error")
     elif _wrong_kind_for_role(user, role):
-        flash(_WRONG_KIND)
+        flash(_WRONG_KIND, "error")
     elif role == PROJECT_MANAGER and user["id"] != project["owner_id"]:
-        flash("The project manager is the owner — change the owner on Edit")
+        flash("The project manager is the owner — change the owner on Edit", "error")
     elif user["id"] == project["owner_id"] and role != PROJECT_MANAGER:
-        flash("The owner is the project manager")
+        flash("The owner is the project manager", "error")
     else:
         db.execute(
             "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) "
@@ -885,7 +893,7 @@ def participant_remove(project_id, participant_id):
     if row is None:
         abort(404)
     if row["user_id"] == project["owner_id"]:
-        flash("The project manager cannot be removed — reassign the owner on Edit")
+        flash("The project manager cannot be removed — reassign the owner on Edit", "error")
     else:
         db.execute("DELETE FROM project_participants WHERE id = ?", (participant_id,))
         db.commit()
@@ -898,7 +906,7 @@ def participant_remove(project_id, participant_id):
 
 def _stage_change(project_id, action, error, detail):
     if error:
-        flash(error)
+        flash(error, "error")
     else:
         audit_log(action, "project", project_id, load_project(project_id)["name"], detail)
     return redirect(url_for("project_detail", project_id=project_id) + "#stages")
@@ -953,7 +961,7 @@ def project_stage_sla(project_id):
 def undo_project(project_id):
     stamp = load_project(project_id, include_deleted=True)["deleted_at"]   # the row is deleted by definition
     if not restore_deleted("projects", project_id):
-        flash("Too late to undo — the undo window has passed")
+        flash("Too late to undo — the undo window has passed", "error")
         return redirect(url_for("projects_list"))
     db = get_db()
     # only the documents that went with the project; one deleted on its own stays deleted
@@ -976,7 +984,7 @@ def undo_document(doc_id):
     if not project_allows(row["project_id"], "manage_documents"):
         abort(403)
     if not restore_deleted("documents", doc_id):
-        flash("Too late to undo — the undo window has passed")
+        flash("Too late to undo — the undo window has passed", "error")
         return redirect(url_for("project_detail", project_id=row["project_id"]))
     doc = db.execute("SELECT project_id, filename FROM documents WHERE id = ? AND deleted_at IS NULL", (doc_id,)).fetchone()
     audit_log("restore_document", "document", doc_id, doc["filename"], f"project_id={doc['project_id']}")
@@ -1050,7 +1058,7 @@ def note_edit(project_id, note_id):
     note = _own_note(project_id, note_id)
     text = request.form.get("note", "").strip()[:5000]
     if not text:
-        flash("A note needs some text — delete it instead")
+        flash("A note needs some text — delete it instead", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     db = get_db()
     db.execute("UPDATE status_notes SET note = ?, edited_at = ? WHERE id = ?", (text, datetime.utcnow().isoformat(), note_id))
@@ -1065,7 +1073,7 @@ def note_edit(project_id, note_id):
 def note_delete(project_id, note_id):
     note = _own_note(project_id, note_id)
     if note_id in stage_entry_note_ids(project_id):
-        flash("This note records a stage change, so it stays in the history — edit its text instead")
+        flash("This note records a stage change, so it stays in the history — edit its text instead", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     db = get_db()
     db.execute("DELETE FROM status_notes WHERE id = ?", (note_id,))

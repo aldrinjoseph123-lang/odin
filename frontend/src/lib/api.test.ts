@@ -43,6 +43,24 @@ describe("the CSRF token and the session check", () => {
     await expect(postForm("/users", { username: "x" })).rejects.toThrow("Username already taken")
   })
 
+  it("a save after the session ended is never a success (sim PM-1)", async () => {
+    const page = () => new Response("<!doctype html><title>Sign in</title>", { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } })
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path === "/api/session" ? reply(200, { csrf: "t", user: null }) : page()))
+    await expect(markRead({ all: true })).rejects.toThrow(SIGNED_OUT)
+    await expect(postForm("/projects/1/note", { note: "x" })).rejects.toThrow(SIGNED_OUT)
+  })
+
+  it("an ended session says so; any other refusal keeps the server's words (sim roles-5)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path === "/api/session"
+      ? reply(200, { csrf: "t", user: null })
+      : path === "/api/notifications/read"
+        ? new Response(JSON.stringify({ error: "Your session has ended", signed_out: true }), { status: 401, headers: { "X-Odin-Signed-Out": "1" } })
+        : reply(401, { error: "Bad username or password" })))
+    await expect(markRead({ all: true })).rejects.toThrow(SIGNED_OUT)
+    const { login } = await import("./api")
+    await expect(login("x", "y")).rejects.toThrow("Bad username or password")
+  })
+
   it("a 502 page from /api/session is an ApiError, not a crash (FE3)", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => reply(502, "<html>Bad gateway</html>")))
     await expect(session()).rejects.toBeInstanceOf(ApiError)

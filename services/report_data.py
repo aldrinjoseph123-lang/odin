@@ -148,6 +148,7 @@ def build(project, audience="internal"):
     else:
         # the customer's health is the word, not the internal reasons
         data["health"] = customer_health(data)
+        data["baseline_at"] = None
         for s in data["stages"]:
             s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
         data["finish"] = {k: v for k, v in p["finish"].items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
@@ -213,6 +214,7 @@ def customer_view(snapshot):
     d = json.loads(json.dumps(d))   # a deep copy
     d["audience"] = "customer"
     d["health"] = customer_health(d)
+    d["baseline_at"] = None   # the baseline is an internal yardstick
     for s in d.get("stages", []):
         s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
     d["finish"] = {k: v for k, v in d.get("finish", {}).items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}

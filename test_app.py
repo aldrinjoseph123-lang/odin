@@ -1496,7 +1496,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(([p["name"] for p in r["projects"]], r["tasks"]), (["Firewall Globex"], []))   # Acme's task is not hers
         theirs = ann.get("/api/search?q=cut-over").get_json()["mentions"]
         self.assertEqual([m["snippet"] for m in theirs], ["Change window for the cut-over agreed with Globex"])   # only what is shown to her
-        self.assertEqual(app_module.app.test_client().get("/api/search?q=firewall").status_code, 302)
+        self.assertEqual(app_module.app.test_client().get("/api/search?q=firewall").status_code, 401)
 
     def test_favicon_is_served(self):
         r = app_module.app.test_client().get("/favicon.svg")
@@ -1833,7 +1833,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.get(f"/api/projects?stage={stages[0]}").get_json()["total"], 26)
         self.assertEqual(sorted(c.get("/api/projects?closed=1").get_json()["stages"]), sorted([stages[0], stages[-1]]))
         self.assertEqual(c.get("/api/session").get_json()["user"]["nav"]["projects_nav_url"], "/projects?closed=1")
-        self.assertEqual(app_module.app.test_client().get("/api/projects").status_code, 302)
+        self.assertEqual(app_module.app.test_client().get("/api/projects").status_code, 401)
 
     def test_api_projects_is_scoped_for_externals(self):
         self.new_project(name="Theirs", client="Acme")
@@ -2488,13 +2488,23 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c.post("/api/login", json={"username": username, "password": password}, headers={"X-CSRF-Token": csrf})
         return c, c.get("/api/session").get_json()["csrf"]
 
+    def test_a_fetch_after_the_session_ended_gets_json_not_the_sign_in_page(self):
+        """Following a redirect, fetch read the sign-in page as a 200 and a lost
+        save as a success (simulation PM-1). A fetch gets a 401 it can act on."""
+        anon = app_module.app.test_client()
+        r = anon.post("/api/projects/1/raid", json={"kind": "risk", "title": "x"})
+        self.assertEqual((r.status_code, r.get_json()["signed_out"], r.headers.get("X-Odin-Signed-Out")), (401, True, "1"))
+        r = anon.post("/projects/1/note", data={"note": "x"}, headers={"Accept": "application/json"})
+        self.assertEqual(r.status_code, 401)
+        self.assertEqual(anon.get("/board").status_code, 302)   # a page load still goes to the sign-in page
+
     def test_nav_counts_recorded_alerts(self):
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
         c, _ = self._api_client()
         __import__("scheduler").sync_alerts()   # the badge counts recorded alerts; the scheduler records them (B9)
         nav = c.get("/api/session").get_json()["user"]["nav"]
         self.assertGreaterEqual(nav["active_alert_count"], 1)
-        self.assertEqual(app_module.app.test_client().get("/api/flow").status_code, 302)   # anonymous
+        self.assertEqual(app_module.app.test_client().get("/api/flow").status_code, 401)   # anonymous
 
     def test_api_stage_change_shares_validation_audit_and_permissions(self):
         self.new_project(name="P", client="C")
@@ -2536,7 +2546,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(stuck["sla_days"], 2); self.assertGreater(stuck["over_by"], 2.5)
         self.assertEqual(stuck["next_task"]["title"], "Call vendor"); self.assertEqual(stuck["next_task"]["assignee"], "Admin")
         self.assertEqual(data["counts"]["overdue"], 1)
-        self.assertEqual(app_module.app.test_client().get("/api/flow").status_code, 302)
+        self.assertEqual(app_module.app.test_client().get("/api/flow").status_code, 401)
 
     def test_api_flow_orders_the_worst_first_inside_a_state_and_flags_idle(self):
         self.new_project(name="A little late", client="C", target_end_date="2025-06-01")
@@ -2634,7 +2644,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual(record_snapshot()["active"], 3)
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM portfolio_snapshots").fetchone()[0], 2)
-        self.assertEqual(app_module.app.test_client().get("/api/dashboard").status_code, 302)
+        self.assertEqual(app_module.app.test_client().get("/api/dashboard").status_code, 401)
         # a non-admin may arrange their own but not the workspace default
         m, mcsrf = self._api_client(self._make_user("mm", "Member") and "mm", STRONG_PASSWORD)
         self.assertEqual(m.put("/api/dashboard/layout", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 200)
@@ -3339,7 +3349,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c, _ = self._api_client("newbie", STRONG_PASSWORD)
         self.assertEqual(c.get("/api/account").status_code, 200)          # the Account page's data
         self.assertEqual(c.get("/api/notifications").status_code, 200)    # the header bell
-        self.assertEqual(c.get("/api/projects").status_code, 302)         # everything else waits for the new password
+        self.assertEqual(c.get("/api/projects").status_code, 403)         # everything else waits for the new password
 
     def test_admin_created_users_must_change_their_password(self):
         with patch.object(CSRFTestClient, "post", lambda self, *a, **k: FlaskClient.post(self, *a, **k)):   # no convenience clearing here
@@ -3431,7 +3441,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         lid = c.get("/api/signup-links").get_json()["links"][0]["id"]
         c.post(f"/api/signup-links/{lid}/revoke", headers=h)
         self.assertEqual(anon.get(f"/api/join/{r['link'].rsplit('/join/', 1)[1]}").status_code, 404)
-        self.assertEqual(app_module.app.test_client().get("/api/signup-links").status_code, 302)   # admins only
+        self.assertEqual(app_module.app.test_client().get("/api/signup-links").status_code, 401)   # admins only
 
     def _set_policy(self, **values):
         with self.raw_db() as db:
@@ -4270,7 +4280,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self._make_user("nosetup", "Member")
         o, _ = self._api_client("nosetup", STRONG_PASSWORD)
         self.assertTrue(o.get("/api/session").get_json()["user"]["must_enroll_mfa"])
-        self.assertEqual(o.get("/api/people").status_code, 302)                 # everything else waits
+        self.assertEqual(o.get("/api/people").status_code, 403)                 # everything else waits
         self.assertEqual(o.get("/api/account/two-step").status_code, 200)
         # an admin resets it (lost phone): off, and their sessions end
         self.client.post(f"/users/{uid}/two-step-reset")

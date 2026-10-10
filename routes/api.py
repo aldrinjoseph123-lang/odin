@@ -9,7 +9,7 @@ from policies import local_today, policy, policy_view
 from datetime import date, datetime
 
 from constants import CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
-from core import app, as_id, json_body, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
+from core import app, as_id, json_body, like_any, sees_po, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
 from db import PROJECT_OPEN_SQL, current_approval, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
@@ -360,6 +360,8 @@ def _rollout_report(project_id, audience, version):
             abort(404)
     if row is not None and row["kind"] == "snapshot":
         data = json.loads(row["data"]) if audience == "internal" else report_data.customer_view(row["data"])
+        if external and not sees_po(project_id):   # a contractor's copy carries no PO (the snapshot froze it)
+            data["project"]["po_number"] = None
         words = {"summary": row["summary"] or "", "next_steps": row["next_steps"] or "", "asks": row["asks"] or ""}
         if audience == "customer":
             words = report_data.customer_words(project_id, words, json.loads(row["data"]))
@@ -750,7 +752,7 @@ def api_projects():
         out.append({
             "total_tasks": t["total"] if t else 0, "open_tasks": t["open"] if t else 0,
             "team": team.get(r["id"], [{"id": r["owner_id"], "name": r["owner_name"], "avatar_url": None}]),
-            "id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"], "stage": r["stage"],
+            "id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"] if sees_po(r["id"]) else None, "stage": r["stage"],
             "stages": names, "stage_index": names.index(r["stage"]) if r["stage"] in names else 0,
             "closed": bool(names) and r["stage"] == names[-1],
             "owner_name": r["owner_name"], "delivery_mode": r["delivery_mode"], "vendor_name": r["vendor_name"],
@@ -893,9 +895,13 @@ def project_activity_export(project_id):
 @project_role_required("move_stage")
 def api_project_stage(project_id):
     load_project(project_id)
-    data = request.get_json(silent=True) or {}
+    data = json_body()
+    try:
+        stage, note = text_field(data.get("stage"), 200, "Stage"), text_field(data.get("note"), 5000, "Note", multiline=True)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     # change_stage audits and notifies; this is the same door the form uses.
-    error = change_stage(project_id, data.get("stage", ""), (data.get("note") or "").strip()[:5000])
+    error = change_stage(project_id, stage, note)
     if error:
         return jsonify({"error": error}), 400
     return jsonify({"ok": True, "undo": g.stage_undo_url})
@@ -1020,6 +1026,11 @@ def api_plan(project_id):
     d["changes"] = plan.changes(project_id)
     d["can_edit"] = project_allows(project_id, "manage_project")
     if session.get("kind") == "external":   # the customer's cut, as in their report: no baseline, slip, reasons or change log
+        from services import raid as raid_service
+        from services.report_data import customer_health
+        visible = [r for r in raid_service.items(project_id) if r["customer_visible"]]
+        d["health"] = customer_health({"health": d["health"], "stages": d["stages"], "finish": d["finish"], "raid": visible,
+                                       "today": local_today().isoformat(), "has_plan": d.get("has_plan")})
         for s in d["stages"]:
             for k in ("base_start", "base_end", "slip_days"):
                 s.pop(k, None)
@@ -1037,7 +1048,7 @@ def api_plan_save(project_id):
     """Save the plan's dates; the first plan saved becomes the baseline."""
     from services import plan
     project = load_project(project_id)
-    body = request.get_json(silent=True) or {}
+    body = json_body()
     reason = str(body.get("reason") or "").strip()[:300]
     try:
         changed, baselined, warning = plan.save(project, body.get("stages"), reason, session["user_name"])
@@ -1056,7 +1067,7 @@ def api_plan_rebaseline(project_id):
     """Freeze the current plan as the new baseline; a reason is required."""
     from services import plan
     project = load_project(project_id)
-    reason = str((request.get_json(silent=True) or {}).get("reason") or "").strip()[:300]
+    reason = str(json_body().get("reason") or "").strip()[:300]
     if not reason:
         return jsonify(error="Say why the baseline moves"), 400
     try:
@@ -1172,10 +1183,13 @@ def api_project_flow(project_id):
     target = date.fromisoformat(project["target_end_date"]) if project["target_end_date"] else None
     from policies import local_date
     start = project["start_date"] or local_date(project["created_at"]).isoformat()
+    external = session.get("kind") == "external"
+    hidden_docs = partner_hidden_categories(db) if external else set()
     return jsonify({
         "id": project["id"], "name": project["name"], "client": project["client"],
         "vendor_name": project["vendor_name"], "product_name": project["product_name"],
-        "delivery_mode": project["delivery_mode"], "outsourcer_name": project["outsourcer_name"],
+        # partners and customers: no outsourcer, as on the project page
+        "delivery_mode": project["delivery_mode"], "outsourcer_name": None if external else project["outsourcer_name"],
         "owner_name": project["owner_name"], "stage": project["stage"], "stage_index": current,
         "next_stage": stages[current + 1] if current + 1 < len(stages) else None,
         "state": _flow_state(project, sla, schedule), "over_by": round(sla["over_by"], 1) if sla else None,
@@ -1191,7 +1205,8 @@ def api_project_flow(project_id):
         "assignable": [{"id": r["user_id"], "name": r["name"]} for r in participants_for(project_id) if r["active"]],
         "can_edit": project_allows(project_id, "manage_tasks"),
         "me": session["user_id"],
-        "documents": db.execute("SELECT COUNT(*) AS c FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,)).fetchone()["c"],
+        "documents": sum(1 for d in db.execute("SELECT category FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,))
+                         if d["category"] not in hidden_docs),   # only what they can open
         "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]}
                          for n in [n for n in notes if session.get("kind") != "external" or n["guest_visible"]][-4:][::-1]],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
@@ -1253,30 +1268,30 @@ def api_search():
     if len(q) < 2:
         return jsonify(projects=[], tasks=[], mentions=[])
     db = get_db()
-    like = f"%{q}%"
+    like = like_any(q)
     scope_sql, scope_params = project_scope()
-    projects = db.execute(
+    external = session.get("kind") == "external"
+    projects = db.execute(   # partners never see the PO, so it is not searched for them
         f"SELECT p.id, p.name, p.client, p.stage FROM projects p WHERE p.deleted_at IS NULL{scope_sql} "
-        "AND (p.name LIKE ? OR p.client LIKE ? OR p.po_number LIKE ?) ORDER BY p.updated_at DESC LIMIT 8",
-        (*scope_params, like, like, like),
+        "AND (p.name LIKE ? ESCAPE '\\' OR p.client LIKE ? ESCAPE '\\'" + ("" if external else " OR p.po_number LIKE ? ESCAPE '\\'") + ") ORDER BY p.updated_at DESC LIMIT 8",
+        (*scope_params, like, like, *([] if external else [like])),
     ).fetchall()
     tasks = db.execute(
         f"SELECT t.id, t.title, t.done, t.project_id, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
-        f"WHERE p.deleted_at IS NULL{scope_sql} AND t.title LIKE ? ORDER BY t.done, t.id DESC LIMIT 8",
+        f"WHERE p.deleted_at IS NULL{scope_sql} AND t.title LIKE ? ESCAPE '\\' ORDER BY t.done, t.id DESC LIMIT 8",
         (*scope_params, like),
     ).fetchall()
-    external = session.get("kind") == "external"
     sources = (
         ("note", "/projects/{pid}", f"SELECT n.project_id, p.name AS project_name, n.note AS text, n.created_at AS at FROM status_notes n JOIN projects p ON p.id = n.project_id "
-                                    f"WHERE p.deleted_at IS NULL{scope_sql} AND n.prev_stage IS NULL AND n.note LIKE ?{' AND n.guest_visible = 1' if external else ''}"),
+                                    f"WHERE p.deleted_at IS NULL{scope_sql} AND n.prev_stage IS NULL AND n.note LIKE ? ESCAPE '\\'{' AND n.guest_visible = 1' if external else ''}"),
         ("risk", "/projects/{pid}#raid", f"SELECT r.project_id, p.name AS project_name, r.title || ': ' || COALESCE(r.detail, '') || ' ' || COALESCE(r.resolution, '') AS text, r.updated_at AS at "
                                          f"FROM raid_items r JOIN projects p ON p.id = r.project_id WHERE p.deleted_at IS NULL{scope_sql} "
-                                         f"AND (r.title LIKE ? OR r.detail LIKE ? OR r.resolution LIKE ?){' AND r.customer_visible = 1' if external else ''}"),
+                                         f"AND (r.title LIKE ? ESCAPE '\\' OR r.detail LIKE ? ESCAPE '\\' OR r.resolution LIKE ? ESCAPE '\\'){' AND r.customer_visible = 1' if external else ''}"),
         ("scope", "/projects/{pid}#scope", f"SELECT s.project_id, p.name AS project_name, s.title || ': ' || COALESCE(s.detail, '') || ' ' || COALESCE(s.note, '') AS text, p.updated_at AS at "
-                                           f"FROM scope_items s JOIN projects p ON p.id = s.project_id WHERE p.deleted_at IS NULL{scope_sql} AND (s.title LIKE ? OR s.detail LIKE ? OR s.note LIKE ?)"),
+                                           f"FROM scope_items s JOIN projects p ON p.id = s.project_id WHERE p.deleted_at IS NULL{scope_sql} AND (s.title LIKE ? ESCAPE '\\' OR s.detail LIKE ? ESCAPE '\\' OR s.note LIKE ? ESCAPE '\\')"),
         ("document", "/projects/{pid}", f"SELECT d.project_id, p.name AS project_name, d.filename || ': ' || t.text AS text, d.uploaded_at AS at FROM doc_text t "
                                         f"JOIN documents d ON d.id = t.document_id AND d.deleted_at IS NULL JOIN projects p ON p.id = d.project_id "
-                                        f"LEFT JOIN doc_categories c ON c.name = d.category WHERE p.deleted_at IS NULL{scope_sql} AND t.text LIKE ?"
+                                        f"LEFT JOIN doc_categories c ON c.name = d.category WHERE p.deleted_at IS NULL{scope_sql} AND t.text LIKE ? ESCAPE '\\'"
                                         f"{' AND COALESCE(c.partners, 0) = 1' if external else ''}"),
     )
     mentions = []

@@ -473,3 +473,63 @@ class ExternalRoleTest(Base):
         self.assertEqual(user("cust@example.com")["external_role"], "Customer")     # customer anywhere wins
         self.assertEqual(user("vendor@example.com")["external_role"], "Contractor")
         self.assertIsNone(self.client.get("/api/session").get_json()["user"]["external_role"])   # staff
+
+
+class SimulationFindingsTest(Base):
+    """The 10 Oct 2026 user simulations: what partners could see, refusals
+    that read as success, and inputs that crashed the server."""
+
+    def test_a_contractor_never_sees_the_po_or_the_outsourcer(self):
+        self.new_project(name="Firewall", client="Acme", po_number="PO-SECRET-1", delivery_mode="Outsourced", outsourcer_name="VendorCo")
+        self._invite(1, "raj@vendor.example", "Contractor", "Raj")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        raj, ann = self._external_client("raj@vendor.example"), self._external_client("ann@acme.example")
+        self.assertIsNone(raj.get("/api/projects").get_json()["rows"][0]["po_number"])
+        self.assertEqual(ann.get("/api/projects").get_json()["rows"][0]["po_number"], "PO-SECRET-1")   # the customer's own PO
+        csv = raj.get("/projects/export.csv").data.decode()
+        self.assertNotIn("PO-SECRET-1", csv); self.assertNotIn("VendorCo", csv)
+        self.assertEqual(raj.get("/api/projects?q=SECRET").get_json()["total"], 0)
+        self.assertEqual(raj.get("/api/search?q=SECRET").get_json()["projects"], [])
+        self.assertIsNone(raj.get("/api/projects/1/flow").get_json()["outsourcer_name"])
+        self.assertEqual(self.client.get("/api/projects/1/flow").get_json()["outsourcer_name"], "VendorCo")
+        # the hidden Client PO is not counted for them
+        self.assertEqual(raj.get("/api/projects/1/flow").get_json()["documents"], 0)
+        # a saved report's customer copy: no PO for the contractor, no baseline for anyone outside
+        self.client.post("/api/projects/1/rollout-report", json={"summary": "On track."}, headers=self.csrf())
+        r = raj.get("/api/projects/1/rollout-report").get_json()
+        self.assertIsNone(r["data"]["project"]["po_number"]); self.assertIsNone(r["data"]["baseline_at"])
+        self.assertEqual(ann.get("/api/projects/1/rollout-report").get_json()["data"]["project"]["po_number"], "PO-SECRET-1")
+
+    def test_a_hidden_blocker_never_turns_the_customer_red(self):
+        self.new_project(name="P", client="Acme", target_end_date="2030-01-01")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        self.client.post("/api/projects/1/raid", json={"kind": "blocker", "title": "Internal fight", "customer_visible": False}, headers=self.csrf())
+        self.assertEqual(self.client.get("/api/projects/1/plan").get_json()["health"]["rag"], "red")   # staff see it
+        ann = self._external_client("ann@acme.example")
+        self.assertNotEqual(ann.get("/api/projects/1/plan").get_json()["health"]["rag"], "red")
+        self.assertNotEqual([r["rag"] for r in ann.get("/api/reports/all").get_json()["rows"]], ["red"])
+
+    def test_a_refused_form_action_is_a_400_not_ok(self):
+        self.new_project(name="P", client="C")
+        h = {"Accept": "application/json"}
+        r = self.client.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"<script>"), "x.html")},
+                             headers=h, content_type="multipart/form-data")
+        self.assertEqual(r.status_code, 400); self.assertFalse(r.get_json()["ok"])
+        self.assertEqual(self.client.post("/projects/1/documents", data={"category": "Deliverable"}, headers=h).status_code, 400)
+
+    def test_bad_json_is_a_400_never_a_500(self):
+        self.new_project(name="P", client="C")
+        h = self.csrf()
+        self.assertEqual(self.client.post("/api/projects/1/stage", json={"note": 5}, headers=h).status_code, 400)
+        self.assertEqual(self.client.post("/api/projects/1/stage", json=[1], headers=h).status_code, 400)
+        self.assertEqual(self.client.put("/api/projects/1/plan", json=[1], headers=h).status_code, 400)
+        self.assertEqual(self.client.post("/api/projects/1/plan/baseline", json=[1], headers=h).status_code, 400)
+        from services.signoff import clean_signature
+        for bad in ({"signature": "abc"}, {"signature": {"kind": "drawn", "strokes": [[[None, 1]] * 9]}}):
+            with self.assertRaises(ValueError):
+                clean_signature(bad)
+
+    def test_search_treats_percent_and_underscore_as_text(self):
+        self.new_project(name="Alpha", client="C")
+        self.assertEqual(self.client.get("/api/projects?q=%25%25").get_json()["total"], 0)
+        self.assertEqual(self.client.get("/api/search?q=%25%25").get_json()["projects"], [])

@@ -103,7 +103,7 @@ def settings_ai_validate():
     from services.ai import status
     from services.ai.health import queue
     if status()["state"] == "off":
-        flash("Switch AI on and set the server address first")
+        flash("Switch AI on and set the server address first", "error")
         return redirect(url_for("settings_section", section="ai"))
     job = queue(get_db(), "validate", payload={"reason": "asked for in Settings"}, actor=session.get("user_name"))
     audit_log("validate_ai", "settings", job, "ai")

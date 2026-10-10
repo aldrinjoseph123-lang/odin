@@ -68,7 +68,7 @@ def _claims(id_token):
 @app.route("/auth/microsoft")
 def sso_start():
     if not sso_configured():
-        flash("Microsoft sign-in is not set up yet")
+        flash("Microsoft sign-in is not set up yet", "error")
         return redirect(url_for("login"))
     client_id, tenant, _ = sso_config()
     verifier = _b64url(secrets.token_bytes(32))
@@ -179,7 +179,7 @@ def settings_sso():
         import re
         guid = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
         if not (re.fullmatch(guid, client_id) and re.fullmatch(guid, tenant)):
-            flash("Client and tenant IDs are GUIDs, as shown on the app registration's overview (not \"common\")")
+            flash("Client and tenant IDs are GUIDs, as shown on the app registration's overview (not \"common\")", "error")
             return redirect(url_for("settings_section", section="security"))
         set_setting("sso_client_id", client_id)
         set_setting("sso_tenant_id", tenant)
@@ -187,7 +187,7 @@ def settings_sso():
             set_setting("sso_client_secret", seal(f["client_secret"].strip()))   # sealed at rest
     want = f.get("enforced") == "on"
     if want and not sso_configured():
-        flash("Save the app registration before requiring Microsoft sign-in")
+        flash("Save the app registration before requiring Microsoft sign-in", "error")
         return redirect(url_for("settings_section", section="security"))
     if want and not get_db().execute(
             "SELECT 1 FROM users WHERE role = 'Admin' AND active = 1 AND kind = 'internal' AND password_login = 1").fetchone():
@@ -210,7 +210,7 @@ def user_approve(user_id):
     if user is None:
         abort(404)
     if role not in ROLES or role == "External":
-        flash("Pick a role")
+        flash("Pick a role", "error")
         return redirect(url_for("users"))
     db.execute("UPDATE users SET pending = 0, active = 1, role = ? WHERE id = ?", (role, user_id))
     db.commit()
@@ -249,7 +249,7 @@ def user_password_login(user_id):
     on = request.form.get("allowed") == "on"
     if not on and sso_enforced() and user["role"] == "Admin" and not db.execute(
             "SELECT 1 FROM users WHERE role = 'Admin' AND active = 1 AND password_login = 1 AND id != ?", (user_id,)).fetchone():
-        flash("Keep at least one admin who can sign in with a password while Microsoft sign-in is required")
+        flash("Keep at least one admin who can sign in with a password while Microsoft sign-in is required", "error")
         return redirect(url_for("users"))
     db.execute("UPDATE users SET password_login = ? WHERE id = ?", (1 if on else 0, user_id))
     db.commit()

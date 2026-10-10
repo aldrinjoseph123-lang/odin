@@ -35,7 +35,7 @@ def undo_partner(partner_id):
     db = get_db()
     stamp = db.execute("SELECT deleted_at FROM partners WHERE id = ?", (partner_id,)).fetchone()
     if not stamp or not restore_deleted("partners", partner_id):
-        flash("Too late to undo — the undo window has passed")
+        flash("Too late to undo — the undo window has passed", "error")
         return redirect(url_for("settings_contacts"))
     # only the managers that went with the partner (B4): one removed on its own stays removed
     db.execute("UPDATE partner_account_managers SET deleted_at = NULL WHERE partner_id = ? AND deleted_at = ?", (partner_id, stamp[0]))
@@ -250,7 +250,7 @@ def _template(template_id):
 
 def _template_change(action, error, detail=None):
     if error:
-        flash(error)
+        flash(error, "error")
     else:
         audit_log(action, "stage_template", None, None, detail)
     return redirect(url_for("settings") + "#templates")
@@ -434,7 +434,7 @@ def settings_category_delete(cat_id):
         "SELECT COUNT(*) AS c FROM documents WHERE category = ?", (category["name"],)
     ).fetchone()["c"]
     if in_use:
-        flash(f"Cannot delete '{category['name']}' — {in_use} document(s) use it")
+        flash(f"Cannot delete '{category['name']}' — {in_use} document(s) use it", "error")
     else:
         db.execute("DELETE FROM doc_categories WHERE id = ?", (cat_id,))
         db.commit()
@@ -492,7 +492,7 @@ def settings_contacts_add(list_key):
         audit_log("add_contact", list_key, None, name)
         flash(f"{meta['label']}: '{name}' added")
     except sqlite3.IntegrityError:
-        flash(f"'{name}' already exists in {meta['label']}")
+        flash(f"'{name}' already exists in {meta['label']}", "error")
     return redirect(url_for("settings_contacts"))
 
 
@@ -631,7 +631,7 @@ def settings_partner_add():
         audit_log("add_partner", "partner", None, name)
         flash(f"Partner '{name}' added")
     except sqlite3.IntegrityError:
-        flash(f"Partner '{name}' already exists")
+        flash(f"Partner '{name}' already exists", "error")
     return redirect(url_for("settings_contacts"))
 
 

@@ -52,7 +52,7 @@ def api_token_create():
     name = request.form.get("name", "").strip()[:80]
     days = LIFETIMES.get(request.form.get("days", ""))
     if not name or not days:
-        flash("Name the token and pick how long it lives")
+        flash("Name the token and pick how long it lives", "error")
         return redirect(url_for("settings_section", section="api"))
     raw = f"odin_{secrets.token_urlsafe(32)}"
     now = datetime.utcnow()

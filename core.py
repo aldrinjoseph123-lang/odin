@@ -223,18 +223,30 @@ def _auth_gate():
     logged in with a forced password change pending → account page. Returns
     the redirect to send, or None to let the view run."""
     if "user_id" not in session:
-        return redirect(url_for("login", next=request.path))
+        return _turned_away("Sign in to carry on", url_for("login", next=request.path), signed_out=True)
     if not _session_still_valid():
         session.clear()
-        flash("Your session has ended — please sign in again")
-        return redirect(url_for("login", next=request.path))
+        return _turned_away("Your session has ended — please sign in again", url_for("login", next=request.path), signed_out=True)
     if session.get("must_change_password") and request.endpoint not in PASSWORD_CHANGE_ALLOWED:
-        flash("Set a new password before continuing")
-        return redirect(url_for("account"))
+        return _turned_away("Set a new password before continuing", url_for("account"))
     if session.get("must_enroll_mfa") and request.endpoint not in MFA_SETUP_ALLOWED:
-        flash("Set up two-step sign-in before continuing")
-        return redirect(url_for("account"))
+        return _turned_away("Set up two-step sign-in before continuing", url_for("account"))
     return None
+
+
+def _turned_away(message, to, signed_out=False):
+    """A page load is redirected (with the reason flashed); a fetch from the
+    React app gets JSON it can act on. Following a redirect, fetch would
+    read the sign-in page as a 200 and a lost save as a success."""
+    if request.path.startswith("/api/") or request.headers.get("Accept") == "application/json":
+        reply = jsonify(error=message, signed_out=signed_out)
+        reply.status_code = 401 if signed_out else 403
+        if signed_out:
+            reply.headers["X-Odin-Signed-Out"] = "1"   # the client reads it after the body is gone
+        return reply
+    if message != "Sign in to carry on":   # a plain visit to the sign-in page needs no banner
+        flash(message)
+    return redirect(to)
 
 
 def _session_still_valid():
@@ -347,6 +359,18 @@ def json_for_fetch(response):
             return refused
         return jsonify(ok=True, messages=messages, undo=g.get("undo_url"), location=response.headers.get("Location"))
     return response
+
+
+def sees_po(project_id):
+    """The client's PO is ours and the customer's: staff, and the project's
+    Customer contact. Partners and contractors never see it."""
+    return session.get("kind") != "external" or project_role_of(project_id, session["user_id"]) == "Customer"
+
+
+def like_any(text):
+    """A LIKE pattern that finds `text` anywhere, with % and _ matching
+    themselves (the SQL says ESCAPE '\\')."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
 def project_allows(project_id, action):

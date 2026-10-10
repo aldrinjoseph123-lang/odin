@@ -42,6 +42,10 @@ def build(projects, customer=False):
         every = raid.get(p["id"], [])
         pl = plan_service.build(p, stage_rows.get(p["id"]) or [], notes.get(p["id"], []), [r for r in every if r["open"]])
         items = [r for r in every if r["customer_visible"]] if customer else every
+        if customer:   # the colour from what they may see: a hidden blocker never turns it red
+            from services.report_data import customer_health
+            pl["health"] = customer_health({"health": pl["health"], "stages": pl["stages"], "finish": pl["finish"], "raid": items,
+                                            "today": today.isoformat(), "has_plan": pl["has_plan"]})
         f = pl["finish"]
         cur = next((i for i, s in enumerate(pl["stages"]) if s["status"] == "current"), 0)
         first = pl["stages"][0] if pl["stages"] else {}

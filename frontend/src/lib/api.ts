@@ -86,14 +86,23 @@ async function withToken(path: string, init: RequestInit): Promise<Response> {
   return go()
 }
 
-// The error for a failed response: the server's own words when it gave some;
-// a 400/401 from a session that has ended (the CSRF check fails first) says so.
+// The error for a failed response. A session that has ended says so (the
+// server marks it); otherwise the server's own words when it gave some (a
+// wrong password, a taken username); a bare 400/401 checks the session.
 async function failure(res: Response, said?: string): Promise<ApiError> {
+  if (res.headers.get("X-Odin-Signed-Out")) return new ApiError(401, SIGNED_OUT)
+  if (said) return new ApiError(res.status, said)
   if (res.status === 400 || res.status === 401) {
     const alive = await fetch("/api/session", { credentials: "same-origin" }).then((r) => r.json()).then((d: SessionResponse) => !!d.user).catch(() => true)
     if (!alive) return new ApiError(401, SIGNED_OUT)
   }
-  return new ApiError(res.status, said ?? failureText(res.status))
+  return new ApiError(res.status, failureText(res.status))
+}
+
+// A 200 HTML page where JSON was asked for is the sign-in page after a
+// redirect: never a success.
+function notJson(res: Response) {
+  return res.ok && (res.headers.get("Content-Type") ?? "").includes("text/html")
 }
 
 // One JSON request with the CSRF token; every mutation goes through here.
@@ -103,6 +112,7 @@ async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: u
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  if (notJson(res)) throw new ApiError(401, SIGNED_OUT)
   const data = (await res.json().catch(() => ({}))) as { error?: string; csrf?: string } & T
   if (data.csrf) csrfToken = data.csrf
   if (!res.ok) throw await failure(res, data.error)
@@ -170,6 +180,7 @@ export const decideApproval = (projectId: number, approvalId: number, decision: 
 async function getJson<T>(path: string): Promise<T> {
   const res = await call(path)
   if (!res.ok) throw await failure(res)
+  if (notJson(res)) throw new ApiError(401, SIGNED_OUT)
   return res.json()
 }
 export const flow = () => getJson<FlowData>("/api/flow")
@@ -413,8 +424,8 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
     const d = (await res.json().catch(() => null)) as { error?: string; messages?: string[] } | null
     throw await failure(res, res.status === 403 ? "You cannot do that on this project" : d?.messages?.join(" ") || d?.error || undefined)
   }
-  const data = (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
-  if (!data) throw new ApiError(res.status, "Your session has ended — sign in again")
+  const data = notJson(res) ? null : (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
+  if (!data) throw new ApiError(401, SIGNED_OUT)
   if (data.ok === false) throw new ApiError(400, data.messages?.join(" ") || data.error || "That did not save")
   return data
 }
