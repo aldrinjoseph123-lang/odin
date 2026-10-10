@@ -298,7 +298,7 @@ export default function Contacts(_props: { user: User }) {
       <section className="panel mt-4 overflow-hidden" aria-label={meta.label}>
         <div className="flex flex-wrap items-start justify-between gap-3 p-4">
           <div className="min-w-0 max-w-2xl">
-            <h2 data-n className="text-[12px] font-semibold text-nav-fg">{meta.label}</h2>
+            <h2 className="text-[12px] font-semibold text-nav-fg">{meta.label}</h2>
             <p className="mt-1 text-[13px]">{meta.help}</p>
             <p className="mt-1 text-[12px] text-muted-foreground">For example: {meta.example}</p>
           </div>

@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { StatTile } from "@/components/StatTile"
+import { pill } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
 import { ArrowRight, CheckSquare, ChevronLeft, MessageSquare, Send } from "lucide-react"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { UserAvatar } from "@/components/UserAvatar"
 import { Stepper } from "@/components/Stepper"
@@ -15,7 +17,6 @@ import { fmtDate, lateBy } from "@/lib/format"
 
 // One person: what they carry, how it is going, what they did, and a way to
 // reach them that lands in their bell and their inbox.
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 rounded-full px-3 text-[12px]")
 const KIND = { move: { icon: ArrowRight, verb: "moved" }, note: { icon: MessageSquare, verb: "noted on" }, task: { icon: CheckSquare, verb: "finished on" } }
 
 export default function Person(_props: { user: User }) {
@@ -63,11 +64,7 @@ export default function Person(_props: { user: User }) {
 
       <div className="mt-4 grid grid-cols-2 gap-4 xl:grid-cols-4">
         {tiles.map((t) => (
-          <div key={t.label} className="panel p-4">
-            <div className="text-[12px] text-muted-foreground">{t.label}</div>
-            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
-            <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
-          </div>
+          <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.tone || undefined} />
         ))}
       </div>
 

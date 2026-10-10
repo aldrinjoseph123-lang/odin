@@ -1,8 +1,8 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
+import { chip, pill } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripHorizontal, Layers, Maximize2, MessageSquare, MoreHorizontal, PauseCircle, Plus, ShieldCheck, Timer, Trash2, UserCheck } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, Line, LineChart, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as ChartTip, XAxis } from "recharts"
-import { buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -33,8 +33,7 @@ const tip = {
   labelStyle: { color: "var(--muted-foreground)" }, itemStyle: { color: "var(--foreground)" }, cursor: { fill: "var(--muted)" },
 }
 const axis = { tickLine: false, axisLine: false, tick: { fontSize: 11, fill: "var(--muted-foreground)" } }
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 rounded-full px-3 text-[12px]")
-const chip = "rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
+const badge = "rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const dayLabel = (iso: string) => WEEKDAY[new Date(`${iso}T00:00:00`).getDay()]
@@ -384,7 +383,7 @@ function Team({ t, s, onExpand, large }: { t: D["team"]; s: S; onExpand?: () => 
                 <Link to={`/people/${m.id}`} className="block truncate font-medium hover:underline">{m.name}</Link>
                 <span className="block truncate text-[12px] text-muted-foreground">{m.projects} rollout{m.projects === 1 ? "" : "s"} · {m.open} open{m.late > 0 && <> · <span className="font-medium text-bad">{m.late} late</span></>}</span>
               </span>
-              <span className={chip}>{m.role}</span>
+              <span className={badge}>{m.role}</span>
             </li>
           ))}
           {t.people.length === 0 && <li><Empty>No open tasks are assigned.</Empty></li>}
@@ -657,7 +656,7 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
                     {s.choices?.map((c) => {
                       const on = (v as string[]).includes(c)
                       return <button key={c} type="button" aria-pressed={on} onClick={() => onSettings({ [s.key]: on ? (v as string[]).filter((x) => x !== c) : [...(v as string[]), c] })}
-                        className={cn("h-7 rounded-full border px-3 text-[12px]", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{TILES.find((t) => t.key === c)?.label ?? c}</button>
+                        className={chip(on)}>{TILES.find((t) => t.key === c)?.label ?? c}</button>
                     })}
                   </div>
                 </fieldset>

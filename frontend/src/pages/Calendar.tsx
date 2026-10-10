@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
+import { chip, pill } from "@/lib/ui"
 import { Link, useSearchParams } from "react-router-dom"
 import { AlarmClock, ArrowRight, CheckSquare, ChevronLeft, ChevronRight, ShieldCheck, Target } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, calendar, type CalendarData } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -14,7 +14,6 @@ import { fmtDate, addMonths, localToday, laneSpans, monthGrid, monthTitle } from
 // md the same month is an agenda: one heading per day that has anything.
 type Item = { key: string; kind: "task" | "target" | "move" | "approval"; day: string; text: string; sub?: string; href: string; tone?: "bad" | "warn" | "ok" | "muted"; done?: boolean }
 type Show = Record<"tasks" | "targets" | "history" | "spans", boolean>
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 rounded-full px-3 text-[12px]")
 const LANES = 3
 
 function items(d: CalendarData, show: Show): Map<string, Item[]> {
@@ -78,7 +77,7 @@ export function Calendar({ wide }: { wide: boolean }) {
       <div className="ml-auto flex flex-wrap gap-2" role="group" aria-label="Show">
         {toggles.map((t) => (
           <button key={t.key} type="button" aria-pressed={show[t.key]} onClick={() => setShow({ ...show, [t.key]: !show[t.key] })}
-            className={cn("h-7 rounded-full border px-3 text-[12px] font-medium", show[t.key] ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{t.label}</button>
+            className={chip(show[t.key])}>{t.label}</button>
         ))}
       </div>
     </div>

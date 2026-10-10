@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react"
+import { chip } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
 import { alerts, ApiError, type AlertsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -6,7 +7,6 @@ import { Pager } from "@/components/Pager"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[13px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
 
 export default function Alerts(_props: { user: User }) {
   const [params, setParams] = useSearchParams()

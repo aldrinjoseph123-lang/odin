@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { field } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { ArrowDown, ArrowUp, FileSignature, Plus } from "lucide-react"
@@ -15,7 +16,6 @@ import { AISowPlan } from "@/components/AISowPlan"
 // customer signs against what they agreed. The sign-off's state sits on top.
 export const SCOPE_WORD: Record<ScopeStatus, string> = { agreed: "Agreed", delivered: "Delivered", partial: "Partly delivered", descoped: "Descoped" }
 export const SCOPE_TONE: Record<ScopeStatus, string> = { agreed: "bg-muted text-muted-foreground", delivered: "bg-ok-soft text-ok", partial: "bg-warn-soft text-warn", descoped: "bg-muted text-muted-foreground line-through" }
-const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 type Draft = Partial<ScopeItem> & { title: string; status: ScopeStatus }
 
 export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?: SignoffState }) {
@@ -100,7 +100,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
                 <input className={field} maxLength={1000} required={edit.status === "partial" || edit.status === "descoped"} value={edit.note ?? ""} onChange={(e) => set({ note: e.target.value })} /></label>
               {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
               <div className="flex gap-2">
-                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-destructive" disabled={busy} onClick={async () => { if (await askConfirm("Remove this scope item?")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item removed") }) }}>Remove</Button>}
+                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-destructive" disabled={busy} onClick={async () => { if (await askConfirm("Delete this scope item? It leaves the agreed scope; the history keeps a line that it existed.")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item deleted") }) }}>Delete</Button>}
                 <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
               </div>
             </form>

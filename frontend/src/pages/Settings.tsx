@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { toast } from "@/lib/toast"
+import { PanelTitle } from "@/components/PanelTitle"
+import { fieldAuto } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Navigate, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
@@ -16,13 +19,12 @@ import { AISettings } from "@/components/AISettings"
 import { SlaCheck } from "@/components/SlaCheck"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
 function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
   return (
     <section id={id} aria-label={title} className="panel p-4">
-      <h2 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="sr-only">, </span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h2>
+      <PanelTitle hint={hint}>{title}</PanelTitle>
       {children}
     </section>
   )
@@ -51,23 +53,22 @@ export default function Settings(_props: { user: User }) {
   const section = useParams().section ?? ""
   const [data, setData] = useState<SettingsData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [teamId, setTeamId] = useState("")
   const load = useCallback(async (team = teamId) => {
     try { setData(await settingsData(section, team)); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load settings") }
   }, [teamId, section])
-  useEffect(() => { if (TITLES[section]) { document.title = `${TITLES[section].title} · Settings · Odin`; setNotice(null); void load() } }, [load, section])
+  useEffect(() => { if (TITLES[section]) { document.title = `${TITLES[section].title} · Settings · Odin`; void load() } }, [load, section])
 
   const send: Send = async (path, fields = {}, confirmText) => {
     if (confirmText && !(await askConfirm(confirmText))) return null
     setBusy(true)
     try {
       const r = await postForm(path, fields)
-      setNotice(r.messages.join(" ") || null)
+      { const said = r.messages.join(" "); if (said) toast(said) }
       await load()
       return r
-    } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save"); return null } finally { setBusy(false) }
+    } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }); return null } finally { setBusy(false) }
   }
 
   if (!TITLES[section]) return <Navigate to="/settings/general" replace />
@@ -92,11 +93,6 @@ export default function Settings(_props: { user: User }) {
     <div className="px-5 pb-6 pt-4">
       <h1 className="text-[17px] font-semibold tracking-tight">{TITLES[section].title}</h1>
       <p className="mt-1 text-[13px] text-muted-foreground">{TITLES[section].lede}</p>
-      {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
-          <span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
-        </div>
-      )}
 
       {/* min-w-0 on every grid item: a wide table scrolls inside its panel
           instead of stretching the page on a phone */}
@@ -129,7 +125,7 @@ export default function Settings(_props: { user: User }) {
                   <li key={c.id} className="flex items-center gap-2">
                     <span className="flex-1">{c.name}</span>
                     <label className="flex items-center gap-2 text-[12px] text-muted-foreground" title="Partners and customers on the project can see and download these">
-                      <input type="checkbox" checked={c.partners} disabled={busy} onChange={(e) => send(`/settings/doc-categories/${c.id}/partners`, e.target.checked ? { partners: "on" } : {})}
+                      <Switch size="sm" checked={c.partners} disabled={busy} onCheckedChange={(on) => send(`/settings/doc-categories/${c.id}/partners`, on ? { partners: "on" } : {})}
                         aria-label={`Partners see ${c.name}`} className="h-3.5 w-3.5 accent-primary" />partners</label>
                     <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
                   </li>
@@ -281,14 +277,14 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               )}
               {p.kind === "dates" && (
                 <textarea id={`pol-${p.key}`} rows={5} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
-                  placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[13px]" />
+                  placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className="w-full max-w-2xl rounded-lg border border-input bg-background px-3 py-2 text-[13px]" />
               )}
               {p.kind === "lines" && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
                   placeholder={"SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[13px]" />
               )}
               {p.kind === "choice" && (
-                <select id={`pol-${p.key}`} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className={cn(selectClass, "max-w-sm")}>
+                <select id={`pol-${p.key}`} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className={cn(fieldAuto, "max-w-sm")}>
                   {p.key === "default_template" && <option value="">First template ({templates[0]?.name ?? "none"})</option>}
                   {(p.choices ?? []).map((c) => <option key={c} value={c}>{optionLabel(p, c)}</option>)}
                 </select>
@@ -332,9 +328,9 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
     <>
       <Panel title="New token">
         <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then((r) => { if (r) setName("") }) }} className="flex flex-wrap items-end gap-2">
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">What uses it<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Valid for
-            <select value={days} onChange={(e) => setDays(e.target.value)} className={selectClass}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">What uses it<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Valid for
+            <select value={days} onChange={(e) => setDays(e.target.value)} className={fieldAuto}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
           </label>
           <Button type="submit" size="sm" loading={busy} disabled={!name.trim()}>Create token</Button>
         </form>
@@ -428,9 +424,9 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
           <span className="text-muted-foreground">In Entra ID: a separate app registration, single tenant, ID tokens only; a client secret under Certificates &amp; secrets.</span>
         </div>
         <div className="grid grid-cols-1 max-w-md gap-2">
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="h-8 font-mono text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={f.tenant_id} onChange={(e) => setF({ ...f, tenant_id: e.target.value })} className="h-8 font-mono text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Application (client) ID<Input value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="h-8 font-mono text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Directory (tenant) ID<Input value={f.tenant_id} onChange={(e) => setF({ ...f, tenant_id: e.target.value })} className="h-8 font-mono text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[13px]" /></label>
         </div>
         <label className="flex items-start gap-2 text-[13px]">
           <Switch checked={enforced} onCheckedChange={setEnforced} disabled={!sso.configured} className="mt-1" />
@@ -467,7 +463,7 @@ function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData;
             <span>{i.label}</span>
           </label>
         ))}
-        <div><Button type="submit" size="sm" variant="outline" loading={busy} disabled={!dirty}>Save</Button></div>
+        <div><Button type="submit" size="sm" loading={busy} disabled={!dirty}>Save</Button></div>
       </form>
       {extra && <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">{extra}</div>}
     </Panel>
@@ -534,18 +530,18 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
                 <td className="py-2 pr-2">{a.title}</td>
                 <td className="py-2 pr-2">{a.threshold_days != null ? <Input type="number" min={0} value={a.threshold_days} onChange={(e) => set(a.key, { threshold_days: Number(e.target.value) })} aria-label={`Threshold days for ${a.title}`} className="h-7 w-16 text-[13px]" /> : <span className="text-muted-foreground">—</span>}</td>
                 <td className="py-2 pr-2">
-                  <select value={a.severity} onChange={(e) => set(a.key, { severity: e.target.value as typeof a.severity })} aria-label={`Severity for ${a.title}`} className={cn(selectClass, "h-7 text-[13px]")}>
+                  <select value={a.severity} onChange={(e) => set(a.key, { severity: e.target.value as typeof a.severity })} aria-label={`Severity for ${a.title}`} className={cn(fieldAuto, "h-7 text-[13px]")}>
                     <option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option>
                   </select>
                 </td>
                 {(["notify_email", "notify_teams", "notify_inapp"] as const).map((k) => (
-                  <td key={k} className="py-2 pr-2"><input type="checkbox" checked={a[k]} onChange={(e) => set(a.key, { [k]: e.target.checked })} aria-label={`${k.replace("notify_", "")} notification for ${a.title}`} className="h-3.5 w-3.5 accent-primary" /></td>
+                  <td key={k} className="py-2 pr-2"><Switch size="sm" checked={a[k]} onCheckedChange={(on) => set(a.key, { [k]: on })} aria-label={`${k.replace("notify_", "")} notification for ${a.title}`} className="h-3.5 w-3.5 accent-primary" /></td>
                 ))}
               </tr>
             ))}
           </tbody>
         </table></div>
-        <Button type="submit" size="sm" variant="outline" className="mt-3" loading={busy}>Save alert settings</Button>
+        <Button type="submit" size="sm" className="mt-3" loading={busy}>Save alert settings</Button>
       </form>
     </Panel>
   )
@@ -565,9 +561,9 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
       {editing && (
         <form onSubmit={(e) => { e.preventDefault(); void send("/settings/azure-app", app).then((r) => { if (r) setApp({ ...app, client_secret: "" }) }) }} className="mb-3 grid grid-cols-1 max-w-md gap-2">
           {!m.oauth_client_configured && <p className="text-[13px] text-muted-foreground">Enter the details of the app registration made once in the Azure portal (Microsoft Entra ID → App registrations): its tenant ID, client ID and a client secret.</p>}
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[13px]" /></label>
+          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[13px]" /></label>
           <div className="flex gap-2">
             <Button type="submit" size="sm" loading={busy} disabled={!app.client_id || !app.tenant_id}>Save</Button>
             {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>}
@@ -587,12 +583,12 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
             <button type="button" disabled={busy} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-bad hover:underline">Disconnect</button></p>
           {m.teams_error && <p className="text-[13px] text-destructive">Could not load teams: {m.teams_error}</p>}
           <div className="flex flex-wrap items-center gap-2">
-            <select value={teamId} onChange={(e) => onTeam(e.target.value)} aria-label="Microsoft Teams team" className={selectClass}>
+            <select value={teamId} onChange={(e) => onTeam(e.target.value)} aria-label="Microsoft Teams team" className={fieldAuto}>
               <option value="">Choose a team…</option>{m.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             {teamId && (
               <>
-                <select value={channelId} onChange={(e) => setChannelId(e.target.value)} aria-label="Teams channel" className={selectClass}>
+                <select value={channelId} onChange={(e) => setChannelId(e.target.value)} aria-label="Teams channel" className={fieldAuto}>
                   <option value="">Choose a channel…</option>{m.channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <Button size="sm" variant="outline" disabled={busy || !channelId} onClick={() => send("/integrations/channel", { team_id: teamId, channel_id: channelId })}>Save channel</Button>

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { PanelTitle } from "@/components/PanelTitle"
 import { cn } from "@/lib/utils"
 
 // The building blocks the rollout and portfolio reports share: a titled card
@@ -6,7 +7,7 @@ import { cn } from "@/lib/utils"
 export function Section({ n, title, sub, children, className }: { n?: boolean; title: string; sub?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={cn("panel min-w-0 p-5 break-inside-avoid print:shadow-none", className)} aria-label={title}>
-      <h2 data-n={n ? "" : undefined} className="mb-3 text-[14px] font-semibold">{title}{sub && <span className="sr-only">, </span>}{sub && <span className="ml-2 text-[13px] font-normal text-muted-foreground">{sub}</span>}</h2>
+      <PanelTitle n={!!n} hint={sub}>{title}</PanelTitle>
       {children}
     </section>
   )

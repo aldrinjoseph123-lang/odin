@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
+import { StatTile } from "@/components/StatTile"
+import { pill } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
 import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTip, XAxis, YAxis } from "recharts"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import { PrintBrand } from "@/components/Brand"
 import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
 import { PlanGantt, RagPill } from "@/components/PlanGantt"
@@ -24,7 +26,6 @@ import { TemplatePicker } from "@/components/TemplatePicker"
 // "Save as version" freezes the lot. Partners and customers read saved
 // versions only (the server enforces it). Every version exports to PDF.
 const MISSING = "This project does not exist, or you are not on it."
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[13px]")
 const slip = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--elevation-pop)", fontSize: 12 }, labelStyle: { color: "var(--muted-foreground)" } }
 
@@ -163,11 +164,7 @@ export default function Report({ user }: { user: User }) {
       {intro && <p className="mt-3 whitespace-pre-line text-[14px] leading-relaxed">{intro}</p>}
       <div className={cn("mt-4 grid grid-cols-2 gap-3", customer ? "lg:grid-cols-4" : "lg:grid-cols-5", hide("numbers"))}>
         {tiles.map((t) => (
-          <div key={t.label} className="panel p-4 print:shadow-none">
-            <div className="text-[12px] text-muted-foreground">{t.label}</div>
-            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.bad && "text-bad", t.warn && "text-warn")}>{t.value}</div>
-            <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
-          </div>
+          <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.bad ? "bad" : t.warn ? "warn" : undefined} className="print:shadow-none" />
         ))}
       </div>
 

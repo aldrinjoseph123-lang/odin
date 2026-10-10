@@ -124,8 +124,8 @@ test("@flow flow list: filters, stage pills, grouping, the fold, opening a rollo
 test("@flow flow detail: advance with the confirm step, then undo", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/board?rollout=1")
-  const advance = page.getByRole("button", { name: /^Advance to / })
-  const next = (await advance.textContent())!.replace("Advance to", "").trim()
+  const advance = page.getByRole("button", { name: /^Move to (?!.* now$)/ })
+  const next = (await advance.textContent())!.replace("Move to", "").trim()
   await advance.click()
   // the confirm names the risk (open tasks, no approval yet) and ignores a click within 400 ms of the first
   const move = page.getByRole("group", { name: `Confirm the move to ${next}` }).getByRole("button", { name: /^Move / })
@@ -337,7 +337,7 @@ test("@flow scope and sign-off: mark the last item, send, see it waiting, withdr
   await expect(page.getByRole("textbox", { name: "Summary" })).toHaveValue(/4 of 4 agreed scope items were delivered in full/)
   await page.getByRole("button", { name: "Send for signature" }).click()
   await page.getByRole("button", { name: /^Send to Ann Reyes now$/ }).click()
-  await expect(page.getByRole("status")).toHaveText(/Version \d+ sent to Ann Reyes/)
+  await expect(page.getByText(/Version \d+ sent to Ann Reyes/)).toBeVisible()   // a toast
   await expect(page.getByText("Sent, waiting for the customer's signature").first()).toBeVisible()
   await expect(page.getByText(/SHA-256 [0-9a-f]{64}/)).toBeVisible()
   const pdf = await page.request.get("/projects/1/signoff.pdf")
@@ -356,7 +356,7 @@ test("@flow scope and sign-off: mark the last item, send, see it waiting, withdr
   await expect(page.getByRole("textbox", { name: "Sign-in link for the signatory" })).toHaveValue(/\/auth\/link\/[^?]+\?next=%2Fprojects%2F1%2Fsignoff|\/auth\/link\/.+next=\/projects\/1\/signoff/)
   await page.getByRole("button", { name: "Withdraw and revise" }).click()
   await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
-  await expect(page.getByRole("status")).toHaveText(/withdrawn/)
+  await expect(page.getByText(/withdrawn/).first()).toBeVisible()   // a toast
   await expect(page.getByRole("button", { name: "Send for signature" })).toBeVisible()
   expect(await move(before)).toBe(200)
   expectClean(errors.filter((e) => !/\/api\/projects\/1\/stage|400 \(BAD REQUEST\)/.test(e)))   // the refused move is the point
@@ -380,12 +380,10 @@ test("@flow settings: an admin switches time on Odin and sign-up links off, then
   const time = page.getByRole("region", { name: "Time on Odin" })
   const signup = page.getByRole("region", { name: "Sign-up links" })
   await time.getByRole("switch", { name: "Record time on Odin" }).uncheck()
-  await time.getByRole("button", { name: "Save", exact: true }).click()
-  await expect(page.getByRole("status")).toContainText("Saved")
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()), time.getByRole("button", { name: "Save", exact: true }).click()])
   await expect(signup.getByRole("switch", { name: "Sign-up links work" })).toBeChecked()
   await signup.getByRole("switch", { name: "Sign-up links work" }).uncheck()
-  await signup.getByRole("button", { name: "Save", exact: true }).click()
-  await expect(page.getByRole("status")).toContainText("Saved")
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()), signup.getByRole("button", { name: "Save", exact: true }).click()])
   await expect(time.getByRole("switch", { name: "Record time on Odin" })).not.toBeChecked()
   await page.goto("/account")
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
@@ -396,11 +394,9 @@ test("@flow settings: an admin switches time on Odin and sign-up links off, then
   // back on, so later journeys see the defaults
   await page.goto("/settings/people")
   await time.getByRole("switch", { name: "Record time on Odin" }).check()
-  await time.getByRole("button", { name: "Save", exact: true }).click()
-  await expect(page.getByRole("status")).toContainText("Saved")
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()), time.getByRole("button", { name: "Save", exact: true }).click()])
   await signup.getByRole("switch", { name: "Sign-up links work" }).check()
-  await signup.getByRole("button", { name: "Save", exact: true }).click()
-  await expect(page.getByRole("status")).toContainText("Saved")
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()), signup.getByRole("button", { name: "Save", exact: true }).click()])
   // the longer explanation is one tap away
   await time.getByRole("button", { name: "What is Record time on Odin?" }).click()
   await expect(page.getByText(/visible and in use/)).toBeVisible()
@@ -539,7 +535,7 @@ test("@flow sign-up link: an admin makes it, a colleague asks, the admin approve
   await expect(waiting).toContainText("E2E Joiner")
   await expect(waiting).toContainText('via sign-up link "E2E joiner"')
   await waiting.getByRole("button", { name: "Approve" }).click()
-  await expect(page.getByRole("status")).toContainText("can now sign in")
+  await expect(page.getByText(/can now sign in/)).toBeVisible()   // a toast
   // and they are in
   await guest.goto("/login")
   await guest.getByLabel("Username").fill("e2ejoiner")

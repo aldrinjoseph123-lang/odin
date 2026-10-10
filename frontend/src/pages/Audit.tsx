@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react"
+import { filterSelect } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
 import { buttonVariants } from "@/components/ui/button"
 import { ApiError, audit, type AuditData, type User } from "@/lib/api"
@@ -9,7 +10,6 @@ import { actionText, dayBucket, fmtWhen } from "@/lib/format"
 import { UserAvatar } from "@/components/UserAvatar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const selectClass = "h-7 max-w-48 rounded-md border border-border bg-background px-2 text-[13px] font-medium text-nav-fg hover:bg-muted"
 
 export default function Audit(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
@@ -44,13 +44,13 @@ export default function Audit(_props: { user: User }) {
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <select value={params.get("user") ?? ""} onChange={(e) => update({ user: e.target.value || null })} aria-label="Filter by user" className={selectClass}>
+        <select value={params.get("user") ?? ""} onChange={(e) => update({ user: e.target.value || null })} aria-label="Filter by user" className={cn(filterSelect, "max-w-48")}>
           <option value="">All users</option>{data.usernames.map((u) => <option key={u} value={u}>{u}</option>)}
         </select>
-        <select value={params.get("action") ?? ""} onChange={(e) => update({ action: e.target.value || null })} aria-label="Filter by action" className={selectClass}>
+        <select value={params.get("action") ?? ""} onChange={(e) => update({ action: e.target.value || null })} aria-label="Filter by action" className={cn(filterSelect, "max-w-48")}>
           <option value="">All actions</option>{data.actions.map((a) => <option key={a} value={a}>{actionText(a)}</option>)}
         </select>
-        <select value={params.get("project_id") ?? ""} onChange={(e) => update({ project_id: e.target.value || null })} aria-label="Filter by project" className={selectClass}>
+        <select value={params.get("project_id") ?? ""} onChange={(e) => update({ project_id: e.target.value || null })} aria-label="Filter by project" className={cn(filterSelect, "max-w-48")}>
           <option value="">All projects</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <DatePicker value={params.get("from") ?? ""} onChange={(v) => update({ from: v || null })} label="From date" placeholder="From" className="h-8 w-40" />

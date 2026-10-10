@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { chip, filterSelect } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
 import { FolderOpen, ArrowDown, ArrowUp, ExternalLink, LayoutGrid, List, Search } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
@@ -29,7 +30,6 @@ const COLUMNS: { key: string; label: string; className?: string }[] = [
   { key: "vendor", label: "Vendor", className: "hidden xl:table-cell" }, { key: "product", label: "Product", className: "hidden xl:table-cell" },
   { key: "updated", label: "Updated", className: "hidden md:table-cell" },
 ]
-const selectClass = "h-7 rounded-md border border-border bg-background px-2 text-[13px] font-medium text-nav-fg hover:bg-muted"
 // Table or cards: a per-browser convenience, so it lives in localStorage (which may be unavailable).
 type Layout = "table" | "cards"
 const readLayout = (): Layout => { try { return localStorage.getItem("odin.projects.layout") === "cards" ? "cards" : "table" } catch { return "table" } }
@@ -90,22 +90,22 @@ export default function Projects({ user }: { user: User }) {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {VIEWS.map((v) => (
           <button key={v.key} type="button" onClick={() => pickView(v)} aria-pressed={activeView === v.key}
-            className={cn("h-7 rounded-full border px-3 text-[13px] font-medium transition-colors", activeView === v.key ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>
+            className={chip(activeView === v.key)}>
             {v.label}
           </button>
         ))}
-        <select value={params.get("stage") ?? ""} onChange={(e) => update({ stage: e.target.value || null, view: null, closed: null })} aria-label="Stage" className={selectClass}>
+        <select value={params.get("stage") ?? ""} onChange={(e) => update({ stage: e.target.value || null, view: null, closed: null })} aria-label="Stage" className={filterSelect}>
           <option value="">Any stage</option>
           {data.stages.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={params.get("delivery_mode") ?? ""} onChange={(e) => update({ delivery_mode: e.target.value || null, view: null, stage: null })} aria-label="Delivery mode" className={selectClass}>
+        <select value={params.get("delivery_mode") ?? ""} onChange={(e) => update({ delivery_mode: e.target.value || null, view: null, stage: null })} aria-label="Delivery mode" className={filterSelect}>
           <option value="">Any mode</option>
           {data.delivery_modes.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
         {layout === "cards" && (
           // cards have no column heads to click: the sort lives here instead
           <span className="flex items-center gap-1">
-            <select value={data.sort} onChange={(e) => update({ sort: e.target.value, dir: data.dir })} aria-label="Sort by" className={selectClass}>
+            <select value={data.sort} onChange={(e) => update({ sort: e.target.value, dir: data.dir })} aria-label="Sort by" className={filterSelect}>
               {COLUMNS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
             <button type="button" onClick={() => update({ sort: data.sort, dir: data.dir === "asc" ? "desc" : "asc" })} aria-label={data.dir === "asc" ? "Ascending; switch to descending" : "Descending; switch to ascending"}

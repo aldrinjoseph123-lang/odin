@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { field } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { ArrowDown, ArrowUp, Copy, Eye, FileText, ImageUp, Plus, Star, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -15,7 +16,6 @@ import { fmtWhen } from "@/lib/format"
 // {placeholders}; a preview renders the unsaved template on real data.
 // The swatches show the PDF's own colours (document data, not UI chrome).
 const SWATCH: Record<string, string> = { blue: "#3D5AFE", indigo: "#4F46E5", teal: "#0D9488", green: "#16A34A", orange: "#EA580C", red: "#E11D2E", slate: "#334155", black: "#101114" }
-const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 const KINDS: DocKind[] = ["rollout", "signoff", "portfolio"]
 type Editing = { id?: number; kind: DocKind; name: string; config: DocConfig }
 

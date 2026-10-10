@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { chip } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Inbox, ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
@@ -147,10 +148,6 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
 // ---- top pane: every active rollout, stuck first -------------------------------
 const needsAttention = (r: FlowRow) => r.state !== "on_track" || r.late_tasks > 0
 type Filter = "all" | "attention" | "customer" | "mine"
-// Pills share one size: 32 px, 40 px under a finger.
-const pill = "flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 text-[13px] font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 pointer-coarse:h-10"
-const pillOn = "border-foreground bg-foreground text-background"
-const pillOff = "border-border text-nav-fg hover:bg-muted"
 
 // What happens next on this rollout, in one quiet line.
 function NextLine({ r, today }: { r: FlowRow; today: string }) {
@@ -282,7 +279,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
         <div className="flex flex-wrap items-center gap-2 md:ml-auto">
           {chips.map((c) => (
             <button key={c.key} type="button" onClick={() => setFilter(c.key)} aria-pressed={filter === c.key} aria-label={`${c.label}, ${c.n}`}
-              className={cn(pill, filter === c.key ? pillOn : pillOff)}>
+              className={cn(chip(filter === c.key), "flex items-center gap-1")}>
               {c.label}{c.n ? <span className={filter === c.key ? "text-background/70" : "text-muted-foreground"}>{c.n}</span> : null}
             </button>
           ))}
@@ -302,7 +299,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
           return (
             <button key={c} type="button" onClick={() => setStage(on ? null : c)} aria-pressed={on}
               aria-label={`${c}: ${inStage.get(c) ?? 0}. ${on ? "Show every stage" : "Show only this stage"}`}
-              className={cn(pill, "font-normal", on ? pillOn : pillOff)}>
+              className={cn(chip(on), "flex items-center gap-1 font-normal")}>
               {c} <span className={cn("font-medium tabular-nums", on ? "text-background" : "text-foreground")}>{inStage.get(c) ?? 0}</span>
               {on && <X className="h-3 w-3" aria-hidden />}
             </button>
@@ -645,7 +642,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                 {!risky && <Button size="sm" variant="ghost" onClick={cancelMove} disabled={busy}>Cancel</Button>}
               </div>
             ) : (
-              <Button ref={advanceRef} className="mt-2 w-full" size="sm" variant={workFirst ? "outline" : "default"} onClick={() => { confirmAt.current = Date.now(); setConfirming(true) }} disabled={busy}>Advance to {d.next_stage} <ArrowRight className="h-3.5 w-3.5" /></Button>
+              <Button ref={advanceRef} className="mt-2 w-full" size="sm" variant={workFirst ? "outline" : "default"} onClick={() => { confirmAt.current = Date.now(); setConfirming(true) }} disabled={busy}>Move to {d.next_stage} <ArrowRight className="h-3.5 w-3.5" /></Button>
             )}
             {err && <p className="mt-2 text-[12px] text-destructive" role="alert">{err}</p>}
           </section>

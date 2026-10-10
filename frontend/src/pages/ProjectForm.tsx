@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { field } from "@/lib/ui"
 import { DatePicker } from "@/components/DatePicker"
 import { useParams, useSearchParams } from "react-router-dom"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -11,7 +12,6 @@ import { toastAfterLoad } from "@/lib/toast"
 
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
-const selectClass = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 const MISSING = "This project does not exist, or you cannot edit it."
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -100,12 +100,12 @@ export default function ProjectForm(_props: { user: User }) {
           <Field label="Client *"><Input value={f.client} onChange={set("client")} required maxLength={200} aria-label="Client" className="h-8 text-[13px]" /></Field>
           {editing ? (
             <Field label="Owner" hint="the project manager">
-              <select value={f.owner_id} onChange={set("owner_id")} aria-label="Owner" className={selectClass}>{d.leads.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+              <select value={f.owner_id} onChange={set("owner_id")} aria-label="Owner" className={field}>{d.leads.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
             </Field>
           ) : (<>
             {!d.can_lead && (
               <Field label="Project manager *" hint="someone who can move stages; you join as a coordinator">
-                <select value={f.owner_id} onChange={set("owner_id")} required aria-label="Project manager" className={selectClass}>
+                <select value={f.owner_id} onChange={set("owner_id")} required aria-label="Project manager" className={field}>
                   <option value="">Choose…</option>{d.leads.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </Field>
@@ -130,7 +130,7 @@ export default function ProjectForm(_props: { user: User }) {
           {!editing && (
             <>
               <Field label="Stage template" hint="the project gets its own copy; edit it on the project afterwards">
-                <select name="stage_template_id" value={f.stage_template_id} onChange={set("stage_template_id")} aria-label="Stage template" className={selectClass}>{d.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+                <select name="stage_template_id" value={f.stage_template_id} onChange={set("stage_template_id")} aria-label="Stage template" className={field}>{d.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
               </Field>
               <Field label="Client PO document *" hint="required — no project without the PO on file">
                 <input type="file" name="po_document" required aria-label="Client PO document" />
@@ -141,16 +141,16 @@ export default function ProjectForm(_props: { user: User }) {
 
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Commercial route and delivery</h2>
-          <Field label="Via *"><select value={f.via} onChange={set("via")} aria-label="Via" className={selectClass}>{d.via_options.map((v) => <option key={v}>{v}</option>)}</select></Field>
+          <Field label="Via *"><select value={f.via} onChange={set("via")} aria-label="Via" className={field}>{d.via_options.map((v) => <option key={v}>{v}</option>)}</select></Field>
           {f.via === "Partner" ? (
             <>
               <Field label="Partner">
-                <select value={f.partner_name} onChange={(e) => setF({ ...f, partner_name: e.target.value, partner_account_manager_name: "", partner_account_manager_email: "" })} aria-label="Partner name" className={selectClass}>
+                <select value={f.partner_name} onChange={(e) => setF({ ...f, partner_name: e.target.value, partner_account_manager_name: "", partner_account_manager_email: "" })} aria-label="Partner name" className={field}>
                   <option value="">Select…</option>{d.partners.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
                 </select>
               </Field>
               <Field label="Account manager (partner)">
-                <select value={f.partner_account_manager_name} onChange={(e) => setF({ ...f, partner_account_manager_name: e.target.value, partner_account_manager_email: partner?.managers.find((m) => m.name === e.target.value)?.email ?? "" })} aria-label="Account manager (partner)" className={selectClass} disabled={!partner}>
+                <select value={f.partner_account_manager_name} onChange={(e) => setF({ ...f, partner_account_manager_name: e.target.value, partner_account_manager_email: partner?.managers.find((m) => m.name === e.target.value)?.email ?? "" })} aria-label="Account manager (partner)" className={field} disabled={!partner}>
                   <option value="">{partner ? "Select…" : "Select a partner first…"}</option>{partner?.managers.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
                 </select>
               </Field>
@@ -159,18 +159,18 @@ export default function ProjectForm(_props: { user: User }) {
           ) : (
             <>
               <Field label="Account manager (internal)">
-                <select value={f.account_manager_name} onChange={(e) => setF({ ...f, account_manager_name: e.target.value, account_manager_email: d.account_managers.find((a) => a.name === e.target.value)?.email ?? "" })} aria-label="Account manager (internal)" className={selectClass}>
+                <select value={f.account_manager_name} onChange={(e) => setF({ ...f, account_manager_name: e.target.value, account_manager_email: d.account_managers.find((a) => a.name === e.target.value)?.email ?? "" })} aria-label="Account manager (internal)" className={field}>
                   <option value="">Select…</option>{d.account_managers.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
                 </select>
               </Field>
               <Field label="Account manager email"><Input value={f.account_manager_email} readOnly aria-label="Account manager email" className="h-8 text-[13px] text-muted-foreground" /></Field>
             </>
           )}
-          <Field label="Delivery mode *"><select value={f.delivery_mode} onChange={set("delivery_mode")} aria-label="Delivery mode" className={selectClass}>{d.delivery_modes.map((m) => <option key={m}>{m}</option>)}</select></Field>
+          <Field label="Delivery mode *"><select value={f.delivery_mode} onChange={set("delivery_mode")} aria-label="Delivery mode" className={field}>{d.delivery_modes.map((m) => <option key={m}>{m}</option>)}</select></Field>
           {f.delivery_mode === "Outsourced" ? (
             <>
               <Field label="Outsourcer">
-                <select value={f.outsourcer_name} onChange={(e) => setF({ ...f, outsourcer_name: e.target.value, outsourcer_email: d.outsourcers.find((o) => o.name === e.target.value)?.email ?? "" })} aria-label="Outsourcer" className={selectClass}>
+                <select value={f.outsourcer_name} onChange={(e) => setF({ ...f, outsourcer_name: e.target.value, outsourcer_email: d.outsourcers.find((o) => o.name === e.target.value)?.email ?? "" })} aria-label="Outsourcer" className={field}>
                   <option value="">Select…</option>{d.outsourcers.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
                 </select>
               </Field>
@@ -179,7 +179,7 @@ export default function ProjectForm(_props: { user: User }) {
           ) : (
             <>
               <Field label="Vendor">
-                <select value={f.vendor_name} aria-label="Vendor" className={selectClass}
+                <select value={f.vendor_name} aria-label="Vendor" className={field}
                   onChange={(e) => { const v = e.target.value; const keep = d.products.some((p) => p.name === f.product_name && (!p.vendor || p.vendor === v)); setF({ ...f, vendor_name: v, product_name: keep ? f.product_name : "" }) }}>
                   <option value="">Select…</option>
                   {/* a vendor deleted since keeps showing on the projects that named it (sim roles-12) */}
@@ -187,7 +187,7 @@ export default function ProjectForm(_props: { user: User }) {
                 </select>
               </Field>
               <Field label="Product">
-                <select value={f.product_name} onChange={set("product_name")} aria-label="Product" className={selectClass}>
+                <select value={f.product_name} onChange={set("product_name")} aria-label="Product" className={field}>
                   <option value="">Select…</option>
                   {productsFor(d.products, f.vendor_name, f.product_name).map((p) => <option key={p}>{p}</option>)}
                 </select>

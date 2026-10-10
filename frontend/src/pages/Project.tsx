@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { PanelTitle } from "@/components/PanelTitle"
+import { fieldAuto } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
 import { Copy, MoreHorizontal, Trash2 } from "lucide-react"
 import { askConfirm } from "@/lib/confirm"
@@ -24,7 +26,6 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { dayBucket, fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
 // a 14 px bin with a 24 px target (the pseudo-element), kept clear of its neighbours
 const hit = "relative ml-1 shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-destructive"
 const LABELS: Record<string, string> = {
@@ -36,9 +37,7 @@ const LABELS: Record<string, string> = {
 function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
   return (
     <section id={id} className="panel scroll-mt-16 p-4">
-      <div className="mb-3 flex flex-wrap items-baseline gap-x-2 text-[12px]">
-        <h2 data-n className="font-semibold text-nav-fg">{title}</h2>{hint && <span className="text-muted-foreground">{hint}</span>}
-      </div>
+      <PanelTitle hint={hint}>{title}</PanelTitle>
       {children}
     </section>
   )
@@ -381,12 +380,12 @@ function TeamAddForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; o
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (userId) void onSubmit({ user_id: userId, role }).then((r) => { if (r) setUserId("") }) }} className="grid grid-cols-1 gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <select value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Add a person" className={cn(selectClass, "min-w-40")}>
+        <select value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Add a person" className={cn(fieldAuto, "min-w-40")}>
           <option value="">Add a person…</option>
           {fresh.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           {members.length > 0 && <optgroup label="On the team: change their role">{members.map((u) => <option key={u.id} value={u.id}>{u.name} ({onTeam.get(u.id)})</option>)}</optgroup>}
         </select>
-        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role" className={selectClass}>
+        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role" className={fieldAuto}>
           {x.roles.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!userId || member === role}>{member ? "Change role" : "Add"}</Button>
@@ -404,7 +403,7 @@ function InviteForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; on
     <form onSubmit={(e) => { e.preventDefault(); if (email) void onSubmit({ email, name, role }).then((r) => { if (r) { setEmail(""); setName("") } }) }} className="flex flex-wrap items-center gap-2">
       <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Invite by email" aria-label="Invite by email" required className="h-8 w-56 text-[13px]" />
       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" aria-label="Name" maxLength={80} className="h-8 w-36 text-[13px]" />
-      <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Their role" className={selectClass}>
+      <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Their role" className={fieldAuto}>
         {x.external_roles.map((r) => <option key={r} value={r}>{r}</option>)}
       </select>
       <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!email}>Invite</Button>
@@ -432,7 +431,7 @@ function UploadForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; on
       onDrop={(e) => { e.preventDefault(); setOver(false); setFiles([...e.dataTransfer.files]) }}
       className={cn("grid gap-2 rounded-lg border border-dashed p-3 transition-colors", over ? "border-primary bg-accent/40" : "border-border")}>
       <div className="flex flex-wrap items-center gap-2">
-        <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Document category" className={selectClass}>
+        <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Document category" className={fieldAuto}>
           <option value="">Category…</option>
           {x.doc_categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>

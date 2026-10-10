@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { chip } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { ExternalLink } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
@@ -35,7 +36,7 @@ export function Kibana({ rollout, onRollout }: { rollout: number | null; onRollo
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Kibana dashboards">
           {d.dashboards.map((x, i) => (
             <button key={x.name} type="button" role="tab" aria-selected={i === at} onClick={() => setAt(i)}
-              className={cn("h-7 rounded-full border px-3 text-[12px] font-medium", i === at ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{x.name}</button>
+              className={chip(i === at)}>{x.name}</button>
           ))}
         </div>
         {perRollout && (

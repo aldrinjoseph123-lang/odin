@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
+import { StatTile } from "@/components/StatTile"
+import { pill } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { Download, Printer } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { PrintBrand } from "@/components/Brand"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
@@ -17,7 +18,6 @@ import { dayOf, fmtDate, fmtWhen, monthTicks } from "@/lib/format"
 // its target and baseline, what is blocking, and a way into each rollout's own
 // report. Partners and customers get the cut the server makes for them (no
 // reasons, no baseline, only the RAID items marked for them) and no PDF.
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[13px]")
 const RAGS: Rag[] = ["red", "amber", "green", "done"]
 const WORD: Record<Rag, string> = { red: "Off track", amber: "At risk", green: "On track", done: "Complete" }
 const SOLID: Record<Rag, string> = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-ok-line", done: "bg-muted-foreground" }   // marks wear the -line tokens; text wears the state colour
@@ -122,11 +122,7 @@ export default function ReportAll({ user }: { user: User }) {
         </section>
         <div className={cn("grid grid-cols-2 gap-3", internal ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
           {tiles.map((t) => (
-            <div key={t.label} className="panel p-4 print:shadow-none">
-              <div className="text-[12px] text-muted-foreground">{t.label}</div>
-              <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight tabular-nums", t.bad && "text-bad")}>{t.value}</div>
-              <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
-            </div>
+            <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.bad ? "bad" : undefined} className="print:shadow-none" />
           ))}
         </div>
       </div>

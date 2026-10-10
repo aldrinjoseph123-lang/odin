@@ -52,7 +52,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
             </label>
           ))}
         </div>
-        <Button type="submit" size="sm" variant="outline" className="mt-2" loading={busy}>Save SLAs</Button>
+        <Button type="submit" size="sm" className="mt-2" loading={busy}>Save SLAs</Button>
       </form>
     </div>
   )

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { PanelTitle } from "@/components/PanelTitle"
 import { CheckCircle2, CircleDashed, Clock, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -14,7 +15,7 @@ type Send = (path: string, fields?: Record<string, string>, confirmText?: string
 function Panel({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <section className="panel p-4">
-      <h2 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="sr-only">, </span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h2>
+      <PanelTitle hint={hint}>{title}</PanelTitle>
       {children}
     </section>
   )
@@ -193,8 +194,8 @@ function Features({ features, busy, send }: { features: AIFeatureView[]; busy: b
                   <td className="py-2 pr-3"><Pill tone={tone} icon={icon}>{word}</Pill>{f.detail && <span className="mt-1 block text-[12px] text-muted-foreground">{f.detail}</span>}</td>
                   <td className="whitespace-nowrap py-2 pr-3">{f.checked_at ? <><Ago iso={f.checked_at} /><span className="block font-mono text-[12px] text-muted-foreground">{f.model}</span></> : <span className="text-muted-foreground">never</span>}</td>
                   <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{f.seconds != null ? `${f.seconds} s` : "—"}</td>
-                  <td className="py-2 pr-3"><input type="checkbox" checked={f.on} disabled={busy} onChange={(e) => void post(e.target.checked, f.forced)} aria-label={`${f.label} on`} className="h-3.5 w-3.5 accent-primary" /></td>
-                  <td className="py-2 pr-3"><input type="checkbox" checked={f.forced} disabled={busy || !f.on} onChange={(e) => void post(f.on, e.target.checked)} aria-label={`Force ${f.label} on without a passed test`} className="h-3.5 w-3.5 accent-primary" /></td>
+                  <td className="py-2 pr-3"><Switch size="sm" checked={f.on} disabled={busy} onCheckedChange={(c) => void post(c, f.forced)} aria-label={`${f.label} on`} className="h-3.5 w-3.5 accent-primary" /></td>
+                  <td className="py-2 pr-3"><Switch size="sm" checked={f.forced} disabled={busy || !f.on} onCheckedChange={(c) => void post(f.on, c)} aria-label={`Force ${f.label} on without a passed test`} className="h-3.5 w-3.5 accent-primary" /></td>
                   <td className="py-2 text-right">{f.output != null && <Button size="sm" variant="ghost" className="h-7" onClick={() => setOpen(open === f.key ? null : f.key)} aria-expanded={open === f.key}>{open === f.key ? "Hide answer" : "Test answer"}</Button>}</td>
                 </tr>,
                 open === f.key && (

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { StatTile } from "@/components/StatTile"
+import { pill } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
 import { Stepper } from "@/components/Stepper"
 import { StateChip } from "@/components/StateChip"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
@@ -14,7 +15,6 @@ import { fmtDate, lateBy, stateText } from "@/lib/format"
 // My work: what needs doing, in the order it needs doing. Headline numbers,
 // the fortnight of what got done, tasks grouped by urgency with a tick that
 // finishes them in place, and the rollouts this person is on with their state.
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 rounded-full px-3 text-[12px]")
 const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"]
 type Group = { key: string; title: string; hint: string; tone?: "bad" | "warn"; tasks: WorkTask[] }
 
@@ -96,11 +96,7 @@ export default function MyWork({ user }: { user: User }) {
 
       <div className="mt-3 grid grid-cols-2 gap-4 xl:grid-cols-4">
         {tiles.map((t) => (
-          <div key={t.label} className="panel p-4">
-            <div className="flex items-center gap-2 text-[12px] text-muted-foreground"><t.icon className="h-3.5 w-3.5" aria-hidden />{t.label}</div>
-            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
-            <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
-          </div>
+          <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.tone || undefined} icon={<t.icon className="h-3.5 w-3.5" aria-hidden />} />
         ))}
       </div>
 

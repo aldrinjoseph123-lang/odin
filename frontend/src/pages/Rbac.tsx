@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { toast } from "@/lib/toast"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ApiError, postForm, rbac, type RbacData, type User } from "@/lib/api"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
@@ -10,7 +11,6 @@ export default function Rbac(_props: { user: User }) {
   const [data, setData] = useState<RbacData | null>(null)
   const [matrix, setMatrix] = useState<RbacData["matrix"]>({})
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   async function load() {
     try { const d = await rbac(); setData(d); setMatrix(d.matrix); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load permissions") }
@@ -25,9 +25,9 @@ export default function Rbac(_props: { user: User }) {
       const fields: Record<string, string> = {}
       for (const p of data.permissions) for (const r of data.roles) if ((matrix[p]?.[r] || data.locked[p]?.includes(r)) && !data.forbidden?.[p]?.includes(r)) fields[`${p}::${r}`] = "on"
       const reply = await postForm("/settings/rbac", fields)
-      setNotice(reply.messages.join(" ") || null)
+      { const said = reply.messages.join(" "); if (said) toast(said) }
       await load()
-    } catch (err) { setNotice(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
+    } catch (err) { toast(err instanceof ApiError ? err.message : "That did not save", { tone: "bad" }) } finally { setBusy(false) }
   }
   if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
@@ -39,7 +39,6 @@ export default function Rbac(_props: { user: User }) {
         <p className="text-[13px] text-muted-foreground">which global role may do what; project roles narrow it further</p>
         <a href="/users" className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Users</a>
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-2 text-[13px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
       <form onSubmit={submit} className="mt-3">
         <div className="overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">

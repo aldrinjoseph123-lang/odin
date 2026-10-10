@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { toast } from "@/lib/toast"
+import { field, fieldAuto } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -11,12 +13,10 @@ import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px] disabled:opacity-60"
 
 export default function Users(_props: { user: User }) {
   const [data, setData] = useState<UsersData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
     try { setData(await fetchUsers()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load users") }
@@ -31,12 +31,12 @@ export default function Users(_props: { user: User }) {
     setBusy(true)
     try {
       const r = await postForm(path, fields)
-      setNotice(r.messages.join(" ") || null)
+      { const said = r.messages.join(" "); if (said) toast(said) }
       await load()
       return true
     } catch (e) {
       const m = e instanceof ApiError ? e.message : "That did not save"
-      if (onError) onError(m); else setNotice(m)
+      if (onError) onError(m); else toast(m, { tone: "bad" })
       return false
     } finally { setBusy(false) }
   }
@@ -55,11 +55,6 @@ export default function Users(_props: { user: User }) {
           <a href="/users/export.csv" className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
         </div>
       </div>
-      {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
-          <span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
-        </div>
-      )}
 
       {pending.length > 0 && <Pending people={pending} roles={data.roles} busy={busy} send={send} />}
 
@@ -95,7 +90,7 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
             <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.username} · {u.email} · asked {fmtWhen(u.created_at, true)}
               {u.signup_label ? ` · via sign-up link "${u.signup_label}"` : u.microsoft ? " · via Microsoft sign-in" : ""}{u.signup_project ? ` · joins ${u.signup_project} as ${u.signup_project_role}` : ""}
               {u.notify_via === "teams" ? " · prefers Teams" : ""}</span></span>
-            <select value={role[u.id] ?? (u.signup_label ? u.role : "Viewer")} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={selectClass}>
+            <select value={role[u.id] ?? (u.signup_label ? u.role : "Viewer")} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={fieldAuto}>
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
             <Button size="sm" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/approve`, { role: role[u.id] ?? (u.signup_label ? u.role : "Viewer") })}>Approve</Button>
@@ -143,7 +138,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           {/* External is a kind of account, not a role to hand out: an invited
               partner stays External (plain text), staff never become it */}
           {u.kind === "external" ? <span className="text-muted-foreground">External</span> : (
-            <select value={u.role} disabled={self || busy} onChange={(e) => send(`/users/${u.id}/role`, { role: e.target.value }, `Make ${u.name} ${e.target.value === "Admin" ? "an Admin" : `a ${e.target.value}`}? It applies at their next click.`)} aria-label={`Role for ${u.name}`} className={cn(selectClass, "w-full")}>
+            <select value={u.role} disabled={self || busy} onChange={(e) => send(`/users/${u.id}/role`, { role: e.target.value }, `Make ${u.name} ${e.target.value === "Admin" ? "an Admin" : `a ${e.target.value}`}? It applies at their next click.`)} aria-label={`Role for ${u.name}`} className={cn(fieldAuto, "w-full")}>
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           )}
@@ -179,7 +174,7 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
           <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Email
             <span className="flex gap-2">
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" maxLength={254} aria-label={`Email for ${u.name}`} className="h-8 flex-1 text-[13px]" />
-              <Button type="submit" size="sm" variant="outline" loading={busy} disabled={email === (u.email ?? "")}>Save</Button>
+              <Button type="submit" size="sm" loading={busy} disabled={email === (u.email ?? "")}>Save</Button>
             </span>
           </label>
         </form>
@@ -237,11 +232,11 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
   return (
     <form onSubmit={submit} className="grid grid-cols-1 content-start gap-2 panel p-4">
       <h2 className="text-[12px] font-semibold text-nav-fg">Add a team member</h2>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Full name<Input value={f.name} onChange={set("name")} required maxLength={120} aria-label="Full name" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Username<Input value={f.username} onChange={set("username")} required maxLength={80} aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" maxLength={254} aria-label="Email" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Role
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Full name<Input value={f.name} onChange={set("name")} required maxLength={120} aria-label="Full name" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Username<Input value={f.username} onChange={set("username")} required maxLength={80} aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" maxLength={254} aria-label="Email" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Role
         <select value={f.role} onChange={set("role")} aria-label="Role" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]">
           {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
@@ -255,7 +250,6 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
 
 // Sign-up links: a link for a new colleague to request an account themselves.
 // Requests land in "Waiting for approval" above; nothing is active until approved.
-const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 function SignupLinksPanel() {
   const [d, setD] = useState<SignupLinks | null>(null)
   const [f, setF] = useState({ label: "", role: "Contributor", project_id: "", project_role: "Coordinator", days: 0, max_uses: 1 })
@@ -277,7 +271,7 @@ function SignupLinksPanel() {
   const open = d.links.filter((l) => l.state === "open")
   return (
     <section className="panel p-4" aria-label="Sign-up links">
-      <h2 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
+      <h2 className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
       <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
       {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-3 text-[13px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
       {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[13px]">

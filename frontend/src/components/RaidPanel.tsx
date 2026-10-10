@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { field } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { AlertOctagon, Eye, Gavel, Plus, ShieldAlert, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -19,7 +20,6 @@ export const RAID_KIND: Record<RaidKind, { label: string; icon: typeof ShieldAle
 }
 // amber for high impact, not red: red in Odin means overdue (test report UX-20); the word carries the level
 const IMPACT: Record<string, string> = { high: "bg-warn-soft font-semibold text-warn", medium: "bg-muted text-foreground", low: "bg-muted text-muted-foreground" }
-const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 type Draft = Partial<RaidItem> & { kind: RaidKind; title: string }
 
 export function RaidPanel({ projectId, onChanged }: { projectId: number; onChanged?: () => void }) {
