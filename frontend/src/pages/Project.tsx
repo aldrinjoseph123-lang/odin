@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Link, useParams } from "react-router-dom"
-import { Copy, Trash2 } from "lucide-react"
+import { Copy, MoreHorizontal, Trash2 } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { RagPill } from "@/components/PlanGantt"
 import { UserAvatar } from "@/components/UserAvatar"
 import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -15,10 +18,10 @@ import { AICatchUp } from "@/components/AICatchUp"
 import { AIAsk } from "@/components/AIAsk"
 import { AINotesTasks } from "@/components/AINotesTasks"
 import { LessonsPanel } from "@/components/LessonsPanel"
-import { ApiError, flowDetail, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type ProjectExtras, type User } from "@/lib/api"
+import { ApiError, flowDetail, plan, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type PlanData, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
-import { fmtWhen } from "@/lib/format"
+import { dayBucket, fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
@@ -32,7 +35,7 @@ const LABELS: Record<string, string> = {
 
 function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
   return (
-    <section id={id} className="panel p-4">
+    <section id={id} className="panel scroll-mt-16 p-4">
       <h2 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="sr-only">, </span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h2>
       {children}
     </section>
@@ -49,6 +52,14 @@ export default function Project({ user }: { user: User }) {
   const [busy, setBusy] = useState(false)
   const [planRefresh, setPlanRefresh] = useState(0)   // a RAID change or a stage move moves the plan and the health
   const stageSeen = useRef<string | null>(null)
+  const [health, setHealth] = useState<PlanData["health"] | null>(null)
+  useEffect(() => { plan(id).then((p) => setHealth(p.health)).catch(() => setHealth(null)) }, [id, planRefresh])
+  // a styled confirm instead of the browser's: the question, what it does, and the verb on the button
+  const [ask, setAsk] = useState<{ text: string; resolve: (ok: boolean) => void } | null>(null)
+  const confirmFirst = (text: string) => new Promise<boolean>((resolve) => setAsk({ text, resolve }))
+  const answer = (ok: boolean) => { ask?.resolve(ok); setAsk(null) }
+  const [adding, setAdding] = useState(false)
+  const [editStages, setEditStages] = useState(false)
 
   const reload = useCallback(async () => {
     try {
@@ -64,7 +75,7 @@ export default function Project({ user }: { user: User }) {
 
   // one door for every form post: show what Flask said, then refetch
   async function send(path: string, fields: Record<string, string> | FormData = {}, confirmText?: string): Promise<FormReply | null> {
-    if (confirmText && !window.confirm(confirmText)) return null
+    if (confirmText && !(await confirmFirst(confirmText))) return null
     setBusy(true)
     let leaving = false
     try {
@@ -96,16 +107,36 @@ export default function Project({ user }: { user: User }) {
             <BreadcrumbItem className="min-w-0"><BreadcrumbPage className="truncate" title={x.name}>{x.name}</BreadcrumbPage></BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
+        {/* health first: the plan's verdict and its main reason, in the title row (critique 10 Oct) */}
+        {health && <span className="flex min-w-0 items-center gap-2"><RagPill rag={health.rag} />{health.reasons[0] && <span className="truncate text-[13px] text-muted-foreground" title={health.reasons.join(" · ")}>{health.reasons[0]}</span>}</span>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a href={`/board?rollout=${id}`} className={buttonVariants({ variant: "ghost", size: "sm" })}>On the flow</a>
           <a href={`/projects/${id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>
           {can.create && <a href={`/projects/new?from=${id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Duplicate</a>}
           {can.manage && <a href={`/projects/${id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}>Edit</a>}
+          {/* the rare and the destructive live behind ⋯, not at the end of the page */}
+          {can.manage && (x.guest_links_enabled || can.delete_project) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<button type="button" />} disabled={busy} aria-label="More actions" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2")}><MoreHorizontal className="h-4 w-4" /></DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                {x.guest_links_enabled && <DropdownMenuItem onClick={() => send(`/projects/${id}/rotate-token`, {}, "Rotate both guest links? The current links stop working at once; anyone using them needs the new ones.")}>Rotate guest links</DropdownMenuItem>}
+                {can.delete_project && <DropdownMenuItem variant="destructive" onClick={() => send(`/projects/${id}/delete`, {}, "Delete this project? It leaves every list at once; you have five minutes to undo.")}>Delete project</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
+      {/* the page is long: one row of anchors to every section, always in reach */}
+      <nav aria-label="Sections of this project" className="sticky top-0 z-20 mt-2 flex gap-1 overflow-x-auto bg-background/95 px-5 py-2 text-[13px] backdrop-blur">
+        {[["plan", "Plan"], ["raid", "Risks & issues"], ["scope", "Scope & sign-off"], ["details", "Details"], ["notes", "Notes"], ["team", "Team"],
+          ...(can.manage ? [["stages", "Stages"]] : []), ["documents", "Documents"], ...(activity.length ? [["activity", "Activity"]] : []),
+          ...((x.guest_links.customer || can.manage) ? [["sharing", "Sharing"]] : [])].map(([k, label]) => (
+          <a key={k} href={`#${k}`} className="shrink-0 rounded-full px-3 py-1 text-nav-fg hover:bg-muted hover:text-foreground">{label}</a>
+        ))}
+      </nav>
       {/* sticky: a reply to the Team or Notes panel far down the page (an invite link) shows where the person is */}
       {notice && (
-        <div className="sticky top-2 z-20 mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px] shadow-card" role="status">
+        <div className="sticky top-14 z-20 mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px] shadow-card" role="status">
           <span>{notice.text}{notice.undo && <button type="button" onClick={undo} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}</span>
           <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
@@ -127,7 +158,7 @@ export default function Project({ user }: { user: User }) {
       {/* the half-width panels as a masonry: two columns from lg, each panel
           under the one above it, so a short panel never leaves a gap */}
       <div className="gap-4 px-5 pb-6 lg:columns-2 [&>*]:mb-4 [&>*]:min-w-0 [&>*]:break-inside-avoid">
-        <Panel title="Details">
+        <Panel title="Details" id="details">
           <dl className="grid grid-cols-[minmax(96px,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] [&_dd]:min-w-0 [&_dd]:break-words">
             {Object.entries(LABELS).filter(([k]) => {
               const via = x.details.via
@@ -135,7 +166,7 @@ export default function Project({ user }: { user: User }) {
               if (k === "account_manager_name") return via !== "Partner"
               if (k === "outsourcer_name") return x.details.delivery_mode === "Outsourced"
               if (k === "vendor_name" || k === "product_name") return x.details.delivery_mode !== "Outsourced"
-              return true
+              return !!x.details[k]   // an empty field says nothing; Edit shows them all
             }).map(([k, label]) => {
               const email = k === "account_manager_name" ? x.details.account_manager_email : k === "partner_account_manager_name" ? x.details.partner_account_manager_email : k === "outsourcer_name" ? x.details.outsourcer_email : null
               return <div key={k} className="contents"><dt className="text-muted-foreground">{label}</dt><dd>{k.endsWith("_date") && x.details[k] ? fmtWhen(x.details[k]) : (x.details[k] ?? "—")}{email ? <span className="text-muted-foreground"> · {email}</span> : null}</dd></div>
@@ -144,13 +175,13 @@ export default function Project({ user }: { user: User }) {
           </dl>
         </Panel>
 
-        <Panel title="Notes" hint={`${x.notes.length}`}>
+        <Panel title="Notes" hint={`${x.notes.length}`} id="notes">
           {can.note && <NoteForm busy={busy} staff={staff} people={x.participants.filter((m) => m.active).map((m) => m.name)}
             onSubmit={(note, share) => send(`/projects/${id}/note`, share ? { note, share: "1" } : { note })} />}
           <ul className="mt-3 grid grid-cols-1 gap-2">
             {x.notes.map((n) => <NoteRow key={`${n.id}:${n.note}`} n={n} busy={busy}
               onEdit={(text) => send(`/projects/${id}/notes/${n.id}/edit`, { note: text })}
-              onDelete={() => send(`/projects/${id}/notes/${n.id}/delete`, {}, "Delete this note?")} />)}
+              onDelete={() => send(`/projects/${id}/notes/${n.id}/delete`, {}, "Delete this note? It leaves the project's history.")} />)}
             {x.notes.length === 0 && <li className="text-[13px] text-muted-foreground">No notes yet.</li>}
           </ul>
         </Panel>
@@ -164,28 +195,35 @@ export default function Project({ user }: { user: User }) {
                 <span className="text-muted-foreground">{m.role}</span>
                 {m.email && <span className="hidden text-[12px] text-muted-foreground sm:inline">{m.email}</span>}
                 {can.manage && m.user_id !== x.owner_id && (
-                  <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`, {}, `Remove ${m.name} from this project?`)} aria-label={`Remove ${m.name}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`, {}, `Remove ${m.name} from this project? They lose access to it and stop hearing about it; their notes and tasks stay.`)} aria-label={`Remove ${m.name}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>
                 )}
               </li>
             ))}
           </ul>
-          {can.manage && (
+          {can.manage && (adding ? (
             <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border pt-3">
               <TeamAddForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/add`, f)} />
               <InviteForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/invite`, f)} />
-              <p className="text-[12px] text-muted-foreground">The owner is the project manager; change it on Edit. Invited people get a one-time sign-in link and see only their projects.</p>
+              <p className="max-w-prose text-[12px] text-muted-foreground">The owner is the project manager; change it on Edit. Invited people get a one-time sign-in link and see only their projects.</p>
+              <button type="button" onClick={() => setAdding(false)} className="justify-self-start text-[12px] text-muted-foreground hover:text-foreground">Done</button>
             </div>
-          )}
+          ) : <Button size="sm" variant="outline" className="mt-3" onClick={() => setAdding(true)}>Add people</Button>)}
         </Panel>
 
         {can.manage && (
-          <Panel title="This project's stages" hint="add, rename, reorder, delete, SLAs — only this project changes" id="stages">
-            <StageListEditor key={stageRowsKey(x.stage_rows)} rows={x.stage_rows} current={d.stage} busy={busy} send={send}
-              paths={{ add: `/projects/${id}/stages/add`, rename: (s) => `/projects/${id}/stages/${s}/rename`, move: (s) => `/projects/${id}/stages/${s}/move`, remove: (s) => `/projects/${id}/stages/${s}/delete`, sla: `/projects/${id}/stages/sla` }} />
+          <Panel title="This project's stages" hint="only this project changes" id="stages">
+            {/* configuration is rare: a summary until someone asks to edit */}
+            {!editStages ? (
+              <div className="flex flex-wrap items-center gap-3 text-[13px]">
+                <span className="min-w-0 flex-1 text-muted-foreground">{x.stage_rows.length} stages: {x.stage_rows.map((r) => r.name).join(" → ")}</span>
+                <Button size="sm" variant="outline" onClick={() => setEditStages(true)}>Edit stages</Button>
+              </div>
+            ) : <><button type="button" onClick={() => setEditStages(false)} className="mb-2 text-[12px] text-muted-foreground hover:text-foreground">Done editing</button><StageListEditor key={stageRowsKey(x.stage_rows)} rows={x.stage_rows} current={d.stage} busy={busy} send={send}
+              paths={{ add: `/projects/${id}/stages/add`, rename: (s) => `/projects/${id}/stages/${s}/rename`, move: (s) => `/projects/${id}/stages/${s}/move`, remove: (s) => `/projects/${id}/stages/${s}/delete`, sla: `/projects/${id}/stages/sla` }} /></>}
           </Panel>
         )}
 
-        <Panel title="Documents" hint={`${x.documents.length}`}>
+        <Panel title="Documents" hint={`${x.documents.length}`} id="documents">
           {can.docs && <UploadForm x={x} busy={busy} onSubmit={(fd) => send(`/projects/${id}/documents`, fd)} />}
           <ul className="mt-3 grid grid-cols-1 gap-2">
             {x.documents.map((doc) => (
@@ -193,7 +231,7 @@ export default function Project({ user }: { user: User }) {
                 <span className="w-28 shrink-0 truncate text-[12px] text-muted-foreground">{doc.category}</span>
                 {can.download ? <a href={`/projects/${id}/documents/${doc.id}/download`} className="min-w-0 flex-1 truncate font-medium hover:underline">{doc.filename}</a> : <span className="min-w-0 flex-1 truncate font-medium">{doc.filename}</span>}
                 <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtWhen(doc.uploaded_at)}</span>
-                {can.delete_doc && <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}?`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
+                {can.delete_doc && <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}? The file is removed for everyone on the project.`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
               </li>
             ))}
             {x.documents.length === 0 && <li className="text-[13px] text-muted-foreground">No documents uploaded yet.</li>}
@@ -201,32 +239,51 @@ export default function Project({ user }: { user: User }) {
         </Panel>
 
         {activity.length > 0 && (
-          <Panel title="Activity" hint="everything recorded on this project, newest first">
+          <Panel title="Activity" hint="newest first" id="activity">
             <a href={`/projects/${id}/activity.csv`} className="mb-2 inline-block text-[12px] text-primary-text hover:underline">Export CSV</a>
             <ul className="grid grid-cols-1 gap-2 text-[13px]">
-              {activity.map((a, i) => (
-                <li key={i} className="flex gap-2">
-                  <Ago iso={a.when} className="w-24 shrink-0 whitespace-nowrap text-muted-foreground" />
-                  <span className="min-w-0 break-words"><span className="font-medium">{a.who}</span> {a.label}{a.details && <span className="text-muted-foreground"> · {a.details}</span>}</span>
-                </li>
-              ))}
+              {activity.map((a, i) => {
+                const day = dayBucket(a.when)
+                return (
+                  <li key={i} className="grid grid-cols-1 gap-2">
+                    {/* chunked by day, so a run of "1 min ago" reads as one group */}
+                    {(i === 0 || dayBucket(activity[i - 1].when) !== day) && <span className="rounded-md bg-muted/60 px-2 py-1 text-[12px] font-semibold text-nav-fg">{day}</span>}
+                    <span className="flex gap-2">
+                      <Ago iso={a.when} className="w-24 shrink-0 whitespace-nowrap text-muted-foreground" />
+                      <span className="min-w-0 break-words"><span className="font-medium">{a.who}</span> {a.label}{a.details && <span className="text-muted-foreground"> · {a.details.replace(/\b([a-z_]+)=/g, (_, k: string) => `${k.replace(/_/g, " ")} `)}</span>}</span>
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
           </Panel>
         )}
         {(x.guest_links.customer || can.manage) && (
-          <Panel title="Sharing">
+          <Panel title="Sharing" id="sharing">
             {x.guest_links.customer && <LinkRow label="Customer link (view and comment, no sign-in)" url={x.guest_links.customer} />}
             {x.guest_links.vendor && <LinkRow label="Vendor link (may advance the stage)" url={x.guest_links.vendor} />}
             {!x.guest_links_enabled && <p className="text-[13px] text-muted-foreground">Anonymous guest links are switched off in Settings. Partners and customers are invited from the Team panel instead.</p>}
-            {can.manage && (
-              <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-                {x.guest_links_enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => send(`/projects/${id}/rotate-token`, {}, "Rotate both guest links? The current links stop working immediately.")}>Rotate guest links</Button>}
-                {can.delete_project && <Button size="sm" variant="outline" disabled={busy} className="text-bad hover:text-bad" onClick={() => send(`/projects/${id}/delete`, {}, "Delete this project? You have five minutes to undo.")}>Delete project</Button>}
-              </div>
-            )}
+            {can.manage && x.guest_links_enabled && <p className="mt-2 text-[12px] text-muted-foreground">Rotate the links from ⋯ at the top of the page.</p>}
           </Panel>
         )}
       </div>
+      <Dialog open={ask !== null} onOpenChange={(o) => { if (!o) answer(false) }}>
+        <DialogContent className="sm:max-w-md">
+          {(() => {
+            const text = ask?.text ?? ""
+            const cut = text.indexOf("? ")
+            const title = cut > 0 ? text.slice(0, cut + 1) : text
+            const verb = title.split(" ")[0]
+            return <>
+              <DialogHeader><DialogTitle>{title}</DialogTitle>{cut > 0 && <DialogDescription>{text.slice(cut + 2)}</DialogDescription>}</DialogHeader>
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="ghost" onClick={() => answer(false)} autoFocus>Cancel</Button>
+                <Button size="sm" variant={/^(Delete|Remove)$/.test(verb) ? "destructive" : "default"} onClick={() => answer(true)}>{verb}</Button>
+              </div>
+            </>
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -395,7 +452,7 @@ function UploadForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; on
           <option value="">Category…</option>
           {x.doc_categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <label className="cursor-pointer text-[13px] font-medium text-primary-text hover:underline">
+        <label className="cursor-pointer rounded-sm text-[13px] font-medium text-primary-text hover:underline has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50">
           Choose files<input type="file" multiple aria-label="Documents to upload" className="sr-only" onChange={(e) => setFiles([...(e.target.files ?? [])])} />
         </label>
         <span className="text-[12px] text-muted-foreground">or drop them here</span>

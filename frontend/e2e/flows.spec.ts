@@ -669,3 +669,31 @@ test("@flow users: each person is one row; Manage opens their settings and Esc c
   await expect(dialog).toHaveCount(0)
   expectClean(errors)
 })
+
+test("@flow project page: health in the title row, a section index, rare settings folded, a styled confirm", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/1")
+  await expect(page.getByText(/^(On track|At risk|Off track|Complete)$/).first()).toBeVisible()
+  const index = page.getByRole("navigation", { name: "Sections of this project" })
+  await index.getByRole("link", { name: "Documents" }).click()
+  await expect(page).toHaveURL(/#documents$/)
+  // rotate and delete live behind ⋯
+  await page.getByRole("button", { name: "More actions" }).click()
+  await expect(page.getByRole("menuitem", { name: "Delete project" })).toBeVisible()
+  await page.keyboard.press("Escape")
+  // the stage editor and the invite forms are folded until asked for
+  await expect(page.getByRole("button", { name: /^Delete PO Received/ })).toHaveCount(0)
+  await page.getByRole("button", { name: "Edit stages" }).click()
+  await expect(page.getByRole("button", { name: "Done editing" })).toBeVisible()
+  await page.getByRole("button", { name: "Add people" }).click()
+  await expect(page.getByRole("textbox", { name: "Invite by email" })).toBeVisible()
+  // removing someone asks in the app's own dialog, with what it does; Cancel keeps them
+  const remove = page.locator("#team").getByRole("button", { name: /^Remove / }).first()
+  await remove.click()
+  const ask = page.getByRole("dialog")
+  await expect(ask).toContainText("They lose access")
+  await ask.getByRole("button", { name: "Cancel" }).click()
+  await expect(ask).toHaveCount(0)
+  await expect(remove).toBeVisible()
+  expectClean(errors)
+})

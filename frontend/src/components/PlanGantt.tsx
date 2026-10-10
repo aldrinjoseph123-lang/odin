@@ -48,10 +48,10 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
             <div key={s.id} className="contents">
               <div className={cn("flex min-w-0 flex-col justify-center border-t border-border", row)}>
                 <span className={cn("truncate", s.status === "current" ? "font-semibold" : s.status === "next" ? "text-nav-fg" : "")} title={s.name}>{s.name}</span>
-                <span className={cn("truncate text-[11px] tabular-nums", late ? "text-warn" : "text-muted-foreground")}>{stageDates(s)}</span>
+                <span className={cn("truncate text-[12px] tabular-nums", late ? "text-warn" : "text-muted-foreground")}>{stageDates(s)}</span>
               </div>
               <Tooltip>
-                <TooltipTrigger render={<div />} tabIndex={0} role="img" aria-label={label} className={cn("relative border-t border-border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", row)}>
+                <TooltipTrigger render={<div />} role="img" aria-label={label} className={cn("relative border-t border-border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", row)}>
                   {grid}
                   {s.base_start && s.base_end && <span className="absolute bottom-1 h-[3px] rounded-full bg-input" style={span(s.base_start, s.base_end)} aria-hidden />}
                   {s.plan_start && s.plan_end && <span className="absolute top-1/2 h-4 -translate-y-1/2 rounded-full border-[1.5px] border-foreground/45" style={span(s.plan_start, s.plan_end)} aria-hidden />}

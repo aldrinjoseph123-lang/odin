@@ -390,6 +390,8 @@ function TimeStrip({ d }: { d: FlowDetail }) {
 }
 
 export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string, undo?: string) => void; onClose?: () => void; standalone?: boolean }) {
+  // on the project page the name is the h1, so the rail's headings are h2s there
+  const H = standalone ? "h2" : "h3"
   const [note, setNote] = useState("")
   const [confirming, setConfirming] = useState(false)
   // The flowchart fits its width: measure it, and fold stages that don't fit
@@ -524,7 +526,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         })()}
         {!closed && (
           <section className="mt-3 max-w-2xl" aria-label={`Tasks in ${d.stage}`}>
-            <h3 className="text-[12px] font-semibold text-nav-fg">In {d.stage} <span className="font-normal text-muted-foreground">· {openHere ? `${openHere} open` : "nothing open"}</span></h3>
+            <H className="text-[12px] font-semibold text-nav-fg">In {d.stage} <span className="font-normal text-muted-foreground">· {openHere ? `${openHere} open` : "nothing open"}</span></H>
             <StageTasks d={d} stage={d.stage} done={d.stage_index === d.stages.length - 1} reload={reload} onError={setErr} />
           </section>
         )}
@@ -543,7 +545,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {/* the rail leads with what someone must do now (decide, sign, move), then what is next, then the date */}
         {d.approval && d.approval.stage === d.stage && d.approval.status === "pending" && d.can_approve && (
           <section className="rounded-lg bg-warn-soft p-3">
-            <h3 className="mb-1 text-[12px] font-semibold text-nav-fg">Your approval</h3>
+            <H className="mb-1 text-[12px] font-semibold text-nav-fg">Your approval</H>
             <p className="mb-2 text-[13px] text-muted-foreground">The project moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
             <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (optional)" aria-label="Approval comment" maxLength={2000} className="h-8 text-[13px]" />
             <div className="mt-2 flex gap-2">
@@ -557,21 +559,21 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         )}
         {d.signoff?.awaiting_me && (
           <section className="rounded-lg bg-warn-soft p-3">
-            <h3 className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Your signature</h3>
+            <H className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Your signature</H>
             <p className="mb-2 text-[13px] text-muted-foreground">The sign-off for {d.name} is waiting for you: review what was delivered, then sign.</p>
             <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>Review and sign</Link>
           </section>
         )}
         {d.can_move && d.next_stage && d.signoff?.needed && (
           <section className="panel p-3">
-            <h3 className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</h3>
+            <H className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</H>
             <p className="mb-2 text-[13px] text-muted-foreground">{signoffText(d.signoff.status)}. The project closes once the customer has signed and we have countersigned.</p>
             <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>{d.signoff.status ? "Open the sign-off" : "Prepare the sign-off"}</Link>
           </section>
         )}
         {d.can_move && d.next_stage && !d.signoff?.needed && (
           <section className="panel p-3" aria-labelledby={`move-h-${d.id}`} onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); cancelMove() } }}>
-            <h3 id={`move-h-${d.id}`} className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ArrowRight className="h-3.5 w-3.5" /> Move to {d.next_stage}</h3>
+            <H id={`move-h-${d.id}`} className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ArrowRight className="h-3.5 w-3.5" /> Move to {d.next_stage}</H>
             {/* what the move will do, next to the button that does it */}
             <ul className="mb-2 grid grid-cols-1 gap-1 text-[13px] text-muted-foreground">
               {openHere > 0 && <li className="font-medium text-warn">{openHere} open task{openHere === 1 ? "" : "s"} still in {d.stage}</li>}
@@ -597,7 +599,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           </section>
         )}
         {!closed && <section className="panel p-3">
-          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</h3>
+          <H className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</H>
           {next ? (
             <>
               <p className="font-medium">{next.title}</p>
@@ -610,7 +612,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         </section>}
         <section className="panel p-3">
           {/* the target the customer was given (the plan's forecast lives on the project page) */}
-          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> {closed ? "Closed" : "Target"}</h3>
+          <H className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> {closed ? "Closed" : "Target"}</H>
           {closed ? (
             <p><span className="font-medium">{closedOn ? fmtDate(closedOn) : "—"}</span>
               {d.target_end_date && <span className="ml-2 text-muted-foreground">target {fmtDate(d.target_end_date)}</span>}</p>
@@ -622,10 +624,11 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         </section>
       </aside>
 
-      {/* who and what happened: under the flowchart on wide screens, after the rail otherwise */}
-      <div className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-1 xl:row-start-2">
+      {/* who and what happened: under the flowchart on wide screens, after the rail otherwise;
+          the project page has its own Team and Notes panels, so it leaves this out */}
+      {!standalone && <div className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-1 xl:row-start-2">
         <section>
-          <h3 className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><UserRound className="h-3.5 w-3.5" /> Team</h3>
+          <H className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><UserRound className="h-3.5 w-3.5" /> Team</H>
           <ul className="grid grid-cols-1 gap-2">
             {d.participants.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-[13px]">
@@ -640,7 +643,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {d.recent_notes.length > 0 && (
           <section className="min-w-0">
             {/* min-w-0 all the way down: a truncated note must not widen the column */}
-            <h3 className="mb-2 text-[12px] font-semibold text-nav-fg">Recent</h3>
+            <H className="mb-2 text-[12px] font-semibold text-nav-fg">Recent</H>
             <ul className="grid grid-cols-1 min-w-0 gap-2">
               {d.recent_notes.map((n, i) => (
                 <li key={i} className="min-w-0 text-[13px]"><span className="font-medium">{n.author}</span> <span className="text-muted-foreground">· {n.stage} · <Ago iso={n.created_at} /></span><div className="truncate text-nav-fg">{n.note}</div></li>
@@ -648,7 +651,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             </ul>
           </section>
         )}
-      </div>
+      </div>}
     </div>
   )
 }

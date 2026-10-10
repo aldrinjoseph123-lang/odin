@@ -91,7 +91,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
                 <span className="text-[12px] text-muted-foreground"> · {r.why.join(", ")} · {r.stage}</span>
                 <ul className="mt-1 grid grid-cols-1 gap-1">
                   {[...r.lessons.map((l) => ({ label: `${KIND[l.kind]}: ${l.text}`, title: l.text, detail: `Lesson from ${r.name}: ${l.text}` })),
-                    ...r.risks.map((x) => ({ label: `Hit them: ${x.title} (${x.kind}${x.resolution ? `; ${x.resolution}` : ""})`, title: x.title, detail: `Hit ${r.name}: ${x.title}${x.resolution ? `. Resolved: ${x.resolution}` : ""}` }))].map((x) => (
+                    ...r.risks.map((x) => ({ label: `They hit: ${x.title} (${x.kind}${x.resolution ? `; ${x.resolution}` : ""})`, title: x.title, detail: `Hit ${r.name}: ${x.title}${x.resolution ? `. Resolved: ${x.resolution}` : ""}` }))].map((x) => (
                     <li key={x.label} className="flex items-start gap-2">
                       <span className="min-w-0 flex-1 text-[13px]">{x.label}</span>
                       {d.can_add_risk && <Button size="sm" variant="ghost" className="h-6 px-2 text-[12px]" disabled={busy}

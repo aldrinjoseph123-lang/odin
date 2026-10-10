@@ -87,7 +87,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
               const days = r.plan_start && r.plan_end ? workDays(r.plan_start, r.plan_end, d.calendar) : null
               return (
                 <tr key={s.id} className={cn("border-b border-border last:border-0", s.status === "current" && "bg-accent/40")}>
-                  <td className="px-2 py-2 font-medium">{s.name}{s.status === "current" && <span className="ml-2 text-[11px] font-normal text-primary-text">now</span>}</td>
+                  <td className="px-2 py-2 font-medium">{s.name}{s.status === "current" && <span className="ml-2 text-[12px] font-semibold text-foreground">now</span>}</td>
                   <td className="px-2 py-1"><DatePicker label={`${s.name} planned start`} disabled={!editable || busy} value={r.plan_start ?? ""} placeholder={s.suggested_start ? fmtDate(s.suggested_start) : "—"} clearable={false}
                     onChange={(v) => v && setRows(setDate(rows, i, "plan_start", v, cascade))} className="h-8 w-[9.5rem]" /></td>
                   <td className="px-2 py-1"><DatePicker label={`${s.name} planned end`} disabled={!editable || busy} value={r.plan_end ?? ""} placeholder="—" clearable={false} min={r.plan_start ?? undefined}
@@ -96,7 +96,8 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
                   <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` → ${fmtDate(s.actual_end)}` : " → now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
                   <td className="px-2 py-2">{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
-                  <td className={cn("px-2 py-2 whitespace-nowrap", s.slip_days && s.slip_days > 0 ? "font-medium text-bad" : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
+                  {/* a stage running late is amber; red only once the rollout's forecast misses its target (critique 10 Oct) */}
+                  <td className={cn("px-2 py-2 whitespace-nowrap", s.slip_days && s.slip_days > 0 ? (f.vs_target_days != null && f.vs_target_days > 0 ? "font-medium text-bad" : "text-warn") : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
                 </tr>
               )
             })}
