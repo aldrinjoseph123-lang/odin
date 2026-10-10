@@ -295,11 +295,10 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
               <span className={cn("w-14 shrink-0 whitespace-nowrap rounded-lg px-1 py-1 text-center text-[11px] leading-tight", late > 0 ? "bg-bad-soft text-bad" : "bg-muted text-muted-foreground")}>
                 <span className="block text-[13px] font-semibold text-foreground">{Number(t.due_date.slice(8, 10))} {MONTH[Number(t.due_date.slice(5, 7)) - 1]}</span>{late > 0 ? `${late} d late` : dayLabel(t.due_date)}
               </span>
-              <span className="min-w-0 flex-1">
+              <Link to={`/board?rollout=${t.project_id}`} className="min-w-0 flex-1 hover:underline">
                 <span className="block truncate font-medium">{t.title}</span>
                 <span className="block truncate text-[12px] text-muted-foreground">{[t.project, t.stage, t.who].filter(Boolean).join(" · ")}</span>
-              </span>
-              <Link to={`/board?rollout=${t.project_id}`} className={pill}>Open</Link>
+              </Link>
             </li>
             </Fragment>
           )
@@ -314,8 +313,7 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
             {sch.approvals.slice(0, large ? 100 : 4).map((a) => (
               <li key={`${a.project_id}-${a.stage}`} className="flex items-center gap-3 py-2">
                 <ShieldCheck className="h-4 w-4 shrink-0 text-warn" aria-hidden />
-                <span className="min-w-0 flex-1"><span className="block truncate font-medium">{a.project}</span><span className="block text-[12px] text-muted-foreground">{a.stage} · asked <Ago iso={a.requested_at} /></span></span>
-                <Link to={`/board?rollout=${a.project_id}`} className={pill}>Open</Link>
+                <Link to={`/board?rollout=${a.project_id}`} className="min-w-0 flex-1 hover:underline"><span className="block truncate font-medium">{a.project}</span><span className="block text-[12px] text-muted-foreground">{a.stage} · asked <Ago iso={a.requested_at} /></span></Link>
               </li>
             ))}
             {!large && sch.approvals.length > 4 && <li className="py-2 text-[12px]"><Link to="/board?filter=customer" className="text-muted-foreground hover:text-foreground">{sch.approvals.length - 4} more waiting</Link></li>}
@@ -765,7 +763,10 @@ export default function Dashboard({ user }: { user: User }) {
   const packed = pack(layout, cols)
   const expandedItem = expanded ? layout.find((x) => keyOf(x) === expanded) : null
   const tileInfo = tile ? TILES.find((t) => t.key === tile)! : null
-  const tileRows: DetailRow[] = tile ? d.data.kpis.detail[tile] ?? [] : []
+  // worst first, as the flow orders them: most days late / over first; "due in n d" soonest first
+  const num = (t: string) => Number((t.match(/\d+/) ?? ["0"])[0])
+  const tileRows: DetailRow[] = tile ? [...(d.data.kpis.detail[tile] ?? [])].sort((a, b) =>
+    tile === "active" ? 0 : tile === "due_soon" ? num(a.text) - num(b.text) : num(b.text) - num(a.text)) : []
   const table = expandedItem ? tableFor(expandedItem, d.data) : null
   const titleOf = (item: LayoutItem) => (item.id === "custom" ? String(item.settings.title || "Custom metric") : info(item.id).title)
 
@@ -804,7 +805,7 @@ export default function Dashboard({ user }: { user: User }) {
         </span>
       </div>
 
-      <div className={cn("mt-3 grid gap-4", GRID_CLASS[cols])}>
+      <div className={cn("mt-3 grid items-start gap-4", GRID_CLASS[cols])}>
         {packed.map(({ item, span }) => {
           const key = keyOf(item)
           const i = layout.findIndex((x) => keyOf(x) === key)
@@ -850,6 +851,7 @@ export default function Dashboard({ user }: { user: User }) {
                 ))}
                 {tileRows.length === 0 && <li className="py-3 text-muted-foreground">Nothing here.</li>}
               </ul>
+              <Link to={tile === "active" ? "/board" : tile === "awaiting" ? "/board?filter=customer" : "/board?filter=attention"} className={cn(pill, "justify-self-start")}>Show on the flow</Link>
             </>
           )}
         </DialogContent>

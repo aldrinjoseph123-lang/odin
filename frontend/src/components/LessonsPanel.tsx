@@ -40,8 +40,12 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
     try { await fn(); if (done) setNote(done); await load() } catch (e) { setNote(e instanceof ApiError ? e.message : "That did not work") } finally { setBusy(false) }
   }
   return (
-    <section className="panel p-4" aria-labelledby="lessons-h">
-      <h2 id="lessons-h" className="text-[13px] font-semibold text-nav-fg">Lessons<span className="sr-only">, </span><span className="ml-2 font-normal text-muted-foreground">what this rollout taught, and what similar ones did</span></h2>
+    <section className="panel scroll-mt-16 p-4" id="lessons" aria-labelledby="lessons-h">
+      {/* folded to one line: worth reaching for, not worth a screen every visit (critique 10 Oct) */}
+      <details>
+      <summary className="cursor-pointer list-none rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+        <h2 id="lessons-h" className="inline text-[12px] font-semibold text-nav-fg">Lessons<span className="sr-only">, </span><span className="ml-2 font-normal text-muted-foreground">{d.lessons.length} kept · {d.similar.length} similar rollout{d.similar.length === 1 ? "" : "s"} · show</span></h2>
+      </summary>
       {note && <p className="mt-2 text-[13px] text-muted-foreground" role="status">{note}</p>}
       {d.lessons.length > 0 && (
         <ul className="mt-2 divide-y divide-border text-[13px]">
@@ -94,7 +98,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
                     ...r.risks.map((x) => ({ label: `They hit: ${x.title} (${x.kind}${x.resolution ? `; ${x.resolution}` : ""})`, title: x.title, detail: `Hit ${r.name}: ${x.title}${x.resolution ? `. Resolved: ${x.resolution}` : ""}` }))].map((x) => (
                     <li key={x.label} className="flex items-start gap-2">
                       <span className="min-w-0 flex-1 text-[13px]">{x.label}</span>
-                      {d.can_add_risk && <Button size="sm" variant="ghost" className="h-6 px-2 text-[12px]" disabled={busy}
+                      {d.can_add_risk && <Button size="sm" variant="ghost" className="h-6 px-2 text-[12px]" disabled={busy} aria-label={`Add “${x.title}” as a risk here`}
                         onClick={() => void act(() => saveRaid(projectId, { kind: "risk", title: x.title.slice(0, 200), detail: x.detail, impact: "medium", likelihood: "medium" }), "Added to this rollout's RAID register.")}>Add as a risk here</Button>}
                     </li>
                   ))}
@@ -104,6 +108,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
           </ul>
         </div>
       )}
+      </details>
     </section>
   )
 }

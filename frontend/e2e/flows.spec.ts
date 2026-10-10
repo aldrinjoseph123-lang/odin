@@ -215,8 +215,11 @@ test("@flow settings: a policy saves and takes effect; Kibana dashboards appear 
   await lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
   await expect(page.getByText(/each line as/)).toBeVisible()
   await lines.fill("SOC overview | https://kibana.example.com/app/dashboards#/view/soc?embed=true\nThreats | https://kibana.example.com/app/dashboards#/view/threats?embed=true")
-  await lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
-  await expect(page.getByText("Saved").first()).toBeVisible()
+  // wait for this save itself: an earlier "Saved" on the page would otherwise let the test run ahead
+  await Promise.all([
+    page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()),
+    lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click(),
+  ])
   await page.goto("/board?view=kibana")
   await expect(page.getByRole("tab", { name: "SOC overview" })).toHaveAttribute("aria-selected", "true")
   await page.getByRole("tab", { name: "Threats" }).click()
@@ -252,6 +255,7 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   const errors = watch(page)
   await signIn(page, "admin", "/projects/1")
   const plan = page.locator("#plan")
+  await plan.getByRole("button", { name: "Edit dates" }).click()   // the dates are read until asked to edit
   const end = plan.locator("button[aria-label*='planned end']").last()
   await expect(end).toBeEnabled()
   const was = await end.getAttribute("data-value")

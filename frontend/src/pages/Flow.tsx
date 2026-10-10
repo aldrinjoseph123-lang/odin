@@ -173,7 +173,7 @@ function RolloutRow({ r, selected, tabStop, onSelect, today, me }: {
   const t = r.next_task
   return (
     <li>
-      <button type="button" data-row onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={tabStop ? 0 : -1}
+      <button type="button" data-row data-id={r.id} onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={tabStop ? 0 : -1}
         aria-label={`${r.name}, ${r.client}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
         className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
           "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] md:gap-x-4 md:gap-y-1",
@@ -241,6 +241,12 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
   const shown = fold ? rows.filter(needsAttention) : rows
   // One tab stop for the whole list; ↑/↓ or j/k move between rows, Enter opens.
   function onKeys(e: KeyboardEvent<HTMLUListElement>) {
+    // → or l: from the list into the open rollout's actions (the rail), without a Tab marathon
+    if ((e.key === "ArrowRight" || e.key === "l") && selectedId != null) {
+      const first = document.querySelector<HTMLElement>("[data-rail] button:not(:disabled), [data-rail] a, [data-rail] input")
+      if (first) { e.preventDefault(); first.focus() }
+      return
+    }
     const step = e.key === "ArrowDown" || e.key === "j" ? 1 : e.key === "ArrowUp" || e.key === "k" ? -1 : 0
     const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-row]")]
     const at = buttons.indexOf(document.activeElement as HTMLButtonElement)
@@ -295,7 +301,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
       </nav>
       <ScrollArea className="min-h-0 flex-1">
         <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-2 text-[12px] text-muted-foreground md:grid">
-          <span>Rollout · next step <span className="ml-1">(↑↓ or j/k, Enter opens)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
+          <span>Rollout · next step <span className="ml-1">(↑↓ or j/k, Enter opens, → to its actions)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid grid-cols-1 gap-1 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {group ? groupRows(shown, group).map((g) => (
@@ -361,7 +367,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
         <p className="text-[13px]"><span className="font-semibold">Timeline</span><span className="text-muted-foreground"> · {timelineSummary(d.start_date, d.today, d.target_end_date, d.stage_index === d.stages.length - 1)}</span></p>
         {drawn && (
           <p className="flex items-center gap-3 text-[11px] text-muted-foreground" aria-hidden>
-            {[["h-1.5 w-3 rounded-full bg-ok-line", "stage done"], [cn("h-1.5 w-3 rounded-full", late ? lateBar : "bg-foreground"), "current stage"], ["h-3 w-[1.5px] bg-foreground", "today"]].map(([swatch, label]) => (
+            {[["h-1.5 w-3 rounded-full bg-ok-line", "stage done"], [cn("h-1.5 w-3 rounded-full", late ? lateBar : "bg-foreground"), "current stage"], ["h-3 border-l-[1.5px] border-dashed border-nav-fg", "target"], ["h-3 w-[1.5px] bg-foreground", "today"]].map(([swatch, label]) => (
               <span key={label} className="flex items-center gap-1"><span className={swatch} />{label}</span>
             ))}
           </p>
@@ -385,6 +391,9 @@ function TimeStrip({ d }: { d: FlowDetail }) {
               </Tooltip>
             )
           })}
+          {d.target_end_date && <span className={cn("absolute top-7 h-6 border-l-[1.5px] border-dashed", end < today ? "border-bad-line" : "border-nav-fg")} style={{ left: pct(end) }} aria-hidden />}
+          {d.target_end_date && end < today && <span className="absolute top-9 h-1.5" aria-hidden
+            style={{ left: pct(end), width: `calc(${pct(today)} - ${pct(end)})`, background: "repeating-linear-gradient(135deg, var(--bad-line) 0 3px, transparent 3px 6px)" }} />}
           <span className="absolute top-7 h-6 w-[1.5px] bg-foreground" style={{ left: pct(today) }} aria-hidden />
         </div>
       )}
@@ -425,6 +434,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
   // the terminal stage is the end: the project is closed, nothing is "next"
   const closed = !d.next_stage && d.stage_index === d.stages.length - 1
   const closedOn = closed ? d.stages[d.stage_index]?.entered_at ?? null : null
+  const workFirst = openHere > 0 && !!next && next.stage === d.stage
   const risky = openHere > 0 || approvalPending || (d.approval?.status === "declined" && d.approval.stage === d.stage)
   const confirmAt = useRef(0)
   const advanceRef = useRef<HTMLButtonElement>(null)
@@ -442,6 +452,32 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
       onMoved(`${d.name} moved to ${d.next_stage}.`, r.undo)
       await reload()
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not move the stage") } finally { setBusy(false) }
+  }
+  // Next up, as a panel: first in the rail while work is open in the stage, after the move otherwise
+  const nextUpPanel = closed ? null : (
+<section className="panel p-3">
+          <H className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</H>
+          {next ? (
+            <>
+              <div className="flex items-start gap-2">
+                {(d.can_edit || next.assignee_id === d.me) && (
+                  <button type="button" disabled={busy} onClick={() => void tickNext()} aria-label={`Complete ${next.title}`} title="Mark done"
+                    className="relative mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border border-input bg-background before:absolute before:-inset-[5px] before:content-[''] hover:border-foreground" />
+                )}
+                <p className="font-medium">{next.title}</p>
+              </div>
+              <p className="mt-1 flex items-center gap-3 text-muted-foreground">
+                <span className="flex items-center gap-1">{next.assignee ? <UserAvatar name={next.assignee} url={next.assignee_avatar_url} className="h-5 w-5" /> : <UserRound className="h-3.5 w-3.5" />}{next.assignee ?? "Unassigned"}</span>
+                {next.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /><DueDate due={next.due_date} today={d.today} className="inline text-[13px]" /></span>}
+              </p>
+            </>
+          ) : <p className="text-muted-foreground">{nextMove}</p>}
+        </section>
+  )
+  async function tickNext() {
+    if (!next) return
+    setBusy(true); setErr(null)
+    try { await toggleTask(d.id, next.id); toast(`Done: ${next.title}`); await reload() } catch (e) { setErr(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
   return (
     <div className="grid grid-cols-1 gap-5 px-5 py-4 xl:grid-cols-[minmax(0,1fr)_280px]">
@@ -544,8 +580,9 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
       </div>
 
       {/* right rail: what to do next, when it's due, how we got here */}
-      <aside className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:grid-cols-1">
-        {/* the rail leads with what someone must do now (decide, sign, move), then what is next, then the date */}
+      <aside data-rail className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:grid-cols-1">
+        {/* the rail leads with what someone must do now: decide, sign, then the work open in this stage
+            (with a tick), and only then the move, which turns secondary while work is open (critique 10 Oct) */}
         {d.approval && d.approval.stage === d.stage && d.approval.status === "pending" && d.can_approve && (
           <section className="rounded-lg bg-warn-soft p-3">
             <H className="mb-1 text-[12px] font-semibold text-nav-fg">Your approval</H>
@@ -567,6 +604,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>Review and sign</Link>
           </section>
         )}
+        {workFirst && nextUpPanel}
         {d.can_move && d.next_stage && d.signoff?.needed && (
           <section className="panel p-3">
             <H className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</H>
@@ -596,23 +634,12 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                 {!risky && <Button size="sm" variant="ghost" onClick={cancelMove} disabled={busy}>Cancel</Button>}
               </div>
             ) : (
-              <Button ref={advanceRef} className="mt-2 w-full" size="sm" onClick={() => { confirmAt.current = Date.now(); setConfirming(true) }} disabled={busy}>Advance to {d.next_stage} <ArrowRight className="h-3.5 w-3.5" /></Button>
+              <Button ref={advanceRef} className="mt-2 w-full" size="sm" variant={workFirst ? "outline" : "default"} onClick={() => { confirmAt.current = Date.now(); setConfirming(true) }} disabled={busy}>Advance to {d.next_stage} <ArrowRight className="h-3.5 w-3.5" /></Button>
             )}
             {err && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
           </section>
         )}
-        {!closed && <section className="panel p-3">
-          <H className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ChevronRight className="h-3.5 w-3.5" /> Next up</H>
-          {next ? (
-            <>
-              <p className="font-medium">{next.title}</p>
-              <p className="mt-1 flex items-center gap-3 text-muted-foreground">
-                <span className="flex items-center gap-1">{next.assignee ? <UserAvatar name={next.assignee} url={next.assignee_avatar_url} className="h-5 w-5" /> : <UserRound className="h-3.5 w-3.5" />}{next.assignee ?? "Unassigned"}</span>
-                {next.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /><DueDate due={next.due_date} today={d.today} className="inline text-[13px]" /></span>}
-              </p>
-            </>
-          ) : <p className="text-muted-foreground">{nextMove}</p>}
-        </section>}
+        {!workFirst && nextUpPanel}
         <section className="panel p-3">
           {/* the target the customer was given (the plan's forecast lives on the project page) */}
           <H className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><Clock className="h-3.5 w-3.5" /> {closed ? "Closed" : "Target"}</H>
@@ -735,7 +762,10 @@ export default function Flow({ user }: { user: User }) {
     const onKey = (e: globalThis.KeyboardEvent) => {
       const t = e.target as HTMLElement
       if (e.key !== "Escape" || e.defaultPrevented || t.closest("input, textarea, select, dialog, [role=dialog]")) return
+      const was = selectedId
       setSelectedId(null)
+      // focus goes back to the row it came from, not to the page
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(`button[data-row][data-id="${was}"]`)?.focus())
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)

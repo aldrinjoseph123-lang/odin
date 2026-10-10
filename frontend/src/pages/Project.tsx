@@ -60,6 +60,7 @@ export default function Project({ user }: { user: User }) {
   const answer = (ok: boolean) => { ask?.resolve(ok); setAsk(null) }
   const [adding, setAdding] = useState(false)
   const [editStages, setEditStages] = useState(false)
+  const [allNotes, setAllNotes] = useState(false)
 
   const reload = useCallback(async () => {
     try {
@@ -129,7 +130,7 @@ export default function Project({ user }: { user: User }) {
       </div>
       {/* the page is long: one row of anchors to every section, always in reach */}
       <nav aria-label="Sections of this project" className="sticky top-0 z-20 mt-2 flex gap-1 overflow-x-auto bg-background/95 px-5 py-2 text-[13px] backdrop-blur">
-        {[["plan", "Plan"], ["raid", "Risks & issues"], ["scope", "Scope & sign-off"], ["details", "Details"], ["notes", "Notes"], ["team", "Team"],
+        {[["notes", "Notes"], ["plan", "Plan"], ["raid", "Risks & issues"], ["scope", "Scope & sign-off"], ["details", "Details"], ["team", "Team"],
           ...(can.manage ? [["stages", "Stages"]] : []), ["documents", "Documents"], ...(activity.length ? [["activity", "Activity"]] : []),
           ...((x.guest_links.customer || can.manage) ? [["sharing", "Sharing"]] : [])].map(([k, label]) => (
           <a key={k} href={`#${k}`} className="shrink-0 rounded-full px-3 py-1 text-nav-fg hover:bg-muted hover:text-foreground">{label}</a>
@@ -151,6 +152,18 @@ export default function Project({ user }: { user: User }) {
         <div className="empty:hidden"><AIAsk projectId={id} /></div>
         <div className="empty:hidden"><AINotesTasks projectId={id} /></div>
         {!closed && <div className="empty:hidden"><AIChase key={planRefresh} projectId={id} /></div>}
+        {/* the project manager's daily write sits high, right under the flow (critique 10 Oct) */}
+        <div><Panel title="Notes" hint={`${x.notes.length}`} id="notes">
+          {can.note && <NoteForm busy={busy} staff={staff} people={x.participants.filter((m) => m.active).map((m) => m.name)}
+            onSubmit={(note, share) => send(`/projects/${id}/note`, share ? { note, share: "1" } : { note })} />}
+          <ul className="mt-3 grid grid-cols-1 gap-2">
+            {(allNotes ? x.notes : x.notes.slice(0, 5)).map((n) => <NoteRow key={`${n.id}:${n.note}`} n={n} busy={busy}
+              onEdit={(text) => send(`/projects/${id}/notes/${n.id}/edit`, { note: text })}
+              onDelete={() => send(`/projects/${id}/notes/${n.id}/delete`, {}, "Delete this note? It leaves the project's history.")} />)}
+            {x.notes.length === 0 && <li className="text-[13px] text-muted-foreground">No notes yet.</li>}
+            {x.notes.length > 5 && <li><button type="button" onClick={() => setAllNotes(!allNotes)} className="text-[12px] text-muted-foreground hover:text-foreground">{allNotes ? "Show the latest 5" : `Show all ${x.notes.length}`}</button></li>}
+          </ul>
+        </Panel></div>
         <div><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} refresh={planRefresh} /></Panel></div>
         <div><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} onChanged={() => setPlanRefresh((n) => n + 1)} /></Panel></div>
         {staff && <div className="empty:hidden"><LessonsPanel projectId={id} /></div>}
@@ -174,17 +187,6 @@ export default function Project({ user }: { user: User }) {
             })}
             <dt className="text-muted-foreground">Customer approval</dt><dd>{x.customer_approval ? "Asked on every stage change" : "Off"}</dd>
           </dl>
-        </Panel>
-
-        <Panel title="Notes" hint={`${x.notes.length}`} id="notes">
-          {can.note && <NoteForm busy={busy} staff={staff} people={x.participants.filter((m) => m.active).map((m) => m.name)}
-            onSubmit={(note, share) => send(`/projects/${id}/note`, share ? { note, share: "1" } : { note })} />}
-          <ul className="mt-3 grid grid-cols-1 gap-2">
-            {x.notes.map((n) => <NoteRow key={`${n.id}:${n.note}`} n={n} busy={busy}
-              onEdit={(text) => send(`/projects/${id}/notes/${n.id}/edit`, { note: text })}
-              onDelete={() => send(`/projects/${id}/notes/${n.id}/delete`, {}, "Delete this note? It leaves the project's history.")} />)}
-            {x.notes.length === 0 && <li className="text-[13px] text-muted-foreground">No notes yet.</li>}
-          </ul>
         </Panel>
 
         <Panel title="Team" hint="who is on this project, and as what" id="team">
