@@ -19,7 +19,7 @@ describe("Calendar", () => {
     expect(screen.getByText("PO Received → Scoping")).toBeInTheDocument()                          // the move
     expect(screen.getByRole("button", { name: "+1 more" })).toBeInTheDocument()                    // 4 tasks, 3 shown
     await user.click(screen.getByRole("button", { name: "+1 more" }))
-    expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("Sep 10 · 4 items")
+    expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("10 Sep · 4 items")
     await user.click(screen.getByRole("button", { name: "Tasks" }))
     expect(screen.queryByText("Task 1")).toBeNull()
   })
@@ -27,7 +27,7 @@ describe("Calendar", () => {
   it("below md the month is an agenda", async () => {
     mount(false)
     expect(await screen.findByRole("heading", { level: 2 })).toHaveTextContent("September 2026")
-    expect(screen.getByRole("heading", { level: 3, name: /Sep 10/ })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 3, name: /10 Sep/ })).toBeInTheDocument()
     expect(screen.getByText("Task 4")).toBeInTheDocument()                                          // no cap in the agenda
   })
 })

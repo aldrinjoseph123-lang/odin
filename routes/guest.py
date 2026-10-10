@@ -13,7 +13,7 @@ from flask import abort, flash, make_response, redirect, render_template, reques
 from markupsafe import escape
 
 from core import app
-from db import get_db, get_setting, get_stage_names
+from db import get_db, get_setting, get_stage_names, touch_project
 from security import rate_limited
 from services.audit import audit_log
 from services.notifications import notify_event, notify_users
@@ -119,6 +119,7 @@ def guest_note(token):
             "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (?, ?, ?, ?, ?, 1)",
             (project["id"], author, note_text, project["stage"], now),
         )
+        touch_project(db, project["id"])   # a vendor's word is activity, as a staff note is (sim L-19)
         db.commit()
         audit_log("guest_note", "project", project["id"], project["name"],
                   f"by={author}", actor=f"guest:{party}")

@@ -62,8 +62,13 @@ def draft_words(project, p, raid_items, audience="internal"):
     if open_block:
         parts.append(f"Blocked by: {'; '.join(r['title'] for r in open_block[:2])}.")
     ahead = [s for s in stages if s["status"] == "next"][:2]
-    nxt = ([f"Finish {stages[cur]['name']} by {_fmt(stages[cur]['forecast_end'])}."] if stages else []) + \
-          [f"{s['name']}: {_fmt(s['forecast_start'])} to {_fmt(s['forecast_end'])}." for s in ahead]
+    def line(st):   # the finish line is a day, not a span ("Closed: 19 Oct to 19 Oct" read as noise)
+        if stages and st is stages[-1]:
+            return f"Close by {_fmt(st['forecast_end'])}."
+        if st["forecast_start"] == st["forecast_end"]:
+            return f"{st['name']}: {_fmt(st['forecast_start'])}."
+        return f"{st['name']}: {_fmt(st['forecast_start'])} to {_fmt(st['forecast_end'])}."
+    nxt = ([f"Finish {stages[cur]['name']} by {_fmt(stages[cur]['forecast_end'])}."] if stages else []) + [line(st) for st in ahead]
     return {"summary": " ".join(parts), "next_steps": "\n".join(nxt), "asks": ""}
 
 

@@ -107,10 +107,13 @@ def trim(db=None):
 
 def visible_clause(user_id, kind):
     """SQL (on alias n) keeping a bell to what the person may see now: a
-    partner removed from a project stops seeing its notifications."""
+    partner removed from a project stops seeing its notifications, and
+    nobody sees those of a deleted project."""
+    # a deleted project's notifications go quiet with it (its page is gone, sim L-16)
+    live = " AND (n.project_id IS NULL OR n.project_id IN (SELECT id FROM projects WHERE deleted_at IS NULL))"
     if kind == "external":
-        return " AND (n.project_id IS NULL OR n.project_id IN (SELECT project_id FROM project_participants WHERE user_id = ?))", (user_id,)
-    return "", ()
+        return live + " AND (n.project_id IS NULL OR n.project_id IN (SELECT project_id FROM project_participants WHERE user_id = ?))", (user_id,)
+    return live, ()
 
 
 def notify_participants(project_id, subject, message_html, exclude_user_id=None, kind="stage"):

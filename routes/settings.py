@@ -64,9 +64,10 @@ def _audit_filter():
 
     where = " WHERE 1=1"
     params = []
-    if username:
-        where += " AND username = ?"
-        params.append(username)
+    if username:   # one person, whether a row names their sign-in handle or their name (sim roles-10)
+        where += (" AND (username = ? OR user_id IN (SELECT id FROM users WHERE name = ? OR username = ?)"
+                  " OR username IN (SELECT username FROM users WHERE name = ?))")
+        params.extend([username] * 4)
     if action:
         where += " AND action = ?"
         params.append(action)
@@ -481,6 +482,9 @@ def settings_contacts_add(list_key):
     if vendor_id is False:
         flash("Pick a vendor from the list", "error")
         return redirect(url_for("settings_contacts"))
+    if _name_taken(db, meta["table"], name):
+        flash(f"'{name}' already exists in {meta['label']}", "error")
+        return redirect(url_for("settings_contacts"))
     try:
         if meta["has_email"]:
             db.execute(f"INSERT INTO {meta['table']} (name, email) VALUES (?, ?)", (name, email or None))
@@ -494,6 +498,13 @@ def settings_contacts_add(list_key):
     except sqlite3.IntegrityError:
         flash(f"'{name}' already exists in {meta['label']}", "error")
     return redirect(url_for("settings_contacts"))
+
+
+def _name_taken(db, table, name, exclude_id=None):
+    """Another live entry with the same name, ignoring case ("SimVendor" and
+    "simvendor" are one vendor, sim roles-11)."""
+    return db.execute(f"SELECT 1 FROM {table} WHERE lower(name) = lower(?) AND deleted_at IS NULL AND id IS NOT ?",
+                      (name, exclude_id)).fetchone() is not None
 
 
 def _vendor_field(db):
@@ -534,6 +545,9 @@ def settings_contacts_edit(list_key, item_id):
     if vendor_id is False:
         flash("Pick a vendor from the list", "error")
         return redirect(url_for("settings_contacts"))
+    if _name_taken(db, meta["table"], name, item_id):
+        flash(f"'{name}' already exists in {meta['label']}", "error")
+        return redirect(url_for("settings_contacts"))
     try:
         if meta["has_email"]:
             db.execute(f"UPDATE {meta['table']} SET name = ?, email = ? WHERE id = ?", (name, email, item_id))
@@ -566,6 +580,9 @@ def settings_partner_edit(partner_id):
     name = request.form.get("name", "").strip()
     if problem := _name_problem(name, "Partner name", 120):
         flash(problem, "error")
+        return redirect(url_for("settings_contacts"))
+    if _name_taken(db, "partners", name, partner_id):
+        flash(f"Partner '{name}' already exists", "error")
         return redirect(url_for("settings_contacts"))
     try:
         db.execute("UPDATE partners SET name = ? WHERE id = ?", (name, partner_id))
@@ -610,7 +627,8 @@ def settings_contacts_delete(list_key, item_id):
     if list_key not in CONTACT_LISTS:
         abort(404)
     meta = CONTACT_LISTS[list_key]
-    soft_delete(meta['table'], item_id)
+    if not soft_delete(meta['table'], item_id):
+        abort(404)
     offer_undo("undo_contact", list_key=list_key, item_id=item_id)
     flash(f"{meta['label']} entry deleted. Undo {undo_note()}")
     audit_log("delete_contact", list_key, item_id)
@@ -625,6 +643,9 @@ def settings_partner_add():
         flash(problem, "error")
         return redirect(url_for("settings_contacts"))
     db = get_db()
+    if _name_taken(db, "partners", name):
+        flash(f"Partner '{name}' already exists", "error")
+        return redirect(url_for("settings_contacts"))
     try:
         db.execute("INSERT INTO partners (name) VALUES (?)", (name,))
         db.commit()
@@ -639,7 +660,8 @@ def settings_partner_add():
 @permission_required("manage_contacts")
 def settings_partner_delete(partner_id):
     db = get_db()
-    soft_delete("partners", partner_id)
+    if not soft_delete("partners", partner_id):
+        abort(404)
     db.execute("UPDATE partner_account_managers SET deleted_at = (SELECT deleted_at FROM partners WHERE id = ?) WHERE partner_id = ? AND deleted_at IS NULL",
                (partner_id, partner_id))
     db.commit()
@@ -673,7 +695,8 @@ def settings_partner_manager_add(partner_id):
 @app.route("/settings/contacts/partner-managers/<int:manager_id>/delete", methods=["POST"])
 @permission_required("manage_contacts")
 def settings_partner_manager_delete(manager_id):
-    soft_delete("partner_account_managers", manager_id)
+    if not soft_delete("partner_account_managers", manager_id):
+        abort(404)
     offer_undo("undo_partner_manager", manager_id=manager_id)
     flash(f"Account manager deleted. Undo {undo_note()}")
     audit_log("delete_partner_manager", "partner_manager", manager_id)

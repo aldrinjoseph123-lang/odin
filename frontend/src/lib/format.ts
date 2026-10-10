@@ -7,6 +7,9 @@ export const initials = (name: string | null | undefined) => (name ?? "?").split
 export type DateFormat = "d MMM yyyy" | "yyyy-MM-dd" | "dd/MM/yyyy" | "MM/dd/yyyy"
 let dateFormat: DateFormat = "d MMM yyyy"
 export const setDateFormat = (f: DateFormat | undefined) => { if (f) dateFormat = f }
+// English month names, so "d MMM yyyy" reads "1 Nov 2026" in every browser
+// (a US-locale browser turned it into "Nov 1", sim L-23). Odin is English-only.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 // A stored UTC timestamp or a YYYY-MM-DD date, with the year, in the
 // workspace format and the reader's zone; withTime adds the local hh:mm.
 export function fmtWhen(iso: string | null | undefined, withTime = false): string {
@@ -15,7 +18,7 @@ export function fmtWhen(iso: string | null | undefined, withTime = false): strin
   if (Number.isNaN(d.getTime())) return iso
   const y = String(d.getFullYear()), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0")
   const date = dateFormat === "yyyy-MM-dd" ? `${y}-${m}-${day}` : dateFormat === "dd/MM/yyyy" ? `${day}/${m}/${y}`
-    : dateFormat === "MM/dd/yyyy" ? `${m}/${day}/${y}` : d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })
+    : dateFormat === "MM/dd/yyyy" ? `${m}/${day}/${y}` : `${d.getDate()} ${MONTHS[d.getMonth()]} ${y}`
   return withTime ? `${date}, ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : date
 }
 
@@ -33,11 +36,12 @@ export function fmtDate(iso: string | null | undefined): string {
   if (dateFormat === "yyyy-MM-dd") return `${y}-${m}-${d}`
   if (dateFormat === "dd/MM/yyyy") return `${d}/${m}/${y}`
   if (dateFormat === "MM/dd/yyyy") return `${m}/${d}/${y}`
-  return new Date(`${ymd}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" })
+  return `${Number(d)} ${MONTHS[Number(m) - 1]}`
 }
 export const days = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n)} d`)
 
-export const daysLate = (target: string | null) => (target ? Math.round((Date.now() - new Date(`${target}T00:00:00`).getTime()) / 864e5) : 0)
+// whole calendar days past the target, as the timeline and dashboard count them (never rounded from the clock, sim L-9)
+export const daysLate = (target: string | null) => (target ? lateBy(target, localToday()) : 0)
 export function stateText(r: { state: FlowState; days_in_stage: number | null; over_by: number | null; target_end_date: string | null }) {
   if (r.state === "overdue") return `Overdue ${daysLate(r.target_end_date)} d`
   if (r.state === "over_sla") return r.days_in_stage == null ? "Over SLA" : `${days(r.days_in_stage)} · ${Math.round(r.over_by ?? 0)} over SLA`
@@ -360,12 +364,15 @@ export function productsFor(products: { name: string; vendor: string }[], vendor
 
 // The project timeline's one line in words: "Started 9 Oct · day 1 · no target
 // date" / "… · target 30 Oct, 21 days left" / "… · target 2 Oct, 7 days late".
-// Calendar days (gaps between dates stay calendar days).
-export function timelineSummary(start: string, today: string, target?: string | null): string {
-  const dayN = lateBy(start, today) + 1
-  const head = `Started ${start === today ? "today" : fmtDate(start)} · day ${dayN}`
+// A start still ahead reads "Starts 1 Nov, in 22 days"; a closed rollout has
+// no days left to count (sim L-13). Calendar days (gaps between dates stay calendar days).
+export function timelineSummary(start: string, today: string, target?: string | null, closed = false): string {
+  const n = (k: number) => `${k} day${k === 1 ? "" : "s"}`
+  const ahead = lateBy(today, start)
+  const head = ahead ? `Starts ${fmtDate(start)}, in ${n(ahead)}` : `Started ${start === today ? "today" : fmtDate(start)} · day ${lateBy(start, today) + 1}`
+  if (closed) return `${head.replace(/ · day \d+$/, "")} · closed`
   if (!target) return `${head} · no target date`
-  const left = lateBy(today, target), late = lateBy(target, today), n = (k: number) => `${k} day${k === 1 ? "" : "s"}`
+  const left = lateBy(today, target), late = lateBy(target, today)
   const when = late ? `${n(late)} late` : left ? `${n(left)} left` : "due today"
   return `${head} · target ${fmtDate(target)}, ${when}`
 }

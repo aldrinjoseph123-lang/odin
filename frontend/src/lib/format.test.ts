@@ -318,6 +318,10 @@ describe("timelineSummary", () => {
   it("counts the days left to the target", () => {
     expect(timelineSummary("2026-10-01", "2026-10-09", "2026-10-30")).toMatch(/· day 9 · target .*, 21 days left$/)
   })
+  it("says when a start is still ahead, and counts nothing on a closed rollout", () => {
+    expect(timelineSummary("2026-11-01", "2026-10-10", "2026-12-01")).toMatch(/^Starts .*, in 22 days · target/)
+    expect(timelineSummary("2026-09-01", "2026-10-10", "2027-02-06", true)).toMatch(/^Started .* · closed$/)
+  })
   it("counts the days past the target", () => {
     expect(timelineSummary("2026-09-01", "2026-10-09", "2026-10-08")).toMatch(/, 1 day late$/)
     expect(timelineSummary("2026-09-01", "2026-10-09", "2026-10-09")).toMatch(/, due today$/)

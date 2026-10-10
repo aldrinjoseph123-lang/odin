@@ -131,6 +131,15 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
         soon = (today + timedelta(days=soon_days)).isoformat()
         query += f" AND p.target_end_date IS NOT NULL AND p.target_end_date >= ? AND p.target_end_date <= ? AND {PROJECT_OPEN_SQL}"
         params.extend([today.isoformat(), soon])
+        # one state per rollout, as the Flow counts it: a rollout over its stage SLA is listed there, not here (sim L-8)
+        from services.alerts import build_alerts
+        live = get_db().execute(
+            f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} AND p.target_end_date >= ? AND p.target_end_date <= ?",
+            (today.isoformat(), soon)).fetchall()
+        over_sla = [p["id"] for p in build_alerts(live)["stage_sla_breach"]]
+        if over_sla:
+            query += f" AND p.id NOT IN ({','.join('?' * len(over_sla))})"
+            params.extend(over_sla)
     elif stage_filter:
         query += " AND p.stage = ?"
         params.append(stage_filter)
@@ -465,7 +474,10 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     g.stage_undo_url = url_for("undo_stage_change", project_id=project_id, note_id=cur.lastrowid)
     # A newer change makes an undecided older request moot; closing asks for
     # no approval (the sign-off is the customer's word on the finish, P7).
-    ask_customer = bool(project["customer_approval"]) and not terminal
+    # Only someone in the Customer role can decide, so with nobody in it no
+    # request is opened (it would wait for ever and count as waiting, sim L-7).
+    has_customer = db.execute("SELECT 1 FROM project_participants WHERE project_id = ? AND role = 'Customer'", (project_id,)).fetchone()
+    ask_customer = bool(project["customer_approval"]) and not terminal and bool(has_customer)
     if project["customer_approval"]:
         db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
     if ask_customer:
@@ -520,14 +532,16 @@ def undo_stage_change(project_id, note_id):
     db.execute("UPDATE status_notes SET stage = ? WHERE project_id = ? AND prev_stage IS NULL AND stage = ? AND created_at >= ?",
                (note["prev_stage"], project_id, note["stage"], note["created_at"]))
     # The approval this move asked for goes — unless the customer already
-    # decided it: that record stays, superseded. The one it superseded comes back.
+    # decided it: that record stays, superseded. The request of the visit the
+    # project returns to comes back, and only that one (it was opened as the
+    # project entered the stage: requested_at = that entry), only while the
+    # project still asks, and not if that visit was already decided (sim L-1).
     db.execute("DELETE FROM stage_approvals WHERE project_id = ? AND stage = ? AND requested_at = ? AND status = 'pending'", (project_id, note["stage"], note["created_at"]))
     db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND stage = ? AND requested_at = ? AND status IN ('approved', 'declined')",
                (project_id, note["stage"], note["created_at"]))
-    db.execute(
-        "UPDATE stage_approvals SET status = 'pending' WHERE id = (SELECT id FROM stage_approvals WHERE project_id = ? AND stage = ?"
-        " AND status = 'superseded' AND requested_at < ? ORDER BY requested_at DESC LIMIT 1)",
-        (project_id, note["prev_stage"], note["created_at"]))
+    if project["customer_approval"] and note["prev_entered_at"]:
+        db.execute("UPDATE stage_approvals SET status = 'pending' WHERE project_id = ? AND stage = ? AND status = 'superseded' AND requested_at = ?",
+                   (project_id, note["prev_stage"], note["prev_entered_at"]))
     db.commit()
     audit_log("undo_project_stage", "project", project_id, project["name"], f"stage={note['prev_stage']} (undid {note['stage']})")
     body = f"{escape(session['user_name'])} undid the move to <b>{escape(note['stage'])}</b>. The project is back in <b>{escape(note['prev_stage'])}</b>."
@@ -549,7 +563,9 @@ def decide_approval(project_id, approval_id, decision, comment):
     row = db.execute("SELECT * FROM stage_approvals WHERE id = ? AND project_id = ?", (approval_id, project_id)).fetchone()
     if row is None:
         abort(404)
-    if row["status"] != "pending" or decision not in ("approved", "declined"):
+    if decision not in ("approved", "declined"):
+        return "Approve or decline"
+    if row["status"] != "pending":
         return "That request is no longer open"
     comment = (comment or "").strip()[:2000]
     now = datetime.utcnow().isoformat()
@@ -587,7 +603,7 @@ def _date_problem(form):
     return _field_problem(form)
 
 
-PROJECT_TEXT_FIELDS = (("po_number", "PO number", 100),   # name and client are capped where they are stored
+PROJECT_TEXT_FIELDS = (("name", "Project name", 200), ("client", "Client", 200), ("po_number", "PO number", 100),
                        ("account_manager_name", "Account manager", 200), ("partner_name", "Partner", 200),
                        ("partner_account_manager_name", "Partner account manager", 200), ("outsourcer_name", "Outsourcer", 200),
                        ("vendor_name", "Vendor", 200), ("product_name", "Product", 200))
@@ -609,6 +625,8 @@ def _field_problem(form):
             return f"{label} does not look like an email address"
     if (form.get("via") or "") not in ("", *VIA_OPTIONS):
         return f"Via is one of: {', '.join(VIA_OPTIONS)}"
+    if form.get("via") == "Partner" and not (form.get("partner_name") or "").strip():
+        return "Pick the partner the deal came through"
     return None
 
 
@@ -1161,12 +1179,14 @@ def _assignee(db, project_id, raw):
     """The assignee, or None: an active staff account (staff see every
     project), or a partner on this project — never a partner from elsewhere,
     who would be told the name of a project they cannot open (test report FN-4)."""
+    if raw in (None, "", 0, "0"):
+        return None
     raw = as_id(raw)
     if not raw:
-        return None
+        return False   # something was picked, but not a person: refused, never quietly unassigned (sim L-21)
     ok = db.execute("SELECT 1 FROM users u WHERE u.id = ? AND u.active = 1 AND (u.kind = 'internal' OR EXISTS "
                     "(SELECT 1 FROM project_participants pp WHERE pp.project_id = ? AND pp.user_id = u.id))", (raw, project_id)).fetchone()
-    return raw if ok else None
+    return raw if ok else False
 
 
 def _due_problem(form):
@@ -1191,6 +1211,8 @@ def task_add(project_id):
     if not title:
         return _task_reply(project_id, "Task needs a title")
     assignee_id = _assignee(db, project_id, form.get("assignee_id"))
+    if assignee_id is False:
+        return _task_reply(project_id, "Pick an active colleague or someone on this project")
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
     cur = db.execute(
@@ -1238,10 +1260,12 @@ def task_delete(project_id, task_id):
     load_project(project_id)   # visibility decided in one place
     db = get_db()
     task = db.execute("SELECT title FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
+    if task is None:
+        abort(404)
     db.execute("DELETE FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id))
     touch_project(db, project_id)
     db.commit()
-    audit_log("delete_task", "project", project_id, None, task["title"][:80] if task else f"task {task_id} (already gone)")
+    audit_log("delete_task", "project", project_id, None, task["title"][:80])
     return _task_reply(project_id)
 
 
@@ -1271,6 +1295,8 @@ def task_edit(project_id, task_id):
     if not title:
         return _task_reply(project_id, "Task needs a title")
     assignee_id = _assignee(db, project_id, form.get("assignee_id")) if "assignee_id" in form else task["assignee_id"]
+    if assignee_id is False:
+        return _task_reply(project_id, "Pick an active colleague or someone on this project")
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
     due = parse_date(form.get("due_date")) if "due_date" in form else task["due_date"]

@@ -302,7 +302,10 @@ def api_audit():
     rows = db.execute(f"SELECT * FROM audit_logs{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?", (*params, limit, (page - 1) * limit)).fetchall()
     return jsonify(
         rows=[dict(r) for r in rows], page=page, total=total, total_pages=total_pages, filters=filters,
-        usernames=[r[0] for r in db.execute("SELECT DISTINCT username FROM audit_logs ORDER BY username")],
+        # one entry per person: their name, whether the row was written with their name or their sign-in handle
+        usernames=[r[0] for r in db.execute(
+            "SELECT DISTINCT COALESCE(u.name, a.username) FROM audit_logs a "
+            "LEFT JOIN users u ON u.id = a.user_id OR (a.user_id IS NULL AND u.username = a.username) ORDER BY 1")],
         actions=[r[0] for r in db.execute("SELECT DISTINCT action FROM audit_logs ORDER BY action")],
         projects=[{"id": r["id"], "name": r["name"]} for r in db.execute("SELECT id, name FROM projects ORDER BY name")],
     )
@@ -680,7 +683,8 @@ def api_project_form():
             source = load_project(from_id)
         mode = "duplicate" if source else "new"
     lists = get_contact_lists()
-    vendor_names = {r["id"]: r["name"] for r in lists["vendors"]}
+    # a product keeps its vendor's name after the vendor is deleted, so it is not offered with every vendor (sim L-17)
+    vendor_names = {r["id"]: r["name"] for r in db.execute("SELECT id, name FROM vendors")}
     fields = ["name", "client", "via", "account_manager_name", "account_manager_email", "partner_name", "partner_account_manager_name",
               "partner_account_manager_email", "po_number", "po_date", "start_date", "target_end_date", "delivery_mode",
               "vendor_name", "product_name", "outsourcer_name", "outsourcer_email"]
@@ -857,11 +861,21 @@ def api_project_activity(project_id):
         "SELECT timestamp, username, action, details FROM audit_logs WHERE resource_type = 'project' AND resource_id = ? "
         "ORDER BY id DESC LIMIT 60", (project_id,),
     ).fetchall()
-    return jsonify(rows=[{
-        "when": r["timestamp"], "who": r["username"], "action": r["action"],
-        "label": ACTIVITY_LABELS.get(r["action"], r["action"].replace("_", " ")),
-        "details": (r["details"] or "").replace("stage=", "to ") if r["action"] in ("update_project_stage", "undo_project_stage") else (r["details"] or ""),
-    } for r in rows])
+    return jsonify(rows=[{"when": r["timestamp"], "who": r["username"], "action": r["action"], **_activity_words(r["action"], r["details"] or "")}
+                         for r in rows])
+
+
+def _activity_words(action, details):
+    """An audit row as the feed says it: words, never field names (sim PM-19)."""
+    label = ACTIVITY_LABELS.get(action, action.replace("_", " "))
+    if action in ("update_project_stage", "undo_project_stage"):
+        details = details.replace("stage=", "to ")
+    elif action == "update_project":
+        details = ""   # "client=…; owner_id=…" is for the audit log
+    elif action == "toggle_task" and ":" in details:
+        state, _, details = details.partition(": ")
+        label = "completed a task" if state == "done" else "reopened a task"
+    return {"label": label, "details": details}
 
 
 @app.route("/projects/<int:project_id>/activity.csv")

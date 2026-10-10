@@ -176,7 +176,9 @@ export default function ProjectForm(_props: { user: User }) {
               <Field label="Vendor">
                 <select value={f.vendor_name} aria-label="Vendor" className={selectClass}
                   onChange={(e) => { const v = e.target.value; const keep = d.products.some((p) => p.name === f.product_name && (!p.vendor || p.vendor === v)); setF({ ...f, vendor_name: v, product_name: keep ? f.product_name : "" }) }}>
-                  <option value="">Select…</option>{d.vendors.map((v) => <option key={v}>{v}</option>)}
+                  <option value="">Select…</option>
+                  {/* a vendor deleted since keeps showing on the projects that named it (sim roles-12) */}
+                  {(f.vendor_name && !d.vendors.includes(f.vendor_name) ? [f.vendor_name, ...d.vendors] : d.vendors).map((v) => <option key={v}>{v}</option>)}
                 </select>
               </Field>
               <Field label="Product">

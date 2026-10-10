@@ -818,10 +818,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("INSERT INTO users (username,password_hash,name,role,active) VALUES ('gone','x','Gone','Member',0)")
             db.commit()
             gone = db.execute("SELECT id FROM users WHERE username='gone'").fetchone()["id"]
-        # the dropdown never offers them, but a hand-crafted POST tries anyway
-        self.client.post("/projects/1/tasks", data={"title": "orphan", "assignee_id": str(gone)})
+        # the dropdown never offers them, but a hand-crafted POST tries anyway: refused, not quietly unassigned
+        r = self.client.post("/projects/1/tasks", data={"title": "orphan", "assignee_id": str(gone)}, headers={"Accept": "application/json"})
+        self.assertEqual(r.status_code, 400)
         with self.raw_db() as db:
-            self.assertIsNone(db.execute("SELECT assignee_id FROM tasks WHERE title='orphan'").fetchone()["assignee_id"])
+            self.assertIsNone(db.execute("SELECT 1 FROM tasks WHERE title='orphan'").fetchone())
 
     def test_weak_password_terms_are_rejected_even_with_padding(self):
         from security import password_problem
@@ -3034,6 +3035,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         m, mcsrf = self._api_client("pm2", STRONG_PASSWORD)
         self.assertEqual(m.post("/api/projects/2/signoff/waive", json={"reason": "Customer went quiet for months"}, headers={"X-CSRF-Token": mcsrf}).status_code, 403)
         self.assertIn("reason", c.post("/api/projects/2/signoff/waive", json={"reason": "no"}, headers=h).get_json()["error"])
+        with self.raw_db() as db:   # waived from the stage the sign-off is sent from, never straight from the first (sim L-12)
+            names = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 2 ORDER BY position")]
+            db.execute("UPDATE projects SET stage = ? WHERE id = 2", (names[-2],)); db.commit()
         self.assertEqual(c.post("/api/projects/2/signoff/waive", json={"reason": "Signed by email in 2025; migrated project"}, headers=h).status_code, 200)
         self.assertTrue(c.get("/api/projects/2/signoff").get_json()["state"]["complete"])
 
@@ -3089,9 +3093,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             ann = db.execute("SELECT id FROM users WHERE email = 'ann@initech.example'").fetchone()["id"]
         r = c.post("/projects/1/tasks", data={"title": "Bad", "due_date": "not-a-date"}, headers=h).get_json()
         self.assertIn("Due date must be a date", " ".join(r["messages"]))
-        c.post("/projects/1/tasks", data={"title": "Outsider", "assignee_id": str(ann)}, headers=h)
+        self.assertEqual(c.post("/projects/1/tasks", data={"title": "Outsider", "assignee_id": str(ann)}, headers=h).status_code, 400)
         with self.raw_db() as db:
-            self.assertIsNone(db.execute("SELECT assignee_id FROM tasks WHERE title = 'Outsider'").fetchone()["assignee_id"])
+            self.assertIsNone(db.execute("SELECT 1 FROM tasks WHERE title = 'Outsider'").fetchone())
             self.assertIsNone(db.execute("SELECT 1 FROM notifications WHERE user_id = ? AND project_id = 1", (ann,)).fetchone())
         po = lambda: (io.BytesIO(b"%PDF-1.4 po"), "po.pdf")   # noqa: E731
         for form, says in (({"name": " ", "client": "C"}, "name and client are required"),
@@ -3832,11 +3836,12 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         anon = app_module.app.test_client()
         self.assertIn(b"Sign in", anon.get("/nope").data)
 
-    def test_long_inputs_are_capped_server_side(self):
-        self.new_project(name="N" * 5000, client="C")
+    def test_long_inputs_are_refused_or_capped_server_side(self):
+        self.new_project(name="N" * 5000, client="C")   # a name too long is refused, never cut without a word
+        self.new_project(name="P", client="C")
         self.client.post("/projects/1/note", data={"note": "x" * 20000})
         with self.raw_db() as db:
-            self.assertEqual(len(db.execute("SELECT name FROM projects WHERE id=1").fetchone()[0]), 200)
+            self.assertEqual([r[0] for r in db.execute("SELECT name FROM projects")], ["P"])
             self.assertEqual(db.execute("SELECT MAX(LENGTH(note)) FROM status_notes").fetchone()[0], 5000)
 
     def test_fresh_install_stages_are_a_delivery_lifecycle(self):

@@ -95,6 +95,10 @@ def move_stage(scope, scope_id, stage_id, direction):
     a, b = stages[index], stages[swap]
     names = [s["name"] for s in stages]
     names[index], names[swap] = names[swap], names[index]
+    if scope == "project" and names[-1] != stages[-1]["name"]:
+        project = db.execute("SELECT stage FROM projects WHERE id = ?", (scope_id,)).fetchone()
+        if project and project["stage"] == stages[-1]["name"]:   # closed: a reorder would reopen it with no note or audit (sim L-6)
+            return "The project is closed. Move it back to a working stage before changing which stage is last"
     refused = _closes_unsigned(scope, scope_id, names)
     if refused:
         return refused
@@ -129,11 +133,14 @@ def delete_stage(scope, scope_id, stage_id):
 
 def set_slas(scope, scope_id, form):
     """Expected days per stage from a form of sla::<id> fields. Blank clears —
-    an unmeasured stage, not a zero-day target."""
+    an unmeasured stage, not a zero-day target. A stage the form does not
+    name keeps its SLA."""
     table, col = _table(scope)
     db = get_db()
     updates = []
     for stage in list_stages(scope, scope_id):
+        if f"sla::{stage['id']}" not in form:
+            continue
         raw = (form.get(f"sla::{stage['id']}", "") or "").strip()
         if not raw:
             updates.append((None, stage["id"]))

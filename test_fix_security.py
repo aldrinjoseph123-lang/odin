@@ -95,8 +95,8 @@ class SharedHelpersTest(Base):
         for body in ({"username": ["a"], "password": "x"}, {"username": "a", "password": 5}):
             self.assertEqual(anon.post("/api/login", json=body, headers=ah).status_code, 400)
         self.assertEqual(c.post("/projects/1/tasks", json={"title": ["x"]}, headers=h).status_code, 400)
-        self.assertEqual(c.post("/projects/1/tasks", json={"title": "ok", "assignee_id": 2 ** 70}, headers=h).status_code, 200)
-        self.assertEqual(c.post("/projects/1/tasks", json={"title": "ok", "assignee_id": True}, headers=h).status_code, 200)
+        self.assertEqual(c.post("/projects/1/tasks", json={"title": "ok", "assignee_id": 2 ** 70}, headers=h).status_code, 400)   # refused, not dropped
+        self.assertEqual(c.post("/projects/1/tasks", json={"title": "ok", "assignee_id": True}, headers=h).status_code, 400)   # a bool is not a person
         self.assertEqual(c.post("/api/notifications/read", json={"id": 2 ** 70}, headers=h).status_code, 400)
         for q in ("v=99999999999999999999999", "v=%C2%B2", "template=99999999999999999999999"):
             self.assertIn(c.get(f"/api/projects/1/rollout-report?{q}").status_code, (200, 404), q)
@@ -135,7 +135,7 @@ class DatesAndFieldsTest(Base):   # B1, F-H1, F-L2/L3
     def test_project_fields_are_checked(self):
         for fields in ({"via": "Carrier pigeon"}, {"account_manager_email": "x@y.z>"}, {"po_number": "9" * 101}, {"vendor_name": "a\x00b"}):
             self.new_project(name="Bad", client="C", **fields)
-        self.new_project(name="Good", client="C", via="Partner", account_manager_email="am@acme.example")
+        self.new_project(name="Good", client="C", via="Partner", partner_name="Redington", account_manager_email="am@acme.example")
         with self.raw_db() as db:
             self.assertEqual([r[0] for r in db.execute("SELECT name FROM projects")], ["Good"])
 

@@ -70,12 +70,14 @@ def get_db():
 
 
 def soft_delete(table, item_id):
-    """Mark row as deleted; recoverable for the undo window (policy undo_minutes)."""
+    """Mark row as deleted; recoverable for the undo window (policy undo_minutes).
+    Returns True when a live row was deleted (False: no such row, or gone already)."""
     assert_safe_table(table)  # identifiers can't be parameterised — allowlist instead
     db = get_db()
     now = datetime.utcnow().isoformat()
-    db.execute(f"UPDATE {table} SET deleted_at = ? WHERE id = ?", (now, item_id))
+    done = db.execute(f"UPDATE {table} SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", (now, item_id)).rowcount
     db.commit()
+    return bool(done)
 
 
 def restore_deleted(table, item_id):

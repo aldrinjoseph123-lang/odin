@@ -348,7 +348,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   return (
     <section className="mt-4 border-t border-border pt-3" aria-label="Timeline">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p className="text-[13px]"><span className="font-semibold">Timeline</span><span className="text-muted-foreground"> · {timelineSummary(d.start_date, d.today, d.target_end_date)}</span></p>
+        <p className="text-[13px]"><span className="font-semibold">Timeline</span><span className="text-muted-foreground"> · {timelineSummary(d.start_date, d.today, d.target_end_date, d.stage_index === d.stages.length - 1)}</span></p>
         {drawn && (
           <p className="flex items-center gap-3 text-[11px] text-muted-foreground" aria-hidden>
             {[["h-1.5 w-3 rounded-full bg-ok-line", "stage done"], [cn("h-1.5 w-3 rounded-full", late ? "bg-warn-line" : "bg-foreground"), "current stage"], ["h-3 w-[1.5px] bg-foreground", "today"]].map(([swatch, label]) => (

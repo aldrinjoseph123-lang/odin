@@ -360,6 +360,8 @@ def sign(row, body, ip, agent):
 
 
 def countersign(row, body, ip, agent):
+    if row["status"] in DONE:
+        raise ValueError("This version is already signed off")
     if row["status"] != "signed":
         raise ValueError("The customer has not signed this version yet")
     if not intact(row):
@@ -429,6 +431,9 @@ def waive(project, reason, author):
         raise ValueError("Give the reason in a sentence")
     if completed(project["id"]):
         raise ValueError("This project is already signed off")
+    early = sendable(project)   # a waiver stands in for the signatures, not for the stages before them (sim L-12)
+    if early:
+        raise ValueError(early.replace("Send the sign-off", "Waive the sign-off"))
     d = draft(project)
     content = {"project": _meta(project), "summary": d["summary"], "scope": [{k: x[k] for k in ("title", "detail", "status", "note")} for x in d["scope"]],
                "delivered": d["delivered"], "outstanding": d["outstanding"], "terms": d["terms"], "statement": policy("signoff_statement"),

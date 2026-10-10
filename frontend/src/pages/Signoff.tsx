@@ -43,7 +43,7 @@ function Facts({ p }: { p: SignoffContent["project"] }) {
     ["Customer", p.client], ["Delivered by", `${p.company}${p.partner_name ? ` with ${p.partner_name}` : ""}`],
     ["Purchase order", [p.po_number, p.po_date && fmtDate(p.po_date)].filter(Boolean).join(" · ") || "—"], ["Project manager", p.owner_name],
     ["Solution", [p.vendor_name, p.product_name].filter(Boolean).join(" ") || "—"], ["Started", fmtDate(p.start_date)],
-    ["Target", fmtDate(p.target_end_date)], ["Completed", fmtDate(p.finished)],
+    ["Target", fmtDate(p.target_end_date)], ["Issued", fmtDate(p.finished)],
   ]
   return <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">{rows.map(([k, v]) => <div key={k} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2"><dt className="text-muted-foreground">{k}</dt><dd className="min-w-0 break-words">{v}</dd></div>)}</dl>
 }

@@ -352,7 +352,7 @@ def build(scope, user_id):
     open_alerts = [{"id": a["id"], "project_id": a["project_id"], "project": a["project_name"], "type": a["alert_type"], "title": a["title"],
                     "severity": a["severity"], "created_at": a["created_at"]} for a in db.execute(
         "SELECT a.*, p.name AS project_name FROM alerts a JOIN projects p ON p.id = a.project_id "
-        f"WHERE a.resolved = 0 AND p.deleted_at IS NULL{scope_sql} "
+        f"WHERE a.resolved = 0 AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} "   # as the badge and the Alerts page
         "ORDER BY CASE a.severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, a.created_at DESC LIMIT 30", scope_params)]
 
     mine = {"tasks": [{"id": t["id"], "title": t["title"], "project_id": t["project_id"], "project": t["project_name"], "due_date": t["due_date"], "stage": t["stage"]}

@@ -47,11 +47,15 @@ export default function Project({ user }: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ text: string; undo?: string | null } | null>(null)
   const [busy, setBusy] = useState(false)
-  const [planRefresh, setPlanRefresh] = useState(0)   // a RAID change moves the health
+  const [planRefresh, setPlanRefresh] = useState(0)   // a RAID change or a stage move moves the plan and the health
+  const stageSeen = useRef<string | null>(null)
 
   const reload = useCallback(async () => {
     try {
       const [fd, ex, act] = await Promise.all([flowDetail(id), projectExtras(id), projectActivity(id)])
+      // a stage move (or its undo) redraws the panels that read the stage, not only the header (sim PM-3)
+      if (stageSeen.current !== null && stageSeen.current !== fd.stage) setPlanRefresh((n) => n + 1)
+      stageSeen.current = fd.stage
       setD(fd); setX(ex); setActivity(act.rows); setError(null)
     } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This project does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the project") }
   }, [id])
@@ -107,13 +111,13 @@ export default function Project({ user }: { user: User }) {
       )}
 
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
-      <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
+      <Detail d={d} reload={reload} onMoved={(m, undo) => { setNotice({ text: m, undo }); void reload() }} standalone />
 
       <div className="grid grid-cols-1 gap-4 px-5 pb-4 [&>*]:min-w-0">
         <div className="empty:hidden"><AICatchUp projectId={id} /></div>
         <div className="empty:hidden"><AIAsk projectId={id} /></div>
         <div className="empty:hidden"><AINotesTasks projectId={id} /></div>
-        {!closed && <div className="empty:hidden"><AIChase projectId={id} /></div>}
+        {!closed && <div className="empty:hidden"><AIChase key={planRefresh} projectId={id} /></div>}
         <div><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} refresh={planRefresh} /></Panel></div>
         <div><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} onChanged={() => setPlanRefresh((n) => n + 1)} /></Panel></div>
         {staff && <div className="empty:hidden"><LessonsPanel projectId={id} /></div>}
