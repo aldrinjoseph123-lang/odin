@@ -268,6 +268,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
               {cand.countersigners.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
           </label>
+          {d.not_yet && <p className="rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn" role="note">{d.not_yet}. You can prepare the document now and send it then.</p>}
           <p className="text-[12px] text-muted-foreground">Sending freezes this version and its fingerprint. To change it later, withdraw it and send a new one.</p>
           {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
           {confirming ? (
@@ -276,7 +277,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
               <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy} className="rounded-full">Cancel</Button>
             </div>
           ) : (
-            <Button className="rounded-full" disabled={!signer || !counter || unmarked > 0 || !summary.trim()} onClick={() => setConfirming(true)}><FileSignature className="h-4 w-4" /> Send for signature</Button>
+            <Button className="rounded-full" disabled={!!d.not_yet || !signer || !counter || unmarked > 0 || !summary.trim()} onClick={() => setConfirming(true)}><FileSignature className="h-4 w-4" /> Send for signature</Button>
           )}
         </section>
       </aside>
@@ -396,7 +397,7 @@ export default function Signoff(_props: { user: User }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Upload the signed copy</DialogTitle><DialogDescription>For version {cur?.version}. It completes the sign-off and is filed under the project's documents.</DialogDescription></DialogHeader>
           <form onSubmit={upload} className="grid grid-cols-1 gap-3">
-            <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed copy (PDF or image)<input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg" className="text-[13px]" /></label>
+            <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed copy (PDF or image)<input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg" /></label>
             <div className="grid grid-cols-2 gap-2">
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed by<input name="signer_name" required maxLength={120} defaultValue={cur?.content.signer?.name ?? ""} className={input} /></label>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Title<input name="signer_title" maxLength={120} className={input} /></label>

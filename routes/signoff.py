@@ -60,6 +60,8 @@ def api_signoff(project_id):
     out = {
         "project": {"id": project["id"], "name": project["name"], "client": project["client"], "stage": project["stage"], "owner_id": project["owner_id"]},
         "state": st,
+        # why it cannot be sent from this stage yet (None: it can), shown before anyone fills the form in (sim roles-8)
+        "not_yet": signoff.sendable(project) if manage and not st["complete"] else None,
         "versions": [{"version": r["version"], "status": r["status"], "created_at": r["created_at"], "created_by": r["created_by"]} for r in rows],
         "current": signoff.view(row, _staff()) if row else None,
         "can": {

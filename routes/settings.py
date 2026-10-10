@@ -186,7 +186,7 @@ def settings_policies(area):
             db.commit()
             if status(db)["state"] != "off":
                 queue(db, "validate", payload={"reason": "the AI settings changed"}, actor=session.get("user_name"))
-                flash("Saved. Every AI feature is now being validated on this server; this page updates as it goes.")
+                flash("Saved. Each AI feature is checked again once the server answers; this page shows how it goes.")
             else:
                 flash("Saved")
         else:

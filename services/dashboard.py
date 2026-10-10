@@ -232,10 +232,10 @@ def _activity(db, scope, limit=30):
 
 
 def _cycle(db, scope):
-    """Lead time and throughput for the first stage template, as Cycle time shows them."""
-    from services.analytics import build_cycle_times, clock
+    """Lead time and throughput for the busiest stage template, as Cycle time shows them."""
+    from services.analytics import build_cycle_times, busiest_template, clock
     scope_sql, scope_params = scope
-    template = db.execute("SELECT id, name FROM stage_templates ORDER BY id LIMIT 1").fetchone()
+    template = busiest_template(db, scope)
     if not template:
         return None
     projects = db.execute(f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{scope_sql}", (template["id"], *scope_params)).fetchall()

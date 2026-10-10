@@ -106,7 +106,11 @@ function StageTasks({ d, stage, done, reload, onError }: { d: FlowDetail; stage:
                 {d.can_edit && !t.done
                   ? <button type="button" onClick={() => setEditing(t.id)} title={`${t.title} — edit`} aria-label={`Edit ${t.title}`} className="line-clamp-3 text-left decoration-dotted underline-offset-2 hover:underline">{t.title}</button>
                   : <span title={t.title} className={cn("line-clamp-3", t.done && "line-through")}>{t.title}</span>}
-                {t.due_date && !t.done && <DueDate due={t.due_date} today={d.today} />}
+                {/* the person the task is on may move its date, nothing else (the server allows the same) */}
+                {!d.can_edit && t.assignee_id === d.me && !t.done
+                  ? <DatePicker value={t.due_date ?? ""} label={`Due date of ${t.title}`} placeholder="Set a due date" disabled={busy} className="mt-1 h-7 px-2 text-[12px]"
+                      onChange={(due) => void run(() => editTask(d.id, t.id, { title: t.title, assignee_id: t.assignee_id, due_date: due || null }), due ? `${t.title}: due ${fmtDate(due)}` : `${t.title}: no date`)} />
+                  : t.due_date && !t.done && <DueDate due={t.due_date} today={d.today} />}
               </span>
               {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[11px]" />}
               {d.can_edit && (
@@ -395,6 +399,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
   const [err, setErr] = useState<string | null>(null)
   async function decide(decision: "approved" | "declined") {
     if (!d.approval) return
+    // a decline cannot be taken back: ask, and say what it does (sim roles-9)
+    if (decision === "declined" && !window.confirm(`Decline ${d.approval.stage}? The project manager is told; your comment goes with it. This cannot be undone.`)) return
     setBusy(true); setErr(null)
     try {
       await decideApproval(d.id, d.approval.id, decision, comment)
@@ -575,6 +581,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             <ul className="mb-2 grid grid-cols-1 gap-1 text-[13px] text-muted-foreground">
               {openHere > 0 && <li className="font-medium text-warn">{openHere} open task{openHere === 1 ? "" : "s"} still in {d.stage}</li>}
               {approvalPending && <li className="font-medium text-warn">The customer has not approved {d.stage} yet</li>}
+              {d.approval?.status === "declined" && d.approval.stage === d.stage && <li className="font-medium text-bad">The customer declined {d.stage}{d.approval.comment ? `: “${d.approval.comment}”` : ""}</li>}
               <li>Tells {told} {told === 1 ? "person" : "people"} on the team</li>
             </ul>
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Stage change note, shared with the customer and partners" aria-describedby={`move-note-${d.id}`} maxLength={5000} className="h-8 text-[13px]" />

@@ -270,6 +270,13 @@ select:not([multiple]) {
   select, input[type="file"] {
     max-width: 100%;
     }
+  /* the file picker's button wears the tokens, so dark mode never shows the browser's white one */
+  input[type="file"] { font-size: 13px; color: var(--muted-foreground); }
+  input[type="file"]::file-selector-button {
+    margin-right: 8px; height: 28px; padding: 0 12px; border-radius: var(--radius); cursor: pointer;
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground); font: inherit; font-weight: 500;
+    }
+  input[type="file"]::file-selector-button:hover { background: var(--muted); }
   /* a link inside a sentence is underlined: colour alone does not mark it
      (WCAG 1.4.1, test report UX-14) */
   p a:not([data-slot="button"]) {

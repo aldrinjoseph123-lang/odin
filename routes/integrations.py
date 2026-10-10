@@ -120,7 +120,7 @@ def settings_integrations():
     )
     set_setting("guest_links_enabled", "1" if request.form.get("guest_links_enabled") == "on" else "0")
     audit_log("update_integration_settings")
-    flash("Integration settings saved")
+    flash("Saved")   # posted from Security, Notifications and Integrations alike (sim roles)
     return redirect(url_for("settings"))
 
 

@@ -22,7 +22,7 @@ describe("Dashboard", () => {
   it("draws the widgets in the layout's order, honouring their settings", async () => {
     mount()
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/Good (morning|afternoon|evening), Admin/)
-    expect(titles()).toEqual(["Timeline", "Portfolio progress", "Open alerts"])   // kpis is a tile row, not a region
+    expect(titles()).toEqual(["Headline numbers", "Timeline", "Portfolio progress", "Open alerts"])
     expect(screen.getByText("Active rollouts")).toBeInTheDocument()
     expect(screen.queryByText("Over stage SLA")).toBeNull()                        // tiles setting hid it
     expect(screen.getByText("+1")).toBeInTheDocument()                             // active: 4 vs 3

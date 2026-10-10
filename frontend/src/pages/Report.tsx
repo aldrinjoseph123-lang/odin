@@ -62,6 +62,8 @@ export default function Report({ user }: { user: User }) {
   if (!r) return <PageSkeleton />
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
+    // the words are shared: say so before they go out, not after (sim roles-3)
+    if (!window.confirm("Save this version? Partners and customers on the project will read these words in their copy of the report.")) return
     setBusy(true); setNotice(null)
     try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
@@ -250,7 +252,7 @@ export default function Report({ user }: { user: User }) {
                     <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
                     <ChartTip {...tip} labelFormatter={(x) => `week of ${fmtDate(String(x))}`} />
                     <Area type="stepAfter" dataKey="total" name="Tasks known" stroke="var(--input)" fill="var(--muted)" isAnimationActive={false} />
-                    <Area type="stepAfter" dataKey="done" name="Done" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.25} isAnimationActive={false} />
+                    <Area type="stepAfter" dataKey="done" name="Done" stroke="var(--primary-text)" fill="var(--primary-text)" fillOpacity={0.25} isAnimationActive={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

@@ -103,8 +103,9 @@ export default function Project({ user }: { user: User }) {
           {can.manage && <a href={`/projects/${id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}>Edit</a>}
         </div>
       </div>
+      {/* sticky: a reply to the Team or Notes panel far down the page (an invite link) shows where the person is */}
       {notice && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
+        <div className="sticky top-2 z-20 mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px] shadow-card" role="status">
           <span>{notice.text}{notice.undo && <button type="button" onClick={undo} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}</span>
           <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>

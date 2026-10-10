@@ -55,7 +55,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
   async function remove() {
     if (!edit?.id || !confirm("Delete this item? The log keeps a line that it existed.")) return
     setBusy(true)
-    try { await deleteRaid(projectId, edit.id); setEdit(null); await load(); onChanged?.() } catch (err) { setError(err instanceof ApiError ? err.message : "That did not delete") } finally { setBusy(false) }
+    try { await deleteRaid(projectId, edit.id); toast("Deleted from the log"); setEdit(null); await load(); onChanged?.() } catch (err) { setError(err instanceof ApiError ? err.message : "That did not delete") } finally { setBusy(false) }
   }
   const set = (patch: Partial<Draft>) => setEdit((x) => (x ? { ...x, ...patch } : x))
   return (

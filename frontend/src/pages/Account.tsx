@@ -12,7 +12,7 @@ import { viewersText } from "@/lib/format"
 import { TwoStepPanel } from "@/components/TwoStepPanel"
 import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
 
-export default function Account(_props: { user: User }) {
+export default function Account({ user }: { user: User }) {
   const [me, setMe] = useState<Awaited<ReturnType<typeof account>> | null>(null)
   const [email, setEmail] = useState("")
   const [emailPw, setEmailPw] = useState("")
@@ -42,11 +42,11 @@ export default function Account(_props: { user: User }) {
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">My account</h1>
-        <p className="text-[13px] text-muted-foreground">{me.name} · {me.username}{me.kind === "external" ? " · partner access" : ""}</p>
+        <p className="text-[13px] text-muted-foreground">{me.name} · {me.username}{me.kind === "external" ? ` · ${user.external_role === "Customer" ? "customer" : "partner"} access` : ""}</p>
       </div>
       {me.must_change_password && <Alert className="mt-3"><AlertDescription>Set a new password before continuing. The one you were given is a shared secret.</AlertDescription></Alert>}
       {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-muted px-3 py-2 text-[13px]" role="status"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
-      <div className="mt-3 grid grid-cols-1 max-w-3xl gap-4 lg:grid-cols-2">
+      <div className="mt-3 grid max-w-5xl grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Appearance <span className="font-normal text-muted-foreground">yours, on every device you sign in on</span></h2>
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Theme">
@@ -82,8 +82,8 @@ export default function Account(_props: { user: User }) {
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Picture <span className="font-normal text-muted-foreground">shown wherever your name is</span></h2>
           <div className="flex flex-wrap items-center gap-3">
             <UserAvatar name={me.name} url={me.avatar_url} className="h-14 w-14" textClass="text-[17px]" />
-            <div className="grid grid-cols-1 gap-2">
-              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="text-[13px] text-muted-foreground file:mr-2 file:h-7 file:cursor-pointer file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-muted" />
+            <div className="grid min-w-0 grid-cols-1 gap-2">
+              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="w-full" />
               <div className="flex gap-2">
                 <Button type="submit" size="sm" variant="outline" loading={busy}>Upload</Button>
                 {me.avatar_url && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => send("/account/avatar/remove", {})}>Remove</Button>}

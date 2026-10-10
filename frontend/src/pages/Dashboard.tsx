@@ -66,7 +66,7 @@ function Bars({ rows, link }: { rows: Aggregate; link?: (key: string) => string 
       {rows.map((r) => (
         <li key={r.key} className="flex items-center gap-3">
           {link ? <Link to={link(r.key)} className="w-32 truncate text-[13px] hover:underline">{r.key}</Link> : <span className="w-32 truncate text-[13px]">{r.key}</span>}
-          <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-primary" style={{ width: `${peak ? (r.count / peak) * 100 : 0}%` }} /></span>
+          <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-primary-text" style={{ width: `${peak ? (r.count / peak) * 100 : 0}%` }} /></span>
           <span className="w-6 text-right tabular-nums">{r.count}</span>
         </li>
       ))}
@@ -74,6 +74,8 @@ function Bars({ rows, link }: { rows: Aggregate; link?: (key: string) => string 
   )
 }
 // An accent donut whose slices darken in order, the total in the middle, a legend beside.
+// The steps are of the accent's text colour: the pastel fill itself fades into the white card.
+const sliceOpacity = (i: number, n: number) => 0.3 + (0.7 * (i + 1)) / n
 function Donut({ rows, total, unit, link, large }: { rows: Aggregate; total: number; unit: string; link?: (key: string) => string; large?: boolean }) {
   return (
     <div className="flex items-center gap-4">
@@ -81,7 +83,7 @@ function Donut({ rows, total, unit, link, large }: { rows: Aggregate; total: num
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie data={rows} dataKey="count" nameKey="key" innerRadius={large ? 70 : 44} outerRadius={large ? 105 : 66} paddingAngle={2} stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
-              {rows.map((r, i) => <Cell key={r.key} fill="var(--primary)" fillOpacity={0.25 + (0.75 * (i + 1)) / rows.length} />)}
+              {rows.map((r, i) => <Cell key={r.key} fill="var(--primary-text)" fillOpacity={sliceOpacity(i, rows.length)} />)}
             </Pie>
             <ChartTip {...tip} formatter={(v, name) => [`${v} ${unit}`, String(name)]} />
           </PieChart>
@@ -93,7 +95,7 @@ function Donut({ rows, total, unit, link, large }: { rows: Aggregate; total: num
       <ul className="min-w-0 flex-1 text-[13px]">
         {rows.map((r, i) => (
           <li key={r.key} className="flex items-center gap-2 py-1">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary" style={{ opacity: 0.25 + (0.75 * (i + 1)) / rows.length }} aria-hidden />
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary-text" style={{ opacity: sliceOpacity(i, rows.length) }} aria-hidden />
             {link ? <Link to={link(r.key)} className="min-w-0 flex-1 truncate hover:underline">{r.key}</Link> : <span className="min-w-0 flex-1 truncate">{r.key}</span>}
             <span className="tabular-nums font-medium">{r.count}</span>
           </li>
@@ -115,7 +117,11 @@ const TILES: { key: DashKey; label: string; icon: typeof Activity; tone?: "warn"
 function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => void }) {
   const tiles = TILES.filter((t) => (s.tiles as string[] | undefined)?.includes(t.key) ?? true)
   const trend = (s.trend as string) ?? "area"
+  const menu = useContext(MenuSlot)
   return (
+    <section aria-label="Headline numbers">
+    {/* the strip has no panel, so its ⋯ sits in a slim header of its own, never over a tile */}
+    <header className="mb-2 flex h-7 items-center justify-between"><h2 className="text-[12px] font-medium text-muted-foreground">Headline numbers</h2>{menu}</header>
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
       {tiles.map((t) => {
         const n = k.counts[t.key], before = k.before?.[t.key] ?? null
@@ -138,10 +144,10 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
               <span className="mt-2 block h-9" aria-hidden>
                 <ResponsiveContainer width="100%" height="100%">
                   {trend === "bars" ? (
-                    <BarChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} accessibilityLayer={false}><Bar dataKey="v" fill="var(--primary)" fillOpacity={0.6} radius={[2, 2, 0, 0]} isAnimationActive={false} /></BarChart>
+                    <BarChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} accessibilityLayer={false}><Bar dataKey="v" fill="var(--primary-text)" fillOpacity={0.6} radius={[2, 2, 0, 0]} isAnimationActive={false} /></BarChart>
                   ) : (
                     <AreaChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} accessibilityLayer={false}>
-                      <Area type="monotone" dataKey="v" stroke="var(--primary)" strokeWidth={1.5} fill="var(--primary)" fillOpacity={0.12} isAnimationActive={false} />
+                      <Area type="monotone" dataKey="v" stroke="var(--primary-text)" strokeWidth={1.5} fill="var(--primary-text)" fillOpacity={0.12} isAnimationActive={false} />
                     </AreaChart>
                   )}
                 </ResponsiveContainer>
@@ -151,6 +157,7 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
         )
       })}
     </div>
+    </section>
   )
 }
 
@@ -326,14 +333,14 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
             <LineChart data={data} margin={{ top: 18, right: 8, bottom: 0, left: 8 }}>
               <XAxis dataKey="label" {...axis} interval={n <= 7 ? 0 : "preserveStartEnd"} />
               <ChartTip {...tip} formatter={(v) => [`${v} task${v === 1 ? "" : "s"}`, ""]} labelFormatter={(_, p) => (p?.[0]?.payload ? fmtDate(p[0].payload.day) : "")} />
-              <Line type="monotone" dataKey="count" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3, fill: "var(--primary)", strokeWidth: 2, stroke: "var(--card)" }} isAnimationActive={false} />
+              <Line type="monotone" dataKey="count" stroke="var(--primary-text)" strokeWidth={2} dot={{ r: 3, fill: "var(--primary-text)", strokeWidth: 2, stroke: "var(--card)" }} isAnimationActive={false} />
             </LineChart>
           ) : (
             <BarChart data={data} margin={{ top: 18, right: 0, bottom: 0, left: 0 }} barCategoryGap={n <= 7 ? "28%" : "18%"}>
               <XAxis dataKey="label" {...axis} interval={n <= 7 ? 0 : "preserveStartEnd"} />
               <ChartTip {...tip} formatter={(v) => [`${v} task${v === 1 ? "" : "s"}`, ""]} labelFormatter={(_, p) => (p?.[0]?.payload ? fmtDate(p[0].payload.day) : "")} />
               <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
-                {data.map((x) => <Cell key={x.day} fill="var(--primary)" fillOpacity={peak > 0 && x.count === peak ? 1 : 0.45} />)}
+                {data.map((x) => <Cell key={x.day} fill="var(--primary-text)" fillOpacity={peak > 0 && x.count === peak ? 1 : 0.45} />)}
                 <LabelList dataKey="count" position="top" content={(p) => (peak > 0 && p.value === peak && typeof p.x === "number" && typeof p.y === "number"
                   ? <text x={p.x + Number(p.width ?? 0) / 2} y={p.y - 6} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--foreground)">{String(p.value)}</text> : null)} />
               </Bar>
@@ -471,9 +478,9 @@ function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () =
             <div className={cn("mt-2", large ? "h-56" : "h-20")}>
               <ResponsiveContainer width="100%" height="100%">
                 {s.chart === "line" ? (
-                  <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}><XAxis dataKey="m" {...axis} /><ChartTip {...tip} formatter={(v) => [`${v} closed`, ""]} /><Line type="monotone" dataKey="n" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3, fill: "var(--primary)" }} isAnimationActive={false} /></LineChart>
+                  <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}><XAxis dataKey="m" {...axis} /><ChartTip {...tip} formatter={(v) => [`${v} closed`, ""]} /><Line type="monotone" dataKey="n" stroke="var(--primary-text)" strokeWidth={2} dot={{ r: 3, fill: "var(--primary-text)" }} isAnimationActive={false} /></LineChart>
                 ) : (
-                  <BarChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}><XAxis dataKey="m" {...axis} /><ChartTip {...tip} formatter={(v) => [`${v} closed`, ""]} /><Bar dataKey="n" fill="var(--primary)" radius={[4, 4, 0, 0]} isAnimationActive={false} /></BarChart>
+                  <BarChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}><XAxis dataKey="m" {...axis} /><ChartTip {...tip} formatter={(v) => [`${v} closed`, ""]} /><Bar dataKey="n" fill="var(--primary-text)" radius={[4, 4, 0, 0]} isAnimationActive={false} /></BarChart>
                 )}
               </ResponsiveContainer>
             </div>
@@ -759,8 +766,7 @@ export default function Dashboard({ user }: { user: User }) {
               <span onPointerDown={() => setGrip(key)} onPointerUp={() => setGrip(null)} aria-hidden title="Drag to move"
                 className="absolute left-1/2 top-0 z-10 hidden h-4 w-10 -translate-x-1/2 cursor-grab items-center justify-center rounded-b-md text-muted-foreground/70 opacity-0 transition-opacity hover:text-foreground group-hover/cell:opacity-100 md:flex">
                 <GripHorizontal className="h-4 w-4" /></span>
-              {item.id === "kpis" && <div className="absolute -top-2 right-0 z-10 rounded-full bg-card opacity-0 shadow-card transition-opacity focus-within:opacity-100 group-hover/cell:opacity-100">{menu}</div>}
-              <MenuSlot.Provider value={item.id === "kpis" ? null : menu}>
+              <MenuSlot.Provider value={menu}>
                 {renderWidget(item, d.data, d.today, { tile: setTile, expand: item.id === "kpis" ? undefined : () => setExpanded(key) })}
               </MenuSlot.Provider>
             </div>

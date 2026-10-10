@@ -981,7 +981,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.post("/settings/templates/add", data={"name": "SIEM"}, headers=h).get_json()["ok"], True)
         self.assertEqual([t["name"] for t in c.get("/api/settings").get_json()["templates"]][-1], "SIEM")
         r = c.post("/settings/integrations", data={"notify_email_enabled": "on"}, headers=h).get_json()
-        self.assertEqual(r["messages"], ["Integration settings saved"])
+        self.assertEqual(r["messages"], ["Saved"])
         self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "onedrive_mirror_uploads_enabled": False, "guest_links_enabled": False})
         m, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
         self.assertEqual(m.get("/api/settings").status_code, 403)
@@ -3832,7 +3832,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIn(b"Page not found", resp.data)
         # standalone: it must render when the app is what failed, and it follows the saved theme
         self.assertIn(b"<title>Page not found \xc2\xb7 Odin</title>", resp.data); self.assertIn(b"odin.theme", resp.data)
-        self.assertNotIn(b"style.css", resp.data); self.assertIn(b"Back to the flow", resp.data)
+        self.assertNotIn(b"style.css", resp.data); self.assertIn(b"Back to Odin", resp.data)
         anon = app_module.app.test_client()
         self.assertIn(b"Sign in", anon.get("/nope").data)
 

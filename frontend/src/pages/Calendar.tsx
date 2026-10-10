@@ -104,6 +104,8 @@ export function Calendar({ wide }: { wide: boolean }) {
   }
 
   const open = openDay ? byDay.get(openDay) ?? [] : null
+  // every rollout running that day, so the ones folded into "+N rollouts" can be reached
+  const running = openDay && show.spans ? d.spans.filter((s) => s.start_date <= openDay && (s.target_end_date ?? "9999") >= openDay) : []
   return (
     <div className="flex h-full min-h-0 flex-col">
       {header}
@@ -125,7 +127,7 @@ export function Calendar({ wide }: { wide: boolean }) {
                     <button type="button" onClick={() => setOpenDay(openDay === day ? null : day)} aria-label={`${fmtDate(day)}, ${list.length} item${list.length === 1 ? "" : "s"}`}
                       className={cn("mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] hover:bg-muted", day === today && "bg-primary font-semibold text-primary-foreground hover:bg-primary", openDay === day && day !== today && "ring-2 ring-primary/40")}>{Number(day.slice(8, 10))}</button>
                     <div style={{ height: laneCount * 18 }} aria-hidden />
-                    {extra > 0 && <span className="block px-2 text-[11px] text-muted-foreground">+{extra} rollout{extra === 1 ? "" : "s"}</span>}
+                    {extra > 0 && <button type="button" onClick={() => setOpenDay(day)} className="block px-2 text-[11px] text-muted-foreground hover:text-foreground">+{extra} rollout{extra === 1 ? "" : "s"}</button>}
                     {shown.map((it) => <Chip key={it.key} it={it} />)}
                     {list.length > 3 && <button type="button" onClick={() => setOpenDay(day)} className="px-2 text-[11px] text-muted-foreground hover:text-foreground">+{list.length - 3} more</button>}
                   </div>
@@ -149,12 +151,13 @@ export function Calendar({ wide }: { wide: boolean }) {
       {open && openDay && (
         <div className="border-t border-border px-4 py-3">
           <div className="mb-1 flex items-center justify-between gap-3">
-            <h3 className="text-[13px] font-semibold">{fmtDate(openDay)} <span className="font-normal text-muted-foreground">· {open.length} item{open.length === 1 ? "" : "s"}</span></h3>
+            <h3 className="text-[13px] font-semibold">{fmtDate(openDay)} <span className="font-normal text-muted-foreground">· {open.length} item{open.length === 1 ? "" : "s"}{running.length > 0 && `, ${running.length} rollout${running.length === 1 ? "" : "s"} running`}</span></h3>
             <button type="button" onClick={() => setOpenDay(null)} className="text-[12px] text-muted-foreground hover:text-foreground">Close</button>
           </div>
           <ul className="grid grid-cols-1 gap-x-6 md:grid-cols-2 xl:grid-cols-3">
+            {running.map((s) => <li key={`r${s.id}`}><Chip it={{ key: `r${s.id}`, kind: "target", day: openDay, text: s.name, sub: `${s.client} · ${s.stage}`, href: `/board?rollout=${s.id}`, tone: "muted" }} full /></li>)}
             {open.map((it) => <li key={it.key}><Chip it={it} full /></li>)}
-            {open.length === 0 && <li className="py-1 text-[13px] text-muted-foreground">Nothing on this day.</li>}
+            {open.length + running.length === 0 && <li className="py-1 text-[13px] text-muted-foreground">Nothing on this day.</li>}
           </ul>
         </div>
       )}

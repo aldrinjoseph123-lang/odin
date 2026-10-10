@@ -7,6 +7,7 @@ import { ApiError, postForm, projectForm, type ProjectFormData, type User } from
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { productsFor } from "@/lib/format"
+import { toastAfterLoad } from "@/lib/toast"
 
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
@@ -70,7 +71,7 @@ export default function ProjectForm(_props: { user: User }) {
       const r = await postForm(d.mode === "edit" ? `/projects/${d.id}/edit` : "/projects/new", fd)
       const failed = r.location && (r.location.endsWith("/projects/new") || r.location.endsWith("/edit"))
       // saved: stay busy until the next page (the new project's own page once the server names it)
-      if (r.location && !failed) { setSaved(true); window.setTimeout(() => window.location.assign(r.location!), 0); return }
+      if (r.location && !failed) { setSaved(true); toastAfterLoad(r.messages.join(" ") || "Saved"); window.setTimeout(() => window.location.assign(r.location!), 0); return }
       setNotice(r.messages.join(" ") || "Not saved")
     } catch (err) { setNotice(err instanceof ApiError ? err.message : "That did not save") }
     sending.current = false
@@ -92,14 +93,14 @@ export default function ProjectForm(_props: { user: User }) {
       {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
 
       <p className="mt-3 text-[12px] text-muted-foreground">Fields marked * are required.</p>   {/* test report UX-26 */}
-      <form onSubmit={submit} className="mt-2 grid grid-cols-1 max-w-3xl gap-4 lg:grid-cols-2">
+      <form onSubmit={submit} className="mt-2 grid max-w-5xl grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
           <h2 data-n className="text-[12px] font-semibold text-nav-fg">Project</h2>
           <Field label="Project name *"><Input value={f.name} onChange={set("name")} required maxLength={200} aria-label="Project name" className="h-8 text-[13px]" /></Field>
           <Field label="Client *"><Input value={f.client} onChange={set("client")} required maxLength={200} aria-label="Client" className="h-8 text-[13px]" /></Field>
           {editing ? (
             <Field label="Owner" hint="the project manager">
-              <select value={f.owner_id} onChange={set("owner_id")} aria-label="Owner" className={selectClass}>{d.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+              <select value={f.owner_id} onChange={set("owner_id")} aria-label="Owner" className={selectClass}>{d.leads.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
             </Field>
           ) : (<>
             {!d.can_lead && (
@@ -110,9 +111,13 @@ export default function ProjectForm(_props: { user: User }) {
               </Field>
             )}
             <Field label="Team" hint={d.can_lead ? "optional — added as coordinators; you are the project manager" : "optional — added as coordinators"}>
-              <select multiple size={4} value={team} onChange={(e) => setTeam([...e.target.selectedOptions].map((o) => o.value))} aria-label="Team members" className="rounded-md border border-input bg-background px-2 py-1 text-[13px]">
-                {d.users.filter((u) => u.id !== d.me).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
+              {/* ticks, not a native multi-select: no Ctrl-click to learn, nothing lost by a plain click */}
+              <div role="group" aria-label="Team members" className="grid max-h-40 grid-cols-2 gap-x-4 overflow-auto rounded-md border border-input bg-background px-3 py-2 text-[13px]">
+                {d.users.filter((u) => u.id !== d.me).map((u) => (
+                  <label key={u.id} className="flex min-w-0 items-center gap-2 py-1"><input type="checkbox" checked={team.includes(String(u.id))} className="h-3.5 w-3.5 accent-primary"
+                    onChange={(e) => setTeam(e.target.checked ? [...team, String(u.id)] : team.filter((x) => x !== String(u.id)))} /><span className="truncate">{u.name}</span></label>
+                ))}
+              </div>
             </Field>
           </>)}
           <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} className="h-3.5 w-3.5 accent-primary" /> Ask the customer contact to approve each stage change</label>
@@ -128,7 +133,7 @@ export default function ProjectForm(_props: { user: User }) {
                 <select name="stage_template_id" value={f.stage_template_id} onChange={set("stage_template_id")} aria-label="Stage template" className={selectClass}>{d.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
               </Field>
               <Field label="Client PO document *" hint="required — no project without the PO on file">
-                <input type="file" name="po_document" required aria-label="Client PO document" className="text-[13px] text-muted-foreground file:mr-2 file:h-7 file:cursor-pointer file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-muted" />
+                <input type="file" name="po_document" required aria-label="Client PO document" />
               </Field>
             </>
           )}

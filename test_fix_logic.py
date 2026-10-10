@@ -640,3 +640,17 @@ class SimulationLogicTestCase(FixBase):
         names = c.get("/api/audit").get_json()["usernames"]
         self.assertEqual(len([n for n in names if n.lower() == "admin"]), 1)
         self.assertGreater(c.get("/api/audit?user=Admin").get_json()["total"], c.get("/api/audit?action=login_success").get_json()["total"] - 1)
+
+    def test_cycle_time_opens_on_the_busiest_template_and_viewers_join_no_team(self):   # visual QA, pm sim
+        self.sql("INSERT INTO stage_templates (name) VALUES ('Second')")
+        second = self.sql("SELECT id FROM stage_templates WHERE name = 'Second'")[0][0]
+        for i, n in enumerate(("Start", "Done")):
+            self.sql("INSERT INTO stage_template_stages (template_id, name, position) VALUES (?, ?, ?)", second, n, i)
+        for n in ("A", "B"):
+            self.new_project(name=n, client="C", stage_template_id=str(second))
+        c, _ = self._api_client()
+        self.assertEqual(c.get("/api/analytics").get_json()["template_id"], second)
+        self.sql("INSERT INTO users (username, password_hash, name, role, active, kind) VALUES ('vee', 'x', 'Vee', 'Viewer', 1, 'internal')")
+        form = c.get("/api/project-form").get_json()
+        self.assertNotIn("Vee", [u["name"] for u in form["users"]])
+        self.assertNotIn("Vee", [u["name"] for u in form["leads"]])

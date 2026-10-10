@@ -313,6 +313,7 @@ export type SignoffVersion = {
 }
 export type SignoffDraft = { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; scope: ScopeItem[]; statement: string }
 export type SignoffData = {
+  not_yet?: string | null
   project: { id: number; name: string; client: string; stage: string; owner_id: number }
   state: SignoffState
   versions: { version: number; status: SignoffStatus; created_at: string; created_by: string }[]

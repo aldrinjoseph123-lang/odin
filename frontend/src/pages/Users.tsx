@@ -23,7 +23,9 @@ export default function Users(_props: { user: User }) {
   useEffect(() => { void load(); document.title = "Users · Odin" }, [load])
 
   // true when the save went through: forms clear what was typed only then
-  async function send(path: string, fields: Record<string, string>, confirmText?: string): Promise<boolean> {
+  // onError: a refusal shown by the form it came from (the dialog, Add a team
+  // member) instead of in the page banner behind them (sim roles-7)
+  async function send(path: string, fields: Record<string, string>, confirmText?: string, onError?: (m: string) => void): Promise<boolean> {
     if (confirmText && !window.confirm(confirmText)) return false
     setBusy(true)
     try {
@@ -31,7 +33,11 @@ export default function Users(_props: { user: User }) {
       setNotice(r.messages.join(" ") || null)
       await load()
       return true
-    } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save"); return false } finally { setBusy(false) }
+    } catch (e) {
+      const m = e instanceof ApiError ? e.message : "That did not save"
+      if (onError) onError(m); else setNotice(m)
+      return false
+    } finally { setBusy(false) }
   }
 
   if (error) return <LoadError message={error} />
@@ -136,7 +142,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           {/* External is a kind of account, not a role to hand out: an invited
               partner stays External (plain text), staff never become it */}
           {u.kind === "external" ? <span className="text-muted-foreground">External</span> : (
-            <select value={u.role} disabled={self || busy} onChange={(e) => send(`/users/${u.id}/role`, { role: e.target.value })} aria-label={`Role for ${u.name}`} className={cn(selectClass, "w-full")}>
+            <select value={u.role} disabled={self || busy} onChange={(e) => send(`/users/${u.id}/role`, { role: e.target.value }, `Make ${u.name} ${e.target.value === "Admin" ? "an Admin" : `a ${e.target.value}`}? It applies at their next click.`)} aria-label={`Role for ${u.name}`} className={cn(selectClass, "w-full")}>
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           )}
@@ -153,9 +159,11 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
 
 // Everything about one account that is changed rarely: one dialog, sections
 // separated by hairlines; destructive actions last.
-function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: AdminUser; self: boolean; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean>; open: boolean; onClose: () => void }) {
+function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: AdminUser; self: boolean; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean>; open: boolean; onClose: () => void }) {
   const [email, setEmail] = useState(u.email ?? "")
   const [pw, setPw] = useState("")
+  const [problem, setProblem] = useState<string | null>(null)
+  const act = (path: string, fields: Record<string, string>, confirmText?: string) => { setProblem(null); return send(path, fields, confirmText, setProblem) }
   const canReset = u.kind !== "external" && (!microsoftOnly || u.password_login)
   const section = "grid grid-cols-1 gap-2 border-t border-border pt-4"
   return (
@@ -165,7 +173,8 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
           <DialogTitle>{u.name}</DialogTitle>
           <DialogDescription>{u.kind === "external" ? "Partner or customer account" : `${u.username} · ${u.role}`} · added {fmtWhen(u.created_at)}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="grid grid-cols-1 gap-2">
+        {problem && <p className="field-error" role="alert">{problem}</p>}
+        <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void act(`/users/${u.id}/email`, { email }) }} className="grid grid-cols-1 gap-2">
           <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Email
             <span className="flex gap-2">
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" maxLength={254} aria-label={`Email for ${u.name}`} className="h-8 flex-1 text-[13px]" />
@@ -179,7 +188,7 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
             <p className="text-[13px] text-muted-foreground">{signInText(u, microsoftOnly).replace(/^./, (c) => c.toUpperCase())}.</p>
             {microsoftOnly && (
               <label className="flex items-center gap-2 text-[13px]">
-                <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => send(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-4 w-4 accent-primary" />
+                <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => act(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-4 w-4 accent-primary" />
                 Keep a password too (the emergency way in while Microsoft is required)
               </label>
             )}
@@ -187,13 +196,13 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
               <div className="flex flex-wrap items-center gap-2 text-[13px]">
                 <span className="text-muted-foreground">Two-step sign-in is on.</span>
                 <Button size="sm" variant="ghost" disabled={busy} aria-label={`Reset two-step sign-in for ${u.name}`}
-                  onClick={() => send(`/users/${u.id}/two-step-reset`, {}, `Reset two-step sign-in for ${u.name}? Use this when they lost their phone and recovery codes. Their sessions end.`)}>Reset two-step</Button>
+                  onClick={() => act(`/users/${u.id}/two-step-reset`, {}, `Reset two-step sign-in for ${u.name}? Use this when they lost their phone and recovery codes. Their sessions end.`)}>Reset two-step</Button>
               </div>
             )}
           </div>
         )}
         {canReset && (
-          <form className={section} onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then((ok) => { if (ok) setPw("") }) }}>
+          <form className={section} onSubmit={(e) => { e.preventDefault(); void act(`/users/${u.id}/reset-password`, { new_password: pw }).then((ok) => { if (ok) setPw("") }) }}>
             <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Set a new password
               <span className="flex gap-2">
                 <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 12 characters" aria-label={`New password for ${u.name}`} minLength={12} required autoComplete="new-password" className="h-8 flex-1 text-[13px]" />
@@ -207,7 +216,7 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
           <div className={cn(section, "flex flex-wrap items-center justify-between gap-2")}>
             <span className="text-[13px] text-muted-foreground">{u.active ? "Deactivating ends their sessions now." : "This account can't sign in."}</span>
             <Button size="sm" variant={u.active ? "destructive" : "outline"} disabled={busy}
-              onClick={() => void send(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined).then((ok) => { if (ok) onClose() })}>{u.active ? "Deactivate" : "Reactivate"}</Button>
+              onClick={() => void act(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined).then((ok) => { if (ok) onClose() })}>{u.active ? "Deactivate" : "Reactivate"}</Button>
           </div>
         )}
       </DialogContent>
@@ -215,12 +224,14 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
   )
 }
 
-function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>) => Promise<boolean> }) {
+function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean> }) {
   const [f, setF] = useState({ name: "", username: "", email: "", password: "", role: "Member" })
+  const [problem, setProblem] = useState<string | null>(null)
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
   function submit(e: FormEvent) {
     e.preventDefault()
-    void send("/users", f).then((ok) => { if (ok) setF({ name: "", username: "", email: "", password: "", role: "Member" }) })
+    setProblem(null)
+    void send("/users", f, undefined, setProblem).then((ok) => { if (ok) setF({ name: "", username: "", email: "", password: "", role: "Member" }) })
   }
   return (
     <form onSubmit={submit} className="grid grid-cols-1 content-start gap-2 panel p-4">
@@ -234,6 +245,7 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
           {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </label>
+      {problem && <p className="field-error" role="alert">{problem}</p>}
       <Button type="submit" size="sm" className="mt-1" loading={busy}>Create user</Button>
       <p className="text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
     </form>

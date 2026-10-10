@@ -631,12 +631,12 @@ def api_alerts():
 @app.route("/api/analytics")
 @permission_required("view_reports")
 def api_analytics():
-    from services.analytics import build_cycle_times, clock
+    from services.analytics import build_cycle_times, busiest_template, clock
     if session.get("kind") == "external":   # internal cycle times: staff only
         abort(403)
     db = get_db()
     templates = db.execute("SELECT id, name FROM stage_templates ORDER BY id").fetchall()
-    template_id = request.args.get("template", type=as_id) or (templates[0]["id"] if templates else None)
+    template_id = request.args.get("template", type=as_id) or (templates and busiest_template(db, project_scope())["id"]) or None
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
         f"WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{project_scope()[0]}", (template_id, *project_scope()[1])
@@ -707,10 +707,12 @@ def api_project_form():
         "defaults": {"stage_template_id": int(policy("default_template")) if policy("default_template")
                       else (db.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone() or [None])[0],
                      "customer_approval": policy("default_customer_approval")},
-        "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")],
+        # the team joins as coordinators: a Viewer only reads, so is not offered
+        "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' AND role != 'Viewer' ORDER BY name")],
         # a project manager must be able to move stages; someone who cannot picks one
         "leads": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name, role FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")
-                  if role_has_permission(u["role"], "edit_project_stage")],
+                  # editing keeps the current owner listed, so the form never swaps them silently
+                  if role_has_permission(u["role"], "edit_project_stage") or (mode == "edit" and u["id"] == project.get("owner_id"))],
         "can_lead": role_has_permission(session.get("role"), "edit_project_stage"),
     })
 

@@ -314,7 +314,7 @@ def project_new():
     set_project_manager(db, project_id, lead_id, session["user_id"])
     team = request.form.getlist("team_user_ids") + ([str(session["user_id"])] if lead_id != session["user_id"] else [])
     for raw in team:
-        if raw.isdigit() and int(raw) != lead_id and db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone():
+        if raw.isdigit() and int(raw) != lead_id and db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1 AND kind = 'internal' AND role != 'Viewer'", (raw,)).fetchone():
             db.execute(
                 "INSERT OR IGNORE INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, 'Coordinator', ?, ?)",
                 (project_id, int(raw), session["user_id"], now),

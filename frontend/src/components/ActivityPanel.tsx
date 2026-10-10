@@ -17,7 +17,7 @@ export function ActivityPanel({ a, note }: { a: Activity; note?: string }) {
         {tiles.map((t) => (
           <div key={t.label} className="rounded-xl bg-muted/50 p-3">
             <div className="text-[12px] text-muted-foreground">{t.label}</div>
-            <div className="mt-1 text-[24px] font-semibold leading-none tracking-tight tabular-nums">{minutesText(t.value)}</div>
+            <div className="mt-1 whitespace-nowrap text-[17px] font-semibold sm:text-[24px] leading-none tracking-tight tabular-nums">{minutesText(t.value)}</div>
           </div>
         ))}
       </div>

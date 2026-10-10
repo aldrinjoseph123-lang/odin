@@ -278,6 +278,7 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   await expect(page.locator("main")).not.toContainText(/baseline/i)
   await page.getByRole("button", { name: "Internal" }).click()
   await page.getByRole("textbox", { name: "What we need from the customer" }).fill("E2E: confirm the change window.")
+  page.once("dialog", (d) => { expect(d.message()).toMatch(/Partners and customers/); void d.accept() })
   await page.getByRole("button", { name: "Save as version" }).click()
   await expect(page.getByRole("status")).toHaveText(/Version \d+ saved/)
   for (const audience of ["internal", "customer"]) {

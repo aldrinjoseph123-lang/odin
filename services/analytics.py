@@ -157,6 +157,17 @@ def clock(db=None):
     return workdays.calendar(db), ZoneInfo(policy("timezone", db))
 
 
+def busiest_template(db, scope):
+    """The stage template most of the visible rollouts use (ties: the
+    workspace default, then the oldest), so Cycle time opens on real data."""
+    from policies import policy
+    scope_sql, scope_params = scope
+    return db.execute(
+        "SELECT t.id, t.name FROM stage_templates t LEFT JOIN projects p ON p.stage_template_id = t.id AND p.deleted_at IS NULL"
+        f"{scope_sql} GROUP BY t.id ORDER BY COUNT(p.id) DESC, t.id = ? DESC, t.id LIMIT 1",
+        (*scope_params, policy("default_template") or 0)).fetchone()
+
+
 def working_days(start, end, clock=None):
     """Fractional days from `start` to `end` (naive UTC datetimes) that fall on
     working days in the workspace's time zone, part days included: the one
