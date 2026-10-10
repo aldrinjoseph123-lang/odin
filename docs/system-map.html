@@ -482,7 +482,7 @@ details.change .also { margin: 6px 0 0 14px; display: flex; gap: 6px; flex-wrap:
 <!-- REPO-DATA:END -->
 <script>
 // ---------- what this map describes: bump on every update ----------
-const MAP_STAMP = { date: "9 Oct 2026" };   // the date the hand-written views were last reviewed
+const MAP_STAMP = { date: "10 Oct 2026" };   // the date the hand-written views were last reviewed
 
 // ---------- data: loopholes. A fixed one keeps its number: add fixed: "v1.x.y" ----------
 const LOOPS = [
@@ -708,6 +708,16 @@ const LOOPS = [
     impact: "History contradicted the approval record; internal remarks were shared unawares.",
     fix: "Immutable decision notes; say who sees the move note.",
     ref: "routes/projects.py note edit/delete; frontend/src/pages/Flow.tsx", on: [] },
+  { id: 45, fixed: "v1.6.0", done: "Partners get no PO in the project list, CSV export, search or a saved report (the project's Customer contact still does), no outsourcer on the rollout, and no count of documents hidden from them; the customer's colour on the plan and the all-projects report comes from what they may see.", sev: "high", area: "Data exposure", title: "Partners saw the PO number and the outsourcer through side doors",
+    what: "The project page hid the PO from contractors, but the project list, its CSV export, search and the saved report's customer copy carried it; the rollout detail named the outsourcer; the document count included hidden kinds; a hidden blocker turned the customer's plan and portfolio row red.",
+    impact: "A contractor could read or confirm the client's PO; customers saw an alarm with no reason behind it.",
+    fix: "One rule (core.sees_po) applied wherever the PO appears; the customer health recomputed from customer-visible items everywhere.",
+    ref: "core.sees_po; routes/api.py; routes/projects.py export; services/portfolio.py", on: ["app"] },
+  { id: 46, fixed: "v1.6.0", done: "A fetch from the React app after the session ended gets a 401 it acts on (sign in again), never the sign-in page read as a success.", sev: "high", area: "Reliability", title: "A save after the session ended was lost but reported as saved",
+    what: "The auth gate redirected every request to the sign-in page; fetch followed it, got a 200 HTML page, and the client counted the save as done.",
+    impact: "Work typed into a dialog vanished while the app showed a green 'saved' message.",
+    fix: "JSON 401 (marked X-Odin-Signed-Out) for fetches; the client treats an HTML 200 as signed out.",
+    ref: "core._turned_away; frontend/src/lib/api.ts", on: ["app"] },
 ];
 const SEV_ORDER = { high: 0, medium: 1, low: 2, decision: 3 };
 const byId = Object.fromEntries(LOOPS.map((l) => [l.id, l]));
