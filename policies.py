@@ -40,7 +40,7 @@ POLICIES = {
                      help="One per line: \"2026-12-02 National Day\", or a span \"2027-03-20 to 2027-03-22 Eid al-Fitr\" (dates as announced). Not counted as working days; no digest or reminders on them."),
     "default_theme": dict(area="general", kind="choice", default="system", choices=THEME_CHOICES,
                           label="Theme for new people", help="Each person can change their own on the Account page."),
-    "default_accent": dict(area="general", kind="choice", default="red", choices=ACCENT_CHOICES,
+    "default_accent": dict(area="general", kind="choice", default="blue", choices=ACCENT_CHOICES,
                            label="Accent for new people", help="Each person can change their own on the Account page."),
     # ---- Sign-in & security
     "session_idle_minutes": dict(area="security", kind="int", default=60, min=5, max=1440,

@@ -252,7 +252,7 @@ export default function Report({ user }: { user: User }) {
                     <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
                     <ChartTip {...tip} labelFormatter={(x) => `week of ${fmtDate(String(x))}`} />
                     <Area type="stepAfter" dataKey="total" name="Tasks known" stroke="var(--input)" fill="var(--muted)" isAnimationActive={false} />
-                    <Area type="stepAfter" dataKey="done" name="Done" stroke="var(--primary-text)" fill="var(--primary-text)" fillOpacity={0.25} isAnimationActive={false} />
+                    <Area type="stepAfter" dataKey="done" name="Done" stroke="var(--nav-fg)" fill="var(--nav-fg)" fillOpacity={0.25} isAnimationActive={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

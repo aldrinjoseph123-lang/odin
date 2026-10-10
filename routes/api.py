@@ -49,7 +49,7 @@ def _current_user():
     return {
         "id": session["user_id"],
         "name": session.get("user_name"),
-        "theme": me["theme"] if me else "system", "accent": me["accent"] if me else "red",
+        "theme": me["theme"] if me else "system", "accent": me["accent"] if me else "blue",
         "avatar_url": avatar_url(me) if me else None,
         "role": session.get("role"),
         "kind": session.get("kind", "internal"),

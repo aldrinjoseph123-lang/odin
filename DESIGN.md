@@ -1,15 +1,15 @@
 ---
 name: Odin
-description: Rollout lifecycle tracker read as a flow — accent-tinted ground, white cards with a quiet shadow, one pastel accent per user (rose red by default), colour only as state.
+description: Rollout lifecycle tracker read as a flow — accent-tinted ground, white cards with a quiet shadow, one pastel accent per user (blue by default), colour only as state.
 colors:
-  ground: "color-mix(in srgb, #FFD3DA 7%, #F6F6F9)"   # the accent at 7% over near-white; each accent re-tints it
+  ground: "color-mix(in srgb, #CCDAFF 7%, #F6F6F9)"   # the accent at 7% over near-white; each accent re-tints it
   card: "#FFFFFF"
   ink: "#101114"
-  accent-fill: "#FFD3DA"        # default accent (red); each of the nine accents swaps these five
-  on-accent: "#8E1230"
-  accent-text: "#B4143C"
-  accent-wash: "#FFF0F2"
-  accent-ring: "#F2667F"
+  accent-fill: "#CCDAFF"        # default accent (blue, 10 Oct 2026); each of the nine accents swaps these
+  on-accent: "#1C3A8C"
+  accent-text: "#2F47D6"
+  accent-wash: "#EEF2FF"
+  accent-ring: "#7090FF"
   paper: "#F7F7F8"
   muted-fill: "#F3F4F6"
   muted-text: "#5B6270"
@@ -120,7 +120,7 @@ components:
     padding: "0 12px"
     height: "32px"
   button-primary-hover:
-    backgroundColor: "rgb(255 211 218 / 0.8)"
+    backgroundColor: "rgb(204 218 255 / 0.8)"
     textColor: "{colors.on-accent}"
   button-primary-sm:
     backgroundColor: "{colors.accent-fill}"
@@ -277,13 +277,13 @@ Built in `frontend/src/components/Brand.tsx`; tokens `--brand-red`, `--brand-red
 
 ## Colors
 
-A white-and-ink neutral system with one pastel accent per user (rose red by default) and three state triplets; colour is reserved for meaning.
+A white-and-ink neutral system with one pastel accent per user (blue by default) and three state triplets; colour is reserved for meaning.
 
 ### Primary
-- **Rose Accent Fill** (`--primary`, `#FFD3DA`, with `--primary-foreground` `#8E1230`): the default of nine pastel accents (9 Oct 2026). Fills the primary button ("New project", "Advance to …") and the current nav pill, always with the deep foreground as its text, never white. The other accents swap the same five tokens (see Themes and accents).
-- **Rose Accent Text** (`--primary-text`, `#B4143C`): the accent whenever it is *text* or a thin mark on white (links, the selected settings item's bar, chart marks). The pastel fill itself does not clear AA as text or as a line on white; this step does.
-- **Accent Wash** (`--accent`, `#FFF0F2`, with `--accent-foreground` `#B4143C`): the selected rollout row's fill and the nav avatar's fill. Selection is always wash + accent border, never a solid block.
-- **Accent Ring** (`--ring`, `#F2667F`): the focus ring, at 50%.
+- **Blue Accent Fill** (`--primary`, `#CCDAFF`, with `--primary-foreground` `#1C3A8C`): the default of nine pastel accents (blue again since 10 Oct 2026; red was the default 9–10 Oct). Fills the primary button ("New project", "Advance to …") and the current nav pill, always with the deep foreground as its text, never white. The other accents swap the same five tokens (see Themes and accents).
+- **Blue Accent Text** (`--primary-text`, `#2F47D6`): the accent whenever it is *text* or a thin mark on white (links, the selected settings item's bar, chart marks). The pastel fill itself does not clear AA as text or as a line on white; this step does.
+- **Accent Wash** (`--accent`, `#EEF2FF`, with `--accent-foreground` `#2F47D6`): the selected rollout row's fill and the nav avatar's fill. Selection is always wash + accent border, never a solid block.
+- **Accent Ring** (`--ring`, `#7090FF`): the focus ring, at 50%.
 
 ### Neutral
 - **Ground** (`--background`, the accent at 7% over `#F6F6F9`): the page behind the cards; each accent re-tints it.
@@ -308,16 +308,16 @@ Each rollout state owns three tokens: a **text** shade (AA on white and on its o
 | `over_sla` | `--warn` | `--warn-soft` | `--warn-line` | same amber triplet as `due_soon`; the chip text ("12 d · 3 over SLA") and the amber bar on the time strip distinguish it |
 | `overdue` | `--bad` `#B4231C` | `--bad-soft` `#FDECEB` | `--bad-line` `#E0463D` | red chip "Overdue 237 d", red row dot, red ring on current node/dot, red count badge in the nav, "83 d late" in ETA |
 
-**Figures (dashboard; on the six sizes since 9 Oct 2026).** Numbers that are the point of a card are Inter semibold, tight tracking, `leading-none`: **24 px** for a tile's headline and the hero figures (the six counts, tasks completed, the progress gauge, Time on Odin; 17 px on a phone), **17 px** inside a donut and on small tonal tiles, **14 px** for a legend's counts. Chart marks use `--primary-text` at stepped opacity, never the pastel fill, so they read on white. Labels beside them stay on the text ramp (11–12 px muted); nothing on the page goes below 11 px, avatars on the timeline included (22 px, 11 px initials).
+**Figures (dashboard; on the six sizes since 9 Oct 2026).** Numbers that are the point of a card are Inter semibold, tight tracking, `leading-none`: **24 px** for a tile's headline and the hero figures (the six counts, tasks completed, the progress gauge, Time on Odin; 17 px on a phone), **17 px** inside a donut and on small tonal tiles, **14 px** for a legend's counts. Chart marks are Chrome Text (`--nav-fg`) at stepped opacity, never the accent: a chart is grey until it counts trouble, when a tile's trend takes its state's `-line` colour (10 Oct 2026, the critique). Labels beside them stay on the text ramp (11–12 px muted); nothing on the page goes below 11 px, avatars on the timeline included (22 px, 11 px initials).
 
 ### Named Rules
-**The One Accent Rule.** The accent appears only as selection (row border + wash, the current nav pill), the primary action, the focus ring and chart marks. It never labels a state, never decorates, never appears as a heading colour, and never marks today (today is ink, so a red accent never reads as overdue).
+**The One Accent Rule.** The accent appears only as selection (row border + wash, the current nav pill), the primary action and the focus ring; charts are grey. It never labels a state, never decorates, never appears as a heading colour, and never marks today (today is ink, so a red accent never reads as overdue).
 
 **The Colour-Is-State Rule.** Green, amber and red mean done / warning / overdue and nothing else. `on_track` has *no* colour: an on-track row shows a plain grey duration and a transparent dot, so a coloured row is always a row needing attention.
 
 **The Triplet Rule.** State text uses the base token, state fills use `-soft`, state strokes and dots use `-line`. Never put the text shade in a fill or the line shade under text.
 
-**The Accent-as-Text Rule.** When the accent is text or a thin mark on white, use `--primary-text` (`#B4143C` for red), not `--primary`; the pastel fill carries only `--primary-foreground`.
+**The Accent-as-Text Rule.** When the accent is text or a thin mark on white, use `--primary-text` (`#2F47D6` for blue), not `--primary`; the pastel fill carries only `--primary-foreground`.
 
 ## Typography
 
@@ -442,7 +442,7 @@ A two-button group (`List` / `LayoutGrid` icons, `aria-pressed`) in the header s
 
 ### Themes and accents (added 27 Sep 2026 at the user's request)
 - **Three themes, per user:** light (the world above), dark, and follow the OS. Dark keeps the world's grammar and inverts the ground: background `#0F1115`, surfaces `#15181E`, hairlines `#262B34`, ink `#E7E8EC`, muted text `#9AA0AB`. State colours keep their meaning with lighter text shades (`ok #4FD08A`, `warn #F2B84B`, `bad #F58C86`) on deep soft fills so chips stay at AA.
-- **Nine pastel accents (9 Oct 2026, supersedes the 27 Sep set):** red (default, fill `#FFD3DA` / text on fill `#8E1230` / accent text `#B4143C`), blue, indigo, violet, teal, green, sky, plum, ink. Each sets `--primary` (pastel fill), `--primary-foreground` (deep text on the fill, never white), `--primary-text`, `--accent`, `--accent-foreground` and `--ring`; in dark the text shade lifts (e.g. red `#FDA4B4`) and the wash deepens. **The Rose-Not-Alarm Rule** (replaces the No-Alarm-Accent Rule): the user chose red back on 9 Oct 2026; it stays a rose-leaning pastel fill, while overdue keeps the solid `--bad` triplet and always carries its word ("Overdue 9 d"), and today is drawn in ink.
+- **Nine pastel accents (9 Oct 2026, supersedes the 27 Sep set):** blue (the default again from 10 Oct 2026: fill `#CCDAFF` / text on fill `#1C3A8C` / accent text `#2F47D6`), red, indigo, violet, teal, green, sky, plum, ink. Each sets `--primary` (pastel fill), `--primary-foreground` (deep text on the fill, never white), `--primary-text`, `--accent`, `--accent-foreground` and `--ring`; in dark the text shade lifts (e.g. red `#FDA4B4`) and the wash deepens. **The State-Safe Accent Rule** (10 Oct 2026, replaces the Rose-Not-Alarm Rule): an accent whose text or wash could pass for a state keeps its hue only in the pastel fill. Red (overdue) and green (done) are offered, but their accent text, wash and ring fall back to ink and neutral (`index.css`, the state-safe block), so a selected row or a link never reads as late or finished. Blue is the default because the 10 Oct critique found the red accent's text (`#B4143C`) matched overdue (`#B4231C`). Today is drawn in ink.
 - **Where it is chosen:** Account → Appearance (theme chips, accent swatches with a hairline ring so ink shows on dark); the header's sun / moon / monitor button cycles the theme in one click. Applied before first paint, so there is no flash.
 - **Avatars:** a picture replaces the initials wherever a person appears (header, rollout team stack, task assignee, team rail and panel, users table); initials remain the fallback. Account → Picture uploads PNG / JPG / GIF / WebP up to 2 MB.
 
@@ -459,6 +459,8 @@ A two-button group (`List` / `LayoutGrid` icons, `aria-pressed`) in the header s
 - **Loading:** pages show a skeleton (a title bar and fading rows in Muted Fill, pulsing unless reduce-motion is on) instead of "Loading…".
 
 ### Dashboard (29 Sep 2026, rebuilt to the TaskFlux reference the same day)
+**Needs attention (10 Oct 2026, the critique).** The default layout opens with a "Needs attention" widget top-left beside the Timeline: one row per rollout in trouble, worst first (overdue, over SLA, due soon, waiting on the customer, idle), each with its reasons as small state pills in words ("40 d late", "6 d over SLA in Deployment"); empty, it says nothing is stuck. Headline numbers follow, labelled as rollout counts. Rollouts per stage defaults to the stage flow (dots on a connector, count, "n late · n slipping"), not a donut. Timeline rows carry name over client · stage, a state word on every row in trouble, and the team in its own column.
+
 `/dashboard`, the home page: widgets on a three-column grid (`md` two, base one), each a `panel` with a 14 px semibold title, a muted subtitle and, at the right, one pill link (`buttonVariants outline sm` made `rounded-full`, 28 px) to the page that holds the full thing. The grid draws the **layout** the server sends — an ordered list of `{id, w, settings}`, `w` in thirds, packed into rows without holes by `pack()` in `lib/dashboard.ts` (a row pulls up the next widget that fits; its last widget stretches) — from the widget catalogue in `services/dashboard.py`: headline numbers (six tiles: icon + label, a 26 px value in the state's text shade only while in that state, a delta pill — `ok-soft` when a worse-when-up count fell, `bad-soft` when it rose, muted otherwise — "since 22 Sep", and a 36 px accent area sparkline of the last 14 snapshots), timeline (every active rollout as a 10 px `bg-muted` track from start to target, the done share filled in the accent, or the state's line colour when stuck, the team's 20 px avatars just past the bar's end, a 1.5 px accent "today" line, month ticks thinned to the track's width), portfolio progress (a 210°→−30° accent radial on a muted track, the percentage as a 34 px hero, three tonal tiles for done / in progress / pending), schedule (a date tile — day number over weekday, or "n d late" in `bad-soft` — title, project · person, an "Open" pill; then approvals waiting on the customer), tasks completed (hero total with a `+69%` pill against the window before, an accent bar chart with the peak bar solid and labelled, the rest at 45%), team (32 px avatar, name, "n rollouts · k open · j late", the account role as a muted chip), rollouts per stage (an accent donut whose slices darken with stage order — an ordered, not categorical, scale — the total in the middle, a clickable legend beside), recent activity (a muted icon disc per kind, "who verb project", the text, relative time), open alerts (severity dot, title, project, age), my work (two-column task list with due dates), cycle time (three tonal tiles and a six-month bar chart). Chart chrome: Recharts, no gridlines, axis ticks 11 px muted, tooltips styled as popovers (`--popover`, `shadow-pop`, 12 px radius), fills always `var(--primary)` so every accent and both themes follow; animations off. Rows of the grid stretch to their tallest widget, so every list is capped with a "n more" link. A **tile** is a button: it opens a pop-up (`Dialog`, `sm:max-w-lg`) listing the rollouts behind the number, each a link with its state text at the right. Every other widget carries a 28 px **expand** button (`Maximize2`) in its header opening a `sm:max-w-4xl` pop-up: the widget at full size (lists uncapped, charts taller), then its data as a plain table (11.5 px muted heads, tabular numbers). Chart type is a setting where it makes sense (donut / bars, bars / line, area / bars / none, radial / bar, list / bars). A **custom metric** widget (dashed pill in the picker, repeatable) shows any aggregate as a hero number, thin bars, a donut or a list, under a title of the user's own. The page is **live**: a green dot and "updated n s ago" in the title row; the version endpoint is polled every 15 s and on focus, never while the tab is hidden.
 
 ### Cards / Containers
@@ -528,7 +530,7 @@ Reach for these before hand-building: **Calendar** behind `DatePicker` for every
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep the accent to selection, the single primary action, focus and chart marks; today is ink (The One Accent Rule).
+- **Do** keep the accent to selection, the single primary action and focus; charts are grey and today is ink (The One Accent Rule).
 - **Do** map rollout state to its triplet exactly: `overdue` → `bad`, `due_soon` and `over_sla` → `warn`, done stages → `ok`; `on_track` gets no colour.
 - **Do** pair every state colour with a second channel — the chip text, a visually-hidden label, the check glyph, dashed vs solid borders.
 - **Do** use `--primary-text` for accent-coloured text on white.

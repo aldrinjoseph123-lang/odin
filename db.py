@@ -254,6 +254,13 @@ def migrate_db(db):
         db.execute("UPDATE users SET accent = 'red' WHERE accent = 'blue' OR accent IS NULL")
         db.execute("UPDATE settings SET value = 'red' WHERE key = 'policy.default_accent' AND value = 'blue'")
         db.execute("INSERT INTO settings (key, value) VALUES ('migrated.accent_red', '1')")
+    # 10 Oct 2026: blue is the default again (the user's call, after the critique found the
+    # red accent's text matched the overdue red). Once: everyone on red, and the workspace
+    # default, move to blue; red stays on the Account page for anyone who picks it again.
+    if not db.execute("SELECT 1 FROM settings WHERE key = 'migrated.accent_blue'").fetchone():
+        db.execute("UPDATE users SET accent = 'blue' WHERE accent = 'red' OR accent IS NULL")
+        db.execute("UPDATE settings SET value = 'blue' WHERE key = 'policy.default_accent' AND value = 'red'")
+        db.execute("INSERT INTO settings (key, value) VALUES ('migrated.accent_blue', '1')")
     if role_column_is_new:
         # pre-RBAC installs: promote the original (lowest-id) user to Admin once
         db.execute("UPDATE users SET role = 'Admin' WHERE id = (SELECT MIN(id) FROM users)")

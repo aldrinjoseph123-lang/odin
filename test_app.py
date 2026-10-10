@@ -1522,7 +1522,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         me = c.get("/api/session").get_json()["user"]
-        self.assertEqual((me["theme"], me["accent"], me["avatar_url"]), ("system", "red", None))
+        self.assertEqual((me["theme"], me["accent"], me["avatar_url"]), ("system", "blue", None))
         self.assertEqual(c.post("/account/appearance", data={"theme": "dark", "accent": "violet"}, headers=h).get_json()["messages"], ["Appearance saved"])
         self.assertEqual(c.post("/account/appearance", data={"theme": "neon", "accent": "violet"}, headers=h).get_json()["messages"], ["Pick a theme and an accent from the list"])
         me = c.get("/api/session").get_json()["user"]

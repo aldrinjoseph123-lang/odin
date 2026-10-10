@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-10T08:03:13Z",
+  "generatedAt": "2026-10-10T08:25:07Z",
   "title": "Design System: Odin",
   "extensions": {
     "colorMeta": {
@@ -53,32 +53,32 @@
       },
       "accent-wash": {
         "role": "primary",
-        "displayName": "Rose Wash",
-        "canonical": "#FFF0F2",
+        "displayName": "Blue Wash",
+        "canonical": "#EEF2FF",
         "tonalRamp": [
-          "oklch(15% 0.05 5)",
-          "oklch(25% 0.05 5)",
-          "oklch(38% 0.05 5)",
-          "oklch(50% 0.05 5)",
-          "oklch(62% 0.05 5)",
-          "oklch(75% 0.05 5)",
-          "oklch(87% 0.05 5)",
-          "oklch(95% 0.05 5)"
+          "oklch(15% 0.03 270)",
+          "oklch(25% 0.03 270)",
+          "oklch(38% 0.03 270)",
+          "oklch(50% 0.03 270)",
+          "oklch(62% 0.03 270)",
+          "oklch(75% 0.03 270)",
+          "oklch(87% 0.03 270)",
+          "oklch(95% 0.03 270)"
         ]
       },
       "on-accent": {
         "role": "primary",
-        "displayName": "Deep Rose (text on the fill)",
-        "canonical": "#8E1230",
+        "displayName": "Deep Blue (text on the fill)",
+        "canonical": "#1C3A8C",
         "tonalRamp": [
-          "oklch(15% 0.17 10)",
-          "oklch(25% 0.17 10)",
-          "oklch(38% 0.17 10)",
-          "oklch(50% 0.17 10)",
-          "oklch(62% 0.17 10)",
-          "oklch(75% 0.17 10)",
-          "oklch(87% 0.17 10)",
-          "oklch(95% 0.17 10)"
+          "oklch(15% 0.14 266)",
+          "oklch(25% 0.14 266)",
+          "oklch(38% 0.14 266)",
+          "oklch(50% 0.14 266)",
+          "oklch(62% 0.14 266)",
+          "oklch(75% 0.14 266)",
+          "oklch(87% 0.14 266)",
+          "oklch(95% 0.14 266)"
         ]
       },
       "paper": {
@@ -389,48 +389,48 @@
       },
       "accent-fill": {
         "role": "primary",
-        "displayName": "Rose Accent Fill",
-        "canonical": "#FFD3DA",
+        "displayName": "Blue Accent Fill",
+        "canonical": "#CCDAFF",
         "tonalRamp": [
-          "oklch(15% 0.12 5)",
-          "oklch(25% 0.12 5)",
-          "oklch(38% 0.12 5)",
-          "oklch(50% 0.12 5)",
-          "oklch(62% 0.12 5)",
-          "oklch(75% 0.12 5)",
-          "oklch(87% 0.12 5)",
-          "oklch(95% 0.12 5)"
+          "oklch(15% 0.06 268)",
+          "oklch(25% 0.06 268)",
+          "oklch(38% 0.06 268)",
+          "oklch(50% 0.06 268)",
+          "oklch(62% 0.06 268)",
+          "oklch(75% 0.06 268)",
+          "oklch(87% 0.06 268)",
+          "oklch(95% 0.06 268)"
         ],
         "note": "Default of nine pastel accents (9 Oct 2026): red, blue, indigo, violet, teal, green, sky, plum, ink. Each sets --primary (fill), --primary-foreground (deep text on fill), --primary-text, --accent, --accent-foreground and --ring."
       },
       "accent-text": {
         "role": "primary",
-        "displayName": "Rose Accent Text",
-        "canonical": "#B4143C",
+        "displayName": "Blue Accent Text",
+        "canonical": "#2F47D6",
         "tonalRamp": [
-          "oklch(15% 0.2 15)",
-          "oklch(25% 0.2 15)",
-          "oklch(38% 0.2 15)",
-          "oklch(50% 0.2 15)",
-          "oklch(62% 0.2 15)",
-          "oklch(75% 0.2 15)",
-          "oklch(87% 0.2 15)",
-          "oklch(95% 0.2 15)"
+          "oklch(15% 0.2 268)",
+          "oklch(25% 0.2 268)",
+          "oklch(38% 0.2 268)",
+          "oklch(50% 0.2 268)",
+          "oklch(62% 0.2 268)",
+          "oklch(75% 0.2 268)",
+          "oklch(87% 0.2 268)",
+          "oklch(95% 0.2 268)"
         ]
       },
       "accent-ring": {
         "role": "primary",
-        "displayName": "Rose Ring",
-        "canonical": "#F2667F",
+        "displayName": "Blue Ring",
+        "canonical": "#7090FF",
         "tonalRamp": [
-          "oklch(15% 0.17 15)",
-          "oklch(25% 0.17 15)",
-          "oklch(38% 0.17 15)",
-          "oklch(50% 0.17 15)",
-          "oklch(62% 0.17 15)",
-          "oklch(75% 0.17 15)",
-          "oklch(87% 0.17 15)",
-          "oklch(95% 0.17 15)"
+          "oklch(15% 0.15 270)",
+          "oklch(25% 0.15 270)",
+          "oklch(38% 0.15 270)",
+          "oklch(50% 0.15 270)",
+          "oklch(62% 0.15 270)",
+          "oklch(75% 0.15 270)",
+          "oklch(87% 0.15 270)",
+          "oklch(95% 0.15 270)"
         ]
       }
     },
@@ -794,13 +794,13 @@
         "section": "elevation"
       },
       {
-        "name": "The Rose-Not-Alarm Rule",
-        "body": "the user chose red back on 9 Oct 2026; it stays a rose-leaning pastel fill, while overdue keeps the solid `--bad` triplet and always carries its word (\"Overdue 9 d\"), and today is drawn in ink.",
+        "name": "The Same-Column Rule",
+        "body": "Every row places its dots on one shared column order (the union of all rows' stage lists, each list keeping its own order), so a stage sits in the same column on every row and the lead can read down a column; a stage a project doesn't have leaves a gap on its line. Above the list, on every width, a scrolling strip of named stage pills (\"PO Received 13\") counts the rollouts in each stage under the current filter; a pill filters the list to that stage (lit ink with ×, kept in the URL). Pills and filter chips are 32 px, 40 px under a coarse pointer; a filter that would change nothing (\"Mine\" when you are on every rollout) is not offered. Done: `ok-line` fill and border, green connector. Current: white dot, state-line border, 3 px state-soft ring (ink border + Muted Fill ring when on track); scales to 110% when the row is selected. Upcoming: Stroke-grey border, white fill, grey connector. Each dot is a tooltip trigger (\"Scoping · done\"); the whole stepper carries an `aria-label` naming the current stage.",
         "section": "components"
       },
       {
-        "name": "The Same-Column Rule",
-        "body": "Every row places its dots on one shared column order (the union of all rows' stage lists, each list keeping its own order), so a stage sits in the same column on every row and the lead can read down a column; a stage a project doesn't have leaves a gap on its line. Above the list, on every width, a scrolling strip of named stage pills (\"PO Received 13\") counts the rollouts in each stage under the current filter; a pill filters the list to that stage (lit ink with ×, kept in the URL). Pills and filter chips are 32 px, 40 px under a coarse pointer; a filter that would change nothing (\"Mine\" when you are on every rollout) is not offered. Done: `ok-line` fill and border, green connector. Current: white dot, state-line border, 3 px state-soft ring (ink border + Muted Fill ring when on track); scales to 110% when the row is selected. Upcoming: Stroke-grey border, white fill, grey connector. Each dot is a tooltip trigger (\"Scoping · done\"); the whole stepper carries an `aria-label` naming the current stage.",
+        "name": "The State-Safe Accent Rule",
+        "body": "An accent whose text or wash could pass for a state keeps its hue only in the pastel fill; red and green fall back to ink for text, wash and ring. Blue is the default.",
         "section": "components"
       }
     ],

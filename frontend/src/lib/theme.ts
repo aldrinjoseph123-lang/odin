@@ -3,7 +3,7 @@ export type Accent = "red" | "blue" | "indigo" | "violet" | "teal" | "green" | "
 export const THEMES: Theme[] = ["system", "light", "dark"]
 export const ACCENTS: { key: Accent; label: string; swatch: string }[] = [
   // pastel fills (the swatch is the fill the buttons and selection use)
-  { key: "red", label: "Red", swatch: "#FFD3DA" }, { key: "blue", label: "Blue", swatch: "#CCDAFF" },
+  { key: "blue", label: "Blue", swatch: "#CCDAFF" }, { key: "red", label: "Red", swatch: "#FFD3DA" },
   { key: "indigo", label: "Indigo", swatch: "#D6D8FF" }, { key: "violet", label: "Violet", swatch: "#E2D5FF" },
   { key: "teal", label: "Teal", swatch: "#C4EEE6" }, { key: "green", label: "Green", swatch: "#CFF0D9" },
   { key: "sky", label: "Sky", swatch: "#C9E8FB" }, { key: "plum", label: "Plum", swatch: "#F4D5F8" },
@@ -27,6 +27,6 @@ export function applyTheme(theme: Theme, accent: Accent) {
   paint(theme, accent)
   try { localStorage.setItem("odin.theme", theme); localStorage.setItem("odin.accent", accent) } catch { /* private mode */ }
 }
-media?.addEventListener("change", () => { if (current === "system") paint("system", (document.documentElement.dataset.accent as Accent) || "red") })
+media?.addEventListener("change", () => { if (current === "system") paint("system", (document.documentElement.dataset.accent as Accent) || "blue") })
 
 export const isDark = () => document.documentElement.dataset.theme === "dark"

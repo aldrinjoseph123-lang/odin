@@ -362,14 +362,16 @@ export type WidgetSetting = { key: string; label: string; kind: "int" | "choice"
 export type WidgetInfo = { id: string; title: string; blurb: string; w: 1 | 2 | 3; multiple: boolean; settings: WidgetSetting[] }
 export type DetailRow = { id: number; name: string; client: string; stage: string; text: string }
 export type Aggregate = { key: string; count: number }[]
+export type AttentionKind = "overdue" | "over_sla" | "due_soon" | "awaiting" | "idle"
 export type DashboardData = {
   today: string; version: number; layout: { id: string; uid?: string; w: 1 | 2 | 3; settings: Record<string, unknown> }[]; is_custom: boolean; catalogue: WidgetInfo[]; scope_full: boolean
   data: {
     kpis: { counts: Record<DashKey, number>; before: Record<DashKey, number> | null; since: string | null; moved_this_week: number; series: Record<DashKey, { day: string; v: number }[]>; detail: Record<DashKey, DetailRow[]> }
     aggregates: Record<string, Aggregate>
+    attention: { id: number; name: string; client: string; stage: string; worst: AttentionKind; reasons: { kind: AttentionKind; text: string }[] }[]
     timeline: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState; progress: number; team: Person[] }[]
     progress: { done: number; current: number; pending: number; pct: number }
-    stages: { stage: string; count: number }[]
+    stages: { stage: string; count: number; late: number; warn: number }[]
     completion: { day: string; count: number }[]
     schedule: { due: { id: number; project_id: number; title: string; due_date: string; project: string; stage: string | null; who: string | null; avatar_url: string | null }[]
                 approvals: { project_id: number; project: string; stage: string; requested_at: string }[] }

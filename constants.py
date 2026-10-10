@@ -225,7 +225,7 @@ NEW_USER_COLUMNS = {
     # OS, and which hue the one accent takes. The avatar is a filename under
     # ODIN_DATA_DIR/avatars, unique per upload so its URL changes on replace.
     "theme": "TEXT NOT NULL DEFAULT 'system'",
-    "accent": "TEXT NOT NULL DEFAULT 'red'",
+    "accent": "TEXT NOT NULL DEFAULT 'blue'",
     "avatar": "TEXT",
     # Notification kinds this user does NOT want by email (comma list); the
     # in-app notification always arrives.

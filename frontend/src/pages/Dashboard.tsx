@@ -35,6 +35,7 @@ const axis = { tickLine: false, axisLine: false, tick: { fontSize: 11, fill: "va
 const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 rounded-full px-3 text-[12px]")
 const chip = "rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const dayLabel = (iso: string) => WEEKDAY[new Date(`${iso}T00:00:00`).getDay()]
 
 // Each grid cell hands its widget the ⋯ menu to show in the header.
@@ -66,7 +67,7 @@ function Bars({ rows, link }: { rows: Aggregate; link?: (key: string) => string 
       {rows.map((r) => (
         <li key={r.key} className="flex items-center gap-3">
           {link ? <Link to={link(r.key)} className="w-32 truncate text-[13px] hover:underline">{r.key}</Link> : <span className="w-32 truncate text-[13px]">{r.key}</span>}
-          <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-primary-text" style={{ width: `${peak ? (r.count / peak) * 100 : 0}%` }} /></span>
+          <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-nav-fg" style={{ width: `${peak ? (r.count / peak) * 100 : 0}%` }} /></span>
           <span className="w-6 text-right tabular-nums">{r.count}</span>
         </li>
       ))}
@@ -81,9 +82,9 @@ function Donut({ rows, total, unit, link, large }: { rows: Aggregate; total: num
     <div className="flex items-center gap-4">
       <div className={cn("relative shrink-0", large ? "h-56 w-56" : "h-36 w-36")}>
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
+          <PieChart accessibilityLayer={false}>
             <Pie data={rows} dataKey="count" nameKey="key" innerRadius={large ? 70 : 44} outerRadius={large ? 105 : 66} paddingAngle={2} stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
-              {rows.map((r, i) => <Cell key={r.key} fill="var(--primary-text)" fillOpacity={sliceOpacity(i, rows.length)} />)}
+              {rows.map((r, i) => <Cell key={r.key} fill="var(--nav-fg)" fillOpacity={sliceOpacity(i, rows.length)} />)}
             </Pie>
             <ChartTip {...tip} formatter={(v, name) => [`${v} ${unit}`, String(name)]} />
           </PieChart>
@@ -95,7 +96,7 @@ function Donut({ rows, total, unit, link, large }: { rows: Aggregate; total: num
       <ul className="min-w-0 flex-1 text-[13px]">
         {rows.map((r, i) => (
           <li key={r.key} className="flex items-center gap-2 py-1">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary-text" style={{ opacity: sliceOpacity(i, rows.length) }} aria-hidden />
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-nav-fg" style={{ opacity: sliceOpacity(i, rows.length) }} aria-hidden />
             {link ? <Link to={link(r.key)} className="min-w-0 flex-1 truncate hover:underline">{r.key}</Link> : <span className="min-w-0 flex-1 truncate">{r.key}</span>}
             <span className="tabular-nums font-medium">{r.count}</span>
           </li>
@@ -121,7 +122,7 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
   return (
     <section aria-label="Headline numbers">
     {/* the strip has no panel, so its ⋯ sits in a slim header of its own, never over a tile */}
-    <header className="mb-2 flex h-7 items-center justify-between"><h2 className="text-[12px] font-medium text-muted-foreground">Headline numbers</h2>{menu}</header>
+    <header className="mb-2 flex h-7 items-center justify-between"><h2 className="text-[12px] font-medium text-muted-foreground">Headline numbers <span className="font-normal">· every count is rollouts</span></h2>{menu}</header>
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
       {tiles.map((t) => {
         const n = k.counts[t.key], before = k.before?.[t.key] ?? null
@@ -129,6 +130,8 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
         // red only when the tile is lateness itself (DESIGN.md; test report UX-20); a worse SLA or waiting count is amber
         const tone = d === 0 || !t.worseUp ? "bg-muted text-muted-foreground" : d > 0 ? (t.tone === "bad" ? "bg-bad-soft text-bad" : "bg-warn-soft text-warn") : "bg-ok-soft text-ok"
         const series = k.series[t.key]
+        // the trend is grey; it takes its state's line colour only while the tile counts trouble
+        const mark = n > 0 && t.tone === "bad" ? "var(--bad-line)" : n > 0 && t.tone === "warn" ? "var(--warn-line)" : "var(--nav-fg)"
         return (
           <button key={t.key} type="button" onClick={() => onTile(t.key)} aria-label={`${t.label}: ${n}. Show them`}
             className="panel flex min-w-0 flex-col p-4 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50">
@@ -144,10 +147,10 @@ function Kpis({ k, s, onTile }: { k: D["kpis"]; s: S; onTile: (key: DashKey) => 
               <span className="mt-2 block h-9" aria-hidden>
                 <ResponsiveContainer width="100%" height="100%">
                   {trend === "bars" ? (
-                    <BarChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} accessibilityLayer={false}><Bar dataKey="v" fill="var(--primary-text)" fillOpacity={0.6} radius={[2, 2, 0, 0]} isAnimationActive={false} /></BarChart>
+                    <BarChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} accessibilityLayer={false}><Bar dataKey="v" fill={mark} fillOpacity={0.6} radius={[2, 2, 0, 0]} isAnimationActive={false} /></BarChart>
                   ) : (
                     <AreaChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} accessibilityLayer={false}>
-                      <Area type="monotone" dataKey="v" stroke="var(--primary-text)" strokeWidth={1.5} fill="var(--primary-text)" fillOpacity={0.12} isAnimationActive={false} />
+                      <Area type="monotone" dataKey="v" stroke={mark} strokeWidth={1.5} fill={mark} fillOpacity={0.12} isAnimationActive={false} />
                     </AreaChart>
                   )}
                 </ResponsiveContainer>
@@ -176,24 +179,28 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
   return (
     <Widget title="Timeline" sub="every active rollout, start to target" action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
       {shown.length === 0 ? <Empty>No active rollouts{s.show === "attention" ? " need attention" : ""}.</Empty> : (
-        <div className="grid grid-cols-[minmax(96px,176px)_minmax(0,1fr)] gap-x-3 overflow-x-clip text-[13px]">
+        <div className="grid grid-cols-[minmax(160px,256px)_minmax(0,1fr)_auto] gap-x-3 overflow-x-clip text-[13px]">
           <span />
           <div ref={measure} className={cn("relative text-[11px] text-muted-foreground", crowded ? "h-9" : "h-5")}>
             {months.map((tk) => <span key={tk.t} className="absolute top-0 -translate-x-1/2" style={{ left: pct(tk.t) }}>{tk.label}</span>)}
             <span className={cn("absolute -translate-x-1/2 font-semibold text-foreground", crowded ? "top-4" : "top-0")} style={{ left: pct(now) }}>today</span>
           </div>
+          <span />
           {list.map((r) => {
             const a = dayOf(r.start_date), b = r.target_end_date ? dayOf(r.target_end_date) : now
             const from = Math.min(a, b), to = Math.max(a, b)
             const fill = r.state === "on_track" ? "bg-muted-foreground/45" : STATE[r.state].dot   // on track is neutral grey; colour is for trouble
             return (
               <Fragment key={r.id}>
-                <Link to={`/board?rollout=${r.id}`} title={`${r.name} · ${r.client}`} className="flex min-w-0 items-baseline gap-2 py-2 font-medium hover:underline">
-                  <span className="truncate">{r.name}</span>{r.state === "overdue" && <span className="shrink-0 text-[11px] font-semibold text-bad">late</span>}<span className="hidden min-w-0 truncate font-normal text-muted-foreground sm:inline">{r.client}</span></Link>
+                {/* name over client · stage; a rollout in trouble says which trouble in words, not colour alone */}
+                <Link to={`/board?rollout=${r.id}`} title={`${r.name} · ${r.client} · ${r.stage}`} className="min-w-0 py-2 hover:underline">
+                  <span className="flex min-w-0 items-baseline gap-2 font-medium"><span className="truncate">{r.name}</span>
+                    {r.state !== "on_track" && <span className={cn("shrink-0 text-[11px] font-semibold", r.state === "overdue" ? "text-bad" : "text-warn")}>{STATE[r.state].label}</span>}</span>
+                  <span className="block truncate text-[12px] text-muted-foreground">{r.client} · {r.stage}</span></Link>
                 <div className="relative py-2">
                   <span className="absolute inset-y-0 w-[1.5px] bg-foreground/60" style={{ left: pct(now) }} aria-hidden />
                   <Tooltip>
-                    <TooltipTrigger render={<span />} tabIndex={0} role="img"
+                    <TooltipTrigger render={<span />} role="img"
                       aria-label={`${r.name}: ${fmtDate(r.start_date)} to ${r.target_end_date ? fmtDate(r.target_end_date) : "no target"}, ${Math.round(r.progress * 100)} percent of stages done, ${STATE[r.state].label}`}
                       className="absolute top-1/2 block h-2.5 min-w-2 -translate-y-1/2 overflow-hidden rounded-full bg-muted"
                       style={{ left: pct(from), width: `calc(${pct(to)} - ${pct(from)})` }}>
@@ -201,8 +208,8 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
                     </TooltipTrigger>
                     <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} → {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
                   </Tooltip>
-                  {r.team.length > 0 && <TeamStack people={r.team} avatarClass="h-5 w-5" className="absolute top-1/2 flex -translate-y-1/2 pl-2" style={{ left: pct(to) }} />}
                 </div>
+                <div className="flex items-center justify-end py-2">{r.team.length > 0 && <TeamStack people={r.team} avatarClass="h-5 w-5" className="flex" />}</div>
               </Fragment>
             )
           })}
@@ -218,7 +225,7 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
   const total = p.done + p.current + p.pending
   const legend = (
     <ul className="mt-2 grid grid-cols-3 gap-2 text-center text-[12px]">
-      {[["Completed", p.done, "bg-ok-line"], ["In progress", p.current, "bg-primary/40"], ["Pending", p.pending, "bg-input"]].map(([l, n, c]) => (
+      {[["Completed", p.done, "bg-ok-line"], ["In progress", p.current, "bg-nav-fg/60"], ["Pending", p.pending, "bg-input"]].map(([l, n, c]) => (
         <li key={String(l)} className="rounded-xl bg-muted/50 py-2">
           <span className={cn("mx-auto mb-1 block h-2 w-2 rounded-full", String(c))} aria-hidden />
           <span className="block text-[14px] font-semibold leading-none">{n}</span>
@@ -233,7 +240,7 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
         <>
           <div className="flex items-baseline gap-2"><span className="text-[24px] font-semibold leading-none tracking-tight">{p.pct}%</span><span className="text-[12px] text-muted-foreground">of stages done</span></div>
           <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${p.done} done, ${p.current} in progress, ${p.pending} pending`}>
-            <span className="bg-ok-line" style={{ width: `${(p.done / total) * 100}%` }} /><span className="bg-primary/40" style={{ width: `${(p.current / total) * 100}%` }} />
+            <span className="bg-ok-line" style={{ width: `${(p.done / total) * 100}%` }} /><span className="bg-nav-fg/60" style={{ width: `${(p.current / total) * 100}%` }} />
           </div>
           {legend}
         </>
@@ -241,7 +248,7 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
         <>
           <div className="relative mx-auto h-40 max-w-[240px]">
             <ResponsiveContainer width="100%" height="100%">
-              <RadialBarChart innerRadius="72%" outerRadius="100%" startAngle={210} endAngle={-30} data={[{ v: p.pct }]} barSize={14}>
+              <RadialBarChart accessibilityLayer={false} innerRadius="72%" outerRadius="100%" startAngle={210} endAngle={-30} data={[{ v: p.pct }]} barSize={14}>
                 <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
                 <RadialBar dataKey="v" fill="var(--ok-line)" cornerRadius={8} background={{ fill: "var(--muted)" }} isAnimationActive={false} />
               </RadialBarChart>
@@ -267,7 +274,7 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
   const lateCount = due.filter((t) => lateBy(t.due_date, today) > 0).length
   const group = "border-0 bg-muted/60 px-2 py-1 text-[12px] font-semibold text-nav-fg"
   return (
-    <Widget title="Schedule" sub={lateCount ? `${lateCount} late · next ${days} days` : `next ${days} days`} action={<Link to="/my-work" className={pill}>My work</Link>} onExpand={onExpand}>
+    <Widget title="Schedule" sub={lateCount ? `${lateCount} task${lateCount === 1 ? "" : "s"} late · next ${days} days` : `next ${days} days`} action={<Link to="/my-work" className={pill}>My work</Link>} onExpand={onExpand}>
       <ul className="divide-y divide-border text-[13px]">
         {due.slice(0, cap).map((t, i) => {
           const late = lateBy(t.due_date, today)
@@ -278,7 +285,7 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
             {head && <li className={group}>{head}</li>}
             <li className="flex items-center gap-3 py-2">
               <span className={cn("w-14 shrink-0 whitespace-nowrap rounded-lg px-1 py-1 text-center text-[11px] leading-tight", late > 0 ? "bg-bad-soft text-bad" : "bg-muted text-muted-foreground")}>
-                <span className="block text-[13px] font-semibold text-foreground">{t.due_date.slice(8, 10)}</span>{late > 0 ? `${late} d late` : dayLabel(t.due_date)}
+                <span className="block text-[13px] font-semibold text-foreground">{Number(t.due_date.slice(8, 10))} {MONTH[Number(t.due_date.slice(5, 7)) - 1]}</span>{late > 0 ? `${late} d late` : dayLabel(t.due_date)}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{t.title}</span>
@@ -330,17 +337,17 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
       <div className={large ? "h-72" : "h-36"}>
         <ResponsiveContainer width="100%" height="100%">
           {s.chart === "line" ? (
-            <LineChart data={data} margin={{ top: 18, right: 8, bottom: 0, left: 8 }}>
+            <LineChart accessibilityLayer={false} data={data} margin={{ top: 18, right: 8, bottom: 0, left: 8 }}>
               <XAxis dataKey="label" {...axis} interval={n <= 7 ? 0 : "preserveStartEnd"} />
               <ChartTip {...tip} formatter={(v) => [`${v} task${v === 1 ? "" : "s"}`, ""]} labelFormatter={(_, p) => (p?.[0]?.payload ? fmtDate(p[0].payload.day) : "")} />
-              <Line type="monotone" dataKey="count" stroke="var(--primary-text)" strokeWidth={2} dot={{ r: 3, fill: "var(--primary-text)", strokeWidth: 2, stroke: "var(--card)" }} isAnimationActive={false} />
+              <Line type="monotone" dataKey="count" stroke="var(--nav-fg)" strokeWidth={2} dot={{ r: 3, fill: "var(--nav-fg)", strokeWidth: 2, stroke: "var(--card)" }} isAnimationActive={false} />
             </LineChart>
           ) : (
-            <BarChart data={data} margin={{ top: 18, right: 0, bottom: 0, left: 0 }} barCategoryGap={n <= 7 ? "28%" : "18%"}>
+            <BarChart accessibilityLayer={false} data={data} margin={{ top: 18, right: 0, bottom: 0, left: 0 }} barCategoryGap={n <= 7 ? "28%" : "18%"}>
               <XAxis dataKey="label" {...axis} interval={n <= 7 ? 0 : "preserveStartEnd"} />
               <ChartTip {...tip} formatter={(v) => [`${v} task${v === 1 ? "" : "s"}`, ""]} labelFormatter={(_, p) => (p?.[0]?.payload ? fmtDate(p[0].payload.day) : "")} />
               <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
-                {data.map((x) => <Cell key={x.day} fill="var(--primary-text)" fillOpacity={peak > 0 && x.count === peak ? 1 : 0.45} />)}
+                {data.map((x) => <Cell key={x.day} fill="var(--nav-fg)" fillOpacity={peak > 0 && x.count === peak ? 1 : 0.45} />)}
                 <LabelList dataKey="count" position="top" content={(p) => (peak > 0 && p.value === peak && typeof p.x === "number" && typeof p.y === "number"
                   ? <text x={p.x + Number(p.width ?? 0) / 2} y={p.y - 6} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--foreground)">{String(p.value)}</text> : null)} />
               </Bar>
@@ -383,13 +390,57 @@ function Team({ t, s, onExpand, large }: { t: D["team"]; s: S; onExpand?: () => 
 }
 
 // ---- rollouts per stage -----------------------------------------------------
+// The pipeline in the Flow's own language: stages top to bottom on a connector,
+// each with its count and how many there are late or slipping (in words).
+function StageFlow({ rows, link }: { rows: D["stages"]; link: (k: string) => string }) {
+  const peak = Math.max(...rows.map((r) => r.count))
+  return (
+    <ol className="text-[13px]">
+      {rows.map((r, i) => (
+        <li key={r.stage} className="relative flex items-center gap-3 py-1 pl-6">
+          {i < rows.length - 1 && <span className="absolute left-[7px] top-1/2 h-full w-[1.5px] bg-input" aria-hidden />}
+          <span className={cn("absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-[1.5px] bg-card", r.late ? "border-bad-line" : r.warn ? "border-warn-line" : "border-input")} aria-hidden />
+          <Link to={link(r.stage)} className="w-32 shrink-0 truncate hover:underline" title={r.stage}>{r.stage}</Link>
+          <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-nav-fg/60" style={{ width: `${(r.count / peak) * 100}%` }} /></span>
+          <span className="w-6 text-right font-medium tabular-nums">{r.count}</span>
+          <span className="w-24 shrink-0 text-[12px]">{r.late > 0 && <span className="font-medium text-bad">{r.late} late</span>}{r.late > 0 && r.warn > 0 && <span className="text-muted-foreground"> · </span>}{r.warn > 0 && <span className="text-warn">{r.warn} slipping</span>}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 function Stages({ rows, s, onExpand, large }: { rows: D["stages"]; s: S; onExpand?: () => void; large?: boolean }) {
   const total = rows.reduce((a, r) => a + r.count, 0)
   const link = (k: string) => `/board?stage=${encodeURIComponent(k)}`
   const agg = rows.map((r) => ({ key: r.stage, count: r.count }))
   return (
     <Widget title="Rollouts per stage" sub={`${total} active`} onExpand={onExpand}>
-      {total === 0 ? <Empty>No active rollouts.</Empty> : s.chart === "bar" ? <Bars rows={agg} link={link} /> : <Donut rows={agg} total={total} unit="active" link={link} large={large} />}
+      {total === 0 ? <Empty>No active rollouts.</Empty> : s.chart === "bar" ? <Bars rows={agg} link={link} /> : s.chart === "donut" ? <Donut rows={agg} total={total} unit="active" link={link} large={large} /> : <StageFlow rows={rows} link={link} />}
+    </Widget>
+  )
+}
+
+// ---- needs attention: one answer to "what is stuck", worst first ------------
+const REASON_TONE: Record<string, string> = { overdue: "bg-bad-soft text-bad", over_sla: "bg-warn-soft text-warn", due_soon: "bg-warn-soft text-warn", awaiting: "bg-muted text-nav-fg", idle: "bg-muted text-nav-fg" }
+function Attention({ rows, s, onExpand, large }: { rows: D["attention"]; s: S; onExpand?: () => void; large?: boolean }) {
+  const limit = large ? 200 : Number(s.limit ?? 8)
+  return (
+    <Widget title="Needs attention" sub={rows.length ? `${rows.length} rollout${rows.length === 1 ? "" : "s"}` : undefined} action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
+      {rows.length === 0 ? <Empty>Nothing is stuck: every active rollout is on track.</Empty> : (
+        <ul className="divide-y divide-border text-[13px]">
+          {rows.slice(0, limit).map((r) => (
+            <li key={r.id} className="py-2">
+              <Link to={`/board?rollout=${r.id}`} className="block min-w-0 hover:underline"><span className="block truncate font-medium">{r.name}</span>
+                <span className="block truncate text-[12px] text-muted-foreground">{[r.client, r.stage].filter(Boolean).join(" · ")}</span></Link>
+              <span className="mt-1 flex flex-wrap gap-1">
+                {r.reasons.map((x) => <span key={x.kind} className={cn("rounded-full px-2 py-1 text-[11px] font-medium leading-none", REASON_TONE[x.kind])}>{x.text}</span>)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows.length > limit && <Link to="/board" className="mt-2 block text-[12px] text-muted-foreground hover:text-foreground">{rows.length - limit} more on the flow</Link>}
     </Widget>
   )
 }
@@ -466,7 +517,7 @@ function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () =
   const data = c?.throughput.map(([m, n]) => ({ m: m.slice(5), n })) ?? []
   return (
     <Widget title="Cycle time" sub={c?.template} action={<Link to="/analytics" className={pill}>Detail</Link>} onExpand={onExpand}>
-      {!c ? <Empty>No stage template yet.</Empty> : (
+      {!c ? <Empty>No stage template yet.</Empty> : c.completed_count === 0 ? <Empty>No rollout on {c.template} has closed yet; lead times appear after the first one does.</Empty> : (
         <>
           <div className="grid grid-cols-3 gap-2 text-center">
             {[["Lead time avg", d1(c.lead_avg), "days"], ["Median", d1(c.lead_median), "days"], ["Closed", String(c.completed_count), "rollouts"]].map(([l, v, u]) => (
@@ -478,9 +529,9 @@ function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () =
             <div className={cn("mt-2", large ? "h-56" : "h-20")}>
               <ResponsiveContainer width="100%" height="100%">
                 {s.chart === "line" ? (
-                  <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}><XAxis dataKey="m" {...axis} /><ChartTip {...tip} formatter={(v) => [`${v} closed`, ""]} /><Line type="monotone" dataKey="n" stroke="var(--primary-text)" strokeWidth={2} dot={{ r: 3, fill: "var(--primary-text)" }} isAnimationActive={false} /></LineChart>
+                  <LineChart accessibilityLayer={false} data={data} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}><XAxis dataKey="m" {...axis} /><ChartTip {...tip} formatter={(v) => [`${v} closed`, ""]} /><Line type="monotone" dataKey="n" stroke="var(--nav-fg)" strokeWidth={2} dot={{ r: 3, fill: "var(--nav-fg)" }} isAnimationActive={false} /></LineChart>
                 ) : (
-                  <BarChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}><XAxis dataKey="m" {...axis} /><ChartTip {...tip} formatter={(v) => [`${v} closed`, ""]} /><Bar dataKey="n" fill="var(--primary-text)" radius={[4, 4, 0, 0]} isAnimationActive={false} /></BarChart>
+                  <BarChart accessibilityLayer={false} data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}><XAxis dataKey="m" {...axis} /><ChartTip {...tip} formatter={(v) => [`${v} closed`, ""]} /><Bar dataKey="n" fill="var(--nav-fg)" radius={[4, 4, 0, 0]} isAnimationActive={false} /></BarChart>
                 )}
               </ResponsiveContainer>
             </div>
@@ -522,12 +573,13 @@ function Custom({ agg, s, onExpand, large }: { agg: D["aggregates"]; s: S; onExp
 // ---- the data behind a widget, as a table (the expand pop-up) ---------------
 function tableFor(item: LayoutItem, d: D): Table | null {
   switch (item.id) {
+    case "attention": return { columns: ["Rollout", "Client", "Stage", "Why"], rows: d.attention.map((r) => [r.name, r.client, r.stage, r.reasons.map((x) => x.text).join("; ")]) }
     case "timeline": return { columns: ["Rollout", "Client", "Stage", "Start", "Target", "State", "Team"], rows: d.timeline.map((r) => [r.name, r.client, r.stage, fmtDate(r.start_date), r.target_end_date ? fmtDate(r.target_end_date) : "—", STATE[r.state].label, r.team.map((p) => p.name).join(", ")]) }
     case "progress": return { columns: ["Steps", "Count"], rows: [["Completed", d.progress.done], ["In progress", d.progress.current], ["Pending", d.progress.pending]] }
     case "schedule": return { columns: ["Due", "Task", "Rollout", "Who"], rows: d.schedule.due.map((t) => [fmtDate(t.due_date), t.title, t.project, t.who ?? "—"]) }
     case "completion": return { columns: ["Day", "Tasks completed"], rows: d.completion.slice(-28).map((x) => [fmtDate(x.day), x.count]) }
     case "team": return { columns: ["Person", "Role", "Rollouts", "Open", "Late"], rows: d.team.people.map((m) => [m.name, m.role, m.projects, m.open, m.late]) }
-    case "stages": return { columns: ["Stage", "Rollouts"], rows: d.stages.map((s) => [s.stage, s.count]) }
+    case "stages": return { columns: ["Stage", "Rollouts", "Late", "Slipping"], rows: d.stages.map((s) => [s.stage, s.count, s.late, s.warn]) }
     case "activity": return { columns: ["When", "Who", "Rollout", "What"], rows: d.activity.map((a) => [a.at.slice(0, 16).replace("T", " "), a.who ?? "—", a.project, a.text]) }
     case "alerts": return { columns: ["Severity", "Alert", "Rollout", "Raised"], rows: d.alerts.map((a) => [a.severity, a.title, a.project, a.created_at.slice(0, 10)]) }
     case "mywork": return { columns: ["Due", "Task", "Rollout", "Stage"], rows: d.mywork.tasks.map((t) => [t.due_date ? fmtDate(t.due_date) : "—", t.title, t.project, t.stage ?? "—"]) }
@@ -540,6 +592,7 @@ function tableFor(item: LayoutItem, d: D): Table | null {
 function renderWidget(item: LayoutItem, d: D, today: string, on: { tile: (k: DashKey) => void; expand?: () => void }, large = false) {
   const s = item.settings
   switch (item.id) {
+    case "attention": return <Attention rows={d.attention} s={s} onExpand={on.expand} large={large} />
     case "kpis": return <Kpis k={d.kpis} s={s} onTile={on.tile} />
     case "timeline": return <Timeline rows={d.timeline} today={today} s={s} onExpand={on.expand} large={large} />
     case "progress": return <Progress p={d.progress} s={s} onExpand={on.expand} />

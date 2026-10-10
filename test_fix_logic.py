@@ -654,3 +654,20 @@ class SimulationLogicTestCase(FixBase):
         form = c.get("/api/project-form").get_json()
         self.assertNotIn("Vee", [u["name"] for u in form["users"]])
         self.assertNotIn("Vee", [u["name"] for u in form["leads"]])
+
+    def test_needs_attention_lists_the_stuck_worst_first_and_blue_is_the_default(self):   # critique 10 Oct
+        self.new_project(name="Late one", client="C", target_end_date="2020-01-01")
+        self.new_project(name="Fine one", client="C", target_end_date="2099-01-01")
+        c, _ = self._api_client()
+        d = c.get("/api/dashboard").get_json()
+        att = d["data"]["attention"]
+        self.assertEqual([a["name"] for a in att], ["Late one"])
+        self.assertEqual(att[0]["worst"], "overdue")
+        self.assertRegex(att[0]["reasons"][0]["text"], r"d late$")
+        self.assertEqual(sum(s["late"] for s in d["data"]["stages"]), 1)
+        self.assertEqual(d["layout"][0]["id"], "attention")
+        self.assertEqual(c.get("/api/session").get_json()["user"]["accent"], "blue")
+        self.sql("UPDATE users SET accent = 'red'")
+        self.sql("DELETE FROM settings WHERE key = 'migrated.accent_blue'")
+        app_module.init_db()
+        self.assertEqual(self.sql("SELECT DISTINCT accent FROM users")[0][0], "blue")

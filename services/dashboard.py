@@ -33,6 +33,8 @@ MEASURES = ("rollouts_by_stage", "rollouts_by_client", "rollouts_by_state", "rol
 # The catalogue. `w` is the default width in thirds of the grid; `settings`
 # are per-widget knobs the page applies itself (the server only validates them).
 WIDGETS = {
+    "attention":  dict(title="Needs attention", blurb="Every rollout in trouble, worst first, each with its reasons in words: late, over SLA, due soon, waiting on the customer, idle.", w=1,
+                       settings={"limit": dict(kind="int", min=3, max=30, default=8, label="Rows")}),
     "kpis":       dict(title="Headline numbers", blurb="Active, overdue, over SLA, due soon, waiting on customer and idle, with the week's change and a 14-day trend.", w=3,
                        settings={"tiles": dict(kind="multi", choices=COUNT_KEYS, default=list(COUNT_KEYS), label="Tiles"),
                                  "trend": dict(kind="choice", choices=("area", "bars", "none"), default="area", label="Trend")}),
@@ -49,8 +51,8 @@ WIDGETS = {
     "team":       dict(title="Team", blurb="Who is on what: rollouts, open and late tasks per person.", w=1,
                        settings={"limit": dict(kind="int", min=3, max=20, default=6, label="People"),
                                  "chart": dict(kind="choice", choices=("list", "bar"), default="list", label="Show as")}),
-    "stages":     dict(title="Rollouts per stage", blurb="Where the active rollouts sit.", w=1,
-                       settings={"chart": dict(kind="choice", choices=("donut", "bar"), default="donut", label="Chart")}),
+    "stages":     dict(title="Rollouts per stage", blurb="Where the active rollouts sit, stage by stage in order, with the late ones counted.", w=1,
+                       settings={"chart": dict(kind="choice", choices=("flow", "donut", "bar"), default="flow", label="Chart")}),
     "activity":   dict(title="Recent activity", blurb="Stage moves, notes, decisions, tasks done and documents, newest first.", w=1,
                        settings={"limit": dict(kind="int", min=5, max=30, default=10, label="Items")}),
     "alerts":     dict(title="Open alerts", blurb="Overdue, over SLA, due soon and inactive rollouts the daily check raised.", w=1,
@@ -66,7 +68,7 @@ WIDGETS = {
                                  "top": dict(kind="int", min=3, max=12, default=6, label="Top")}),
 }
 DEFAULT_LAYOUT = [
-    {"id": "kpis", "w": 3}, {"id": "timeline", "w": 2}, {"id": "progress", "w": 1},
+    {"id": "attention", "w": 1}, {"id": "timeline", "w": 2}, {"id": "kpis", "w": 3}, {"id": "progress", "w": 1},
     {"id": "schedule", "w": 1}, {"id": "completion", "w": 1}, {"id": "team", "w": 1},
     {"id": "stages", "w": 1}, {"id": "activity", "w": 1}, {"id": "alerts", "w": 1},
     {"id": "mywork", "w": 2}, {"id": "cycle", "w": 1},
@@ -313,7 +315,9 @@ def build(scope, user_id):
 
     per_stage = Counter(p["stage"] for p in projects)
     order = list(get_stage_names()) + sorted(s for s in per_stage if s not in get_stage_names())
-    stages = [{"stage": s, "count": per_stage[s]} for s in order if per_stage[s]]
+    late_at = Counter(p["stage"] for p in projects if state(p) == "overdue")
+    warn_at = Counter(p["stage"] for p in projects if state(p) in ("over_sla", "due_soon"))
+    stages = [{"stage": s, "count": per_stage[s], "late": late_at[s], "warn": warn_at[s]} for s in order if per_stage[s]]
 
     week_ago = datetime.utcnow() - timedelta(days=7)
     moved = db.execute(
@@ -363,6 +367,18 @@ def build(scope, user_id):
 
     detail["awaiting"] = [{"id": a["project_id"], "name": a["project"], "client": "", "stage": a["stage"], "text": f"asked {a['requested_at'][:10]}"} for a in approvals]
 
+    # Needs attention: the tiles' rows folded per rollout, worst reason first (one answer to "what is stuck")
+    worst = ("overdue", "over_sla", "due_soon", "awaiting", "idle")
+    reason = {"awaiting": lambda r: f"waiting on the customer, {r['text']}"}
+    by_id = {}
+    for kind in worst:
+        for r in detail[kind]:
+            entry = by_id.setdefault(r["id"], {"id": r["id"], "name": r["name"], "client": r["client"], "stage": r["stage"], "worst": kind, "reasons": []})
+            entry["reasons"].append({"kind": kind, "text": reason.get(kind, lambda r: r["text"])(r)})
+            entry["client"] = entry["client"] or r["client"]
+    days = lambda e: int((re.search(r"\d+", e["reasons"][0]["text"]) or [0])[0])   # noqa: E731  the worst reason's days: most late first
+    attention = sorted(by_id.values(), key=lambda e: (worst.index(e["worst"]), -days(e), e["name"]))
+
     # what a custom widget may count
     agg = lambda values: [{"key": k or "—", "count": n} for k, n in Counter(values).most_common()]   # noqa: E731
     aggregates = {
@@ -383,6 +399,6 @@ def build(scope, user_id):
             "version": version(),
             "data": {"kpis": {"counts": counts, "before": before, "since": since, "moved_this_week": moved, "series": series, "detail": detail},
                      "aggregates": aggregates,
-                     "timeline": timeline, "progress": progress, "stages": stages, "completion": completion,
+                     "attention": attention, "timeline": timeline, "progress": progress, "stages": stages, "completion": completion,
                      "schedule": {"due": due, "approvals": approvals}, "team": {"people": people, "unassigned": unassigned},
                      "activity": _activity(db, scope), "alerts": open_alerts, "mywork": mine, "cycle": _cycle(db, scope)}}
