@@ -55,7 +55,7 @@ export const dashboard: DashboardData = {
 }
 
 export const projects: ProjectsData = {
-  rows: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", po_number: "PO-1", stage: "Scoping", stages, stage_index: 1, closed: false, owner_name: "Admin User", delivery_mode: "Direct", vendor_name: null, product_name: null, target_end_date: "2026-12-01", updated_at: "2026-09-28T10:00:00", total_tasks: 2, open_tasks: 1, team: [] }],
+  rows: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", po_number: "PO-1", stage: "Scoping", stages, stage_index: 1, closed: false, state: "on_track", owner_name: "Admin User", delivery_mode: "Direct", vendor_name: null, product_name: null, target_end_date: "2026-12-01", updated_at: "2026-09-28T10:00:00", total_tasks: 2, open_tasks: 1, team: [] }],
   total: 1, page: 1, total_pages: 1, sort: "updated", dir: "desc", stages: ["Scoping"], delivery_modes: ["Direct"], can_create: true,
 }
 

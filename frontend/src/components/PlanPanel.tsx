@@ -125,7 +125,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
           </span>
         </form>
       )}
-      {notice && <p className={cn("mt-2 text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <p className={cn("mt-2 text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
 
       {d.changes.length > 0 && (
         <div className="mt-3">

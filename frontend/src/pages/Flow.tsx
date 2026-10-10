@@ -124,7 +124,7 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
                   // a deleted task comes back with Undo: the same title, person, date and stage
                   if (await run(() => deleteTask(d.id, t.id))) toast(`Deleted ${t.title}`, { action: { label: "Undo", run: () => void run(() => addTask(d.id, { title: t.title, stage: t.stage, assignee_id: t.assignee_id, due_date: t.due_date }), `${t.title} is back`) } })
                 }} aria-label={`Delete ${t.title}`}
-                  className="relative hidden shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-bad group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
+                  className="relative hidden shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-destructive group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
             </li>
           ))}
@@ -584,7 +584,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           <button type="button" onClick={() => setShowAll(false)} className="mt-1 text-[12px] text-muted-foreground hover:text-foreground">Fold stages to fit</button>
         )}
         {/* one place for errors: the Advance section shows its own when it is on screen */}
-        {err && !(d.can_move && d.next_stage) && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
+        {err && !(d.can_move && d.next_stage) && <p className="mt-2 text-[12px] text-destructive" role="alert">{err}</p>}
 
         {/* the project page draws the full plan chart below; the strip is the flow pane's short version */}
         {!standalone && <TimeStrip d={d} />}
@@ -647,7 +647,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             ) : (
               <Button ref={advanceRef} className="mt-2 w-full" size="sm" variant={workFirst ? "outline" : "default"} onClick={() => { confirmAt.current = Date.now(); setConfirming(true) }} disabled={busy}>Advance to {d.next_stage} <ArrowRight className="h-3.5 w-3.5" /></Button>
             )}
-            {err && <p className="mt-2 text-[12px] text-bad" role="alert">{err}</p>}
+            {err && <p className="mt-2 text-[12px] text-destructive" role="alert">{err}</p>}
           </section>
         )}
         {!workFirst && nextUpPanel}

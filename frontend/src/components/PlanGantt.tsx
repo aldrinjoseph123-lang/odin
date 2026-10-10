@@ -104,7 +104,7 @@ function mondays(t0: number, t1: number): number[] {
 
 // The health pill: RAG in its state colour, with the word, never colour alone.
 export function RagPill({ rag, className }: { rag: "green" | "amber" | "red" | "done"; className?: string }) {
-  const map = { green: ["bg-ok-soft text-ok", "On track"], amber: ["bg-warn-soft text-warn", "At risk"], red: ["bg-bad-soft text-bad", "Off track"], done: ["bg-muted text-muted-foreground", "Complete"] } as const
+  const map = { green: ["bg-muted text-nav-fg", "On track"], amber: ["bg-warn-soft text-warn", "At risk"], red: ["bg-bad-soft text-bad", "Off track"], done: ["bg-muted text-muted-foreground", "Complete"] } as const
   const [cls, word] = map[rag]
   return <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold", cls, className)}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{word}</span>
 }

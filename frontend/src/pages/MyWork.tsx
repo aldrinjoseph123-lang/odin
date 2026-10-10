@@ -3,12 +3,12 @@ import { Link } from "react-router-dom"
 import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import { Stepper } from "@/components/Stepper"
+import { StateChip } from "@/components/StateChip"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, editTask, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
-import { STATE } from "@/lib/state"
 import { fmtDate, lateBy, stateText } from "@/lib/format"
 
 // My work: what needs doing, in the order it needs doing. Headline numbers,
@@ -147,7 +147,7 @@ export default function MyWork({ user }: { user: User }) {
             <ul className="flex h-20 items-end gap-1" aria-label="Tasks done per day">
               {d.done_by_day.map((x) => (
                 <li key={x.day} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
-                  <span className={cn("block w-full rounded-t-[3px]", x.count ? "bg-primary" : "bg-muted")} style={{ height: `${Math.max(x.count ? 8 : 3, (x.count / peak) * 100)}%` }} aria-hidden />
+                  <span className={cn("block w-full rounded-t-[3px]", x.count ? "bg-nav-fg/60" : "bg-muted")} style={{ height: `${Math.max(x.count ? 8 : 3, (x.count / peak) * 100)}%` }} aria-hidden />
                   <span aria-hidden>{WEEKDAY[new Date(`${x.day}T00:00:00`).getDay()]}</span>
                   <span className="sr-only">{fmtDate(x.day)}: {x.count}</span>
                 </li>
@@ -161,16 +161,14 @@ export default function MyWork({ user }: { user: User }) {
               {d.projects.map((p) => (
                 <li key={p.id} className="py-2">
                   <div className="flex items-center gap-2">
-                    <span className={cn("h-2 w-2 shrink-0 rounded-full", p.state === "on_track" ? "bg-transparent" : STATE[p.state].dot)} aria-hidden />
                     <Link to={`/board?rollout=${p.id}`} title={`${p.name} · ${p.client}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
-                    <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
+                    <span className="shrink-0 text-[12px] text-muted-foreground">{p.role}</span>
                   </div>
                   <div className="mt-1 flex items-center gap-3 pl-4">
                     <span className="w-24 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
                     <span className="truncate text-[13px]">{p.stage}</span>
-                    <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "overdue" ? "font-medium text-bad" : p.state === "on_track" ? "text-muted-foreground" : "font-medium text-warn")}>
-                      {p.state === "on_track" ? (p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target") : stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })}
-                    </span>
+                    <StateChip state={p.state} className="ml-auto" quiet={p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target"}
+                      text={stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })} />
                   </div>
                 </li>
               ))}

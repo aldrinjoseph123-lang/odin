@@ -53,7 +53,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
             <li key={l.id} className="flex items-start gap-2 py-2">
               <span className={l.kind === "avoid" ? "w-14 shrink-0 text-[12px] font-medium text-warn" : "w-14 shrink-0 text-[12px] font-medium text-ok"}>{KIND[l.kind]}</span>
               <span className="min-w-0 flex-1">{l.text}</span>
-              {d.can_edit && <button type="button" disabled={busy} onClick={() => void act(() => deleteLesson(projectId, l.id))} aria-label={`Delete lesson: ${l.text}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>}
+              {d.can_edit && <button type="button" disabled={busy} onClick={() => void act(() => deleteLesson(projectId, l.id))} aria-label={`Delete lesson: ${l.text}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>}
             </li>
           ))}
         </ul>

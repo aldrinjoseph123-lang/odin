@@ -4,6 +4,7 @@ import { FolderOpen, ArrowDown, ArrowUp, ExternalLink, LayoutGrid, List, Search 
 import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Stepper } from "@/components/Stepper"
+import { StateChip } from "@/components/StateChip"
 import { TeamStack } from "@/components/TeamStack"
 import { ApiError, projects, type ProjectsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -133,13 +134,13 @@ export default function Projects({ user }: { user: User }) {
                     <TeamStack people={r.team} className="flex shrink-0" />
                   </div>
                   <a href={`/board?rollout=${r.id}`} className="grid grid-cols-1 gap-2" title="Open on the flow">
-                    <Stepper stages={r.stages} index={r.stage_index} state="on_track" selected={false} />
+                    <Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={false} />
                     <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage} <span className="font-normal text-muted-foreground">· stage {r.stage_index + 1} of {r.stages.length}</span></span>
                   </a>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
                     <span className="h-1.5 w-16 rounded-full bg-muted" aria-hidden><span className="block h-1.5 rounded-full bg-ok-line" style={{ width: `${r.total_tasks ? (done / r.total_tasks) * 100 : 0}%` }} /></span>
                     <span className="tabular-nums">{r.total_tasks ? `${done} of ${r.total_tasks} tasks done` : "No tasks yet"}</span>
-                    {r.target_end_date && <span className="ml-auto whitespace-nowrap">target {fmtWhen(r.target_end_date)}</span>}
+                    <StateChip state={r.state} target={r.target_end_date} quiet={r.target_end_date ? `target ${fmtWhen(r.target_end_date)}` : undefined} className="ml-auto" />
                   </div>
                 </li>
               )
@@ -179,8 +180,9 @@ export default function Projects({ user }: { user: User }) {
                   <td className="hidden px-3 py-2 text-muted-foreground lg:table-cell">{r.po_number ?? "—"}</td>
                   <td className="px-3 py-2">
                     <a href={`/board?rollout=${r.id}`} className="flex items-center gap-3" title="Open on the flow">
-                      <span className="w-24 shrink-0"><Stepper stages={r.stages} index={r.stage_index} state="on_track" selected={false} /></span>
+                      <span className="w-24 shrink-0"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={false} /></span>
                       <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage}</span>
+                      <StateChip state={r.state} target={r.target_end_date} />
                     </a>
                   </td>
                   <td className="hidden px-3 py-2 md:table-cell">{r.owner_name}</td>

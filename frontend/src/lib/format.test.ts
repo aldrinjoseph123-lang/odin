@@ -339,3 +339,11 @@ describe("confirmParts", () => {
     expect(confirmParts("Save this version?")).toEqual({ title: "Save this version?", detail: "", verb: "Save", danger: false })
   })
 })
+
+describe("dates never follow the browser's locale", () => {
+  it("timeAgo and localDateTime read day first, as fmtDate does", () => {
+    setDateFormat("d MMM yyyy")
+    expect(timeAgo("2026-09-01T12:00:00", Date.parse("2026-09-27T12:00:00Z"))).toBe("1 Sep")
+    expect(localDateTime("2026-09-25T03:32:31")).toMatch(/^2[56] Sep 2026, \d\d:\d\d$/)
+  })
+})

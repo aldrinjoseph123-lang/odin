@@ -26,7 +26,7 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px]"
 // a 14 px bin with a 24 px target (the pseudo-element), kept clear of its neighbours
-const hit = "relative ml-1 shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-bad"
+const hit = "relative ml-1 shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-destructive"
 const LABELS: Record<string, string> = {
   client: "Client", via: "Via", partner_name: "Partner", partner_account_manager_name: "Account manager (partner)", account_manager_name: "Account manager",
   po_number: "PO number", po_date: "PO date", start_date: "Start date", target_end_date: "Target end date", delivery_mode: "Delivery mode",
@@ -298,7 +298,7 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
         {n.mine && !editing && (
           <span className="ml-auto flex gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button type="button" onClick={() => setEditing(true)} className="hover:text-foreground">Edit</button>
-            {!n.stage_entry && <button type="button" disabled={busy} onClick={() => void onDelete()} className="hover:text-bad">Delete</button>}
+            {!n.stage_entry && <button type="button" disabled={busy} onClick={() => void onDelete()} className="hover:text-destructive">Delete</button>}
           </span>
         )}
       </div>

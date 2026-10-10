@@ -146,7 +146,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
     <div className="grid grid-cols-1 gap-2">
       <label htmlFor="reject-comment" className="text-[13px] font-medium">What needs to change before you can sign?</label>
       <textarea id="reject-comment" rows={4} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} className={area} autoFocus />
-      {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
+      {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
       <div className="flex gap-2"><Button size="sm" variant="ghost" className="rounded-full" onClick={() => setRejecting(false)} disabled={busy}>Back</Button>
         <Button size="sm" variant="outline" className="ml-auto rounded-full" onClick={reject} disabled={busy || !comment.trim()}>Send back</Button></div>
     </div>
@@ -162,7 +162,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
         <input type="checkbox" className="mt-1 accent-primary" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
         <span>{counter ? "I confirm the work above is complete and countersign on our behalf." : `I have read this document and accept it on behalf of ${client}.`}</span>
       </label>
-      {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
+      {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
       <Button type="submit" className="rounded-full" loading={busy} disabled={!accept || !sig || !name.trim()}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
       {canReject && <button type="button" onClick={() => setRejecting(true)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">I can't sign this yet</button>}
     </form>
@@ -194,7 +194,7 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
           <p className="text-[12px] text-muted-foreground">For {link.email} only. It works once and expires in {link.minutes} minutes; make a new one if it lapses.</p>
         </>
       ) : <Button size="sm" variant="outline" className="rounded-full" onClick={get}><Link2 className="h-3.5 w-3.5" /> Get a sign-in link</Button>}
-      {err && <p className="text-[12px] text-bad" role="alert">{err}</p>}
+      {err && <p className="text-[12px] text-destructive" role="alert">{err}</p>}
     </section>
   )
 }
@@ -271,7 +271,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
           </label>
           {d.not_yet && <p className="rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn" role="note">{d.not_yet}. You can prepare the document now and send it then.</p>}
           <p className="text-[12px] text-muted-foreground">Sending freezes this version and its fingerprint. To change it later, withdraw it and send a new one.</p>
-          {err && <p className="text-[13px] text-bad" role="alert">{err}</p>}
+          {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
           {confirming ? (
             <div className="grid grid-cols-1 gap-2" role="group" aria-label="Confirm sending">
               <Button onClick={send} loading={busy} autoFocus className="rounded-full">{`Send to ${who?.name ?? "the customer"} now`}</Button>
@@ -404,7 +404,7 @@ export default function Signoff(_props: { user: User }) {
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Title<input name="signer_title" maxLength={120} className={input} /></label>
             </div>
             <div className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed on<SignedOn /></div>
-            {dialogErr && <p className="text-[13px] text-bad" role="alert">{dialogErr}</p>}
+            {dialogErr && <p className="text-[13px] text-destructive" role="alert">{dialogErr}</p>}
             <div className="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy}>Upload</Button></div>
           </form>
         </DialogContent>
@@ -414,7 +414,7 @@ export default function Signoff(_props: { user: User }) {
           <DialogHeader><DialogTitle>Close without signatures</DialogTitle><DialogDescription>An admin's exception: the project can close without the customer's signature. The reason is kept on the record and in the audit log.</DialogDescription></DialogHeader>
           <label htmlFor="waive-reason" className="text-[13px] font-medium">Why</label>
           <textarea id="waive-reason" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} className={area} placeholder="Customer confirmed acceptance by email on 3 Oct; reference attached to the project." />
-          {dialogErr && <p className="text-[13px] text-bad" role="alert">{dialogErr}</p>}
+          {dialogErr && <p className="text-[13px] text-destructive" role="alert">{dialogErr}</p>}
           <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button size="sm" className="rounded-full" disabled={busy || reason.trim().length < 10} onClick={waive}>Waive the sign-off</Button></div>
         </DialogContent>
       </Dialog>

@@ -41,9 +41,9 @@ export function AIAsk({ projectId }: { projectId: number }) {
       )}
       <div aria-live="polite" className="text-[13px]">
         {working && s.job && <AIProgress job={s.job} doing="Reading the rollout's records" />}
-        {lastJob?.status === "failed" && <p className="mt-2 text-bad">That question did not finish: {lastJob.error}</p>}
+        {lastJob?.status === "failed" && <p className="mt-2 text-destructive">That question did not finish: {lastJob.error}</p>}
         {lastJob?.result?.skipped && <p className="mt-2 text-muted-foreground">{lastJob.result.skipped}</p>}
-        {error && <p className="mt-2 text-bad" role="alert">{error}</p>}
+        {error && <p className="mt-2 text-destructive" role="alert">{error}</p>}
         {a && !working && (
           <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2">
             <p className="text-[12px] text-muted-foreground">“{a.payload.question}”, <Ago iso={a.created_at} /></p>

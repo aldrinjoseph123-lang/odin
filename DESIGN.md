@@ -321,12 +321,12 @@ Each rollout state owns three tokens: a **text** shade (AA on white and on its o
 
 ## Typography
 
-**Brand Font:** Chakra Petch 600/700 (Google Fonts): page titles (`h1`), the brand panel, byline, eyebrows and panel numbers. Nothing else.
+**Brand Font:** Chakra Petch 600/700 (served by Odin, `static/fonts`): page titles (`h1`), the brand panel, byline, eyebrows and panel numbers. Nothing else.
 **Display Font:** Inter (with system-ui, -apple-system, sans-serif)
 **Body Font:** Inter (same family)
-**Label Font:** Inter (same family, no mono in use)
+**Label Font:** Inter (same family). The system monospace appears only on values a person copies exactly (URLs, keys, tokens), never on prose or dates.
 
-Loaded from Google Fonts at 400 / 500 / 600 / 700; `font-feature-settings: "cv11", "ss01"` (single-storey a, open digits) is set on `html`; text is antialiased.
+Served by Odin itself since 10 Oct 2026 (`static/fonts/fonts.css`: Inter variable 100–900 and Chakra Petch 400–700, latin, OFL; no third-party request, so the CSP allows fonts from 'self' only), used at 400 / 500 / 600 / 700; `font-feature-settings: "cv11", "ss01"` (single-storey a, open digits) is set on `html`; text is antialiased.
 
 **Character:** one family, a narrow weight range and a tight size ramp. Hierarchy is carried by weight (500 for names, 600 for titles and labels, 700 only for card titles on the sign-in pages and the brand tagline) and by grey level, not by size. Headings are tracked tight (`-0.025em`); everything else is at normal tracking and sentence case.
 
@@ -391,7 +391,7 @@ Quiet, small, and rarely blue: one primary per view.
 - **Primary (default):** the pastel accent fill with its deep foreground text, 32 px tall, 12 px side padding, 14 px medium (`sm`: 28 px, 13 px text). Used for "New project" (nav, `sm`) and "Advance to {stage}" (rail, `sm`, full width, trailing arrow). Login uses the default size full-width.
 - **Five states (9 Oct 2026):** default; hover (the fill at 80%, only while enabled); pressed (scale 0.98); disabled (40% opacity, not-allowed cursor); **loading** (`<Button loading>`: same size, label hidden behind a spinner, `aria-busy`, no second click). Focus-visible = accent border + 3 px ring at 50%. Every form's submit button and a panel's single primary action use `loading`; a big form never greys out its button until complete, it explains instead (below).
 - **Outline:** hairline border, white fill, ink text, hover Muted Fill — "Open project" with an external-link icon. `buttonVariants()` is applied to plain `<a>` when the target is a Jinja page.
-- **Secondary / Ghost / Destructive / Link:** present in `button.tsx` but not yet used on a built screen.
+- **Ghost:** the quiet action beside a primary one (Cancel, Discard). **Destructive** (`--destructive`, not the overdue `--bad`): deleting, removing, revoking — red that means "this destroys", always behind the app's one confirm dialog (`lib/confirm.ts`). Errors are written in `--destructive` too; `--bad` is kept for overdue.
 
 ### Chips
 - **Filter chip** (list header): 28 px pill, hairline border, 12 px medium chrome text, count in muted text; hover Muted Fill. Selected: ink fill, white text, count at 70% white. `aria-pressed` carries state.
@@ -514,7 +514,7 @@ A round picture when the person uploaded one, otherwise initials: 24 px in rows 
 - **Copy:** a heading is about seven words at most, its subtext about fourteen; detail moves to the point of action (a hint by the field, a confirmation).
 
 ### The 9 Oct 2026 refresh (the user's calls)
-- **Pastel accents, red first.** Every accent is a soft pastel fill with deep text (`--primary` pastel, `--primary-foreground` deep, `--primary-text` for accent-as-text, `--ring` a mid tone); nothing white sits on the fill. Red is the default for new people and replaced the old default blue once (`migrated.accent_red`); the choices are Red, Blue, Indigo, Violet, Teal, Green, Sky, Plum, Ink on the Account page. This reverses the earlier retirement of rose: the user chose red. To keep it apart from the overdue state, the accent red is a rose-leaning pastel fill (#FFD3DA / #8E1230) while overdue stays the solid `--bad` triplet with its word ("Overdue 9 d").
+- **Pastel accents (blue the default again since 10 Oct).** Every accent is a soft pastel fill with deep text (`--primary` pastel, `--primary-foreground` deep, `--primary-text` for accent-as-text, `--ring` a mid tone); nothing white sits on the fill. Red was the default from 9 to 10 Oct (`migrated.accent_red`), then blue again (`migrated.accent_blue`) after the critique found red read as overdue; the choices are Red, Blue, Indigo, Violet, Teal, Green, Sky, Plum, Ink on the Account page. This reverses the earlier retirement of rose: the user chose red. To keep it apart from the overdue state, the accent red is a rose-leaning pastel fill (#FFD3DA / #8E1230) while overdue stays the solid `--bad` triplet with its word ("Overdue 9 d").
 - **Progress is a straight line.** The stepper is a row of 6 px rounded segments, one per stage, 4 px apart: done green (`ok-line`), the current one in its state (ink on track, amber due soon / over SLA, red overdue), upcoming a quiet grey; shared columns keep stages aligned across rows; each segment has its tooltip.
 - **Header.** 72 px tall; pills 36 px with 16 px sides in a 6 px-padded white pill bar; Log out and Account settings live in the avatar menu ("Your account"), so the bar fits 1,280 px.
 - **Tooltips everywhere.** `TitleTips` turns any `title` and any icon-only control's aria-label into one styled ink tooltip (12 px, after 450 ms hover, at once on keyboard focus, gone on leave, scroll or Esc); the Tooltip component stays for richer content.

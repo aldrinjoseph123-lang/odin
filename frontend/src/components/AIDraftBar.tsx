@@ -34,9 +34,9 @@ export function AIDraftBar<T>({ projectId, feature, idle, working, note, onUse, 
       <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
       <span className="min-w-0 flex-1 basis-56" aria-live="polite">
         {drafting ? working : sug ? <>AI draft, {fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}. {note}</> : idle}
-        {lastJob?.status === "failed" && <span className="block text-bad">The last draft did not finish: {lastJob.error}</span>}
+        {lastJob?.status === "failed" && <span className="block text-destructive">The last draft did not finish: {lastJob.error}</span>}
         {lastJob?.result?.skipped && <span className="block text-muted-foreground">{lastJob.result.skipped}</span>}
-        {error && <span className="block text-bad">{error}</span>}
+        {error && <span className="block text-destructive">{error}</span>}
       </span>
       {sug && !drafting && (
         <>

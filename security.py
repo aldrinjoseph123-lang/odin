@@ -339,8 +339,8 @@ def _validate_csrf():
 CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-    "font-src 'self' https://fonts.gstatic.com; "
+    "style-src 'self' 'unsafe-inline'; "
+    "font-src 'self'; "   # fonts are served by Odin (static/fonts)
     "img-src 'self' data:; "
     "form-action 'self'; "
     "frame-ancestors 'none'; "

@@ -25,7 +25,7 @@ export function ActivityPanel({ a, note }: { a: Activity; note?: string }) {
         {a.days.map((d) => (
           <Tooltip key={d.day}>
             <TooltipTrigger render={<span />} className="relative flex h-full min-w-0 flex-1 items-end">
-              <span className="w-full rounded-t-[3px] bg-primary/70" style={{ height: d.minutes ? `max(3px, ${(d.minutes / max) * 100}%)` : 1, opacity: d.minutes ? 1 : 0.25 }} />
+              <span className="w-full rounded-t-[3px] bg-nav-fg/60" style={{ height: d.minutes ? `max(3px, ${(d.minutes / max) * 100}%)` : 1, opacity: d.minutes ? 1 : 0.25 }} />
             </TooltipTrigger>
             <TooltipContent>{fmtDate(d.day)}: {minutesText(d.minutes)}</TooltipContent>
           </Tooltip>

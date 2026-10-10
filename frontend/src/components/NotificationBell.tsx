@@ -63,7 +63,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
             {rows?.map((n) => (
               <li key={n.id}>
                 <button type="button" onClick={() => openOne(n)} className={cn("flex w-full gap-3 border-b border-border px-3 py-3 text-left last:border-0 hover:bg-muted", !n.read && "bg-accent/40")}>
-                  <span className={cn("mt-2 h-2 w-2 shrink-0 rounded-full", n.read ? "bg-transparent" : "bg-primary")} aria-hidden />
+                  <span className={cn("mt-2 h-2 w-2 shrink-0 rounded-full", n.read ? "bg-transparent" : "bg-primary-text")} aria-hidden />
                   {!n.read && <span className="sr-only">Unread: </span>}
                   <span className="min-w-0 flex-1">
                     <span className={cn("block text-[13px]", !n.read && "font-medium")}>{n.title}</span>

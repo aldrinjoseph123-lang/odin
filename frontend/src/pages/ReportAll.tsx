@@ -139,7 +139,7 @@ export default function ReportAll({ user }: { user: User }) {
             <Section n title="Slippage" sub="against each rollout's baseline" className={hide("slippage")}>
               <Table head={["Rollout", "Stage", "Baseline", "Target", "Confidence"]}
                 rows={league.map((r) => [<Link key="n" to={`/projects/${r.id}/report`} className="font-medium hover:underline">{r.name}</Link>, r.stage, days(r.vs_baseline_days), days(r.vs_target_days, "after", "before"), r.confidence ?? "—"])}
-                tone={(i, c) => (c === 2 && (league[i].vs_baseline_days ?? 0) > 0 ? "font-medium text-bad" : c === 3 && (league[i].vs_target_days ?? 0) > 0 ? "text-bad" : undefined)} />
+                tone={(i, c) => (c === 2 && (league[i].vs_baseline_days ?? 0) > 0 ? "font-medium text-warn" : c === 3 && (league[i].vs_target_days ?? 0) > 0 ? "text-warn" : undefined)} />
             </Section>
           )}
           <Section n title={internal ? "Blockers and high-impact risks" : "Open points"} sub={`${d.risks.length} open`} className={hide("risks")}>
@@ -167,7 +167,7 @@ export default function ReportAll({ user }: { user: User }) {
               <span key="n"><Link to={`/projects/${r.id}`} className="font-medium hover:underline">{r.name}</Link><span className="block text-[12px] text-muted-foreground">{r.client}</span></span>,
               <RagPill key="h" rag={r.rag} className="whitespace-nowrap" />,
               <span key="s" className="whitespace-nowrap">{r.stage_number}/{r.stage_count} · {r.stage}</span>,
-              <span key="p" className="flex items-center gap-2"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${r.pct_complete}%` }} /></span><span className="tabular-nums">{r.pct_complete}%</span></span>,
+              <span key="p" className="flex items-center gap-2"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-nav-fg/60" style={{ width: `${r.pct_complete}%` }} /></span><span className="tabular-nums">{r.pct_complete}%</span></span>,
               <span key="f" className="whitespace-nowrap">{fmtDate(r.forecast)}{r.vs_target_days != null && r.vs_target_days > 0 && <span className="block text-[12px] text-bad">{r.vs_target_days} d after target</span>}</span>,
               <span key="t" className="whitespace-nowrap">{fmtDate(r.target_end_date)}</span>,
               r.owner_name,

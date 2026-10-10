@@ -53,7 +53,10 @@ export function stateText(r: { state: FlowState; days_in_stage: number | null; o
 export function localDateTime(iso: string): string {
   const d = new Date(iso.endsWith("Z") ? iso : `${iso}Z`)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+  // the workspace date format, day first, never the browser's locale ("Sep 24" beside "24 Sep": critique 10 Oct)
+  const t = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+  const day = fmtDate(localToday(d))   // numeric formats already carry the year
+  return `${dateFormat === "d MMM yyyy" ? `${day} ${d.getFullYear()}` : day}, ${t}`
 }
 
 // A saved report is plain text with "# " headings and "- " items; the server
@@ -93,7 +96,8 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
   if (d === 1) return "yesterday"
   if (d < 7) return `${d} d ago`
   const sameYear = new Date(t).getFullYear() === new Date(now).getFullYear()
-  return new Date(t).toLocaleDateString([], { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) })
+  const day = fmtDate(localToday(new Date(t)))   // the workspace format, day first
+  return sameYear || dateFormat !== "d MMM yyyy" ? day : `${day} ${new Date(t).getFullYear()}`
 }
 
 // Whole days a YYYY-MM-DD due date is past today (0 when not late).

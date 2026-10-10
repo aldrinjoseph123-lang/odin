@@ -119,9 +119,9 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
               </div>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">{edit.kind === "decision" ? "Decision and rationale" : "Mitigation or resolution"}<input className={field} maxLength={2000} value={edit.resolution ?? ""} onChange={(e) => set({ resolution: e.target.value })} /></label>
               <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="accent-primary" checked={!!edit.customer_visible} onChange={(e) => set({ customer_visible: e.target.checked })} /> Show in the customer's report</label>
-              {error && <p className="text-[13px] text-bad" role="alert">{error}</p>}
+              {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
               <div className="flex gap-2">
-                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-bad" disabled={busy} onClick={remove}>Delete</Button>}
+                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-destructive" disabled={busy} onClick={remove}>Delete</Button>}
                 <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
               </div>
             </form>

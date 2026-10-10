@@ -55,7 +55,7 @@ export function DocTemplates() {
 
   return (
     <div className="grid grid-cols-1 gap-4">
-      {notice && <p className={cn("text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <p className={cn("text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
       {KINDS.map((kind) => {
         const list = d.templates.filter((t) => t.kind === kind)
         return (
@@ -88,7 +88,7 @@ function Row({ t, busy, onEdit, onCopy, onDefault, onDelete }: { t: DocTemplate;
         <span className="block text-[12px] text-muted-foreground">{t.config.title} · edited by {t.updated_by}, {fmtWhen(t.updated_at)}</span></button>
       {!t.is_default && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={onDefault}><Star className="h-3.5 w-3.5" /> Make default</Button>}
       <Button size="sm" variant="ghost" className="h-7" onClick={onCopy} aria-label={`Duplicate ${t.name}`}><Copy className="h-3.5 w-3.5" /></Button>
-      <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={onDelete} aria-label={`Delete ${t.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+      <Button size="sm" variant="ghost" className="h-7 text-destructive" disabled={busy} onClick={onDelete} aria-label={`Delete ${t.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
     </li>
   )
 }
@@ -163,7 +163,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
           ))}
         </section>
 
-        {notice && <p className={cn("text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
+        {notice && <p className={cn("text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
         <div className="flex flex-wrap gap-2">
           <Button className="rounded-full" loading={busy} disabled={!edit.name.trim()} onClick={onSave}>Save template</Button>
           <Button variant="outline" className="rounded-full" disabled={busy} onClick={onPreview}><Eye className="h-4 w-4" /> Preview</Button>

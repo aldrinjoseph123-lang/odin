@@ -127,7 +127,7 @@ export default function Login() {
             <Input id="username" ref={userRef} name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus={!microsoft}
               value={username} onChange={(e) => { setUsername(e.target.value); if (error?.field === "username") setError(null) }}
               aria-invalid={error?.field === "username" || undefined} aria-describedby={error?.field === "username" ? "username-error" : undefined} className={field} />
-            {error?.field === "username" && <p id="username-error" role="alert" className="text-[13px] text-bad">{error.text}</p>}
+            {error?.field === "username" && <p id="username-error" role="alert" className="text-[13px] text-destructive">{error.text}</p>}
           </div>
           <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="password" className="text-[14px]">Password</Label>
@@ -143,7 +143,7 @@ export default function Login() {
               </button>
             </div>
             {caps && <p id="caps-warning" className="text-[13px] text-warn">Caps Lock is on</p>}
-            {error?.field === "password" && <p id="password-error" role="alert" className="text-[13px] text-bad">{error.text}</p>}
+            {error?.field === "password" && <p id="password-error" role="alert" className="text-[13px] text-destructive">{error.text}</p>}
           </div>
           <Button type="submit" loading={busy} className="mt-1 h-11 text-sm">Sign in</Button>
           {/* after the button, so Tab goes username → password → Sign in */}

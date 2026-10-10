@@ -80,7 +80,7 @@ export default function Person(_props: { user: User }) {
             {d.contribution.weeks.map((w) => (
               <li key={w.week} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`week of ${fmtDate(w.week)}: ${w.done}`}>
                 {w.done > 0 && w.done === peak && <span className="text-foreground">{w.done}</span>}
-                <span className={cn("block w-full rounded-t-[3px]", w.done ? "bg-primary" : "bg-muted")} style={{ height: `${Math.max(w.done ? 8 : 3, (w.done / peak) * 100)}%` }} aria-hidden />
+                <span className={cn("block w-full rounded-t-[3px]", w.done ? "bg-nav-fg/60" : "bg-muted")} style={{ height: `${Math.max(w.done ? 8 : 3, (w.done / peak) * 100)}%` }} aria-hidden />
                 <span aria-hidden>{w.week.slice(8, 10)}/{w.week.slice(5, 7)}</span>
                 <span className="sr-only">week of {fmtDate(w.week)}: {w.done}</span>
               </li>

@@ -131,7 +131,7 @@ export default function Settings(_props: { user: User }) {
                     <label className="flex items-center gap-2 text-[12px] text-muted-foreground" title="Partners and customers on the project can see and download these">
                       <input type="checkbox" checked={c.partners} disabled={busy} onChange={(e) => send(`/settings/doc-categories/${c.id}/partners`, e.target.checked ? { partners: "on" } : {})}
                         aria-label={`Partners see ${c.name}`} className="h-3.5 w-3.5 accent-primary" />partners</label>
-                    <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>
+                    <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
                   </li>
                 ))}
               </ul>
@@ -355,7 +355,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
                     <td className="whitespace-nowrap py-2 pr-3"><Ago iso={t.created_at} /> · {t.created_by}</td>
                     <td className="whitespace-nowrap py-2 pr-3">{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
                     <td className="whitespace-nowrap py-2 pr-3">{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : t.expires_at.slice(0, 10)}</td>
-                    <td className="py-2 text-right">{!dead && <Button size="sm" variant="ghost" className="h-7 text-bad hover:text-bad" disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
+                    <td className="py-2 text-right">{!dead && <Button size="sm" variant="ghost" className="h-7 text-destructive hover:text-destructive" disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
                   </tr>
                 )
               })}
@@ -398,7 +398,7 @@ function BackupHistory({ runs }: { runs: BackupRun[] }) {
               <tr key={r.id} className="border-t border-border align-top">
                 <td className="whitespace-nowrap py-2 pr-3"><Ago iso={r.started_at} /><span className="block text-[12px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
                 <td className="py-2 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-bad">Problem</span>}</td>
-                <td className="py-2 pr-3">{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-bad">Failed</span>}
+                <td className="py-2 pr-3">{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-destructive">Failed</span>}
                   {r.restore_detail && <span className="block text-[12px] text-muted-foreground">{r.restore_detail}</span>}</td>
                 <td className="py-2 pr-3 text-[13px]">{r.destinations}</td>
                 <td className="whitespace-nowrap py-2 pr-3 text-muted-foreground">{bytes(r.size_bytes)}</td>
@@ -439,7 +439,7 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" size="sm" loading={busy}>Save</Button>
           {sso.configured && <a href="/auth/microsoft" className={buttonVariants({ size: "sm", variant: "outline" })}>Try Microsoft sign-in</a>}
-          {sso.configured && <Button type="button" size="sm" variant="ghost" className="ml-auto text-bad hover:text-bad" disabled={busy}
+          {sso.configured && <Button type="button" size="sm" variant="ghost" className="ml-auto text-bad hover:text-destructive" disabled={busy}
             onClick={() => send("/settings/sso", { clear: "1" }, "Remove Microsoft sign-in? Staff go back to passwords; anyone who only ever used Microsoft will need a password reset.")}>Remove</Button>}
         </div>
       </form>
@@ -495,7 +495,7 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
           {name !== t.name && <Button type="submit" size="sm" variant="outline" loading={busy}>Rename</Button>}
         </form>
         <span className="whitespace-nowrap text-[12px] text-muted-foreground">{t.projects} project{t.projects === 1 ? "" : "s"}</span>
-        <button type="button" disabled={busy || onlyOne} onClick={() => send(`${base}/delete`, {}, `Delete template ${t.name}? Projects keep their own copies.`)} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-bad disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
+        <button type="button" disabled={busy || onlyOne} onClick={() => send(`${base}/delete`, {}, `Delete template ${t.name}? Projects keep their own copies.`)} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-destructive disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
       </div>
       <StageListEditor key={stageRowsKey(t.stages)} rows={t.stages} busy={busy} send={send} label={t.name}
         paths={{ add: `${base}/stages/add`, rename: (s) => `${base}/stages/${s}/rename`, move: (s) => `${base}/stages/${s}/move`, remove: (s) => `${base}/stages/${s}/delete`, sla: `${base}/sla` }} />
@@ -571,7 +571,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
           <div className="flex gap-2">
             <Button type="submit" size="sm" loading={busy} disabled={!app.client_id || !app.tenant_id}>Save</Button>
             {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>}
-            {m.oauth_client_configured && <Button type="button" size="sm" variant="outline" className="ml-auto text-bad hover:text-bad" disabled={busy} onClick={() => send("/settings/azure-app/clear", {}, "Clear Azure credentials and disconnect Microsoft 365?")}>Clear & disconnect</Button>}
+            {m.oauth_client_configured && <Button type="button" size="sm" variant="outline" className="ml-auto text-bad hover:text-destructive" disabled={busy} onClick={() => send("/settings/azure-app/clear", {}, "Clear Azure credentials and disconnect Microsoft 365?")}>Clear & disconnect</Button>}
           </div>
         </form>
       )}
@@ -585,7 +585,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
         <div className="mt-2 grid grid-cols-1 gap-2 text-[13px]">
           <p>Connected as <span className="font-medium">{m.connected_email ?? "—"}</span> · Teams channel <span className="font-medium">{m.channel_id ? `${m.team_name} / ${m.channel_name}` : "not selected yet"}</span>
             <button type="button" disabled={busy} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-bad hover:underline">Disconnect</button></p>
-          {m.teams_error && <p className="text-[13px] text-bad">Could not load teams: {m.teams_error}</p>}
+          {m.teams_error && <p className="text-[13px] text-destructive">Could not load teams: {m.teams_error}</p>}
           <div className="flex flex-wrap items-center gap-2">
             <select value={teamId} onChange={(e) => onTeam(e.target.value)} aria-label="Microsoft Teams team" className={selectClass}>
               <option value="">Choose a team…</option>{m.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}

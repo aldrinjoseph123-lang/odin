@@ -38,8 +38,8 @@ export function AIRaidProposals({ projectId, refresh, onAdd }: { projectId: numb
             : sug && open.length ? <>AI found {open.length} thing{open.length === 1 ? "" : "s"} the notes mention that the register does not ({fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}).</>
               : sug ? "Nothing new in the notes that the register does not already hold."
                 : "Look through the last two weeks of notes with AI for risks, issues and decisions nobody has logged."}
-          {lastJob?.status === "failed" && <span className="block text-bad">The last look did not finish: {lastJob.error}</span>}
-          {error && <span className="block text-bad">{error}</span>}
+          {lastJob?.status === "failed" && <span className="block text-destructive">The last look did not finish: {lastJob.error}</span>}
+          {error && <span className="block text-destructive">{error}</span>}
         </span>
         {s.available && !looking && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void look()}>{sug ? "Look again" : "Look with AI"}</Button>}
         {looking && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}

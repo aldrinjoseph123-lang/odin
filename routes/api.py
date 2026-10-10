@@ -752,6 +752,9 @@ def api_projects():
         f"WHERE u.active = 1 AND pp.project_id IN ({marks}) ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name", ids):
         team.setdefault(t["project_id"], []).append({"id": t["id"], "name": t["name"], "avatar_url": avatar_url(t)})
     out = []
+    # each row's state, counted as the Flow counts it, so a late rollout looks late here too (critique 10 Oct)
+    from services.alerts import project_states
+    states = project_states(rows)
     for r in rows:
         names = [s["name"] for s in (lists.get(r["id"]) or [])]
         t = tally.get(r["id"])
@@ -760,7 +763,7 @@ def api_projects():
             "team": team.get(r["id"], [{"id": r["owner_id"], "name": r["owner_name"], "avatar_url": None}]),
             "id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"] if sees_po(r["id"]) else None, "stage": r["stage"],
             "stages": names, "stage_index": names.index(r["stage"]) if r["stage"] in names else 0,
-            "closed": bool(names) and r["stage"] == names[-1],
+            "closed": bool(names) and r["stage"] == names[-1], "state": states.get(r["id"], "on_track"),
             "owner_name": r["owner_name"], "delivery_mode": r["delivery_mode"], "vendor_name": r["vendor_name"],
             "product_name": r["product_name"], "target_end_date": r["target_end_date"], "updated_at": r["updated_at"],
         })

@@ -38,7 +38,7 @@ export function AICatchUp({ projectId }: { projectId: number }) {
         {working && s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
       </div>
       {working && s.job && <AIProgress job={s.job} />}
-      {error && <p className="mt-2 text-[13px] text-bad" role="alert">{error}</p>}
+      {error && <p className="mt-2 text-[13px] text-destructive" role="alert">{error}</p>}
       {sug && open && !working && (
         <div className="mt-3 grid grid-cols-1 gap-3 text-[13px] leading-relaxed lg:grid-cols-2 [&>*]:min-w-0">
           <div className="grid grid-cols-1 content-start gap-2">

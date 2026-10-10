@@ -44,7 +44,7 @@ export default function People(_props: { user: User }) {
                 ))}
               </dl>
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${p.open - p.late} open on time, ${p.late} late`}>
-                <div className="flex h-full"><span className="bg-primary" style={{ width: `${p.open ? ((p.open - p.late) / p.open) * 100 : 0}%` }} /><span className="bg-bad-line" style={{ width: `${p.open ? (p.late / p.open) * 100 : 0}%` }} /></div>
+                <div className="flex h-full"><span className="bg-nav-fg/60" style={{ width: `${p.open ? ((p.open - p.late) / p.open) * 100 : 0}%` }} /><span className="bg-bad-line" style={{ width: `${p.open ? (p.late / p.open) * 100 : 0}%` }} /></div>
               </div>
             </Link>
           </li>

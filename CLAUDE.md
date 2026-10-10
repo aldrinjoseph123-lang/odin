@@ -28,10 +28,12 @@ sign-in/reset/link panel, print header, emails via `graph.EMAIL_SHELL`, error
 page, icons). In the app: Chakra Petch page titles and numbered panel labels
 (`<h3 data-n>`), never red — red in the UI means overdue.
 
-Tokens live in `frontend/src/index.css` (`:root`): white ground, ink text, one
-accent `#3D5AFE` for selection and the primary action, `--primary-text` for the
-accent as text, green/amber/red **only** as state (`--ok/--warn/--bad` + `-soft`
-and `-line`), Inter, `--radius: 0.5rem`, hairline `--border`.
+Tokens live in `frontend/src/index.css` (`:root`): accent-tinted ground, white
+cards, ink text, one pastel accent (blue by default) for selection and the
+primary action, `--primary-text` for the accent as text, green/amber/red **only**
+as state (`--ok/--warn/--bad` + `-soft` and `-line`; `--destructive` for errors
+and destructive actions), Inter, `--radius: 1rem`, hairline `--border`. Fonts are
+served by Odin (`static/fonts`, 10 Oct 2026), never a third party.
 
 **Themes (27 Sep 2026, the user's call):** each user picks light / dark / follow
 the OS and one of eight accents on the Account page (header button cycles the

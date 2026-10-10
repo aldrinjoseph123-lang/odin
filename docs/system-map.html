@@ -15,9 +15,16 @@
     } catch (e) {}
   })();
 </script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+<script>
+  // Fonts: inside Odin the page takes Odin's own copies (its CSP allows no third
+  // party); as the published artifact it takes them from Google Fonts.
+  (function () {
+    var l = document.createElement("link"); l.rel = "stylesheet";
+    l.href = location.pathname.indexOf("/settings/map") === 0 ? "/static/fonts/fonts.css"
+      : "https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=Inter:wght@400;500;600&display=swap";
+    document.head.appendChild(l);
+  })();
+</script>
 <style>
 /* Layout: a tabbed field manual. Diagrams on a quiet ground, one blue accent for
    selection, red/amber/green only as state (loophole severity), as in Odin itself. */

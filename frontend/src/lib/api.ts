@@ -390,7 +390,7 @@ export const resetLayout = () => send<{ ok: true; layout: DashboardData["layout"
 
 // ---- projects list ----
 export type ProjectRow = {
-  id: number; name: string; client: string; po_number: string | null; stage: string; stages: string[]; stage_index: number; closed: boolean
+  id: number; name: string; client: string; po_number: string | null; stage: string; stages: string[]; stage_index: number; closed: boolean; state: FlowState
   owner_name: string; delivery_mode: string; vendor_name: string | null; product_name: string | null; target_end_date: string | null; updated_at: string
   total_tasks: number; open_tasks: number; team: { id: number; name: string; avatar_url: string | null }[]
 }

@@ -73,7 +73,7 @@ export default function Audit(_props: { user: User }) {
               {head && <tr className="bg-muted/50"><th scope="rowgroup" colSpan={6} className="px-3 py-1 text-left text-[12px] font-semibold text-nav-fg">{day}</th></tr>}
               <tr className="border-b border-border align-top last:border-0 hover:bg-muted">
                 <td className="whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground">{fmtWhen(r.timestamp, true)}</td>
-                <td className="px-3 py-2"><span className="inline-flex items-center gap-2 wrap-anywhere"><UserAvatar name={r.username || "?"} className="h-5 w-5 shrink-0" />{r.username}</span></td>
+                <td className="px-3 py-2"><span className="inline-flex items-center gap-2 whitespace-nowrap"><UserAvatar name={r.username || "?"} className="h-5 w-5 shrink-0" />{r.username}</span></td>
                 <td className="px-3 py-2" title={r.action}>{actionText(r.action)}</td>
                 <td className="px-3 py-2">
                   {/* the name when there is one; "Project 40" only when the record has none */}

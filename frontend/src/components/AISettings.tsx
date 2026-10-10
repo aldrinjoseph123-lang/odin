@@ -54,7 +54,7 @@ export function AISettings({ policies, busy, send, schedule }: { policies: Polic
   return (
     <>
       <Server policies={policies} busy={busy} send={act} hasKey={!!view?.has_key} />
-      {error && <p className="text-[13px] text-bad" role="alert">{error}</p>}
+      {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
       {view && <Status view={view} busy={busy} send={act} />}
       {view && <Features features={view.features} busy={busy} send={act} />}
       {schedule}
@@ -101,7 +101,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
             <div className="flex flex-wrap items-center gap-2">
               <Input id="ai-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "saved; type to replace" : "none (a local server needs none)"} className="h-8 max-w-xs text-[13px]" />
               <Button type="button" size="sm" variant="outline" disabled={busy || !key} onClick={() => void send("/settings/ai/key", { api_key: key }).then((r) => { if (r) setKey("") })}>Save key</Button>
-              {hasKey && <Button type="button" size="sm" variant="ghost" className="text-bad hover:text-bad" disabled={busy} onClick={() => void send("/settings/ai/key", { clear: "1" }, "Remove the saved API key?")}>Remove</Button>}
+              {hasKey && <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void send("/settings/ai/key", { clear: "1" }, "Remove the saved API key?")}>Remove</Button>}
             </div>
             <p className="text-[12px] text-muted-foreground">Stored sealed, like the Microsoft 365 secret, and sent as a bearer token.</p>
           </div>
@@ -143,7 +143,7 @@ function Status({ view, busy, send }: { view: AIView; busy: boolean; send: Send 
           {!stale && s.state === "up" && s.since && <span className="text-muted-foreground">since <Ago iso={s.since} /></span>}
           {s.checked_at && s.state !== "off" && <span className="text-muted-foreground">last heartbeat <Ago iso={s.checked_at} /></span>}
         </div>
-        {!stale && s.state === "down" && s.error && <p className="text-bad">{s.error}. AI features are paused; Odin is using its usual behaviour.</p>}
+        {!stale && s.state === "down" && s.error && <p className="text-destructive">{s.error}. AI features are paused; Odin is using its usual behaviour.</p>}
         {s.state === "off" && <p className="text-muted-foreground">Odin is not using AI. Set the server above, tick Use AI features, Check, then Save.</p>}
         {s.model && s.state !== "off" && (
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">

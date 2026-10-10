@@ -124,7 +124,7 @@ export default function Report({ user }: { user: User }) {
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
     ...(customer ? [] : [{ label: "Against baseline", value: slip(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", warn: (f.vs_baseline_days ?? 0) > 0 }]),
     { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
-    { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", bad: d.work.late > 0 },
+    { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", warn: d.work.late > 0 },
   ]
   const textarea = "w-full rounded-lg border border-input bg-background p-3 text-[14px] leading-relaxed"
   const wordBlock = (key: "summary" | "next_steps" | "asks", label: string, rows: number, hint: string) => (
@@ -206,7 +206,7 @@ export default function Report({ user }: { user: User }) {
                 s.actual_start ? `${fmtDate(s.actual_start)} → ${s.actual_end ? fmtDate(s.actual_end) : "now"}` : s.status === "skipped" ? "skipped" : "—",
                 s.forecast_end ? `${fmtDate(s.forecast_start)} → ${fmtDate(s.forecast_end)}` : "—",
                 ...(customer ? [] : [slip(s.slip_days)])])}
-              tone={(i, c) => (c === 4 && (d.stages[i].slip_days ?? 0) > 0 ? "font-medium text-bad" : undefined)} />
+              tone={(i, c) => (c === 4 && (d.stages[i].slip_days ?? 0) > 0 ? "font-medium text-warn" : undefined)} />
           </div>
         </Section>
 
@@ -218,7 +218,7 @@ export default function Report({ user }: { user: User }) {
                   <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", i === 0 ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}>{i + 1}</span>
                   <span className="min-w-0 flex-1 font-medium">{m.stage}</span>
                   <span className="text-[13px] text-muted-foreground">{fmtDate(m.start)} → <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
-                  {!customer && m.planned_end && m.end && m.end > m.planned_end && <span className="text-[12px] font-medium text-bad">plan {fmtDate(m.planned_end)}</span>}
+                  {!customer && m.planned_end && m.end && m.end > m.planned_end && <span className="text-[12px] font-medium text-warn">plan {fmtDate(m.planned_end)}</span>}
                 </li>
               ))}
               {d.milestones.length === 0 && <li className="text-[13px] text-muted-foreground">Nothing left: the rollout is complete.</li>}
@@ -262,7 +262,7 @@ export default function Report({ user }: { user: User }) {
               {d.work.by_stage.filter((b) => b.total).map((b) => (
                 <div key={b.stage} className="flex items-center gap-3">
                   <span className="w-32 truncate">{b.stage}</span>
-                  <span className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden><span className="bg-primary" style={{ width: `${(b.done / b.total) * 100}%` }} /><span className="bg-bad-line" style={{ width: `${(b.late / b.total) * 100}%` }} /></span>
+                  <span className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden><span className="bg-nav-fg/60" style={{ width: `${(b.done / b.total) * 100}%` }} /><span className="bg-bad-line" style={{ width: `${(b.late / b.total) * 100}%` }} /></span>
                   <span className="w-24 text-right tabular-nums text-muted-foreground">{b.done}/{b.total}{b.late ? <span className="text-bad"> · {b.late} late</span> : ""}</span>
                 </div>
               ))}

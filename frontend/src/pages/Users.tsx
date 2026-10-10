@@ -289,7 +289,7 @@ function SignupLinksPanel() {
           <label className="grid grid-cols-1 gap-1 font-medium">As<select className={field} value={f.project_role} disabled={!f.project_id} onChange={(e) => setF({ ...f, project_role: e.target.value })}>{d.project_roles.map((r) => <option key={r}>{r}</option>)}</select></label>
           <label className="grid grid-cols-1 gap-1 font-medium">Uses<select className={field} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: Number(e.target.value) })}>{[1, 5, 10, 25].map((n) => <option key={n} value={n}>{n === 1 ? "One person" : `Up to ${n}`}</option>)}</select></label>
         </div>
-        {err && <p className="text-bad" role="alert">{err}</p>}
+        {err && <p className="text-destructive" role="alert">{err}</p>}
         <Button type="submit" size="sm" loading={busy} disabled={!f.label.trim()}>Create link</Button>
       </form>}
       {made && (
@@ -305,12 +305,12 @@ function SignupLinksPanel() {
             <li key={l.id} className="flex items-center gap-2 py-2">
               <span className="min-w-0 flex-1"><span className="block truncate font-medium" title={l.label}>{l.label}</span>
                 <span className="block truncate text-[12px] text-muted-foreground">{l.role}{l.project ? ` · ${l.project}` : ""} · {l.uses}/{l.max_uses} used · {l.state === "open" ? `until ${fmtWhen(l.expires_at)}` : l.state}</span></span>
-              {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={async () => { if (await askConfirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the link")) }}>Revoke</Button>}
+              {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-destructive" disabled={busy} onClick={async () => { if (await askConfirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the link")) }}>Revoke</Button>}
             </li>
           ))}
         </ul>
       )}
-      {err && !d.enabled && <p className="mt-2 text-[13px] text-bad" role="alert">{err}</p>}
+      {err && !d.enabled && <p className="mt-2 text-[13px] text-destructive" role="alert">{err}</p>}
       {open.length === 0 && d.links.length > 0 && <p className="mt-2 text-[12px] text-muted-foreground">No open links.</p>}
       {open.length > 1 && <Button size="sm" variant="ghost" className="mt-2 h-7 text-bad" disabled={busy}
         onClick={async () => { if (await askConfirm(`Revoke all ${open.length} open links? Anyone holding one can no longer sign up with it.`)) void revokeAllSignupLinks().then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the links")) }}>Revoke all open links</Button>}
