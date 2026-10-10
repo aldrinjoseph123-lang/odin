@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { chip, filterSelect } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
 import { FolderOpen, ArrowDown, ArrowUp, ExternalLink, LayoutGrid, List, Search } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Stepper } from "@/components/Stepper"
+import { StateChip } from "@/components/StateChip"
 import { TeamStack } from "@/components/TeamStack"
 import { ApiError, projects, type ProjectsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -28,8 +30,6 @@ const COLUMNS: { key: string; label: string; className?: string }[] = [
   { key: "vendor", label: "Vendor", className: "hidden xl:table-cell" }, { key: "product", label: "Product", className: "hidden xl:table-cell" },
   { key: "updated", label: "Updated", className: "hidden md:table-cell" },
 ]
-const fmtDate = (iso: string | null) => fmtWhen(iso)
-const selectClass = "h-7 rounded-md border border-border bg-background px-2 text-[13px] font-medium text-nav-fg hover:bg-muted"
 // Table or cards: a per-browser convenience, so it lives in localStorage (which may be unavailable).
 type Layout = "table" | "cards"
 const readLayout = (): Layout => { try { return localStorage.getItem("odin.projects.layout") === "cards" ? "cards" : "table" } catch { return "table" } }
@@ -90,22 +90,22 @@ export default function Projects({ user }: { user: User }) {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {VIEWS.map((v) => (
           <button key={v.key} type="button" onClick={() => pickView(v)} aria-pressed={activeView === v.key}
-            className={cn("h-7 rounded-full border px-3 text-[13px] font-medium transition-colors", activeView === v.key ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>
+            className={chip(activeView === v.key)}>
             {v.label}
           </button>
         ))}
-        <select value={params.get("stage") ?? ""} onChange={(e) => update({ stage: e.target.value || null, view: null, closed: null })} aria-label="Stage" className={selectClass}>
+        <select value={params.get("stage") ?? ""} onChange={(e) => update({ stage: e.target.value || null, view: null, closed: null })} aria-label="Stage" className={filterSelect}>
           <option value="">Any stage</option>
           {data.stages.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={params.get("delivery_mode") ?? ""} onChange={(e) => update({ delivery_mode: e.target.value || null, view: null, stage: null })} aria-label="Delivery mode" className={selectClass}>
+        <select value={params.get("delivery_mode") ?? ""} onChange={(e) => update({ delivery_mode: e.target.value || null, view: null, stage: null })} aria-label="Delivery mode" className={filterSelect}>
           <option value="">Any mode</option>
           {data.delivery_modes.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
         {layout === "cards" && (
           // cards have no column heads to click: the sort lives here instead
           <span className="flex items-center gap-1">
-            <select value={data.sort} onChange={(e) => update({ sort: e.target.value, dir: data.dir })} aria-label="Sort by" className={selectClass}>
+            <select value={data.sort} onChange={(e) => update({ sort: e.target.value, dir: data.dir })} aria-label="Sort by" className={filterSelect}>
               {COLUMNS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
             <button type="button" onClick={() => update({ sort: data.sort, dir: data.dir === "asc" ? "desc" : "asc" })} aria-label={data.dir === "asc" ? "Ascending; switch to descending" : "Descending; switch to ascending"}
@@ -134,13 +134,13 @@ export default function Projects({ user }: { user: User }) {
                     <TeamStack people={r.team} className="flex shrink-0" />
                   </div>
                   <a href={`/board?rollout=${r.id}`} className="grid grid-cols-1 gap-2" title="Open on the flow">
-                    <Stepper stages={r.stages} index={r.stage_index} state="on_track" selected={false} />
+                    <Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={false} />
                     <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage} <span className="font-normal text-muted-foreground">· stage {r.stage_index + 1} of {r.stages.length}</span></span>
                   </a>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
                     <span className="h-1.5 w-16 rounded-full bg-muted" aria-hidden><span className="block h-1.5 rounded-full bg-ok-line" style={{ width: `${r.total_tasks ? (done / r.total_tasks) * 100 : 0}%` }} /></span>
                     <span className="tabular-nums">{r.total_tasks ? `${done} of ${r.total_tasks} tasks done` : "No tasks yet"}</span>
-                    {r.target_end_date && <span className="ml-auto whitespace-nowrap">target {fmtDate(r.target_end_date)}</span>}
+                    <StateChip state={r.state} target={r.target_end_date} quiet={r.target_end_date ? `target ${fmtWhen(r.target_end_date)}` : undefined} className="ml-auto" />
                   </div>
                 </li>
               )
@@ -180,15 +180,16 @@ export default function Projects({ user }: { user: User }) {
                   <td className="hidden px-3 py-2 text-muted-foreground lg:table-cell">{r.po_number ?? "—"}</td>
                   <td className="px-3 py-2">
                     <a href={`/board?rollout=${r.id}`} className="flex items-center gap-3" title="Open on the flow">
-                      <span className="w-24 shrink-0"><Stepper stages={r.stages} index={r.stage_index} state="on_track" selected={false} /></span>
+                      <span className="w-24 shrink-0"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={false} /></span>
                       <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage}</span>
+                      <StateChip state={r.state} target={r.target_end_date} />
                     </a>
                   </td>
                   <td className="hidden px-3 py-2 md:table-cell">{r.owner_name}</td>
                   <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{r.delivery_mode}</td>
                   <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{r.vendor_name ?? "—"}</td>
                   <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{r.product_name ?? "—"}</td>
-                  <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground md:table-cell">{fmtDate(r.updated_at)}</td>
+                  <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground md:table-cell">{fmtWhen(r.updated_at)}</td>
                 </tr>
               ))}
               {data.rows.length === 0 && (

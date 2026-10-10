@@ -1,10 +1,10 @@
-"""Project lifecycle routes: list/filter, CSV export, reports, create, detail,
-stage/invoice/vendor-invoice updates, documents, notes, delete + undo.
+"""Project lifecycle routes: the page shells, CSV export, create and edit
+(the React form posts here), stage changes, documents, participants, notes,
+tasks, delete + undo.
 
-Includes three shared helpers (filtered_projects_query, has_required_document,
-save_document). Imported for route registration side effects.
+Includes shared helpers (filtered_projects_query, change_stage, save_document).
+Imported for route registration side effects.
 """
-import csv
 import io
 import os
 import secrets
@@ -18,13 +18,12 @@ from flask import (
     g,
     jsonify,
     redirect,
-    render_template,
     request,
     send_from_directory,
     session,
     url_for,
 )
-from markupsafe import Markup, escape
+from markupsafe import escape
 from werkzeug.utils import secure_filename
 
 import graph
@@ -36,13 +35,12 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, as_id, json_body, parse_date, login_required, permission_required, project_allows, project_role_required, role_has_permission, undo_button, undo_note, write_required, project_scope
+from core import app, as_id, json_body, like_any, parse_date, sees_po, login_required, permission_required, project_allows, project_role_required, role_has_permission, offer_undo, undo_note, project_scope
 from security import content_matches_extension, upload_problem, valid_email, safe_csv_writer
 from policies import local_today, policy
-from spa import spa_index, spa_serves
+from spa import spa_index
 from db import (
     UPLOAD_DIR,
-    get_contact_lists,
     get_db,
     get_doc_category_names,
     get_setting,
@@ -50,20 +48,14 @@ from db import (
     PROJECT_OPEN_SQL,
     copy_template_stages,
     my_project_ids,
-    participants_for,
     set_project_manager,
-    current_approval,
     is_customer_on,
     get_stage_names,
-    get_terminal_stage,
-    sla_for_project,
-    stage_rows,
     restore_deleted,
     soft_delete,
     touch_project,
 )
-from services.alerts import get_alert_type_settings, schedule_status
-from services.analytics import sla_by_stage, stage_sla_state
+from services.alerts import get_alert_type_settings
 from services import stages as stage_ops
 from services.audit import audit_log
 from services.notifications import notify_event, notify_participants, notify_users
@@ -113,52 +105,7 @@ def project_visible(project):
 @app.route("/projects")
 @permission_required("view_projects")
 def projects_list():
-    if spa_serves("projects_list"):
-        return spa_index()
-    db = get_db()
-    stage_filter = request.args.get("stage", "")
-    show_closed = request.args.get("closed") == "1"
-    view = request.args.get("view", "")
-    delivery_mode_filter = request.args.get("delivery_mode", "")
-    search = request.args.get("q", "").strip()
-    sort = request.args.get("sort", DEFAULT_SORT)
-    if sort not in SORT_COLUMNS:
-        sort = DEFAULT_SORT
-    direction = "asc" if request.args.get("dir") == "asc" else "desc"
-    page = max(1, request.args.get("page", 1, type=int))
-
-    # Remember how this list was filtered so the nav link can put the user back
-    # where they were. Page is deliberately not stored — returning to the list
-    # should start at the top of the result set, not mid-scroll.
-    session["projects_query"] = {
-        key: value for key, value in request.args.items()
-        if key in ("view", "stage", "delivery_mode", "closed", "q", "sort", "dir") and value
-    }
-
-    query, params = filtered_projects_query(
-        view, stage_filter, show_closed, delivery_mode_filter, search, sort, direction
-    )
-
-    total = db.execute(f"SELECT COUNT(*) AS c FROM ({query})", params).fetchone()["c"]
-    total_pages = max(1, (total + PROJECTS_PER_PAGE - 1) // PROJECTS_PER_PAGE)
-    page = min(page, total_pages)
-    offset = (page - 1) * PROJECTS_PER_PAGE
-    projects = db.execute(query + " LIMIT ? OFFSET ?", (*params, PROJECTS_PER_PAGE, offset)).fetchall()
-
-    return render_template(
-        "projects_list.html",
-        projects=projects,
-        stage_filter=stage_filter,
-        show_closed=show_closed,
-        view=view,
-        delivery_mode_filter=delivery_mode_filter,
-        search=search,
-        sort=sort,
-        direction=direction,
-        page=page,
-        total_pages=total_pages,
-        total=total,
-    )
+    return spa_index()
 
 
 def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filter="", search="", sort=DEFAULT_SORT, direction="desc"):
@@ -184,6 +131,15 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
         soon = (today + timedelta(days=soon_days)).isoformat()
         query += f" AND p.target_end_date IS NOT NULL AND p.target_end_date >= ? AND p.target_end_date <= ? AND {PROJECT_OPEN_SQL}"
         params.extend([today.isoformat(), soon])
+        # one state per rollout, as the Flow counts it: a rollout over its stage SLA is listed there, not here (sim L-8)
+        from services.alerts import build_alerts
+        live = get_db().execute(
+            f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} AND p.target_end_date >= ? AND p.target_end_date <= ?",
+            (today.isoformat(), soon)).fetchall()
+        over_sla = [p["id"] for p in build_alerts(live)["stage_sla_breach"]]
+        if over_sla:
+            query += f" AND p.id NOT IN ({','.join('?' * len(over_sla))})"
+            params.extend(over_sla)
     elif stage_filter:
         query += " AND p.stage = ?"
         params.append(stage_filter)
@@ -195,9 +151,15 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
     if search:
         # free-text across the fields a user searches by. LIKE is parameterised;
         # the % wrapping is on the value, never interpolated into the SQL.
-        query += " AND (p.name LIKE ? OR p.client LIKE ? OR p.po_number LIKE ?)"
-        like = f"%{search}%"
-        params.extend([like, like, like])
+        like = like_any(search)
+        if session.get("kind") == "external":   # partners never see the PO, so they cannot search or sort by it
+            query += " AND (p.name LIKE ? ESCAPE '\\' OR p.client LIKE ? ESCAPE '\\')"
+            params.extend([like, like])
+        else:
+            query += " AND (p.name LIKE ? ESCAPE '\\' OR p.client LIKE ? ESCAPE '\\' OR p.po_number LIKE ? ESCAPE '\\')"
+            params.extend([like, like, like])
+    if sort == "po_number" and session.get("kind") == "external":
+        sort = DEFAULT_SORT
     column = SORT_COLUMNS.get(sort, SORT_COLUMNS[DEFAULT_SORT])
     direction = "ASC" if str(direction).lower() == "asc" else "DESC"
     # NULLs last either way — an empty PO number shouldn't win the top of the list
@@ -225,11 +187,13 @@ def projects_export_csv():
             "Start Date", "Target End Date", "Updated At",
         ]
     )
+    external = session.get("kind") == "external"
     for p in projects:
+        po = sees_po(p["id"])   # partners: no PO, no outsourcer (as the project page)
         writer.writerow(
             [
-                p["name"], p["client"], p["po_number"], p["po_date"], p["stage"],
-                p["owner_name"], p["delivery_mode"], p["outsourcer_name"], p["vendor_name"],
+                p["name"], p["client"], p["po_number"] if po else "", p["po_date"] if po else "", p["stage"],
+                p["owner_name"], p["delivery_mode"], "" if external else p["outsourcer_name"], p["vendor_name"],
                 p["product_name"], p["start_date"], p["target_end_date"], p["updated_at"],
             ]
         )
@@ -243,364 +207,218 @@ def projects_export_csv():
 @app.route("/reports/all")
 @permission_required("view_reports")
 def report_all():
-    if spa_serves("report_all"):
-        return spa_index()
-    db = get_db()
-    projects = db.execute(
-        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        f"WHERE {PROJECT_OPEN_SQL} AND p.deleted_at IS NULL{project_scope()[0]} ORDER BY p.client, p.name",
-        project_scope()[1],
-    ).fetchall()
-    return render_template(
-        "report_all.html",
-        projects=projects,
-        generated_at=datetime.utcnow(),
-    )
+    return spa_index()
 
 
 @app.route("/projects/<int:project_id>/report")
 @permission_required("view_reports")
 def report_single(project_id):
-    """The project report. Editors see the latest saved version, or a fresh
-    draft when nothing is saved yet (?draft=1 forces a fresh draft into the
-    editor). Everyone else — partners, customers, viewers — sees only what
-    was saved: the draft is built from internal notes and is the PM's to
-    trim before it goes out."""
-    if spa_serves("report_single"):
-        return spa_index()
-    return render_template("report_single.html", **report_context(project_id))
-
-
-def report_context(project_id):
-    """The report page's data, for Jinja and JSON alike. The plain-text
-    report is internal (drafted from every note and the document list, the
-    Client PO among them): partners and customers read the customer cut of
-    a saved version on the rollout report instead."""
-    from services.reports import draft_report, render_blocks, report_versions
-    db = get_db()
-    project = load_project(project_id)
-    if session.get("kind") == "external":
-        abort(404)
-    can_edit = project_allows(project_id, "manage_project")
-    versions = report_versions(project_id)
-    wanted = request.args.get("v", type=as_id)
-    current = None
-    if versions:
-        current = db.execute(
-            "SELECT * FROM project_reports WHERE project_id = ? AND version = ?",
-            (project_id, wanted or versions[0]["version"]),
-        ).fetchone() or abort(404)
-    draft = draft_report(project) if can_edit and (current is None or request.args.get("draft")) else None
-    body = current["body"] if current else (draft or "")
-    return dict(
-        project=project, versions=versions, current=current, can_edit=can_edit,
-        blocks=render_blocks(body), editor_text=draft if draft is not None else body,
-        is_draft=current is None or bool(request.args.get("draft")),
-    )
-
-
-@app.route("/projects/<int:project_id>/report/save", methods=["POST"])
-@permission_required("edit_project")
-@project_role_required("manage_project")
-def report_save(project_id):
-    from services.reports import save_report
-    project = load_project(project_id)
-    body = request.form.get("body", "").strip()[:50000]
-    if not body:
-        flash("The report is empty")
-        return redirect(url_for("report_single", project_id=project_id))
-    version = save_report(project_id, body, session["user_name"])
-    audit_log("save_report", "project", project_id, project["name"], f"version {version}")
-    flash(f"Report version {version} saved")
-    return redirect(url_for("report_single", project_id=project_id))
+    load_project(project_id)   # 404 unless the caller may see it, before any page is served
+    return spa_index()
 
 
 @app.route("/projects/new", methods=["GET", "POST"])
 @permission_required("create_project")
 def project_new():
-    if request.method == "GET" and spa_serves("project_new"):
+    if request.method == "GET":
         return spa_index()
     db = get_db()
-    if request.method == "POST":
-        po_document = request.files.get("po_document")
-        if not po_document or not po_document.filename:
-            flash(f"Upload a '{CLIENT_PO_DOC_CATEGORY}' document to create the project", "error")
-            return redirect(url_for("project_new"))
-        if problem := upload_problem(po_document):
-            flash(problem, "error")
-            return redirect(url_for("project_new"))
-        if not content_matches_extension(po_document):
-            flash("That file's contents don't match its extension", "error")
-            return redirect(url_for("project_new"))
+    po_document = request.files.get("po_document")
+    if not po_document or not po_document.filename:
+        flash(f"Upload a '{CLIENT_PO_DOC_CATEGORY}' document to create the project", "error")
+        return redirect(url_for("project_new"))
+    if problem := upload_problem(po_document):
+        flash(problem, "error")
+        return redirect(url_for("project_new"))
+    if not content_matches_extension(po_document):
+        flash("That file's contents don't match its extension", "error")
+        return redirect(url_for("project_new"))
 
-        template = _chosen_template(db, request.form.get("stage_template_id"))
-        if template is None:
-            flash("Create a stage template in Settings before adding projects", "error")
-            return redirect(url_for("project_new"))
-        first_stage = db.execute(
-            "SELECT name FROM stage_template_stages WHERE template_id = ? ORDER BY position LIMIT 1",
-            (template["id"],),
-        ).fetchone()
-        if first_stage is None:
-            flash(f"Template '{template['name']}' has no stages yet", "error")
-            return redirect(url_for("project_new"))
-        # one stage would be the finish line: the project would be born closed, never signed off (D13)
-        if db.execute("SELECT COUNT(*) FROM stage_template_stages WHERE template_id = ?", (template["id"],)).fetchone()[0] < 2:
-            flash(f"Template '{template['name']}' needs at least two stages: the work and the finish")
-            return redirect(url_for("project_new"))
+    template = _chosen_template(db, request.form.get("stage_template_id"))
+    if template is None:
+        flash("Create a stage template in Settings before adding projects", "error")
+        return redirect(url_for("project_new"))
+    first_stage = db.execute(
+        "SELECT name FROM stage_template_stages WHERE template_id = ? ORDER BY position LIMIT 1",
+        (template["id"],),
+    ).fetchone()
+    if first_stage is None:
+        flash(f"Template '{template['name']}' has no stages yet", "error")
+        return redirect(url_for("project_new"))
+    # one stage would be the finish line: the project would be born closed, never signed off (D13)
+    if db.execute("SELECT COUNT(*) FROM stage_template_stages WHERE template_id = ?", (template["id"],)).fetchone()[0] < 2:
+        flash(f"Template '{template['name']}' needs at least two stages: the work and the finish", "error")
+        return redirect(url_for("project_new"))
 
-        if not request.form.get("name", "").strip() or not request.form.get("client", "").strip():
-            flash("Project name and client are required", "error")   # test report FN-5: edit refused this, create did not
+    if not request.form.get("name", "").strip() or not request.form.get("client", "").strip():
+        flash("Project name and client are required", "error")   # test report FN-5: edit refused this, create did not
+        return redirect(url_for("project_new"))
+    if request.form.get("delivery_mode", DELIVERY_MODES[0]) not in DELIVERY_MODES:
+        flash("Pick a delivery mode", "error")
+        return redirect(url_for("project_new"))
+    if problem := _date_problem(request.form):
+        flash(problem, "error")
+        return redirect(url_for("project_new"))
+    # The project manager must be able to move stages. Someone who cannot
+    # (a Contributor) names one and joins as a Coordinator.
+    lead_id = session["user_id"]
+    if not role_has_permission(session.get("role"), "edit_project_stage"):
+        raw = request.form.get("owner_id", "")
+        lead = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone() if raw.isdigit() else None
+        if lead is None or not role_has_permission(lead["role"], "edit_project_stage"):
+            flash("Choose a project manager who can move stages (an Admin or Member)", "error")
             return redirect(url_for("project_new"))
-        if request.form.get("delivery_mode", DELIVERY_MODES[0]) not in DELIVERY_MODES:
-            flash("Pick a delivery mode", "error")
-            return redirect(url_for("project_new"))
-        if problem := _date_problem(request.form):
-            flash(problem, "error")
-            return redirect(url_for("project_new"))
-        # The project manager must be able to move stages. Someone who cannot
-        # (a Contributor) names one and joins as a Coordinator.
-        lead_id = session["user_id"]
-        if not role_has_permission(session.get("role"), "edit_project_stage"):
-            raw = request.form.get("owner_id", "")
-            lead = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone() if raw.isdigit() else None
-            if lead is None or not role_has_permission(lead["role"], "edit_project_stage"):
-                flash("Choose a project manager who can move stages (an Admin or Member)", "error")
-                return redirect(url_for("project_new"))
-            lead_id = lead["id"]
-        now = datetime.utcnow().isoformat()
-        name = request.form["name"].strip()[:200]
-        cursor = db.execute(
-            """INSERT INTO projects
-            (name, client, po_number, po_date, stage, owner_id,
-             via, account_manager_name, account_manager_email,
-             partner_name, partner_account_manager_name, partner_account_manager_email,
-             start_date, target_end_date, delivery_mode,
-             outsourcer_name, outsourcer_email, vendor_name, product_name,
-             access_token, customer_token, stage_template_id, created_at, updated_at, stage_entered_at, customer_approval)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                name,
-                request.form["client"].strip()[:200],
-                request.form.get("po_number") or None,
-                parse_date(request.form.get("po_date")),
-                first_stage["name"],
-                lead_id,
-                request.form.get("via") or None,
-                request.form.get("account_manager_name") or None,
-                request.form.get("account_manager_email") or None,
-                request.form.get("partner_name") or None,
-                request.form.get("partner_account_manager_name") or None,
-                request.form.get("partner_account_manager_email") or None,
-                parse_date(request.form.get("start_date")),
-                parse_date(request.form.get("target_end_date")),
-                request.form.get("delivery_mode", DELIVERY_MODES[0]),
-                request.form.get("outsourcer_name") or None,
-                request.form.get("outsourcer_email") or None,
-                request.form.get("vendor_name") or None,
-                request.form.get("product_name") or None,
-                secrets.token_urlsafe(16),   # vendor link
-                secrets.token_urlsafe(16),   # customer link
-                template["id"],
-                now,
-                now,
-                now,
-                1 if request.form.get("customer_approval") else 0,
-            ),
-        )
-        project_id = cursor.lastrowid
-        copy_template_stages(db, template["id"], project_id)
-        set_project_manager(db, project_id, lead_id, session["user_id"])
-        team = request.form.getlist("team_user_ids") + ([str(session["user_id"])] if lead_id != session["user_id"] else [])
-        for raw in team:
-            if raw.isdigit() and int(raw) != lead_id and db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone():
-                db.execute(
-                    "INSERT OR IGNORE INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, 'Coordinator', ?, ?)",
-                    (project_id, int(raw), session["user_id"], now),
-                )
-        save_document(project_id, po_document, CLIENT_PO_DOC_CATEGORY, session["user_name"])
-        db.commit()
-        joined = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Coordinator'", (project_id,))]
-        notify_users(joined, "assigned", project_id, f"You are on {escape(name)}",
-                     f"{escape(session['user_name'])} added you to <b>{escape(name)}</b> as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
-        if lead_id != session["user_id"]:   # test report FN-7: a PM named by someone else heard only by mail, which may be off
-            notify_users([lead_id], "assigned", project_id, f"You manage {escape(name)}",
-                         f"{escape(session['user_name'])} created <b>{escape(name)}</b> and made you its project manager.", link=f"/projects/{project_id}")
-        audit_log("create_project", "project", project_id, name, f"client={request.form['client']}" + (f" manager_id={lead_id}" if lead_id != session["user_id"] else ""))
-        notify_event(
-            {"owner_id": lead_id},
-            f"New project: {escape(name)}",
-            f"Project '{escape(name)}' for {escape(request.form['client'])} was created"
-            + (f" by {escape(session['user_name'])} and assigned to you." if lead_id != session["user_id"] else "."),
-            channels={"email": False, "teams": True},   # the named PM already had "You manage …" by email (D12)
-        )
-        flash("Project created")
-        return redirect(url_for("project_detail", project_id=project_id))   # straight to the new rollout (P14)
-    users = db.execute("SELECT * FROM users ORDER BY name").fetchall()
-    source = None
-    duplicate_of = request.args.get("from", type=as_id)
-    # only a project you may see can be duplicated; a stale link gives a blank form, not a 404
-    if duplicate_of and db.execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (duplicate_of,)).fetchone():
-        source = load_project(duplicate_of)
-    return render_template(
-        "project_form.html",
-        stage_templates=get_db().execute("SELECT id, name FROM stage_templates ORDER BY name").fetchall(), users=users, project=source, duplicating=bool(source),
-        **get_contact_lists()
+        lead_id = lead["id"]
+    now = datetime.utcnow().isoformat()
+    name = request.form["name"].strip()[:200]
+    cursor = db.execute(
+        """INSERT INTO projects
+        (name, client, po_number, po_date, stage, owner_id,
+         via, account_manager_name, account_manager_email,
+         partner_name, partner_account_manager_name, partner_account_manager_email,
+         start_date, target_end_date, delivery_mode,
+         outsourcer_name, outsourcer_email, vendor_name, product_name,
+         access_token, customer_token, stage_template_id, created_at, updated_at, stage_entered_at, customer_approval)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            name,
+            request.form["client"].strip()[:200],
+            request.form.get("po_number") or None,
+            parse_date(request.form.get("po_date")),
+            first_stage["name"],
+            lead_id,
+            request.form.get("via") or None,
+            request.form.get("account_manager_name") or None,
+            request.form.get("account_manager_email") or None,
+            request.form.get("partner_name") or None,
+            request.form.get("partner_account_manager_name") or None,
+            request.form.get("partner_account_manager_email") or None,
+            parse_date(request.form.get("start_date")),
+            parse_date(request.form.get("target_end_date")),
+            request.form.get("delivery_mode", DELIVERY_MODES[0]),
+            request.form.get("outsourcer_name") or None,
+            request.form.get("outsourcer_email") or None,
+            request.form.get("vendor_name") or None,
+            request.form.get("product_name") or None,
+            secrets.token_urlsafe(16),   # vendor link
+            secrets.token_urlsafe(16),   # customer link
+            template["id"],
+            now,
+            now,
+            now,
+            1 if request.form.get("customer_approval") else 0,
+        ),
     )
+    project_id = cursor.lastrowid
+    copy_template_stages(db, template["id"], project_id)
+    set_project_manager(db, project_id, lead_id, session["user_id"])
+    team = request.form.getlist("team_user_ids") + ([str(session["user_id"])] if lead_id != session["user_id"] else [])
+    for raw in team:
+        if raw.isdigit() and int(raw) != lead_id and db.execute("SELECT 1 FROM users WHERE id = ? AND active = 1 AND kind = 'internal' AND role != 'Viewer'", (raw,)).fetchone():
+            db.execute(
+                "INSERT OR IGNORE INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, 'Coordinator', ?, ?)",
+                (project_id, int(raw), session["user_id"], now),
+            )
+    save_document(project_id, po_document, CLIENT_PO_DOC_CATEGORY, session["user_name"])
+    db.commit()
+    joined = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Coordinator'", (project_id,))]
+    notify_users(joined, "assigned", project_id, f"You are on {escape(name)}",
+                 f"{escape(session['user_name'])} added you to <b>{escape(name)}</b> as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
+    if lead_id != session["user_id"]:   # test report FN-7: a PM named by someone else heard only by mail, which may be off
+        notify_users([lead_id], "assigned", project_id, f"You manage {escape(name)}",
+                     f"{escape(session['user_name'])} created <b>{escape(name)}</b> and made you its project manager.", link=f"/projects/{project_id}")
+    audit_log("create_project", "project", project_id, name, f"client={request.form['client']}" + (f" manager_id={lead_id}" if lead_id != session["user_id"] else ""))
+    notify_event(
+        {"owner_id": lead_id},
+        f"New project: {escape(name)}",
+        f"Project '{escape(name)}' for {escape(request.form['client'])} was created"
+        + (f" by {escape(session['user_name'])} and assigned to you." if lead_id != session["user_id"] else "."),
+        channels={"email": False, "teams": True},   # the named PM already had "You manage …" by email (D12)
+    )
+    flash("Project created")
+    return redirect(url_for("project_detail", project_id=project_id))   # straight to the new rollout (P14)
 
 
 @app.route("/projects/<int:project_id>")
 @permission_required("view_project_detail")
 def project_detail(project_id):
-    if spa_serves("project_detail"):
-        return spa_index()
-    db = get_db()
-    project = load_project(project_id)
-    if project is None:
-        flash("Project not found")
-        return redirect(url_for("board"))
-    notes = db.execute(
-        "SELECT * FROM status_notes WHERE project_id = ? ORDER BY created_at DESC",
-        (project_id,),
-    ).fetchall()
-    hidden = partner_hidden_categories(db) if session.get("kind") == "external" else set()
-    documents = [d for d in db.execute(
-        "SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC",
-        (project_id,),
-    ).fetchall() if d["category"] not in hidden]
-    if not project["access_token"]:
-        token = secrets.token_urlsafe(16)
-        db.execute("UPDATE projects SET access_token = ? WHERE id = ?", (token, project_id))
-        db.commit()
-        project = load_project(project_id)
-    tasks = db.execute(
-        "SELECT t.*, u.name AS assignee_name FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
-        "WHERE t.project_id = ? ORDER BY t.done ASC, t.due_date IS NULL, t.due_date ASC, t.id ASC",
-        (project_id,),
-    ).fetchall()
-    task_users = db.execute("SELECT id, name FROM users WHERE active = 1 ORDER BY name").fetchall()
-    return render_template(
-        "project_detail.html",
-        project=project,
-        notes=notes,
-        documents=documents,
-        tasks=tasks,
-        task_users=task_users,
-        participants=participants_for(project_id),
-        project_roles=PROJECT_ROLES,
-        stages=stage_rows(project_id),
-        schedule=schedule_status(project),
-        sla=stage_sla_state(project, sla_for_project(project_id), get_terminal_stage(project_id)),
-        today=local_today().isoformat(),
-        has_client_po_doc=has_required_document(project_id, CLIENT_PO_DOC_CATEGORY),
-        approval=current_approval(project_id),
-        can_approve=is_customer_on(project_id, session["user_id"]),
-        can_move=project_allows(project_id, "move_stage"),
-        can_manage=project_allows(project_id, "manage_project"),
-        can_tasks=project_allows(project_id, "manage_tasks"),
-        can_docs=project_allows(project_id, "manage_documents"),
-        **get_contact_lists(),
-    )
+    load_project(project_id)   # 404 unless the caller may see it, before any page is served
+    return spa_index()
 
 
 @app.route("/projects/<int:project_id>/edit", methods=["GET", "POST"])
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_edit(project_id):
-    if request.method == "GET" and spa_serves("project_edit"):
+    project = load_project(project_id)
+    if request.method == "GET":
         return spa_index()
     db = get_db()
-    project = load_project(project_id)
-    if project is None:
-        flash("Project not found")
-        return redirect(url_for("board"))
+    name = request.form.get("name", "").strip()[:200]
+    client = request.form.get("client", "").strip()[:200]
+    if not name or not client:
+        flash("Project name and client are required", "error")
+        return redirect(url_for("project_edit", project_id=project_id))
+    if problem := _date_problem(request.form):
+        flash(problem, "error")
+        return redirect(url_for("project_edit", project_id=project_id))
 
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()[:200]
-        client = request.form.get("client", "").strip()[:200]
-        if not name or not client:
-            flash("Project name and client are required", "error")
-            return redirect(url_for("project_edit", project_id=project_id))
-        if problem := _date_problem(request.form):
-            flash(problem, "error")
-            return redirect(url_for("project_edit", project_id=project_id))
-
-        # Owner reassignment — fall back to the current owner if the submitted
-        # id is missing or not a real user (never leave a project ownerless).
-        owner_id = as_id(request.form.get("owner_id")) or project["owner_id"]
-        # the owner is the project manager: an active staff account that may move stages
-        owner = db.execute("SELECT role, active, kind FROM users WHERE id = ?", (owner_id,)).fetchone()
-        if not owner or not owner["active"] or owner["kind"] == "external" or not role_has_permission(owner["role"], "edit_project_stage"):
-            if owner_id != project["owner_id"]:
-                flash("The project manager must be an active Admin or Member; the owner was not changed")
-            owner_id = project["owner_id"]
-
-        delivery_mode = request.form.get("delivery_mode", project["delivery_mode"])
-        if delivery_mode not in DELIVERY_MODES:
-            delivery_mode = project["delivery_mode"]
-
-        now = datetime.utcnow().isoformat()
-        db.execute(
-            """UPDATE projects SET
-                name=?, client=?, owner_id=?, po_number=?, po_date=?,
-                via=?, account_manager_name=?, account_manager_email=?,
-                partner_name=?, partner_account_manager_name=?, partner_account_manager_email=?,
-                start_date=?, target_end_date=?, delivery_mode=?,
-                outsourcer_name=?, outsourcer_email=?, vendor_name=?, product_name=?, updated_at=?,
-                customer_approval=?
-               WHERE id=?""",
-            (
-                name, client, owner_id,
-                request.form.get("po_number") or None,
-                parse_date(request.form.get("po_date")),
-                request.form.get("via") or None,
-                request.form.get("account_manager_name") or None,
-                request.form.get("account_manager_email") or None,
-                request.form.get("partner_name") or None,
-                request.form.get("partner_account_manager_name") or None,
-                request.form.get("partner_account_manager_email") or None,
-                parse_date(request.form.get("start_date")),
-                parse_date(request.form.get("target_end_date")),
-                delivery_mode,
-                request.form.get("outsourcer_name") or None,
-                request.form.get("outsourcer_email") or None,
-                request.form.get("vendor_name") or None,
-                request.form.get("product_name") or None,
-                now, 1 if request.form.get("customer_approval") else 0, project_id,
-            ),
-        )
+    # Owner reassignment — fall back to the current owner if the submitted
+    # id is missing or not a real user (never leave a project ownerless).
+    owner_id = as_id(request.form.get("owner_id")) or project["owner_id"]
+    # the owner is the project manager: an active staff account that may move stages
+    owner = db.execute("SELECT role, active, kind FROM users WHERE id = ?", (owner_id,)).fetchone()
+    if not owner or not owner["active"] or owner["kind"] == "external" or not role_has_permission(owner["role"], "edit_project_stage"):
         if owner_id != project["owner_id"]:
-            set_project_manager(db, project_id, owner_id, session["user_id"])
-        if not request.form.get("customer_approval"):   # no longer asking: an open request is moot (P7)
-            db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
-        db.commit()
-        if owner_id != project["owner_id"]:
-            notify_users([owner_id], "assigned", project_id, f"You now manage {escape(name)}",
-                         f"{escape(session['user_name'])} made you project manager of <b>{escape(name)}</b>.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
-            notify_users([project["owner_id"]], "activity", project_id, f"{escape(name)} has a new project manager",
-                         f"{escape(session['user_name'])} handed <b>{escape(name)}</b> to someone else; you stay on the team as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
-        audit_log("update_project", "project", project_id, name, f"client={client}; owner_id={owner_id}")
-        flash("Project updated")
-        return redirect(url_for("project_detail", project_id=project_id))
+            flash("The project manager must be an active Admin or Member; the owner was not changed")
+        owner_id = project["owner_id"]
 
-    users = db.execute("SELECT * FROM users ORDER BY name").fetchall()
-    return render_template(
-        "project_form.html",
-        stage_templates=get_db().execute("SELECT id, name FROM stage_templates ORDER BY name").fetchall(), project=project, users=users, **get_contact_lists())
+    delivery_mode = request.form.get("delivery_mode", project["delivery_mode"])
+    if delivery_mode not in DELIVERY_MODES:
+        delivery_mode = project["delivery_mode"]
 
-
-@app.route("/projects/<int:project_id>/stage", methods=["POST"])
-@permission_required("edit_project_stage")
-@project_role_required("move_stage")
-def project_stage(project_id):
-    stage = request.form.get("stage", "")
-    error = change_stage(project_id, stage, request.form.get("note", "").strip()[:5000])
-    if error:
-        flash(error, "error")
-        return redirect(url_for("project_detail", project_id=project_id))
-    flash(Markup(f"Moved to {escape(stage)}. {undo_button('Undo', 'undo_stage_change', project_id=project_id, note_id=g.stage_note_id)} {undo_note()}"))
-    if request.form.get("redirect") == "board":
-        return redirect(url_for("board"))
+    now = datetime.utcnow().isoformat()
+    db.execute(
+        """UPDATE projects SET
+            name=?, client=?, owner_id=?, po_number=?, po_date=?,
+            via=?, account_manager_name=?, account_manager_email=?,
+            partner_name=?, partner_account_manager_name=?, partner_account_manager_email=?,
+            start_date=?, target_end_date=?, delivery_mode=?,
+            outsourcer_name=?, outsourcer_email=?, vendor_name=?, product_name=?, updated_at=?,
+            customer_approval=?
+           WHERE id=?""",
+        (
+            name, client, owner_id,
+            request.form.get("po_number") or None,
+            parse_date(request.form.get("po_date")),
+            request.form.get("via") or None,
+            request.form.get("account_manager_name") or None,
+            request.form.get("account_manager_email") or None,
+            request.form.get("partner_name") or None,
+            request.form.get("partner_account_manager_name") or None,
+            request.form.get("partner_account_manager_email") or None,
+            parse_date(request.form.get("start_date")),
+            parse_date(request.form.get("target_end_date")),
+            delivery_mode,
+            request.form.get("outsourcer_name") or None,
+            request.form.get("outsourcer_email") or None,
+            request.form.get("vendor_name") or None,
+            request.form.get("product_name") or None,
+            now, 1 if request.form.get("customer_approval") else 0, project_id,
+        ),
+    )
+    if owner_id != project["owner_id"]:
+        set_project_manager(db, project_id, owner_id, session["user_id"])
+    if not request.form.get("customer_approval"):   # no longer asking: an open request is moot (P7)
+        db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
+    db.commit()
+    if owner_id != project["owner_id"]:
+        notify_users([owner_id], "assigned", project_id, f"You now manage {escape(name)}",
+                     f"{escape(session['user_name'])} made you project manager of <b>{escape(name)}</b>.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
+        notify_users([project["owner_id"]], "activity", project_id, f"{escape(name)} has a new project manager",
+                     f"{escape(session['user_name'])} handed <b>{escape(name)}</b> to someone else; you stay on the team as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
+    audit_log("update_project", "project", project_id, name, f"client={client}; owner_id={owner_id}")
+    flash("Project updated")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -656,7 +474,10 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     g.stage_undo_url = url_for("undo_stage_change", project_id=project_id, note_id=cur.lastrowid)
     # A newer change makes an undecided older request moot; closing asks for
     # no approval (the sign-off is the customer's word on the finish, P7).
-    ask_customer = bool(project["customer_approval"]) and not terminal
+    # Only someone in the Customer role can decide, so with nobody in it no
+    # request is opened (it would wait for ever and count as waiting, sim L-7).
+    has_customer = db.execute("SELECT 1 FROM project_participants WHERE project_id = ? AND role = 'Customer'", (project_id,)).fetchone()
+    ask_customer = bool(project["customer_approval"]) and not terminal and bool(has_customer)
     if project["customer_approval"]:
         db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
     if ask_customer:
@@ -694,15 +515,13 @@ def undo_stage_change(project_id, note_id):
     both rows, and everyone who was told about the move is told it was undone."""
     db = get_db()
     project = load_project(project_id)
-    if project is None:
-        abort(404)
     note = db.execute("SELECT * FROM status_notes WHERE id = ? AND project_id = ? AND prev_stage IS NOT NULL", (note_id, project_id)).fetchone()
     cutoff = (datetime.utcnow() - timedelta(minutes=policy("undo_minutes"))).isoformat()
     later_move = note and db.execute(
         "SELECT 1 FROM status_notes WHERE project_id = ? AND prev_stage IS NOT NULL AND id > ?", (project_id, note_id)).fetchone()
     if (note is None or note["author_id"] != session["user_id"] or note["created_at"] < cutoff
             or later_move or project["stage"] != note["stage"] or note["prev_stage"] not in get_stage_names(project_id)):
-        flash("That move can no longer be undone: it is too old, was made by someone else, or the project has moved since")
+        flash("That move can no longer be undone: it is too old, was made by someone else, or the project has moved since", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     now = datetime.utcnow().isoformat()
     db.execute("UPDATE projects SET stage = ?, stage_entered_at = ?, updated_at = ? WHERE id = ?",
@@ -713,14 +532,16 @@ def undo_stage_change(project_id, note_id):
     db.execute("UPDATE status_notes SET stage = ? WHERE project_id = ? AND prev_stage IS NULL AND stage = ? AND created_at >= ?",
                (note["prev_stage"], project_id, note["stage"], note["created_at"]))
     # The approval this move asked for goes — unless the customer already
-    # decided it: that record stays, superseded. The one it superseded comes back.
+    # decided it: that record stays, superseded. The request of the visit the
+    # project returns to comes back, and only that one (it was opened as the
+    # project entered the stage: requested_at = that entry), only while the
+    # project still asks, and not if that visit was already decided (sim L-1).
     db.execute("DELETE FROM stage_approvals WHERE project_id = ? AND stage = ? AND requested_at = ? AND status = 'pending'", (project_id, note["stage"], note["created_at"]))
     db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND stage = ? AND requested_at = ? AND status IN ('approved', 'declined')",
                (project_id, note["stage"], note["created_at"]))
-    db.execute(
-        "UPDATE stage_approvals SET status = 'pending' WHERE id = (SELECT id FROM stage_approvals WHERE project_id = ? AND stage = ?"
-        " AND status = 'superseded' AND requested_at < ? ORDER BY requested_at DESC LIMIT 1)",
-        (project_id, note["prev_stage"], note["created_at"]))
+    if project["customer_approval"] and note["prev_entered_at"]:
+        db.execute("UPDATE stage_approvals SET status = 'pending' WHERE project_id = ? AND stage = ? AND status = 'superseded' AND requested_at = ?",
+                   (project_id, note["prev_stage"], note["prev_entered_at"]))
     db.commit()
     audit_log("undo_project_stage", "project", project_id, project["name"], f"stage={note['prev_stage']} (undid {note['stage']})")
     body = f"{escape(session['user_name'])} undid the move to <b>{escape(note['stage'])}</b>. The project is back in <b>{escape(note['prev_stage'])}</b>."
@@ -742,7 +563,9 @@ def decide_approval(project_id, approval_id, decision, comment):
     row = db.execute("SELECT * FROM stage_approvals WHERE id = ? AND project_id = ?", (approval_id, project_id)).fetchone()
     if row is None:
         abort(404)
-    if row["status"] != "pending" or decision not in ("approved", "declined"):
+    if decision not in ("approved", "declined"):
+        return "Approve or decline"
+    if row["status"] != "pending":
         return "That request is no longer open"
     comment = (comment or "").strip()[:2000]
     now = datetime.utcnow().isoformat()
@@ -764,24 +587,6 @@ def decide_approval(project_id, approval_id, decision, comment):
     return None
 
 
-@app.route("/projects/<int:project_id>/approvals/<int:approval_id>/decide", methods=["POST"])
-@login_required
-def approval_decide(project_id, approval_id):
-    error = decide_approval(project_id, approval_id, request.form.get("decision"), request.form.get("comment"))
-    flash(error or "Thank you — your decision is recorded")
-    return redirect(url_for("project_detail", project_id=project_id))
-
-
-def has_required_document(project_id, category):
-    db = get_db()
-    return (
-        db.execute(
-            "SELECT 1 FROM documents WHERE project_id = ? AND category = ? AND deleted_at IS NULL LIMIT 1", (project_id, category)
-        ).fetchone()
-        is not None
-    )
-
-
 def _date_problem(form):
     """Dates arrive as YYYY-MM-DD from the date pickers; anything else would
     break every page that does arithmetic on them (the routes store
@@ -798,7 +603,7 @@ def _date_problem(form):
     return _field_problem(form)
 
 
-PROJECT_TEXT_FIELDS = (("po_number", "PO number", 100),   # name and client are capped where they are stored
+PROJECT_TEXT_FIELDS = (("name", "Project name", 200), ("client", "Client", 200), ("po_number", "PO number", 100),
                        ("account_manager_name", "Account manager", 200), ("partner_name", "Partner", 200),
                        ("partner_account_manager_name", "Partner account manager", 200), ("outsourcer_name", "Outsourcer", 200),
                        ("vendor_name", "Vendor", 200), ("product_name", "Product", 200))
@@ -820,6 +625,8 @@ def _field_problem(form):
             return f"{label} does not look like an email address"
     if (form.get("via") or "") not in ("", *VIA_OPTIONS):
         return f"Via is one of: {', '.join(VIA_OPTIONS)}"
+    if form.get("via") == "Partner" and not (form.get("partner_name") or "").strip():
+        return "Pick the partner the deal came through"
     return None
 
 
@@ -865,16 +672,16 @@ def document_upload(project_id):
     file = request.files.get("file")
     category = request.form.get("category", "")
     if not file or not file.filename:
-        flash("No file selected")
+        flash("No file selected", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     if problem := upload_problem(file):
-        flash(problem)
+        flash(problem, "error")
         return redirect(url_for("project_detail", project_id=project_id))
     if not content_matches_extension(file):
-        flash("That file's contents don't match its extension")
+        flash("That file's contents don't match its extension", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     if category not in get_doc_category_names():
-        flash("Invalid category")
+        flash("Invalid category", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     original_name = save_document(project_id, file, category, session["user_name"])
     audit_log("upload_document", "project", project_id, None, f"{category}: {original_name}")
@@ -917,13 +724,14 @@ def document_delete(project_id, doc_id):
         "SELECT * FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL", (doc_id, project_id)
     ).fetchone()
     if doc is not None and db.execute("SELECT 1 FROM signoffs WHERE document_id = ?", (doc_id,)).fetchone():
-        flash("That is the signed sign-off copy — it is the record of acceptance and cannot be deleted")
+        flash("That is the signed sign-off copy — it is the record of acceptance and cannot be deleted", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     if doc is not None:
         touch_project(db, project_id)
         soft_delete("documents", doc_id)
         audit_log("delete_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
-        flash(Markup(f"Deleted {escape(doc['filename'])}. {undo_button('Undo', 'undo_document', doc_id=doc_id)} {undo_note()}"))
+        offer_undo("undo_document", doc_id=doc_id)
+        flash(f"Deleted {doc['filename']}. Undo {undo_note()}")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -944,12 +752,13 @@ def project_delete(project_id):
                (project_id, project_id))
     db.commit()
     audit_log("delete_project", "project", project_id, project["name"])
-    flash(Markup(f"Project deleted. {undo_button('Undo', 'undo_project', project_id=project_id)} {undo_note()}"))
+    offer_undo("undo_project", project_id=project_id)
+    flash(f"Project deleted. Undo {undo_note()}")
     return redirect(url_for("board"))
 
 
 @app.route("/projects/<int:project_id>/rotate-token", methods=["POST"])
-@write_required
+@permission_required("edit_project")
 @project_role_required("manage_project")
 def project_rotate_token(project_id):
     """Mint a fresh guest access token — instantly revokes any leaked old link."""
@@ -999,15 +808,15 @@ def participant_add(project_id):
     db = get_db()
     user = db.execute("SELECT id, name, kind FROM users WHERE id = ? AND active = 1", (raw,)).fetchone() if raw.isdigit() else None
     if user is None:
-        flash("Pick an active user")
+        flash("Pick an active user", "error")
     elif role not in PROJECT_ROLES:
-        flash("Pick a role")
+        flash("Pick a role", "error")
     elif _wrong_kind_for_role(user, role):
-        flash(_WRONG_KIND)
+        flash(_WRONG_KIND, "error")
     elif role == PROJECT_MANAGER and user["id"] != project["owner_id"]:
-        flash("The project manager is the owner — change the owner on Edit")
+        flash("The project manager is the owner — change the owner on Edit", "error")
     elif user["id"] == project["owner_id"] and role != PROJECT_MANAGER:
-        flash("The owner is the project manager")
+        flash("The owner is the project manager", "error")
     else:
         db.execute(
             "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) "
@@ -1084,9 +893,8 @@ def participant_invite(project_id):
                 # the link by hand. It still works once and expires in 30 minutes.
                 from core import external_url
                 link = external_url("auth_link_consume", token=raw, next=url_for("project_detail", project_id=project_id))
-                flash(Markup(f"{escape(user['name'])} added as {escape(role)}. Email could not be sent "
-                             f"({escape(error or 'not configured')}) — send them this link yourself: "
-                             f"<code>{escape(link)}</code>"))
+                flash(f"{user['name']} added as {role}. Email could not be sent "
+                      f"({error or 'not configured'}) — send them this link yourself: {link}")
     return redirect(url_for("project_detail", project_id=project_id) + "#team")
 
 
@@ -1103,7 +911,7 @@ def participant_remove(project_id, participant_id):
     if row is None:
         abort(404)
     if row["user_id"] == project["owner_id"]:
-        flash("The project manager cannot be removed — reassign the owner on Edit")
+        flash("The project manager cannot be removed — reassign the owner on Edit", "error")
     else:
         db.execute("DELETE FROM project_participants WHERE id = ?", (participant_id,))
         db.commit()
@@ -1114,18 +922,11 @@ def participant_remove(project_id, participant_id):
 
 # ---- a project's own stages: add / rename / reorder / delete / SLAs ---------
 
-def _live_project(project_id):
-    project = load_project(project_id)
-    if project is None:
-        abort(404)
-    return project
-
-
 def _stage_change(project_id, action, error, detail):
     if error:
-        flash(error)
+        flash(error, "error")
     else:
-        audit_log(action, "project", project_id, _live_project(project_id)["name"], detail)
+        audit_log(action, "project", project_id, load_project(project_id)["name"], detail)
     return redirect(url_for("project_detail", project_id=project_id) + "#stages")
 
 
@@ -1133,7 +934,7 @@ def _stage_change(project_id, action, error, detail):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_add(project_id):
-    _live_project(project_id)
+    load_project(project_id)
     name = request.form.get("name", "")
     return _stage_change(project_id, "add_project_stage", stage_ops.add_stage("project", project_id, name), name)
 
@@ -1142,7 +943,7 @@ def project_stage_add(project_id):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_rename(project_id, stage_id):
-    _live_project(project_id)
+    load_project(project_id)
     name = request.form.get("name", "")
     return _stage_change(project_id, "rename_project_stage", stage_ops.rename_stage("project", project_id, stage_id, name), f"stage_id={stage_id} -> {name}")
 
@@ -1151,7 +952,7 @@ def project_stage_rename(project_id, stage_id):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_move(project_id, stage_id):
-    _live_project(project_id)
+    load_project(project_id)
     direction = request.form.get("direction", "")
     return _stage_change(project_id, "move_project_stage", stage_ops.move_stage("project", project_id, stage_id, direction), f"stage_id={stage_id} {direction}")
 
@@ -1160,7 +961,7 @@ def project_stage_move(project_id, stage_id):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_delete(project_id, stage_id):
-    _live_project(project_id)
+    load_project(project_id)
     return _stage_change(project_id, "delete_project_stage", stage_ops.delete_stage("project", project_id, stage_id), f"stage_id={stage_id}")
 
 
@@ -1168,7 +969,7 @@ def project_stage_delete(project_id, stage_id):
 @permission_required("edit_project")
 @project_role_required("manage_project")
 def project_stage_sla(project_id):
-    _live_project(project_id)
+    load_project(project_id)
     return _stage_change(project_id, "update_project_stage_slas", stage_ops.set_slas("project", project_id, request.form), None)
 
 
@@ -1178,7 +979,7 @@ def project_stage_sla(project_id):
 def undo_project(project_id):
     stamp = load_project(project_id, include_deleted=True)["deleted_at"]   # the row is deleted by definition
     if not restore_deleted("projects", project_id):
-        flash("Too late to undo — the undo window has passed")
+        flash("Too late to undo — the undo window has passed", "error")
         return redirect(url_for("projects_list"))
     db = get_db()
     # only the documents that went with the project; one deleted on its own stays deleted
@@ -1201,7 +1002,7 @@ def undo_document(doc_id):
     if not project_allows(row["project_id"], "manage_documents"):
         abort(403)
     if not restore_deleted("documents", doc_id):
-        flash("Too late to undo — the undo window has passed")
+        flash("Too late to undo — the undo window has passed", "error")
         return redirect(url_for("project_detail", project_id=row["project_id"]))
     doc = db.execute("SELECT project_id, filename FROM documents WHERE id = ? AND deleted_at IS NULL", (doc_id,)).fetchone()
     audit_log("restore_document", "document", doc_id, doc["filename"], f"project_id={doc['project_id']}")
@@ -1275,7 +1076,7 @@ def note_edit(project_id, note_id):
     note = _own_note(project_id, note_id)
     text = request.form.get("note", "").strip()[:5000]
     if not text:
-        flash("A note needs some text — delete it instead")
+        flash("A note needs some text — delete it instead", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     db = get_db()
     db.execute("UPDATE status_notes SET note = ?, edited_at = ? WHERE id = ?", (text, datetime.utcnow().isoformat(), note_id))
@@ -1290,7 +1091,7 @@ def note_edit(project_id, note_id):
 def note_delete(project_id, note_id):
     note = _own_note(project_id, note_id)
     if note_id in stage_entry_note_ids(project_id):
-        flash("This note records a stage change, so it stays in the history — edit its text instead")
+        flash("This note records a stage change, so it stays in the history — edit its text instead", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     db = get_db()
     db.execute("DELETE FROM status_notes WHERE id = ?", (note_id,))
@@ -1378,12 +1179,14 @@ def _assignee(db, project_id, raw):
     """The assignee, or None: an active staff account (staff see every
     project), or a partner on this project — never a partner from elsewhere,
     who would be told the name of a project they cannot open (test report FN-4)."""
+    if raw in (None, "", 0, "0"):
+        return None
     raw = as_id(raw)
     if not raw:
-        return None
+        return False   # something was picked, but not a person: refused, never quietly unassigned (sim L-21)
     ok = db.execute("SELECT 1 FROM users u WHERE u.id = ? AND u.active = 1 AND (u.kind = 'internal' OR EXISTS "
                     "(SELECT 1 FROM project_participants pp WHERE pp.project_id = ? AND pp.user_id = u.id))", (raw, project_id)).fetchone()
-    return raw if ok else None
+    return raw if ok else False
 
 
 def _due_problem(form):
@@ -1408,6 +1211,8 @@ def task_add(project_id):
     if not title:
         return _task_reply(project_id, "Task needs a title")
     assignee_id = _assignee(db, project_id, form.get("assignee_id"))
+    if assignee_id is False:
+        return _task_reply(project_id, "Pick an active colleague or someone on this project")
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
     cur = db.execute(
@@ -1455,10 +1260,12 @@ def task_delete(project_id, task_id):
     load_project(project_id)   # visibility decided in one place
     db = get_db()
     task = db.execute("SELECT title FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
+    if task is None:
+        abort(404)
     db.execute("DELETE FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id))
     touch_project(db, project_id)
     db.commit()
-    audit_log("delete_task", "project", project_id, None, task["title"][:80] if task else f"task {task_id} (already gone)")
+    audit_log("delete_task", "project", project_id, None, task["title"][:80])
     return _task_reply(project_id)
 
 
@@ -1488,6 +1295,8 @@ def task_edit(project_id, task_id):
     if not title:
         return _task_reply(project_id, "Task needs a title")
     assignee_id = _assignee(db, project_id, form.get("assignee_id")) if "assignee_id" in form else task["assignee_id"]
+    if assignee_id is False:
+        return _task_reply(project_id, "Pick an active colleague or someone on this project")
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
     due = parse_date(form.get("due_date")) if "due_date" in form else task["due_date"]
@@ -1503,73 +1312,3 @@ def task_edit(project_id, task_id):
         _notify_assignee(assignee_id, project_id, title)
     audit_log("edit_task", "project", project_id, None, title[:80] + (f" (was {task['title'][:60]})" if title != task["title"] else ""))
     return _task_reply(project_id)
-
-
-@app.route("/projects/<int:project_id>/tasks/bulk", methods=["POST"])
-@permission_required("edit_project")
-@project_role_required("manage_tasks")
-def task_bulk(project_id):
-    """Complete or delete several tasks at once.
-
-    Ids are filtered against this project rather than trusted from the form, so
-    a doctored checkbox can't reach a task belonging to somebody else's project.
-    """
-    load_project(project_id)   # visibility decided in one place
-    action = request.form.get("action")
-    if action not in ("complete", "reopen", "delete"):
-        abort(400)
-    raw_ids = request.form.getlist("task_ids")
-    try:
-        wanted = {int(value) for value in raw_ids}
-    except ValueError:
-        abort(400)
-    if not wanted:
-        flash("No tasks selected")
-        return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
-
-    db = get_db()
-    owned = {
-        row["id"] for row in
-        db.execute("SELECT id FROM tasks WHERE project_id = ?", (project_id,)).fetchall()
-    }
-    ids = sorted(wanted & owned)
-    if not ids:
-        abort(404)
-
-    placeholders = ",".join("?" for _ in ids)
-    if action == "delete":
-        changed = db.execute(f"DELETE FROM tasks WHERE id IN ({placeholders})", ids).rowcount
-        message = f"Deleted {changed} task(s)"
-    else:
-        done = 1 if action == "complete" else 0
-        # only the tasks whose state changes: a task done last week keeps the day it was done (L13)
-        changed = db.execute(
-            f"UPDATE tasks SET done = ?, done_at = ? WHERE id IN ({placeholders}) AND done != ?",
-            [done, datetime.utcnow().isoformat() if done else None, *ids, done],
-        ).rowcount
-        message = f"{'Completed' if done else 'Reopened'} {changed} task(s)"
-    if changed:
-        touch_project(db, project_id)
-    db.commit()
-    flash(message)
-    audit_log("bulk_tasks", "project", project_id, None, f"{action}: {changed} task(s)")
-    if action == "complete" and changed:
-        project = load_project(project_id)
-        _tell_pm(project, f"{changed} task{'s' if changed != 1 else ''} done on {escape(project['name'])}",
-                 f"{escape(session['user_name'])} completed {changed} task{'s' if changed != 1 else ''} at once.")
-    return redirect(url_for("project_detail", project_id=project_id) + "#tasks")
-
-
-@app.route("/projects/<int:project_id>/tasks/clear-completed", methods=["POST"])
-@permission_required("edit_project")
-@project_role_required("manage_tasks")
-def task_clear_completed(project_id):
-    """Drop every finished task at once, so the checklist stays about what's
-    still outstanding."""
-    load_project(project_id)   # visibility decided in one place
-    db = get_db()
-    cursor = db.execute("DELETE FROM tasks WHERE project_id = ? AND done = 1", (project_id,))
-    db.commit()
-    flash(f"Cleared {cursor.rowcount} completed task(s)")
-    audit_log("clear_completed_tasks", "project", project_id)
-    return redirect(url_for("project_detail", project_id=project_id) + "#tasks")

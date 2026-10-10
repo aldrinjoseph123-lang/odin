@@ -7,6 +7,9 @@ export const initials = (name: string | null | undefined) => (name ?? "?").split
 export type DateFormat = "d MMM yyyy" | "yyyy-MM-dd" | "dd/MM/yyyy" | "MM/dd/yyyy"
 let dateFormat: DateFormat = "d MMM yyyy"
 export const setDateFormat = (f: DateFormat | undefined) => { if (f) dateFormat = f }
+// English month names, so "d MMM yyyy" reads "1 Nov 2026" in every browser
+// (a US-locale browser turned it into "Nov 1", sim L-23). Odin is English-only.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 // A stored UTC timestamp or a YYYY-MM-DD date, with the year, in the
 // workspace format and the reader's zone; withTime adds the local hh:mm.
 export function fmtWhen(iso: string | null | undefined, withTime = false): string {
@@ -15,7 +18,7 @@ export function fmtWhen(iso: string | null | undefined, withTime = false): strin
   if (Number.isNaN(d.getTime())) return iso
   const y = String(d.getFullYear()), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0")
   const date = dateFormat === "yyyy-MM-dd" ? `${y}-${m}-${day}` : dateFormat === "dd/MM/yyyy" ? `${day}/${m}/${y}`
-    : dateFormat === "MM/dd/yyyy" ? `${m}/${day}/${y}` : d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })
+    : dateFormat === "MM/dd/yyyy" ? `${m}/${day}/${y}` : `${d.getDate()} ${MONTHS[d.getMonth()]} ${y}`
   return withTime ? `${date}, ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : date
 }
 
@@ -33,11 +36,12 @@ export function fmtDate(iso: string | null | undefined): string {
   if (dateFormat === "yyyy-MM-dd") return `${y}-${m}-${d}`
   if (dateFormat === "dd/MM/yyyy") return `${d}/${m}/${y}`
   if (dateFormat === "MM/dd/yyyy") return `${m}/${d}/${y}`
-  return new Date(`${ymd}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" })
+  return `${Number(d)} ${MONTHS[Number(m) - 1]}`
 }
 export const days = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n)} d`)
 
-export const daysLate = (target: string | null) => (target ? Math.round((Date.now() - new Date(`${target}T00:00:00`).getTime()) / 864e5) : 0)
+// whole calendar days past the target, as the timeline and dashboard count them (never rounded from the clock, sim L-9)
+export const daysLate = (target: string | null) => (target ? lateBy(target, localToday()) : 0)
 export function stateText(r: { state: FlowState; days_in_stage: number | null; over_by: number | null; target_end_date: string | null }) {
   if (r.state === "overdue") return `Overdue ${daysLate(r.target_end_date)} d`
   if (r.state === "over_sla") return r.days_in_stage == null ? "Over SLA" : `${days(r.days_in_stage)} · ${Math.round(r.over_by ?? 0)} over SLA`
@@ -49,7 +53,10 @@ export function stateText(r: { state: FlowState; days_in_stage: number | null; o
 export function localDateTime(iso: string): string {
   const d = new Date(iso.endsWith("Z") ? iso : `${iso}Z`)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+  // the workspace date format, day first, never the browser's locale ("Sep 24" beside "24 Sep": critique 10 Oct)
+  const t = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+  const day = fmtDate(localToday(d))   // numeric formats already carry the year
+  return `${dateFormat === "d MMM yyyy" ? `${day} ${d.getFullYear()}` : day}, ${t}`
 }
 
 // A saved report is plain text with "# " headings and "- " items; the server
@@ -89,7 +96,8 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
   if (d === 1) return "yesterday"
   if (d < 7) return `${d} d ago`
   const sameYear = new Date(t).getFullYear() === new Date(now).getFullYear()
-  return new Date(t).toLocaleDateString([], { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) })
+  const day = fmtDate(localToday(new Date(t)))   // the workspace format, day first
+  return sameYear || dateFormat !== "d MMM yyyy" ? day : `${day} ${new Date(t).getFullYear()}`
 }
 
 // Whole days a YYYY-MM-DD due date is past today (0 when not late).
@@ -136,8 +144,13 @@ export function fitStages(statuses: ("done" | "current" | "next")[], capacity: n
   if (n <= capacity) return all
   const current = Math.max(0, statuses.indexOf("current"))
   const lastDone = statuses.lastIndexOf("done")
-  const head: FlowItem[] = lastDone >= 1 ? [{ kind: "done", from: 0, to: lastDone }] : statuses.slice(0, lastDone + 1).map((_, index) => ({ kind: "stage", index }))
   const rest = all.slice(lastDone + 1)
+  // fold only the oldest finished stages, and only as many as needed: the chart fills its room
+  if (lastDone >= 1 && rest.length + 1 <= capacity) {
+    const foldTo = lastDone - (capacity - 1 - rest.length)   // ≥ 1, so a fold is never a node of one
+    return [{ kind: "done", from: 0, to: foldTo }, ...all.slice(foldTo + 1)]
+  }
+  const head: FlowItem[] = lastDone >= 1 ? [{ kind: "done", from: 0, to: lastDone }] : statuses.slice(0, lastDone + 1).map((_, index) => ({ kind: "stage", index }))
   if (head.length + rest.length <= capacity) return [...head, ...rest]
   // keep: head, current, as many next stages as fit, a "later" node, the last stage
   const room = Math.max(0, capacity - head.length - 3)
@@ -356,4 +369,19 @@ export function aiProgress(job: { status: string; progress?: { ahead: number; st
 export function productsFor(products: { name: string; vendor: string }[], vendor: string, current = ""): string[] {
   const names = products.filter((p) => !vendor || !p.vendor || p.vendor === vendor).map((p) => p.name)
   return current && !names.includes(current) ? [current, ...names] : names
+}
+
+// The project timeline's one line in words: "Started 9 Oct · day 1 · no target
+// date" / "… · target 30 Oct, 21 days left" / "… · target 2 Oct, 7 days late".
+// A start still ahead reads "Starts 1 Nov, in 22 days"; a closed rollout has
+// no days left to count (sim L-13). Calendar days (gaps between dates stay calendar days).
+export function timelineSummary(start: string, today: string, target?: string | null, closed = false): string {
+  const n = (k: number) => `${k} day${k === 1 ? "" : "s"}`
+  const ahead = lateBy(today, start)
+  const head = ahead ? `Starts ${fmtDate(start)}, in ${n(ahead)}` : `Started ${start === today ? "today" : fmtDate(start)} · day ${lateBy(start, today) + 1}`
+  if (closed) return `${head.replace(/ · day \d+$/, "")} · closed`
+  if (!target) return `${head} · no target date`
+  const left = lateBy(today, target), late = lateBy(target, today)
+  const when = late ? `${n(late)} late` : left ? `${n(left)} left` : "due today"
+  return `${head} · target ${fmtDate(target)}, ${when}`
 }

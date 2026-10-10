@@ -39,11 +39,10 @@ DEFAULT_SETTINGS = {
     "notify_email_enabled": "0",
     "notify_teams_enabled": "0",
     "onedrive_mirror_uploads_enabled": "0",
-    "onedrive_backup_enabled": "0",
 }
 
 # The one document category the project can't be created without — its upload
-# is the create-project trigger. See has_required_document() / project_new.
+# is the create-project trigger (routes/projects.project_new).
 CLIENT_PO_DOC_CATEGORY = "Client PO"
 
 DELIVERY_MODES = ["Distribution/MSSP", "Outsourced"]
@@ -92,7 +91,7 @@ NOTIFICATION_KINDS = {
 ADMIN_KINDS = ("access", "ai")
 
 THEMES = ("system", "light", "dark")
-# No red or amber accent: in the UI those mean overdue and warning (27 Sep 2026).
+# Pastel accents, red first and the default (9 Oct 2026); overdue stays the solid --bad state.
 ACCENTS = ("red", "blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
 AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 AVATAR_MAX_BYTES = 2 * 1024 * 1024
@@ -226,7 +225,7 @@ NEW_USER_COLUMNS = {
     # OS, and which hue the one accent takes. The avatar is a filename under
     # ODIN_DATA_DIR/avatars, unique per upload so its URL changes on replace.
     "theme": "TEXT NOT NULL DEFAULT 'system'",
-    "accent": "TEXT NOT NULL DEFAULT 'red'",
+    "accent": "TEXT NOT NULL DEFAULT 'blue'",
     "avatar": "TEXT",
     # Notification kinds this user does NOT want by email (comma list); the
     # in-app notification always arrives.

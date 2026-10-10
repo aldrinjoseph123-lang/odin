@@ -4,7 +4,7 @@ and the tasks on them; "contribution" is what the person finished, noted
 and moved, counted from the same rows the flow keeps.
 """
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from db import PROJECT_OPEN_SQL, avatar_url, get_db, stages_for_projects
 from policies import local_date, local_today, policy
@@ -33,10 +33,11 @@ def _projects_of(db, uid, scope):
         (uid, uid, *scope_params)).fetchall()
 
 
-def _task_rows(db, where, params):
+def _task_rows(db, where, params, open_only=True):
+    """Tasks on live projects; done work counts on closed rollouts too (as the People card does)."""
     return [dict(r) for r in db.execute(
         "SELECT t.id, t.project_id, t.title, t.due_date, t.stage, t.done, t.done_at, p.name AS project, p.client, p.stage AS project_stage "
-        f"FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} AND {where} "
+        f"FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.deleted_at IS NULL{' AND ' + PROJECT_OPEN_SQL if open_only else ''} AND {where} "
         "ORDER BY t.due_date IS NULL, t.due_date, t.id", params)]
 
 
@@ -120,7 +121,7 @@ def person(uid, scope):
     states = _states(projects)
     pending = _task_rows(db, f"t.assignee_id = ? AND t.done = 0{scope_sql}", (uid, *scope_params))
     month_ago = _since(today - timedelta(days=30))
-    done = _task_rows(db, f"t.assignee_id = ? AND t.done = 1 AND t.done_at >= ?{scope_sql}", (uid, _since(today - timedelta(days=56)), *scope_params))
+    done = _task_rows(db, f"t.assignee_id = ? AND t.done = 1 AND t.done_at >= ?{scope_sql}", (uid, _since(today - timedelta(days=56)), *scope_params), open_only=False)
     dated = [t for t in done if t["due_date"] and t["done_at"] >= month_ago]
     on_time = sum(1 for t in dated if local_date(t["done_at"]).isoformat() <= t["due_date"])
     # contribution by week, the last eight

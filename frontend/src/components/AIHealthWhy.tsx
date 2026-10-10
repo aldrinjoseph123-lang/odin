@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
 import { Ago } from "@/components/Ago"
-import { projectAI, requestProjectAI, type ProjectAI } from "@/lib/api"
-import { usePoll } from "@/lib/usePoll"
+import { requestProjectAI } from "@/lib/api"
+import { useProjectAI } from "@/lib/usePoll"
 
 type Why = { why: string; first_move: string }
 
@@ -13,15 +13,9 @@ type Why = { why: string; first_move: string }
 // rollout is green or done, or when the AI cannot run here and has nothing
 // to show; the reasons list above it is always the source of truth.
 export function AIHealthWhy({ projectId, rag }: { projectId: number; rag: string }) {
-  const [s, setS] = useState<ProjectAI<Why> | null>(null)
-  const [busy, setBusy] = useState(false)
-  const load = useCallback(async () => {
-    try { setS(await projectAI<Why>(projectId, "health_explained")) } catch { setS(null) }
-  }, [projectId])
   const show = rag === "amber" || rag === "red"
-  useEffect(() => { if (show) void load() }, [load, show])
-  const working = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  usePoll(working, load)
+  const { s, load, working } = useProjectAI<Why>(projectId, "health_explained", { enabled: show })
+  const [busy, setBusy] = useState(false)
   if (!show || !s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   async function explain() {

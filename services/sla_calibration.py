@@ -14,7 +14,7 @@ from db import get_db
 from policies import local_date, policy
 from services import stages as stage_ops
 from services import workdays
-from services.analytics import _parse, stage_timeline
+from services.analytics import stage_timeline
 
 
 def _nearest_rank(values, pct):

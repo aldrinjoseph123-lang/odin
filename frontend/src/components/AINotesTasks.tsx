@@ -54,7 +54,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
   }
   return (
     <section className="panel p-4" aria-labelledby="minutes-h">
-      <h2 id="minutes-h" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-nav-fg">
+      <h2 id="minutes-h" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] font-semibold text-nav-fg">
         <Sparkles className="h-3.5 w-3.5 text-primary-text" aria-hidden />Tasks from meeting notes<span className="sr-only">, </span>
         <span className="font-normal text-muted-foreground">paste the minutes; the AI lists the actions agreed in them</span>
       </h2>
@@ -70,7 +70,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
         {working && s.job && <AIProgress job={s.job} doing="Reading the minutes" />}
         {working && <div className="mt-2 flex items-center gap-3 text-muted-foreground">
           {s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setNote(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}</div>}
-        {lastJob?.status === "failed" && <p className="mt-2 text-bad">That did not finish: {lastJob.error}</p>}
+        {lastJob?.status === "failed" && <p className="mt-2 text-destructive">That did not finish: {lastJob.error}</p>}
         {lastJob?.result?.skipped && <p className="mt-2 text-muted-foreground">{lastJob.result.skipped}</p>}
         {note && <p className="mt-2 text-muted-foreground" role="status">{note}</p>}
       </div>

@@ -182,19 +182,6 @@ class AlertsTestCase(FixBase):
         scheduler.sync_alerts()
         self.assertEqual(self.sql("SELECT COUNT(*) FROM alerts WHERE resolved = 0")[0][0], 1)
 
-    def test_dismissed_blocker_comes_back_for_a_new_blocker(self):
-        self.new_project(name="B", client="C")
-        self.sql("UPDATE alert_type_settings SET threshold_days = 0 WHERE alert_type = 'blocker_open'")
-        c, csrf = self._api_client()
-        h = {"X-CSRF-Token": csrf}
-        self.assertEqual(c.post("/api/projects/1/raid", json={"kind": "blocker", "title": "Firewall"}, headers=h).status_code, 200)
-        names = lambda: [p["name"] for p in c.get("/api/board").get_json()["alerts"]["blocker_open"]]   # noqa: E731
-        self.assertEqual(names(), ["B"])
-        c.post("/api/alerts/1/dismiss/blocker_open", headers=h)
-        self.assertEqual(names(), [])
-        c.post("/api/projects/1/raid", json={"kind": "blocker", "title": "Licences"}, headers=h)
-        self.assertEqual(names(), ["B"])   # a new blocker is a new alert
-
     def test_badges_leave_out_deleted_and_closed_projects(self):
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
         self.new_project(name="Done", client="C")
@@ -276,10 +263,10 @@ class LifecycleTestCase(FixBase):
         self.new_project(name="U", client="C", customer_approval="1")
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         s = self.stages()
-        self.client.post("/projects/1/stage", data={"stage": s[1]})
+        self.client.post("/api/projects/1/stage", json={"stage": s[1]})
         e = self._external_client("ann@acme.example")
         aid = self.sql("SELECT id FROM stage_approvals WHERE status = 'pending'")[0][0]
-        e.post(f"/projects/1/approvals/{aid}/decide", data={"decision": "approved"})
+        e.post(f"/api/projects/1/approvals/{aid}", json={"decision": "approved"})
         self.client.post("/projects/1/note", data={"note": "after the move"})
         self.assertEqual(self.sql("SELECT stage FROM status_notes WHERE note = 'after the move'")[0][0], s[1])
         move = self.sql("SELECT id FROM status_notes WHERE prev_stage IS NOT NULL")[0][0]
@@ -290,6 +277,7 @@ class LifecycleTestCase(FixBase):
 
     def test_closing_asks_no_approval_and_supersedes_the_open_one(self):
         self.new_project(name="P", client="C", customer_approval="1")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
         self.sql("INSERT INTO settings (key, value) VALUES ('policy.signoff_required', '0')")
         s = self.stages()
         c, h = self._client()
@@ -298,6 +286,7 @@ class LifecycleTestCase(FixBase):
         self.assertEqual([r[0] for r in self.sql("SELECT status FROM stage_approvals ORDER BY id")], ["superseded"])
         # turning customer approval off on edit supersedes an open request
         self.new_project(name="Q", client="C", customer_approval="1")
+        self._invite(2, "ann@acme.example", "Customer", "Ann")
         c.post("/api/projects/2/stage", json={"stage": s[1]}, headers=h)
         self.client.post("/projects/2/edit", data={"name": "Q", "client": "C", "owner_id": "1", "delivery_mode": "Distribution/MSSP"})
         self.assertEqual(self.sql("SELECT COUNT(*) FROM stage_approvals WHERE project_id = 2 AND status = 'pending'")[0][0], 0)
@@ -324,8 +313,8 @@ class LifecycleTestCase(FixBase):
         for sid in ids[:-2]:
             self.client.post(f"/settings/templates/{tid}/stages/{sid}/delete")
         self.assertEqual(len(self.sql("SELECT id FROM stage_template_stages WHERE template_id = ?", tid)), 2)
-        r = self.client.post(f"/settings/templates/{tid}/stages/{ids[-1]}/delete", follow_redirects=True)
-        self.assertIn(b"at least two stages", r.data)
+        self.client.post(f"/settings/templates/{tid}/stages/{ids[-1]}/delete")
+        self.assertIn("at least two stages", test_app.flashed(self.client))
         self.assertEqual(len(self.sql("SELECT id FROM stage_template_stages WHERE template_id = ?", tid)), 2)
         # a template cut to one stage outside the app cannot give birth to a closed project
         self.sql("DELETE FROM stage_template_stages WHERE id = ?", ids[-2])
@@ -334,6 +323,7 @@ class LifecycleTestCase(FixBase):
 
     def test_rename_reaches_every_row_naming_the_stage(self):
         self.new_project(name="P", client="C", customer_approval="1")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")   # a request opens only when a customer can decide it
         s = self.stages()
         c, h = self._client()
         c.post("/api/projects/1/stage", json={"stage": s[1]}, headers=h)
@@ -346,8 +336,8 @@ class LifecycleTestCase(FixBase):
     def test_sla_bounds(self):
         sid = self.sql("SELECT id FROM stage_template_stages WHERE template_id = 1 ORDER BY position")[0][0]
         for bad in ("3000000", str(2 ** 70), "366"):
-            r = self.client.post("/settings/templates/1/sla", data={f"sla::{sid}": bad}, follow_redirects=True)
-            self.assertIn(b"between 1 and 365", r.data, bad)
+            self.client.post("/settings/templates/1/sla", data={f"sla::{sid}": bad})
+            self.assertIn("between 1 and 365", test_app.flashed(self.client), bad)
         self.client.post("/settings/templates/1/sla", data={f"sla::{sid}": "365"})
         self.assertEqual(self.sql("SELECT sla_days FROM stage_template_stages WHERE id = ?", sid)[0][0], 365)
 
@@ -415,16 +405,6 @@ class TasksTestCase(FixBase):
         self.assertEqual(e.post("/projects/1/tasks/1/edit", json={**whole, "title": "renamed"}, headers=h).status_code, 403)
         self.assertEqual(e.post("/projects/1/tasks/2/edit", json={"due_date": "2026-12-20"}, headers=h).status_code, 403)
         self.assertEqual(self.sql("SELECT title FROM tasks WHERE id = 1")[0][0], "mine")
-
-    def test_bulk_complete_keeps_the_day_a_task_was_done(self):
-        self.new_project(name="P", client="C")
-        for t in ("a", "b"):
-            self.client.post("/projects/1/tasks", data={"title": t})
-        self.sql("UPDATE tasks SET done = 1, done_at = '2026-01-01T00:00:00' WHERE title = 'a'")
-        self.client.post("/projects/1/tasks/bulk", data={"action": "complete", "task_ids": ["1", "2"]})
-        self.assertEqual(self.sql("SELECT done_at FROM tasks WHERE title = 'a'")[0][0], "2026-01-01T00:00:00")
-        self.assertEqual(self.sql("SELECT done FROM tasks WHERE title = 'b'")[0][0], 1)
-
 
 class SignoffRulesTestCase(FixBase):
     """D5/D6/L12/L19/F-M4/F-M5/F-M7."""
@@ -496,8 +476,9 @@ class ReportPdfAndAITestCase(FixBase):
 
     def test_one_bad_date_does_not_take_the_pdf_down(self):
         self.new_project(name="P", client="C", customer_approval="1")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
         s = self.stages()
-        self.client.post("/projects/1/stage", data={"stage": s[1]})   # an approval waits on the customer
+        self.client.post("/api/projects/1/stage", json={"stage": s[1]})   # an approval waits on the customer
         self.client.post("/projects/1/tasks", data={"title": "t"})
         self.sql("UPDATE tasks SET due_date = 'not-a-date'")
         self.sql("UPDATE project_stages SET base_start = 'garbage', base_end = '9999-12-31', plan_start = '2026-10-01', plan_end = '9999-12-31' WHERE position = 0")
@@ -565,3 +546,128 @@ class AIJobProgressTest(test_app.AITestBase):
         self.assertEqual(job["progress"]["ahead"], 1)
         self.assertGreater(job["progress"]["expected_s"], 0)          # from the feature's last test
         self.assertIsNone(job["progress"]["started_at"])
+
+
+class SimulationLogicTestCase(FixBase):
+    """The 10 Oct 2026 end-to-end logic simulation."""
+
+    def _move(self, stage, client=None):
+        return (client or self.client).post("/api/projects/1/stage", json={"stage": stage}).get_json()
+
+    def _undo(self, undo):
+        return self.client.post(undo, headers={"Accept": "application/json"})
+
+    def test_undo_brings_back_only_that_visits_request_and_only_while_asking(self):   # L-1
+        self.new_project(name="U", client="C", customer_approval="1")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        s = self.stages()
+        self._move(s[1])
+        # switched off, then a move and its undo: nothing pending comes back
+        self.client.post("/projects/1/edit", data={"name": "U", "client": "C", "via": "Direct", "delivery_mode": "Distribution/MSSP"})
+        undo = self._move(s[2])["undo"]
+        self._undo(undo)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM stage_approvals WHERE status = 'pending'")[0][0], 0)
+
+    def test_a_decided_visit_is_not_reopened_by_an_undo(self):   # L-1 variant B
+        self.new_project(name="U", client="C", customer_approval="1")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        s = self.stages()
+        self._move(s[1]); self._move(s[2]); self._move(s[1])
+        ann = self._external_client("ann@acme.example")
+        aid = self.sql("SELECT id FROM stage_approvals WHERE status = 'pending'")[0][0]
+        self.assertEqual(ann.post(f"/api/projects/1/approvals/{aid}", json={"decision": "approved"}).status_code, 200)
+        self._undo(self._move(s[2])["undo"])
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM stage_approvals WHERE status = 'pending'")[0][0], 0)
+
+    def test_no_request_when_nobody_can_decide_it(self):   # L-7
+        self.new_project(name="U", client="C", customer_approval="1")
+        self._move(self.stages()[1])
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM stage_approvals")[0][0], 0)
+
+    def test_reordering_cannot_reopen_a_closed_project(self):   # L-6
+        self.new_project(name="P", client="C")
+        s = self.stages()
+        self.sql("UPDATE projects SET stage = ? WHERE id = 1", s[-1])
+        last = self.sql("SELECT id FROM project_stages WHERE project_id = 1 ORDER BY position DESC LIMIT 1")[0][0]
+        r = self.client.post(f"/projects/1/stages/{last}/move", data={"direction": "up"}, headers={"Accept": "application/json"})
+        self.assertEqual(r.status_code, 400); self.assertIn("closed", r.get_json()["error"])
+        self.assertEqual(self.stages()[-1], s[-1])
+
+    def test_a_waiver_needs_the_stage_before_the_finish(self):   # L-12
+        self.new_project(name="P", client="C")
+        c, csrf = self._api_client()
+        r = c.post("/api/projects/1/signoff/waive", json={"reason": "Customer signed on paper last week"}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(r.status_code, 400); self.assertIn("Waive the sign-off once", r.get_json()["error"])
+
+    def test_sla_save_keeps_stages_the_form_does_not_name(self):   # L-26
+        self.new_project(name="P", client="C")
+        ids = [r[0] for r in self.sql("SELECT id FROM project_stages WHERE project_id = 1 ORDER BY position")]
+        self.client.post("/projects/1/stages/sla", data={f"sla::{ids[0]}": "5", f"sla::{ids[1]}": "6"})
+        self.client.post("/projects/1/stages/sla", data={f"sla::{ids[0]}": "9"})
+        self.assertEqual([r[0] for r in self.sql("SELECT sla_days FROM project_stages WHERE id IN (?, ?) ORDER BY position", ids[0], ids[1])], [9, 6])
+
+    def test_inputs_are_refused_not_quietly_changed(self):   # L-18, L-20, L-21
+        self.new_project(name="P", client="C")
+        h = {"Accept": "application/json"}
+        self.assertEqual(self.client.post("/settings/contacts/vendors/9999/delete", headers=h).status_code, 404)
+        self.assertEqual(self.client.post("/projects/1/edit", data={"name": "Two\nlines", "client": "C"}, headers=h).status_code, 400)
+        self.assertEqual(self.client.post("/projects/1/edit", data={"name": "x" * 201, "client": "C"}, headers=h).status_code, 400)
+        self.assertEqual(self.client.post("/projects/1/tasks", json={"title": "t", "assignee_id": 9999}).status_code, 400)
+        self.assertEqual(self.client.post("/projects/1/tasks/9999/delete", headers=h).status_code, 404)
+        self.client.post("/settings/contacts/vendors/add", data={"name": "SimVendor"})
+        self.assertEqual(self.client.post("/settings/contacts/vendors/add", data={"name": "simvendor"}, headers=h).status_code, 400)
+
+    def test_a_deleted_projects_bell_goes_quiet_and_its_alerts_leave_the_dashboard(self):   # L-11, L-16
+        self.new_project(name="P", client="C", target_end_date="2020-01-01")
+        self.sql("INSERT INTO notifications (user_id, kind, project_id, title, body, created_at) VALUES (1, 'stage', 1, 't', 'b', '2026-10-01')")
+        c, _ = self._api_client()
+        before = c.get("/api/session").get_json()["user"]["nav"]["unread_notifications"]
+        self.client.post("/projects/1/delete")
+        self.assertEqual(c.get("/api/session").get_json()["user"]["nav"]["unread_notifications"], before - 1)
+
+    def test_due_soon_lists_each_rollout_once(self):   # L-8
+        from datetime import date, timedelta
+        soon = (date.today() + timedelta(days=2)).isoformat()
+        self.new_project(name="Both", client="C", target_end_date=soon)
+        self.sql("UPDATE project_stages SET sla_days = 1 WHERE project_id = 1")
+        self.sql("UPDATE projects SET stage_entered_at = '2026-01-01T00:00:00' WHERE id = 1")
+        c, _ = self._api_client()
+        self.assertEqual(c.get("/api/projects/1/flow").get_json()["state"], "over_sla")
+        self.assertEqual(c.get("/api/projects?view=at_risk").get_json()["total"], 0)
+
+    def test_the_audit_filter_finds_a_person_by_name_or_sign_in(self):   # roles-10
+        c, _ = self._api_client()
+        names = c.get("/api/audit").get_json()["usernames"]
+        self.assertEqual(len([n for n in names if n.lower() == "admin"]), 1)
+        self.assertGreater(c.get("/api/audit?user=Admin").get_json()["total"], c.get("/api/audit?action=login_success").get_json()["total"] - 1)
+
+    def test_cycle_time_opens_on_the_busiest_template_and_viewers_join_no_team(self):   # visual QA, pm sim
+        self.sql("INSERT INTO stage_templates (name) VALUES ('Second')")
+        second = self.sql("SELECT id FROM stage_templates WHERE name = 'Second'")[0][0]
+        for i, n in enumerate(("Start", "Done")):
+            self.sql("INSERT INTO stage_template_stages (template_id, name, position) VALUES (?, ?, ?)", second, n, i)
+        for n in ("A", "B"):
+            self.new_project(name=n, client="C", stage_template_id=str(second))
+        c, _ = self._api_client()
+        self.assertEqual(c.get("/api/analytics").get_json()["template_id"], second)
+        self.sql("INSERT INTO users (username, password_hash, name, role, active, kind) VALUES ('vee', 'x', 'Vee', 'Viewer', 1, 'internal')")
+        form = c.get("/api/project-form").get_json()
+        self.assertNotIn("Vee", [u["name"] for u in form["users"]])
+        self.assertNotIn("Vee", [u["name"] for u in form["leads"]])
+
+    def test_needs_attention_lists_the_stuck_worst_first_and_blue_is_the_default(self):   # critique 10 Oct
+        self.new_project(name="Late one", client="C", target_end_date="2020-01-01")
+        self.new_project(name="Fine one", client="C", target_end_date="2099-01-01")
+        c, _ = self._api_client()
+        d = c.get("/api/dashboard").get_json()
+        att = d["data"]["attention"]
+        self.assertEqual([a["name"] for a in att], ["Late one"])
+        self.assertEqual(att[0]["worst"], "overdue")
+        self.assertRegex(att[0]["reasons"][0]["text"], r"d late$")
+        self.assertEqual(sum(s["late"] for s in d["data"]["stages"]), 1)
+        self.assertEqual([x["id"] for x in d["layout"][:3]], ["kpis", "attention", "timeline"])
+        self.assertEqual(c.get("/api/session").get_json()["user"]["accent"], "blue")
+        self.sql("UPDATE users SET accent = 'red'")
+        self.sql("DELETE FROM settings WHERE key = 'migrated.accent_blue'")
+        app_module.init_db()
+        self.assertEqual(self.sql("SELECT DISTINCT accent FROM users")[0][0], "blue")

@@ -1,27 +1,21 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
 import { Input } from "@/components/ui/input"
 import { Ago } from "@/components/Ago"
-import { ApiError, cancelAIJob, projectAI, requestProjectAI, type AskAnswer, type ProjectAI } from "@/lib/api"
-import { usePoll } from "@/lib/usePoll"
+import { ApiError, cancelAIJob, requestProjectAI, type AskAnswer } from "@/lib/api"
+import { useProjectAI } from "@/lib/usePoll"
 
 // Ask this rollout: a question answered only from the rollout's own records,
 // each sentence pointing at the passage it came from. Odin finds the
 // passages; the AI answers from them or says the records do not say.
 export function AIAsk({ projectId }: { projectId: number }) {
-  const [s, setS] = useState<ProjectAI<AskAnswer> | null>(null)
+  const { s, load, working } = useProjectAI<AskAnswer>(projectId, "ask_rollout")
   const [q, setQ] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const load = useCallback(async () => {
-    try { setS(await projectAI<AskAnswer>(projectId, "ask_rollout")) } catch { setS(null) }
-  }, [projectId])
-  useEffect(() => { void load() }, [load])
-  const working = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  usePoll(working, load)
   if (!s || (!s.available && !s.suggestion)) return null
   const a = s.suggestion
   async function ask(e: FormEvent) {
@@ -33,7 +27,7 @@ export function AIAsk({ projectId }: { projectId: number }) {
   const lastJob = s.job && !working && s.job.created_at > (a?.created_at ?? "") ? s.job : null
   return (
     <section className="panel p-4" aria-labelledby="ask-h">
-      <h2 id="ask-h" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-nav-fg">
+      <h2 id="ask-h" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] font-semibold text-nav-fg">
         <Sparkles className="h-3.5 w-3.5 text-primary-text" aria-hidden />Ask this rollout<span className="sr-only">, </span>
         <span className="font-normal text-muted-foreground">answered from its notes, risks, scope, tasks, plan changes and documents</span>
       </h2>
@@ -47,9 +41,9 @@ export function AIAsk({ projectId }: { projectId: number }) {
       )}
       <div aria-live="polite" className="text-[13px]">
         {working && s.job && <AIProgress job={s.job} doing="Reading the rollout's records" />}
-        {lastJob?.status === "failed" && <p className="mt-2 text-bad">That question did not finish: {lastJob.error}</p>}
+        {lastJob?.status === "failed" && <p className="mt-2 text-destructive">That question did not finish: {lastJob.error}</p>}
         {lastJob?.result?.skipped && <p className="mt-2 text-muted-foreground">{lastJob.result.skipped}</p>}
-        {error && <p className="mt-2 text-bad" role="alert">{error}</p>}
+        {error && <p className="mt-2 text-destructive" role="alert">{error}</p>}
         {a && !working && (
           <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2">
             <p className="text-[12px] text-muted-foreground">“{a.payload.question}”, <Ago iso={a.created_at} /></p>

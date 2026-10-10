@@ -1,17 +1,12 @@
-"""Daily digest of overdue/due-soon invoices and stale projects.
+"""The daily digest: overdue, due-soon, over-SLA and stalled rollouts.
 
-Cron this once a day, e.g.:
-    0 8 * * * cd /path/to/PMS && ./venv/bin/python send_daily_alerts.py >> alerts.log 2>&1
+scheduler.py runs main() at the digest time (Settings → Notifications) on
+working days; do not cron it as well, or the digest goes out twice. Running
+it by hand sends one now.
 
-Sends one Teams channel message and one email per Admin user (with an email
-set) summarizing the same alerts shown on the Board page. Real-time events
-(project created, stage changed, vendor invoice received) are sent instantly
-from app.py instead — this script only covers the "scan everything, once a
-day" style alerts that would be spammy to send on every page load.
-
-Deliberately ignores the board's per-login session dismissals — this is a
-cron job with no browser session, and the digest should always reflect the
-real, current alert state regardless of what anyone clicked on the board.
+Sends one Teams channel message and one email per Admin (with an address),
+and each project manager a bell note about their own rollouts. Real-time
+events (a project created, a stage changed) are sent as they happen instead.
 """
 import sys
 

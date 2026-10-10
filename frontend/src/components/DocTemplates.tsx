@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
+import { EmptyState } from "@/components/EmptyState"
+import { field } from "@/lib/ui"
+import { askConfirm } from "@/lib/confirm"
 import { ArrowDown, ArrowUp, Copy, Eye, FileText, ImageUp, Plus, Star, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -14,7 +17,6 @@ import { fmtWhen } from "@/lib/format"
 // {placeholders}; a preview renders the unsaved template on real data.
 // The swatches show the PDF's own colours (document data, not UI chrome).
 const SWATCH: Record<string, string> = { blue: "#3D5AFE", indigo: "#4F46E5", teal: "#0D9488", green: "#16A34A", orange: "#EA580C", red: "#E11D2E", slate: "#334155", black: "#101114" }
-const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 const KINDS: DocKind[] = ["rollout", "signoff", "portfolio"]
 type Editing = { id?: number; kind: DocKind; name: string; config: DocConfig }
 
@@ -54,7 +56,7 @@ export function DocTemplates() {
 
   return (
     <div className="grid grid-cols-1 gap-4">
-      {notice && <p className={cn("text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <p className={cn("text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
       {KINDS.map((kind) => {
         const list = d.templates.filter((t) => t.kind === kind)
         return (
@@ -63,13 +65,13 @@ export function DocTemplates() {
               <h2 data-n className="text-[12px] font-semibold text-nav-fg">{d.kinds[kind].label}</h2>
               <Button size="sm" variant="outline" className="ml-auto h-7 rounded-full" onClick={() => startNew(kind)}><Plus className="h-3.5 w-3.5" /> New template</Button>
             </div>
-            {list.length === 0 && <p className="text-[13px] text-muted-foreground">No templates yet: documents use the built-in layout.</p>}
+            {list.length === 0 && <EmptyState>No templates yet: documents use the built-in layout.</EmptyState>}
             <ul className="divide-y divide-border text-[13px]">
               {list.map((t) => <Row key={t.id} t={t} busy={busy}
                 onEdit={() => { setPreview(null); setEdit({ id: t.id, kind: t.kind, name: t.name, config: structuredClone(t.config) }) }}
                 onCopy={() => { setPreview(null); setEdit({ kind: t.kind, name: `${t.name} (copy)`, config: structuredClone(t.config) }) }}
                 onDefault={() => run(() => defaultDocTemplate(t.id), `${t.name} is now the default.`)}
-                onDelete={() => { if (confirm(`Delete the template ${t.name}? Documents already issued keep their look.`)) void run(() => deleteDocTemplate(t.id), "Template deleted.") }} />)}
+                onDelete={async () => { if (await askConfirm(`Delete the template ${t.name}? Documents already issued keep their look.`)) void run(() => deleteDocTemplate(t.id), "Template deleted.") }} />)}
             </ul>
           </section>
         )
@@ -87,7 +89,7 @@ function Row({ t, busy, onEdit, onCopy, onDefault, onDelete }: { t: DocTemplate;
         <span className="block text-[12px] text-muted-foreground">{t.config.title} · edited by {t.updated_by}, {fmtWhen(t.updated_at)}</span></button>
       {!t.is_default && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={onDefault}><Star className="h-3.5 w-3.5" /> Make default</Button>}
       <Button size="sm" variant="ghost" className="h-7" onClick={onCopy} aria-label={`Duplicate ${t.name}`}><Copy className="h-3.5 w-3.5" /></Button>
-      <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={onDelete} aria-label={`Delete ${t.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+      <Button size="sm" variant="ghost" className="h-7 text-destructive" disabled={busy} onClick={onDelete} aria-label={`Delete ${t.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
     </li>
   )
 }
@@ -162,7 +164,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
           ))}
         </section>
 
-        {notice && <p className={cn("text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
+        {notice && <p className={cn("text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
         <div className="flex flex-wrap gap-2">
           <Button className="rounded-full" loading={busy} disabled={!edit.name.trim()} onClick={onSave}>Save template</Button>
           <Button variant="outline" className="rounded-full" disabled={busy} onClick={onPreview}><Eye className="h-4 w-4" /> Preview</Button>

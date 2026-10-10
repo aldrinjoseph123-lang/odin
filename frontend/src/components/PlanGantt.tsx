@@ -1,8 +1,8 @@
-import { useCallback, useState } from "react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { PlanStage } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { dayOf, fmtDate, monthTicks } from "@/lib/format"
+import { useWidth } from "@/lib/useMeasure"
 
 // Plan against reality, one row per stage: the baseline as a thin grey line
 // under the row, the current plan as an outlined bar, what actually happened
@@ -18,13 +18,7 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
   const at = (t: number) => `${((t - t0) / (t1 - t0)) * 100}%`
   const pct = (iso: string) => at(dayOf(iso))
   const span = (a: string, b: string) => ({ left: pct(a), width: `max(3px, calc(${pct(b)} - ${pct(a)}))` })
-  const [width, setWidth] = useState(0)
-  const measure = useCallback((el: HTMLDivElement | null) => {
-    if (!el) return
-    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+  const [width, measure] = useWidth<HTMLDivElement>()
   const months = monthTicks(t0, t1, width ? Math.max(2, Math.floor(width / 70)) : 8)
   // a light line at each Monday (Odin's weeks start on Monday), numbered when there is room
   const weeks = mondays(t0, t1)
@@ -54,10 +48,10 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
             <div key={s.id} className="contents">
               <div className={cn("flex min-w-0 flex-col justify-center border-t border-border", row)}>
                 <span className={cn("truncate", s.status === "current" ? "font-semibold" : s.status === "next" ? "text-nav-fg" : "")} title={s.name}>{s.name}</span>
-                <span className={cn("truncate text-[11px] tabular-nums", late ? "text-warn" : "text-muted-foreground")}>{stageDates(s)}</span>
+                <span className={cn("truncate text-[12px] tabular-nums", late ? "text-warn" : "text-muted-foreground")}>{stageDates(s)}</span>
               </div>
               <Tooltip>
-                <TooltipTrigger render={<div />} tabIndex={0} role="img" aria-label={label} className={cn("relative border-t border-border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", row)}>
+                <TooltipTrigger render={<div />} role="img" aria-label={label} className={cn("relative border-t border-border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", row)}>
                   {grid}
                   {s.base_start && s.base_end && <span className="absolute bottom-1 h-[3px] rounded-full bg-input" style={span(s.base_start, s.base_end)} aria-hidden />}
                   {s.plan_start && s.plan_end && <span className="absolute top-1/2 h-4 -translate-y-1/2 rounded-full border-[1.5px] border-foreground/45" style={span(s.plan_start, s.plan_end)} aria-hidden />}
@@ -108,9 +102,15 @@ function mondays(t0: number, t1: number): number[] {
   return out
 }
 
-// The health pill: RAG in its state colour, with the word, never colour alone.
+// A status pill: a dot and the word, in the state's soft fill (one shape for the
+// plan's health and the sign-off's status alike), never colour alone.
+export function StatusPill({ tone, children, className }: { tone: string; children: React.ReactNode; className?: string }) {
+  return <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold", tone, className)}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{children}</span>
+}
+
+// The health pill: RAG in its state colour, with the word.
 export function RagPill({ rag, className }: { rag: "green" | "amber" | "red" | "done"; className?: string }) {
-  const map = { green: ["bg-ok-soft text-ok", "On track"], amber: ["bg-warn-soft text-warn", "At risk"], red: ["bg-bad-soft text-bad", "Off track"], done: ["bg-muted text-muted-foreground", "Complete"] } as const
+  const map = { green: ["bg-muted text-nav-fg", "On track"], amber: ["bg-warn-soft text-warn", "At risk"], red: ["bg-bad-soft text-bad", "Off track"], done: ["bg-muted text-muted-foreground", "Complete"] } as const
   const [cls, word] = map[rag]
-  return <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold", cls, className)}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{word}</span>
+  return <StatusPill tone={cls} className={className}>{word}</StatusPill>
 }

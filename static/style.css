@@ -14,12 +14,10 @@
    brand hexes are kept as aliases at the end of layer 2 — CLAUDE.md documents
    those values, and they must stay literally true.
    ============================================================================ */
-
 /* ---- Layer 1: primitives --------------------------------------------------
    Dark mode: not defined. The app is a light surface with a dark nav by
    design. If it's ever wanted, add a `.dark` block overriding layer 2 only —
    no component rule below reads a primitive directly, so nothing else moves. */
-
 :root {
   /* palette — HSL triplets (hex noted for reference) */
   --red-600: 354.8 77.2% 49.8%;   /* #E11D2E  brand accent */
@@ -87,7 +85,6 @@
 }
 
 /* ---- Layer 2: semantic ---------------------------------------------------- */
-
 :root {
   --background: var(--neutral-50);
   --foreground: var(--neutral-950);
@@ -132,7 +129,6 @@
 }
 
 /* ---- Base ----------------------------------------------------------------- */
-
 * { box-sizing: border-box; }
 
 body {
@@ -146,6 +142,7 @@ body {
 }
 
 main { padding: var(--space-6); max-width: 1200px; margin: 0 auto; }
+
 main:focus { outline: none; }
 
 h1 {
@@ -155,7 +152,8 @@ h1 {
   font-weight: var(--weight-bold);
   letter-spacing: -0.01em;
 }
-h2, h3 {
+
+h2 {
   font-size: var(--text-xs);
   margin: var(--space-4) 0 var(--space-2);
   text-transform: uppercase;
@@ -163,6 +161,7 @@ h2, h3 {
   color: hsl(var(--muted-foreground));
   font-weight: var(--weight-semibold);
 }
+
 .muted { color: hsl(var(--muted-foreground)); font-size: var(--text-base); }
 
 /* Base link. Without this, any anchor that isn't one of the named button/link
@@ -175,6 +174,7 @@ h2, h3 {
    also underline stat tiles, kanban cards and sort headers on hover, since
    those set a colour but no decoration. */
 main a:not([class]) { color: hsl(var(--primary-text)); text-decoration: none; }
+
 main a:not([class]):hover { text-decoration: underline; }
 
 /* Focus ring — shadcn's offset-ring treatment. :focus-visible keeps mouse
@@ -185,67 +185,11 @@ main a:not([class]):hover { text-decoration: underline; }
   border-radius: var(--radius);
 }
 
-/* Off-screen until focused, then it lands top-left like any other control.
-   One keypress past the nav instead of tabbing through it on every page. */
-.skip-link {
-  position: absolute;
-  left: -9999px;
-  top: 0;
-  z-index: 100;
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  text-decoration: none;
-  border-radius: var(--radius);
-}
-.skip-link:focus { left: var(--space-2); top: var(--space-2); }
-
-/* ---- Navigation ----------------------------------------------------------- */
-
-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-3) var(--space-6);
-  background: hsl(var(--secondary));
-  color: hsl(var(--secondary-foreground));
-}
-nav a {
-  color: hsl(0 0% 60%);
-  text-decoration: none;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  transition: color var(--transition);
-}
-nav a:hover { color: hsl(var(--secondary-foreground)); }
-/* Current section. The rule sits on a padded box so the underline clears the
-   text rather than crowding it. */
-nav a.active {
-  color: hsl(var(--secondary-foreground));
-  border-bottom: 2px solid hsl(var(--primary));
-  padding-bottom: 2px;
-}
-nav .brand {
-  font-weight: var(--weight-bold);
-  color: hsl(var(--secondary-foreground));
-  font-size: var(--text-lg);
-  letter-spacing: 0.02em;
-}
-nav .spacer { flex: 1; }
-nav .user { text-transform: none; letter-spacing: normal; }
-
 /* ---- Button ---------------------------------------------------------------
    shadcn's variant model. `.btn` is the base; a variant class picks the skin.
    Bare `form button` inherits the default (primary) so existing markup that
    predates the variants keeps working untouched. */
-
-.btn, form button {
+ form button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -265,81 +209,18 @@ nav .user { text-transform: none; letter-spacing: normal; }
   white-space: nowrap;
   transition: background var(--transition), border-color var(--transition), color var(--transition);
 }
+
 form button { margin-top: var(--space-4); }
-.btn:hover, form button:hover { background: hsl(var(--primary-hover)); }
-.btn:disabled, form button:disabled {
+
+ form button:hover { background: hsl(var(--primary-hover)); }
+
+ form button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   background: hsl(var(--muted-foreground));
 }
 
-/* The variants below are the documented button palette (see CLAUDE.md). Some
-   have no caller yet — they exist so new UI reaches for a named variant instead
-   of inventing a one-off style. */
-.btn-secondary {
-  background: hsl(var(--secondary));
-  color: hsl(var(--secondary-foreground));
-}
-.btn-secondary:hover { background: hsl(var(--neutral-900)); }
-
-.btn-outline {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border-color: hsl(var(--border-c));
-}
-.btn-outline:hover { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); border-color: hsl(var(--secondary)); }
-
-.btn-ghost {
-  background: transparent;
-  color: hsl(var(--foreground));
-}
-.btn-ghost:hover { background: hsl(var(--muted)); }
-
-.btn-sm { padding: var(--space-1) var(--space-3); font-size: var(--text-2xs); }
-
-/* Outline-small — the settings row controls (rename, move, delete). */
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  background: transparent;
-  border: 1px solid hsl(var(--border-c));
-  border-radius: var(--radius);
-  cursor: pointer;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-tight);
-  font-family: inherit;
-  color: hsl(var(--foreground));
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background var(--transition), color var(--transition), border-color var(--transition);
-}
-.icon-btn:hover { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); border-color: hsl(var(--secondary)); }
-
-/* Link variant — a button that reads as a link (inline destructive actions,
-   undo affordances inside flash messages). */
-.link-btn, .btn-link {
-  background: none;
-  border: none;
-  color: hsl(var(--primary-text));
-  cursor: pointer;
-  font-family: inherit;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-tight);
-  padding: 0;
-  width: auto;
-  margin-top: 0;
-  text-decoration: none;
-}
-.link-btn:hover, .btn-link:hover { text-decoration: underline; }
-.btn-link { margin-left: var(--space-3); vertical-align: middle; }
-
 /* ---- Form controls -------------------------------------------------------- */
-
 form label {
   display: block;
   font-size: var(--text-xs);
@@ -349,7 +230,8 @@ form label {
   letter-spacing: var(--tracking-tight);
   font-weight: var(--weight-medium);
 }
-form input, form select, form textarea {
+
+form input, form textarea {
   width: 100%;
   padding: var(--space-2);
   border: 1px solid hsl(var(--input));
@@ -360,14 +242,18 @@ form input, form select, form textarea {
   color: hsl(var(--foreground));
   transition: border-color var(--transition);
 }
+
 form input::placeholder, form textarea::placeholder { color: hsl(var(--muted-foreground)); }
-form input:focus-visible, form select:focus-visible, form textarea:focus-visible {
+
+form input:focus-visible, form textarea:focus-visible {
   border-color: hsl(var(--foreground));
 }
-form input:disabled, form select:disabled, form textarea:disabled {
+
+form input:disabled, form textarea:disabled {
   background: hsl(var(--muted));
   cursor: not-allowed;
 }
+
 form input[readonly] { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
 
 .login-box {
@@ -379,111 +265,24 @@ form input[readonly] { background: hsl(var(--muted)); color: hsl(var(--muted-for
   border: 1px solid hsl(var(--border-c));
   box-shadow: var(--shadow-sm);
 }
+
 .login-box h1 { text-align: center; text-transform: uppercase; font-size: var(--text-xl); }
 
-.inline-form { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); }
-.inline-form input { width: auto; flex: 1; }
-.inline-form button { margin-top: 0; }
-
-.upload-form { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-4); flex-wrap: wrap; }
-.upload-form select, .upload-form input[type="file"] { width: auto; }
-.upload-form button { margin-top: 0; }
-
-.search-form { display: flex; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }
-.search-form input { width: auto; flex: 0 1 22rem; }
-.search-form button { margin-top: 0; }
-
-/* Inputs default to width:100%, which turns any flex row of them into a
-   stack. Form rows opt back out explicitly. */
-.task-form { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-4); }
-.task-form input, .task-form select { width: auto; }
-.task-form .task-title { flex: 1; min-width: 14rem; }
-.task-form button { margin-top: 0; }
-
 /* ---- Card / panel --------------------------------------------------------- */
-
-.panel, .card {
+.panel {
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border-c));
   border-radius: var(--radius);
   color: hsl(var(--card-foreground));
 }
+
 .panel { padding: var(--space-4); }
-.panel > h2:first-child, .panel > h3:first-child { margin-top: 0; }
+
+.panel > h2:first-child { margin-top: 0; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); }
 
-/* ---- Table ---------------------------------------------------------------- */
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: hsl(var(--card));
-  border-radius: var(--radius);
-  overflow: hidden;
-  border: 1px solid hsl(var(--border-c));
-}
-th, td {
-  text-align: left;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid hsl(var(--border-c));
-  font-size: var(--text-sm);
-}
-tbody tr:last-child td { border-bottom: none; }
-th {
-  background: hsl(var(--secondary));
-  color: hsl(0 0% 60%);
-  text-transform: uppercase;
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  font-weight: var(--weight-semibold);
-}
-tbody tr { transition: background var(--transition); }
-tbody tr:hover { background: hsl(var(--muted) / 0.6); }
-td.num { font-variant-numeric: tabular-nums; }
-
-/* Rows navigate via a real anchor in the first cell rather than a row-level
-   onclick, so the row is keyboard-reachable and announced as a link. The
-   anchor stretches across the row for mouse users. */
-.row-link { position: relative; }
-.row-link:hover { cursor: pointer; }
-.row-target { color: inherit; text-decoration: none; font-weight: var(--weight-semibold); }
-.row-target::after { content: ""; position: absolute; inset: 0; }
-.row-link:focus-within { background: hsl(var(--muted) / 0.6); }
-
-/* ---- Badge ---------------------------------------------------------------- */
-
-.stage-badge, .role-badge {
-  display: inline-block;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-tight);
-  white-space: nowrap;
-}
-.stage-badge { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
-.role-badge { background: hsl(var(--neutral-900)); color: hsl(0 0% 60%); margin-right: var(--space-3); }
-
-/* Status pill — schedule health, task due dates, countdowns. */
-.countdown {
-  display: inline-block;
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-bold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-tight);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.countdown-overdue { background: hsl(var(--danger-bg)); color: hsl(var(--danger)); }
-.countdown-warning { background: hsl(var(--warn-bg)); color: hsl(var(--warn)); }
-.countdown-normal { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
-
 /* ---- Alert ---------------------------------------------------------------- */
-
 .flash {
   background: hsl(var(--danger-bg));
   border: 1px solid hsl(var(--primary));
@@ -493,79 +292,8 @@ td.num { font-variant-numeric: tabular-nums; }
   margin-bottom: var(--space-4);
   font-size: var(--text-base);
 }
-.alerts { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-5); }
-.alert {
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius);
-  font-size: var(--text-base);
-  border: 1px solid transparent;
-}
-/* Carrying a class keeps these out of `main a:not([class])`, which would
-   otherwise paint them brand-red on the tinted alert grounds — 4.0:1, under
-   the 4.5 floor. Inheriting the alert's own text colour keeps them legible. */
-.alert a, .alert-link { color: inherit; font-weight: var(--weight-semibold); text-decoration: underline; margin: 0 0.15rem; }
-/* The dismiss × was a 7px-wide hit area; padding makes it reachable without
-   changing the layout, since it sits inline in a text run. */
-.alert-dismiss { padding: 0 var(--space-2); }
-.alert-danger { background: hsl(var(--danger-bg)); color: hsl(var(--danger)); border-color: hsl(var(--danger-border)); }
-.alert-warning { background: hsl(var(--warn-bg)); color: hsl(var(--warn)); border-color: hsl(var(--warn-border)); }
-.alert-info { background: hsl(var(--muted)); color: hsl(var(--foreground)); border-color: hsl(var(--border-c)); }
-.alert-item { white-space: nowrap; }
-.alert-dismiss { text-decoration: none !important; font-weight: var(--weight-bold); opacity: 0.55; margin-left: 0.1rem !important; }
-.alert-dismiss:hover { opacity: 1; }
-.alert-sep { margin-right: var(--space-1); }
-
-/* ---- Filter pills (tabs) --------------------------------------------------- */
-
-.filters { margin-bottom: var(--space-4); display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.filters a {
-  text-decoration: none;
-  color: hsl(var(--muted-foreground));
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius);
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border-c));
-  transition: background var(--transition), color var(--transition), border-color var(--transition);
-}
-.filters a:hover { border-color: hsl(var(--foreground)); color: hsl(var(--foreground)); }
-.filters a.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
-
-.pagination { display: flex; gap: var(--space-4); align-items: center; margin-top: var(--space-4); }
-
-/* ---- Kanban board --------------------------------------------------------- */
-
-.board { display: flex; gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-4); }
-.column {
-  background: hsl(var(--muted));
-  border-radius: var(--radius);
-  min-width: 220px;
-  flex: 1;
-  padding: var(--space-2);
-}
-.column h2, .column h3 { display: flex; justify-content: space-between; margin-top: 0; }
-.column .count { color: hsl(var(--muted-foreground)); text-transform: none; letter-spacing: normal; }
-.cards { display: flex; flex-direction: column; gap: var(--space-2); min-height: 40px; }
-.card {
-  padding: var(--space-2);
-  cursor: grab;
-  position: relative;  /* anchors the stretched .card-link */
-  transition: border-color var(--transition), box-shadow var(--transition);
-}
-.card:hover { border-color: hsl(var(--foreground)); box-shadow: var(--shadow-sm); }
-.card:focus-within { border-color: hsl(var(--foreground)); }
-.card-title { font-weight: var(--weight-semibold); font-size: var(--text-base); }
-.card-meta { font-size: var(--text-xs); color: hsl(var(--muted-foreground)); }
-/* One real anchor per card, stretched over the whole surface: the card stays
-   mouse-clickable edge to edge while keyboard users get a single tab stop. */
-.card-link { color: inherit; text-decoration: none; }
-.card-link::after { content: ""; position: absolute; inset: 0; }
 
 /* ---- Stage bar ------------------------------------------------------------ */
-
 .stage-bar {
   display: flex;
   margin-bottom: var(--space-6);
@@ -573,6 +301,7 @@ td.num { font-variant-numeric: tabular-nums; }
   overflow: hidden;
   border: 1px solid hsl(var(--border-c));
 }
+
 .stage-step {
   flex: 1;
   text-align: center;
@@ -584,12 +313,15 @@ td.num { font-variant-numeric: tabular-nums; }
   letter-spacing: var(--tracking-tight);
   font-weight: var(--weight-semibold);
 }
-.stage-step.done { background: hsl(var(--neutral-900)); color: hsl(0 0% 80%); }
-.stage-step.current { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+
+/* defect fix (10 Oct 2026): the current stage was brand red, which in Odin means overdue */
+.stage-step.done { background: hsl(var(--neutral-200)); color: hsl(var(--neutral-700)); }
+
+.stage-step.current { background: hsl(var(--foreground)); color: hsl(0 0% 100%); }
 
 /* ---- Notes / key-value ---------------------------------------------------- */
-
 .notes { margin-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+
 /* Notes are a list inside a panel, not callouts — the tinted ground and the
    gap between them carry the separation. */
 .note {
@@ -598,6 +330,7 @@ td.num { font-variant-numeric: tabular-nums; }
   border: 1px solid hsl(var(--border-c));
   border-radius: var(--radius);
 }
+
 .note-meta {
   font-size: var(--text-xs);
   color: hsl(var(--muted-foreground));
@@ -605,246 +338,22 @@ td.num { font-variant-numeric: tabular-nums; }
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+
 .note-text { font-size: var(--text-base); }
 
-.kv { display: grid; grid-template-columns: 160px 1fr; gap: var(--space-1) var(--space-4); font-size: var(--text-base); }
-.kv div:nth-child(odd) {
-  color: hsl(var(--muted-foreground));
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.settings-section { margin-bottom: var(--space-8); }
-.stage-row, .cat-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid hsl(var(--border-c));
-}
-.stage-row .name { flex: 1; }
-
-/* ---- Dashboard widgets ---------------------------------------------------- */
-
-.dash-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-6); }
-.stat-tile {
-  display: block;
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border-c));
-  border-radius: var(--radius);
-  padding: var(--space-3) var(--space-4);
-  text-decoration: none;
-  color: inherit;
-  transition: border-color var(--transition), box-shadow var(--transition);
-}
-.stat-tile:hover { border-color: hsl(var(--foreground)); box-shadow: var(--shadow-sm); }
-.stat-label {
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-tight);
-  color: hsl(var(--muted-foreground));
-  margin-bottom: var(--space-1);
-}
-.stat-value {
-  font-size: var(--text-3xl);
-  font-weight: var(--weight-bold);
-  line-height: 1.1;
-  color: hsl(var(--foreground));
-  font-variant-numeric: tabular-nums;
-}
-.stat-value.stat-good { color: hsl(var(--success)); }
-.stat-value.stat-critical { color: hsl(var(--destructive)); }
-.stat-value.stat-warning { color: hsl(var(--warn)); }
-
-.hbar-chart { display: flex; flex-direction: column; gap: var(--space-2); }
-.hbar-row {
-  display: grid;
-  grid-template-columns: 110px 1fr 40px;
-  align-items: center;
-  gap: var(--space-2);
-  text-decoration: none;
-  color: inherit;
-  padding: 0.15rem;
-  margin: -0.15rem;
-  border-radius: var(--radius);
-  transition: background var(--transition);
-}
-.hbar-row:hover { background: hsl(var(--muted) / 0.6); }
-.hbar-label { font-size: var(--text-xs); color: hsl(var(--muted-foreground)); text-align: right; }
-.hbar-track { background: hsl(var(--muted)); border-radius: var(--radius); height: 16px; overflow: hidden; }
-/* Deliberately not animated. Bar sizes are rendered server-side and never
-   change on the client — no state change to animate, only layout thrash. */
-.hbar-fill { background: hsl(var(--secondary)); height: 100%; border-radius: var(--radius); min-width: 2px; }
-.hbar-fill.series-blue { background: hsl(var(--series-blue)); }
-.hbar-fill.series-red { background: hsl(var(--series-red)); }
-.hbar-value { font-size: var(--text-sm); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; }
-
-.stacked-bar { display: flex; height: 28px; border-radius: var(--radius); overflow: hidden; border: 1px solid hsl(var(--border-c)); }
-.stacked-seg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-bold);
-  font-variant-numeric: tabular-nums;
-  color: hsl(var(--primary-foreground));
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  border-right: 2px solid hsl(var(--card));
-  text-decoration: none;
-  transition: filter var(--transition);
-}
-.stacked-seg:last-child { border-right: none; }
-.stacked-seg:hover { filter: brightness(0.88); }
-.stacked-seg.series-blue { background: hsl(var(--series-blue)); }
-.stacked-seg.series-red { background: hsl(var(--series-red)); }
-.stacked-seg.status-good { background: hsl(var(--status-good)); }
-.stacked-seg.status-warning { background: hsl(var(--status-warning)); color: hsl(var(--foreground)); }
-.stacked-seg.status-serious { background: hsl(var(--status-serious)); color: hsl(var(--foreground)); }
-.stacked-seg.status-neutral { background: hsl(var(--border-on-dark)); }
-
-.chart-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); font-size: var(--text-xs); color: hsl(var(--muted-foreground)); }
-.legend-item { display: flex; align-items: center; gap: var(--space-1); text-decoration: none; color: inherit; }
-.legend-item:hover { text-decoration: underline; }
-.legend-swatch { width: 10px; height: 10px; border-radius: var(--radius); display: inline-block; }
-.legend-swatch.series-blue { background: hsl(var(--series-blue)); }
-.legend-swatch.series-red { background: hsl(var(--series-red)); }
-.legend-swatch.status-good { background: hsl(var(--status-good)); }
-.legend-swatch.status-warning { background: hsl(var(--status-warning)); }
-.legend-swatch.status-serious { background: hsl(var(--status-serious)); }
-.legend-swatch.status-neutral { background: hsl(var(--border-on-dark)); }
-
-/* ---- Responsive ----------------------------------------------------------- */
-
-@media (max-width: 900px) {
-  .dash-tiles { grid-template-columns: repeat(2, 1fr); }
-}
 @media (max-width: 800px) {
   .grid-2 { grid-template-columns: 1fr; }
-  .kv { grid-template-columns: 1fr; gap: 0 0; }
-  .kv div:nth-child(odd) { margin-top: var(--space-2); }
+
+  
+  
   main { padding: var(--space-4); }
-  nav { gap: var(--space-3); padding: var(--space-3) var(--space-4); flex-wrap: wrap; }
-  .hbar-row { grid-template-columns: 90px 1fr 32px; }
-  .search-form input { flex: 1; }
+
+  
+  
+  
 }
-
-/* Due-date shortcut buttons sit tight against the date field they fill. */
-.date-presets { display: inline-flex; gap: var(--space-1); align-items: center; }
-
-/* Sortable table headers. The caret only appears on the active column, so the
-   header row stays quiet until you're actually sorting by something. */
-.sort-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-1); }
-.sort-link:hover { color: hsl(var(--secondary-foreground)); }
-.sort-link.sorted { color: hsl(var(--secondary-foreground)); }
-.sort-caret { font-size: 0.6rem; }
-
-/* Inline bar inside a numeric table cell — lets a column of averages be
-   compared at a glance without leaving the table for a separate chart. */
-.bar-cell { position: relative; display: block; min-width: 5rem; }
-.bar-fill {
-  position: absolute; inset: 0 auto 0 0; display: block;
-  background: hsl(var(--muted)); border-radius: var(--radius); min-width: 2px;
-}
-.bar-text { position: relative; }
-.stat-sub { font-size: var(--text-xs); color: hsl(var(--muted-foreground)); margin-top: var(--space-1); font-variant-numeric: tabular-nums; }
-
-/* Global search sits in the nav bar, so it wears the dark surface rather than
-   the light form styling every other input inherits. */
-.nav-search { margin: 0; }
-.nav-search input {
-  width: 12rem;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-xs);
-  font-family: inherit;
-  background: hsl(var(--neutral-900));
-  color: hsl(var(--secondary-foreground));
-  border: 1px solid hsl(var(--border-on-dark));
-  border-radius: var(--radius);
-}
-.nav-search input::placeholder { color: hsl(0 0% 55%); }
-.nav-search input:focus-visible { border-color: hsl(var(--primary)); }
-@media (max-width: 800px) { .nav-search input { width: 8rem; } }
-
-/* Bulk-action bar above the task table. */
-.bulk-bar { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); flex-wrap: wrap; }
-
-/* Navigation cards — a compact grid for "go to this other page" links that
-   would otherwise each occupy a full stacked panel to hold one line of text. */
-.link-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-6);
-}
-.link-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-4);
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border-c));
-  border-radius: var(--radius);
-  color: inherit;          /* the <a> itself, not just its children */
-  text-decoration: none;
-  transition: border-color var(--transition), box-shadow var(--transition);
-}
-.link-card:hover {
-  border-color: hsl(var(--foreground));
-  box-shadow: var(--shadow-sm);
-  text-decoration: none;
-}
-.link-card-title {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  color: hsl(var(--foreground));
-}
-.link-card-desc { font-size: var(--text-xs); color: hsl(var(--muted-foreground)); }
-
-/* "+N more" escape hatch on a capped alert banner. */
-.alert-more { margin-left: var(--space-2); white-space: nowrap; }
-
-/* Overflow link at the foot of a capped kanban column. Styled as a card so the
-   column reads as one continuous stack rather than a list plus a stray link. */
-.card-more {
-  display: block;
-  padding: var(--space-2);
-  background: hsl(var(--card));
-  border: 1px dashed hsl(var(--border-c));
-  border-radius: var(--radius);
-  color: hsl(var(--primary-text));
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  text-align: center;
-  text-decoration: none;
-  transition: border-color var(--transition);
-}
-.card-more:hover { border-color: hsl(var(--primary)); text-decoration: none; }
-
 
 /* User-written text can be one unbroken token (a URL, a pasted hash). Without
    this it widens the page instead of wrapping — measured at 1.88M px wide. */
-.note-text, .card-title, td, .kv dd { overflow-wrap: anywhere; }
+.note-text { overflow-wrap: anywhere; }
 
-/* Collapsible nav under 800px. The checkbox holds the state; the label is the
-   button. Tap targets on nav links are lifted to 24px minimum (WCAG 2.5.8). */
-.nav-toggle { display: none; }
-.nav-burger { display: none; }
-nav a { min-height: 24px; display: inline-flex; align-items: center; }
-@media (max-width: 800px) {
-  nav { flex-wrap: wrap; row-gap: var(--space-2); }
-  .nav-burger {
-    display: inline-flex; align-items: center; justify-content: center;
-    order: -1; min-width: 40px; min-height: 40px; cursor: pointer;
-    color: hsl(var(--secondary-foreground)); font-size: var(--text-xl);
-  }
-  nav > a:not(.brand), nav > form, nav > span { display: none; }
-  nav > a.brand { order: -2; }
-  .nav-toggle:checked ~ a, .nav-toggle:checked ~ span { display: inline-flex; }
-  .nav-toggle:checked ~ form { display: block; }
-  .nav-toggle:checked ~ a:not(.brand) { width: 100%; padding: var(--space-2) 0; }
-}

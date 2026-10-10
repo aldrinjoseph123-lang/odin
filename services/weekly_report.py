@@ -55,7 +55,7 @@ def build():
         return f"<li><b>{escape(p['name'])}</b> · {escape(p['client'] or '')} · {escape(p['stage'])} — {note}</li>"
     attention = ([row(p, "past its target date") for p in alerts["project_overdue"]]
                  + [row(p, "over its stage SLA") for p in alerts["stage_sla_breach"] if p not in alerts["project_overdue"]]
-                 + [row(p, f"due {p['target_end_date']}") for p in alerts["project_due_soon"]])
+                 + [row(p, f"due {p['target_end_date']}") for p in alerts["project_due_soon"] if p not in alerts["stage_sla_breach"]])   # once each (sim L-8)
     sections = [
         ("Needs attention", attention, "Nothing is overdue, over SLA or due soon."),
         ("Stages moved this week", [f"<li><b>{escape(m['name'])}</b>: {escape(m['prev_stage'])} → {escape(m['stage'])} <span style='color:#6B7280'>({escape(m['author'])})</span></li>" for m in moves], "No stage moved this week."),

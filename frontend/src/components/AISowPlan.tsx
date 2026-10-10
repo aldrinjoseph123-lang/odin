@@ -87,9 +87,9 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
           {reading ? "Reading the documents in parts and drafting a plan…"
             : sug ? <>AI suggested plan from the documents, {fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}. Untick what you do not want, then add the rest.</>
               : "Suggest the scope items and tasks from the PO and scope of work with AI. Pick the documents to read:"}
-          {lastJob?.status === "failed" && <span className="block text-bad">The last reading did not finish: {lastJob.error}</span>}
+          {lastJob?.status === "failed" && <span className="block text-destructive">The last reading did not finish: {lastJob.error}</span>}
           {lastJob?.result?.skipped && <span className="block text-bad">{lastJob.result.skipped}</span>}
-          {error && <span className="block text-bad" role="alert">{error}</span>}
+          {error && <span className="block text-destructive" role="alert">{error}</span>}
         </span>
         {reading && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
       </div>

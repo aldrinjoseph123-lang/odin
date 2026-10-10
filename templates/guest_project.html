@@ -1,6 +1,8 @@
 {% extends "base.html" %}
-{% block title %}{{ project.name }}{% endblock %}
+{% block title %}{{ project.name }} · Odin{% endblock %}
 {% block content %}
+{#- outsiders always see whose page this is (docs/BRAND.md: the byline on everything outsiders see) -#}
+<p class="muted">Odin by Protect24x7</p>
 <h1>{{ project.name }}</h1>
 {#- The PO number is the client's; the vendor link does not get it. -#}
 <p class="muted">Client: {{ project.client }}{% if party == 'customer' and project.po_number %} · PO {{ project.po_number }}{% endif %}</p>

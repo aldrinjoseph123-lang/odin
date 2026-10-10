@@ -86,14 +86,23 @@ async function withToken(path: string, init: RequestInit): Promise<Response> {
   return go()
 }
 
-// The error for a failed response: the server's own words when it gave some;
-// a 400/401 from a session that has ended (the CSRF check fails first) says so.
+// The error for a failed response. A session that has ended says so (the
+// server marks it); otherwise the server's own words when it gave some (a
+// wrong password, a taken username); a bare 400/401 checks the session.
 async function failure(res: Response, said?: string): Promise<ApiError> {
+  if (res.headers.get("X-Odin-Signed-Out")) return new ApiError(401, SIGNED_OUT)
+  if (said) return new ApiError(res.status, said)
   if (res.status === 400 || res.status === 401) {
     const alive = await fetch("/api/session", { credentials: "same-origin" }).then((r) => r.json()).then((d: SessionResponse) => !!d.user).catch(() => true)
     if (!alive) return new ApiError(401, SIGNED_OUT)
   }
-  return new ApiError(res.status, said ?? failureText(res.status))
+  return new ApiError(res.status, failureText(res.status))
+}
+
+// A 200 HTML page where JSON was asked for is the sign-in page after a
+// redirect: never a success.
+function notJson(res: Response) {
+  return res.ok && (res.headers.get("Content-Type") ?? "").includes("text/html")
 }
 
 // One JSON request with the CSRF token; every mutation goes through here.
@@ -103,6 +112,7 @@ async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: u
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  if (notJson(res)) throw new ApiError(401, SIGNED_OUT)
   const data = (await res.json().catch(() => ({}))) as { error?: string; csrf?: string } & T
   if (data.csrf) csrfToken = data.csrf
   if (!res.ok) throw await failure(res, data.error)
@@ -134,38 +144,8 @@ export function logout() {
 
 export type Nav = { active_alert_count: number; my_open_task_count: number; unread_notifications: number; projects_nav_url: string }
 
-export type Card = {
-  id: number; name: string; client: string; stage: string; owner_name: string
-  delivery_mode: string; task_total: number; task_done: number; updated_at: string
-}
-
-export type BoardData = {
-  stages: string[]
-  terminal: string
-  delivery_modes: string[]
-  alert_titles: Record<string, string>
-  columns: Record<string, Card[]>
-  alerts: Record<string, { id: number; name: string }[]>
-  real_alerts: Record<string, number>
-  dashboard: { stage_counts: Record<string, number>; max_stage_count: number; delivery_counts: Record<string, number>; total_active: number }
-  recent_notes: { id: number; author: string; project_id: number; project_name: string; stage: string; created_at: string; note: string }[]
-  banner_names: number
-  column_cards: number
-  can_move: boolean
-}
-
-export async function board(): Promise<BoardData> {
-  const res = await call("/api/board")
-  if (!res.ok) throw await failure(res)
-  return res.json()
-}
-
 export function changeStage(projectId: number, stage: string, note = "") {
   return post<{ ok: true; undo: string }>(`/api/projects/${projectId}/stage`, { stage, note })
-}
-
-export function dismissAlert(projectId: number, alertType: string) {
-  return post<{ ok: true }>(`/api/alerts/${projectId}/dismiss/${alertType}`)
 }
 
 // ---- Flow: first screen ----
@@ -176,11 +156,11 @@ export type FlowRow = {
   team: { id: number; name: string; avatar_url: string | null }[]
   approval: ApprovalStatus | null
   delivery_mode: string; target_end_date: string | null; days_in_stage: number | null; sla_days: number | null
-  over_by: number | null; state: FlowState; open_tasks: number; total_tasks: number
+  over_by: number | null; state: FlowState; open_tasks: number; total_tasks: number; late_tasks: number; late_since: string | null
   next_task: { title: string; due_date: string | null; assignee: string | null } | null; updated_at: string
   idle_days: number | null; stale: boolean
 }
-export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState, number>; can_move: boolean; today: string }
+export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState | "late_tasks", number>; can_move: boolean; today: string }
 export type FlowStage = { name: string; status: "done" | "current" | "next"; sla_days: number | null; entered_at: string | null; days: number | null }
 export type FlowTask = { id: number; title: string; done: boolean; due_date: string | null; assignee: string | null; assignee_id: number | null; assignee_avatar_url: string | null; stage: string }
 export type FlowDetail = {
@@ -200,6 +180,7 @@ export const decideApproval = (projectId: number, approvalId: number, decision: 
 async function getJson<T>(path: string): Promise<T> {
   const res = await call(path)
   if (!res.ok) throw await failure(res)
+  if (notJson(res)) throw new ApiError(401, SIGNED_OUT)
   return res.json()
 }
 export const flow = () => getJson<FlowData>("/api/flow")
@@ -332,6 +313,7 @@ export type SignoffVersion = {
 }
 export type SignoffDraft = { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; scope: ScopeItem[]; statement: string }
 export type SignoffData = {
+  not_yet?: string | null
   project: { id: number; name: string; client: string; stage: string; owner_id: number }
   state: SignoffState
   versions: { version: number; status: SignoffStatus; created_at: string; created_by: string }[]
@@ -380,14 +362,16 @@ export type WidgetSetting = { key: string; label: string; kind: "int" | "choice"
 export type WidgetInfo = { id: string; title: string; blurb: string; w: 1 | 2 | 3; multiple: boolean; settings: WidgetSetting[] }
 export type DetailRow = { id: number; name: string; client: string; stage: string; text: string }
 export type Aggregate = { key: string; count: number }[]
+export type AttentionKind = "overdue" | "over_sla" | "due_soon" | "late_task" | "awaiting" | "idle"
 export type DashboardData = {
   today: string; version: number; layout: { id: string; uid?: string; w: 1 | 2 | 3; settings: Record<string, unknown> }[]; is_custom: boolean; catalogue: WidgetInfo[]; scope_full: boolean
   data: {
     kpis: { counts: Record<DashKey, number>; before: Record<DashKey, number> | null; since: string | null; moved_this_week: number; series: Record<DashKey, { day: string; v: number }[]>; detail: Record<DashKey, DetailRow[]> }
     aggregates: Record<string, Aggregate>
+    attention: { id: number; name: string; client: string; stage: string; worst: AttentionKind; reasons: { kind: AttentionKind; text: string }[] }[]
     timeline: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState; progress: number; team: Person[] }[]
     progress: { done: number; current: number; pending: number; pct: number }
-    stages: { stage: string; count: number }[]
+    stages: { stage: string; count: number; late: number; warn: number }[]
     completion: { day: string; count: number }[]
     schedule: { due: { id: number; project_id: number; title: string; due_date: string; project: string; stage: string | null; who: string | null; avatar_url: string | null }[]
                 approvals: { project_id: number; project: string; stage: string; requested_at: string }[] }
@@ -406,7 +390,7 @@ export const resetLayout = () => send<{ ok: true; layout: DashboardData["layout"
 
 // ---- projects list ----
 export type ProjectRow = {
-  id: number; name: string; client: string; po_number: string | null; stage: string; stages: string[]; stage_index: number; closed: boolean
+  id: number; name: string; client: string; po_number: string | null; stage: string; stages: string[]; stage_index: number; closed: boolean; state: FlowState
   owner_name: string; delivery_mode: string; vendor_name: string | null; product_name: string | null; target_end_date: string | null; updated_at: string
   total_tasks: number; open_tasks: number; team: { id: number; name: string; avatar_url: string | null }[]
 }
@@ -443,8 +427,8 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
     const d = (await res.json().catch(() => null)) as { error?: string; messages?: string[] } | null
     throw await failure(res, res.status === 403 ? "You cannot do that on this project" : d?.messages?.join(" ") || d?.error || undefined)
   }
-  const data = (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
-  if (!data) throw new ApiError(res.status, "Your session has ended — sign in again")
+  const data = notJson(res) ? null : (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
+  if (!data) throw new ApiError(401, SIGNED_OUT)
   if (data.ok === false) throw new ApiError(400, data.messages?.join(" ") || data.error || "That did not save")
   return data
 }
@@ -542,13 +526,6 @@ export type ReportAllData = {
   risks: { project_id: number; project: string; kind: RaidKind; title: string; impact: string; status: string; owner_name: string | null; due_date: string | null }[]
 }
 export const reportAll = (template?: number | null) => getJson<ReportAllData>(`/api/reports/all${template ? `?template=${template}` : ""}`)
-export type ReportData = {
-  project: { id: number; name: string; client: string; owner_name: string; stage: string }
-  versions: { version: number; created_by: string; created_at: string }[]
-  current: { version: number; created_by: string; created_at: string } | null
-  blocks: ["h" | "li" | "p", string][]; editor_text: string; can_edit: boolean; is_draft: boolean
-}
-export const report = (id: number, query: string) => getJson<ReportData>(`/api/projects/${id}/report${query ? `?${query}` : ""}`)
 
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; has_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null

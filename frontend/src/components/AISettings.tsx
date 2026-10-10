@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { PanelTitle } from "@/components/PanelTitle"
 import { CheckCircle2, CircleDashed, Clock, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -14,7 +15,7 @@ type Send = (path: string, fields?: Record<string, string>, confirmText?: string
 function Panel({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <section className="panel p-4">
-      <h2 data-n className="mb-3 text-[12px] font-semibold text-nav-fg">{title}{hint && <span className="sr-only">, </span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</h2>
+      <PanelTitle hint={hint}>{title}</PanelTitle>
       {children}
     </section>
   )
@@ -54,7 +55,7 @@ export function AISettings({ policies, busy, send, schedule }: { policies: Polic
   return (
     <>
       <Server policies={policies} busy={busy} send={act} hasKey={!!view?.has_key} />
-      {error && <p className="text-[13px] text-bad" role="alert">{error}</p>}
+      {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
       {view && <Status view={view} busy={busy} send={act} />}
       {view && <Features features={view.features} busy={busy} send={act} />}
       {schedule}
@@ -101,7 +102,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
             <div className="flex flex-wrap items-center gap-2">
               <Input id="ai-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "saved; type to replace" : "none (a local server needs none)"} className="h-8 max-w-xs text-[13px]" />
               <Button type="button" size="sm" variant="outline" disabled={busy || !key} onClick={() => void send("/settings/ai/key", { api_key: key }).then((r) => { if (r) setKey("") })}>Save key</Button>
-              {hasKey && <Button type="button" size="sm" variant="ghost" className="text-bad hover:text-bad" disabled={busy} onClick={() => void send("/settings/ai/key", { clear: "1" }, "Remove the saved API key?")}>Remove</Button>}
+              {hasKey && <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void send("/settings/ai/key", { clear: "1" }, "Remove the saved API key?")}>Remove</Button>}
             </div>
             <p className="text-[12px] text-muted-foreground">Stored sealed, like the Microsoft 365 secret, and sent as a bearer token.</p>
           </div>
@@ -143,7 +144,7 @@ function Status({ view, busy, send }: { view: AIView; busy: boolean; send: Send 
           {!stale && s.state === "up" && s.since && <span className="text-muted-foreground">since <Ago iso={s.since} /></span>}
           {s.checked_at && s.state !== "off" && <span className="text-muted-foreground">last heartbeat <Ago iso={s.checked_at} /></span>}
         </div>
-        {!stale && s.state === "down" && s.error && <p className="text-bad">{s.error}. AI features are paused; Odin is using its usual behaviour.</p>}
+        {!stale && s.state === "down" && s.error && <p className="text-destructive">{s.error}. AI features are paused; Odin is using its usual behaviour.</p>}
         {s.state === "off" && <p className="text-muted-foreground">Odin is not using AI. Set the server above, tick Use AI features, Check, then Save.</p>}
         {s.model && s.state !== "off" && (
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
@@ -193,8 +194,8 @@ function Features({ features, busy, send }: { features: AIFeatureView[]; busy: b
                   <td className="py-2 pr-3"><Pill tone={tone} icon={icon}>{word}</Pill>{f.detail && <span className="mt-1 block text-[12px] text-muted-foreground">{f.detail}</span>}</td>
                   <td className="whitespace-nowrap py-2 pr-3">{f.checked_at ? <><Ago iso={f.checked_at} /><span className="block font-mono text-[12px] text-muted-foreground">{f.model}</span></> : <span className="text-muted-foreground">never</span>}</td>
                   <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{f.seconds != null ? `${f.seconds} s` : "—"}</td>
-                  <td className="py-2 pr-3"><input type="checkbox" checked={f.on} disabled={busy} onChange={(e) => void post(e.target.checked, f.forced)} aria-label={`${f.label} on`} className="h-3.5 w-3.5 accent-primary" /></td>
-                  <td className="py-2 pr-3"><input type="checkbox" checked={f.forced} disabled={busy || !f.on} onChange={(e) => void post(f.on, e.target.checked)} aria-label={`Force ${f.label} on without a passed test`} className="h-3.5 w-3.5 accent-primary" /></td>
+                  <td className="py-2 pr-3"><Switch size="sm" checked={f.on} disabled={busy} onCheckedChange={(c) => void post(c, f.forced)} aria-label={`${f.label} on`} className="h-3.5 w-3.5 accent-primary" /></td>
+                  <td className="py-2 pr-3"><Switch size="sm" checked={f.forced} disabled={busy || !f.on} onCheckedChange={(c) => void post(f.on, c)} aria-label={`Force ${f.label} on without a passed test`} className="h-3.5 w-3.5 accent-primary" /></td>
                   <td className="py-2 text-right">{f.output != null && <Button size="sm" variant="ghost" className="h-7" onClick={() => setOpen(open === f.key ? null : f.key)} aria-expanded={open === f.key}>{open === f.key ? "Hide answer" : "Test answer"}</Button>}</td>
                 </tr>,
                 open === f.key && (

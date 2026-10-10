@@ -4,17 +4,22 @@ import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 
-// Dev: Vite serves the React pages and proxies everything it doesn't own to
-// Flask on 5050, so un-ported Jinja pages keep working during the strangler
-// migration and the session cookie is shared (same host, cookies ignore port).
-// Build: emits frontend/dist, which Flask serves for the ported routes.
+// Dev: Vite serves the React pages (a browser navigation gets index.html) and
+// proxies everything else to Flask on 5050: the API, form posts, downloads and
+// the few server pages (guest links, Microsoft sign-in, the system map). The
+// session cookie is shared (same host, cookies ignore port).
+// Build: emits frontend/dist, which Flask serves for every page route.
+const SERVER_PAGES = /^\/(guest|auth\/microsoft|integrations|settings\/map\/page|logout|healthz|robots\.txt)|\/(download|avatar)\b|\.(csv|pdf|svg|png)(\?|$)/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
   server: {
     port: 5173,
     proxy: {
-      "^/(?!@|src/|node_modules/|assets/|login$).*": { target: "http://127.0.0.1:5050", changeOrigin: false },
+      "^/(?!@|src/|node_modules/).*": {
+        target: "http://127.0.0.1:5050", changeOrigin: false,
+        bypass: (req) => req.method === "GET" && req.headers.accept?.includes("text/html") && !SERVER_PAGES.test(req.url ?? "") ? "/index.html" : undefined,
+      },
     },
   },
   build: { outDir: "dist", emptyOutDir: true },

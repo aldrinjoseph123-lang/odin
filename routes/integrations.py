@@ -20,14 +20,14 @@ def settings_azure_app():
     tenant_id = request.form.get("tenant_id", "").strip()
     client_secret = request.form.get("client_secret", "").strip()
     if not client_id or not tenant_id:
-        flash("Client ID and Tenant ID are required")
+        flash("Client ID and Tenant ID are required", "error")
         return redirect(url_for("settings"))
     if not client_secret:
         # blank means "leave the existing secret alone" — re-typing a live
         # secret every time you tweak the client ID would be needless friction
         existing = graph.azure_app_credentials()
         if not existing["has_secret"]:
-            flash("Client Secret is required the first time you connect")
+            flash("Client Secret is required the first time you connect", "error")
             return redirect(url_for("settings"))
         client_secret = graph._db_setting("ms_client_secret") or os.environ.get("MS_CLIENT_SECRET", "")
     graph.set_azure_app_credentials(client_id, client_secret, tenant_id)
@@ -50,7 +50,7 @@ def settings_azure_app_clear():
 @permission_required("manage_integrations")
 def integrations_connect():
     if not graph.oauth_client_configured():
-        flash("Enter your Azure app credentials first")
+        flash("Enter your Azure app credentials first", "error")
         return redirect(url_for("settings"))
     state = secrets.token_urlsafe(24)
     session["ms_oauth_state"] = state
@@ -63,21 +63,21 @@ def integrations_connect():
 def integrations_callback():
     error = request.args.get("error_description") or request.args.get("error")
     if error:
-        flash(f"Microsoft sign-in failed: {error}")
+        flash(f"Microsoft sign-in failed: {error}", "error")
         return redirect(url_for("settings"))
     expected_state = session.pop("ms_oauth_state", None)
     if not expected_state or request.args.get("state") != expected_state:
-        flash("Sign-in session expired or mismatched — click Connect again")
+        flash("Sign-in session expired or mismatched — click Connect again", "error")
         return redirect(url_for("settings"))
     code = request.args.get("code")
     if not code:
-        flash("Microsoft did not return an authorization code")
+        flash("Microsoft did not return an authorization code", "error")
         return redirect(url_for("settings"))
     redirect_uri = url_for("integrations_callback", _external=True)
     ok, result = graph.complete_connection(code, redirect_uri)
     if ok:
         audit_log("connect_microsoft365", details=f"as {result}")
-    flash(f"Connected to Microsoft 365 as {result}" if ok else f"Connection failed: {result}")
+    flash(f"Connected to Microsoft 365 as {result}" if ok else f"Connection failed: {result}", "message" if ok else "error")
     return redirect(url_for("settings"))
 
 
@@ -97,7 +97,7 @@ def integrations_set_channel():
     team_id = request.form.get("team_id", "")
     channel_id = request.form.get("channel_id", "")
     if not team_id or not channel_id:
-        flash("Pick both a team and a channel")
+        flash("Pick both a team and a channel", "error")
         return redirect(url_for("settings"))
     teams_list, _err = graph.list_joined_teams()
     channels_list, _err = graph.list_channels(team_id)
@@ -118,10 +118,9 @@ def settings_integrations():
         "onedrive_mirror_uploads_enabled",
         "1" if request.form.get("onedrive_mirror_uploads_enabled") == "on" else "0",
     )
-    set_setting("onedrive_backup_enabled", "1" if request.form.get("onedrive_backup_enabled") == "on" else "0")
     set_setting("guest_links_enabled", "1" if request.form.get("guest_links_enabled") == "on" else "0")
     audit_log("update_integration_settings")
-    flash("Integration settings saved")
+    flash("Saved")   # posted from Security, Notifications and Integrations alike (sim roles)
     return redirect(url_for("settings"))
 
 
@@ -132,12 +131,12 @@ def settings_test_email():
     db = get_db()
     user = db.execute("SELECT email FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     if not user or not user["email"]:
-        flash("Set your email on the Account page first")
+        flash("Set your email on the Account page first", "error")
         return redirect(url_for("settings"))
     ok, error = graph.send_mail(
         user["email"], "Odin test notification", "This is a test email from Odin."
     )
-    flash("Test email sent" if ok else f"Test email failed: {error}")
+    flash("Test email sent" if ok else f"Test email failed: {error}", "message" if ok else "error")
     return redirect(url_for("settings"))
 
 
@@ -146,7 +145,7 @@ def settings_test_email():
 def settings_test_teams():
     audit_log("test_teams")
     ok, error = graph.send_teams_message("<b>Odin test notification</b><br>This is a test message from Odin.")
-    flash("Test Teams message sent" if ok else f"Test Teams message failed: {error}")
+    flash("Test Teams message sent" if ok else f"Test Teams message failed: {error}", "message" if ok else "error")
     return redirect(url_for("settings"))
 
 
@@ -176,11 +175,11 @@ def settings_report_send_test():
     from services import weekly_report
     me = get_db().execute("SELECT email FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     if not me or not me["email"]:
-        flash("Add your email address on the Account page first")
+        flash("Add your email address on the Account page first", "error")
     else:
         sent, failed, message = weekly_report.send(to=[me["email"]], teams=False)
         audit_log("report_send_test", details=message)
-        flash(f"Test report sent to {me['email']}" if sent else f"Not sent: {message}")
+        flash(f"Test report sent to {me['email']}" if sent else f"Not sent: {message}", "message" if sent else "error")
     return redirect(url_for("settings_section", section="reports"))
 
 
@@ -192,10 +191,10 @@ def settings_test_webhook():
     url = policy("teams_webhook_url")
     audit_log("test_teams_webhook", details="set" if url else "(none)")
     if not url:
-        flash("Save a Teams Workflows webhook address first")
+        flash("Save a Teams Workflows webhook address first", "error")
     else:
         ok, error = graph.post_teams_webhook(url, "Odin test message", ["If you can read this, Odin can post to this channel."], external_url("board"))
-        flash("Posted to the Teams webhook" if ok else f"The webhook refused it: {error}")
+        flash("Posted to the Teams webhook" if ok else f"The webhook refused it: {error}", "message" if ok else "error")
     return redirect(url_for("settings_section", section="notifications"))
 
 
@@ -207,9 +206,9 @@ def settings_backup_test_share():
     path = policy("share_path")
     audit_log("backup_test_share", details=path or "(none)")
     if not path or not os.path.isabs(path):
-        flash("Set the share folder path (an absolute path) and save first")
+        flash("Set the share folder path (an absolute path) and save first", "error")
     elif not os.path.isdir(path):
-        flash(f"{path} doesn't exist on the server — is the share mounted into the container?")
+        flash(f"{path} doesn't exist on the server — is the share mounted into the container?", "error")
     else:
         probe = os.path.join(path, f".odin-write-test-{secrets.token_hex(4)}")
         try:
@@ -218,5 +217,5 @@ def settings_backup_test_share():
             os.remove(probe)
             flash(f"{path} is reachable and writable")
         except OSError as exc:
-            flash(f"{path} exists but can't be written: {exc.strerror}")
+            flash(f"{path} exists but can't be written: {exc.strerror}", "error")
     return redirect(url_for("settings_section", section="backups"))

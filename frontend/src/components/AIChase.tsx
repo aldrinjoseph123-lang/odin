@@ -1,25 +1,19 @@
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { Copy, Mail, Sparkles } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
-import { ApiError, cancelAIJob, closeAISuggestion, dismissAISuggestion, projectAI, requestProjectAI, type ChaseDraft, type ProjectAI } from "@/lib/api"
+import { ApiError, cancelAIJob, closeAISuggestion, dismissAISuggestion, requestProjectAI, type ChaseDraft } from "@/lib/api"
 import { fmtWhen, reminderText } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { usePoll } from "@/lib/usePoll"
+import { useProjectAI } from "@/lib/usePoll"
 
 // Waiting on the customer: what is waiting (Odin's own count), shown whenever
 // something is, AI or not. A plain reminder can always be copied; when the AI
 // can run, it drafts a chase email instead. Odin sends nothing.
 export function AIChase({ projectId }: { projectId: number }) {
-  const [s, setS] = useState<ProjectAI<ChaseDraft> | null>(null)
+  const { s, load, working: drafting } = useProjectAI<ChaseDraft>(projectId, "chase_draft")
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
-  const load = useCallback(async () => {
-    try { setS(await projectAI<ChaseDraft>(projectId, "chase_draft")) } catch { setS(null) }
-  }, [projectId])
-  useEffect(() => { void load() }, [load])
-  const drafting = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  usePoll(drafting, load)
   const waiting = s?.options?.waiting ?? []
   if (!s || waiting.length === 0) return null
   const ai = s.available || !!s.suggestion

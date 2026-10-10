@@ -1,26 +1,20 @@
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
-import { ApiError, cancelAIJob, decideAIProposal, projectAI, requestProjectAI, type ProjectAI, type RaidProposal, type RaidProposals } from "@/lib/api"
+import { ApiError, cancelAIJob, decideAIProposal, requestProjectAI, type RaidProposal, type RaidProposals } from "@/lib/api"
 import { fmtWhen } from "@/lib/format"
 import { RAID_KIND } from "@/components/RaidPanel"
-import { usePoll } from "@/lib/usePoll"
+import { useProjectAI } from "@/lib/usePoll"
 
 // Risks proposed: what the notes imply but nobody logged. Each proposal shows
 // the note words behind it; Add opens the register's own dialog filled in, so
 // the item is saved (and audited) exactly like one typed by hand. Shown only
 // when the AI can run here or proposals are waiting.
 export function AIRaidProposals({ projectId, refresh, onAdd }: { projectId: number; refresh: number; onAdd: (p: RaidProposal, suggestion: number, index: number) => void }) {
-  const [s, setS] = useState<ProjectAI<RaidProposals> | null>(null)
+  const { s, load, working: looking } = useProjectAI<RaidProposals>(projectId, "raid_proposals", { refresh })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const load = useCallback(async () => {
-    try { setS(await projectAI<RaidProposals>(projectId, "raid_proposals")) } catch { setS(null) }
-  }, [projectId])
-  useEffect(() => { void load() }, [load, refresh])
-  const looking = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  usePoll(looking, load)
   if (!s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   const open = sug ? sug.payload.proposals.map((p, i) => [p, i] as const).filter(([, i]) => !sug.payload.decisions?.[String(i)]) : []
@@ -44,8 +38,8 @@ export function AIRaidProposals({ projectId, refresh, onAdd }: { projectId: numb
             : sug && open.length ? <>AI found {open.length} thing{open.length === 1 ? "" : "s"} the notes mention that the register does not ({fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}).</>
               : sug ? "Nothing new in the notes that the register does not already hold."
                 : "Look through the last two weeks of notes with AI for risks, issues and decisions nobody has logged."}
-          {lastJob?.status === "failed" && <span className="block text-bad">The last look did not finish: {lastJob.error}</span>}
-          {error && <span className="block text-bad">{error}</span>}
+          {lastJob?.status === "failed" && <span className="block text-destructive">The last look did not finish: {lastJob.error}</span>}
+          {error && <span className="block text-destructive">{error}</span>}
         </span>
         {s.available && !looking && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void look()}>{sug ? "Look again" : "Look with AI"}</Button>}
         {looking && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}

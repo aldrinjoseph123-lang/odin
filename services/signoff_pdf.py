@@ -2,7 +2,7 @@
 left, the terms, the acceptance statement, both signature blocks (drawn
 signatures as vector strokes) and the signing record with the document's
 fingerprint. Drawn with the report PDF's page builder (services/report_pdf)."""
-from services.report_pdf import BAD_LINE, FAINT, HAIR, INK, LEFT, MUTED, RAG, RIGHT, WIDTH, _Doc, _fmt
+from services.report_pdf import BAD_LINE, FAINT, HAIR, INK, LEFT, MUTED, RAG, WIDTH, _Doc, _fmt
 
 STATUS = {
     "sent": ("amber", "Awaiting the customer's signature"), "signed": ("amber", "Signed by the customer, awaiting our countersignature"),
@@ -47,7 +47,7 @@ def render(v):
     facts = [("Customer", p["client"]), ("Delivered by", p["company"] + (f" with {p['partner_name']}" if p.get("partner_name") else "")),
              ("Purchase order", " · ".join(x for x in (p.get("po_number"), _fmt(p.get("po_date")) if p.get("po_date") else None) if x) or "-"),
              ("Project manager", p["owner_name"]), ("Solution", " ".join(x for x in (p.get("vendor_name"), p.get("product_name")) if x) or "-"),
-             ("Started", _fmt(p.get("start_date"))), ("Target", _fmt(p.get("target_end_date"))), ("Completed", _fmt(p.get("finished")))]
+             ("Started", _fmt(p.get("start_date"))), ("Target", _fmt(p.get("target_end_date"))), ("Issued", _fmt(p.get("finished")))]
     col = WIDTH / 2
     if section_on(tpl, "facts"):
         for i, (label, value) in enumerate(facts):

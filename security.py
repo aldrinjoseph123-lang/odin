@@ -11,6 +11,7 @@ Covers the layers the framework does not give us for free:
 Depends only on constants + db, so it sits beside the other low-level modules
 and never imports routes or core (core imports it, not the reverse).
 """
+import hashlib
 import os
 import re
 import secrets
@@ -195,10 +196,14 @@ def content_matches_extension(file):
 
 
 
+def token_hash(raw):
+    """How a one-time link or API token is stored: its SHA-256, never the token."""
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
 def issue_login_link(user_id, created_by=None, purpose="signin"):
     """Mint a single-use sign-in link for a user; returns the raw token, which
     exists only in the email (and the inviter's fallback flash)."""
-    import hashlib
     raw = secrets.token_urlsafe(32)
     from policies import policy
     now = datetime.utcnow()
@@ -208,7 +213,7 @@ def issue_login_link(user_id, created_by=None, purpose="signin"):
     get_db().execute(
         "INSERT INTO login_links (user_id, token_hash, created_at, expires_at, created_by, ip_address, purpose, epoch) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT session_epoch FROM users WHERE id = ?))",
-        (user_id, hashlib.sha256(raw.encode()).hexdigest(), now.isoformat(),
+        (user_id, token_hash(raw), now.isoformat(),
          (now + timedelta(minutes=policy("link_minutes"))).isoformat(), created_by, request.remote_addr, purpose, user_id),
     )
     get_db().commit()
@@ -218,11 +223,10 @@ def issue_login_link(user_id, created_by=None, purpose="signin"):
 def consume_login_link(raw):
     """The user for a valid, unexpired, unused link — marking it used — or
     None. Invalid for internal accounts: they sign in with a password."""
-    import hashlib
     db = get_db()
     row = db.execute(
         "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
-        (hashlib.sha256((raw or "").encode()).hexdigest(),),
+        (token_hash(raw or ""),),
     ).fetchone()
     if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
         return None   # epoch: the password, role or active state changed since the link was issued
@@ -236,10 +240,9 @@ def consume_login_link(raw):
 def reset_link_row(raw):
     """The live password-reset link for this token, or None: unused,
     unexpired, purpose 'reset', for an active staff account."""
-    import hashlib
     row = get_db().execute(
         "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
-        (hashlib.sha256((raw or "").encode()).hexdigest(),),
+        (token_hash(raw or ""),),
     ).fetchone()
     if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
         return None   # epoch: the password, role or active state changed since the link was issued
@@ -327,19 +330,17 @@ def _validate_csrf():
 # --- transport/browser: response headers ------------------------------------
 
 # Scripts run from this origin, or inline with this response's nonce (system
-# map #19): the React shell's theme snippet and the Jinja pages' small scripts
-# carry it. Only the old Jinja twins of ported pages, which still use inline
-# event handlers (onclick=…), get 'unsafe-inline' (LEGACY_TEMPLATES); in
-# production React serves those pages. Styles keep 'unsafe-inline' (React
-# style attributes). No third-party scripts, no framing, no plugins, and forms
-# post back to this origin only.
-LEGACY_TEMPLATES = {"project_detail.html", "project_form.html", "report_all.html", "report_single.html",
-                    "settings.html", "settings_contacts.html", "users.html"}
+# map #19): the React shell's theme snippet and the last Jinja pages' small
+# scripts carry it. The 'unsafe-inline' below is replaced by the nonce in
+# _csp(); only the self-contained system map page (Settings → System map)
+# keeps it. Styles keep 'unsafe-inline' (React style attributes). No
+# third-party scripts, no framing, no plugins, and forms post back to this
+# origin only.
 CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-    "font-src 'self' https://fonts.gstatic.com; "
+    "style-src 'self' 'unsafe-inline'; "
+    "font-src 'self'; "   # fonts are served by Odin (static/fonts)
     "img-src 'self' data:; "
     "form-action 'self'; "
     "frame-ancestors 'none'; "
@@ -358,20 +359,12 @@ def csp_nonce():
     return g.csp_nonce
 
 
-def _note_legacy(sender, template, context, **extra):
-    from flask import g
-    if template.name in LEGACY_TEMPLATES:
-        g.legacy_inline = True
-
-
 def _csp():
-    """The policy above, strict unless an old template with inline handlers
-    was rendered; the Flow page (which draws the Kibana view) may
+    """The policy above with this response's nonce instead of
+    'unsafe-inline'; the Flow page (which draws the Kibana view) may
     additionally frame the origins of the configured Kibana dashboards."""
     from flask import g, request
-    policy = CSP
-    if not g.get("legacy_inline"):
-        policy = CSP.replace("script-src 'self' 'unsafe-inline'; ", "script-src 'self'%s; " % (f" 'nonce-{g.csp_nonce}'" if "csp_nonce" in g else ""))
+    policy = CSP.replace("script-src 'self' 'unsafe-inline'; ", "script-src 'self'%s; " % (f" 'nonce-{g.csp_nonce}'" if "csp_nonce" in g else ""))
     if request.endpoint != "board":
         return policy
     from urllib.parse import urlsplit
@@ -430,6 +423,4 @@ def init_security(app):
     app.after_request(_security_headers)
     app.jinja_env.globals["csrf_token"] = csrf_token
     app.jinja_env.globals["csp_nonce"] = csp_nonce
-    from flask import template_rendered
-    template_rendered.connect(_note_legacy, app)
     return app

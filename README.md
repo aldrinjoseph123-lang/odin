@@ -52,7 +52,7 @@ Front-end iteration: `npm --prefix frontend run dev` on http://localhost:5173 鈥
 
 ## Stack
 
-Flask 3 路 SQLite (WAL) 路 gunicorn 路 nginx 路 **React + TypeScript + shadcn/ui** (Vite, Tailwind 4) for the front end. Every signed-in page is React; Flask serves JSON and the same form routes the old pages used (see CLAUDE.md). Only the public guest pages remain Jinja. Three Python runtime dependencies; Node is a build-time dependency only (multi-stage Dockerfile). State is one directory (`ODIN_DATA_DIR`): the database plus `uploads/` and `backups/`.
+Flask 3 路 SQLite (WAL) 路 gunicorn 路 nginx 路 **React + TypeScript + shadcn/ui** (Vite, Tailwind 4) for the front end. Every signed-in page is React; Flask serves JSON and the form routes the React pages post to (see CLAUDE.md). Only the public guest pages, the sign-in fallback and the error page remain Jinja. Python runtime dependencies are in `requirements.txt`; Node is a build-time dependency only (multi-stage Dockerfile). State is one directory (`ODIN_DATA_DIR`): the database plus `uploads/` and `backups/`.
 
 ## Security posture
 
@@ -62,8 +62,7 @@ CSRF on every mutation 路 session regenerated on login, 60 min idle / 12 h absol
 
 | | |
 |---|---|
-| [DEPLOY.md](DEPLOY.md) | Docker, Proxmox, Cloudflare, backups and restore, bare-metal alternative |
-| [RBAC.md](RBAC.md) | Roles and permissions |
+| [DEPLOY.md](DEPLOY.md) | Docker, Proxmox, Cloudflare, backups and restore, security settings |
 | [AZURE_SETUP.md](AZURE_SETUP.md) | Microsoft 365 app registration |
 | [docs/UAT_SCRIPT.md](docs/UAT_SCRIPT.md) | Re-runnable acceptance script (93 steps) |
 | [docs/UAT_RESULTS_2026-09-25.md](docs/UAT_RESULTS_2026-09-25.md) | Latest executed results (v2 dry run) |

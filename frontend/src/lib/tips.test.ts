@@ -20,3 +20,15 @@ describe("tipText", () => {
     expect(tipText(text as HTMLElement)).toBeNull()
   })
 })
+
+describe("tipText for cut-off text", () => {
+  it("shows the full text of a truncated element, and nothing when it fits", () => {
+    document.body.innerHTML = `<span class="truncate">SIEM onboarding - Umbrella Health</span>`
+    const span = document.querySelector("span")!
+    const size = (scroll: number) => { Object.defineProperty(span, "scrollWidth", { value: scroll, configurable: true }); Object.defineProperty(span, "clientWidth", { value: 120, configurable: true }) }
+    size(300)
+    expect(tipText(span)).toBe("SIEM onboarding - Umbrella Health")
+    size(120)
+    expect(tipText(span)).toBeNull()
+  })
+})

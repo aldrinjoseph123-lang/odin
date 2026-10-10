@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -126,6 +126,10 @@ describe("fitStages", () => {
   it("then folds far-off stages, always ending on the last stage", () => {
     expect(kinds(fitStages([...edr], 5))).toEqual(["done:0-1", 2, 3, "later:4-6", 7])
     expect(kinds(fitStages(["current", "next", "next", "next", "next", "next", "next"], 5))).toEqual([0, 1, 2, "later:3-5", 6])
+  })
+  it("folds only as many finished stages as it must, oldest first", () => {
+    const late = ["done", "done", "done", "done", "done", "done", "done", "current", "next"] as const
+    expect(kinds(fitStages([...late], 6))).toEqual(["done:0-3", 4, 5, 6, 7, 8])
   })
   it("never folds a single finished stage into a node of one", () => {
     expect(kinds(fitStages(["done", "current", "next", "next", "next"], 4))).toEqual([0, 1, "later:2-3", 4])
@@ -308,5 +312,38 @@ describe("productsFor", () => {
   })
   it("keeps a project's current product listed", () => {
     expect(productsFor(products, "Fortinet", "PA-440")).toEqual(["PA-440", "FortiGate", "Cabling"])
+  })
+})
+
+describe("timelineSummary", () => {
+  it("says a project started today has no target", () => {
+    expect(timelineSummary("2026-10-09", "2026-10-09")).toBe("Started today · day 1 · no target date")
+  })
+  it("counts the days left to the target", () => {
+    expect(timelineSummary("2026-10-01", "2026-10-09", "2026-10-30")).toMatch(/· day 9 · target .*, 21 days left$/)
+  })
+  it("says when a start is still ahead, and counts nothing on a closed rollout", () => {
+    expect(timelineSummary("2026-11-01", "2026-10-10", "2026-12-01")).toMatch(/^Starts .*, in 22 days · target/)
+    expect(timelineSummary("2026-09-01", "2026-10-10", "2027-02-06", true)).toMatch(/^Started .* · closed$/)
+  })
+  it("counts the days past the target", () => {
+    expect(timelineSummary("2026-09-01", "2026-10-09", "2026-10-08")).toMatch(/, 1 day late$/)
+    expect(timelineSummary("2026-09-01", "2026-10-09", "2026-10-09")).toMatch(/, due today$/)
+  })
+})
+
+import { confirmParts } from "./confirm"
+describe("confirmParts", () => {
+  it("titles the question, describes the rest, and puts the verb on the button", () => {
+    expect(confirmParts("Remove Ann Reyes from this project? They lose access.")).toEqual({ title: "Remove Ann Reyes from this project?", detail: "They lose access.", verb: "Remove", danger: true })
+    expect(confirmParts("Save this version?")).toEqual({ title: "Save this version?", detail: "", verb: "Save", danger: false })
+  })
+})
+
+describe("dates never follow the browser's locale", () => {
+  it("timeAgo and localDateTime read day first, as fmtDate does", () => {
+    setDateFormat("d MMM yyyy")
+    expect(timeAgo("2026-09-01T12:00:00", Date.parse("2026-09-27T12:00:00Z"))).toBe("1 Sep")
+    expect(localDateTime("2026-09-25T03:32:31")).toMatch(/^2[56] Sep 2026, \d\d:\d\d$/)
   })
 })

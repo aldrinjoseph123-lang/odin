@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { field } from "@/lib/ui"
+import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { ArrowDown, ArrowUp, FileSignature, Plus } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -14,7 +16,6 @@ import { AISowPlan } from "@/components/AISowPlan"
 // customer signs against what they agreed. The sign-off's state sits on top.
 export const SCOPE_WORD: Record<ScopeStatus, string> = { agreed: "Agreed", delivered: "Delivered", partial: "Partly delivered", descoped: "Descoped" }
 export const SCOPE_TONE: Record<ScopeStatus, string> = { agreed: "bg-muted text-muted-foreground", delivered: "bg-ok-soft text-ok", partial: "bg-warn-soft text-warn", descoped: "bg-muted text-muted-foreground line-through" }
-const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 type Draft = Partial<ScopeItem> & { title: string; status: ScopeStatus }
 
 export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?: SignoffState }) {
@@ -62,7 +63,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
         {d.can_edit && <Button size="sm" className="ml-auto rounded-full" onClick={() => { setError(null); setEdit({ title: "", status: "agreed" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
       {d.can_edit && <AISowPlan projectId={projectId} onAdded={() => void load()} />}
-      {error && !edit && <p className="mt-2 text-[13px] text-bad" role="alert">{error}</p>}
+      {error && !edit && <p className="mt-2 text-[13px] text-destructive" role="alert">{error}</p>}
       <ol className="mt-2 divide-y divide-border text-[13px]">
         {d.items.map((i, n) => (
           <li key={i.id} className="flex items-start gap-2 py-2">
@@ -97,9 +98,9 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
               </div>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">{edit.status === "descoped" ? "Why it was descoped" : edit.status === "partial" ? "What was left out, and why" : "Note"}
                 <input className={field} maxLength={1000} required={edit.status === "partial" || edit.status === "descoped"} value={edit.note ?? ""} onChange={(e) => set({ note: e.target.value })} /></label>
-              {error && <p className="text-[13px] text-bad" role="alert">{error}</p>}
+              {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
               <div className="flex gap-2">
-                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-bad" disabled={busy} onClick={() => { if (confirm("Remove this scope item?")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item removed") }) }}>Remove</Button>}
+                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-destructive" disabled={busy} onClick={async () => { if (await askConfirm("Delete this scope item? It leaves the agreed scope; the history keeps a line that it existed.")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item deleted") }) }}>Delete</Button>}
                 <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
               </div>
             </form>

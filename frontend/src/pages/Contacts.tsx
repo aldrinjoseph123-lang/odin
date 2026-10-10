@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { ChevronRight, MoreHorizontal, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -139,7 +140,7 @@ export default function Contacts(_props: { user: User }) {
   const pick = (t: TabKey) => { setTab(t); const u = new URL(window.location.href); u.searchParams.set("tab", t); window.history.replaceState(window.history.state, "", u) }
 
   const send: Send = async (path, fields = {}, confirmText, onError) => {
-    if (confirmText && !window.confirm(confirmText)) return false
+    if (confirmText && !(await askConfirm(confirmText))) return false
     setBusy(true)
     try {
       const r = await postForm(path, fields)
@@ -283,7 +284,7 @@ export default function Contacts(_props: { user: User }) {
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">Contacts & partners</h1>
-        <p className="text-[13px] text-muted-foreground">the names the project form offers; a rename here updates every project that uses it</p>
+        <p className="max-w-prose text-[13px] text-muted-foreground">the names the project form offers; a rename here updates every project that uses it</p>
       </div>
       <Tabs value={tab} onValueChange={(v) => pick(v as TabKey)} className="mt-4">
         <TabsList className="max-w-full justify-start overflow-x-auto [scrollbar-width:none]">
@@ -297,9 +298,9 @@ export default function Contacts(_props: { user: User }) {
       <section className="panel mt-4 overflow-hidden" aria-label={meta.label}>
         <div className="flex flex-wrap items-start justify-between gap-3 p-4">
           <div className="min-w-0 max-w-2xl">
-            <h2 data-n className="text-[12px] font-semibold text-nav-fg">{meta.label}</h2>
+            <h2 className="text-[12px] font-semibold text-nav-fg">{meta.label}</h2>
             <p className="mt-1 text-[13px]">{meta.help}</p>
-            <p className="mt-1 text-[12px] text-muted-foreground">For example: {meta.example}</p>
+            <p className="max-w-prose mt-1 text-[12px] text-muted-foreground">For example: {meta.example}</p>
           </div>
           <Button size="sm" disabled={busy} onClick={() => setEditing(addFor(tab))}><Plus className="h-4 w-4" aria-hidden />Add {meta.noun}</Button>
         </div>

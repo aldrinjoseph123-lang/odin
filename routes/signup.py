@@ -11,7 +11,7 @@ from security import rate_limited
 from services import signup
 from services.audit import audit_log
 from services.notifications import notify_users
-from spa import spa_index, spa_serves
+from spa import spa_index
 
 
 @app.route("/api/signup-links")
@@ -57,10 +57,8 @@ def api_signup_links_revoke_all():
 
 @app.route("/join/<token>")
 def join_page(token):
-    """The public sign-up page; the React app draws it (or a plain notice without a build)."""
-    if spa_serves("join_page"):
-        return spa_index()
-    return ("Open this link in a browser with Odin's web app.", 200, {"Content-Type": "text/plain"})
+    """The public sign-up page; the React app draws it."""
+    return spa_index()
 
 
 def _gone():

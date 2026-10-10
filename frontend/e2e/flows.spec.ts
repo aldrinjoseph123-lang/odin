@@ -14,7 +14,7 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   // a widget's own menu: move, width, a setting — each saved at once
   await page.getByRole("button", { name: "Customise Portfolio progress" }).click()
   await page.getByRole("button", { name: "Move Portfolio progress earlier" }).click()
-  await expect(page.getByRole("status")).toHaveText(/Saved to your dashboard/)
+  await expect(page.getByText(/Saved to your dashboard/).first()).toBeVisible()   // a toast
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Customise Timeline" }).click()
   await page.getByRole("group", { name: "Width of Timeline" }).getByRole("button", { name: "Full" }).click()
@@ -23,7 +23,8 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   await page.getByRole("button", { name: "Customise Open alerts" }).click()
   await page.getByRole("button", { name: "Remove Open alerts" }).click()
   await expect(page.locator("main section[aria-label='Open alerts']")).toHaveCount(0)
-  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.getByText("Open alerts removed.")).toBeVisible()
+  await page.getByRole("button", { name: "Undo" }).last().click()   // the newest toast's Undo
   await expect(page.locator("main section[aria-label='Open alerts']")).toHaveCount(1)
   // no gaps: every row of the three-column grid is full
   const rowsFull = await page.locator("main .grid.grid-cols-3 > div").evaluateAll((cells) => {
@@ -45,14 +46,14 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   // reset returns to the workspace default
   await page.getByRole("button", { name: "Dashboard layout" }).click()
   await page.getByRole("button", { name: /Reset to default/ }).click()
-  await expect(page.getByRole("status")).toHaveText(/Back to the workspace default/)
+  await expect(page.getByText(/Back to the workspace default/).first()).toBeVisible()   // a toast
   await expect(page.locator("main section[aria-label='Custom metric']")).toHaveCount(0)
   // an admin sets the default; a member without their own arrangement sees it
   await page.getByRole("button", { name: "Customise Cycle time" }).click()
   await page.getByRole("button", { name: "Remove Cycle time" }).click()
   await page.getByRole("button", { name: "Dashboard layout" }).click()
   await page.getByRole("button", { name: /Save as workspace default/ }).click()
-  await expect(page.getByRole("status")).toHaveText(/Saved as the workspace default/)
+  await expect(page.getByText(/Saved as the workspace default/).first()).toBeVisible()   // a toast
   await signIn(page, "member", "/dashboard")
   await expect(page.locator("main section[aria-label='Timeline']")).toBeVisible()
   await expect(page.locator("main section[aria-label='Cycle time']")).toHaveCount(0)
@@ -65,7 +66,7 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Dashboard layout" }).click()
   await page.getByRole("button", { name: /Save as workspace default/ }).click()
-  await expect(page.getByRole("status")).toHaveText(/Saved as the workspace default/)
+  await expect(page.getByText(/Saved as the workspace default/).first()).toBeVisible()   // a toast
   expectClean(errors)
 })
 
@@ -123,17 +124,20 @@ test("@flow flow list: filters, stage pills, grouping, the fold, opening a rollo
 test("@flow flow detail: advance with the confirm step, then undo", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/board?rollout=1")
-  const advance = page.getByRole("button", { name: /^Advance to / })
-  const next = (await advance.textContent())!.replace("Advance to", "").trim()
+  const advance = page.getByRole("button", { name: /^Move to (?!.* now$)/ })
+  const next = (await advance.textContent())!.replace("Move to", "").trim()
   await advance.click()
-  await page.getByRole("button", { name: `Move to ${next} now` }).click()
+  // the confirm names the risk (open tasks, no approval yet) and ignores a click within 400 ms of the first
+  const move = page.getByRole("group", { name: `Confirm the move to ${next}` }).getByRole("button", { name: /^Move / })
+  await page.waitForTimeout(450)
+  await move.click()
   await expect(page.getByRole("status")).toHaveText(new RegExp(`moved to ${next}`))
   await expect(page.locator("button[data-row][aria-current='true']")).toHaveAttribute("aria-label", new RegExp(next))
   await page.getByRole("button", { name: "Undo" }).click()
   await expect(page.getByRole("status")).toHaveText(/Moved back/)
   await expect(page.locator("button[data-row][aria-current='true']")).not.toHaveAttribute("aria-label", new RegExp(`\\. ${next},`))
-  // a task can be added, ticked and removed from the flowchart
-  await page.getByRole("button", { name: /^Add a task to / }).first().click()
+  // a task can be added, ticked and removed in the current stage's list under the flowchart
+  await page.getByRole("region", { name: /^Tasks in / }).getByRole("button", { name: /^Add a task to / }).click()
   await page.getByRole("textbox", { name: /^New task in / }).fill("E2E task")
   await page.getByRole("button", { name: "Add task" }).click()
   await page.getByRole("button", { name: "Complete E2E task" }).click()
@@ -211,8 +215,11 @@ test("@flow settings: a policy saves and takes effect; Kibana dashboards appear 
   await lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
   await expect(page.getByText(/each line as/)).toBeVisible()
   await lines.fill("SOC overview | https://kibana.example.com/app/dashboards#/view/soc?embed=true\nThreats | https://kibana.example.com/app/dashboards#/view/threats?embed=true")
-  await lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
-  await expect(page.getByText("Saved").first()).toBeVisible()
+  // wait for this save itself: an earlier "Saved" on the page would otherwise let the test run ahead
+  await Promise.all([
+    page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()),
+    lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click(),
+  ])
   await page.goto("/board?view=kibana")
   await expect(page.getByRole("tab", { name: "SOC overview" })).toHaveAttribute("aria-selected", "true")
   await page.getByRole("tab", { name: "Threats" }).click()
@@ -248,6 +255,7 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   const errors = watch(page)
   await signIn(page, "admin", "/projects/1")
   const plan = page.locator("#plan")
+  await plan.getByRole("button", { name: "Edit dates" }).click()   // the dates are read until asked to edit
   const end = plan.locator("button[aria-label*='planned end']").last()
   await expect(end).toBeEnabled()
   const was = await end.getAttribute("data-value")
@@ -266,8 +274,8 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   await page.getByRole("checkbox", { name: "Show in the customer's report" }).check()
   await page.getByRole("button", { name: "Save" }).click()
   await raid.getByRole("button", { name: /E2E risk/ }).click()
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Delete" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(raid.getByRole("button", { name: /E2E risk/ })).toHaveCount(0)
 
   // the report: the customer copy hides the baseline; a saved version is listed; both PDFs render
@@ -279,6 +287,8 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   await page.getByRole("button", { name: "Internal" }).click()
   await page.getByRole("textbox", { name: "What we need from the customer" }).fill("E2E: confirm the change window.")
   await page.getByRole("button", { name: "Save as version" }).click()
+  await expect(page.getByRole("alertdialog")).toContainText(/Partners and customers/)
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByRole("status")).toHaveText(/Version \d+ saved/)
   for (const audience of ["internal", "customer"]) {
     const r = await page.request.get(`/projects/1/report.pdf?audience=${audience}`)
@@ -327,7 +337,7 @@ test("@flow scope and sign-off: mark the last item, send, see it waiting, withdr
   await expect(page.getByRole("textbox", { name: "Summary" })).toHaveValue(/4 of 4 agreed scope items were delivered in full/)
   await page.getByRole("button", { name: "Send for signature" }).click()
   await page.getByRole("button", { name: /^Send to Ann Reyes now$/ }).click()
-  await expect(page.getByRole("status")).toHaveText(/Version \d+ sent to Ann Reyes/)
+  await expect(page.getByText(/Version \d+ sent to Ann Reyes/)).toBeVisible()   // a toast
   await expect(page.getByText("Sent, waiting for the customer's signature").first()).toBeVisible()
   await expect(page.getByText(/SHA-256 [0-9a-f]{64}/)).toBeVisible()
   const pdf = await page.request.get("/projects/1/signoff.pdf")
@@ -344,9 +354,9 @@ test("@flow scope and sign-off: mark the last item, send, see it waiting, withdr
   // no mail on day one: the PM hands the signatory a one-time link
   await page.getByRole("button", { name: "Get a sign-in link" }).click()
   await expect(page.getByRole("textbox", { name: "Sign-in link for the signatory" })).toHaveValue(/\/auth\/link\/[^?]+\?next=%2Fprojects%2F1%2Fsignoff|\/auth\/link\/.+next=\/projects\/1\/signoff/)
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Withdraw and revise" }).click()
-  await expect(page.getByRole("status")).toHaveText(/withdrawn/)
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
+  await expect(page.getByText(/withdrawn/).first()).toBeVisible()   // a toast
   await expect(page.getByRole("button", { name: "Send for signature" })).toBeVisible()
   expect(await move(before)).toBe(200)
   expectClean(errors.filter((e) => !/\/api\/projects\/1\/stage|400 \(BAD REQUEST\)/.test(e)))   // the refused move is the point
@@ -370,12 +380,10 @@ test("@flow settings: an admin switches time on Odin and sign-up links off, then
   const time = page.getByRole("region", { name: "Time on Odin" })
   const signup = page.getByRole("region", { name: "Sign-up links" })
   await time.getByRole("switch", { name: "Record time on Odin" }).uncheck()
-  await time.getByRole("button", { name: "Save", exact: true }).click()
-  await expect(page.getByRole("status")).toContainText("Saved")
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()), time.getByRole("button", { name: "Save", exact: true }).click()])
   await expect(signup.getByRole("switch", { name: "Sign-up links work" })).toBeChecked()
   await signup.getByRole("switch", { name: "Sign-up links work" }).uncheck()
-  await signup.getByRole("button", { name: "Save", exact: true }).click()
-  await expect(page.getByRole("status")).toContainText("Saved")
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()), signup.getByRole("button", { name: "Save", exact: true }).click()])
   await expect(time.getByRole("switch", { name: "Record time on Odin" })).not.toBeChecked()
   await page.goto("/account")
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
@@ -386,11 +394,9 @@ test("@flow settings: an admin switches time on Odin and sign-up links off, then
   // back on, so later journeys see the defaults
   await page.goto("/settings/people")
   await time.getByRole("switch", { name: "Record time on Odin" }).check()
-  await time.getByRole("button", { name: "Save", exact: true }).click()
-  await expect(page.getByRole("status")).toContainText("Saved")
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()), time.getByRole("button", { name: "Save", exact: true }).click()])
   await signup.getByRole("switch", { name: "Sign-up links work" }).check()
-  await signup.getByRole("button", { name: "Save", exact: true }).click()
-  await expect(page.getByRole("status")).toContainText("Saved")
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()), signup.getByRole("button", { name: "Save", exact: true }).click()])
   // the longer explanation is one tap away
   await time.getByRole("button", { name: "What is Record time on Odin?" }).click()
   await expect(page.getByText(/visible and in use/)).toBeVisible()
@@ -441,14 +447,14 @@ test("@flow contacts: tabs, a product under its vendor, rename carries into proj
   await expect(page.getByText("meera@redington.example")).toBeVisible()
   // tidy up
   await page.goto("/settings/contacts?tab=products")
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Actions for E2E Box" }).click()
   await page.getByRole("menuitem", { name: "Delete" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByRole("cell", { name: "E2E Box", exact: true })).toHaveCount(0)
   await page.goto("/settings/contacts?tab=vendors")
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Actions for E2E Vendor" }).click()
   await page.getByRole("menuitem", { name: "Delete" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByRole("cell", { name: "E2E Vendor", exact: true })).toHaveCount(0)
   // the refused duplicate answers 400: expected
   expectClean(errors.filter((e) => !/400 \(BAD REQUEST\)|\/settings\/contacts\/products/.test(e)))
@@ -529,7 +535,7 @@ test("@flow sign-up link: an admin makes it, a colleague asks, the admin approve
   await expect(waiting).toContainText("E2E Joiner")
   await expect(waiting).toContainText('via sign-up link "E2E joiner"')
   await waiting.getByRole("button", { name: "Approve" }).click()
-  await expect(page.getByRole("status")).toContainText("can now sign in")
+  await expect(page.getByText(/can now sign in/)).toBeVisible()   // a toast
   // and they are in
   await guest.goto("/login")
   await guest.getByLabel("Username").fill("e2ejoiner")
@@ -561,8 +567,8 @@ test("@flow document templates: brand, sections and wording; previewed, saved, p
   await expect(page.getByRole("combobox", { name: "Document template" })).toContainText("E2E certificate (default)")
   // clean up: delete it
   await page.goto("/settings/documents")
-  page.once("dialog", (d) => d.accept())
   await page.getByRole("button", { name: "Delete E2E certificate" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByRole("status")).toHaveText(/Template deleted/)
   expectClean(errors)
 })
@@ -663,5 +669,33 @@ test("@flow users: each person is one row; Manage opens their settings and Esc c
   await expect(dialog.getByRole("button", { name: "Deactivate" })).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(dialog).toHaveCount(0)
+  expectClean(errors)
+})
+
+test("@flow project page: health in the title row, a section index, rare settings folded, a styled confirm", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/1")
+  await expect(page.getByText(/^(On track|At risk|Off track|Complete)$/).first()).toBeVisible()
+  const index = page.getByRole("navigation", { name: "Sections of this project" })
+  await index.getByRole("link", { name: "Documents" }).click()
+  await expect(page).toHaveURL(/#documents$/)
+  // rotate and delete live behind ⋯
+  await page.getByRole("button", { name: "More actions" }).click()
+  await expect(page.getByRole("menuitem", { name: "Delete project" })).toBeVisible()
+  await page.keyboard.press("Escape")
+  // the stage editor and the invite forms are folded until asked for
+  await expect(page.getByRole("button", { name: /^Delete PO Received/ })).toHaveCount(0)
+  await page.getByRole("button", { name: "Edit stages" }).click()
+  await expect(page.getByRole("button", { name: "Done editing" })).toBeVisible()
+  await page.getByRole("button", { name: "Add people" }).click()
+  await expect(page.getByRole("textbox", { name: "Invite by email" })).toBeVisible()
+  // removing someone asks in the app's own dialog, with what it does; Cancel keeps them
+  const remove = page.locator("#team").getByRole("button", { name: /^Remove / }).first()
+  await remove.click()
+  const ask = page.getByRole("alertdialog")
+  await expect(ask).toContainText("They lose access")
+  await ask.getByRole("button", { name: "Cancel" }).click()
+  await expect(ask).toHaveCount(0)
+  await expect(remove).toBeVisible()
   expectClean(errors)
 })

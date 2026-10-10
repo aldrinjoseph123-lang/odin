@@ -34,7 +34,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
             {names[s.id] !== undefined && names[s.id] !== s.name && <Button type="submit" size="sm" variant="outline" className="h-7" loading={busy}>Rename</Button>}
           </form>
           <span className="w-16 text-right text-[12px] text-muted-foreground">{s.name === current ? "current" : i === rows.length - 1 ? "closed" : ""}</span>
-          <button type="button" disabled={busy || s.name === current || rows.length <= 1} onClick={() => send(paths.remove(s.id), {}, `Delete stage ${s.name} from ${label}?`)} aria-label={`Delete ${s.name}`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "ml-1 h-7 w-7 px-0 text-muted-foreground hover:text-bad")}><Trash2 className="h-3.5 w-3.5" /></button>
+          <button type="button" disabled={busy || s.name === current || rows.length <= 1} onClick={() => send(paths.remove(s.id), {}, `Delete stage ${s.name} from ${label}?`)} aria-label={`Delete ${s.name}`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "ml-1 h-7 w-7 px-0 text-muted-foreground hover:text-destructive")}><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
       ))}
       <form onSubmit={(e) => { e.preventDefault(); if (newName.trim()) void send(paths.add, { name: newName.trim() }).then((r) => { if (r) setNewName("") }) }} className="mt-1 flex flex-wrap items-center gap-2 border-t border-border pt-3">
@@ -52,7 +52,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
             </label>
           ))}
         </div>
-        <Button type="submit" size="sm" variant="outline" className="mt-2" loading={busy}>Save SLAs</Button>
+        <Button type="submit" size="sm" className="mt-2" loading={busy}>Save SLAs</Button>
       </form>
     </div>
   )

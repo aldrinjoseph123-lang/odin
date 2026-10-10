@@ -128,14 +128,6 @@ def is_connected():
     return bool(conn and conn["refresh_token"])
 
 
-def mail_configured():
-    return is_connected()
-
-
-def onedrive_configured():
-    return is_connected()
-
-
 def teams_configured():
     conn = get_connection()
     return bool(conn and conn["refresh_token"] and conn["team_id"] and conn["channel_id"])
@@ -327,7 +319,7 @@ def _send_mail(to_email, subject, html_body, attachments=None):
     except Exception:  # noqa: BLE001
         company = "PROTECT24X7"
     html_body = EMAIL_SHELL.format(body=html_body, company=escape(company))
-    if not mail_configured():
+    if not is_connected():
         return False, "Outlook mail is not connected"
     headers, error = _headers()
     if error:
@@ -438,7 +430,7 @@ def upload_file(local_path, remote_path, drive="/me/drive"):
     Simple PUT for files <=4MB, chunked upload session above that — Graph
     rejects direct PUT uploads over 4MB.
     """
-    if not onedrive_configured():
+    if not is_connected():
         return False, "OneDrive is not connected"
     headers, error = _headers()
     if error:

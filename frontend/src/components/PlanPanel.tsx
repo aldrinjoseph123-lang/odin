@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { CalendarRange, History, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { PlanGantt, RagPill } from "@/components/PlanGantt"
+import { PlanGantt } from "@/components/PlanGantt"
 import { Ago } from "@/components/Ago"
 import { AIHealthWhy } from "@/components/AIHealthWhy"
 import { ApiError, plan as loadPlan, rebaseline, savePlan, type PlanData } from "@/lib/api"
@@ -27,6 +27,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
   const [rebase, setRebase] = useState<string | null>(null)
   const [log, setLog] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [editing, setEditing] = useState(false)   // dates are read until someone asks to edit them (critique 10 Oct)
   const load = useCallback(async () => {
     const x = await loadPlan(projectId)
     setD(x)
@@ -39,10 +40,11 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
     : <p className="text-[13px] text-muted-foreground">Loading the plan…</p>
   // a closed rollout's plan is history: shown, not edited
   const editable = d.can_edit && !d.closed
+  const open = editable && (editing || !d.has_plan)   // with no plan yet, the table opens ready to fill
 
   async function run(fn: () => Promise<string>) {
     setBusy(true); setNotice(null)
-    try { const text = await fn(); await load(); setNotice({ text }); onSaved?.() } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
+    try { const text = await fn(); await load(); setNotice({ text }); setEditing(false); onSaved?.() } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
   }
   const save = () => run(async () => {
     const r = await savePlan(projectId, rows.map(({ id, plan_start, plan_end }) => ({ id, plan_start, plan_end })), reason.trim())
@@ -52,17 +54,15 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
   })
   const f = d.finish
   const tiles: { label: string; value: string; sub?: string; tone?: "bad" | "warn" | "ok" }[] = [
-    { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: f.vs_target_days != null && f.vs_target_days > 0 ? "bad" : "ok" },
+    { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: f.vs_target_days != null && f.vs_target_days > 0 ? (f.target && d.today > f.target ? "bad" : "warn") : "ok" },
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
     { label: "Against baseline", value: f.vs_baseline_days == null ? "—" : slipText(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", tone: f.vs_baseline_days && f.vs_baseline_days > 0 ? "warn" : undefined },
     { label: "Complete", value: `${d.pct_complete}%`, sub: `confidence ${d.health.confidence}` },
   ]
   return (
     <div>
-      <div className="flex flex-wrap items-start gap-3">
-        <RagPill rag={d.health.rag} />
-        <ul className="min-w-0 flex-1 text-[13px] text-muted-foreground">{d.health.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
-      </div>
+      {/* the verdict and its first reason sit in the page's title row; here only the full list, when there is more */}
+      {d.health.reasons.length > 1 && <ul className="min-w-0 text-[13px] text-muted-foreground">{d.health.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
       <AIHealthWhy projectId={projectId} rag={d.health.rag} />
       <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {tiles.map((t) => (
@@ -87,16 +87,23 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
               const days = r.plan_start && r.plan_end ? workDays(r.plan_start, r.plan_end, d.calendar) : null
               return (
                 <tr key={s.id} className={cn("border-b border-border last:border-0", s.status === "current" && "bg-accent/40")}>
-                  <td className="px-2 py-2 font-medium">{s.name}{s.status === "current" && <span className="ml-2 text-[11px] font-normal text-primary-text">now</span>}</td>
-                  <td className="px-2 py-1"><DatePicker label={`${s.name} planned start`} disabled={!editable || busy} value={r.plan_start ?? ""} placeholder={s.suggested_start ? fmtDate(s.suggested_start) : "—"} clearable={false}
-                    onChange={(v) => v && setRows(setDate(rows, i, "plan_start", v, cascade))} className="h-8 w-[9.5rem]" /></td>
-                  <td className="px-2 py-1"><DatePicker label={`${s.name} planned end`} disabled={!editable || busy} value={r.plan_end ?? ""} placeholder="—" clearable={false} min={r.plan_start ?? undefined}
-                    onChange={(v) => v && setRows(setDate(rows, i, "plan_end", v, cascade))} className="h-8 w-[9.5rem]" /></td>
+                  <td className="px-2 py-2 font-medium">{s.name}{s.status === "current" && <span className="ml-2 text-[12px] font-semibold text-foreground">now</span>}</td>
+                  {open ? <>
+                    <td className="px-2 py-1"><DatePicker label={`${s.name} planned start`} disabled={busy} value={r.plan_start ?? ""} placeholder={s.suggested_start ? fmtDate(s.suggested_start) : "—"} clearable={false}
+                      onChange={(v) => v && setRows(setDate(rows, i, "plan_start", v, cascade))} className="h-8 w-[9.5rem]" /></td>
+                    <td className="px-2 py-1"><DatePicker label={`${s.name} planned end`} disabled={busy} value={r.plan_end ?? ""} placeholder="—" clearable={false} min={r.plan_start ?? undefined}
+                      onChange={(v) => v && setRows(setDate(rows, i, "plan_end", v, cascade))} className="h-8 w-[9.5rem]" /></td>
+                  </> : <>
+                    <td className="px-2 py-2 tabular-nums">{r.plan_start ? fmtDate(r.plan_start) : "—"}</td>
+                    <td className="px-2 py-2 tabular-nums">{r.plan_end ? fmtDate(r.plan_end) : "—"}</td>
+                  </>}
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{days ?? "—"}</td>
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
                   <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` → ${fmtDate(s.actual_end)}` : " → now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
                   <td className="px-2 py-2">{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
-                  <td className={cn("px-2 py-2 whitespace-nowrap", s.slip_days && s.slip_days > 0 ? "font-medium text-bad" : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
+                  {/* a finished stage's slip is history (muted); a running or coming stage that slips is amber;
+                      red only once the target date itself has passed: red means overdue (critique 10 Oct) */}
+                  <td className={cn("px-2 py-2 whitespace-nowrap", s.slip_days && s.slip_days > 0 && s.status !== "done" ? (f.target && d.today > f.target ? "font-medium text-bad" : "text-warn") : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
                 </tr>
               )
             })}
@@ -104,20 +111,21 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
         </table>
       </div>
 
-      {editable && (
+      {editable && !open && <Button size="sm" variant="outline" className="mt-3 rounded-full" onClick={() => setEditing(true)}><CalendarRange className="h-3.5 w-3.5" /> Edit dates</Button>}
+      {open && (
         <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void save() }}>
-          <Button type="button" size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Fill the gaps from SLAs</Button>
+          <Button type="button" size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Suggest dates from the SLAs</Button>
           <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
           {/* once there is a baseline, every move says why (the log and the customer read it) */}
           {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} required placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="h-8 min-w-0 flex-1 basis-60 rounded-md border border-input bg-background px-2 text-[13px]" />}
           <span className="ml-auto flex gap-2">
-            {dirty && <Button type="button" size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={() => load()}>Discard</Button>}
+            {(dirty || editing) && <Button type="button" size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={() => { void load(); setEditing(false) }}>{dirty ? "Discard" : "Done"}</Button>}
             <Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!dirty}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
             {d.baseline_at && <Button type="button" size="sm" variant="outline" className="rounded-full" disabled={busy || dirty} onClick={() => setRebase("")}>Re-baseline</Button>}
           </span>
         </form>
       )}
-      {notice && <p className={cn("mt-2 text-[13px]", notice.bad ? "text-bad" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <p className={cn("mt-2 text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
 
       {d.changes.length > 0 && (
         <div className="mt-3">
@@ -143,7 +151,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
           <input id="rebase-reason" autoFocus value={rebase ?? ""} onChange={(e) => setRebase(e.target.value)} maxLength={300} placeholder="Scope change agreed with the customer on 3 Oct" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]" />
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setRebase(null)}>Cancel</Button>
-            <Button size="sm" className="rounded-full" disabled={busy || !rebase?.trim()} onClick={() => { const why = rebase!.trim(); setRebase(null); void run(async () => { await rebaseline(projectId, why); return "The current plan is the new baseline." }) }}>Re-baseline</Button>
+            <Button size="sm" className="rounded-full" loading={busy} disabled={!rebase?.trim()} onClick={() => { const why = rebase!.trim(); void run(async () => { await rebaseline(projectId, why); setRebase(null); return "The current plan is the new baseline." }) }}>Re-baseline</Button>
           </div>
         </DialogContent>
       </Dialog>

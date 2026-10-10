@@ -22,8 +22,7 @@ from db import get_db
 UPLOAD_TYPES = ("pdf", "png", "jpg", "jpeg", "gif", "webp", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "txt", "msg", "eml", "zip")
 DATE_FORMATS = {"d MMM yyyy": "27 Sep 2026", "yyyy-MM-dd": "2026-09-27", "dd/MM/yyyy": "27/09/2026", "MM/dd/yyyy": "09/27/2026"}
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-THEME_CHOICES = ("system", "light", "dark")
-ACCENT_CHOICES = ("red", "blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
+from constants import ACCENTS as ACCENT_CHOICES, THEMES as THEME_CHOICES   # noqa: E402
 
 POLICIES = {
     # ---- General
@@ -41,7 +40,7 @@ POLICIES = {
                      help="One per line: \"2026-12-02 National Day\", or a span \"2027-03-20 to 2027-03-22 Eid al-Fitr\" (dates as announced). Not counted as working days; no digest or reminders on them."),
     "default_theme": dict(area="general", kind="choice", default="system", choices=THEME_CHOICES,
                           label="Theme for new people", help="Each person can change their own on the Account page."),
-    "default_accent": dict(area="general", kind="choice", default="red", choices=ACCENT_CHOICES,
+    "default_accent": dict(area="general", kind="choice", default="blue", choices=ACCENT_CHOICES,
                            label="Accent for new people", help="Each person can change their own on the Account page."),
     # ---- Sign-in & security
     "session_idle_minutes": dict(area="security", kind="int", default=60, min=5, max=1440,
@@ -383,8 +382,8 @@ _HINTS = {
     "default_stage_days": "How long a stage is expected to take when nothing else says, e.g. 7 days.",
     "count_working_days": "Skip weekends and holidays when counting stage days: Friday to Monday is one day.",
     "sla_min_visits": "How many projects must finish a stage before Odin suggests a new time limit, e.g. 3.",
-    "rag_amber_days": "A project turns amber when forecast to finish this many days late, e.g. 1.",
-    "rag_red_days": "It turns red when forecast this many days late, e.g. 7.",
+    "rag_amber_days": "A project turns amber when forecast to finish more than this many days late, e.g. 1.",
+    "rag_red_days": "It turns red when forecast more than this many days late, e.g. 7.",
     "signoff_required": "A project cannot close until the customer has signed it off.",
     "signoff_statement": "What the customer agrees to when they sign.",
     "signoff_terms": "Support terms printed on the sign-off, one per line.",

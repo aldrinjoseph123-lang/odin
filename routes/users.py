@@ -4,13 +4,13 @@ All gated on manage_users. Imported for route registration side effects.
 import re
 from datetime import datetime
 
-from flask import abort, flash, redirect, render_template, request, session, url_for
+from flask import abort, flash, redirect, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 from constants import ROLES
 from policies import policy
 from core import app, permission_required
-from spa import spa_index, spa_serves
+from spa import spa_index
 from db import get_db
 from security import password_problem, valid_email, safe_csv_writer
 from services.audit import audit_log
@@ -31,46 +31,43 @@ def _user_or_404(db, user_id):
 @app.route("/users", methods=["GET", "POST"])
 @permission_required("manage_users")
 def users():
-    if request.method == "GET" and spa_serves("users"):
+    if request.method == "GET":
         return spa_index()
     db = get_db()
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        role = request.form.get("role") or "Member"
-        existing = db.execute("SELECT id FROM users WHERE lower(username) = lower(?)", (username,)).fetchone()   # "Pm1" is "pm1"
-        problem = password_problem(password)
-        if not username or not name:
-            flash("Username and name are required", "error")
-        elif not re.fullmatch(r"[A-Za-z0-9._@-]{1,64}", username):
-            flash("Username: up to 64 letters, digits, dots, dashes, underscores or @", "error")
-        elif len(name) > 120 or any(ord(ch) < 32 for ch in name):
-            flash("Name: one line, at most 120 characters", "error")
-        elif role not in ROLES or role == "External":   # staff accounts; partners are invited to a project instead
-            flash(f"Pick a role: {', '.join(r for r in ROLES if r != 'External')}", "error")
-        elif existing:
-            flash("Username already exists", "error")
-        elif email and not valid_email(email):
-            flash("Enter a valid email address", "error")
-        elif email and _email_taken(db, email):
-            flash("That address belongs to another account", "error")
-        elif problem:
-            flash(problem, "error")
-        else:
-            cursor = db.execute(
-                # an admin-set password is temporary: the person sets their own at first sign-in
-                "INSERT INTO users (username, password_hash, name, role, active, email, created_at, theme, accent, must_change_password) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, 1)",
-                (username, generate_password_hash(password, method="pbkdf2:sha256"), name, role, email or None,
-                 datetime.utcnow().isoformat(), policy("default_theme"), policy("default_accent")),
-            )
-            db.commit()
-            audit_log("create_user", "user", cursor.lastrowid, username, f"role={role}")
-            flash(f"User {name} created")
-        return redirect(url_for("users"))
-    all_users = db.execute("SELECT * FROM users ORDER BY name").fetchall()
-    return render_template("users.html", users=all_users, ROLES=ROLES)
+    username = request.form.get("username", "").strip()
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip()
+    password = request.form.get("password", "")
+    role = request.form.get("role") or "Member"
+    existing = db.execute("SELECT id FROM users WHERE lower(username) = lower(?)", (username,)).fetchone()   # "Pm1" is "pm1"
+    problem = password_problem(password)
+    if not username or not name:
+        flash("Username and name are required", "error")
+    elif not re.fullmatch(r"[A-Za-z0-9._@-]{1,64}", username):
+        flash("Username: up to 64 letters, digits, dots, dashes, underscores or @", "error")
+    elif len(name) > 120 or any(ord(ch) < 32 for ch in name):
+        flash("Name: one line, at most 120 characters", "error")
+    elif role not in ROLES or role == "External":   # staff accounts; partners are invited to a project instead
+        flash(f"Pick a role: {', '.join(r for r in ROLES if r != 'External')}", "error")
+    elif existing:
+        flash("Username already exists", "error")
+    elif email and not valid_email(email):
+        flash("Enter a valid email address", "error")
+    elif email and _email_taken(db, email):
+        flash("That address belongs to another account", "error")
+    elif problem:
+        flash(problem, "error")
+    else:
+        cursor = db.execute(
+            # an admin-set password is temporary: the person sets their own at first sign-in
+            "INSERT INTO users (username, password_hash, name, role, active, email, created_at, theme, accent, must_change_password) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, 1)",
+            (username, generate_password_hash(password, method="pbkdf2:sha256"), name, role, email or None,
+             datetime.utcnow().isoformat(), policy("default_theme"), policy("default_accent")),
+        )
+        db.commit()
+        audit_log("create_user", "user", cursor.lastrowid, username, f"role={role}")
+        flash(f"User {name} created")
+    return redirect(url_for("users"))
 
 
 @app.route("/users/export.csv")

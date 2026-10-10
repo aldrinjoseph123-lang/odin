@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { EmptyState } from "@/components/EmptyState"
+import { StatTile } from "@/components/StatTile"
+import { pill } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
 import { Stepper } from "@/components/Stepper"
+import { StateChip } from "@/components/StateChip"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, editTask, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
-import { STATE } from "@/lib/state"
 import { fmtDate, lateBy, stateText } from "@/lib/format"
 
 // My work: what needs doing, in the order it needs doing. Headline numbers,
 // the fortnight of what got done, tasks grouped by urgency with a tick that
 // finishes them in place, and the rollouts this person is on with their state.
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 rounded-full px-3 text-[12px]")
 const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"]
 type Group = { key: string; title: string; hint: string; tone?: "bad" | "warn"; tasks: WorkTask[] }
 
@@ -88,7 +89,7 @@ export default function MyWork({ user }: { user: User }) {
     { label: "My rollouts", value: c.rollouts, sub: c.stuck ? `${c.stuck} need attention` : "all on track", icon: Layers, tone: c.stuck ? "warn" : undefined },
   ]
   return (
-    <div className="px-5 pb-8 pt-2">
+    <div className="px-5 pb-8 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">My work</h1>
         <p className="text-[13px] text-muted-foreground">{user.name.split(" ")[0]}, here is what is on you · {fmtDate(d.today)}</p>
@@ -96,11 +97,7 @@ export default function MyWork({ user }: { user: User }) {
 
       <div className="mt-3 grid grid-cols-2 gap-4 xl:grid-cols-4">
         {tiles.map((t) => (
-          <div key={t.label} className="panel p-4">
-            <div className="flex items-center gap-2 text-[12px] text-muted-foreground"><t.icon className="h-3.5 w-3.5" aria-hidden />{t.label}</div>
-            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.tone === "bad" && "text-bad", t.tone === "warn" && "text-warn")}>{t.value}</div>
-            <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
-          </div>
+          <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.tone || undefined} icon={<t.icon className="h-3.5 w-3.5" aria-hidden />} />
         ))}
       </div>
 
@@ -115,7 +112,7 @@ export default function MyWork({ user }: { user: User }) {
               </select>
             )}
           </div>
-          {groups.length === 0 && <p className="py-4 text-center text-[13px] text-muted-foreground">Nothing open{project ? " on this rollout" : ""}. Enjoy it.</p>}
+          {groups.length === 0 && <EmptyState>Nothing open{project ? " on this rollout" : ""}. Enjoy it.</EmptyState>}
           {groups.map((g) => (
             <div key={g.key} className="mb-3 last:mb-0">
               <h3 className={cn("mb-1 flex items-baseline gap-2 text-[12px] font-semibold", g.tone === "bad" ? "text-bad" : g.tone === "warn" ? "text-warn" : "text-nav-fg")}>{g.title}<span className="font-normal text-muted-foreground">{g.tasks.length} · {g.hint}</span></h3>
@@ -147,7 +144,7 @@ export default function MyWork({ user }: { user: User }) {
             <ul className="flex h-20 items-end gap-1" aria-label="Tasks done per day">
               {d.done_by_day.map((x) => (
                 <li key={x.day} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
-                  <span className={cn("block w-full rounded-t-[3px]", x.count ? "bg-primary" : "bg-muted")} style={{ height: `${Math.max(x.count ? 8 : 3, (x.count / peak) * 100)}%` }} aria-hidden />
+                  <span className={cn("block w-full rounded-t-[3px]", x.count ? "bg-nav-fg/60" : "bg-muted")} style={{ height: `${Math.max(x.count ? 8 : 3, (x.count / peak) * 100)}%` }} aria-hidden />
                   <span aria-hidden>{WEEKDAY[new Date(`${x.day}T00:00:00`).getDay()]}</span>
                   <span className="sr-only">{fmtDate(x.day)}: {x.count}</span>
                 </li>
@@ -161,16 +158,14 @@ export default function MyWork({ user }: { user: User }) {
               {d.projects.map((p) => (
                 <li key={p.id} className="py-2">
                   <div className="flex items-center gap-2">
-                    <span className={cn("h-2 w-2 shrink-0 rounded-full", p.state === "on_track" ? "bg-transparent" : STATE[p.state].dot)} aria-hidden />
                     <Link to={`/board?rollout=${p.id}`} title={`${p.name} · ${p.client}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
-                    <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
+                    <span className="shrink-0 text-[12px] text-muted-foreground">{p.role}</span>
                   </div>
                   <div className="mt-1 flex items-center gap-3 pl-4">
                     <span className="w-24 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
                     <span className="truncate text-[13px]">{p.stage}</span>
-                    <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "overdue" ? "font-medium text-bad" : p.state === "on_track" ? "text-muted-foreground" : "font-medium text-warn")}>
-                      {p.state === "on_track" ? (p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target") : stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })}
-                    </span>
+                    <StateChip state={p.state} className="ml-auto" quiet={p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target"}
+                      text={stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })} />
                   </div>
                 </li>
               ))}

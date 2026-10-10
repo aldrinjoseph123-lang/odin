@@ -3,7 +3,7 @@ it up and turning it off on the Account page, and an admin's reset for
 someone who lost their phone and their recovery codes."""
 from datetime import datetime, timedelta
 
-from flask import abort, flash, jsonify, redirect, request, session, url_for
+from flask import abort, flash, jsonify, redirect, session, url_for
 from werkzeug.security import check_password_hash
 
 from core import app, json_body, login_required, permission_required

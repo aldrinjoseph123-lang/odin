@@ -22,7 +22,7 @@ export function SlaCheck({ templates, busy, send }: { templates: SettingsData["t
   }
   return (
     <div className="mt-4 border-t border-border pt-3">
-      <h3 className="text-[13px] font-semibold text-nav-fg">SLA check <span className="font-normal text-muted-foreground">stages whose SLA disagrees with how long they really took (80% of finished rollouts within the proposal)</span></h3>
+      <h3 className="text-[12px] font-semibold text-nav-fg">SLA check <span className="font-normal text-muted-foreground">stages whose SLA disagrees with how long they really took (80% of finished rollouts within the proposal)</span></h3>
       <div className="mt-2 overflow-x-auto"><table className="w-full min-w-[680px] text-[13px]">
         <thead><tr className="text-left text-[12px] text-muted-foreground">{["Template", "Stage", "Today", "Proposed", "History", ""].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
         <tbody>

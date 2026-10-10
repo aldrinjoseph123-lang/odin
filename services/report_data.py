@@ -22,10 +22,6 @@ from db import get_db, participants_for
 from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
-from services.analytics import _parse
-
-AUDIENCES = ("internal", "customer")
-
 
 def _day(stamp):
     """A stored UTC timestamp's workspace-local date, as 'YYYY-MM-DD' ('' when empty)."""
@@ -66,8 +62,13 @@ def draft_words(project, p, raid_items, audience="internal"):
     if open_block:
         parts.append(f"Blocked by: {'; '.join(r['title'] for r in open_block[:2])}.")
     ahead = [s for s in stages if s["status"] == "next"][:2]
-    nxt = ([f"Finish {stages[cur]['name']} by {_fmt(stages[cur]['forecast_end'])}."] if stages else []) + \
-          [f"{s['name']}: {_fmt(s['forecast_start'])} to {_fmt(s['forecast_end'])}." for s in ahead]
+    def line(st):   # the finish line is a day, not a span ("Closed: 19 Oct to 19 Oct" read as noise)
+        if stages and st is stages[-1]:
+            return f"Close by {_fmt(st['forecast_end'])}."
+        if st["forecast_start"] == st["forecast_end"]:
+            return f"{st['name']}: {_fmt(st['forecast_start'])}."
+        return f"{st['name']}: {_fmt(st['forecast_start'])} to {_fmt(st['forecast_end'])}."
+    nxt = ([f"Finish {stages[cur]['name']} by {_fmt(stages[cur]['forecast_end'])}."] if stages else []) + [line(st) for st in ahead]
     return {"summary": " ".join(parts), "next_steps": "\n".join(nxt), "asks": ""}
 
 
@@ -152,6 +153,7 @@ def build(project, audience="internal"):
     else:
         # the customer's health is the word, not the internal reasons
         data["health"] = customer_health(data)
+        data["baseline_at"] = None
         for s in data["stages"]:
             s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
         data["finish"] = {k: v for k, v in p["finish"].items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
@@ -217,6 +219,7 @@ def customer_view(snapshot):
     d = json.loads(json.dumps(d))   # a deep copy
     d["audience"] = "customer"
     d["health"] = customer_health(d)
+    d["baseline_at"] = None   # the baseline is an internal yardstick
     for s in d.get("stages", []):
         s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
     d["finish"] = {k: v for k, v in d.get("finish", {}).items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}

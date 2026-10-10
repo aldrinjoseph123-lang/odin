@@ -26,6 +26,17 @@ export function dismissToast(id: number) {
 
 export const currentToasts = () => items
 
+// A save that ends in a full page load (the project form) hands its line to
+// the next page, which shows it as soon as this module loads.
+const CARRY = "odin.toast"
+export function toastAfterLoad(text: string) {
+  try { sessionStorage.setItem(CARRY, text) } catch { /* storage off: the page change is the receipt */ }
+}
+try {
+  const carried = typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(CARRY)
+  if (carried) { sessionStorage.removeItem(CARRY); toast(carried) }
+} catch { /* storage off */ }
+
 export function useToasts(): Toast[] {
   return useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => items, () => items)
 }

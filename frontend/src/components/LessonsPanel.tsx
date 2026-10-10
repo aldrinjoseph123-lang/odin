@@ -40,8 +40,12 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
     try { await fn(); if (done) setNote(done); await load() } catch (e) { setNote(e instanceof ApiError ? e.message : "That did not work") } finally { setBusy(false) }
   }
   return (
-    <section className="panel p-4" aria-labelledby="lessons-h">
-      <h2 id="lessons-h" className="text-[13px] font-semibold text-nav-fg">Lessons<span className="sr-only">, </span><span className="ml-2 font-normal text-muted-foreground">what this rollout taught, and what similar ones did</span></h2>
+    <section className="panel scroll-mt-16 p-4" id="lessons" aria-labelledby="lessons-h">
+      {/* folded to one line: worth reaching for, not worth a screen every visit (critique 10 Oct) */}
+      <details>
+      <summary className="cursor-pointer list-none rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+        <h2 id="lessons-h" className="inline text-[12px] font-semibold text-nav-fg">Lessons<span className="sr-only">, </span><span className="ml-2 font-normal text-muted-foreground">{d.lessons.length} kept · {d.similar.length} similar rollout{d.similar.length === 1 ? "" : "s"} · show</span></h2>
+      </summary>
       {note && <p className="mt-2 text-[13px] text-muted-foreground" role="status">{note}</p>}
       {d.lessons.length > 0 && (
         <ul className="mt-2 divide-y divide-border text-[13px]">
@@ -49,7 +53,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
             <li key={l.id} className="flex items-start gap-2 py-2">
               <span className={l.kind === "avoid" ? "w-14 shrink-0 text-[12px] font-medium text-warn" : "w-14 shrink-0 text-[12px] font-medium text-ok"}>{KIND[l.kind]}</span>
               <span className="min-w-0 flex-1">{l.text}</span>
-              {d.can_edit && <button type="button" disabled={busy} onClick={() => void act(() => deleteLesson(projectId, l.id))} aria-label={`Delete lesson: ${l.text}`} className="text-muted-foreground hover:text-bad"><Trash2 className="h-3.5 w-3.5" /></button>}
+              {d.can_edit && <button type="button" disabled={busy} onClick={() => void act(() => deleteLesson(projectId, l.id))} aria-label={`Delete lesson: ${l.text}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>}
             </li>
           ))}
         </ul>
@@ -91,10 +95,10 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
                 <span className="text-[12px] text-muted-foreground"> · {r.why.join(", ")} · {r.stage}</span>
                 <ul className="mt-1 grid grid-cols-1 gap-1">
                   {[...r.lessons.map((l) => ({ label: `${KIND[l.kind]}: ${l.text}`, title: l.text, detail: `Lesson from ${r.name}: ${l.text}` })),
-                    ...r.risks.map((x) => ({ label: `Hit them: ${x.title} (${x.kind}${x.resolution ? `; ${x.resolution}` : ""})`, title: x.title, detail: `Hit ${r.name}: ${x.title}${x.resolution ? `. Resolved: ${x.resolution}` : ""}` }))].map((x) => (
+                    ...r.risks.map((x) => ({ label: `They hit: ${x.title} (${x.kind}${x.resolution ? `; ${x.resolution}` : ""})`, title: x.title, detail: `Hit ${r.name}: ${x.title}${x.resolution ? `. Resolved: ${x.resolution}` : ""}` }))].map((x) => (
                     <li key={x.label} className="flex items-start gap-2">
                       <span className="min-w-0 flex-1 text-[13px]">{x.label}</span>
-                      {d.can_add_risk && <Button size="sm" variant="ghost" className="h-6 px-2 text-[12px]" disabled={busy}
+                      {d.can_add_risk && <Button size="sm" variant="ghost" className="h-6 px-2 text-[12px]" disabled={busy} aria-label={`Add “${x.title}” as a risk here`}
                         onClick={() => void act(() => saveRaid(projectId, { kind: "risk", title: x.title.slice(0, 200), detail: x.detail, impact: "medium", likelihood: "medium" }), "Added to this rollout's RAID register.")}>Add as a risk here</Button>}
                     </li>
                   ))}
@@ -104,6 +108,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
           </ul>
         </div>
       )}
+      </details>
     </section>
   )
 }

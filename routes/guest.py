@@ -13,7 +13,7 @@ from flask import abort, flash, make_response, redirect, render_template, reques
 from markupsafe import escape
 
 from core import app
-from db import get_db, get_setting, get_stage_names
+from db import get_db, get_setting, get_stage_names, touch_project
 from security import rate_limited
 from services.audit import audit_log
 from services.notifications import notify_event, notify_users
@@ -61,7 +61,7 @@ def _guard(token):
         abort(429)
     author = _author(project, party)
     if not author:
-        flash("Add your name so the team knows who wrote this")
+        flash("Add your name so the team knows who wrote this", "error")
         return project, party, None
     return project, party, author
 
@@ -96,13 +96,13 @@ def guest_stage(token):
         return redirect(url_for("guest_view", token=token))
     new_stage = request.form.get("stage", "")
     if new_stage != next_stage_for(project):
-        flash("Only the next stage can be set from this link")
+        flash("Only the next stage can be set from this link", "error")
         return redirect(url_for("guest_view", token=token))
     # the same path as a staff move: the sign-off gate, history, customer
     # approval when the project asks for it, and the whole team is told
     from routes.projects import change_stage
     if error := change_stage(project["id"], new_stage, request.form.get("note", "").strip()[:5000], guest=(author, party)):
-        flash(error)
+        flash(error, "error")
     return redirect(url_for("guest_view", token=token))
 
 
@@ -119,6 +119,7 @@ def guest_note(token):
             "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible) VALUES (?, ?, ?, ?, ?, 1)",
             (project["id"], author, note_text, project["stage"], now),
         )
+        touch_project(db, project["id"])   # a vendor's word is activity, as a staff note is (sim L-19)
         db.commit()
         audit_log("guest_note", "project", project["id"], project["name"],
                   f"by={author}", actor=f"guest:{party}")

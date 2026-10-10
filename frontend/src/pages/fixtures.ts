@@ -12,7 +12,7 @@ const stages = ["PO Received", "Scoping", "Sensor pilot", "Deployment", "Closed"
 export const flowRow = (over: Partial<FlowRow>): FlowRow => ({
   id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", stages, stage_index: 1, owner_name: "Admin User", mine: true,
   team: [{ id: 1, name: "Admin User", avatar_url: null }], approval: null, delivery_mode: "Direct", target_end_date: "2026-12-01",
-  days_in_stage: 3, sla_days: 5, over_by: null, state: "on_track", open_tasks: 1, total_tasks: 2,
+  days_in_stage: 3, sla_days: 5, over_by: null, state: "on_track", open_tasks: 1, total_tasks: 2, late_tasks: 0, late_since: null,
   next_task: { title: "Collect asset inventory", due_date: "2026-10-02", assignee: "Priya" }, updated_at: "2026-09-28T10:00:00", idle_days: 1, stale: false, ...over,
 })
 export const flow: FlowData = {
@@ -23,7 +23,7 @@ export const flow: FlowData = {
     flowRow({ id: 3, name: "Fine one" }),
     flowRow({ id: 4, name: "Other fine", client: "Initech", stage: "Deployment", stage_index: 3, mine: false, approval: "pending" }),
   ],
-  counts: { overdue: 1, over_sla: 1, due_soon: 0, on_track: 2 },
+  counts: { overdue: 1, over_sla: 1, due_soon: 0, on_track: 2, late_tasks: 0 },
 }
 
 export const dashboard: DashboardData = {
@@ -46,15 +46,16 @@ export const dashboard: DashboardData = {
             series: { active: [{ day: "2026-09-28", v: 3 }, { day: "2026-09-29", v: 4 }], overdue: [], over_sla: [], due_soon: [], awaiting: [], idle: [] },
             detail: { active: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", text: "On track" }], overdue: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", text: "12 d late" }], over_sla: [], due_soon: [], awaiting: [], idle: [] } },
     aggregates: { rollouts_by_stage: [{ key: "Scoping", count: 4 }], rollouts_by_owner: [{ key: "Admin User", count: 4 }] },
+    attention: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", worst: "overdue", reasons: [{ kind: "overdue", text: "5 d late" }] }],
     timeline: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", start_date: "2026-09-01", target_end_date: "2026-12-01", state: "on_track", progress: 0.25, team: [] }],
-    progress: { done: 3, current: 4, pending: 10, pct: 18 }, stages: [{ stage: "Scoping", count: 4 }], completion: Array.from({ length: 56 }, (_, i) => ({ day: `2026-08-${String(i + 1).padStart(2, "0")}`, count: i % 3 })),
+    progress: { done: 3, current: 4, pending: 10, pct: 18 }, stages: [{ stage: "Scoping", count: 4, late: 0, warn: 0 }], completion: Array.from({ length: 56 }, (_, i) => ({ day: `2026-08-${String(i + 1).padStart(2, "0")}`, count: i % 3 })),
     schedule: { due: [], approvals: [] }, team: { people: [], unassigned: 0 }, activity: [], alerts: [{ id: 1, project_id: 1, project: "EDR Rollout - Globex", type: "project_overdue", title: "Project overdue", severity: "critical", created_at: "2026-09-29T08:00:00" }],
     mywork: { tasks: [], owned: 2 }, cycle: null,
   },
 }
 
 export const projects: ProjectsData = {
-  rows: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", po_number: "PO-1", stage: "Scoping", stages, stage_index: 1, closed: false, owner_name: "Admin User", delivery_mode: "Direct", vendor_name: null, product_name: null, target_end_date: "2026-12-01", updated_at: "2026-09-28T10:00:00", total_tasks: 2, open_tasks: 1, team: [] }],
+  rows: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", po_number: "PO-1", stage: "Scoping", stages, stage_index: 1, closed: false, state: "on_track", owner_name: "Admin User", delivery_mode: "Direct", vendor_name: null, product_name: null, target_end_date: "2026-12-01", updated_at: "2026-09-28T10:00:00", total_tasks: 2, open_tasks: 1, team: [] }],
   total: 1, page: 1, total_pages: 1, sort: "updated", dir: "desc", stages: ["Scoping"], delivery_modes: ["Direct"], can_create: true,
 }
 

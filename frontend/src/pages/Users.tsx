@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { toast } from "@/lib/toast"
+import { field, fieldAuto } from "@/lib/ui"
+import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
 import { Ago } from "@/components/Ago"
@@ -10,13 +13,10 @@ import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const fmt = (iso: string | null, withTime = false) => fmtWhen(iso, withTime)
-const selectClass = "h-8 rounded-md border border-input bg-background px-2 text-[13px] disabled:opacity-60"
 
 export default function Users(_props: { user: User }) {
   const [data, setData] = useState<UsersData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const load = useCallback(async () => {
     try { setData(await fetchUsers()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load users") }
@@ -24,15 +24,21 @@ export default function Users(_props: { user: User }) {
   useEffect(() => { void load(); document.title = "Users · Odin" }, [load])
 
   // true when the save went through: forms clear what was typed only then
-  async function send(path: string, fields: Record<string, string>, confirmText?: string): Promise<boolean> {
-    if (confirmText && !window.confirm(confirmText)) return false
+  // onError: a refusal shown by the form it came from (the dialog, Add a team
+  // member) instead of in the page banner behind them (sim roles-7)
+  async function send(path: string, fields: Record<string, string>, confirmText?: string, onError?: (m: string) => void): Promise<boolean> {
+    if (confirmText && !(await askConfirm(confirmText))) return false
     setBusy(true)
     try {
       const r = await postForm(path, fields)
-      setNotice(r.messages.join(" ") || null)
+      { const said = r.messages.join(" "); if (said) toast(said) }
       await load()
       return true
-    } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save"); return false } finally { setBusy(false) }
+    } catch (e) {
+      const m = e instanceof ApiError ? e.message : "That did not save"
+      if (onError) onError(m); else toast(m, { tone: "bad" })
+      return false
+    } finally { setBusy(false) }
   }
 
   if (error) return <LoadError message={error} />
@@ -44,16 +50,11 @@ export default function Users(_props: { user: User }) {
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">Users</h1>
-        <p className="text-[13px] text-muted-foreground">{people.filter((u) => u.active).length} active · {people.filter((u) => u.kind === "external").length} external{pending.length ? ` · ${pending.length} waiting` : ""}</p>
+        <p className="max-w-prose text-[13px] text-muted-foreground">{people.filter((u) => u.active).length} active · {people.filter((u) => u.kind === "external").length} external{pending.length ? ` · ${pending.length} waiting` : ""}</p>
         <div className="ml-auto flex items-center gap-2">
           <a href="/users/export.csv" className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
         </div>
       </div>
-      {notice && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px]" role="status">
-          <span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
-        </div>
-      )}
 
       {pending.length > 0 && <Pending people={pending} roles={data.roles} busy={busy} send={send} />}
 
@@ -86,10 +87,10 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
       <ul className="grid grid-cols-1 gap-2">
         {people.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-2 text-[13px]">
-            <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.username} · {u.email} · asked {fmt(u.created_at, true)}
+            <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.username} · {u.email} · asked {fmtWhen(u.created_at, true)}
               {u.signup_label ? ` · via sign-up link "${u.signup_label}"` : u.microsoft ? " · via Microsoft sign-in" : ""}{u.signup_project ? ` · joins ${u.signup_project} as ${u.signup_project_role}` : ""}
               {u.notify_via === "teams" ? " · prefers Teams" : ""}</span></span>
-            <select value={role[u.id] ?? (u.signup_label ? u.role : "Viewer")} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={selectClass}>
+            <select value={role[u.id] ?? (u.signup_label ? u.role : "Viewer")} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={fieldAuto}>
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
             <Button size="sm" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/approve`, { role: role[u.id] ?? (u.signup_label ? u.role : "Viewer") })}>Approve</Button>
@@ -137,7 +138,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           {/* External is a kind of account, not a role to hand out: an invited
               partner stays External (plain text), staff never become it */}
           {u.kind === "external" ? <span className="text-muted-foreground">External</span> : (
-            <select value={u.role} disabled={self || busy} onChange={(e) => send(`/users/${u.id}/role`, { role: e.target.value })} aria-label={`Role for ${u.name}`} className={cn(selectClass, "w-full")}>
+            <select value={u.role} disabled={self || busy} onChange={(e) => send(`/users/${u.id}/role`, { role: e.target.value }, `Make ${u.name} ${e.target.value === "Admin" ? "an Admin" : `a ${e.target.value}`}? It applies at their next click.`)} aria-label={`Role for ${u.name}`} className={cn(fieldAuto, "w-full")}>
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           )}
@@ -154,9 +155,11 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
 
 // Everything about one account that is changed rarely: one dialog, sections
 // separated by hairlines; destructive actions last.
-function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: AdminUser; self: boolean; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean>; open: boolean; onClose: () => void }) {
+function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: AdminUser; self: boolean; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean>; open: boolean; onClose: () => void }) {
   const [email, setEmail] = useState(u.email ?? "")
   const [pw, setPw] = useState("")
+  const [problem, setProblem] = useState<string | null>(null)
+  const act = (path: string, fields: Record<string, string>, confirmText?: string) => { setProblem(null); return send(path, fields, confirmText, setProblem) }
   const canReset = u.kind !== "external" && (!microsoftOnly || u.password_login)
   const section = "grid grid-cols-1 gap-2 border-t border-border pt-4"
   return (
@@ -164,23 +167,24 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{u.name}</DialogTitle>
-          <DialogDescription>{u.kind === "external" ? "Partner or customer account" : `${u.username} · ${u.role}`} · added {fmt(u.created_at)}</DialogDescription>
+          <DialogDescription>{u.kind === "external" ? "Partner or customer account" : `${u.username} · ${u.role}`} · added {fmtWhen(u.created_at)}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void send(`/users/${u.id}/email`, { email }) }} className="grid grid-cols-1 gap-2">
+        {problem && <p className="field-error" role="alert">{problem}</p>}
+        <form onSubmit={(e) => { e.preventDefault(); if (email !== (u.email ?? "")) void act(`/users/${u.id}/email`, { email }) }} className="grid grid-cols-1 gap-2">
           <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Email
             <span className="flex gap-2">
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" maxLength={254} aria-label={`Email for ${u.name}`} className="h-8 flex-1 text-[13px]" />
-              <Button type="submit" size="sm" variant="outline" loading={busy} disabled={email === (u.email ?? "")}>Save</Button>
+              <Button type="submit" size="sm" loading={busy} disabled={email === (u.email ?? "")}>Save</Button>
             </span>
           </label>
         </form>
         {u.kind !== "external" && (
           <div className={section}>
             <p className="text-[12px] font-medium">Sign-in</p>
-            <p className="text-[13px] text-muted-foreground">{signInText(u, microsoftOnly).replace(/^./, (c) => c.toUpperCase())}.</p>
+            <p className="max-w-prose text-[13px] text-muted-foreground">{signInText(u, microsoftOnly).replace(/^./, (c) => c.toUpperCase())}.</p>
             {microsoftOnly && (
               <label className="flex items-center gap-2 text-[13px]">
-                <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => send(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-4 w-4 accent-primary" />
+                <input type="checkbox" checked={u.password_login} disabled={busy} onChange={(e) => act(`/users/${u.id}/password-login`, e.target.checked ? { allowed: "on" } : {})} className="h-4 w-4 accent-primary" />
                 Keep a password too (the emergency way in while Microsoft is required)
               </label>
             )}
@@ -188,27 +192,27 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
               <div className="flex flex-wrap items-center gap-2 text-[13px]">
                 <span className="text-muted-foreground">Two-step sign-in is on.</span>
                 <Button size="sm" variant="ghost" disabled={busy} aria-label={`Reset two-step sign-in for ${u.name}`}
-                  onClick={() => send(`/users/${u.id}/two-step-reset`, {}, `Reset two-step sign-in for ${u.name}? Use this when they lost their phone and recovery codes. Their sessions end.`)}>Reset two-step</Button>
+                  onClick={() => act(`/users/${u.id}/two-step-reset`, {}, `Reset two-step sign-in for ${u.name}? Use this when they lost their phone and recovery codes. Their sessions end.`)}>Reset two-step</Button>
               </div>
             )}
           </div>
         )}
         {canReset && (
-          <form className={section} onSubmit={(e) => { e.preventDefault(); void send(`/users/${u.id}/reset-password`, { new_password: pw }).then((ok) => { if (ok) setPw("") }) }}>
+          <form className={section} onSubmit={(e) => { e.preventDefault(); void act(`/users/${u.id}/reset-password`, { new_password: pw }).then((ok) => { if (ok) setPw("") }) }}>
             <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Set a new password
               <span className="flex gap-2">
                 <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 12 characters" aria-label={`New password for ${u.name}`} minLength={12} required autoComplete="new-password" className="h-8 flex-1 text-[13px]" />
                 <Button type="submit" size="sm" loading={busy}>Set</Button>
               </span>
             </label>
-            <p className="text-[12px] text-muted-foreground">They must change it at their next sign-in; their sessions end.</p>
+            <p className="max-w-prose text-[12px] text-muted-foreground">They must change it at their next sign-in; their sessions end.</p>
           </form>
         )}
         {!self && (
           <div className={cn(section, "flex flex-wrap items-center justify-between gap-2")}>
             <span className="text-[13px] text-muted-foreground">{u.active ? "Deactivating ends their sessions now." : "This account can't sign in."}</span>
             <Button size="sm" variant={u.active ? "destructive" : "outline"} disabled={busy}
-              onClick={() => void send(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined).then((ok) => { if (ok) onClose() })}>{u.active ? "Deactivate" : "Reactivate"}</Button>
+              onClick={() => void act(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined).then((ok) => { if (ok) onClose() })}>{u.active ? "Deactivate" : "Reactivate"}</Button>
           </div>
         )}
       </DialogContent>
@@ -216,34 +220,36 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
   )
 }
 
-function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>) => Promise<boolean> }) {
+function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean> }) {
   const [f, setF] = useState({ name: "", username: "", email: "", password: "", role: "Member" })
+  const [problem, setProblem] = useState<string | null>(null)
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
   function submit(e: FormEvent) {
     e.preventDefault()
-    void send("/users", f).then((ok) => { if (ok) setF({ name: "", username: "", email: "", password: "", role: "Member" }) })
+    setProblem(null)
+    void send("/users", f, undefined, setProblem).then((ok) => { if (ok) setF({ name: "", username: "", email: "", password: "", role: "Member" }) })
   }
   return (
     <form onSubmit={submit} className="grid grid-cols-1 content-start gap-2 panel p-4">
       <h2 className="text-[12px] font-semibold text-nav-fg">Add a team member</h2>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Full name<Input value={f.name} onChange={set("name")} required maxLength={120} aria-label="Full name" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Username<Input value={f.username} onChange={set("username")} required maxLength={80} aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" maxLength={254} aria-label="Email" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Role
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Full name<Input value={f.name} onChange={set("name")} required maxLength={120} aria-label="Full name" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Username<Input value={f.username} onChange={set("username")} required maxLength={80} aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" maxLength={254} aria-label="Email" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Role
         <select value={f.role} onChange={set("role")} aria-label="Role" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]">
           {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </label>
+      {problem && <p className="field-error" role="alert">{problem}</p>}
       <Button type="submit" size="sm" className="mt-1" loading={busy}>Create user</Button>
-      <p className="text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
+      <p className="max-w-prose text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
     </form>
   )
 }
 
 // Sign-up links: a link for a new colleague to request an account themselves.
 // Requests land in "Waiting for approval" above; nothing is active until approved.
-const field = "h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]"
 function SignupLinksPanel() {
   const [d, setD] = useState<SignupLinks | null>(null)
   const [f, setF] = useState({ label: "", role: "Contributor", project_id: "", project_role: "Coordinator", days: 0, max_uses: 1 })
@@ -265,8 +271,8 @@ function SignupLinksPanel() {
   const open = d.links.filter((l) => l.state === "open")
   return (
     <section className="panel p-4" aria-label="Sign-up links">
-      <h2 data-n className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
-      <p className="mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
+      <h2 className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
+      <p className="max-w-prose mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
       {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-3 text-[13px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings → Sign-up &amp; activity</Link>.</p>}
       {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[13px]">
         <label className="grid grid-cols-1 gap-1 font-medium">For<input className={field} required maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Omar, field engineer" /></label>
@@ -277,14 +283,14 @@ function SignupLinksPanel() {
           <label className="grid grid-cols-1 gap-1 font-medium">As<select className={field} value={f.project_role} disabled={!f.project_id} onChange={(e) => setF({ ...f, project_role: e.target.value })}>{d.project_roles.map((r) => <option key={r}>{r}</option>)}</select></label>
           <label className="grid grid-cols-1 gap-1 font-medium">Uses<select className={field} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: Number(e.target.value) })}>{[1, 5, 10, 25].map((n) => <option key={n} value={n}>{n === 1 ? "One person" : `Up to ${n}`}</option>)}</select></label>
         </div>
-        {err && <p className="text-bad" role="alert">{err}</p>}
+        {err && <p className="text-destructive" role="alert">{err}</p>}
         <Button type="submit" size="sm" loading={busy} disabled={!f.label.trim()}>Create link</Button>
       </form>}
       {made && (
         <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
           <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
           <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => {})}>{copied ? "Copied" : "Copy the link"}</Button>
-          <p className="text-[12px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
+          <p className="max-w-prose text-[12px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
         </div>
       )}
       {d.links.length > 0 && (
@@ -293,15 +299,15 @@ function SignupLinksPanel() {
             <li key={l.id} className="flex items-center gap-2 py-2">
               <span className="min-w-0 flex-1"><span className="block truncate font-medium" title={l.label}>{l.label}</span>
                 <span className="block truncate text-[12px] text-muted-foreground">{l.role}{l.project ? ` · ${l.project}` : ""} · {l.uses}/{l.max_uses} used · {l.state === "open" ? `until ${fmtWhen(l.expires_at)}` : l.state}</span></span>
-              {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-bad" disabled={busy} onClick={() => { if (confirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the link")) }}>Revoke</Button>}
+              {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-destructive" disabled={busy} onClick={async () => { if (await askConfirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the link")) }}>Revoke</Button>}
             </li>
           ))}
         </ul>
       )}
-      {err && !d.enabled && <p className="mt-2 text-[13px] text-bad" role="alert">{err}</p>}
-      {open.length === 0 && d.links.length > 0 && <p className="mt-2 text-[12px] text-muted-foreground">No open links.</p>}
+      {err && !d.enabled && <p className="mt-2 text-[13px] text-destructive" role="alert">{err}</p>}
+      {open.length === 0 && d.links.length > 0 && <p className="max-w-prose mt-2 text-[12px] text-muted-foreground">No open links.</p>}
       {open.length > 1 && <Button size="sm" variant="ghost" className="mt-2 h-7 text-bad" disabled={busy}
-        onClick={() => { if (confirm(`Revoke all ${open.length} open links? Anyone holding one can no longer sign up with it.`)) void revokeAllSignupLinks().then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the links")) }}>Revoke all open links</Button>}
+        onClick={async () => { if (await askConfirm(`Revoke all ${open.length} open links? Anyone holding one can no longer sign up with it.`)) void revokeAllSignupLinks().then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the links")) }}>Revoke all open links</Button>}
     </section>
   )
 }

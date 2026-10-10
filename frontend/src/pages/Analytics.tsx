@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react"
+import { EmptyState } from "@/components/EmptyState"
+import { chip } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
 import { analytics, ApiError, type AnalyticsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -6,7 +8,6 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { StatTile } from "@/components/StatTile"
 
 const d1 = (n: number | null | undefined) => (n == null ? "—" : n > 0 && n < 0.05 ? "<0.1" : n.toFixed(1))   // a same-day close is not "0.0 days" (UX-23)
-const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[13px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
 
 export default function Analytics(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
@@ -29,13 +30,13 @@ export default function Analytics(_props: { user: User }) {
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">Cycle time</h1>
-        <p className="text-[13px] text-muted-foreground">where rollouts get stuck, per stage template</p>
+        <p className="max-w-prose text-[13px] text-muted-foreground">where rollouts get stuck, per stage template</p>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {d.templates.map((t) => <button key={t.id} type="button" onClick={() => setParams({ template: String(t.id) })} aria-pressed={t.id === d.template_id} className={chip(t.id === d.template_id)}>{t.name}</button>)}
         {d.custom_count > 0 && <span className="text-[12px] text-muted-foreground">{d.custom_count} project{d.custom_count === 1 ? "" : "s"} on a custom stage list (not compared)</span>}
       </div>
-      {!s ? <p className="mt-4 text-[13px] text-muted-foreground">No stage template yet — create one in Settings.</p> : (
+      {!s ? <EmptyState className="mt-4">No stage template yet — create one in Settings.</EmptyState> : (
         <>
           <p className="mt-3 max-w-3xl text-[13px] text-muted-foreground">Timings compare only projects that share a stage list, so this is <span className="font-medium text-foreground">{tname}</span> across {s.measured_projects} project{s.measured_projects === 1 ? "" : "s"}. Averages count stages a project has already left; the stage it sits in now is under Aging.</p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -87,7 +88,7 @@ export default function Analytics(_props: { user: User }) {
                 {s.throughput.map(([month, n]) => (
                   <li key={month} className="flex items-center gap-3"><span className="w-16 text-[12px] text-muted-foreground">{month}</span><span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-ok-line" style={{ width: `${peak ? (n / peak) * 100 : 0}%` }} /></span><span className="w-6 text-right">{n}</span></li>
                 ))}
-                {s.throughput.length === 0 && <li className="text-muted-foreground">No projects have reached the final stage yet.</li>}
+                {s.throughput.length === 0 && <EmptyState as="li">No projects have reached the final stage yet.</EmptyState>}
               </ul>
             </section>
           </div>

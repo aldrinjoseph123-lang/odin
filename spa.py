@@ -1,10 +1,9 @@
-"""Serves the Vite-built React app (frontend/dist) for routes that have been
-ported, and nothing else — un-ported pages keep rendering their Jinja
-templates. That is the whole strangler mechanism: add a page's endpoint name
-to SPA_PAGES once its React version has passed tests and UAT.
+"""Serves the Vite-built React app (frontend/dist). Every signed-in page is
+React; the Jinja pages were retired on 9 Oct 2026, leaving only the guest
+project page, the sign-in form's error re-render and the error page.
 
-Serving is off when there is no build (fresh checkout, unit-test run) and can
-be forced off with app.config["SERVE_SPA"] = False.
+Without a build (a fresh checkout) a page answers 503 with how to build one.
+Tests point SPA_DIST at a stub shell.
 """
 import os
 
@@ -12,23 +11,13 @@ from flask import current_app, send_from_directory
 
 DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
 
-# Endpoint names whose GET is answered by the React app.
-SPA_PAGES = {"login", "board", "dashboard", "people", "person", "projects_list", "project_detail", "users", "audit_logs_view", "settings", "settings_section", "settings_rbac", "settings_contacts", "project_new", "project_edit", "account", "my_work", "analytics", "alerts_log_view", "report_all", "report_single", "project_signoff", "join_page", "auth_link_request", "auth_reset_request", "auth_reset_form", "auth_link_consume", "login_password"}
-
-
-def spa_available():
-    if current_app.config.get("SERVE_SPA") is False:
-        return False
-    return os.path.exists(os.path.join(current_app.config.get("SPA_DIST", DIST_DIR), "index.html"))
-
-
-def spa_serves(endpoint):
-    return endpoint in SPA_PAGES and spa_available()
-
 
 def spa_index():
     from security import csp_nonce
-    with open(os.path.join(current_app.config.get("SPA_DIST", DIST_DIR), "index.html"), encoding="utf-8") as fh:
+    path = os.path.join(current_app.config.get("SPA_DIST", DIST_DIR), "index.html")
+    if not os.path.exists(path):
+        return current_app.response_class("The front end is not built: run npm --prefix frontend run build", status=503, mimetype="text/plain")
+    with open(path, encoding="utf-8") as fh:
         html = fh.read()
     # the theme snippet runs before first paint: it carries this response's CSP nonce
     response = current_app.response_class(html.replace("<script>", f'<script nonce="{csp_nonce()}">'), mimetype="text/html")

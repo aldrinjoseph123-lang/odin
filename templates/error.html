@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }} · Odin</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=raven2">
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&display=swap" rel="stylesheet">
+  <link href="/static/fonts/fonts.css" rel="stylesheet">
   <script nonce="{{ csp_nonce() }}">
     (function () {  // same pre-paint rule as the React app
       try {
@@ -18,11 +18,13 @@
   <style>
     /* A standalone page: it must render when the app itself is what failed,
        so it carries its own copy of the few tokens it needs. */
-    :root { --bg:#FFFFFF; --fg:#101114; --muted:#6B7280; --border:#E4E6EB; --card:#FFFFFF; --primary:#3D5AFE; --on-primary:#FFFFFF; color-scheme: light; }
+    :root { --bg:#FFFFFF; --fg:#101114; --muted:#6B7280; --border:#E4E6EB; --card:#FFFFFF; --primary:#FFD3DA; --on-primary:#8E1230; color-scheme: light; }
     :root[data-theme="dark"] { --bg:#0F1115; --fg:#E7E8EC; --muted:#9AA0AB; --border:#262B34; --card:#15181E; color-scheme: dark; }
-    :root[data-accent="indigo"] { --primary:#4F46E5 } :root[data-accent="violet"] { --primary:#7C3AED } :root[data-accent="teal"] { --primary:#0F766E }
-    :root[data-accent="green"] { --primary:#15803D } :root[data-accent="sky"] { --primary:#0369A1 } :root[data-accent="plum"] { --primary:#A21CAF }
-    :root[data-accent="ink"] { --primary:#101114 } :root[data-theme="dark"][data-accent="ink"] { --primary:#E7E8EC; --on-primary:#0F1115 }
+    /* the app's pastel accents (frontend/src/index.css): a soft fill with deep text, red first */
+    :root[data-accent="blue"] { --primary:#CCDAFF; --on-primary:#1C3A8C } :root[data-accent="indigo"] { --primary:#D6D8FF; --on-primary:#302C80 }
+    :root[data-accent="violet"] { --primary:#E2D5FF; --on-primary:#4A1D93 } :root[data-accent="teal"] { --primary:#C4EEE6; --on-primary:#12504A }
+    :root[data-accent="green"] { --primary:#CFF0D9; --on-primary:#14532D } :root[data-accent="sky"] { --primary:#C9E8FB; --on-primary:#0B4A6E }
+    :root[data-accent="plum"] { --primary:#F4D5F8; --on-primary:#6B1A70 } :root[data-accent="ink"] { --primary:#E3E5EA; --on-primary:#101114 }
     * { box-sizing: border-box }
     body { margin:0; min-height:100svh; display:flex; align-items:center; justify-content:center; padding:16px;
            background:var(--bg); color:var(--fg); font:13px/1.5 Inter, system-ui, -apple-system, sans-serif; }
@@ -45,7 +47,7 @@
     <div class="code">Error {{ code }}</div>
     <h1>{{ title }}</h1>
     <p>{{ hint }}</p>
-    <a class="btn" href="{{ url_for('board') if current_user else url_for('login') }}">{{ 'Back to the flow' if current_user else 'Sign in' }}</a>
+    <a class="btn" href="{{ '/' if current_user else url_for('login') }}">{{ 'Back to Odin' if current_user else 'Sign in' }}</a>
   </main>
 </body>
 </html>

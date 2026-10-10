@@ -306,6 +306,8 @@ def send(project, body, author, commit=True):
 def clean_signature(body):
     """A signature is drawn strokes (points on a 1000 x 300 pad) or typed text; stored as JSON."""
     sig = body.get("signature") or {}
+    if not isinstance(sig, dict):
+        raise ValueError("Sign by drawing or typing your name")
     if sig.get("kind") == "typed":
         text = str(sig.get("text") or "").strip()[:80]
         if not text:
@@ -319,7 +321,8 @@ def clean_signature(body):
         for st in strokes:
             if not isinstance(st, list):
                 raise ValueError("Draw your signature")
-            pts = [[max(0, min(1000, int(p[0]))), max(0, min(300, int(p[1])))] for p in st if isinstance(p, (list, tuple)) and len(p) == 2]
+            pts = [[max(0, min(1000, int(p[0]))), max(0, min(300, int(p[1])))] for p in st
+                   if isinstance(p, (list, tuple)) and len(p) == 2 and all(isinstance(v, (int, float)) and not isinstance(v, bool) and -1e6 < v < 1e6 for v in p)]
             total += len(pts)
             if pts:
                 out.append(pts)
@@ -357,6 +360,8 @@ def sign(row, body, ip, agent):
 
 
 def countersign(row, body, ip, agent):
+    if row["status"] in DONE:
+        raise ValueError("This version is already signed off")
     if row["status"] != "signed":
         raise ValueError("The customer has not signed this version yet")
     if not intact(row):
@@ -426,6 +431,9 @@ def waive(project, reason, author):
         raise ValueError("Give the reason in a sentence")
     if completed(project["id"]):
         raise ValueError("This project is already signed off")
+    early = sendable(project)   # a waiver stands in for the signatures, not for the stages before them (sim L-12)
+    if early:
+        raise ValueError(early.replace("Send the sign-off", "Waive the sign-off"))
     d = draft(project)
     content = {"project": _meta(project), "summary": d["summary"], "scope": [{k: x[k] for k in ("title", "detail", "status", "note")} for x in d["scope"]],
                "delivered": d["delivered"], "outstanding": d["outstanding"], "terms": d["terms"], "statement": policy("signoff_statement"),

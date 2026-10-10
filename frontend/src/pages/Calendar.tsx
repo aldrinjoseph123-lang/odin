@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
+import { EmptyState } from "@/components/EmptyState"
+import { chip, pill } from "@/lib/ui"
 import { Link, useSearchParams } from "react-router-dom"
 import { AlarmClock, ArrowRight, CheckSquare, ChevronLeft, ChevronRight, ShieldCheck, Target } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, calendar, type CalendarData } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -14,7 +15,6 @@ import { fmtDate, addMonths, localToday, laneSpans, monthGrid, monthTitle } from
 // md the same month is an agenda: one heading per day that has anything.
 type Item = { key: string; kind: "task" | "target" | "move" | "approval"; day: string; text: string; sub?: string; href: string; tone?: "bad" | "warn" | "ok" | "muted"; done?: boolean }
 type Show = Record<"tasks" | "targets" | "history" | "spans", boolean>
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 rounded-full px-3 text-[12px]")
 const LANES = 3
 
 function items(d: CalendarData, show: Show): Map<string, Item[]> {
@@ -78,7 +78,7 @@ export function Calendar({ wide }: { wide: boolean }) {
       <div className="ml-auto flex flex-wrap gap-2" role="group" aria-label="Show">
         {toggles.map((t) => (
           <button key={t.key} type="button" aria-pressed={show[t.key]} onClick={() => setShow({ ...show, [t.key]: !show[t.key] })}
-            className={cn("h-7 rounded-full border px-3 text-[12px] font-medium", show[t.key] ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")}>{t.label}</button>
+            className={chip(show[t.key])}>{t.label}</button>
         ))}
       </div>
     </div>
@@ -97,13 +97,15 @@ export function Calendar({ wide }: { wide: boolean }) {
               {(byDay.get(day) ?? []).map((it) => <Chip key={it.key} it={it} full />)}
             </li>
           ))}
-          {days.length === 0 && <li className="py-6 text-center text-[13px] text-muted-foreground">Nothing in {monthTitle(month)}.</li>}
+          {days.length === 0 && <EmptyState as="li">Nothing in {monthTitle(month)}.</EmptyState>}
         </ul>
       </div>
     )
   }
 
   const open = openDay ? byDay.get(openDay) ?? [] : null
+  // every rollout running that day, so the ones folded into "+N rollouts" can be reached
+  const running = openDay && show.spans ? d.spans.filter((s) => s.start_date <= openDay && (s.target_end_date ?? "9999") >= openDay) : []
   return (
     <div className="flex h-full min-h-0 flex-col">
       {header}
@@ -125,7 +127,7 @@ export function Calendar({ wide }: { wide: boolean }) {
                     <button type="button" onClick={() => setOpenDay(openDay === day ? null : day)} aria-label={`${fmtDate(day)}, ${list.length} item${list.length === 1 ? "" : "s"}`}
                       className={cn("mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] hover:bg-muted", day === today && "bg-primary font-semibold text-primary-foreground hover:bg-primary", openDay === day && day !== today && "ring-2 ring-primary/40")}>{Number(day.slice(8, 10))}</button>
                     <div style={{ height: laneCount * 18 }} aria-hidden />
-                    {extra > 0 && <span className="block px-2 text-[11px] text-muted-foreground">+{extra} rollout{extra === 1 ? "" : "s"}</span>}
+                    {extra > 0 && <button type="button" onClick={() => setOpenDay(day)} className="block px-2 text-[11px] text-muted-foreground hover:text-foreground">+{extra} rollout{extra === 1 ? "" : "s"}</button>}
                     {shown.map((it) => <Chip key={it.key} it={it} />)}
                     {list.length > 3 && <button type="button" onClick={() => setOpenDay(day)} className="px-2 text-[11px] text-muted-foreground hover:text-foreground">+{list.length - 3} more</button>}
                   </div>
@@ -149,12 +151,13 @@ export function Calendar({ wide }: { wide: boolean }) {
       {open && openDay && (
         <div className="border-t border-border px-4 py-3">
           <div className="mb-1 flex items-center justify-between gap-3">
-            <h3 className="text-[13px] font-semibold">{fmtDate(openDay)} <span className="font-normal text-muted-foreground">· {open.length} item{open.length === 1 ? "" : "s"}</span></h3>
+            <h3 className="text-[13px] font-semibold">{fmtDate(openDay)} <span className="font-normal text-muted-foreground">· {open.length} item{open.length === 1 ? "" : "s"}{running.length > 0 && `, ${running.length} rollout${running.length === 1 ? "" : "s"} running`}</span></h3>
             <button type="button" onClick={() => setOpenDay(null)} className="text-[12px] text-muted-foreground hover:text-foreground">Close</button>
           </div>
           <ul className="grid grid-cols-1 gap-x-6 md:grid-cols-2 xl:grid-cols-3">
+            {running.map((s) => <li key={`r${s.id}`}><Chip it={{ key: `r${s.id}`, kind: "target", day: openDay, text: s.name, sub: `${s.client} · ${s.stage}`, href: `/board?rollout=${s.id}`, tone: "muted" }} full /></li>)}
             {open.map((it) => <li key={it.key}><Chip it={it} full /></li>)}
-            {open.length === 0 && <li className="py-1 text-[13px] text-muted-foreground">Nothing on this day.</li>}
+            {open.length + running.length === 0 && <li className="py-1 text-[13px] text-muted-foreground">Nothing on this day.</li>}
           </ul>
         </div>
       )}

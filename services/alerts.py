@@ -1,24 +1,18 @@
-"""Alert engine + dashboard aggregation.
+"""Alert engine.
 
-build_alerts() is pure computation over a list of project rows — it takes an
-optional session-scoped `dismissed` map but never reads the session itself, so
-the daily cron (send_daily_alerts.py) can call it with no request context.
+build_alerts() is pure computation over a list of project rows and never
+reads the session, so the scheduler can call it with no request context.
 sync_alerts_to_db() persists the computed conditions and fires notifications.
 
 Depends on db, constants, and services.notifications. Nothing lower imports it.
 """
 from datetime import date, datetime, timedelta
 
-from flask import session
 from markupsafe import escape
 
-from constants import (
-    ALERT_TYPE_TITLES,
-    DEFAULT_ALERT_TYPE_SETTINGS,
-    DELIVERY_MODES,
-)
+from constants import ALERT_TYPE_TITLES, DEFAULT_ALERT_TYPE_SETTINGS
 from policies import local_today
-from db import get_db, get_stage_names, get_terminal_stage, stages_for_projects
+from db import get_db, get_terminal_stage, stages_for_projects
 from services.analytics import sla_by_stage, stage_sla_state
 from services.notifications import notify_event, notify_users
 
@@ -50,14 +44,6 @@ def resolve_alert(alert_type, project_id):
         (resolved_at, alert_type, project_id),
     )
     db.commit()
-
-
-def get_active_alerts():
-    """Get all unresolved alerts ordered by severity."""
-    db = get_db()
-    return db.execute(
-        "SELECT * FROM alerts WHERE resolved = 0 ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, created_at DESC"
-    ).fetchall()
 
 
 def get_alert_type_settings():
@@ -124,25 +110,6 @@ def sync_alerts_to_db(alerts):
                 resolve_alert(alert_type, alert_row["project_id"])
 
 
-def alert_context_for(project, alert_type):
-    """The field whose value must stay unchanged for a dismissal to still apply —
-    if it changes (project touched again), the alert is treated as new and
-    reappears even though a dismissal row still exists."""
-    if alert_type == "stale":
-        return project["updated_at"]
-    if alert_type in ("project_overdue", "project_due_soon"):
-        return project["target_end_date"]
-    if alert_type == "stage_sla_breach":
-        # dismissal survives until the project moves on to another stage
-        return project["stage_entered_at"]
-    if alert_type == "approval_waiting":
-        return project["stage"]   # until the next stage's approval
-    if alert_type in ("blocker_open", "task_unowned", "customer_quiet"):
-        # the items behind it: a new blocker or task brings the alert back
-        return _bottlenecks([project["id"]], get_alert_type_settings(), local_today()).get(project["id"], {}).get(alert_type)
-    return None
-
-
 def _bottlenecks(project_ids, thresholds, today):
     """Per project, which bottleneck rules hold — an approval waiting, a
     blocker left open, an overdue task nobody owns, a customer task overdue —
@@ -194,22 +161,7 @@ def schedule_status(project, today=None, soon_days=None, terminal_stage=None):
     return "on_track"
 
 
-def get_dismissed_alerts():
-    """Session-scoped only — never touches the database or real project data.
-    Resets to empty on every fresh login, so a dismissed alert reappears the
-    next time the user logs in even if the underlying condition hasn't changed."""
-    return session.get("dismissed_alerts", {})
-
-
-def is_alert_dismissed(dismissed, project, alert_type, context=None):
-    key = f"{project['id']}:{alert_type}"
-    if key not in dismissed:
-        return False
-    return dismissed[key] == (context if context is not None else alert_context_for(project, alert_type))
-
-
-def build_alerts(projects, dismissed=None):
-    dismissed = dismissed or {}
+def build_alerts(projects):
     thresholds = get_alert_type_settings()
     stale_cutoff = datetime.utcnow() - timedelta(days=thresholds.get("stale", DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"])
     soon_days = thresholds.get("project_due_soon", DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
@@ -223,18 +175,17 @@ def build_alerts(projects, dismissed=None):
         terminal = rows[-1]["name"] if rows else None
         slas = sla_by_stage(rows)
         status = schedule_status(p, today=today, soon_days=soon_days, terminal_stage=terminal)
-        if status == "overdue" and not is_alert_dismissed(dismissed, p, "project_overdue"):
+        if status == "overdue":
             alerts["project_overdue"].append(p)
-        elif status == "at_risk" and not is_alert_dismissed(dismissed, p, "project_due_soon"):
+        elif status == "at_risk":
             alerts["project_due_soon"].append(p)
         sla = stage_sla_state(p, slas, terminal, now=datetime.utcnow())
-        if sla and sla["breached"] and not is_alert_dismissed(dismissed, p, "stage_sla_breach"):
+        if sla and sla["breached"]:
             alerts["stage_sla_breach"].append(p)
-        if datetime.fromisoformat(p["updated_at"]) < stale_cutoff and not is_alert_dismissed(dismissed, p, "stale"):
+        if datetime.fromisoformat(p["updated_at"]) < stale_cutoff:
             alerts["stale"].append(p)
-        for rule, items in bottlenecks.get(p["id"], {}).items():
-            if not is_alert_dismissed(dismissed, p, rule, None if rule == "approval_waiting" else items):
-                alerts[rule].append(p)
+        for rule in bottlenecks.get(p["id"], {}):
+            alerts[rule].append(p)
     return alerts
 
 
@@ -245,18 +196,3 @@ def project_states(projects, alerts=None):
     stuck = {"overdue": {p["id"] for p in alerts["project_overdue"]}, "over_sla": {p["id"] for p in alerts["stage_sla_breach"]},
              "due_soon": {p["id"] for p in alerts["project_due_soon"]}}
     return {p["id"]: next((k for k in ("overdue", "over_sla", "due_soon") if p["id"] in stuck[k]), "on_track") for p in projects}
-
-
-def build_dashboard(projects):
-    stage_counts = {stage: 0 for stage in get_stage_names()}
-    delivery_counts = {mode: 0 for mode in DELIVERY_MODES}
-    for p in projects:
-        stage_counts[p["stage"]] = stage_counts.get(p["stage"], 0) + 1
-        delivery_counts[p["delivery_mode"]] = delivery_counts.get(p["delivery_mode"], 0) + 1
-    max_stage_count = max(stage_counts.values()) if stage_counts else 0
-    return {
-        "stage_counts": stage_counts,
-        "max_stage_count": max_stage_count,
-        "delivery_counts": delivery_counts,
-        "total_active": len(projects),
-    }

@@ -33,10 +33,12 @@ MEASURES = ("rollouts_by_stage", "rollouts_by_client", "rollouts_by_state", "rol
 # The catalogue. `w` is the default width in thirds of the grid; `settings`
 # are per-widget knobs the page applies itself (the server only validates them).
 WIDGETS = {
+    "attention":  dict(title="Needs attention", blurb="Every rollout in trouble, worst first, each with its reasons in words: late, over SLA, due soon, waiting on the customer, idle.", w=1,
+                       settings={"limit": dict(kind="int", min=3, max=30, default=8, label="Rows")}),
     "kpis":       dict(title="Headline numbers", blurb="Active, overdue, over SLA, due soon, waiting on customer and idle, with the week's change and a 14-day trend.", w=3,
                        settings={"tiles": dict(kind="multi", choices=COUNT_KEYS, default=list(COUNT_KEYS), label="Tiles"),
                                  "trend": dict(kind="choice", choices=("area", "bars", "none"), default="area", label="Trend")}),
-    "timeline":   dict(title="Timeline", blurb="Every active rollout from start to target on one axis, its team on the bar.", w=2,
+    "timeline":   dict(title="Timeline", blurb="Every active rollout from start to target on one axis, with the time past the target hatched and the team beside it.", w=2,
                        settings={"show": dict(kind="choice", choices=("all", "attention"), default="all", label="Show"),
                                  "limit": dict(kind="int", min=5, max=50, default=12, label="Rows")}),
     "progress":   dict(title="Portfolio progress", blurb="How far the portfolio is through its stages: done, in progress, still to come.", w=1,
@@ -49,8 +51,8 @@ WIDGETS = {
     "team":       dict(title="Team", blurb="Who is on what: rollouts, open and late tasks per person.", w=1,
                        settings={"limit": dict(kind="int", min=3, max=20, default=6, label="People"),
                                  "chart": dict(kind="choice", choices=("list", "bar"), default="list", label="Show as")}),
-    "stages":     dict(title="Rollouts per stage", blurb="Where the active rollouts sit.", w=1,
-                       settings={"chart": dict(kind="choice", choices=("donut", "bar"), default="donut", label="Chart")}),
+    "stages":     dict(title="Rollouts per stage", blurb="Where the active rollouts sit, stage by stage in order, with the late ones counted.", w=1,
+                       settings={"chart": dict(kind="choice", choices=("flow", "donut", "bar"), default="flow", label="Chart")}),
     "activity":   dict(title="Recent activity", blurb="Stage moves, notes, decisions, tasks done and documents, newest first.", w=1,
                        settings={"limit": dict(kind="int", min=5, max=30, default=10, label="Items")}),
     "alerts":     dict(title="Open alerts", blurb="Overdue, over SLA, due soon and inactive rollouts the daily check raised.", w=1,
@@ -66,7 +68,7 @@ WIDGETS = {
                                  "top": dict(kind="int", min=3, max=12, default=6, label="Top")}),
 }
 DEFAULT_LAYOUT = [
-    {"id": "kpis", "w": 3}, {"id": "timeline", "w": 2}, {"id": "progress", "w": 1},
+    {"id": "kpis", "w": 3}, {"id": "attention", "w": 1}, {"id": "timeline", "w": 2}, {"id": "progress", "w": 1},
     {"id": "schedule", "w": 1}, {"id": "completion", "w": 1}, {"id": "team", "w": 1},
     {"id": "stages", "w": 1}, {"id": "activity", "w": 1}, {"id": "alerts", "w": 1},
     {"id": "mywork", "w": 2}, {"id": "cycle", "w": 1},
@@ -232,10 +234,10 @@ def _activity(db, scope, limit=30):
 
 
 def _cycle(db, scope):
-    """Lead time and throughput for the first stage template, as Cycle time shows them."""
-    from services.analytics import build_cycle_times, clock
+    """Lead time and throughput for the busiest stage template, as Cycle time shows them."""
+    from services.analytics import build_cycle_times, busiest_template, clock
     scope_sql, scope_params = scope
-    template = db.execute("SELECT id, name FROM stage_templates ORDER BY id LIMIT 1").fetchone()
+    template = busiest_template(db, scope)
     if not template:
         return None
     projects = db.execute(f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{scope_sql}", (template["id"], *scope_params)).fetchall()
@@ -313,7 +315,9 @@ def build(scope, user_id):
 
     per_stage = Counter(p["stage"] for p in projects)
     order = list(get_stage_names()) + sorted(s for s in per_stage if s not in get_stage_names())
-    stages = [{"stage": s, "count": per_stage[s]} for s in order if per_stage[s]]
+    late_at = Counter(p["stage"] for p in projects if state(p) == "overdue")
+    warn_at = Counter(p["stage"] for p in projects if state(p) in ("over_sla", "due_soon"))
+    stages = [{"stage": s, "count": per_stage[s], "late": late_at[s], "warn": warn_at[s]} for s in order if per_stage[s]]
 
     week_ago = datetime.utcnow() - timedelta(days=7)
     moved = db.execute(
@@ -352,7 +356,7 @@ def build(scope, user_id):
     open_alerts = [{"id": a["id"], "project_id": a["project_id"], "project": a["project_name"], "type": a["alert_type"], "title": a["title"],
                     "severity": a["severity"], "created_at": a["created_at"]} for a in db.execute(
         "SELECT a.*, p.name AS project_name FROM alerts a JOIN projects p ON p.id = a.project_id "
-        f"WHERE a.resolved = 0 AND p.deleted_at IS NULL{scope_sql} "
+        f"WHERE a.resolved = 0 AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} "   # as the badge and the Alerts page
         "ORDER BY CASE a.severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, a.created_at DESC LIMIT 30", scope_params)]
 
     mine = {"tasks": [{"id": t["id"], "title": t["title"], "project_id": t["project_id"], "project": t["project_name"], "due_date": t["due_date"], "stage": t["stage"]}
@@ -362,6 +366,26 @@ def build(scope, user_id):
             "owned": db.execute(f"SELECT COUNT(*) FROM projects p WHERE p.owner_id = ? AND {open_sql}", (user_id, *scope_params)).fetchone()[0]}
 
     detail["awaiting"] = [{"id": a["project_id"], "name": a["project"], "client": "", "stage": a["stage"], "text": f"asked {a['requested_at'][:10]}"} for a in approvals]
+
+    # Needs attention: the tiles' rows folded per rollout, worst reason first (one answer to "what is stuck");
+    # a rollout on track whose tasks run late counts too (its state stays On track)
+    late = {r[0]: (r[1], r[2]) for r in db.execute(
+        "SELECT t.project_id, COUNT(*), MIN(t.due_date) FROM tasks t WHERE t.done = 0 AND t.due_date < ? GROUP BY t.project_id", (today.isoformat(),))}
+    detail["late_task"] = [row(p, f"{late[p['id']][0]} task{'s' if late[p['id']][0] != 1 else ''} late, oldest {(today - date.fromisoformat(late[p['id']][1])).days} d")
+                           for p in projects if p["id"] in late]
+    worst = ("overdue", "over_sla", "due_soon", "late_task", "awaiting", "idle")
+    reason = {"awaiting": lambda r: f"waiting on the customer, {r['text']}"}
+    by_id = {}
+    for kind in worst:
+        for r in detail[kind]:
+            entry = by_id.setdefault(r["id"], {"id": r["id"], "name": r["name"], "client": r["client"], "stage": r["stage"], "worst": kind, "reasons": []})
+            entry["reasons"].append({"kind": kind, "text": reason.get(kind, lambda r: r["text"])(r)})
+            entry["client"] = entry["client"] or r["client"]
+    def urgency(e):   # within a kind: most late first; "due in n d" soonest first; late tasks by the oldest
+        nums = [int(n) for n in re.findall(r"\d+", e["reasons"][0]["text"])] or [0]
+        n = nums[-1] if e["worst"] == "late_task" else nums[0]
+        return n if e["worst"] == "due_soon" else -n
+    attention = sorted(by_id.values(), key=lambda e: (worst.index(e["worst"]), urgency(e), e["name"]))
 
     # what a custom widget may count
     agg = lambda values: [{"key": k or "—", "count": n} for k, n in Counter(values).most_common()]   # noqa: E731
@@ -383,6 +407,6 @@ def build(scope, user_id):
             "version": version(),
             "data": {"kpis": {"counts": counts, "before": before, "since": since, "moved_this_week": moved, "series": series, "detail": detail},
                      "aggregates": aggregates,
-                     "timeline": timeline, "progress": progress, "stages": stages, "completion": completion,
+                     "attention": attention, "timeline": timeline, "progress": progress, "stages": stages, "completion": completion,
                      "schedule": {"due": due, "approvals": approvals}, "team": {"people": people, "unassigned": unassigned},
                      "activity": _activity(db, scope), "alerts": open_alerts, "mywork": mine, "cycle": _cycle(db, scope)}}

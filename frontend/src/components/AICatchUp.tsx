@@ -1,25 +1,19 @@
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
 import { Ago } from "@/components/Ago"
-import { ApiError, cancelAIJob, projectAI, requestProjectAI, type CatchUp, type ProjectAI } from "@/lib/api"
-import { usePoll } from "@/lib/usePoll"
+import { ApiError, cancelAIJob, requestProjectAI, type CatchUp } from "@/lib/api"
+import { useProjectAI } from "@/lib/usePoll"
 
 // Catch me up: a one-page brief on this rollout for whoever takes it over or
 // joins. Who waits on whom is Odin's own list; the rest is written by the AI
 // from the rollout's facts. Hidden when the AI cannot run and no brief exists.
 export function AICatchUp({ projectId }: { projectId: number }) {
-  const [s, setS] = useState<ProjectAI<CatchUp> | null>(null)
+  const { s, load, working } = useProjectAI<CatchUp>(projectId, "catch_up", { every: 5000 })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
-  const load = useCallback(async () => {
-    try { setS(await projectAI<CatchUp>(projectId, "catch_up")) } catch { setS(null) }
-  }, [projectId])
-  useEffect(() => { void load() }, [load])
-  const working = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  usePoll(working, load, 5000)
   if (!s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   async function ask() {
@@ -33,7 +27,7 @@ export function AICatchUp({ projectId }: { projectId: number }) {
     <section className="panel p-4" aria-labelledby="catchup-h">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
-        <h2 id="catchup-h" className="min-w-0 flex-1 basis-56 text-[13px] font-semibold text-nav-fg">
+        <h2 id="catchup-h" className="min-w-0 flex-1 basis-56 text-[12px] font-semibold text-nav-fg">
           Catch me up<span className="sr-only">, </span>
           <span className="ml-2 font-normal text-muted-foreground" aria-live="polite">
             {working ? "Reading the rollout…" : sug ? <>AI brief, <Ago iso={sug.created_at} /></> : "a one-page brief on this rollout, for whoever takes it over or joins"}
@@ -44,7 +38,7 @@ export function AICatchUp({ projectId }: { projectId: number }) {
         {working && s.job && <Button size="sm" variant="ghost" className="h-7" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
       </div>
       {working && s.job && <AIProgress job={s.job} />}
-      {error && <p className="mt-2 text-[13px] text-bad" role="alert">{error}</p>}
+      {error && <p className="mt-2 text-[13px] text-destructive" role="alert">{error}</p>}
       {sug && open && !working && (
         <div className="mt-3 grid grid-cols-1 gap-3 text-[13px] leading-relaxed lg:grid-cols-2 [&>*]:min-w-0">
           <div className="grid grid-cols-1 content-start gap-2">

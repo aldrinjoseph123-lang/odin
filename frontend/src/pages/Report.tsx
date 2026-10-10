@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
+import { StatTile } from "@/components/StatTile"
+import { pill } from "@/lib/ui"
+import { askConfirm } from "@/lib/confirm"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
 import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTip, XAxis, YAxis } from "recharts"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import { PrintBrand } from "@/components/Brand"
 import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
 import { PlanGantt, RagPill } from "@/components/PlanGantt"
@@ -23,7 +26,6 @@ import { TemplatePicker } from "@/components/TemplatePicker"
 // "Save as version" freezes the lot. Partners and customers read saved
 // versions only (the server enforces it). Every version exports to PDF.
 const MISSING = "This project does not exist, or you are not on it."
-const pill = cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[13px]")
 const slip = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--elevation-pop)", fontSize: 12 }, labelStyle: { color: "var(--muted-foreground)" } }
 
@@ -62,6 +64,8 @@ export default function Report({ user }: { user: User }) {
   if (!r) return <PageSkeleton />
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
+    // the words are shared: say so before they go out, not after (sim roles-3)
+    if (!(await askConfirm("Save this version? Partners and customers on the project will read these words in their copy of the report."))) return
     setBusy(true); setNotice(null)
     try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
@@ -121,7 +125,7 @@ export default function Report({ user }: { user: User }) {
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
     ...(customer ? [] : [{ label: "Against baseline", value: slip(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", warn: (f.vs_baseline_days ?? 0) > 0 }]),
     { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
-    { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", bad: d.work.late > 0 },
+    { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", warn: d.work.late > 0 },
   ]
   const textarea = "w-full rounded-lg border border-input bg-background p-3 text-[14px] leading-relaxed"
   const wordBlock = (key: "summary" | "next_steps" | "asks", label: string, rows: number, hint: string) => (
@@ -157,14 +161,10 @@ export default function Report({ user }: { user: User }) {
         </div>
       </header>
 
-      {intro && <p className="mt-3 whitespace-pre-line text-[14px] leading-relaxed">{intro}</p>}
+      {intro && <p className="mt-3 max-w-prose whitespace-pre-line text-[14px] leading-relaxed">{intro}</p>}
       <div className={cn("mt-4 grid grid-cols-2 gap-3", customer ? "lg:grid-cols-4" : "lg:grid-cols-5", hide("numbers"))}>
         {tiles.map((t) => (
-          <div key={t.label} className="panel p-4 print:shadow-none">
-            <div className="text-[12px] text-muted-foreground">{t.label}</div>
-            <div className={cn("mt-2 text-[24px] font-semibold leading-none tracking-tight", t.bad && "text-bad", t.warn && "text-warn")}>{t.value}</div>
-            <div className="mt-1 text-[12px] text-muted-foreground">{t.sub}</div>
-          </div>
+          <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.bad ? "bad" : t.warn ? "warn" : undefined} className="print:shadow-none" />
         ))}
       </div>
 
@@ -203,7 +203,7 @@ export default function Report({ user }: { user: User }) {
                 s.actual_start ? `${fmtDate(s.actual_start)} → ${s.actual_end ? fmtDate(s.actual_end) : "now"}` : s.status === "skipped" ? "skipped" : "—",
                 s.forecast_end ? `${fmtDate(s.forecast_start)} → ${fmtDate(s.forecast_end)}` : "—",
                 ...(customer ? [] : [slip(s.slip_days)])])}
-              tone={(i, c) => (c === 4 && (d.stages[i].slip_days ?? 0) > 0 ? "font-medium text-bad" : undefined)} />
+              tone={(i, c) => (c === 4 && (d.stages[i].slip_days ?? 0) > 0 ? "font-medium text-warn" : undefined)} />
           </div>
         </Section>
 
@@ -215,7 +215,7 @@ export default function Report({ user }: { user: User }) {
                   <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", i === 0 ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}>{i + 1}</span>
                   <span className="min-w-0 flex-1 font-medium">{m.stage}</span>
                   <span className="text-[13px] text-muted-foreground">{fmtDate(m.start)} → <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
-                  {!customer && m.planned_end && m.end && m.end > m.planned_end && <span className="text-[12px] font-medium text-bad">plan {fmtDate(m.planned_end)}</span>}
+                  {!customer && m.planned_end && m.end && m.end > m.planned_end && <span className="text-[12px] font-medium text-warn">plan {fmtDate(m.planned_end)}</span>}
                 </li>
               ))}
               {d.milestones.length === 0 && <li className="text-[13px] text-muted-foreground">Nothing left: the rollout is complete.</li>}
@@ -250,7 +250,7 @@ export default function Report({ user }: { user: User }) {
                     <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
                     <ChartTip {...tip} labelFormatter={(x) => `week of ${fmtDate(String(x))}`} />
                     <Area type="stepAfter" dataKey="total" name="Tasks known" stroke="var(--input)" fill="var(--muted)" isAnimationActive={false} />
-                    <Area type="stepAfter" dataKey="done" name="Done" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.25} isAnimationActive={false} />
+                    <Area type="stepAfter" dataKey="done" name="Done" stroke="var(--nav-fg)" fill="var(--nav-fg)" fillOpacity={0.25} isAnimationActive={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -259,7 +259,7 @@ export default function Report({ user }: { user: User }) {
               {d.work.by_stage.filter((b) => b.total).map((b) => (
                 <div key={b.stage} className="flex items-center gap-3">
                   <span className="w-32 truncate">{b.stage}</span>
-                  <span className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden><span className="bg-primary" style={{ width: `${(b.done / b.total) * 100}%` }} /><span className="bg-bad-line" style={{ width: `${(b.late / b.total) * 100}%` }} /></span>
+                  <span className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden><span className="bg-nav-fg/60" style={{ width: `${(b.done / b.total) * 100}%` }} /><span className="bg-bad-line" style={{ width: `${(b.late / b.total) * 100}%` }} /></span>
                   <span className="w-24 text-right tabular-nums text-muted-foreground">{b.done}/{b.total}{b.late ? <span className="text-bad"> · {b.late} late</span> : ""}</span>
                 </div>
               ))}
@@ -320,7 +320,7 @@ export default function Report({ user }: { user: User }) {
           </div>
         </Section>
       </div>
-      {closing && <p className="mt-4 whitespace-pre-line text-[14px] leading-relaxed">{closing}</p>}
+      {closing && <p className="mt-4 max-w-prose whitespace-pre-line text-[14px] leading-relaxed">{closing}</p>}
       <p className="mt-4 text-[12px] text-muted-foreground">Odin · {d.company} · {customer ? "customer copy" : "internal"} · generated {fmtWhen(d.generated_at, true)}</p>
     </div>
   )

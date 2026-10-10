@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react"
+import { filterSelect } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
 import { buttonVariants } from "@/components/ui/button"
 import { ApiError, audit, type AuditData, type User } from "@/lib/api"
@@ -9,8 +10,6 @@ import { actionText, dayBucket, fmtWhen } from "@/lib/format"
 import { UserAvatar } from "@/components/UserAvatar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const fmt = (iso: string) => fmtWhen(iso, true)
-const selectClass = "h-7 max-w-48 rounded-md border border-border bg-background px-2 text-[13px] font-medium text-nav-fg hover:bg-muted"
 
 export default function Audit(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
@@ -45,13 +44,13 @@ export default function Audit(_props: { user: User }) {
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <select value={params.get("user") ?? ""} onChange={(e) => update({ user: e.target.value || null })} aria-label="Filter by user" className={selectClass}>
+        <select value={params.get("user") ?? ""} onChange={(e) => update({ user: e.target.value || null })} aria-label="Filter by user" className={cn(filterSelect, "max-w-48")}>
           <option value="">All users</option>{data.usernames.map((u) => <option key={u} value={u}>{u}</option>)}
         </select>
-        <select value={params.get("action") ?? ""} onChange={(e) => update({ action: e.target.value || null })} aria-label="Filter by action" className={selectClass}>
+        <select value={params.get("action") ?? ""} onChange={(e) => update({ action: e.target.value || null })} aria-label="Filter by action" className={cn(filterSelect, "max-w-48")}>
           <option value="">All actions</option>{data.actions.map((a) => <option key={a} value={a}>{actionText(a)}</option>)}
         </select>
-        <select value={params.get("project_id") ?? ""} onChange={(e) => update({ project_id: e.target.value || null })} aria-label="Filter by project" className={selectClass}>
+        <select value={params.get("project_id") ?? ""} onChange={(e) => update({ project_id: e.target.value || null })} aria-label="Filter by project" className={cn(filterSelect, "max-w-48")}>
           <option value="">All projects</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <DatePicker value={params.get("from") ?? ""} onChange={(v) => update({ from: v || null })} label="From date" placeholder="From" className="h-8 w-40" />
@@ -73,8 +72,8 @@ export default function Audit(_props: { user: User }) {
               return (<Fragment key={r.id}>
               {head && <tr className="bg-muted/50"><th scope="rowgroup" colSpan={6} className="px-3 py-1 text-left text-[12px] font-semibold text-nav-fg">{day}</th></tr>}
               <tr className="border-b border-border align-top last:border-0 hover:bg-muted">
-                <td className="whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground">{fmt(r.timestamp)}</td>
-                <td className="px-3 py-2"><span className="inline-flex items-center gap-2 wrap-anywhere"><UserAvatar name={r.username || "?"} className="h-5 w-5 shrink-0" />{r.username}</span></td>
+                <td className="whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground">{fmtWhen(r.timestamp, true)}</td>
+                <td className="px-3 py-2"><span className="inline-flex items-center gap-2 whitespace-nowrap"><UserAvatar name={r.username || "?"} className="h-5 w-5 shrink-0" />{r.username}</span></td>
                 <td className="px-3 py-2" title={r.action}>{actionText(r.action)}</td>
                 <td className="px-3 py-2">
                   {/* the name when there is one; "Project 40" only when the record has none */}

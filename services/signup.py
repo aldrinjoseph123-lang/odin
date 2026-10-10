@@ -5,7 +5,6 @@ waits as a pending account until an admin approves it (the Users page, as for
 Microsoft sign-in requests). Approval activates the account and, when the link
 named one, adds them to the project. Only a SHA-256 of the token is stored.
 """
-import hashlib
 import secrets
 from datetime import datetime, timedelta
 
@@ -14,15 +13,12 @@ from werkzeug.security import generate_password_hash
 from constants import PROJECT_MANAGER, PROJECT_ROLES, EXTERNAL_PROJECT_ROLES
 from db import get_db
 from policies import policy
-from security import password_problem, valid_email
+from security import password_problem, token_hash, valid_email
 
 LINK_ROLES = ("Member", "Contributor", "Viewer")                                  # never Admin by link
 PROJECT_LINK_ROLES = tuple(r for r in PROJECT_ROLES if r != PROJECT_MANAGER and r not in EXTERNAL_PROJECT_ROLES)
 CHANNELS = ("email", "teams")
 
-
-def _hash(raw):
-    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def create(label, role, project_id, project_role, days, max_uses, author):
@@ -51,7 +47,7 @@ def create(label, role, project_id, project_role, days, max_uses, author):
     now = datetime.utcnow()
     db.execute("INSERT INTO signup_links (token_hash, label, role, project_id, project_role, max_uses, expires_at, created_by, created_at) "
                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-               (_hash(raw), label, role, project_id, project_role, max_uses, (now + timedelta(days=days)).isoformat(), author, now.isoformat()))
+               (token_hash(raw), label, role, project_id, project_role, max_uses, (now + timedelta(days=days)).isoformat(), author, now.isoformat()))
     db.commit()
     return raw
 
@@ -97,7 +93,7 @@ def lookup(raw):
     if not policy("signup_enabled"):
         return None
     row = get_db().execute("SELECT l.*, p.name AS project FROM signup_links l LEFT JOIN projects p ON p.id = l.project_id WHERE token_hash = ?",
-                           (_hash(raw or ""),)).fetchone()
+                           (token_hash(raw or ""),)).fetchone()
     if not row or row["revoked_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["uses"] >= row["max_uses"]:
         return None
     return row

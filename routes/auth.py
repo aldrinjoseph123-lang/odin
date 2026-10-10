@@ -25,7 +25,7 @@ from security import (
     valid_email,
 )
 from services.audit import audit_log
-from spa import spa_index, spa_serves
+from spa import spa_index
 
 
 _NO_ACCOUNT_HASH = generate_password_hash("no account has this password", method="pbkdf2:sha256")
@@ -125,7 +125,6 @@ def start_session(user):
     session["user_name"] = user["name"]
     session["role"] = user["role"]
     session["kind"] = user["kind"]
-    session["dismissed_alerts"] = {}  # fresh login = every real alert shows again
     session["must_change_password"] = bool(user["must_change_password"])
     session["login_at"] = datetime.utcnow().isoformat()
     session["epoch"] = user["session_epoch"]
@@ -167,8 +166,6 @@ def auth_link_request():
     rate limited per address and IP."""
     if session.get("user_id") and request.method == "GET":
         return redirect(home_url())     # already in; a stale link just lands them home
-    if request.method == "GET" and spa_serves("auth_link_request"):
-        return spa_index()
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         if not valid_email(email):
@@ -187,7 +184,7 @@ def auth_link_request():
             audit_log("login_link_requested", "user", user["id"] if user else None, email, actor=email)
             flash("If that address is on a project, a sign-in link is on its way")
         return redirect(url_for("auth_link_request"))
-    return render_template("auth_link.html")
+    return spa_index()
 
 
 @app.route("/auth/reset", methods=["GET", "POST"])
@@ -196,7 +193,7 @@ def auth_reset_request():
     same whether or not the address is known, and requests are limited per
     address. Partner accounts have no password: they use the sign-in link."""
     if request.method == "GET":
-        return spa_index() if spa_serves("auth_reset_request") else redirect(url_for("login"))
+        return spa_index()
     email = request.form.get("email", "").strip().lower()
     if not valid_email(email):
         flash("Enter the email address on your account", "error")
@@ -236,13 +233,13 @@ def auth_reset_form(token):
     account ends, as after an admin reset."""
     if request.method == "GET":
         if reset_link_row(token) is None:   # say so before anyone types a password (test report UX-27)
-            flash("That reset link is invalid or has expired — request a new one")
+            flash("That reset link is invalid or has expired — request a new one", "error")
             return redirect(url_for("auth_reset_request"))
-        return spa_index() if spa_serves("auth_reset_form") else redirect(url_for("login"))
+        return spa_index()
     row = reset_link_row(token)
     if row is None:
         audit_log("password_reset_rejected", details="invalid, expired, used or wrong kind of link", actor="link")
-        flash("That reset link is invalid or has expired — request a new one")
+        flash("That reset link is invalid or has expired — request a new one", "error")
         return redirect(url_for("auth_reset_request"))
     new_password = request.form.get("new_password", "")
     problem = password_problem(new_password)
@@ -269,16 +266,11 @@ def auth_link_consume(token):
     links, and a GET that signed in would burn the one-time link before the
     person ever clicked it. The button's POST is what signs in."""
     if request.method == "GET":
-        if spa_serves("auth_link_consume"):
-            return spa_index()
-        from flask import render_template_string
-        return render_template_string(
-            '<!doctype html><title>Sign in · Odin</title><form method="post"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">'
-            '<button type="submit">Continue to Odin</button></form>')
+        return spa_index()
     user = consume_login_link(token)
     if user is None:
         audit_log("login_link_rejected", details="invalid, expired, used, or account inactive", actor="link")
-        flash("That sign-in link is invalid or has expired — request a new one")
+        flash("That sign-in link is invalid or has expired — request a new one", "error")
         return redirect(url_for("auth_link_request", expired=1))   # the React page reads ?expired
     start_session(user)
     audit_log("login_success", "user", user["id"], user["username"], "sign-in link", actor=user["username"])
@@ -310,20 +302,16 @@ def login():
         ok, message = attempt_login(request.form.get("username", "").strip(), request.form.get("password", ""))
         if ok:
             return redirect(safe_next_url() or home_url())
-        flash("Two-step sign-in needs Odin's web app to enter the code" if message == MFA_NEEDED else message)
-        return render_template("login.html")
-    if spa_serves("login"):
-        return spa_index()
-    return render_template("login.html")
+        flash("Two-step sign-in needs Odin's web app to enter the code" if message == MFA_NEEDED else message, "error")
+        return render_template("login.html")   # the form fallback for a non-JS client's failed POST
+    return spa_index()
 
 
 @app.route("/login/password")
 def login_password():
     """The emergency password form, for accounts an admin flagged, once staff
     must use Microsoft. Same POST as /login; this address just shows the form."""
-    if spa_serves("login_password"):
-        return spa_index()
-    return render_template("login.html")
+    return spa_index()
 
 
 @app.route("/healthz")
@@ -341,15 +329,10 @@ def robots():
     return "User-agent: *\nDisallow: /\n", 200, {"Content-Type": "text/plain"}
 
 
-@app.route("/logout", methods=["GET", "POST"])
+@app.route("/logout", methods=["POST"])
 def logout():
-    """POST signs out. A GET (the legacy pages' link) only shows the button, so
-    another site cannot sign someone out by linking here."""
-    if request.method == "GET" and "user_id" in session:
-        from flask import render_template_string
-        return render_template_string(
-            '<!doctype html><title>Sign out · Odin</title><form method="post"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">'
-            '<button type="submit">Sign out of Odin</button></form>')
+    """POST only, so another site cannot sign someone out by linking here.
+    The React app signs out through /api/logout."""
     from core import end_session
     end_session()
     return redirect(url_for("login"))
@@ -392,8 +375,6 @@ def account_home():
 @app.route("/account", methods=["GET", "POST"])
 @login_required
 def account():
-    if request.method == "GET" and spa_serves("account"):
-        return spa_index()
     if request.method == "POST":
         current = request.form.get("current_password", "")
         new_password = request.form.get("new_password", "")
@@ -418,8 +399,7 @@ def account():
             audit_log("change_own_password", "user", session["user_id"], session.get("user_name"))
             flash("Password updated")
         return redirect(url_for("account"))
-    user = get_db().execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
-    return render_template("account.html", user=user)
+    return spa_index()
 
 
 @app.route("/account/name", methods=["POST"])

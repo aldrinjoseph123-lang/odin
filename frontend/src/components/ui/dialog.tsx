@@ -132,7 +132,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "font-heading text-base leading-none font-medium",
+        "font-heading text-[17px] leading-tight font-semibold",   // a page title's size (six-size rule)
         className
       )}
       {...props}

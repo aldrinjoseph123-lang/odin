@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react"
+import { chip } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
 import { alerts, ApiError, type AlertsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -6,8 +7,6 @@ import { Pager } from "@/components/Pager"
 import { fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-const fmt = (iso: string) => fmtWhen(iso, true)
-const chip = (on: boolean) => cn("h-7 rounded-full border px-3 text-[13px] font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border text-nav-fg hover:bg-muted")
 
 export default function Alerts(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
@@ -57,15 +56,15 @@ export default function Alerts(_props: { user: User }) {
                   {/* phones: one stacked receipt */}
                   <div className="mt-1 text-[12px] text-muted-foreground sm:hidden">
                     {a.project_id && a.project_name && <><a href={`/board?rollout=${a.project_id}`} className="text-foreground hover:underline">{a.project_name}</a> · </>}
-                    {fmt(a.created_at)} · {a.resolved ? "Resolved" : "Open"}
+                    {fmtWhen(a.created_at, true)} · {a.resolved ? "Resolved" : "Open"}
                   </div></td>
                 <td className="hidden px-3 py-2 wrap-anywhere sm:table-cell">{a.project_id && a.project_name ? <a href={`/board?rollout=${a.project_id}`} className="hover:underline">{a.project_name}</a> : "—"}</td>
-                <td className="hidden whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground sm:table-cell">{fmt(a.created_at)}</td>
-                <td className="hidden whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground sm:table-cell">{a.resolved ? `Resolved ${a.resolved_at ? fmt(a.resolved_at) : ""}` : "Open"}</td>
+                <td className="hidden whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground sm:table-cell">{fmtWhen(a.created_at, true)}</td>
+                <td className="hidden whitespace-nowrap px-3 py-2 text-right text-[12px] text-muted-foreground sm:table-cell">{a.resolved ? `Resolved ${a.resolved_at ? fmtWhen(a.resolved_at, true) : ""}` : "Open"}</td>
               </tr>
               </Fragment>)
             })}
-            {d.rows.length === 0 && <tr><td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">No alerts — every rollout is inside its dates and SLAs.</td></tr>}
+            {d.rows.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-[13px] text-muted-foreground">No alerts — every rollout is inside its dates and SLAs.</td></tr>}
           </tbody>
         </table>
       </div>

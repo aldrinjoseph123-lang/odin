@@ -14,12 +14,8 @@ from werkzeug.routing import IntegerConverter
 
 from datetime import datetime, timedelta
 
-from constants import (
-    DELIVERY_MODES,
-    PERMISSIONS,
-    VIA_OPTIONS,
-)
-from db import get_db, get_doc_category_names, get_setting, get_stage_names, project_role_of
+from constants import PERMISSIONS
+from db import get_db, project_role_of
 from security import csrf_token, init_security
 
 DEV_SECRET = "dev-secret-change-me"
@@ -91,16 +87,11 @@ def undo_note():
     return f"({policy('undo_minutes')} min window)"
 
 
-def undo_button(label, endpoint, **values):
-    """Render an inline POST form styled as a link — used inside flash messages
-    so 'undo' is a state-changing POST (CSRF-protected), not a bare GET link a
-    cross-site <img> could trigger."""
-    return Markup(
-        f"<form method='post' action='{escape(url_for(endpoint, **values))}' style='display:inline'>"
-        f"<input type='hidden' name='_csrf' value='{escape(csrf_token())}'>"
-        f"<button type='submit' class='link-btn' style='font-weight:600'>{escape(label)}</button>"
-        f"</form>"
-    )
+def offer_undo(endpoint, **values):
+    """Offer an Undo on this reply: json_for_fetch hands the address to the
+    React page, which POSTs there (CSRF-protected, never a GET a cross-site
+    <img> could trigger)."""
+    g.undo_url = url_for(endpoint, **values)
 
 
 ERROR_COPY = {
@@ -232,18 +223,30 @@ def _auth_gate():
     logged in with a forced password change pending → account page. Returns
     the redirect to send, or None to let the view run."""
     if "user_id" not in session:
-        return redirect(url_for("login", next=request.path))
+        return _turned_away("Sign in to carry on", url_for("login", next=request.path), signed_out=True)
     if not _session_still_valid():
         session.clear()
-        flash("Your session has ended — please sign in again")
-        return redirect(url_for("login", next=request.path))
+        return _turned_away("Your session has ended — please sign in again", url_for("login", next=request.path), signed_out=True)
     if session.get("must_change_password") and request.endpoint not in PASSWORD_CHANGE_ALLOWED:
-        flash("Set a new password before continuing")
-        return redirect(url_for("account"))
+        return _turned_away("Set a new password before continuing", url_for("account"))
     if session.get("must_enroll_mfa") and request.endpoint not in MFA_SETUP_ALLOWED:
-        flash("Set up two-step sign-in before continuing")
-        return redirect(url_for("account"))
+        return _turned_away("Set up two-step sign-in before continuing", url_for("account"))
     return None
+
+
+def _turned_away(message, to, signed_out=False):
+    """A page load is redirected (with the reason flashed); a fetch from the
+    React app gets JSON it can act on. Following a redirect, fetch would
+    read the sign-in page as a 200 and a lost save as a success."""
+    if request.path.startswith("/api/") or request.headers.get("Accept") == "application/json":
+        reply = jsonify(error=message, signed_out=signed_out)
+        reply.status_code = 401 if signed_out else 403
+        if signed_out:
+            reply.headers["X-Odin-Signed-Out"] = "1"   # the client reads it after the body is gone
+        return reply
+    if message != "Sign in to carry on":   # a plain visit to the sign-in page needs no banner
+        flash(message)
+    return redirect(to)
 
 
 def _session_still_valid():
@@ -303,21 +306,6 @@ def admin_required(view):
     return wrapped
 
 
-def write_required(view):
-    """Blocks the Viewer (read-only) role from mutating routes."""
-
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        gate = _auth_gate()
-        if gate:
-            return gate
-        if session.get("role") == "Viewer":
-            abort(403)
-        return view(*args, **kwargs)
-
-    return wrapped
-
-
 def role_has_permission(role, permission):
     db = get_db()
     row = db.execute(
@@ -360,22 +348,29 @@ def json_for_fetch(response):
             # client can tell "signed out"; a route that finishes on the
             # sign-in page (a password reset) is an ordinary reply
             and "/login?next=" not in (response.headers.get("Location") or "")):
-        import re
-        messages, errors, undo = [], [], None
+        messages, errors = [], []
         for category, m in get_flashed_messages(with_categories=True):
-            html = str(m)
-            found = re.search(r"action='(/undo/[^']+)'", html)
-            if found:
-                undo = found.group(1)
-            messages.append(re.sub(r"<[^>]+>", "", html).replace("  ", " ").strip())
+            messages.append(str(m))
             if category == "error":
                 errors.append(messages[-1])
         if errors:   # a refused form (flash(…, "error")): the page shows it as a failure, not a success
             refused = jsonify(ok=False, error=errors[0], messages=messages)
             refused.status_code = 400   # an after_request hook returns a response, not a (body, code) tuple
             return refused
-        return jsonify(ok=True, messages=messages, undo=undo, location=response.headers.get("Location"))
+        return jsonify(ok=True, messages=messages, undo=g.get("undo_url"), location=response.headers.get("Location"))
     return response
+
+
+def sees_po(project_id):
+    """The client's PO is ours and the customer's: staff, and the project's
+    Customer contact. Partners and contractors never see it."""
+    return session.get("kind") != "external" or project_role_of(project_id, session["user_id"]) == "Customer"
+
+
+def like_any(text):
+    """A LIKE pattern that finds `text` anywhere, with % and _ matching
+    themselves (the SQL says ESCAPE '\\')."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
 def project_allows(project_id, action):
@@ -448,19 +443,5 @@ def nav_counts():
 
 @app.context_processor
 def inject_globals():
-    return {
-        **nav_counts(),
-        "STAGES": get_stage_names(),
-        "DOC_CATEGORIES": get_doc_category_names(),
-        "DELIVERY_MODES": DELIVERY_MODES,
-        "VIA_OPTIONS": VIA_OPTIONS,
-        "current_user": session.get("user_name"),
-        "is_admin": session.get("role") == "Admin",
-        # is_viewer = "hide every edit control": Viewers, and external
-        # partners, who only read and comment. The routes enforce the same.
-        "is_viewer": session.get("role") == "Viewer" or session.get("kind") == "external",
-        "is_external": session.get("kind") == "external",
-        "can_note": role_has_permission(session.get("role"), "add_project_note"),
-        "guest_links_enabled": get_setting("guest_links_enabled", "1") == "1",
-        "session_user_id": session.get("user_id"),
-    }
+    # the error page offers "Back to the flow" to someone signed in
+    return {"current_user": session.get("user_name")}

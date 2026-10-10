@@ -7,7 +7,6 @@ import graph — routes and services import from here, not the reverse.
 import os
 import re
 import secrets
-import shutil
 import sqlite3
 from datetime import datetime, timedelta
 
@@ -71,12 +70,14 @@ def get_db():
 
 
 def soft_delete(table, item_id):
-    """Mark row as deleted; recoverable for the undo window (policy undo_minutes)."""
+    """Mark row as deleted; recoverable for the undo window (policy undo_minutes).
+    Returns True when a live row was deleted (False: no such row, or gone already)."""
     assert_safe_table(table)  # identifiers can't be parameterised — allowlist instead
     db = get_db()
     now = datetime.utcnow().isoformat()
-    db.execute(f"UPDATE {table} SET deleted_at = ? WHERE id = ?", (now, item_id))
+    done = db.execute(f"UPDATE {table} SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", (now, item_id)).rowcount
     db.commit()
+    return bool(done)
 
 
 def restore_deleted(table, item_id):
@@ -253,6 +254,13 @@ def migrate_db(db):
         db.execute("UPDATE users SET accent = 'red' WHERE accent = 'blue' OR accent IS NULL")
         db.execute("UPDATE settings SET value = 'red' WHERE key = 'policy.default_accent' AND value = 'blue'")
         db.execute("INSERT INTO settings (key, value) VALUES ('migrated.accent_red', '1')")
+    # 10 Oct 2026: blue is the default again (the user's call, after the critique found the
+    # red accent's text matched the overdue red). Once: everyone on red, and the workspace
+    # default, move to blue; red stays on the Account page for anyone who picks it again.
+    if not db.execute("SELECT 1 FROM settings WHERE key = 'migrated.accent_blue'").fetchone():
+        db.execute("UPDATE users SET accent = 'blue' WHERE accent = 'red' OR accent IS NULL")
+        db.execute("UPDATE settings SET value = 'blue' WHERE key = 'policy.default_accent' AND value = 'red'")
+        db.execute("INSERT INTO settings (key, value) VALUES ('migrated.accent_blue', '1')")
     if role_column_is_new:
         # pre-RBAC installs: promote the original (lowest-id) user to Admin once
         db.execute("UPDATE users SET role = 'Admin' WHERE id = (SELECT MIN(id) FROM users)")
@@ -463,6 +471,11 @@ def migrate_db(db):
     if "partners" not in {row[1] for row in db.execute("PRAGMA table_info(doc_categories)")}:
         db.execute("ALTER TABLE doc_categories ADD COLUMN partners INTEGER NOT NULL DEFAULT 1")
         db.execute("UPDATE doc_categories SET partners = 0 WHERE name = ?", (CLIENT_PO_DOC_CATEGORY,))
+    # Every project has a vendor guest-link token. The old Jinja project page
+    # minted a missing one on view; since the page is React (9 Oct 2026) this
+    # fills them once instead.
+    for (pid,) in db.execute("SELECT id FROM projects WHERE access_token IS NULL").fetchall():
+        db.execute("UPDATE projects SET access_token = ? WHERE id = ?", (secrets.token_urlsafe(16), pid))
     # A product belongs to one vendor (9 Oct 2026, the user's call); older
     # products stay "any vendor" until an admin picks one.
     if "vendor_id" not in {row[1] for row in db.execute("PRAGMA table_info(products)")}:
@@ -945,13 +958,6 @@ def get_setting(key, default=""):
     db = get_db()
     row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else default
-
-
-def get_setting_int(key, default):
-    try:
-        return int(get_setting(key, str(default)))
-    except ValueError:
-        return default
 
 
 def set_setting(key, value):
