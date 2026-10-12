@@ -11,7 +11,7 @@ export function Segmented<T extends string | number>({ value, options, onChange,
 }) {
   const move = (e: KeyboardEvent<HTMLDivElement>) => {
     const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0
-    if (!step) return
+    if (!step || disabled) return
     e.preventDefault()
     const i = (options.findIndex((o) => o.value === value) + step + options.length) % options.length
     onChange(options[i].value)
