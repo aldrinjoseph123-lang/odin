@@ -35,7 +35,7 @@ export default function Analytics(_props: { user: User }) {
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {d.templates.map((t) => <button key={t.id} type="button" onClick={() => setParams({ template: String(t.id) })} aria-pressed={t.id === d.template_id} className={chip(t.id === d.template_id)}>{t.name}</button>)}
-        {d.custom_count > 0 && <span className="text-[12px] text-muted-foreground">{d.custom_count} project{d.custom_count === 1 ? "" : "s"} on a custom stage list (not compared)</span>}
+        {d.custom_count > 0 && <span className="text-[12px] text-muted-foreground">{d.custom_count} rollout{d.custom_count === 1 ? "" : "s"} on a custom stage list (not compared)</span>}
       </div>
       {!s ? <EmptyState className="mt-4">No stage template yet — create one in Settings.</EmptyState> : (
         <>

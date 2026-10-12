@@ -393,7 +393,7 @@ export default function Signoff(_props: { user: User }) {
 
       <Dialog open={dialog === "upload"} onOpenChange={(o) => { if (!o) setDialog(null) }}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Upload the signed copy</DialogTitle><DialogDescription>For version {cur?.version}. It completes the sign-off and is filed under the project's documents.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Upload the signed copy</DialogTitle><DialogDescription>For version {cur?.version}. It completes the sign-off and is filed under the rollout's documents.</DialogDescription></DialogHeader>
           <form onSubmit={upload} className="grid grid-cols-1 gap-3">
             <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed copy (PDF or image)<input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg" /></label>
             <div className="grid grid-cols-2 gap-2">

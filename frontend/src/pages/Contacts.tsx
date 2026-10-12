@@ -46,10 +46,10 @@ function UsedIn({ used, name }: { used: ProjectRef[]; name: string }) {
   return (
     <Popover>
       <PopoverTrigger render={<button type="button" />} className="rounded-sm text-primary-text hover:underline" aria-label={`Rollouts that use ${name}`}>
-        {used.length} project{used.length === 1 ? "" : "s"}
+        {used.length} rollout{used.length === 1 ? "" : "s"}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 gap-1 p-2">
-        <p className="px-2 pb-1 text-[12px] text-muted-foreground">Projects that name {name}</p>
+        <p className="px-2 pb-1 text-[12px] text-muted-foreground">Rollouts that name {name}</p>
         <ul className="max-h-64 overflow-y-auto">
           {used.map((p) => <li key={p.id}><Link to={`/projects/${p.id}`} className="block truncate rounded-md px-2 py-1 text-[13px] hover:bg-muted">{p.name || `Rollout ${p.id}`}</Link></li>)}
         </ul>

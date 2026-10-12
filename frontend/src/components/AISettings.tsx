@@ -158,7 +158,7 @@ function Status({ view, busy, send }: { view: AIView; busy: boolean; send: Send 
           <Button size="sm" variant="outline" disabled={busy || running || s.state === "off"} onClick={() => send("/settings/ai/validate")}>Validate now</Button>
           {job && <span className="text-[13px] text-muted-foreground">{
             job.status === "queued" ? <>Validation waiting to start (asked <Ago iso={job.created_at} />)…</>
-              : job.status === "running" ? <>Validating every feature on its test project (started {job.started_at ? <Ago iso={job.started_at} /> : "now"})…</>
+              : job.status === "running" ? <>Validating every feature on its test rollout (started {job.started_at ? <Ago iso={job.started_at} /> : "now"})…</>
                 : job.status === "failed" ? <>Last validation stopped: {job.error}</>
                   : job.result && !job.result.ok ? <>Last validation <Ago iso={job.finished_at ?? job.created_at} />: {job.result.reason}</>
                     : <>Last validation <Ago iso={job.finished_at ?? job.created_at} />{job.result?.model ? <> on <span className="font-mono">{job.result.model}</span></> : null}.{job.payload?.reason ? ` Started because ${job.payload.reason}.` : ""}</>

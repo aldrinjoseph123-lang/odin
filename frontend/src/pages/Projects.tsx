@@ -211,7 +211,7 @@ export default function Projects({ user }: { user: User }) {
             onPage={(n) => { const q = new URLSearchParams(params); q.set("page", String(n)); setParams(q) }} />
           <span>·</span>
         </>}
-        <span>{data.total} project{data.total === 1 ? "" : "s"}</span>
+        <span>{data.total} rollout{data.total === 1 ? "" : "s"}</span>
       </div>
     </div>
   )

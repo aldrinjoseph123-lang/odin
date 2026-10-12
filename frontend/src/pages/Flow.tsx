@@ -623,7 +623,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {d.can_move && d.next_stage && d.signoff?.needed && !d.signoff.awaiting_me && (
           <section className="panel p-3">
             <H className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</H>
-            <p className="mb-2 text-[13px] text-muted-foreground">{signoffText(d.signoff.status)}. The project closes once the customer has signed and we have countersigned.</p>
+            <p className="mb-2 text-[13px] text-muted-foreground">{signoffText(d.signoff.status)}. The rollout closes once the customer has signed and we have countersigned.</p>
             <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>{d.signoff.status ? "Open the sign-off" : "Prepare the sign-off"}</Link>
           </section>
         )}

@@ -174,7 +174,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
       </div>
       <section className="panel sticky top-4 flex min-h-[70vh] flex-col p-2" aria-label="Preview">
         {preview ? <iframe src={preview} title="Template preview" className="h-full min-h-[70vh] w-full flex-1 rounded-lg border-0 bg-white" />
-          : <div className="grid grid-cols-1 flex-1 place-items-center p-6 text-center text-[13px] text-muted-foreground">Preview renders this template on your newest project{edit.kind === "portfolio" ? "s" : ""}, before you save it.</div>}
+          : <div className="grid grid-cols-1 flex-1 place-items-center p-6 text-center text-[13px] text-muted-foreground">Preview renders this template on your newest rollout{edit.kind === "portfolio" ? "s" : ""}, before you save it.</div>}
       </section>
     </div>
   )
