@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
+import { StateChip } from "@/components/StateChip"
 import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { Calendar } from "@/pages/Calendar"
@@ -173,15 +174,15 @@ function NextLine({ r, today }: { r: FlowRow; today: string }) {
 function RolloutRow({ r, selected, tabStop, onSelect, today, me }: {
   r: FlowRow; selected: boolean; tabStop: boolean; onSelect: (id: number) => void; today: string; me: number
 }) {
-  const chip = <span className={cn("whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
-    <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
+  const chip = r.state === "on_track" ? <span className="whitespace-nowrap text-[12px] text-muted-foreground"><span className="sr-only">On track: </span>{stateText(r)}</span>
+    : <StateChip state={r.state} text={stateText(r)} />
   // The viewer is on most of their own rows: show who else is.
   const others = r.team.filter((p) => p.id !== me)
   const t = r.next_task
   return (
     <li>
       <button type="button" data-row data-id={r.id} onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={tabStop ? 0 : -1}
-        aria-label={`${r.name}${r.name.includes(r.client) ? "" : `, ${r.client}`}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
+        aria-label={`${r.name}${r.name.includes(r.client) ? "" : `, ${r.client}`}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : `${STATE[r.state].label}, ${stateText(r)}`}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
         className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
           "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] md:gap-x-4 md:gap-y-1",
           selected ? "border-transparent bg-muted shadow-[inset_3px_0_0_var(--ring)]" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
@@ -502,7 +503,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           <div className="flex flex-wrap items-center gap-2">
             {d.approval && d.approval.stage === d.stage && <ApprovalChip status={d.approval.status} className="px-2 py-1 text-[12px]" />}
             {closed && <span className="rounded-md bg-ok-soft px-2 py-1 text-[12px] font-medium text-ok">Closed{closedOn ? ` on ${fmtDate(closedOn)}` : ""}</span>}
-            {!closed && d.state !== "on_track" && <span className={cn("rounded-md px-2 py-1 text-[12px] font-medium", STATE[d.state].chip)}>{stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })}</span>}
+            {/* the project page shows the plan's verdict in its title row instead (one health, not two) */}
+            {!closed && !standalone && <StateChip state={d.state} text={stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })} />}
             {!standalone && <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>}
             {!standalone && <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open project <ExternalLink className="h-3.5 w-3.5" /></a>}
             {onClose && <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close this rollout (Esc)" title="Close (Esc)"><X className="h-4 w-4" /></Button>}

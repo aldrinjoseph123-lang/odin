@@ -25,7 +25,7 @@ from services.analytics import _parse, sla_by_stage, stage_sla_state
 COUNT_KEYS = ("active", "overdue", "over_sla", "due_soon", "awaiting", "idle")
 LAYOUT_KEY = "dashboard.layout"
 HISTORY_DAYS = 14
-STATE_LABEL = {"overdue": "Overdue", "over_sla": "Over SLA", "due_soon": "Due soon", "on_track": "On track"}
+STATE_LABEL = {"overdue": "Off track", "over_sla": "At risk", "due_soon": "At risk", "on_track": "On track"}   # plan words (frontend lib/state.ts)
 # what a custom widget can count; each is a list of {key, count} in `aggregates`
 MEASURES = ("rollouts_by_stage", "rollouts_by_client", "rollouts_by_state", "rollouts_by_owner", "rollouts_by_mode",
             "open_tasks_by_person", "done_tasks_by_person", "tasks_done_per_day")
@@ -392,7 +392,7 @@ def build(scope, user_id):
     aggregates = {
         "rollouts_by_stage": [{"key": s["stage"], "count": s["count"]} for s in stages],
         "rollouts_by_client": agg(p["client"] for p in projects),
-        "rollouts_by_state": [{"key": STATE_LABEL[k], "count": n} for k, n in Counter(state(p) for p in projects).most_common()],
+        "rollouts_by_state": [{"key": k, "count": n} for k, n in Counter(STATE_LABEL[state(p)] for p in projects).most_common()],
         "rollouts_by_owner": agg(p["owner_name"] for p in projects),
         "rollouts_by_mode": agg(p["delivery_mode"] for p in projects),
         "open_tasks_by_person": [{"key": m["name"], "count": m["open"]} for m in people if m["open"]],

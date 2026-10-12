@@ -21,7 +21,7 @@ const VIEWS: { key: string; label: string; params: Record<string, string> }[] = 
   { key: "closed", label: "All", params: { closed: "1" } },
   { key: "overdue", label: "Overdue", params: { view: "overdue" } },
   { key: "at_risk", label: "Due soon", params: { view: "at_risk" } },
-  { key: "stale", label: "Stale", params: { view: "stale" } },
+  { key: "stale", label: "Idle", params: { view: "stale" } },
 ]
 const COLUMNS: { key: string; label: string; className?: string }[] = [
   { key: "name", label: "Project" }, { key: "client", label: "Client", className: "hidden sm:table-cell" },
@@ -180,7 +180,7 @@ export default function Projects({ user }: { user: User }) {
                   <td className="hidden px-3 py-2 text-muted-foreground lg:table-cell">{r.po_number ?? "—"}</td>
                   <td className="px-3 py-2">
                     <a href={`/board?rollout=${r.id}`} className="flex items-center gap-3" title="Open on the flow">
-                      <span className="w-24 shrink-0"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={false} /></span>
+                      <span className="w-24 shrink-0"><Stepper compact stages={r.stages} index={r.stage_index} state={r.state} selected={false} /></span>
                       <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage}</span>
                       <StateChip state={r.state} target={r.target_end_date} />
                     </a>

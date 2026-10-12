@@ -11,7 +11,6 @@ from policies import local_date, local_today, policy
 from services.alerts import project_states as _states
 from services.analytics import days_in_stage, sla_by_stage, stage_sla_state
 
-STATE_LABEL = {"overdue": "Overdue", "over_sla": "Over SLA", "due_soon": "Due soon", "on_track": "On track"}
 
 
 def _since(day):

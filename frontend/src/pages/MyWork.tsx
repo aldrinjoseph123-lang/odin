@@ -161,7 +161,7 @@ export default function MyWork({ user }: { user: User }) {
                     <span className="shrink-0 text-[12px] text-muted-foreground">{p.role}</span>
                   </div>
                   <div className="mt-1 flex items-center gap-3 pl-4">
-                    <span className="w-24 shrink-0"><Stepper stages={p.stages} index={p.stage_index} state={p.state} selected={false} /></span>
+                    <span className="w-24 shrink-0"><Stepper compact stages={p.stages} index={p.stage_index} state={p.state} selected={false} /></span>
                     <span className="truncate text-[13px]">{p.stage}</span>
                     <StateChip state={p.state} className="ml-auto" quiet={p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target"}
                       text={stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })} />

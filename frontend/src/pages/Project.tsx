@@ -23,7 +23,7 @@ import { LessonsPanel } from "@/components/LessonsPanel"
 import { ApiError, flowDetail, plan, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type PlanData, type ProjectExtras, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
-import { dayBucket, fmtWhen } from "@/lib/format"
+import { dayBucket, fmtDate, fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 // a 14 px bin with a 24 px target (the pseudo-element), kept clear of its neighbours
@@ -107,7 +107,12 @@ export default function Project({ user }: { user: User }) {
           </BreadcrumbList>
         </Breadcrumb>
         {/* health first: the plan's verdict and its main reason, in the title row (critique 10 Oct) */}
-        {health && <span className="flex min-w-0 items-center gap-2"><RagPill rag={health.rag} />{health.reasons[0] && <span className="truncate text-[13px] text-muted-foreground" title={health.reasons.join(" · ")}>{health.reasons[0]}</span>}</span>}
+        {/* the plan already counts overdue and over-SLA; "due soon" is the schedule's alone, so show the worse of the two */}
+        {health && (() => {
+          const due = d.state === "due_soon" && health.rag === "green"
+          const reasons = due ? [`Due ${fmtDate(d.target_end_date)}.`] : health.reasons
+          return <span className="flex min-w-0 items-center gap-2"><RagPill rag={due ? "amber" : health.rag} />{reasons[0] && <span className="truncate text-[13px] text-muted-foreground" title={reasons.join(" · ")}>{reasons[0]}</span>}</span>
+        })()}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a href={`/board?rollout=${id}`} className={buttonVariants({ variant: "ghost", size: "sm" })}>On the flow</a>
           <a href={`/projects/${id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>

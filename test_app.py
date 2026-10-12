@@ -1575,7 +1575,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # every setting sits on a titled card
         everything = c.get("/api/settings").get_json()["policies"]
         self.assertEqual([p["key"] for p in everything if not p["group"]], [])
-        self.assertEqual({p["group"] for p in everything if p["area"] == "workflow"}, {"Defaults", "Stage timing", "Health colours", "Sign-off", "Customer approval"})
+        self.assertEqual({p["group"] for p in everything if p["area"] == "workflow"}, {"Defaults", "Stage timing", "Plan health", "Sign-off", "Customer approval"})
         # only admins, and only known areas
         self.assertEqual(c.post("/settings/policies/nope", data={}, headers=h).status_code, 404)
 

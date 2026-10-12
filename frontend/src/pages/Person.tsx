@@ -13,7 +13,8 @@ import { ApiError, notifyPerson, person, type PersonData, type User } from "@/li
 import { cn } from "@/lib/utils"
 import { ActivityPanel } from "@/components/ActivityPanel"
 import { STATE } from "@/lib/state"
-import { fmtDate, lateBy, shortDay } from "@/lib/format"
+import { fmtDate, lateBy, shortDay, stateText } from "@/lib/format"
+import { StateChip } from "@/components/StateChip"
 
 // One person: what they carry, how it is going, what they did, and a way to
 // reach them that lands in their bell and their inbox.
@@ -97,9 +98,10 @@ export default function Person(_props: { user: User }) {
                   <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
                 </div>
                 <div className="mt-1 flex items-center gap-3 pl-4">
-                  <span className="w-20 shrink-0"><Stepper stages={p.stages} index={p.stage_index} state={p.state} selected={false} /></span>
+                  <span className="w-20 shrink-0"><Stepper compact stages={p.stages} index={p.stage_index} state={p.state} selected={false} /></span>
                   <span className="truncate text-[13px]" title={p.stage}>{p.stage}</span>
-                  <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "on_track" ? "text-muted-foreground" : STATE[p.state].chip.split(" ")[1])}>{STATE[p.state].label}</span>
+                  <StateChip state={p.state} className="ml-auto" quiet="On track"
+                    text={stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })} />
                 </div>
               </li>
             ))}

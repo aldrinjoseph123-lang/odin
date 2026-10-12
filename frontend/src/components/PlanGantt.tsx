@@ -1,5 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { PlanStage } from "@/lib/api"
+import type { PlanStage, Rag } from "@/lib/api"
+import { HEALTH } from "@/lib/state"
 import { cn } from "@/lib/utils"
 import { dayOf, fmtDate, monthTicks } from "@/lib/format"
 import { useWidth } from "@/lib/useMeasure"
@@ -108,9 +109,7 @@ export function StatusPill({ tone, children, className }: { tone: string; childr
   return <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold", tone, className)}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{children}</span>
 }
 
-// The health pill: RAG in its state colour, with the word.
-export function RagPill({ rag, className }: { rag: "green" | "amber" | "red" | "done"; className?: string }) {
-  const map = { green: ["bg-muted text-nav-fg", "On track"], amber: ["bg-warn-soft text-warn", "At risk"], red: ["bg-bad-soft text-bad", "Off track"], done: ["bg-muted text-muted-foreground", "Complete"] } as const
-  const [cls, word] = map[rag]
-  return <StatusPill tone={cls} className={className}>{word}</StatusPill>
+// The health pill: the plan word in its state colour (lib/state.ts HEALTH).
+export function RagPill({ rag, className }: { rag: Rag; className?: string }) {
+  return <StatusPill tone={HEALTH[rag].tone} className={className}>{HEALTH[rag].label}</StatusPill>
 }

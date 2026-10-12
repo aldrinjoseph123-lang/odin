@@ -25,7 +25,7 @@ describe("Dashboard", () => {
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/Good (morning|afternoon|evening), Admin/)
     expect(titles()).toEqual(["Headline numbers", "Timeline", "Portfolio progress", "Open alerts"])
     expect(screen.getByText("Active rollouts")).toBeInTheDocument()
-    expect(screen.queryByText("Over stage SLA")).toBeNull()                        // tiles setting hid it
+    expect(screen.queryByText("Over SLA")).toBeNull()                        // tiles setting hid it
     expect(screen.getByText("+1")).toBeInTheDocument()                             // active: 4 vs 3
     expect(screen.getByText("−1")).toBeInTheDocument()                             // overdue: 1 vs 2
   })

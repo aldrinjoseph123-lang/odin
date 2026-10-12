@@ -10,6 +10,7 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { RagPill } from "@/components/PlanGantt"
 import { RAID_KIND } from "@/components/RaidPanel"
 import { Section, Table } from "@/components/ReportParts"
+import { HEALTH } from "@/lib/state"
 import { ApiError, reportAll, type PortfolioRow, type Rag, type ReportAllData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { TemplatePicker } from "@/components/TemplatePicker"
@@ -20,7 +21,7 @@ import { dayOf, fmtDate, fmtWhen, monthTicks } from "@/lib/format"
 // report. Partners and customers get the cut the server makes for them (no
 // reasons, no baseline, only the RAID items marked for them) and no PDF.
 const RAGS: Rag[] = ["red", "amber", "green", "done"]
-const WORD: Record<Rag, string> = { red: "Off track", amber: "At risk", green: "On track", done: "Complete" }
+const WORD = Object.fromEntries(RAGS.map((g) => [g, HEALTH[g].label])) as Record<Rag, string>
 const SOLID: Record<Rag, string> = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-ok-line", done: "bg-muted-foreground" }   // marks wear the -line tokens; text wears the state colour
 const SOFT: Record<Rag, string> = { red: "bg-bad-soft border-bad-line", amber: "bg-warn-soft border-warn-line", green: "bg-ok-soft border-ok-line", done: "bg-muted border-border" }
 const days = (n: number | null | undefined, late = "late", early = "early") => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d ${late}` : `${-n} d ${early}`)

@@ -108,7 +108,7 @@ function Donut({ rows, total, unit, link, large }: { rows: Aggregate; total: num
 const TILES: { key: DashKey; label: string; icon: typeof Activity; tone?: "warn" | "bad"; worseUp: boolean }[] = [
   { key: "active", label: "Active rollouts", icon: Layers, worseUp: false },
   { key: "overdue", label: "Overdue", icon: AlertTriangle, tone: "bad", worseUp: true },
-  { key: "over_sla", label: "Over stage SLA", icon: Timer, tone: "warn", worseUp: true },
+  { key: "over_sla", label: "Over SLA", icon: Timer, tone: "warn", worseUp: true },
   { key: "due_soon", label: "Due soon", icon: CalendarClock, tone: "warn", worseUp: true },
   { key: "awaiting", label: "Waiting on customer", icon: UserCheck, worseUp: true },
   { key: "idle", label: "Idle", icon: PauseCircle, worseUp: true },
@@ -394,7 +394,7 @@ function Team({ t, s, onExpand, large }: { t: D["team"]; s: S; onExpand?: () => 
 
 // ---- rollouts per stage -----------------------------------------------------
 // The pipeline in the Flow's own language: stages top to bottom on a connector,
-// each with its count and how many there are late or slipping (in words).
+// each with its count and how many are off track or at risk (in words).
 function StageFlow({ rows, link }: { rows: D["stages"]; link: (k: string) => string }) {
   const peak = Math.max(...rows.map((r) => r.count))
   return (
@@ -406,7 +406,7 @@ function StageFlow({ rows, link }: { rows: D["stages"]; link: (k: string) => str
           <Link to={link(r.stage)} className="w-32 shrink-0 truncate hover:underline" title={r.stage}>{r.stage}</Link>
           <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-nav-fg/60" style={{ width: `${(r.count / peak) * 100}%` }} /></span>
           <span className="w-6 text-right font-medium tabular-nums">{r.count}<span className="sr-only"> rollouts</span></span>
-          <span className="w-24 shrink-0 text-[12px]">{r.late > 0 && <span className="font-medium text-bad">{r.late} late</span>}{r.late > 0 && r.warn > 0 && <span className="text-muted-foreground"> · </span>}{r.warn > 0 && <span className="text-warn">{r.warn} slipping</span>}</span>
+          <span className="w-36 shrink-0 text-[12px]">{r.late > 0 && <span className="font-medium text-bad">{r.late} off track</span>}{r.late > 0 && r.warn > 0 && <span className="text-muted-foreground"> · </span>}{r.warn > 0 && <span className="text-warn">{r.warn} at risk</span>}</span>
         </li>
       ))}
     </ol>
@@ -561,7 +561,7 @@ function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () =
 const CHOICE_LABEL: Record<string, string> = {
   all: "Every rollout", attention: "Only those needing attention", area: "Area", bars: "Bars", bar: "Bars", line: "Line", none: "None",
   radial: "Gauge", donut: "Donut", flow: "Stage flow", list: "List", number: "Number", pie: "Pie",
-  active: "Active", overdue: "Overdue", over_sla: "Over stage SLA", due_soon: "Due soon", awaiting: "Waiting on customer", idle: "Idle",
+  active: "Active", overdue: "Overdue", over_sla: "Over SLA", due_soon: "Due soon", awaiting: "Waiting on customer", idle: "Idle",
 }
 const MEASURE_LABEL: Record<string, string> = {
   rollouts_by_stage: "Rollouts by stage", rollouts_by_client: "Rollouts by client", rollouts_by_state: "Rollouts by state", rollouts_by_owner: "Rollouts by owner",
@@ -599,7 +599,7 @@ function tableFor(item: LayoutItem, d: D): Table | null {
     case "schedule": return { columns: ["Due", "Task", "Rollout", "Who"], rows: d.schedule.due.map((t) => [fmtDate(t.due_date), t.title, t.project, t.who ?? "—"]) }
     case "completion": return { columns: ["Day", "Tasks completed"], rows: d.completion.slice(-28).map((x) => [fmtDate(x.day), x.count]) }
     case "team": return { columns: ["Person", "Role", "Rollouts", "Open", "Late"], rows: d.team.people.map((m) => [m.name, m.role, m.projects, m.open, m.late]) }
-    case "stages": return { columns: ["Stage", "Rollouts", "Late", "Slipping"], rows: d.stages.map((s) => [s.stage, s.count, s.late, s.warn]) }
+    case "stages": return { columns: ["Stage", "Rollouts", "Off track", "At risk"], rows: d.stages.map((s) => [s.stage, s.count, s.late, s.warn]) }
     case "activity": return { columns: ["When", "Who", "Rollout", "What"], rows: d.activity.map((a) => [a.at.slice(0, 16).replace("T", " "), a.who ?? "—", a.project, a.text]) }
     case "alerts": return { columns: ["Severity", "Alert", "Rollout", "Raised"], rows: d.alerts.map((a) => [a.severity, a.title, a.project, a.created_at.slice(0, 10)]) }
     case "mywork": return { columns: ["Due", "Task", "Rollout", "Stage"], rows: d.mywork.tasks.map((t) => [t.due_date ? fmtDate(t.due_date) : "—", t.title, t.project, t.stage ?? "—"]) }

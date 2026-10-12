@@ -205,7 +205,7 @@ export default function Settings(_props: { user: User }) {
 const GROUP_HINTS: Record<string, string> = {
   "Sessions": "applies at everyone's next request", "Sign-up links": "links are made and revoked on the Users page",
   "Where copies go": "a local copy is always kept on the server", "Watching the server": "applies from the next heartbeat",
-  "Health colours": "green, amber or red on every project",
+  "Plan health": "on track, at risk or off track on every rollout",
 }
 // the longer explanation of a setting, one tap away
 function WhatIsThis({ label, text }: { label: string; text: string }) {
