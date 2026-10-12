@@ -2379,7 +2379,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual(db.execute("SELECT stage FROM status_notes WHERE project_id=1 ORDER BY id DESC LIMIT 1").fetchone()[0], "Order received")
         # cannot delete the stage the project is in
         self.client.post(f"/projects/1/stages/{first['id']}/delete")
-        self.assertIn("the project is in it", flashed(self.client))
+        self.assertIn("the rollout is in it", flashed(self.client))
         # a stage cannot be moved through the other project's route
         self.assertEqual(self.client.post(f"/projects/2/stages/{first['id']}/rename", data={"name": "x"}, follow_redirects=True).status_code, 200)
         with self.raw_db() as db:
@@ -4925,9 +4925,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
         __import__("scheduler").sync_alerts()   # the scheduler records alerts and sends their mail (B9)
-        sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Project inactive: Proj")]
+        sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Rollout idle: Proj")]
         self.assertEqual(len(sent), 1)
-        self.assertTrue(sent[0].args[2].startswith("Project: Proj (C)"))
+        self.assertTrue(sent[0].args[2].startswith("Rollout: Proj (C)"))
         self.assertIn("http://localhost/projects/1", sent[0].args[2])     # the alert mail links to the project too
 
     def test_audit_logs_filter_by_user_action_and_project(self):

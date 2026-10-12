@@ -20,12 +20,12 @@ def project_link(project_id, user, target=None):
     page = target or url_for("project_detail", project_id=project_id)
     if user["kind"] == "external":
         href = external_url("auth_link_consume", token=issue_login_link(user["id"]), next=page)
-        return (f'<p><a href="{href}">Open the project in Odin</a> — this sign-in link works once and '
+        return (f'<p><a href="{href}">Open the rollout in Odin</a> — this sign-in link works once and '
                 f"expires in {policy('link_minutes')} minutes; after that, request a new one from the sign-in page.</p>")
     href = external_url("project_detail", project_id=project_id)
     if target:
         href = href.rsplit(url_for("project_detail", project_id=project_id), 1)[0] + target
-    return f'<p><a href="{href}">Open the project in Odin</a></p>'
+    return f'<p><a href="{href}">Open the rollout in Odin</a></p>'
 
 
 def _plain(html):

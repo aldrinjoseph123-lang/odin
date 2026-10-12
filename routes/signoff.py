@@ -89,7 +89,7 @@ def _scope_locked(project_id):
     """Why the scope cannot change now, or None: it is final once signed off,
     and frozen while a version is out for signature (L12) — withdraw it first."""
     if signoff.completed(project_id):
-        return "The project is signed off; its scope is final"
+        return "The rollout is signed off; its scope is final"
     last = signoff.latest(project_id)
     if last and last["status"] in signoff.OPEN:
         return f"Version {last['version']} of the sign-off is out for signature; withdraw it before changing the scope"
@@ -235,7 +235,7 @@ def api_signoff_countersign(project_id, version):
     audit_log("signoff_countersign", "project", project_id, project["name"], f"v{version} countersigned by {session['user_name']}")
     ids = [r[0] for r in get_db().execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,))]
     notify_users(ids, "approval", project_id, f"{project['name']} is signed off",
-                 f"<p>The sign-off for <b>{escape(project['name'])}</b> is signed by the customer and countersigned. The project can now close.</p>",
+                 f"<p>The sign-off for <b>{escape(project['name'])}</b> is signed by the customer and countersigned. The rollout can now close.</p>",
                  exclude_user_id=session["user_id"], link=_link(project_id))
     _completed_mail(project, row)
     return jsonify(ok=True)
@@ -254,7 +254,7 @@ def api_signoff_reject(project_id, version):
         return _bad(e)
     audit_log("signoff_reject", "project", project_id, project["name"], f"v{version} not accepted")
     notify_users([project["owner_id"], row["counter_id"]], "approval", project_id, f"{project['name']}: the sign-off was not accepted",
-                 f"<p>{escape(session['user_name'])} did not sign version {version}: {escape(_body().get('comment') or '')}</p><p>It is now an open issue on the project; send a new version once it is resolved.</p>",
+                 f"<p>{escape(session['user_name'])} did not sign version {version}: {escape(_body().get('comment') or '')}</p><p>It is now an open issue on the rollout; send a new version once it is resolved.</p>",
                  exclude_user_id=session["user_id"], link=_link(project_id))
     return jsonify(ok=True)
 
@@ -345,7 +345,7 @@ def api_signoff_upload(project_id, version):
     audit_log("signoff_upload", "project", project_id, project["name"], f"v{version} signed copy {original}, signed by {name} on {signed_on}")
     ids = [r[0] for r in get_db().execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,))]
     notify_users(ids, "approval", project_id, f"{project['name']} is signed off",
-                 f"<p>The signed copy of the sign-off for <b>{escape(project['name'])}</b> was uploaded. The project can now close.</p>",
+                 f"<p>The signed copy of the sign-off for <b>{escape(project['name'])}</b> was uploaded. The rollout can now close.</p>",
                  exclude_user_id=session["user_id"], link=_link(project_id))
     return jsonify(ok=True)
 

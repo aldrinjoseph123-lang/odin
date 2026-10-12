@@ -50,8 +50,8 @@ export default function Audit(_props: { user: User }) {
         <select value={params.get("action") ?? ""} onChange={(e) => update({ action: e.target.value || null })} aria-label="Filter by action" className={cn(filterSelect, "max-w-48")}>
           <option value="">All actions</option>{data.actions.map((a) => <option key={a} value={a}>{actionText(a)}</option>)}
         </select>
-        <select value={params.get("project_id") ?? ""} onChange={(e) => update({ project_id: e.target.value || null })} aria-label="Filter by project" className={cn(filterSelect, "max-w-48")}>
-          <option value="">All projects</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        <select value={params.get("project_id") ?? ""} onChange={(e) => update({ project_id: e.target.value || null })} aria-label="Filter by rollout" className={cn(filterSelect, "max-w-48")}>
+          <option value="">All rollouts</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <DatePicker value={params.get("from") ?? ""} onChange={(v) => update({ from: v || null })} label="From date" placeholder="From" className="h-8 w-40" />
         <DatePicker value={params.get("to") ?? ""} onChange={(v) => update({ to: v || null })} label="To date" placeholder="To" className="h-8 w-40" />
@@ -76,7 +76,7 @@ export default function Audit(_props: { user: User }) {
                 <td className="px-3 py-2"><span className="inline-flex items-center gap-2 whitespace-nowrap"><UserAvatar name={r.username || "?"} className="h-5 w-5 shrink-0" />{r.username}</span></td>
                 <td className="px-3 py-2" title={r.action}>{actionText(r.action)}</td>
                 <td className="px-3 py-2">
-                  {/* the name when there is one; "Project 40" only when the record has none */}
+                  {/* the name when there is one; "Rollout 40" only when the record has none */}
                   {r.resource_type && !r.resource_name && <span className="text-muted-foreground">{actionText(r.resource_type)} </span>}
                   {r.resource_type === "project" && r.resource_id ? <a href={`/projects/${r.resource_id}`} className="font-medium wrap-anywhere hover:underline">{r.resource_name ?? r.resource_id}</a>
                     : r.resource_name ? <span className="wrap-anywhere">{r.resource_name}</span> : r.resource_id ? <span className="text-muted-foreground">{r.resource_id}</span> : null}

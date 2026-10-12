@@ -26,7 +26,7 @@ export default function LinkRequest() {
     setBusy(true)
     try {
       const r = await postForm("/auth/link", { email: email.trim() })
-      setMessage(r.messages.join(" ") || "If that address is on a project, a sign-in link is on its way")
+      setMessage(r.messages.join(" ") || "If that address is on a rollout, a sign-in link is on its way")
     } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not send the request") } finally { setBusy(false) }
   }
   return (

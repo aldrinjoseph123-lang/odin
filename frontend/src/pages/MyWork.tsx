@@ -79,7 +79,7 @@ export default function MyWork({ user }: { user: User }) {
   async function redate(t: WorkTask, due: string) {
     setBusy(t.id)
     try { await editTask(t.project_id, t.id, { title: t.title, assignee_id: user.id, due_date: due || null }); toast(due ? `${t.title}: due ${fmtDate(due)}` : `${t.title}: no date`); await load() }
-    catch (e) { toast(e instanceof ApiError && e.status === 403 ? "Only someone who manages this project's tasks can move its date." : e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(null) }
+    catch (e) { toast(e instanceof ApiError && e.status === 403 ? "Only someone who manages this rollout's tasks can move its date." : e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(null) }
   }
   const tiles: { label: string; value: number; sub: string; icon: typeof Layers; tone?: "bad" | "warn" }[] = [
     { label: "Open tasks", value: c.open, sub: `${c.due_week} due this week`, icon: CheckSquare },

@@ -139,7 +139,7 @@ def render(v):
     if v["counter_signed_at"]:
         rows.append(["Countersigned", f"{v['counter_name']} signed {_when(v['counter_signed_at'])} in Odin" + (f"; from {v['counter_ip']}" if v.get("counter_ip") else "")])
     if v["status"] == "uploaded":
-        rows.append(["Paper copy", f"Signed by {v['signer_name']} on {_fmt(v['signed_at'])}; the scanned copy is document #{v['document_id']} on the project"])
+        rows.append(["Paper copy", f"Signed by {v['signer_name']} on {_fmt(v['signed_at'])}; the scanned copy is document #{v['document_id']} on the rollout"])
     if v["status"] == "rejected":
         rows.append(["Not accepted", f"{_when(v['rejected_at'])}: {v['reject_comment']}"])
     if v["status"] == "waived":

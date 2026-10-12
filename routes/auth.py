@@ -142,7 +142,7 @@ def send_login_link(user, raw_token, invited_by=None, project_name=None, project
                         **({"next": url_for("project_detail", project_id=project_id)} if project_id else {}))
     # Names come from the users table and the project form: escape them, this
     # is HTML going into a mail client.
-    intro = (f"{escape(invited_by)} added you to the project <b>{escape(project_name)}</b> in Odin." if project_name
+    intro = (f"{escape(invited_by)} added you to the rollout <b>{escape(project_name)}</b> in Odin." if project_name
              else "Here is your Odin sign-in link.")
     html = (f"<p>{intro}</p><p><a href=\"{link}\">Sign in to Odin</a></p>"
             f"<p>The link works once and expires in {policy('link_minutes')} minutes. If it has expired, request a new one from the sign-in page.</p>")
@@ -182,7 +182,7 @@ def auth_link_request():
             if user and email_domain_allowed(email):
                 send_login_link(user, issue_login_link(user["id"]))
             audit_log("login_link_requested", "user", user["id"] if user else None, email, actor=email)
-            flash("If that address is on a project, a sign-in link is on its way")
+            flash("If that address is on a rollout, a sign-in link is on its way")
         return redirect(url_for("auth_link_request"))
     return spa_index()
 

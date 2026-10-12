@@ -506,7 +506,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             {/* the project page shows the plan's verdict in its title row instead (one health, not two) */}
             {!closed && !standalone && <StateChip state={d.state} text={stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })} />}
             {!standalone && <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>}
-            {!standalone && <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open project <ExternalLink className="h-3.5 w-3.5" /></a>}
+            {!standalone && <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open rollout <ExternalLink className="h-3.5 w-3.5" /></a>}
             {onClose && <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close this rollout (Esc)" title="Close (Esc)"><X className="h-4 w-4" /></Button>}
           </div>
         </div>
@@ -596,7 +596,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {d.approval && d.approval.stage === d.stage && d.approval.status === "pending" && d.can_approve && (
           <section className="rounded-lg bg-warn-soft p-3">
             <H className="mb-1 text-[12px] font-semibold text-nav-fg">Your approval</H>
-            <p className="mb-2 text-[13px] text-muted-foreground">The project moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
+            <p className="mb-2 text-[13px] text-muted-foreground">The rollout moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
             <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (optional)" aria-label="Approval comment" maxLength={2000} className="h-8 text-[13px]" />
             <div className="mt-2 flex gap-2">
               <Button size="sm" className="flex-1" disabled={busy} onClick={() => decide("approved")}>Approve</Button>

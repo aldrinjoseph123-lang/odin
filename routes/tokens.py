@@ -118,5 +118,5 @@ def api_v1_report(project_id):
     row = get_db().execute("SELECT version, body, created_by, created_at FROM project_reports WHERE project_id = ? ORDER BY version DESC LIMIT 1",
                            (project_id,)).fetchone()
     if row is None:
-        return jsonify(error="No saved report for this project"), 404
+        return jsonify(error="No saved report for this rollout"), 404
     return jsonify(dict(row))

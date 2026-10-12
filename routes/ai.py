@@ -107,7 +107,7 @@ def settings_ai_validate():
         return redirect(url_for("settings_section", section="ai"))
     job = queue(get_db(), "validate", payload={"reason": "asked for in Settings"}, actor=session.get("user_name"))
     audit_log("validate_ai", "settings", job, "ai")
-    flash("Validation queued. It runs every feature on its test project; this page updates as it goes.")
+    flash("Validation queued. It runs every feature on its test rollout; this page updates as it goes.")
     return redirect(url_for("settings_section", section="ai"))
 
 

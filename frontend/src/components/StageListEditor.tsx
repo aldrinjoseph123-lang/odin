@@ -13,7 +13,7 @@ export type StagePaths = { add: string; rename: (id: number) => string; move: (i
 export const stageRowsKey = (rows: StageRow[]) => rows.map((s) => `${s.id}:${s.name}:${s.sla_days ?? ""}`).join("|")
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
-export function StageListEditor({ rows, current, busy, send, paths, label = "this project" }: { rows: StageRow[]; current?: string; busy: boolean; send: Send; paths: StagePaths; label?: string }) {
+export function StageListEditor({ rows, current, busy, send, paths, label = "this rollout" }: { rows: StageRow[]; current?: string; busy: boolean; send: Send; paths: StagePaths; label?: string }) {
   // Edit state is seeded once; the parent remounts this editor (key) when the
   // rows change, so a save never fights a half-typed rename.
   const [names, setNames] = useState<Record<number, string>>(() => Object.fromEntries(rows.map((s) => [s.id, s.name])))

@@ -179,7 +179,7 @@ function Features({ features, busy, send }: { features: AIFeatureView[]; busy: b
   return (
     <Panel title="Features" hint="each runs only after passing its test on the current model">
       {features.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">No AI features yet. Each one arrives with its own test project and appears here, validated against the server before it runs.</p>
+        <p className="text-[13px] text-muted-foreground">No AI features yet. Each one arrives with its own test rollout and appears here, validated against the server before it runs.</p>
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
           <thead><tr className="text-left text-[12px] text-muted-foreground">{["Feature", "On the current model", "Last tested", "Answer time", "On", "Forced", ""].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>

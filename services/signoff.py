@@ -132,7 +132,7 @@ def completed(project_id):
                             (project_id, *DONE)).fetchone()
 
 
-GATE_MESSAGE = "The project closes once the sign-off is signed by the customer and countersigned. Send it from the Sign-off page, or ask an admin to waive it."
+GATE_MESSAGE = "The rollout closes once the sign-off is signed by the customer and countersigned. Send it from the Sign-off page, or ask an admin to waive it."
 
 
 def gate(project, new_stage, terminal=None):
@@ -239,10 +239,10 @@ def sendable(project):
     project cannot jump from its first stage to Closed (D5/L22)."""
     names = get_stage_names(project["id"])
     if len(names) < 2:
-        return "The project needs a stage before its finish to send a sign-off from"
+        return "The rollout needs a stage before its finish to send a sign-off from"
     if project["stage"] in (names[-2], SIGNOFF_STAGE) and project["stage"] != names[-1]:
         return None
-    return f"Send the sign-off once the project is in {names[-2]}, the stage before {names[-1]}"
+    return f"Send the sign-off once the rollout is in {names[-2]}, the stage before {names[-1]}"
 
 
 def send(project, body, author, commit=True):
@@ -251,7 +251,7 @@ def send(project, body, author, commit=True):
     the same transaction)."""
     pid = project["id"]
     if completed(pid):
-        raise ValueError("This project is already signed off")
+        raise ValueError("This rollout is already signed off")
     why = sendable(project)
     if why:
         raise ValueError(why)
@@ -259,7 +259,7 @@ def send(project, body, author, commit=True):
     signer = next((s for s in signers if s["id"] == body.get("signer_id")), None)
     counter = next((s for s in counters if s["id"] == body.get("counter_id")), None)
     if not signer:
-        raise ValueError("Pick the customer's signatory: a Customer or Reseller contact on the project with an email address")
+        raise ValueError("Pick the customer's signatory: a Customer or Reseller contact on the rollout with an email address")
     if not counter:
         raise ValueError("Pick who countersigns for us")
     items = scope(pid)
@@ -430,7 +430,7 @@ def waive(project, reason, author):
     if len(reason) < 10:
         raise ValueError("Give the reason in a sentence")
     if completed(project["id"]):
-        raise ValueError("This project is already signed off")
+        raise ValueError("This rollout is already signed off")
     early = sendable(project)   # a waiver stands in for the signatures, not for the stages before them (sim L-12)
     if early:
         raise ValueError(early.replace("Send the sign-off", "Waive the sign-off"))

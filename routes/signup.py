@@ -30,7 +30,7 @@ def api_signup_link_create():
         label = text_field(b.get("label"), 80, "Label")
         project_id = as_id(b.get("project_id"))
         if b.get("project_id") not in (None, "", 0) and project_id is None:
-            raise ValueError("That project does not exist")
+            raise ValueError("That rollout does not exist")
         raw = signup.create(label, b.get("role"), project_id, b.get("project_role"), b.get("days"), b.get("max_uses"), session["user_name"])
     except (ValueError, TypeError) as e:
         return jsonify(error=str(e)), 400

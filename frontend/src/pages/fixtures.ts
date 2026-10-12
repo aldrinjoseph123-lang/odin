@@ -49,7 +49,7 @@ export const dashboard: DashboardData = {
     attention: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", worst: "overdue", reasons: [{ kind: "overdue", text: "5 d late" }] }],
     timeline: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", start_date: "2026-09-01", target_end_date: "2026-12-01", state: "on_track", progress: 0.25, team: [] }],
     progress: { done: 3, current: 4, pending: 10, pct: 18 }, stages: [{ stage: "Scoping", count: 4, late: 0, warn: 0 }], completion: Array.from({ length: 56 }, (_, i) => ({ day: `2026-08-${String(i + 1).padStart(2, "0")}`, count: i % 3 })),
-    schedule: { due: [], approvals: [] }, team: { people: [], unassigned: 0 }, activity: [], alerts: [{ id: 1, project_id: 1, project: "EDR Rollout - Globex", type: "project_overdue", title: "Project overdue", severity: "critical", created_at: "2026-09-29T08:00:00" }],
+    schedule: { due: [], approvals: [] }, team: { people: [], unassigned: 0 }, activity: [], alerts: [{ id: 1, project_id: 1, project: "EDR Rollout - Globex", type: "project_overdue", title: "Rollout overdue", severity: "critical", created_at: "2026-09-29T08:00:00" }],
     mywork: { tasks: [], owned: 2 }, cycle: null,
   },
 }

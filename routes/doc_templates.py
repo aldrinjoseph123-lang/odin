@@ -136,7 +136,7 @@ def _preview(kind, cfg):
         return render_portfolio(portfolio.build(rows), cfg)
     project = db.execute("SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL ORDER BY p.id DESC LIMIT 1").fetchone()
     if project is None:
-        abort(409, "Create a project first: the preview uses one")
+        abort(409, "Create a rollout first: the preview uses one")
     if kind == "rollout":
         from services import report_data
         data = report_data.build(project, "internal")

@@ -425,7 +425,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
   if (!res.ok) {
     // a refused form answers 400 {ok: false, error, messages}: its own words
     const d = (await res.json().catch(() => null)) as { error?: string; messages?: string[] } | null
-    throw await failure(res, res.status === 403 ? "You cannot do that on this project" : d?.messages?.join(" ") || d?.error || undefined)
+    throw await failure(res, res.status === 403 ? "You cannot do that on this rollout" : d?.messages?.join(" ") || d?.error || undefined)
   }
   const data = notJson(res) ? null : (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
   if (!data) throw new ApiError(401, SIGNED_OUT)

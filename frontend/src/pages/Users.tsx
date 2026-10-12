@@ -243,7 +243,7 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
       </label>
       {problem && <p className="field-error" role="alert">{problem}</p>}
       <Button type="submit" size="sm" className="mt-1" loading={busy}>Create user</Button>
-      <p className="max-w-prose text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a project's Team panel instead.</p>
+      <p className="max-w-prose text-[12px] text-muted-foreground">They change the password on first sign-in. Partners and customers are invited from a rollout's Team panel instead.</p>
     </form>
   )
 }
@@ -279,7 +279,7 @@ function SignupLinksPanel() {
         <div className="grid grid-cols-2 gap-2">
           <label className="grid grid-cols-1 gap-1 font-medium">Role<select className={field} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{d.roles.map((r) => <option key={r}>{r}</option>)}</select></label>
           <label className="grid grid-cols-1 gap-1 font-medium">Valid for<select className={field} value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })}><option value={0}>{d.default_days} day{d.default_days > 1 ? "s" : ""} (default)</option>{[1, 3, 7, 14, 30].filter((n) => n !== d.default_days).map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></label>
-          <label className="grid grid-cols-1 gap-1 font-medium">Project<select className={field} value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })}><option value="">None</option>{d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+          <label className="grid grid-cols-1 gap-1 font-medium">Rollout<select className={field} value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })}><option value="">None</option>{d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
           <label className="grid grid-cols-1 gap-1 font-medium">As<select className={field} value={f.project_role} disabled={!f.project_id} onChange={(e) => setF({ ...f, project_role: e.target.value })}>{d.project_roles.map((r) => <option key={r}>{r}</option>)}</select></label>
           <label className="grid grid-cols-1 gap-1 font-medium">Uses<select className={field} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: Number(e.target.value) })}>{[1, 5, 10, 25].map((n) => <option key={n} value={n}>{n === 1 ? "One person" : `Up to ${n}`}</option>)}</select></label>
         </div>

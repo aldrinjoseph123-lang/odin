@@ -12,7 +12,7 @@ import { toastAfterLoad } from "@/lib/toast"
 
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
-const MISSING = "This project does not exist, or you cannot edit it."
+const MISSING = "This rollout does not exist, or you cannot edit it."
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">{label}{hint && <span className="ml-1 text-[12px]">({hint})</span>}{children}</label>
@@ -78,7 +78,7 @@ export default function ProjectForm(_props: { user: User }) {
     setBusy(false)
   }
 
-  if (error) return <LoadError message={error} back={error === MISSING ? { href: "/projects", label: "All projects" } : undefined} />
+  if (error) return <LoadError message={error} back={error === MISSING ? { href: "/projects", label: "All rollouts" } : undefined} />
   if (!d) return <PageSkeleton />
   const editing = d.mode === "edit"
   const title = editing ? "Edit project" : d.mode === "duplicate" ? "Duplicate project" : "New project"
@@ -86,7 +86,7 @@ export default function ProjectForm(_props: { user: User }) {
   return (
     <div className="px-5 pb-8 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <a href="/projects" className="text-[13px] text-muted-foreground hover:text-foreground">Projects</a><span className="text-[13px] text-muted-foreground">/</span>
+        <a href="/projects" className="text-[13px] text-muted-foreground hover:text-foreground">Rollouts</a><span className="text-[13px] text-muted-foreground">/</span>
         <h1 className="text-[17px] font-semibold tracking-tight">{title}</h1>
         {editing && <a href={`/projects/${d.id}`} className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Cancel</a>}
       </div>
@@ -129,10 +129,10 @@ export default function ProjectForm(_props: { user: User }) {
           </div>
           {!editing && (
             <>
-              <Field label="Stage template" hint="the project gets its own copy; edit it on the project afterwards">
+              <Field label="Stage template" hint="the rollout gets its own copy; edit it on the rollout afterwards">
                 <select name="stage_template_id" value={f.stage_template_id} onChange={set("stage_template_id")} aria-label="Stage template" className={field}>{d.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
               </Field>
-              <Field label="Client PO document *" hint="required — no project without the PO on file">
+              <Field label="Client PO document *" hint="required — no rollout without the PO on file">
                 <input type="file" name="po_document" required aria-label="Client PO document" />
               </Field>
             </>

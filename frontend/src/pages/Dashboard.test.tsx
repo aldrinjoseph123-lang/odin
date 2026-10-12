@@ -42,7 +42,7 @@ describe("Dashboard", () => {
     await user.click(screen.getByRole("button", { name: "Expand Open alerts" }))
     const big = await screen.findByRole("dialog")
     expect(within(big).getByRole("columnheader", { name: "Severity" })).toBeInTheDocument()
-    expect(within(big).getByRole("cell", { name: "Project overdue" })).toBeInTheDocument()
+    expect(within(big).getByRole("cell", { name: "Rollout overdue" })).toBeInTheDocument()
   })
 
   it("a custom metric can be added more than once, titled and charted, saved on its own", async () => {

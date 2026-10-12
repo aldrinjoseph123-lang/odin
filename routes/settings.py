@@ -346,7 +346,7 @@ def settings_stage_delete(template_id, stage_id):
     gone = next((s["name"] for s in rows if s["id"] == stage_id), None)
     error = stage_ops.delete_stage("template", template_id, stage_id)
     if not error and gone == SIGNOFF_STAGE and len(names) >= 2 and names[-2] == gone:   # R14: allowed, but said
-        flash(f"Removed '{gone}': new projects from this template send their sign-off from the stage before {names[-1]} instead")
+        flash(f"Removed '{gone}': new rollouts from this template send their sign-off from the stage before {names[-1]} instead")
     return _template_change("delete_template_stage", error, str(stage_id))
 
 

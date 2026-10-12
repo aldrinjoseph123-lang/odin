@@ -74,16 +74,16 @@ PROJECT_ACTIONS = {
 
 # What a notification is about. Each kind can be switched off by email.
 NOTIFICATION_KINDS = {
-    "stage": "Stage changes on projects I am on",
+    "stage": "Stage changes on rollouts I am on",
     "approval": "Customer approval decisions",
-    "activity": "Notes, finished tasks and documents on projects I manage",
+    "activity": "Notes, finished tasks and documents on rollouts I manage",
     "assigned": "Tasks assigned to me",
     "access": "Sign-in requests and emergency password sign-ins (admins)",
     "ai": "AI server down or back, and AI features that failed validation (admins)",
     "mention": "When someone mentions me in a note",
     "due": "A daily reminder of my tasks due today or overdue",
     "nudge": "A note a colleague sends me from the People page",
-    "alert": "Alerts on projects I am on (overdue, due soon, over SLA, idle), and my daily digest",
+    "alert": "Alerts on rollouts I am on (overdue, due soon, over SLA, idle), and my daily digest",
     "brief": "My morning brief: my rollouts, what is due, what came in (written by AI)",
 }
 
@@ -132,10 +132,10 @@ PERMISSIONS = {
 # The commercial payment alerts were removed with the rest of the financials.
 
 ALERT_TYPE_TITLES = {
-    "project_overdue": "Project overdue",
-    "project_due_soon": "Project due soon",
+    "project_overdue": "Rollout overdue",
+    "project_due_soon": "Rollout due soon",
     "stage_sla_breach": "Stage SLA breached",
-    "stale": "Project inactive",
+    "stale": "Rollout idle",
     "approval_waiting": "Customer approval waiting",
     "blocker_open": "Blocker still open",
     "task_unowned": "Overdue task with no owner",

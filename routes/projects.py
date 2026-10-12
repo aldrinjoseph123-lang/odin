@@ -225,7 +225,7 @@ def project_new():
     db = get_db()
     po_document = request.files.get("po_document")
     if not po_document or not po_document.filename:
-        flash(f"Upload a '{CLIENT_PO_DOC_CATEGORY}' document to create the project", "error")
+        flash(f"Upload a '{CLIENT_PO_DOC_CATEGORY}' document to create the rollout", "error")
         return redirect(url_for("project_new"))
     if problem := upload_problem(po_document):
         flash(problem, "error")
@@ -236,7 +236,7 @@ def project_new():
 
     template = _chosen_template(db, request.form.get("stage_template_id"))
     if template is None:
-        flash("Create a stage template in Settings before adding projects", "error")
+        flash("Create a stage template in Settings before adding rollouts", "error")
         return redirect(url_for("project_new"))
     first_stage = db.execute(
         "SELECT name FROM stage_template_stages WHERE template_id = ? ORDER BY position LIMIT 1",
@@ -441,7 +441,7 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     if new_stage not in get_stage_names(project_id):
         return "Invalid stage"
     if new_stage == project["stage"]:   # test report FN-8: it reset the SLA clock and re-notified everyone
-        return f"The project is already in {new_stage}"
+        return f"The rollout is already in {new_stage}"
     from services.signoff import gate
     if blocked := gate(project, new_stage):
         return blocked
@@ -454,7 +454,7 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     ).rowcount
     if not moved:
         db.rollback()
-        return f"The project has just moved; it is no longer in {project['stage']}"
+        return f"The rollout has just moved; it is no longer in {project['stage']}"
     terminal = new_stage == get_stage_names(project_id)[-1]
     cur = db.execute(
         "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id, prev_stage, prev_entered_at)"
@@ -521,7 +521,7 @@ def undo_stage_change(project_id, note_id):
         "SELECT 1 FROM status_notes WHERE project_id = ? AND prev_stage IS NOT NULL AND id > ?", (project_id, note_id)).fetchone()
     if (note is None or note["author_id"] != session["user_id"] or note["created_at"] < cutoff
             or later_move or project["stage"] != note["stage"] or note["prev_stage"] not in get_stage_names(project_id)):
-        flash("That move can no longer be undone: it is too old, was made by someone else, or the project has moved since", "error")
+        flash("That move can no longer be undone: it is too old, was made by someone else, or the rollout has moved since", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     now = datetime.utcnow().isoformat()
     db.execute("UPDATE projects SET stage = ?, stage_entered_at = ?, updated_at = ? WHERE id = ?",
@@ -544,7 +544,7 @@ def undo_stage_change(project_id, note_id):
                    (project_id, note["prev_stage"], note["prev_entered_at"]))
     db.commit()
     audit_log("undo_project_stage", "project", project_id, project["name"], f"stage={note['prev_stage']} (undid {note['stage']})")
-    body = f"{escape(session['user_name'])} undid the move to <b>{escape(note['stage'])}</b>. The project is back in <b>{escape(note['prev_stage'])}</b>."
+    body = f"{escape(session['user_name'])} undid the move to <b>{escape(note['stage'])}</b>. The rollout is back in <b>{escape(note['prev_stage'])}</b>."
     notify_event(project, f"Stage change undone: {escape(project['name'])}", body, channels={"email": False, "teams": True})
     notify_participants(project_id, f"{escape(project['name'])}: back in {escape(note['prev_stage'])}", body, exclude_user_id=session["user_id"])
     flash(f"Moved back to {note['prev_stage']}")
@@ -1145,7 +1145,7 @@ def _notify_assignee(assignee_id, project_id, title):
         [int(assignee_id)], "assigned", project_id,
         f"Task assigned to you: {escape(title)}",
         f"{escape(session.get('user_name', 'Someone'))} assigned you "
-        f"\"{escape(title)}\" on project {escape(project['name'] if project else '')}.",
+        f"\"{escape(title)}\" on rollout {escape(project['name'] if project else '')}.",
         exclude_user_id=session.get("user_id"),
     )
 
@@ -1212,7 +1212,7 @@ def task_add(project_id):
         return _task_reply(project_id, "Task needs a title")
     assignee_id = _assignee(db, project_id, form.get("assignee_id"))
     if assignee_id is False:
-        return _task_reply(project_id, "Pick an active colleague or someone on this project")
+        return _task_reply(project_id, "Pick an active colleague or someone on this rollout")
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
     cur = db.execute(
@@ -1296,7 +1296,7 @@ def task_edit(project_id, task_id):
         return _task_reply(project_id, "Task needs a title")
     assignee_id = _assignee(db, project_id, form.get("assignee_id")) if "assignee_id" in form else task["assignee_id"]
     if assignee_id is False:
-        return _task_reply(project_id, "Pick an active colleague or someone on this project")
+        return _task_reply(project_id, "Pick an active colleague or someone on this rollout")
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
     due = parse_date(form.get("due_date")) if "due_date" in form else task["due_date"]

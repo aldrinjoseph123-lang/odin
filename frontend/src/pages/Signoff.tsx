@@ -82,7 +82,7 @@ function Document({ v }: { v: SignoffVersion }) {
   const c = v.content
   return (
     <div className="grid grid-cols-1 gap-4">
-      <Section n title="The project"><Facts p={c.project} /></Section>
+      <Section n title="The rollout"><Facts p={c.project} /></Section>
       <Section n title="Summary"><p className="whitespace-pre-line text-[14px] leading-relaxed">{c.summary}</p></Section>
       {c.scope.length > 0
         ? <Section n title="Agreed scope and what was delivered" sub={`${c.scope.filter((x) => x.status === "delivered").length} of ${c.scope.length} in full`}><ScopeTable items={c.scope} /></Section>
@@ -132,7 +132,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
     e.preventDefault()
     if (!sig) { setErr("Sign by drawing or typing your name"); return }
     setBusy(true); setErr(null)
-    try { await signSignoff(id, version, { name, title, accept, signature: sig }, counter); onDone(counter ? "Countersigned. The project can now close." : "Signed. Thank you — we will countersign and send you the signed copy.") }
+    try { await signSignoff(id, version, { name, title, accept, signature: sig }, counter); onDone(counter ? "Countersigned. The rollout can now close." : "Signed. Thank you — we will countersign and send you the signed copy.") }
     catch (x) { setErr(x instanceof ApiError ? x.message : "That did not go through") } finally { setBusy(false) }
   }
   async function reject() {
@@ -225,7 +225,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="grid grid-cols-1 content-start gap-4">
-        <Section n title="Summary" sub="drafted from the project; make it yours">
+        <Section n title="Summary" sub="drafted from the rollout; make it yours">
           <AIDraftBar<{ summary: string }> projectId={id} feature="signoff_summary"
             idle="Draft this summary with AI from the scope, dates and deliverables."
             working="Drafting from the scope, dates and deliverables…"
@@ -235,7 +235,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
         </Section>
         {draft.scope.length > 0 ? (
           <Section n title="Agreed scope and what was delivered" sub={unmarked ? `${unmarked} still marked agreed` : "from the Scope panel"}>
-            {unmarked > 0 && <p className="mb-2 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn">Mark every item delivered, partly delivered or descoped on the <Link to={`/projects/${id}#scope`} className="font-medium underline">project page</Link> before sending.</p>}
+            {unmarked > 0 && <p className="mb-2 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn">Mark every item delivered, partly delivered or descoped on the <Link to={`/projects/${id}#scope`} className="font-medium underline">rollout page</Link> before sending.</p>}
             <ScopeTable items={draft.scope} />
           </Section>
         ) : (
@@ -261,7 +261,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
               {cand.signers.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
           </label>
-          {cand.signers.length === 0 && <p className="text-[12px] text-muted-foreground">Invite the customer's contact on the <Link to={`/projects/${id}`} className="underline">project page</Link> (Team › Invite, role Customer). They sign with a one-time link: by email when mail is set up, or one you pass on.</p>}
+          {cand.signers.length === 0 && <p className="text-[12px] text-muted-foreground">Invite the customer's contact on the <Link to={`/projects/${id}`} className="underline">rollout page</Link> (Team › Invite, role Customer). They sign with a one-time link: by email when mail is set up, or one you pass on.</p>}
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Countersigns for us
             <select className={field} value={counter} onChange={(e) => setCounter(e.target.value ? Number(e.target.value) : "")}>
               {cand.countersigners.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
@@ -297,10 +297,10 @@ export default function Signoff(_props: { user: User }) {
   const [dialogErr, setDialogErr] = useState<string | null>(null)
   const load = useCallback(async () => {
     try { const x = await signoff(id, v, template); setD(x); document.title = `Sign-off · ${x.project.name} · Odin` }
-    catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This project or version does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the sign-off") }
+    catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This rollout or version does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the sign-off") }
   }, [id, v, template])
   useEffect(() => { void load() }, [load])
-  if (error) return <LoadError message={error} back={error.startsWith("This project or version does not exist") ? { href: "/projects", label: "All projects" } : undefined} />
+  if (error) return <LoadError message={error} back={error.startsWith("This rollout or version does not exist") ? { href: "/projects", label: "All rollouts" } : undefined} />
   if (!d) return <PageSkeleton />
   const cur = d.current
   const composing = d.can.manage && !!d.draft && (!cur || cur.status === "rejected" || cur.status === "withdrawn") && !v
@@ -312,12 +312,12 @@ export default function Signoff(_props: { user: User }) {
   async function upload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setBusy(true); setDialogErr(null)
-    try { await uploadSignoff(id, cur!.version, new FormData(e.currentTarget)); setDialog(null); done("Signed copy on file. The project can now close.") }
+    try { await uploadSignoff(id, cur!.version, new FormData(e.currentTarget)); setDialog(null); done("Signed copy on file. The rollout can now close.") }
     catch (x) { setDialogErr(x instanceof ApiError ? x.message : "That did not upload") } finally { setBusy(false) }
   }
   async function waive() {
     setBusy(true); setDialogErr(null)
-    try { await waiveSignoff(id, reason); setDialog(null); setReason(""); done("Sign-off waived. The project can now close.") }
+    try { await waiveSignoff(id, reason); setDialog(null); setReason(""); done("Sign-off waived. The rollout can now close.") }
     catch (x) { setDialogErr(x instanceof ApiError ? x.message : "That did not go through") } finally { setBusy(false) }
   }
 
@@ -349,8 +349,8 @@ export default function Signoff(_props: { user: User }) {
       </header>
       {d.state.complete && !v && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-ok-soft px-3 py-2 text-[13px] text-ok"><CheckCircle2 className="h-4 w-4" aria-hidden />
-          <span>Signed off. {d.project.stage === "Sign-off" ? "The project can move to its last stage." : ""}</span>
-          <Link to={`/projects/${id}`} className="ml-auto font-medium underline">Back to the project</Link>
+          <span>Signed off. {d.project.stage === "Sign-off" ? "The rollout can move to its last stage." : ""}</span>
+          <Link to={`/projects/${id}`} className="ml-auto font-medium underline">Back to the rollout</Link>
         </div>
       )}
       {composing && cur?.status === "rejected" && (
@@ -407,9 +407,9 @@ export default function Signoff(_props: { user: User }) {
       </Dialog>
       <Dialog open={dialog === "waive"} onOpenChange={(o) => { if (!o) setDialog(null) }}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Close without signatures</DialogTitle><DialogDescription>An admin's exception: the project can close without the customer's signature. The reason is kept on the record and in the audit log.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Close without signatures</DialogTitle><DialogDescription>An admin's exception: the rollout can close without the customer's signature. The reason is kept on the record and in the audit log.</DialogDescription></DialogHeader>
           <label htmlFor="waive-reason" className="text-[13px] font-medium">Why</label>
-          <textarea id="waive-reason" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} className={area} placeholder="Customer confirmed acceptance by email on 3 Oct; reference attached to the project." />
+          <textarea id="waive-reason" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} className={area} placeholder="Customer confirmed acceptance by email on 3 Oct; reference attached to the rollout." />
           {dialogErr && <p className="text-[13px] text-destructive" role="alert">{dialogErr}</p>}
           <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button size="sm" className="rounded-full" disabled={busy || reason.trim().length < 10} onClick={waive}>Waive the sign-off</Button></div>
         </DialogContent>

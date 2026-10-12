@@ -38,10 +38,10 @@ export default function Analytics(_props: { user: User }) {
       </div>
       {!s ? <EmptyState className="mt-4">No stage template yet — create one in Settings.</EmptyState> : (
         <>
-          <p className="mt-3 max-w-3xl text-[13px] text-muted-foreground">Timings compare only projects that share a stage list, so this is <span className="font-medium text-foreground">{tname}</span> across {s.measured_projects} project{s.measured_projects === 1 ? "" : "s"}. Averages count stages a project has already left; the stage it sits in now is under Aging.</p>
+          <p className="mt-3 max-w-3xl text-[13px] text-muted-foreground">Timings compare only rollouts that share a stage list, so this is <span className="font-medium text-foreground">{tname}</span> across {s.measured_projects} project{s.measured_projects === 1 ? "" : "s"}. Averages count stages a project has already left; the stage it sits in now is under Aging.</p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile label="Slowest stage" value={s.slowest?.stage ?? "—"} sub={s.slowest ? `${d1(s.slowest.avg_days)} days avg` : undefined} tone="warn" />
-            <StatTile label="Lead time (avg)" value={d1(s.lead_avg)} sub={`${s.completed_count} completed project${s.completed_count === 1 ? "" : "s"}`} />
+            <StatTile label="Lead time (avg)" value={d1(s.lead_avg)} sub={`${s.completed_count} completed rollout${s.completed_count === 1 ? "" : "s"}`} />
             <StatTile label="Lead time (median)" value={d1(s.lead_median)} sub="days, start to closed" />
             <StatTile label="Oldest open stage" value={s.aging[0] ? String(Math.round(s.aging[0].days)) : "—"} sub={s.aging[0]?.project_name ?? "nothing ageing"} tone="bad" />
           </div>
@@ -83,12 +83,12 @@ export default function Analytics(_props: { user: User }) {
               </ul>
             </section>
             <section className="panel p-4">
-              <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Throughput <span className="font-normal text-muted-foreground">projects closed per month</span></h2>
+              <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Throughput <span className="font-normal text-muted-foreground">rollouts closed per month</span></h2>
               <ul className="grid grid-cols-1 gap-2 text-[13px]">
                 {s.throughput.map(([month, n]) => (
                   <li key={month} className="flex items-center gap-3"><span className="w-16 text-[12px] text-muted-foreground">{month}</span><span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-ok-line" style={{ width: `${peak ? (n / peak) * 100 : 0}%` }} /></span><span className="w-6 text-right">{n}</span></li>
                 ))}
-                {s.throughput.length === 0 && <EmptyState as="li">No projects have reached the final stage yet.</EmptyState>}
+                {s.throughput.length === 0 && <EmptyState as="li">No rollouts have reached the final stage yet.</EmptyState>}
               </ul>
             </section>
           </div>

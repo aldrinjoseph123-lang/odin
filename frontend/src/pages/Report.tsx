@@ -25,7 +25,7 @@ import { TemplatePicker } from "@/components/TemplatePicker"
 // to the customer's copy; the project manager's words are edited in place and
 // "Save as version" freezes the lot. Partners and customers read saved
 // versions only (the server enforces it). Every version exports to PDF.
-const MISSING = "This project does not exist, or you are not on it."
+const MISSING = "This rollout does not exist, or you are not on it."
 const slip = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--elevation-pop)", fontSize: 12 }, labelStyle: { color: "var(--muted-foreground)" } }
 
@@ -59,13 +59,13 @@ export default function Report({ user }: { user: User }) {
   const editable = !!r && r.is_live && r.can_edit
   const dirty = !!r && editable && (words.summary !== r.words.summary || words.next_steps !== r.words.next_steps || words.asks !== r.words.asks)
   useUnsavedGuard(dirty)
-  if (error === MISSING) return <LoadError message={error} back={{ href: "/projects", label: "All projects" }} />
+  if (error === MISSING) return <LoadError message={error} back={{ href: "/projects", label: "All rollouts" }} />
   if (error) return <div className="p-5"><Alert role="status"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!r) return <PageSkeleton />
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
     // the words are shared: say so before they go out, not after (sim roles-3)
-    if (!(await askConfirm("Save this version? Partners and customers on the project will read these words in their copy of the report."))) return
+    if (!(await askConfirm("Save this version? Partners and customers on the rollout will read these words in their copy of the report."))) return
     setBusy(true); setNotice(null)
     try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }

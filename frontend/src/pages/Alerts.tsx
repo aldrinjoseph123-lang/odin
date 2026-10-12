@@ -41,7 +41,7 @@ export default function Alerts(_props: { user: User }) {
       </div>
       <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
         <table className="w-full border-collapse text-[13px]">
-          <thead className="sticky top-0 bg-card"><tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Project", "Raised", "Status"].map((h, i) => <th key={h} className={cn("px-3 py-2 font-normal", i > 1 && "text-right", i > 0 && "hidden sm:table-cell")}>{h}</th>)}</tr></thead>
+          <thead className="sticky top-0 bg-card"><tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Rollout", "Raised", "Status"].map((h, i) => <th key={h} className={cn("px-3 py-2 font-normal", i > 1 && "text-right", i > 0 && "hidden sm:table-cell")}>{h}</th>)}</tr></thead>
           <tbody>
             {d.rows.map((a, i) => {
               // chunked the way the list is sorted: open alerts by severity, then the resolved ones

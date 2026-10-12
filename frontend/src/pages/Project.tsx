@@ -66,10 +66,10 @@ export default function Project({ user }: { user: User }) {
       if (stageSeen.current !== null && stageSeen.current !== fd.stage) setPlanRefresh((n) => n + 1)
       stageSeen.current = fd.stage
       setD(fd); setX(ex); setActivity(act.rows); setError(null)
-    } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This project does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the project") }
+    } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This rollout does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the rollout") }
   }, [id])
   useEffect(() => { void reload() }, [reload])
-  useEffect(() => { document.title = x ? `${x.name} · Odin` : error ? "Project not found · Odin" : "Project · Odin" }, [x, error])
+  useEffect(() => { document.title = x ? `${x.name} · Odin` : error ? "Rollout not found · Odin" : "Rollout · Odin" }, [x, error])
 
   // one door for every form post: show what Flask said, then refetch
   async function send(path: string, fields: Record<string, string> | FormData = {}, confirmText?: string): Promise<FormReply | null> {
@@ -89,7 +89,7 @@ export default function Project({ user }: { user: User }) {
     await send(notice.undo)
   }
 
-  if (error) return <LoadError message={error} back={error === "This project does not exist, or you are not on it." ? { href: "/projects", label: "All projects" } : undefined} />
+  if (error) return <LoadError message={error} back={error === "This rollout does not exist, or you are not on it." ? { href: "/projects", label: "All rollouts" } : undefined} />
   if (!d || !x) return <PageSkeleton />
   const can = x.can
   const staff = user.kind !== "external"
@@ -101,7 +101,7 @@ export default function Project({ user }: { user: User }) {
       <div className="flex flex-wrap items-center gap-2 px-5 pt-4">
         <Breadcrumb className="min-w-0 text-[13px]">
           <BreadcrumbList>
-            <BreadcrumbItem><BreadcrumbLink render={<Link to="/projects" />}>Projects</BreadcrumbLink></BreadcrumbItem>
+            <BreadcrumbItem><BreadcrumbLink render={<Link to="/projects" />}>Rollouts</BreadcrumbLink></BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem className="min-w-0"><BreadcrumbPage className="truncate" title={x.name}>{x.name}</BreadcrumbPage></BreadcrumbItem>
           </BreadcrumbList>
@@ -131,7 +131,7 @@ export default function Project({ user }: { user: User }) {
         </div>
       </div>
       {/* the page is long: one row of anchors to every section, always in reach */}
-      <nav aria-label="Sections of this project" className="sticky top-0 z-20 mt-2 flex gap-1 overflow-x-auto bg-background/95 px-5 py-2 text-[13px] backdrop-blur">
+      <nav aria-label="Sections of this rollout" className="sticky top-0 z-20 mt-2 flex gap-1 overflow-x-auto bg-background/95 px-5 py-2 text-[13px] backdrop-blur">
         {[["notes", "Notes"], ["plan", "Plan"], ["raid", "Risks & issues"], ["scope", "Scope & sign-off"], ["details", "Details"], ["team", "Team"],
           ...(can.manage ? [["stages", "Stages"]] : []), ["documents", "Documents"], ...(activity.length ? [["activity", "Activity"]] : []),
           ...((x.guest_links.customer || can.manage) ? [["sharing", "Sharing"]] : [])].map(([k, label]) => (
@@ -161,7 +161,7 @@ export default function Project({ user }: { user: User }) {
           <ul className="mt-3 grid grid-cols-1 gap-2">
             {(allNotes ? x.notes : x.notes.slice(0, 5)).map((n) => <NoteRow key={`${n.id}:${n.note}`} n={n} busy={busy}
               onEdit={(text) => send(`/projects/${id}/notes/${n.id}/edit`, { note: text })}
-              onDelete={() => send(`/projects/${id}/notes/${n.id}/delete`, {}, "Delete this note? It leaves the project's history.")} />)}
+              onDelete={() => send(`/projects/${id}/notes/${n.id}/delete`, {}, "Delete this note? It leaves the rollout's history.")} />)}
             {x.notes.length === 0 && <li className="text-[13px] text-muted-foreground">No notes yet.</li>}
             {x.notes.length > 5 && <li><button type="button" onClick={() => setAllNotes(!allNotes)} className="text-[12px] text-muted-foreground hover:text-foreground">{allNotes ? "Show the latest 5" : `Show all ${x.notes.length}`}</button></li>}
           </ul>
@@ -191,7 +191,7 @@ export default function Project({ user }: { user: User }) {
           </dl>
         </Panel>
 
-        <Panel title="Team" hint="who is on this project, and as what" id="team">
+        <Panel title="Team" hint="who is on this rollout, and as what" id="team">
           <ul className="grid grid-cols-1 gap-2">
             {x.participants.map((m) => (
               <li key={m.id} className="group flex items-center gap-2 text-[13px]">
@@ -200,7 +200,7 @@ export default function Project({ user }: { user: User }) {
                 <span className="text-muted-foreground">{m.role}</span>
                 {m.email && <span className="hidden text-[12px] text-muted-foreground sm:inline">{m.email}</span>}
                 {can.manage && m.user_id !== x.owner_id && (
-                  <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`, {}, `Remove ${m.name} from this project? They lose access to it and stop hearing about it; their notes and tasks stay.`)} aria-label={`Remove ${m.name}`} className={cn(hit, "opacity-0 focus:opacity-100 group-hover:opacity-100")}><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`, {}, `Remove ${m.name} from this rollout? They lose access to it and stop hearing about it; their notes and tasks stay.`)} aria-label={`Remove ${m.name}`} className={cn(hit, "opacity-0 focus:opacity-100 group-hover:opacity-100")}><Trash2 className="h-3.5 w-3.5" /></button>
                 )}
               </li>
             ))}
@@ -209,14 +209,14 @@ export default function Project({ user }: { user: User }) {
             <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border pt-3">
               <TeamAddForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/add`, f)} />
               <InviteForm x={x} busy={busy} onSubmit={(f) => send(`/projects/${id}/participants/invite`, f)} />
-              <p className="max-w-prose text-[12px] text-muted-foreground">The owner is the project manager; change it on Edit. Invited people get a one-time sign-in link and see only their projects.</p>
+              <p className="max-w-prose text-[12px] text-muted-foreground">The owner is the project manager; change it on Edit. Invited people get a one-time sign-in link and see only their rollouts.</p>
               <button type="button" onClick={() => setAdding(false)} className="justify-self-start text-[12px] text-muted-foreground hover:text-foreground">Done</button>
             </div>
           ) : <Button size="sm" variant="outline" className="mt-3" onClick={() => setAdding(true)}>Add people</Button>)}
         </Panel>
 
         {can.manage && (
-          <Panel title="This project's stages" hint="only this project changes" id="stages">
+          <Panel title="This rollout's stages" hint="only this rollout changes" id="stages">
             {/* configuration is rare: a summary until someone asks to edit */}
             {!editStages ? (
               <div className="flex flex-wrap items-center gap-3 text-[13px]">
@@ -236,7 +236,7 @@ export default function Project({ user }: { user: User }) {
                 <span className="w-28 shrink-0 truncate text-[12px] text-muted-foreground">{doc.category}</span>
                 {can.download ? <a href={`/projects/${id}/documents/${doc.id}/download`} className="min-w-0 flex-1 truncate font-medium hover:underline">{doc.filename}</a> : <span className="min-w-0 flex-1 truncate font-medium">{doc.filename}</span>}
                 <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtWhen(doc.uploaded_at)}</span>
-                {can.delete_doc && <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}? The file is removed for everyone on the project.`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
+                {can.delete_doc && <button type="button" disabled={busy} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}? The file is removed for everyone on the rollout.`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
               </li>
             ))}
             {x.documents.length === 0 && <li className="text-[13px] text-muted-foreground">No documents uploaded yet.</li>}
@@ -395,7 +395,7 @@ function TeamAddForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; o
         </select>
         <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!userId || member === role}>{member ? "Change role" : "Add"}</Button>
       </div>
-      <p className="text-[12px] text-muted-foreground">A project role adds no powers beyond the person's account: a Viewer stays read-only in any role.</p>
+      <p className="text-[12px] text-muted-foreground">A rollout role adds no powers beyond the person's account: a Viewer stays read-only in any role.</p>
     </form>
   )
 }

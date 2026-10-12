@@ -18,11 +18,11 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 // to the projects that name it (they keep names as text).
 type TabKey = "account-managers" | "partners" | "vendors" | "products" | "outsourcers"
 const TABS: { key: TabKey; label: string; noun: string; help: string; example: string }[] = [
-  { key: "account-managers", label: "Account managers", noun: "account manager", help: "Your own colleagues who look after the customer. Picked on the project form; their email goes on the project.", example: "A colleague's name and work email" },
+  { key: "account-managers", label: "Account managers", noun: "account manager", help: "Your own colleagues who look after the customer. Picked on the project form; their email goes on the rollout.", example: "A colleague's name and work email" },
   { key: "partners", label: "Partners", noun: "partner", help: "Resellers or channel companies that bring a deal. Each partner has its own account managers, picked after the partner.", example: "A reseller, with the person you deal with there" },
   { key: "vendors", label: "Vendors", noun: "vendor", help: "The makers of what you deliver. Their products are listed on the Products tab.", example: "Fortinet, Microsoft" },
   { key: "products", label: "Products", noun: "product", help: "What you install or deliver. Link a product to its vendor and the project form offers it only with that vendor; products with no vendor show for every vendor.", example: "FortiGate under Fortinet" },
-  { key: "outsourcers", label: "Outsourcers", noun: "outsourcer", help: "Outside firms that do the work when a project's delivery is outsourced. Their email goes on the project.", example: "A subcontractor's company name and email" },
+  { key: "outsourcers", label: "Outsourcers", noun: "outsourcer", help: "Outside firms that do the work when a rollout's delivery is outsourced. Their email goes on the rollout.", example: "A subcontractor's company name and email" },
 ]
 
 // onError: show a refusal by the field (the edit dialog) instead of as a toast
@@ -42,13 +42,13 @@ function UsedIn({ used, name }: { used: ProjectRef[]; name: string }) {
   if (!used.length) return <span className="text-muted-foreground">Not used</span>
   return (
     <Popover>
-      <PopoverTrigger render={<button type="button" />} className="rounded-sm text-primary-text hover:underline" aria-label={`Projects that use ${name}`}>
+      <PopoverTrigger render={<button type="button" />} className="rounded-sm text-primary-text hover:underline" aria-label={`Rollouts that use ${name}`}>
         {used.length} project{used.length === 1 ? "" : "s"}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 gap-1 p-2">
         <p className="px-2 pb-1 text-[12px] text-muted-foreground">Projects that name {name}</p>
         <ul className="max-h-64 overflow-y-auto">
-          {used.map((p) => <li key={p.id}><Link to={`/projects/${p.id}`} className="block truncate rounded-md px-2 py-1 text-[13px] hover:bg-muted">{p.name || `Project ${p.id}`}</Link></li>)}
+          {used.map((p) => <li key={p.id}><Link to={`/projects/${p.id}`} className="block truncate rounded-md px-2 py-1 text-[13px] hover:bg-muted">{p.name || `Rollout ${p.id}`}</Link></li>)}
         </ul>
       </PopoverContent>
     </Popover>
@@ -71,7 +71,7 @@ function RowMenu({ name, onEdit, onDelete, busy }: { name: string; onEdit: () =>
 }
 
 function deleteText(name: string, used: ProjectRef[], extra = "") {
-  const where = used.length ? ` ${used.length} project${used.length === 1 ? "" : "s"} name it; they keep the name, but it leaves the project form's list.` : ""
+  const where = used.length ? ` ${used.length} rollout${used.length === 1 ? "" : "s"} name it; they keep the name, but it leaves the project form's list.` : ""
   return `Delete ${name}?${where}${extra}`
 }
 
@@ -95,7 +95,7 @@ function EditDialog({ editing, vendors, busy, send, onClose }: { editing: Editin
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{editing?.title}</DialogTitle>
-          {editing?.name && <DialogDescription>A new name or email also changes it on every project that uses it.</DialogDescription>}
+          {editing?.name && <DialogDescription>A new name or email also changes it on every rollout that uses it.</DialogDescription>}
         </DialogHeader>
         <form onSubmit={submit} className="grid grid-cols-1 gap-4">
           <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Name
@@ -284,7 +284,7 @@ export default function Contacts(_props: { user: User }) {
     <div className="px-5 pb-6 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">Contacts & partners</h1>
-        <p className="max-w-prose text-[13px] text-muted-foreground">the names the project form offers; a rename here updates every project that uses it</p>
+        <p className="max-w-prose text-[13px] text-muted-foreground">the names the project form offers; a rename here updates every rollout that uses it</p>
       </div>
       <Tabs value={tab} onValueChange={(v) => pick(v as TabKey)} className="mt-4">
         <TabsList className="max-w-full justify-start overflow-x-auto [scrollbar-width:none]">

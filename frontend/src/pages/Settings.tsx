@@ -39,13 +39,13 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   general: { title: "General", lede: "How the workspace reads for everyone." },
   security: { title: "Sign-in & security", lede: "Sessions, passwords, uploads and outside access." },
   people: { title: "Sign-up & activity", lede: "Sign-up links, and whether Odin records each person's active time." },
-  workflow: { title: "Projects & workflow", lede: "What new projects start with, their stages and the alerts they raise." },
-  notifications: { title: "Notifications", lede: "Which channels carry project events; each person tunes their own email." },
+  workflow: { title: "Rollouts & workflow", lede: "What new rollouts start with, their stages and the alerts they raise." },
+  notifications: { title: "Notifications", lede: "Which channels carry rollout events; each person tunes their own email." },
   integrations: { title: "Integrations", lede: "Microsoft 365 mail, Teams and OneDrive, and the Kibana dashboards." },
   ai: { title: "AI", lede: "The AI server, its health, and which features pass on today's model." },
   reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
   documents: { title: "Documents", lede: "Brand, sections and wording for reports and the sign-off." },
-  api: { title: "API tokens", lede: "Read-only access for scripts: projects, stages, tasks and saved reports." },
+  api: { title: "API tokens", lede: "Read-only access for scripts: rollouts, stages, tasks and saved reports." },
   audit: { title: "Retention", lede: "How long the audit trail, notifications and activity are kept." },
   map: { title: "System map & changes", lede: "How this version of Odin works, what changed, and the known gaps." },
   backups: { title: "Backups", lede: "Scheduled, restore-tested copies of the database, documents and pictures." },
@@ -113,12 +113,12 @@ export default function Settings(_props: { user: User }) {
         {section === "workflow" && (
           <>
             {policyForm("workflow")}
-            <Panel title="Stage templates" hint="a new project copies one, then owns its list" id="templates">
+            <Panel title="Stage templates" hint="a new rollout copies one, then owns its list" id="templates">
               <div className="grid grid-cols-1 gap-5">
                 {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
               </div>
               <AddForm placeholder="New template name (e.g. EDR rollout)" label="New template name" button="Add template" busy={busy} onSubmit={(name) => send("/settings/templates/add", { name })} />
-              <p className="mt-2 text-[12px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
+              <p className="mt-2 text-[12px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for rollouts using it.</p>
               <SlaCheck templates={data.templates} busy={busy} send={send} />
             </Panel>
             <Panel title="Document categories" hint="untick to keep a kind from partners and customers">
@@ -126,7 +126,7 @@ export default function Settings(_props: { user: User }) {
                 {data.doc_categories.map((c) => (
                   <li key={c.id} className="flex items-center gap-2">
                     <span className="flex-1">{c.name}</span>
-                    <label className="flex items-center gap-2 text-[12px] text-muted-foreground" title="Partners and customers on the project can see and download these">
+                    <label className="flex items-center gap-2 text-[12px] text-muted-foreground" title="Partners and customers on the rollout can see and download these">
                       <Switch size="sm" checked={c.partners} disabled={busy} onCheckedChange={(on) => send(`/settings/doc-categories/${c.id}/partners`, on ? { partners: "on" } : {})}
                         aria-label={`Partners see ${c.name}`} className="h-3.5 w-3.5 accent-primary" />partners</label>
                     <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -144,7 +144,7 @@ export default function Settings(_props: { user: User }) {
         )}
         {section === "notifications" && (
           <Toggles data={data} busy={busy} send={send} title="Channels" keys={[
-            { key: "notify_email_enabled", label: "Email notifications on project events (stage changes, approvals, assignments, mentions, due tasks)" },
+            { key: "notify_email_enabled", label: "Email notifications on rollout events (stage changes, approvals, assignments, mentions, due tasks)" },
             { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
           ]} extra={<>
             {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings › Integrations), so email and Teams channel posts cannot be delivered. The bell and the Teams webhook still work.</p>}
@@ -337,7 +337,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
           <Button type="submit" size="sm" loading={busy} disabled={!name.trim()}>Create token</Button>
         </form>
         <p className="mt-3 text-[12px] text-muted-foreground">
-          Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code> to <code className="font-mono">/api/v1/projects</code>, <code className="font-mono">/api/v1/projects/&lt;id&gt;</code> and <code className="font-mono">/api/v1/projects/&lt;id&gt;/report</code>. It can read every project and change nothing. Behind Cloudflare Access, /api/v1 needs its own Access policy (a service token).
+          Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code> to <code className="font-mono">/api/v1/projects</code>, <code className="font-mono">/api/v1/projects/&lt;id&gt;</code> and <code className="font-mono">/api/v1/projects/&lt;id&gt;/report</code>. It can read every rollout and change nothing. Behind Cloudflare Access, /api/v1 needs its own Access policy (a service token).
         </p>
       </Panel>
       <Panel title="Tokens">
@@ -493,13 +493,13 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
           {name !== t.name && <Button type="submit" size="sm" variant="outline" loading={busy}>Rename</Button>}
         </form>
         <span className="whitespace-nowrap text-[12px] text-muted-foreground">{t.projects} project{t.projects === 1 ? "" : "s"}</span>
-        <button type="button" disabled={busy || onlyOne} onClick={() => send(`${base}/delete`, {}, `Delete template ${t.name}? Projects keep their own copies.`)} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-destructive disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
+        <button type="button" disabled={busy || onlyOne} onClick={() => send(`${base}/delete`, {}, `Delete template ${t.name}? Rollouts keep their own copies.`)} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-destructive disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
       </div>
       <StageListEditor key={stageRowsKey(t.stages)} rows={t.stages} busy={busy} send={send} label={t.name}
         paths={{ add: `${base}/stages/add`, rename: (s) => `${base}/stages/${s}/rename`, move: (s) => `${base}/stages/${s}/move`, remove: (s) => `${base}/stages/${s}/delete`, sla: `${base}/sla` }} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => send(`${base}/sla/from-measured`, {}, "Overwrite this template's SLAs with measured averages?")}>Set SLAs from measured averages</Button>
-        <span className="text-[12px] text-muted-foreground">From projects created with this template. Applies to new projects; existing ones keep their own.</span>
+        <span className="text-[12px] text-muted-foreground">From rollouts created with this template. Applies to new rollouts; existing ones keep their own.</span>
       </div>
     </div>
   )

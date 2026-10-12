@@ -90,14 +90,14 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
     { href: "/dashboard", label: "Dashboard", match: (p) => p === "/dashboard" },
     { href: "/board", label: "Flow", match: (p) => p === "/board" },
     { href: "/my-work", label: "My work", count: user.nav.my_open_task_count, match: (p) => p === "/my-work" },
-    { href: user.nav.projects_nav_url, label: "Projects", match: (p) => p.startsWith("/projects") },
+    { href: user.nav.projects_nav_url, label: "Rollouts", match: (p) => p.startsWith("/projects") },
     { href: "/people", label: "People", match: (p) => p.startsWith("/people") },
     { href: "/analytics", label: "Cycle time", match: (p) => p === "/analytics" },
     { href: "/alerts", label: "Alerts", count: user.nav.active_alert_count, match: (p) => p === "/alerts" },
     ...(user.permissions.includes("manage_settings") ? [{ href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") || p === "/audit-logs" || p === "/users" }] : []),
   ]
   // External partners get their projects and the flow — nothing product-wide.
-  const items = all.filter((item) => user.kind !== "external" || ["Flow", "Projects"].includes(item.label))
+  const items = all.filter((item) => user.kind !== "external" || ["Flow", "Rollouts"].includes(item.label))
   async function signOut() {
     await logout()
     window.location.assign("/login")
@@ -116,7 +116,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
             {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
           </span>
           <span className="xl:flex-1" />
-          <button type="button" onClick={() => { setOpen(false); setPalette(true) }} aria-label="Search projects and tasks" aria-keyshortcuts="Control+K Meta+K /"
+          <button type="button" onClick={() => { setOpen(false); setPalette(true) }} aria-label="Search rollouts and tasks" aria-keyshortcuts="Control+K Meta+K /"
             className="flex h-9 w-full items-center gap-2 rounded-full bg-card px-3 text-left text-[13px] text-muted-foreground shadow-card hover:text-foreground xl:w-9 xl:justify-center xl:px-0 2xl:w-56 2xl:justify-start 2xl:px-3">
             <Search className="h-3.5 w-3.5 shrink-0" /><span className="flex-1 truncate xl:hidden 2xl:inline">Search…</span>
             <Kbd className="xl:hidden 2xl:inline-flex">{isMac ? "Cmd K" : "Ctrl K"}</Kbd>
