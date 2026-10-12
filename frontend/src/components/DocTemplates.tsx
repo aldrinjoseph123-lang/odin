@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
+import { PanelTitle } from "@/components/PanelTitle"
 import { EmptyState } from "@/components/EmptyState"
-import { field } from "@/lib/ui"
+import { field, danger, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { ArrowDown, ArrowUp, Copy, Eye, FileText, ImageUp, Plus, Star, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -62,8 +63,8 @@ export function DocTemplates() {
         return (
           <section key={kind} className="panel p-4" aria-label={d.kinds[kind].label}>
             <div className="mb-2 flex items-center gap-2">
-              <h2 data-n className="text-[12px] font-semibold text-nav-fg">{d.kinds[kind].label}</h2>
-              <Button size="sm" variant="outline" className="ml-auto h-7 rounded-full" onClick={() => startNew(kind)}><Plus className="h-3.5 w-3.5" /> New template</Button>
+              <PanelTitle className="mb-0">{d.kinds[kind].label}</PanelTitle>
+              <Button size="sm" variant="outline" className="ml-auto h-7" onClick={() => startNew(kind)}><Plus className="h-3.5 w-3.5" /> New template</Button>
             </div>
             {list.length === 0 && <EmptyState>No templates yet: documents use the built-in layout.</EmptyState>}
             <ul className="divide-y divide-border text-[13px]">
@@ -89,7 +90,7 @@ function Row({ t, busy, onEdit, onCopy, onDefault, onDelete }: { t: DocTemplate;
         <span className="block text-[12px] text-muted-foreground">{t.config.title} · edited by {t.updated_by}, {fmtWhen(t.updated_at)}</span></button>
       {!t.is_default && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={onDefault}><Star className="h-3.5 w-3.5" /> Make default</Button>}
       <Button size="sm" variant="ghost" className="h-7" onClick={onCopy} aria-label={`Duplicate ${t.name}`}><Copy className="h-3.5 w-3.5" /></Button>
-      <Button size="sm" variant="ghost" className="h-7 text-destructive" disabled={busy} onClick={onDelete} aria-label={`Delete ${t.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+      <Button size="sm" variant="ghost" className={danger} disabled={busy} onClick={onDelete} aria-label={`Delete ${t.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
     </li>
   )
 }
@@ -114,7 +115,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
         </section>
 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Brand">
-          <h2 data-n className="text-[12px] font-semibold text-nav-fg">Brand</h2>
+          <PanelTitle className="mb-0">Brand</PanelTitle>
           <fieldset><legend className="mb-2 text-[13px] font-medium">Accent</legend>
             <div className="flex flex-wrap gap-2">
               {d.accents.map((a) => <button key={a} type="button" onClick={() => set({ accent: a })} aria-label={a} aria-pressed={c.accent === a}
@@ -140,7 +141,7 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
         </section>
 
         <section className="panel p-4" aria-label="Sections">
-          <h2 data-n className="mb-2 text-[12px] font-semibold text-nav-fg">Sections <span className="font-normal text-muted-foreground">which appear, in this order</span></h2>
+          <PanelTitle className="mb-2" hint="which appear, in this order">Sections</PanelTitle>
           <ol className="grid grid-cols-1 gap-1 text-[13px]">
             {c.sections.map((s, i) => (
               <li key={s.key} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted/50">
@@ -155,20 +156,20 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
         </section>
 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Wording">
-          <h2 data-n className="text-[12px] font-semibold text-nav-fg">Wording</h2>
+          <PanelTitle className="mb-0">Wording</PanelTitle>
           <p className="-mt-1 text-[12px] text-muted-foreground">Placeholders: {Object.entries(d.placeholders).map(([p, what]) => <code key={p} title={what} className="mr-2 rounded bg-muted px-1">{`{${p}}`}</code>)}</p>
           {k.texts.map((t) => (
             <label key={t.key} className="grid grid-cols-1 gap-1 text-[13px] font-medium">{t.label} <span className="font-normal text-muted-foreground">{t.help}</span>
               <textarea rows={t.key === "terms" ? 3 : 2} maxLength={3000} value={c.texts[t.key] ?? ""} onChange={(e) => set({ texts: { ...c.texts, [t.key]: e.target.value } })}
-                className="w-full rounded-md border border-input bg-background p-2 text-[13px] leading-relaxed" /></label>
+                className={fieldArea} /></label>
           ))}
         </section>
 
         {notice && <p className={cn("text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
         <div className="flex flex-wrap gap-2">
-          <Button className="rounded-full" loading={busy} disabled={!edit.name.trim()} onClick={onSave}>Save template</Button>
-          <Button variant="outline" className="rounded-full" disabled={busy} onClick={onPreview}><Eye className="h-4 w-4" /> Preview</Button>
-          <Button variant="ghost" className="rounded-full" disabled={busy} onClick={onCancel}>Cancel</Button>
+          <Button loading={busy} disabled={!edit.name.trim()} onClick={onSave}>Save template</Button>
+          <Button variant="outline" disabled={busy} onClick={onPreview}><Eye className="h-4 w-4" /> Preview</Button>
+          <Button variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
         </div>
       </div>
       <section className="panel sticky top-4 flex min-h-[70vh] flex-col p-2" aria-label="Preview">

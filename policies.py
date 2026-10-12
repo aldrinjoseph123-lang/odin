@@ -387,7 +387,7 @@ _HINTS = {
     "signoff_required": "A rollout cannot close until the customer has signed it off.",
     "signoff_statement": "What the customer agrees to when they sign.",
     "signoff_terms": "Support terms printed on the sign-off, one per line.",
-    "default_customer_approval": "New projects ask the customer to approve each stage move.",
+    "default_customer_approval": "New rollouts ask the customer to approve each stage move.",
 }
 for _title, _keys in _GROUPS.items():
     for _key in _keys:

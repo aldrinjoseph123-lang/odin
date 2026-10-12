@@ -43,12 +43,12 @@ describe("Flow list", () => {
   it("the views switch is in the URL; the Kibana view is kept from partners", async () => {
     const user = userEvent.setup()
     mount()
-    await user.click(await screen.findByRole("button", { name: "Calendar" }))
+    await user.click(await screen.findByRole("radio", { name: "Calendar" }))
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Calendar")
     cleanup()
     const partner = { ...admin, kind: "external" as const, permissions: ["view_board"] }
     render(<MemoryRouter initialEntries={["/board?view=kibana"]}><Flow user={partner} /></MemoryRouter>)
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Active rollouts")
-    expect(screen.queryByRole("button", { name: "Kibana" })).toBeNull()
+    expect(screen.queryByRole("radio", { name: "Kibana" })).toBeNull()
   })
 })

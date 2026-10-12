@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { StatTile } from "@/components/StatTile"
-import { pill } from "@/lib/ui"
+import { pill, field, fieldArea } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
 import { ArrowRight, CheckSquare, ChevronLeft, MessageSquare, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -59,7 +59,7 @@ export default function Person(_props: { user: User }) {
           <h1 className="text-[17px] font-semibold tracking-tight">{d.user.name}</h1>
           <p className="text-[13px] text-muted-foreground">{d.user.role}{d.user.email && ` · ${d.user.email}`}{(d.activity?.last_seen_at ?? d.user.last_login_at) && <> · seen <Ago iso={(d.activity?.last_seen_at ?? d.user.last_login_at)!} /></>}</p>
         </div>
-        {d.can_notify && <Button size="sm" className="rounded-full" onClick={() => setOpen(true)}><Send className="h-3.5 w-3.5" /> Notify {d.user.name.split(" ")[0]}</Button>}
+        {d.can_notify && <Button size="sm" onClick={() => setOpen(true)}><Send className="h-3.5 w-3.5" /> Notify {d.user.name.split(" ")[0]}</Button>}
       </div>
       {notice && <p className="mt-2 text-[13px] text-muted-foreground" role="status">{notice}</p>}
 
@@ -169,19 +169,19 @@ export default function Person(_props: { user: User }) {
             </DialogHeader>
             <label htmlFor="notify-message" className="mt-3 block text-[13px] font-medium">Message</label>
             <textarea id="notify-message" value={message} onChange={(e) => setMessage(e.target.value)} rows={4} maxLength={1000} required autoFocus
-              className="mt-1 w-full rounded-md border border-input bg-background p-2 text-[13px]" placeholder="Could you look at the pilot sign-off today?" />
+              className={cn(fieldArea, "mt-1")} placeholder="Could you look at the pilot sign-off today?" />
             {d.projects.length > 0 && (
               <>
                 <label htmlFor="notify-about" className="mt-3 block text-[13px] font-medium">About <span className="font-normal text-muted-foreground">(optional)</span></label>
-                <select id="notify-about" value={about ?? ""} onChange={(e) => setAbout(e.target.value ? Number(e.target.value) : null)} className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]">
+                <select id="notify-about" value={about ?? ""} onChange={(e) => setAbout(e.target.value ? Number(e.target.value) : null)} className={cn(field, "mt-1")}>
                   <option value="">No particular rollout</option>
                   {d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </>
             )}
             <div className="mt-4 flex justify-end gap-2">
-              <Button type="button" variant="ghost" size="sm" className="rounded-full" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
-              <Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!message.trim()}><Send className="h-3.5 w-3.5" /> Send</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
+              <Button type="submit" size="sm" loading={busy} disabled={!message.trim()}><Send className="h-3.5 w-3.5" /> Send</Button>
             </div>
           </form>
         </DialogContent>

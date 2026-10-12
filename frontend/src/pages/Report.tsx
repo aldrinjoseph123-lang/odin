@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
+import { Segmented } from "@/components/Segmented"
 import { StatTile } from "@/components/StatTile"
-import { pill } from "@/lib/ui"
+import { pill, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
@@ -75,10 +76,8 @@ export default function Report({ user }: { user: User }) {
       <Link to={`/projects/${id}`} className="inline-flex min-w-0 max-w-full items-start gap-1 text-[13px] text-muted-foreground wrap-anywhere hover:text-foreground"><ChevronLeft className="mt-1 h-3.5 w-3.5 shrink-0" />{r.project.name}</Link>
       <span className="ml-auto flex flex-wrap items-center gap-2">
         {r.can_edit && (
-          <span className="flex rounded-full bg-muted p-1" role="group" aria-label="Audience">
-            {(["internal", "customer"] as const).map((a) => <button key={a} type="button" aria-pressed={r.audience === a} onClick={() => set("audience", a === "internal" ? null : a)}
-              className={cn("h-7 rounded-full px-3 text-[13px] font-medium", r.audience === a ? "bg-card shadow-card" : "text-muted-foreground")}>{a === "internal" ? "Internal" : "Customer copy"}</button>)}
-          </span>
+          <Segmented label="Audience" value={r.audience} onChange={(a) => set("audience", a === "internal" ? null : a)}
+            options={[{ value: "internal", label: "Internal" }, { value: "customer", label: "Customer copy" }]} />
         )}
         {r.versions.length > 0 && (
           <select value={r.version?.version ?? ""} onChange={(e) => set("v", e.target.value || null)} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
@@ -89,7 +88,7 @@ export default function Report({ user }: { user: User }) {
         {r.is_live && r.can_edit && <TemplatePicker kind="rollout" value={template} onChange={(t) => set("template", t ? String(t) : null)} />}
         {r.data && <a href={pdf} target="_blank" rel="noreferrer" className={pill}><Download className="h-3.5 w-3.5" /> PDF</a>}
         <button type="button" onClick={() => window.print()} className={pill}><Printer className="h-3.5 w-3.5" /> Print</button>
-        {editable && <Button size="sm" className="h-8 rounded-full" loading={busy} disabled={!words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
+        {editable && <Button size="sm" className="h-8" loading={busy} disabled={!words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
       </span>
     </div>
   )
@@ -127,7 +126,7 @@ export default function Report({ user }: { user: User }) {
     { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
     { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", warn: d.work.late > 0 },
   ]
-  const textarea = "w-full rounded-lg border border-input bg-background p-3 text-[14px] leading-relaxed"
+  const textarea = cn(fieldArea, "p-3 text-[14px]")
   const wordBlock = (key: "summary" | "next_steps" | "asks", label: string, rows: number, hint: string) => (
     <div>
       <div className="mb-1 flex items-center gap-2"><h3 className="text-[13px] font-semibold text-nav-fg">{label}</h3>

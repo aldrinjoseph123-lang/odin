@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { PageHeader } from "@/components/PageHeader"
 import { EmptyState } from "@/components/EmptyState"
 import { toast } from "@/lib/toast"
-import { PanelTitle } from "@/components/PanelTitle"
-import { fieldAuto } from "@/lib/ui"
+import { Panel } from "@/components/PanelTitle"
+import { fieldAuto, danger, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Navigate, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
@@ -23,14 +24,6 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
-function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
-  return (
-    <section id={id} aria-label={title} className="panel p-4">
-      <PanelTitle hint={hint}>{title}</PanelTitle>
-      {children}
-    </section>
-  )
-}
 
 // Settings → one area per address (/settings/<section>); the side menu is
 // SettingsLayout. Each area draws only its own panels and loads without
@@ -93,8 +86,7 @@ export default function Settings(_props: { user: User }) {
 
   return (
     <div className="px-5 pb-6 pt-4">
-      <h1 className="text-[17px] font-semibold tracking-tight">{TITLES[section].title}</h1>
-      <p className="mt-1 text-[13px] text-muted-foreground">{TITLES[section].lede}</p>
+      <PageHeader title={TITLES[section].title} lede={TITLES[section].lede} />
 
       {/* min-w-0 on every grid item: a wide table scrolls inside its panel
           instead of stretching the page on a phone */}
@@ -275,15 +267,15 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               )}
               {p.kind === "text" && p.multiline && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })}
-                  className="w-full max-w-2xl rounded-md border border-input bg-background p-2 text-[13px] leading-relaxed" />
+                  className={cn(fieldArea, "max-w-2xl")} />
               )}
               {p.kind === "dates" && (
                 <textarea id={`pol-${p.key}`} rows={5} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
-                  placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className="w-full max-w-2xl rounded-lg border border-input bg-background px-3 py-2 text-[13px]" />
+                  placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className={cn(fieldArea, "max-w-2xl")} />
               )}
               {p.kind === "lines" && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
-                  placeholder={"SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[13px]" />
+                  placeholder={"SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true"} className={cn(fieldArea, "max-w-2xl font-mono")} />
               )}
               {p.kind === "choice" && (
                 <select id={`pol-${p.key}`} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className={cn(fieldAuto, "max-w-sm")}>
@@ -353,7 +345,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
                     <td className="whitespace-nowrap py-2 pr-3"><Ago iso={t.created_at} /> · {t.created_by}</td>
                     <td className="whitespace-nowrap py-2 pr-3">{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
                     <td className="whitespace-nowrap py-2 pr-3">{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDate(t.expires_at)}</td>
-                    <td className="py-2 text-right">{!dead && <Button size="sm" variant="ghost" className="h-7 text-destructive hover:text-destructive" disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
+                    <td className="py-2 text-right">{!dead && <Button size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
                   </tr>
                 )
               })}
@@ -395,7 +387,7 @@ function BackupHistory({ runs }: { runs: BackupRun[] }) {
             {runs.map((r) => (
               <tr key={r.id} className="border-t border-border align-top">
                 <td className="whitespace-nowrap py-2 pr-3"><Ago iso={r.started_at} /><span className="block text-[12px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
-                <td className="py-2 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-bad">Problem</span>}</td>
+                <td className="py-2 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-destructive">Problem</span>}</td>
                 <td className="py-2 pr-3">{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-destructive">Failed</span>}
                   {r.restore_detail && <span className="block text-[12px] text-muted-foreground">{r.restore_detail}</span>}</td>
                 <td className="py-2 pr-3 text-[13px]">{r.destinations}</td>
@@ -415,6 +407,7 @@ function BackupHistory({ runs }: { runs: BackupRun[] }) {
 function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; send: Send }) {
   const [f, setF] = useState({ client_id: sso.client_id ?? "", tenant_id: sso.tenant_id ?? "", client_secret: "" })
   const [enforced, setEnforced] = useState(sso.enforced)
+  const ssoDirty = f.client_id !== (sso.client_id ?? "") || f.tenant_id !== (sso.tenant_id ?? "") || f.client_secret !== "" || enforced !== sso.enforced
   const status = !sso.configured ? "Not set up: staff sign in with a password." : sso.enforced ? "Required: staff sign in with Microsoft only." : "Set up: staff can use Microsoft or a password."
   return (
     <Panel title="Microsoft sign-in" hint="staff; partners keep their email link">
@@ -435,9 +428,9 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
           <span>Staff must sign in with Microsoft <span className="block text-[12px] text-muted-foreground">The password form disappears. Accounts ticked "Password" on the Users page ({sso.password_admins} admin{sso.password_admins === 1 ? "" : "s"} now) keep an emergency form at /login/password; each use is recorded and the admins are told.</span></span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="sm" loading={busy}>Save</Button>
+          <Button type="submit" size="sm" loading={busy} disabled={!ssoDirty}>Save</Button>
           {sso.configured && <a href="/auth/microsoft" className={buttonVariants({ size: "sm", variant: "outline" })}>Try Microsoft sign-in</a>}
-          {sso.configured && <Button type="button" size="sm" variant="ghost" className="ml-auto text-bad hover:text-destructive" disabled={busy}
+          {sso.configured && <Button type="button" size="sm" variant="ghost" className={cn("ml-auto", danger)} disabled={busy}
             onClick={() => send("/settings/sso", { clear: "1" }, "Remove Microsoft sign-in? Staff go back to passwords; anyone who only ever used Microsoft will need a password reset.")}>Remove</Button>}
         </div>
       </form>
@@ -543,7 +536,7 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
             ))}
           </tbody>
         </table></div>
-        <Button type="submit" size="sm" className="mt-3" loading={busy}>Save alert settings</Button>
+        <Button type="submit" size="sm" className="mt-3" loading={busy} disabled={JSON.stringify(rows) === JSON.stringify(data.alerts)}>Save alert settings</Button>
       </form>
     </Panel>
   )
@@ -567,9 +560,9 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[13px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[13px]" /></label>
           <div className="flex gap-2">
-            <Button type="submit" size="sm" loading={busy} disabled={!app.client_id || !app.tenant_id}>Save</Button>
+            <Button type="submit" size="sm" loading={busy} disabled={!app.client_id || !app.tenant_id || (app.client_id === (m.azure_app.client_id ?? "") && app.tenant_id === (m.azure_app.tenant_id ?? "") && !app.client_secret)}>Save</Button>
             {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>}
-            {m.oauth_client_configured && <Button type="button" size="sm" variant="outline" className="ml-auto text-bad hover:text-destructive" disabled={busy} onClick={() => send("/settings/azure-app/clear", {}, "Clear Azure credentials and disconnect Microsoft 365?")}>Clear & disconnect</Button>}
+            {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" className={cn("ml-auto", danger)} disabled={busy} onClick={() => send("/settings/azure-app/clear", {}, "Clear Azure credentials and disconnect Microsoft 365?")}>Clear & disconnect</Button>}
           </div>
         </form>
       )}
@@ -582,7 +575,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
       {m.connected && (
         <div className="mt-2 grid grid-cols-1 gap-2 text-[13px]">
           <p>Connected as <span className="font-medium">{m.connected_email ?? "—"}</span> · Teams channel <span className="font-medium">{m.channel_id ? `${m.team_name} / ${m.channel_name}` : "not selected yet"}</span>
-            <button type="button" disabled={busy} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-bad hover:underline">Disconnect</button></p>
+            <button type="button" disabled={busy} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-destructive hover:underline">Disconnect</button></p>
           {m.teams_error && <p className="text-[13px] text-destructive">Could not load teams: {m.teams_error}</p>}
           <div className="flex flex-wrap items-center gap-2">
             <select value={teamId} onChange={(e) => onTeam(e.target.value)} aria-label="Microsoft Teams team" className={fieldAuto}>

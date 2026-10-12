@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { PanelTitle } from "@/components/PanelTitle"
 import { EmptyState } from "@/components/EmptyState"
 import { chip } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
@@ -70,7 +71,7 @@ export default function Analytics(_props: { user: User }) {
           </div>
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <section className="panel p-4">
-              <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Aging <span className="font-normal text-muted-foreground">days in current stage</span></h2>
+              <PanelTitle n={false} className="mb-2" hint="days in current stage">Aging</PanelTitle>
               <ul className="divide-y divide-border text-[13px]">
                 {s.aging.map((a) => (
                   <li key={`${a.project_id}-${a.stage}`} className="flex items-center gap-3 py-2">
@@ -83,7 +84,7 @@ export default function Analytics(_props: { user: User }) {
               </ul>
             </section>
             <section className="panel p-4">
-              <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Throughput <span className="font-normal text-muted-foreground">rollouts closed per month</span></h2>
+              <PanelTitle n={false} className="mb-2" hint="rollouts closed per month">Throughput</PanelTitle>
               <ul className="grid grid-cols-1 gap-2 text-[13px]">
                 {s.throughput.map(([month, n]) => (
                   <li key={month} className="flex items-center gap-3"><span className="w-16 text-[12px] text-muted-foreground">{month}</span><span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-ok-line" style={{ width: `${peak ? (n / peak) * 100 : 0}%` }} /></span><span className="w-6 text-right">{n}</span></li>

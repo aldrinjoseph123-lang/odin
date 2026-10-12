@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { chip } from "@/lib/ui"
+import { chip, filterSelect } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { ExternalLink } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
@@ -42,7 +42,7 @@ export function Kibana({ rollout, onRollout }: { rollout: number | null; onRollo
         {perRollout && (
           <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
             Rollout
-            <select value={d.rollout ?? ""} onChange={(e) => onRollout(e.target.value ? Number(e.target.value) : null)} aria-label="Rollout shown in Kibana" className="h-7 max-w-64 rounded-md border border-input bg-background px-2 text-[13px] text-foreground">
+            <select value={d.rollout ?? ""} onChange={(e) => onRollout(e.target.value ? Number(e.target.value) : null)} aria-label="Rollout shown in Kibana" className={cn(filterSelect, "max-w-64")}>
               <option value="">Pick a rollout</option>
               {d.rollouts.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>

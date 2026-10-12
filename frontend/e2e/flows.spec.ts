@@ -17,7 +17,7 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   await expect(page.getByText(/Saved to your dashboard/).first()).toBeVisible()   // a toast
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Customise Timeline" }).click()
-  await page.getByRole("group", { name: "Width of Timeline" }).getByRole("button", { name: "Full" }).click()
+  await page.getByRole("radiogroup", { name: "Width of Timeline" }).getByRole("radio", { name: "Full" }).click()
   await page.locator("#timeline-show").selectOption("attention")
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Customise Open alerts" }).click()
@@ -281,10 +281,10 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   // the report: the customer copy hides the baseline; a saved version is listed; both PDFs render
   await page.goto("/projects/1/report")
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/EDR Rollout - Globex/)
-  await page.getByRole("button", { name: "Customer copy" }).click()
+  await page.getByRole("radio", { name: "Customer copy" }).click()
   await expect(page).toHaveURL(/audience=customer/)
   await expect(page.locator("main")).not.toContainText(/baseline/i)
-  await page.getByRole("button", { name: "Internal" }).click()
+  await page.getByRole("radio", { name: "Internal" }).click()
   await page.getByRole("textbox", { name: "What we need from the customer" }).fill("E2E: confirm the change window.")
   await page.getByRole("button", { name: "Save as version" }).click()
   await expect(page.getByRole("alertdialog")).toContainText(/Partners and customers/)

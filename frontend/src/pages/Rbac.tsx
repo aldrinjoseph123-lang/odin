@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { PageHeader } from "@/components/PageHeader"
 import { toast } from "@/lib/toast"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ApiError, postForm, rbac, type RbacData, type User } from "@/lib/api"
@@ -34,11 +35,8 @@ export default function Rbac(_props: { user: User }) {
   const dirty = JSON.stringify(matrix) !== JSON.stringify(data.matrix)
   return (
     <div className="px-5 pb-6 pt-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-[17px] font-semibold tracking-tight">Role permissions</h1>
-        <p className="text-[13px] text-muted-foreground">which global role may do what; rollout roles narrow it further</p>
-        <a href="/users" className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Users</a>
-      </div>
+      <PageHeader title="Role permissions" lede="Which global role may do what; rollout roles narrow it further."
+        actions={<a href="/users" className={buttonVariants({ variant: "ghost", size: "sm" })}>Users</a>} />
       <form onSubmit={submit} className="mt-3">
         <div className="overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">

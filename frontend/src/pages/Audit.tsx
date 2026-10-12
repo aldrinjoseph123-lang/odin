@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react"
+import { PageHeader } from "@/components/PageHeader"
 import { filterSelect } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
 import { buttonVariants } from "@/components/ui/button"
@@ -36,13 +37,8 @@ export default function Audit(_props: { user: User }) {
 
   return (
     <div className="flex h-full flex-col px-5 pb-4 pt-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-[17px] font-semibold tracking-tight">Audit log</h1>
-        <p className="text-[13px] text-muted-foreground">{data.total} {filtered ? "matching" : ""} entr{data.total === 1 ? "y" : "ies"} · append-only</p>
-        <div className="ml-auto flex items-center gap-2">
-          <a href={`/audit-logs/export.csv${query ? `?${query}` : ""}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
-        </div>
-      </div>
+      <PageHeader title="Audit log" lede={`${data.total} ${filtered ? "matching " : ""}entr${data.total === 1 ? "y" : "ies"} · append-only`}
+        actions={<a href={`/audit-logs/export.csv${query ? `?${query}` : ""}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>} />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select value={params.get("user") ?? ""} onChange={(e) => update({ user: e.target.value || null })} aria-label="Filter by user" className={cn(filterSelect, "max-w-48")}>
           <option value="">All users</option>{data.usernames.map((u) => <option key={u} value={u}>{u}</option>)}

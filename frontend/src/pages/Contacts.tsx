@@ -1,4 +1,7 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { PageHeader } from "@/components/PageHeader"
+import { PanelTitle } from "@/components/PanelTitle"
+import { fieldAuto } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { ChevronRight, MoreHorizontal, Plus } from "lucide-react"
@@ -108,7 +111,7 @@ function EditDialog({ editing, vendors, busy, send, onClose }: { editing: Editin
           )}
           {editing?.withVendor && (
             <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Vendor
-              <select value={vendor} onChange={(e) => setVendor(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-[13px]">
+              <select value={vendor} onChange={(e) => setVendor(e.target.value)} className={fieldAuto}>
                 <option value="">Any vendor</option>
                 {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
@@ -282,10 +285,7 @@ export default function Contacts(_props: { user: User }) {
 
   return (
     <div className="px-5 pb-6 pt-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-[17px] font-semibold tracking-tight">Contacts & partners</h1>
-        <p className="max-w-prose text-[13px] text-muted-foreground">the names the project form offers; a rename here updates every rollout that uses it</p>
-      </div>
+      <PageHeader title="Contacts & partners" lede="The names the project form offers; a rename here updates every rollout that uses it." />
       <Tabs value={tab} onValueChange={(v) => pick(v as TabKey)} className="mt-4">
         <TabsList className="max-w-full justify-start overflow-x-auto [scrollbar-width:none]">
           {TABS.map((t) => (
@@ -298,7 +298,7 @@ export default function Contacts(_props: { user: User }) {
       <section className="panel mt-4 overflow-hidden" aria-label={meta.label}>
         <div className="flex flex-wrap items-start justify-between gap-3 p-4">
           <div className="min-w-0 max-w-2xl">
-            <h2 className="text-[12px] font-semibold text-nav-fg">{meta.label}</h2>
+            <PanelTitle n={false} className="mb-0">{meta.label}</PanelTitle>
             <p className="mt-1 text-[13px]">{meta.help}</p>
             <p className="max-w-prose mt-1 text-[12px] text-muted-foreground">For example: {meta.example}</p>
           </div>

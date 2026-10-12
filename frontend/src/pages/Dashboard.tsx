@@ -1,5 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
-import { chip, pill } from "@/lib/ui"
+import { Segmented } from "@/components/Segmented"
+import { chip, pill, danger, fieldAuto } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripHorizontal, Layers, Maximize2, MessageSquare, MoreHorizontal, PauseCircle, Plus, ShieldCheck, Timer, Trash2, UserCheck } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, Line, LineChart, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as ChartTip, XAxis } from "recharts"
@@ -662,11 +663,11 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
               return (
                 <label key={s.key} htmlFor={id} className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{s.label}</span>
                   {s.kind === "choice" ? (
-                    <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 max-w-[60%] rounded-md border border-input bg-background px-2 text-[13px]">
+                    <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className={cn(fieldAuto, "h-7 max-w-[60%]")}>
                       {s.choices?.map((c) => <option key={c} value={c}>{MEASURE_LABEL[c] ?? CHOICE_LABEL[c] ?? c}</option>)}
                     </select>
-                  ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 w-40 rounded-md border border-input bg-background px-2 text-[13px]" />
-                  : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[13px]" />}
+                  ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className={cn(fieldAuto, "h-7 w-40")} />
+                  : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className={cn(fieldAuto, "h-7 w-20")} />}
                 </label>
               )
             })}
@@ -674,19 +675,14 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
         )}
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-muted-foreground">Width</span>
-          <span className="flex rounded-full bg-muted p-1" role="group" aria-label={`Width of ${title}`}>
-            {WIDTHS.map((x) => (
-              <button key={x.w} type="button" onClick={() => onResize(x.w)} aria-pressed={item.w === x.w}
-                className={cn("h-6 rounded-full px-3 text-[12px] font-medium", item.w === x.w ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground")}>{x.label}</button>
-            ))}
-          </span>
+          <Segmented label={`Width of ${title}`} value={item.w} onChange={onResize} options={WIDTHS.map((x) => ({ value: x.w, label: x.label }))} />
         </div>
         <div className="mt-2 flex items-center gap-1">
           <span className="mr-auto text-muted-foreground">Position</span>
           <button type="button" onClick={() => onMove(-1)} disabled={first} className={cn(tool, "w-auto px-3 text-[12px]")} aria-label={`Move ${title} earlier`}><ChevronUp className="h-3.5 w-3.5" /> Earlier</button>
           <button type="button" onClick={() => onMove(1)} disabled={last} className={cn(tool, "w-auto px-3 text-[12px]")} aria-label={`Move ${title} later`}><ChevronDown className="h-3.5 w-3.5" /> Later</button>
         </div>
-        <button type="button" onClick={onRemove} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-border py-2 text-[12px] text-bad hover:bg-bad-soft" aria-label={`Remove ${title}`}><Trash2 className="h-3.5 w-3.5" /> Remove from my dashboard</button>
+        <button type="button" onClick={onRemove} className={cn("mt-3 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[12px]", danger)} aria-label={`Remove ${title}`}><Trash2 className="h-3.5 w-3.5" /> Remove from my dashboard</button>
       </PopoverContent>
     </Popover>
   )

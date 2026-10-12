@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
-import { chip } from "@/lib/ui"
+import { Segmented } from "@/components/Segmented"
+import { chip, fieldAuto, filterSelect } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Inbox, ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
@@ -33,6 +34,10 @@ const APPROVAL: Record<ApprovalStatus, { label: string; chip: string } | null> =
   declined:   { label: "Declined",          chip: "bg-bad-soft text-bad" },
   superseded: null,
 }
+
+// one width for every view's title, so the view switcher after it stays put
+const TITLE = "w-36 shrink-0 text-[17px] font-semibold tracking-tight"
+
 function ApprovalChip({ status, className }: { status: ApprovalStatus | null; className?: string }) {
   const a = status && APPROVAL[status]
   return a ? <span className={cn("whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-medium", a.chip, className)}>{a.label}</span> : null
@@ -60,7 +65,7 @@ function TaskForm({ d, label, init, busy, onSave, onCancel, submitLabel }: {
     <form className="mt-2 grid grid-cols-1 gap-1" onSubmit={async (e) => { e.preventDefault(); if (v.title.trim() && await onSave(v) && !init.title) setV({ ...v, title: "" }) }}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel() } }}>
       <Input autoFocus value={v.title} onChange={set("title")} placeholder="Task" aria-label={label} maxLength={200} className="h-7 px-2 text-[13px]" />
-      <select value={v.assignee} onChange={set("assignee")} aria-label="Assign to" className="h-7 min-w-0 rounded-md border border-input bg-background px-2 text-[12px]">
+      <select value={v.assignee} onChange={set("assignee")} aria-label="Assign to" className={cn(fieldAuto, "h-7 min-w-0 text-[12px]")}>
         <option value="">Unassigned</option>
         {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
       </select>
@@ -268,7 +273,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
-        <h1 className="text-[17px] font-semibold tracking-tight">Active rollouts</h1>
+        <h1 className={TITLE}>Active rollouts</h1>
         {tools}
         <p className="text-[13px] text-muted-foreground">
           {data.rows.length} active
@@ -287,7 +292,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
           <label className="flex items-center gap-2 pl-1 text-[13px] text-muted-foreground">
             Group
             <select aria-label="Group rollouts by" value={group ?? ""} onChange={(e) => setGroup((e.target.value || null) as FlowGroupBy | null)}
-              className="h-8 rounded-md border border-input bg-background px-2 text-[13px] text-foreground pointer-coarse:h-10">
+              className={cn(filterSelect, "pointer-coarse:h-10")}>
               <option value="">None</option><option value="stage">Stage</option><option value="client">Client</option><option value="owner">Owner</option>
             </select>
           </label>
@@ -802,22 +807,18 @@ export default function Flow({ user }: { user: User }) {
   if (!data) return <PageSkeleton />
 
   const views = (
-    <span className="flex rounded-full bg-muted p-1" role="group" aria-label="View">
-      {([["list", LayoutList, "Rollouts"], ["calendar", CalendarDays, "Calendar"], ...(user.kind === "external" ? [] : [["kibana", BarChart3, "Kibana"] as const])] as const).map(([v, Icon, label]) => (
-        <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v}
-          className={cn("flex h-7 items-center gap-2 rounded-full px-3 text-[12px] font-medium", view === v ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground")}>
-          <Icon className="h-3.5 w-3.5" aria-hidden />{label}
-        </button>
-      ))}
-    </span>
+    <Segmented label="View" value={view} onChange={setView}
+      options={([["list", LayoutList, "Rollouts"], ["calendar", CalendarDays, "Calendar"], ...(user.kind === "external" ? [] : [["kibana", BarChart3, "Kibana"] as const])] as const)
+        .map(([v, Icon, label]) => ({ value: v, label, icon: <Icon className="h-3.5 w-3.5" aria-hidden /> }))} />
   )
+  // the same header row, in the same card at the same place, on all three views, so the switcher never moves (critique 10 Oct)
   if (view !== "list") return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className={cn("panel mb-4 flex min-h-0 flex-1 flex-col overflow-hidden", wide ? "mx-4" : "mx-3")}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
-        <h1 className="text-[17px] font-semibold tracking-tight">{view === "calendar" ? "Calendar" : "Kibana"}</h1>
+        <h1 className={TITLE}>{view === "calendar" ? "Calendar" : "Kibana"}</h1>
         {views}
       </div>
-      <div className="panel mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden">{view === "calendar" ? <Calendar wide={wide} /> : <Kibana rollout={selectedId} onRollout={setSelectedId} />}</div>
+      {view === "calendar" ? <Calendar wide={wide} /> : <Kibana rollout={selectedId} onRollout={setSelectedId} />}
     </div>
   )
   const list = <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} tools={views} />
@@ -829,7 +830,7 @@ export default function Flow({ user }: { user: User }) {
                 </button>
               )}
               {notice && (
-                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[13px]", notice.bad ? "bg-bad-soft text-bad" : "bg-ok-soft text-ok")} role="status">
+                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[13px]", notice.bad ? "bg-destructive/10 text-destructive" : "bg-ok-soft text-ok")} role="status">
                   <span>{notice.text}
                     {/* the mover can put it back for five minutes; the server decides */}
                     {notice.undo && <button type="button" onClick={() => void undoMove(notice.undo!)} className="ml-2 font-semibold underline-offset-2 hover:underline">Undo</button>}

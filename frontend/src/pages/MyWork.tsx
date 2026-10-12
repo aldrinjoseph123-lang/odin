@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { EmptyState } from "@/components/EmptyState"
 import { StatTile } from "@/components/StatTile"
-import { pill } from "@/lib/ui"
+import { pill, filterSelect } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide-react"
 import { Stepper } from "@/components/Stepper"
@@ -105,7 +105,7 @@ export default function MyWork({ user }: { user: User }) {
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h2 className="text-[14px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h2>
             {d.projects.length > 1 && (
-              <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className="ml-auto h-7 rounded-md border border-input bg-background px-2 text-[13px]">
+              <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className={cn(filterSelect, "ml-auto")}>
                 <option value="">Every rollout</option>
                 {d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>

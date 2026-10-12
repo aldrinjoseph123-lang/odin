@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { field } from "@/lib/ui"
+import { Segmented } from "@/components/Segmented"
+import { field, danger, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { ArrowDown, ArrowUp, FileSignature, Plus } from "lucide-react"
@@ -60,7 +61,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
         {d.items.length > 0 ? (["delivered", "partial", "descoped", "agreed"] as ScopeStatus[]).filter(count).map((s) =>
           <span key={s} className={cn("rounded-full px-2 py-1", SCOPE_TONE[s].replace("line-through", ""))}>{count(s)} {SCOPE_WORD[s].toLowerCase()}</span>)
           : <span className="text-muted-foreground">{d.can_edit ? "What the customer agreed to, item by item. The sign-off lists it." : "No scope recorded yet."}</span>}
-        {d.can_edit && <Button size="sm" className="ml-auto rounded-full" onClick={() => { setError(null); setEdit({ title: "", status: "agreed" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
+        {d.can_edit && <Button size="sm" className="ml-auto" onClick={() => { setError(null); setEdit({ title: "", status: "agreed" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
       {d.can_edit && <AISowPlan projectId={projectId} onAdded={() => void load()} />}
       {error && !edit && <p className="mt-2 text-[13px] text-destructive" role="alert">{error}</p>}
@@ -91,17 +92,15 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
               <DialogHeader><DialogTitle>{edit.id ? "Scope item" : "Add to the scope"}</DialogTitle>
                 <DialogDescription>Before sign-off, mark each item delivered, partly delivered or descoped; the last two need a reason.</DialogDescription></DialogHeader>
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Deliverable<input className={field} required maxLength={300} value={edit.title} onChange={(e) => set({ title: e.target.value })} autoFocus /></label>
-              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Detail<textarea rows={2} maxLength={2000} className="w-full rounded-md border border-input bg-background p-2 text-[13px]" value={edit.detail ?? ""} onChange={(e) => set({ detail: e.target.value })} placeholder="Quantities, sites, acceptance criteria" /></label>
-              <div className="flex rounded-full bg-muted p-1" role="radiogroup" aria-label="Status">
-                {(Object.keys(SCOPE_WORD) as ScopeStatus[]).map((s) => <button key={s} type="button" role="radio" aria-checked={edit.status === s} onClick={() => set({ status: s })}
-                  className={cn("h-7 flex-1 rounded-full text-[12px]", edit.status === s ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{SCOPE_WORD[s]}</button>)}
-              </div>
+              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Detail<textarea rows={2} maxLength={2000} className={fieldArea} value={edit.detail ?? ""} onChange={(e) => set({ detail: e.target.value })} placeholder="Quantities, sites, acceptance criteria" /></label>
+              <Segmented label="Status" full value={edit.status as ScopeStatus} onChange={(s) => set({ status: s })}
+                options={(Object.keys(SCOPE_WORD) as ScopeStatus[]).map((s) => ({ value: s, label: SCOPE_WORD[s] }))} />
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">{edit.status === "descoped" ? "Why it was descoped" : edit.status === "partial" ? "What was left out, and why" : "Note"}
                 <input className={field} maxLength={1000} required={edit.status === "partial" || edit.status === "descoped"} value={edit.note ?? ""} onChange={(e) => set({ note: e.target.value })} /></label>
               {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
               <div className="flex gap-2">
-                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-destructive" disabled={busy} onClick={async () => { if (await askConfirm("Delete this scope item? It leaves the agreed scope; the history keeps a line that it existed.")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item deleted") }) }}>Delete</Button>}
-                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
+                {edit.id && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={async () => { if (await askConfirm("Delete this scope item? It leaves the agreed scope; the history keeps a line that it existed.")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item deleted") }) }}>Delete</Button>}
+                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
               </div>
             </form>
           )}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { danger } from "@/lib/ui"
 import { ShieldCheck } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -98,7 +99,7 @@ export function TwoStepPanel() {
           {!mode && (
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => setMode("codes")}>New recovery codes</Button>
-              {!s.required && <Button size="sm" variant="ghost" className="text-bad" onClick={() => setMode("off")}>Turn off</Button>}
+              {!s.required && <Button size="sm" variant="ghost" className={danger} onClick={() => setMode("off")}>Turn off</Button>}
             </div>
           )}
           {mode && (

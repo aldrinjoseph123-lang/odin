@@ -76,7 +76,7 @@ describe("Dashboard", () => {
     expect((await screen.findAllByText("Saved to your dashboard.")).length).toBeGreaterThan(0)
     await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "Customise Timeline" }))
-    await user.click(within(screen.getByRole("group", { name: "Width of Timeline" })).getByRole("button", { name: "Full" }))
+    await user.click(within(screen.getByRole("radiogroup", { name: "Width of Timeline" })).getByRole("radio", { name: "Full" }))
     await user.selectOptions(screen.getByLabelText("Show"), "attention")
     await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "Customise Open alerts" }))

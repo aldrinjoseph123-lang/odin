@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { PanelTitle } from "@/components/PanelTitle"
-import { fieldAuto } from "@/lib/ui"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Panel } from "@/components/PanelTitle"
+import { fieldAuto, fieldArea } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
 import { Copy, MoreHorizontal, Trash2 } from "lucide-react"
 import { askConfirm } from "@/lib/confirm"
@@ -34,14 +34,6 @@ const LABELS: Record<string, string> = {
   outsourcer_name: "Outsourcer", vendor_name: "Vendor", product_name: "Product",
 }
 
-function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
-  return (
-    <section id={id} className="panel scroll-mt-16 p-4">
-      <PanelTitle hint={hint}>{title}</PanelTitle>
-      {children}
-    </section>
-  )
-}
 
 export default function Project({ user }: { user: User }) {
   const id = Number(useParams().id)
@@ -309,7 +301,7 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
       {editing ? (
         <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then((r) => { if (r) setEditing(false) }) }} className="mt-1 grid grid-cols-1 gap-2">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={5000} aria-label="Edit note" autoFocus
-            className="w-full rounded-md border border-input bg-background p-2 text-[13px]" onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
+            className={fieldArea} onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
           <div className="flex gap-2">
             <Button type="submit" size="sm" loading={busy} disabled={!text.trim() || text.trim() === n.note}>Save</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(false); setText(n.note) }}>Cancel</Button>

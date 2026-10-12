@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { PanelTitle } from "@/components/PanelTitle"
+import { danger } from "@/lib/ui"
+import { Panel } from "@/components/PanelTitle"
 import { CheckCircle2, CircleDashed, Clock, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -12,18 +13,10 @@ import { aiStale } from "@/lib/format"
 
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
-function Panel({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
-  return (
-    <section className="panel p-4">
-      <PanelTitle hint={hint}>{title}</PanelTitle>
-      {children}
-    </section>
-  )
-}
 
 // A state is a word and an icon, never colour alone.
 const TONE = {
-  ok: "text-ok", warn: "bg-warn-soft text-warn", bad: "bg-bad-soft text-bad", none: "text-muted-foreground",   // the normal state is quiet; only exceptions get a fill
+  ok: "text-ok", warn: "bg-warn-soft text-warn", bad: "bg-destructive/10 text-destructive", none: "text-muted-foreground",   // the normal state is quiet; only exceptions get a fill
 } as const
 function Pill({ tone, icon, children }: { tone: keyof typeof TONE; icon: ReactNode; children: ReactNode }) {
   return <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[12px] font-medium", TONE[tone])}>{icon}{children}</span>
@@ -65,7 +58,9 @@ export function AISettings({ policies, busy, send, schedule }: { policies: Polic
 
 function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: boolean; send: Send; hasKey: boolean }) {
   const val = (k: string) => policies.find((p) => p.key === k)?.value
-  const [f, setF] = useState({ ai_enabled: !!val("ai_enabled"), ai_base_url: String(val("ai_base_url") ?? ""), ai_model: String(val("ai_model") ?? "P24-AI"), ai_allow_external: !!val("ai_allow_external") })
+  const saved = () => ({ ai_enabled: !!val("ai_enabled"), ai_base_url: String(val("ai_base_url") ?? ""), ai_model: String(val("ai_model") ?? "P24-AI"), ai_allow_external: !!val("ai_allow_external") })
+  const [f, setF] = useState(saved)
+  const dirty = JSON.stringify(f) !== JSON.stringify(saved())
   const [key, setKey] = useState("")
   const [check, setCheck] = useState<AICheck | null>(null)
   const [checking, setChecking] = useState(false)
@@ -102,7 +97,7 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
             <div className="flex flex-wrap items-center gap-2">
               <Input id="ai-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "saved; type to replace" : "none (a local server needs none)"} className="h-8 max-w-xs text-[13px]" />
               <Button type="button" size="sm" variant="outline" disabled={busy || !key} onClick={() => void send("/settings/ai/key", { api_key: key }).then((r) => { if (r) setKey("") })}>Save key</Button>
-              {hasKey && <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void send("/settings/ai/key", { clear: "1" }, "Remove the saved API key?")}>Remove</Button>}
+              {hasKey && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => void send("/settings/ai/key", { clear: "1" }, "Remove the saved API key?")}>Remove</Button>}
             </div>
             <p className="text-[12px] text-muted-foreground">Stored sealed, like the Microsoft 365 secret, and sent as a bearer token.</p>
           </div>
@@ -113,14 +108,14 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
           </label>
         </div>
         {check && (
-          <p role="status" className={cn("flex items-start gap-2 rounded-md px-3 py-2 text-[13px]", check.ok ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad")}>
+          <p role="status" className={cn("flex items-start gap-2 rounded-md px-3 py-2 text-[13px]", check.ok ? "bg-ok-soft text-ok" : "bg-destructive/10 text-destructive")}>
             {check.ok ? <CheckCircle2 className="mt-1 h-4 w-4 shrink-0" /> : <XCircle className="mt-1 h-4 w-4 shrink-0" />}
             <span>{check.ok ? <>The server answers and runs <span className="font-mono">{check.model}</span>. Save to use it; every feature is then validated on it.</> : check.reason}</span>
           </p>
         )}
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" loading={checking} disabled={busy || !f.ai_base_url} onClick={() => void runCheck()}>Check</Button>
-          <Button type="submit" size="sm" loading={busy}>Save</Button>
+          <Button type="submit" size="sm" loading={busy} disabled={!dirty}>Save</Button>
         </div>
       </form>
     </Panel>

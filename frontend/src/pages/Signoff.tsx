@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { PanelTitle } from "@/components/PanelTitle"
 import { StatusPill } from "@/components/PlanGantt"
 import { toast } from "@/lib/toast"
-import { field, pill } from "@/lib/ui"
+import { field, pill, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { AIDraftBar } from "@/components/AIDraftBar"
 import { Link, useParams, useSearchParams } from "react-router-dom"
@@ -29,7 +30,7 @@ import { fmtDate, fmtWhen, localToday, signoffText, toLines } from "@/lib/format
 // The customer's named signatory reviews, then signs or says what must change;
 // we countersign; then the project can close. A signed paper copy can stand in,
 // and an admin can waive it with a reason. The server decides who may do what.
-const area = "w-full rounded-lg border border-input bg-background p-3 text-[14px] leading-relaxed"
+const area = cn(fieldArea, "p-3 text-[14px]")   // a document to sign reads at 14 px
 const TONE: Record<SignoffStatus, string> = {
   sent: "bg-warn-soft text-warn", signed: "bg-warn-soft text-warn", countersigned: "bg-ok-soft text-ok", uploaded: "bg-ok-soft text-ok",
   waived: "bg-muted text-muted-foreground", rejected: "bg-bad-soft text-bad", withdrawn: "bg-muted text-muted-foreground",
@@ -105,7 +106,7 @@ function Document({ v }: { v: SignoffVersion }) {
           <dt className="text-muted-foreground">Version</dt><dd>{v.version}, prepared by {v.created_by}, {fmtWhen(v.created_at, true)}</dd>
           <dt className="text-muted-foreground">Fingerprint</dt><dd className="break-all font-mono text-[12px]">SHA-256 {v.content_hash}</dd>
           <dt className="text-muted-foreground">Integrity</dt>
-          <dd className={cn("flex items-center gap-2", v.intact ? "text-ok" : "font-medium text-bad")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{v.intact ? "The content matches its fingerprint." : "The content no longer matches its fingerprint."}</dd>
+          <dd className={cn("flex items-center gap-2", v.intact ? "text-ok" : "font-medium text-destructive")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{v.intact ? "The content matches its fingerprint." : "The content no longer matches its fingerprint."}</dd>
           {v.signed_at && v.status !== "uploaded" && <><dt className="text-muted-foreground">Customer</dt><dd>{v.signer_name} ({v.signer_email}) signed {fmtWhen(v.signed_at, true)} in Odin, after a one-time sign-in link sent to that address{v.signed_ip ? `; from ${v.signed_ip}` : ""}</dd></>}
           {v.link_issued_by && <><dt className="text-muted-foreground">Sign-in link</dt><dd>Issued by {v.link_issued_by}, {fmtWhen(v.link_issued_at, true)}, and passed on by hand</dd></>}
           {v.counter_signed_at && <><dt className="text-muted-foreground">Countersigned</dt><dd>{v.counter_name}, {fmtWhen(v.counter_signed_at, true)}{v.counter_ip ? `; from ${v.counter_ip}` : ""}</dd></>}
@@ -145,8 +146,8 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
       <label htmlFor="reject-comment" className="text-[13px] font-medium">What needs to change before you can sign?</label>
       <textarea id="reject-comment" rows={4} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} className={area} autoFocus />
       {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
-      <div className="flex gap-2"><Button size="sm" variant="ghost" className="rounded-full" onClick={() => setRejecting(false)} disabled={busy}>Back</Button>
-        <Button size="sm" variant="outline" className="ml-auto rounded-full" onClick={reject} disabled={busy || !comment.trim()}>Send back</Button></div>
+      <div className="flex gap-2"><Button size="sm" variant="ghost" onClick={() => setRejecting(false)} disabled={busy}>Back</Button>
+        <Button size="sm" variant="outline" className="ml-auto" onClick={reject} disabled={busy || !comment.trim()}>Send back</Button></div>
     </div>
   )
   return (
@@ -161,7 +162,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
         <span>{counter ? "I confirm the work above is complete and countersign on our behalf." : `I have read this document and accept it on behalf of ${client}.`}</span>
       </label>
       {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
-      <Button type="submit" className="rounded-full" loading={busy} disabled={!accept || !sig || !name.trim()}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
+      <Button type="submit" loading={busy} disabled={!accept || !sig || !name.trim()}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
       {canReject && <button type="button" onClick={() => setRejecting(true)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">I can't sign this yet</button>}
     </form>
   )
@@ -181,17 +182,17 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
   }
   return (
     <section className="panel grid grid-cols-1 gap-2 p-4">
-      <h2 className="text-[12px] font-semibold text-nav-fg">Send the link yourself</h2>
+      <PanelTitle n={false} className="mb-0">Send the link yourself</PanelTitle>
       <p className="text-[12px] text-muted-foreground">If {name} did not get the email, give them a one-time sign-in link that opens this sign-off.</p>
       {link && !link.link ? (
         <p className="text-[13px]" role="status">{link.message || (link.emailed ? `A new one-time link was emailed to ${link.email}.` : "No link was made.")}</p>
       ) : link?.link ? (
         <>
-          <input readOnly value={link.link} aria-label="Sign-in link for the signatory" onFocus={(e) => e.currentTarget.select()} className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
-          <Button size="sm" variant="outline" className="rounded-full" onClick={copy}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy the link"}</Button>
+          <input readOnly value={link.link} aria-label="Sign-in link for the signatory" onFocus={(e) => e.currentTarget.select()} className={cn(field, "font-mono text-[12px]")} />
+          <Button size="sm" variant="outline" onClick={copy}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy the link"}</Button>
           <p className="text-[12px] text-muted-foreground">For {link.email} only. It works once and expires in {link.minutes} minutes; make a new one if it lapses.</p>
         </>
-      ) : <Button size="sm" variant="outline" className="rounded-full" onClick={get}><Link2 className="h-3.5 w-3.5" /> Get a sign-in link</Button>}
+      ) : <Button size="sm" variant="outline" onClick={get}><Link2 className="h-3.5 w-3.5" /> Get a sign-in link</Button>}
       {err && <p className="text-[12px] text-destructive" role="alert">{err}</p>}
     </section>
   )
@@ -253,7 +254,7 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
       </div>
       <aside className="grid grid-cols-1 content-start gap-3 lg:sticky lg:top-4 print:hidden">
         <section className="panel grid grid-cols-1 gap-3 p-4">
-          <h2 className="text-[12px] font-semibold text-nav-fg">Send for signature</h2>
+          <PanelTitle n={false} className="mb-0">Send for signature</PanelTitle>
           <TemplatePicker kind="signoff" value={template} onChange={onTemplate} />
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Customer's signatory
             <select className={field} value={signer} onChange={(e) => setSigner(e.target.value ? Number(e.target.value) : "")}>
@@ -272,11 +273,11 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
           {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
           {confirming ? (
             <div className="grid grid-cols-1 gap-2" role="group" aria-label="Confirm sending">
-              <Button onClick={send} loading={busy} autoFocus className="rounded-full">{`Send to ${who?.name ?? "the customer"} now`}</Button>
-              <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy} className="rounded-full">Cancel</Button>
+              <Button onClick={send} loading={busy} autoFocus>{`Send to ${who?.name ?? "the customer"} now`}</Button>
+              <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
             </div>
           ) : (
-            <Button className="rounded-full" disabled={!!d.not_yet || !signer || !counter || unmarked > 0 || !summary.trim()} onClick={() => setConfirming(true)}><FileSignature className="h-4 w-4" /> Send for signature</Button>
+            <Button disabled={!!d.not_yet || !signer || !counter || unmarked> 0 || !summary.trim()} onClick={() => setConfirming(true)}><FileSignature className="h-4 w-4" /> Send for signature</Button>
           )}
         </section>
       </aside>
@@ -364,7 +365,7 @@ export default function Signoff(_props: { user: User }) {
             <aside className="grid grid-cols-1 content-start gap-3 print:hidden lg:sticky lg:top-4">
               {(d.can.sign || d.can.countersign) && (
                 <section className="panel p-4">
-                  <h2 className="mb-1 text-[12px] font-semibold text-nav-fg">{d.can.sign ? "Your signature" : "Countersign"}</h2>
+                  <PanelTitle n={false} className="mb-1">{d.can.sign ? "Your signature" : "Countersign"}</PanelTitle>
                   <p className="mb-3 text-[13px] text-muted-foreground">{d.can.sign ? "Read the document, then sign. You can send it back with comments instead." : `${cur.signer_name} signed for ${cur.content.project.client}. Countersign to complete it.`}</p>
                   <SignForm who={d.me.name} client={cur.content.project.client} counter={d.can.countersign} onDone={done} busy={busy} setBusy={setBusy} id={id} version={cur.version} canReject={d.can.sign} />
                 </section>
@@ -377,10 +378,10 @@ export default function Signoff(_props: { user: User }) {
               {d.can.withdraw && cur.status === "sent" && <SignerLink id={id} version={cur.version} name={cur.content.signer?.name ?? "the signatory"} />}
               {(d.can.upload || d.can.withdraw) && (
                 <section className="panel grid grid-cols-1 gap-2 p-4">
-                  <h2 className="text-[12px] font-semibold text-nav-fg">If the customer signs on paper</h2>
+                  <PanelTitle n={false} className="mb-0">If the customer signs on paper</PanelTitle>
                   <p className="text-[12px] text-muted-foreground">Send them the PDF; upload the signed copy when it comes back.</p>
-                  {d.can.upload && <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setDialogErr(null); setDialog("upload") }}><Upload className="h-3.5 w-3.5" /> Upload the signed copy</Button>}
-                  {d.can.withdraw && <Button size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={async () => { if (await askConfirm("Withdraw this version? The signatory can no longer sign it; you can then send a new one.")) void act(() => withdrawSignoff(id, cur.version), `Version ${cur.version} withdrawn. Revise it and send again.`) }}>Withdraw and revise</Button>}
+                  {d.can.upload && <Button size="sm" variant="outline" onClick={() => { setDialogErr(null); setDialog("upload") }}><Upload className="h-3.5 w-3.5" /> Upload the signed copy</Button>}
+                  {d.can.withdraw && <Button size="sm" variant="ghost" disabled={busy} onClick={async () => { if (await askConfirm("Withdraw this version? The signatory can no longer sign it; you can then send a new one.")) void act(() => withdrawSignoff(id, cur.version), `Version ${cur.version} withdrawn. Revise it and send again.`) }}>Withdraw and revise</Button>}
                 </section>
               )}
             </aside>
@@ -401,7 +402,7 @@ export default function Signoff(_props: { user: User }) {
             </div>
             <div className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed on<SignedOn /></div>
             {dialogErr && <p className="text-[13px] text-destructive" role="alert">{dialogErr}</p>}
-            <div className="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy}>Upload</Button></div>
+            <div className="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button type="submit" size="sm" loading={busy}>Upload</Button></div>
           </form>
         </DialogContent>
       </Dialog>
@@ -411,7 +412,7 @@ export default function Signoff(_props: { user: User }) {
           <label htmlFor="waive-reason" className="text-[13px] font-medium">Why</label>
           <textarea id="waive-reason" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} className={area} placeholder="Customer confirmed acceptance by email on 3 Oct; reference attached to the rollout." />
           {dialogErr && <p className="text-[13px] text-destructive" role="alert">{dialogErr}</p>}
-          <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" className="rounded-full" onClick={() => setDialog(null)}>Cancel</Button><Button size="sm" className="rounded-full" disabled={busy || reason.trim().length < 10} onClick={waive}>Waive the sign-off</Button></div>
+          <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button size="sm" disabled={busy || reason.trim().length < 10} onClick={waive}>Waive the sign-off</Button></div>
         </DialogContent>
       </Dialog>
     </div>

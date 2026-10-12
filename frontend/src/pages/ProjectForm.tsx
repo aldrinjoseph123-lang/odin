@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { PanelTitle } from "@/components/PanelTitle"
 import { field } from "@/lib/ui"
 import { DatePicker } from "@/components/DatePicker"
 import { useParams, useSearchParams } from "react-router-dom"
@@ -95,7 +96,7 @@ export default function ProjectForm(_props: { user: User }) {
       <p className="mt-3 text-[12px] text-muted-foreground">Fields marked * are required.</p>   {/* test report UX-26 */}
       <form onSubmit={submit} className="mt-2 grid max-w-5xl grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
-          <h2 data-n className="text-[12px] font-semibold text-nav-fg">Project</h2>
+          <PanelTitle className="mb-0">Project</PanelTitle>
           <Field label="Project name *"><Input value={f.name} onChange={set("name")} required maxLength={200} aria-label="Project name" className="h-8 text-[13px]" /></Field>
           <Field label="Client *"><Input value={f.client} onChange={set("client")} required maxLength={200} aria-label="Client" className="h-8 text-[13px]" /></Field>
           {editing ? (
@@ -112,7 +113,7 @@ export default function ProjectForm(_props: { user: User }) {
             )}
             <Field label="Team" hint={d.can_lead ? "optional — added as coordinators; you are the project manager" : "optional — added as coordinators"}>
               {/* ticks, not a native multi-select: no Ctrl-click to learn, nothing lost by a plain click */}
-              <div role="group" aria-label="Team members" className="grid max-h-40 grid-cols-2 gap-x-4 overflow-auto rounded-md border border-input bg-background px-3 py-2 text-[13px]">
+              <div role="group" aria-label="Team members" className="grid max-h-40 grid-cols-2 gap-x-4 overflow-auto rounded-lg border border-input bg-background px-3 py-2 text-[13px]">
                 {d.users.filter((u) => u.id !== d.me).map((u) => (
                   <label key={u.id} className="flex min-w-0 items-center gap-2 py-1"><input type="checkbox" checked={team.includes(String(u.id))} className="h-3.5 w-3.5 accent-primary"
                     onChange={(e) => setTeam(e.target.checked ? [...team, String(u.id)] : team.filter((x) => x !== String(u.id)))} /><span className="truncate">{u.name}</span></label>
@@ -121,7 +122,6 @@ export default function ProjectForm(_props: { user: User }) {
             </Field>
           </>)}
           <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} className="h-3.5 w-3.5 accent-primary" /> Ask the customer contact to approve each stage change</label>
-          <Field label="PO number"><Input value={f.po_number} onChange={set("po_number")} maxLength={100} aria-label="PO number" className="h-8 text-[13px]" /></Field>
           <div className="grid grid-cols-3 gap-2">
             <Field label="PO date"><DatePicker value={f.po_date} onChange={(v) => setF({ ...f, po_date: v, start_date: f.start_date || v })} label="PO date" className="w-full" /></Field>
             <Field label="Start date"><DatePicker value={f.start_date} onChange={(v) => setF({ ...f, start_date: v })} label="Start date" className="w-full" /></Field>
@@ -132,15 +132,12 @@ export default function ProjectForm(_props: { user: User }) {
               <Field label="Stage template" hint="the rollout gets its own copy; edit it on the rollout afterwards">
                 <select name="stage_template_id" value={f.stage_template_id} onChange={set("stage_template_id")} aria-label="Stage template" className={field}>{d.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
               </Field>
-              <Field label="Client PO document *" hint="required — no rollout without the PO on file">
-                <input type="file" name="po_document" required aria-label="Client PO document" />
-              </Field>
             </>
           )}
         </section>
 
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
-          <h2 data-n className="text-[12px] font-semibold text-nav-fg">Commercial route and delivery</h2>
+          <PanelTitle className="mb-0">Commercial route and delivery</PanelTitle>
           <Field label="Via *"><select value={f.via} onChange={set("via")} aria-label="Via" className={field}>{d.via_options.map((v) => <option key={v}>{v}</option>)}</select></Field>
           {f.via === "Partner" ? (
             <>
@@ -194,10 +191,18 @@ export default function ProjectForm(_props: { user: User }) {
               </Field>
             </>
           )}
+          {/* the purchase order belongs with the commercial route (balances the two cards) */}
+          <Field label="PO number"><Input value={f.po_number} onChange={set("po_number")} maxLength={100} aria-label="PO number" className="h-8 text-[13px]" /></Field>
+          {!editing && (
+            <Field label="Client PO document *" hint="required — no rollout without the PO on file">
+              <input type="file" name="po_document" required aria-label="Client PO document"
+                className="text-[13px] text-muted-foreground file:mr-3 file:h-8 file:cursor-pointer file:rounded-lg file:border file:border-input file:bg-background file:px-3 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-muted" />
+            </Field>
+          )}
         </section>
 
         <div className="flex items-center gap-3 lg:col-span-2">
-          <Button type="submit" size="sm" loading={busy}>{editing ? "Save changes" : "Create project"}</Button>
+          <Button type="submit" size="sm" loading={busy} disabled={editing && initial === JSON.stringify(f)}>{editing ? "Save changes" : "Create project"}</Button>
           {!editing && <span className="text-[12px] text-muted-foreground">Pick-lists are managed under Settings › Contacts & partners.</span>}
         </div>
       </form>

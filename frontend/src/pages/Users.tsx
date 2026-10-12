@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { PageHeader } from "@/components/PageHeader"
+import { PanelTitle } from "@/components/PanelTitle"
 import { toast } from "@/lib/toast"
-import { field, fieldAuto } from "@/lib/ui"
+import { field, fieldAuto, danger } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -48,13 +50,8 @@ export default function Users(_props: { user: User }) {
 
   return (
     <div className="px-5 pb-6 pt-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-[17px] font-semibold tracking-tight">Users</h1>
-        <p className="max-w-prose text-[13px] text-muted-foreground">{people.filter((u) => u.active).length} active · {people.filter((u) => u.kind === "external").length} external{pending.length ? ` · ${pending.length} waiting` : ""}</p>
-        <div className="ml-auto flex items-center gap-2">
-          <a href="/users/export.csv" className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
-        </div>
-      </div>
+      <PageHeader title="Users" lede={`${people.filter((u) => u.active).length} active · ${people.filter((u) => u.kind === "external").length} external${pending.length ? ` · ${pending.length} waiting` : ""}`}
+        actions={<a href="/users/export.csv" className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>} />
 
       {pending.length > 0 && <Pending people={pending} roles={data.roles} busy={busy} send={send} />}
 
@@ -83,7 +80,7 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
   const [role, setRole] = useState<Record<number, string>>({})
   return (
     <section className="mt-3 rounded-lg bg-warn-soft/60 p-4" aria-label="Waiting for approval">
-      <h2 className="mb-2 text-[12px] font-semibold text-nav-fg">Waiting for approval <span className="font-normal text-muted-foreground">asked to use Odin, not yet allowed in</span></h2>
+      <PanelTitle n={false} className="mb-2" hint="asked to use Odin, not yet allowed in">Waiting for approval</PanelTitle>
       <ul className="grid grid-cols-1 gap-2">
         {people.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-2 text-[13px]">
@@ -231,13 +228,13 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
   }
   return (
     <form onSubmit={submit} className="grid grid-cols-1 content-start gap-2 panel p-4">
-      <h2 className="text-[12px] font-semibold text-nav-fg">Add a team member</h2>
+      <PanelTitle n={false} className="mb-0">Add a team member</PanelTitle>
       <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Full name<Input value={f.name} onChange={set("name")} required maxLength={120} aria-label="Full name" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Username<Input value={f.username} onChange={set("username")} required maxLength={80} aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" maxLength={254} aria-label="Email" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Role
-        <select value={f.role} onChange={set("role")} aria-label="Role" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]">
+        <select value={f.role} onChange={set("role")} aria-label="Role" className={fieldAuto}>
           {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </label>
@@ -271,7 +268,7 @@ function SignupLinksPanel() {
   const open = d.links.filter((l) => l.state === "open")
   return (
     <section className="panel p-4" aria-label="Sign-up links">
-      <h2 className="mb-1 text-[12px] font-semibold text-nav-fg">Sign-up links</h2>
+      <PanelTitle n={false} className="mb-1">Sign-up links</PanelTitle>
       <p className="max-w-prose mb-3 text-[12px] text-muted-foreground">Send a new colleague a link; they fill in their details and you approve them above.</p>
       {!d.enabled && <p className="mb-3 rounded-lg bg-muted/60 p-3 text-[13px]">Sign-up links are switched off, so no link works and none can be made. Turn them on under <Link to="/settings/people" className="text-primary-text hover:underline">Settings › Sign-up &amp; activity</Link>.</p>}
       {d.enabled && <form onSubmit={make} className="grid grid-cols-1 gap-2 text-[13px]">
@@ -288,7 +285,7 @@ function SignupLinksPanel() {
       </form>}
       {made && (
         <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
-          <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className="h-8 rounded-md border border-input bg-background px-2 font-mono text-[12px]" />
+          <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className={cn(fieldAuto, "font-mono text-[12px]")} />
           <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => {})}>{copied ? "Copied" : "Copy the link"}</Button>
           <p className="max-w-prose text-[12px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
         </div>
@@ -299,14 +296,14 @@ function SignupLinksPanel() {
             <li key={l.id} className="flex items-center gap-2 py-2">
               <span className="min-w-0 flex-1"><span className="block truncate font-medium" title={l.label}>{l.label}</span>
                 <span className="block truncate text-[12px] text-muted-foreground">{l.role}{l.project ? ` · ${l.project}` : ""} · {l.uses}/{l.max_uses} used · {l.state === "open" ? `until ${fmtWhen(l.expires_at)}` : l.state}</span></span>
-              {l.state === "open" && <Button size="sm" variant="ghost" className="h-7 text-destructive" disabled={busy} onClick={async () => { if (await askConfirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the link")) }}>Revoke</Button>}
+              {l.state === "open" && <Button size="sm" variant="ghost" className={danger} disabled={busy} onClick={async () => { if (await askConfirm(`Revoke the link for ${l.label}?`)) void revokeSignupLink(l.id).then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the link")) }}>Revoke</Button>}
             </li>
           ))}
         </ul>
       )}
       {err && !d.enabled && <p className="mt-2 text-[13px] text-destructive" role="alert">{err}</p>}
       {open.length === 0 && d.links.length > 0 && <p className="max-w-prose mt-2 text-[12px] text-muted-foreground">No open links.</p>}
-      {open.length > 1 && <Button size="sm" variant="ghost" className="mt-2 h-7 text-bad" disabled={busy}
+      {open.length > 1 && <Button size="sm" variant="ghost" className={cn("mt-2", danger)} disabled={busy}
         onClick={async () => { if (await askConfirm(`Revoke all ${open.length} open links? Anyone holding one can no longer sign up with it.`)) void revokeAllSignupLinks().then(load).catch((x) => setErr(x instanceof ApiError ? x.message : "Could not revoke the links")) }}>Revoke all open links</Button>}
     </section>
   )
