@@ -8,7 +8,7 @@ answer it, so the server, its address and its software can change without a
 line of Odin changing. Server tuning (threads, context size) belongs to the
 server, never to a request.
 
-Everything about the server is a policy (Settings → AI); the API key is
+Everything about the server is a policy (Settings › AI); the API key is
 sealed like the Microsoft 365 secret. A server outside the private network is
 refused unless an admin has allowed an external provider, so customer notes
 cannot leave the building by a typo.
@@ -28,7 +28,7 @@ LOCAL_SUFFIXES = (".lan", ".local", ".internal", ".home.arpa", ".localdomain")
 
 class AIError(Exception):
     """A call that did not produce a usable answer. `reason` is written for
-    the admin reading Settings → AI; `kind` is connect | auth | model |
+    the admin reading Settings › AI; `kind` is connect | auth | model |
     invalid | timeout | http."""
 
     def __init__(self, reason, kind="http"):

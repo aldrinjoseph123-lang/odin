@@ -5,7 +5,7 @@ within the idle limit (policy activity_idle_minutes; POST /api/activity). Each a
 ping is one active minute on the person's workspace-local day; pings closer
 than 50 seconds apart are not counted, so a second tab or a fast client
 cannot inflate the figure. Idle time with a tab left open is never counted.
-Rows older than activity_keep_days (Settings → Retention) are trimmed nightly. An admin can
+Rows older than activity_keep_days (Settings › Retention) are trimmed nightly. An admin can
 switch the whole thing off (activity_tracking) and choose which roles see
 other people's figures (activity_roles).
 """

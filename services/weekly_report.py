@@ -1,4 +1,4 @@
-"""The weekly portfolio report (Settings → Reports).
+"""The weekly portfolio report (Settings › Reports).
 
 One email: what needs attention first (overdue, over their stage SLA, due
 soon), stages moved in the last 7 days, what falls due in the next 7, and

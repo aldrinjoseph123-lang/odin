@@ -24,7 +24,7 @@ CHANNELS = ("email", "teams")
 def create(label, role, project_id, project_role, days, max_uses, author):
     """Returns the raw token (shown once in the link)."""
     if not policy("signup_enabled"):
-        raise ValueError("Sign-up links are switched off (Settings → Sign-up & activity)")
+        raise ValueError("Sign-up links are switched off (Settings › Sign-up & activity)")
     label = (label or "").strip()[:80]
     if not label:
         raise ValueError("Name the link (e.g. who it is for)")

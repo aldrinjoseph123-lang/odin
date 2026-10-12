@@ -121,7 +121,7 @@ AREA_SECTION = {"ai_schedule": "ai"}
 @permission_required("manage_settings")
 def settings_map_page():
     """The Odin System Map (docs/system-map.html, regenerated with every change
-    and shipped in the image), framed by Settings → System map & changes. The
+    and shipped in the image), framed by Settings › System map & changes. The
     one page Odin lets itself frame: same origin only, admins only."""
     import os
     from flask import send_file

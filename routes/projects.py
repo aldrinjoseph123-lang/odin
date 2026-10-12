@@ -848,7 +848,7 @@ def participant_invite(project_id):
     if not valid_email(email):
         flash("Enter a valid email address", "error")
     elif not db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND kind = 'internal'", (email,)).fetchone() and not email_domain_allowed(email):
-        flash(f"Partners can only be invited from: {', '.join(policy('external_domains'))} (Settings → Sign-in & security)", "error")
+        flash(f"Partners can only be invited from: {', '.join(policy('external_domains'))} (Settings › Sign-in & security)", "error")
     elif role not in EXTERNAL_PROJECT_ROLES:
         flash("Pick a role", "error")
     else:

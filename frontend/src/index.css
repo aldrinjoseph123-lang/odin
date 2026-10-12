@@ -344,6 +344,16 @@ main { counter-reset: panel; }
   --brand-red-text: #F23D4D;     /* lifted for small text on ink: 5.2:1 (the parent red is 4.2:1) */
 }
 
+/* Paper: A4 with a margin, and tables that scroll on screen print whole and wrap
+   instead of being clipped at the page edge. */
+@page { size: A4; margin: 12mm; }
+@media print {
+  .overflow-x-auto, .overflow-x-clip { overflow: visible !important; }
+  table .whitespace-nowrap:not(.rounded-full) { white-space: normal; }
+  /* bars, dots and pills are data: print their fills */
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
 /* Respect the OS "reduce motion" setting: no transitions, no animations. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }

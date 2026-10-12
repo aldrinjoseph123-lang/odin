@@ -119,7 +119,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           <button type="button" onClick={() => { setOpen(false); setPalette(true) }} aria-label="Search projects and tasks" aria-keyshortcuts="Control+K Meta+K /"
             className="flex h-9 w-full items-center gap-2 rounded-full bg-card px-3 text-left text-[13px] text-muted-foreground shadow-card hover:text-foreground xl:w-9 xl:justify-center xl:px-0 2xl:w-56 2xl:justify-start 2xl:px-3">
             <Search className="h-3.5 w-3.5 shrink-0" /><span className="flex-1 truncate xl:hidden 2xl:inline">Search…</span>
-            <Kbd className="xl:hidden 2xl:inline-flex">{isMac ? "⌘K" : "Ctrl K"}</Kbd>
+            <Kbd className="xl:hidden 2xl:inline-flex">{isMac ? "Cmd K" : "Ctrl K"}</Kbd>
           </button>
           {user.permissions.includes("create_project") && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
           {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}

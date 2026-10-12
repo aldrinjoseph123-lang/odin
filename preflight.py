@@ -107,7 +107,7 @@ def _oauth():
                   "exactly (scheme/host/port/path) or sign-in fails with AADSTS50011")
 
 
-@check("Public web address is set (Settings → General)")
+@check("Public web address is set (Settings › General)")
 def _public_url():
     from db import DB_PATH
     if not os.path.exists(DB_PATH):
@@ -116,7 +116,7 @@ def _public_url():
     row = db.execute("SELECT value FROM settings WHERE key = 'policy.public_url'").fetchone()
     db.close()
     if not (row and row[0]):
-        return False, "unset — sign-in, reset and invitation links would be built from the request's host; set https://your-host in Settings → General"
+        return False, "unset — sign-in, reset and invitation links would be built from the request's host; set https://your-host in Settings › General"
     return True, row[0]
 
 

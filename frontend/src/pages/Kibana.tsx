@@ -23,7 +23,7 @@ export function Kibana({ rollout, onRollout }: { rollout: number | null; onRollo
     return (
       <div className="px-6 py-12 text-center text-[13px] text-muted-foreground">
         <p className="font-medium text-foreground">No Kibana dashboards yet.</p>
-        <p className="mt-1">{d.can_manage ? "List them under Settings → Integrations, one per line as “Name | address”, using each dashboard's share link with embed=true. Put {project}, {client} or {po} in an address and the view shows one rollout at a time." : "Ask an Odin admin to list them under Settings → Integrations."}</p>
+        <p className="mt-1">{d.can_manage ? "List them under Settings › Integrations, one per line as “Name | address”, using each dashboard's share link with embed=true. Put {project}, {client} or {po} in an address and the view shows one rollout at a time." : "Ask an Odin admin to list them under Settings › Integrations."}</p>
         {d.can_manage && <Link to="/settings/integrations" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4 rounded-full")}>Open Integrations</Link>}
       </div>
     )

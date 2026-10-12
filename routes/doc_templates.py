@@ -1,4 +1,4 @@
-"""Document templates (services/doc_templates.py): Settings → Documents for
+"""Document templates (services/doc_templates.py): Settings › Documents for
 admins, and the choice of template for everyone who writes a document."""
 
 from flask import Response, abort, jsonify, request, send_file, session

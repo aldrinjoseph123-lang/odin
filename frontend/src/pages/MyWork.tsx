@@ -11,17 +11,16 @@ import { ApiError, editTask, myWork, toggleTask, type MyWorkData, type User, typ
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
-import { fmtDate, lateBy, stateText } from "@/lib/format"
+import { fmtDate, lateBy, stateText, weekday } from "@/lib/format"
+import { addDays } from "@/lib/plan"
 
 // My work: what needs doing, in the order it needs doing. Headline numbers,
 // the fortnight of what got done, tasks grouped by urgency with a tick that
 // finishes them in place, and the rollouts this person is on with their state.
-const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"]
 type Group = { key: string; title: string; hint: string; tone?: "bad" | "warn"; tasks: WorkTask[] }
 
 function groupTasks(tasks: WorkTask[], today: string): Group[] {
-  const week = new Date(`${today}T00:00:00Z`); week.setUTCDate(week.getUTCDate() + 7)
-  const w = week.toISOString().slice(0, 10)
+  const w = addDays(today, 7)
   const g: Record<string, WorkTask[]> = { overdue: [], today: [], week: [], later: [], undated: [] }
   for (const t of tasks) {
     if (!t.due_date) g.undated.push(t)
@@ -145,7 +144,7 @@ export default function MyWork({ user }: { user: User }) {
               {d.done_by_day.map((x) => (
                 <li key={x.day} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
                   <span className={cn("block w-full rounded-t-[3px]", x.count ? "bg-nav-fg/60" : "bg-muted")} style={{ height: `${Math.max(x.count ? 8 : 3, (x.count / peak) * 100)}%` }} aria-hidden />
-                  <span aria-hidden>{WEEKDAY[new Date(`${x.day}T00:00:00`).getDay()]}</span>
+                  <span aria-hidden>{weekday(x.day)[0]}</span>
                   <span className="sr-only">{fmtDate(x.day)}: {x.count}</span>
                 </li>
               ))}
@@ -162,7 +161,7 @@ export default function MyWork({ user }: { user: User }) {
                     <span className="shrink-0 text-[12px] text-muted-foreground">{p.role}</span>
                   </div>
                   <div className="mt-1 flex items-center gap-3 pl-4">
-                    <span className="w-24 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
+                    <span className="w-24 shrink-0"><Stepper stages={p.stages} index={p.stage_index} state={p.state} selected={false} /></span>
                     <span className="truncate text-[13px]">{p.stage}</span>
                     <StateChip state={p.state} className="ml-auto" quiet={p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target"}
                       text={stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })} />

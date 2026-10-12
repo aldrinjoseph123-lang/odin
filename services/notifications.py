@@ -91,12 +91,12 @@ def report_mail_failure(error):
     admins = [r[0] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
     notify_users(admins, "access", None, "Odin could not send email",
                  f"Email is switched on but a message failed ({escape(str(error)[:200])}). Everything still reaches the bell. "
-                 "Connect Microsoft 365 under Settings → Integrations, or switch email off under Settings → Notifications.",
+                 "Connect Microsoft 365 under Settings › Integrations, or switch email off under Settings › Notifications.",
                  link="/settings/integrations", email=False)
 
 
 def trim(db=None):
-    """Read notifications past Settings → Retention; unread ones stay. Nightly (scheduler housekeeping)."""
+    """Read notifications past Settings › Retention; unread ones stay. Nightly (scheduler housekeeping)."""
     from datetime import datetime, timedelta
     from policies import policy
     db = db or get_db()
@@ -154,7 +154,7 @@ def notify_event(project, subject, message_html, channels=None):
         ok, error = graph.send_teams_message(f"<b>{subject}</b><br>{message_html}")
         if not ok:
             print(f"[notify_event] teams failed: {error}")
-        # the same event to a Teams Workflows webhook, when one is set (Settings → Notifications)
+        # the same event to a Teams Workflows webhook, when one is set (Settings › Notifications)
         from policies import policy
         if policy("teams_webhook_url"):
             from core import external_url

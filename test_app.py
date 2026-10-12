@@ -3129,7 +3129,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         both = lambda mode: len(c.get("/api/projects", query_string={"stage": stage, "delivery_mode": mode}).get_json()["rows"])   # noqa: E731  FN-13
         self.assertEqual((both("Distribution/MSSP"), both("Direct")), (1, 0))
         r = c.post("/api/signup-links", json={"label": "x", "role": "Member", "days": "soon"}, headers=h).get_json()              # FN-16
-        self.assertIn(r.get("error"), ("Days and uses are whole numbers", "Sign-up links are switched off (Settings → Sign-up & activity)"))
+        self.assertIn(r.get("error"), ("Days and uses are whole numbers", "Sign-up links are switched off (Settings › Sign-up & activity)"))
         # FN-7: a Contributor names the PM, who hears it in the bell
         eng = self._make_user("eng", "Contributor")
         e, ecsrf = self._api_client("eng", STRONG_PASSWORD)
@@ -5193,7 +5193,7 @@ class AITestBase(unittest.TestCase):
 
 class AIFrameworkTestCase(AITestBase):
     """services/ai: the address guard, the client, the gate, validation, the
-    heartbeat and Settings → AI, all against FakeAIServer."""
+    heartbeat and Settings › AI, all against FakeAIServer."""
 
     def test_address_guard_keeps_customer_text_on_the_private_network(self):
         from services.ai.client import address_problem, is_local
@@ -5258,7 +5258,7 @@ class AIFrameworkTestCase(AITestBase):
         with self._ctx():
             from db import get_db
             db = get_db()
-            self.assertEqual(gate("test_feature"), "AI is switched off (Settings → AI)")
+            self.assertEqual(gate("test_feature"), "AI is switched off (Settings › AI)")
             self._enable()
             self.assertEqual(gate("test_feature"), "The AI server is not answering")   # no heartbeat yet
             heartbeat(db)
@@ -5545,7 +5545,7 @@ class WeeklyWordsTestCase(AITestBase):
     def test_no_draft_while_the_gate_is_closed_and_dismiss_is_recorded(self):
         self._project()
         r = self.client.post("/api/projects/1/ai/weekly_words", json={}, headers=self._csrf())
-        self.assertEqual((r.status_code, r.get_json()["error"]), (409, "AI is switched off (Settings → AI)"))
+        self.assertEqual((r.status_code, r.get_json()["error"]), (409, "AI is switched off (Settings › AI)"))
         self.assertFalse(self.client.get("/api/projects/1/ai/weekly_words").get_json()["available"])
         with self._db() as con:
             con.execute("INSERT INTO ai_suggestions (project_id, feature, payload, status, created_at) VALUES (1, 'weekly_words', ?, 'new', '2026-10-08T03:40:00')", (self.GOOD,))

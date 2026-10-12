@@ -17,7 +17,7 @@ The forecast answers "when will this really finish?":
 Lengths count working days when the workspace does (services/workdays.py);
 gaps between dates (slip, days after target) are calendar days. The last
 stage of a list is the finish line (Closed and the like): it takes no time. Health is judged against the target date and the baseline with the
-thresholds in Settings → Workflow.
+thresholds in Settings › Workflow.
 """
 import json
 from datetime import date, datetime

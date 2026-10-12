@@ -35,7 +35,7 @@ POLICIES = {
     "date_format": dict(area="general", kind="choice", default="d MMM yyyy", choices=tuple(DATE_FORMATS),
                         label="Date format", help="How dates read across the app."),
     "working_days": dict(area="general", kind="multi", default="Mon,Tue,Wed,Thu,Fri", choices=WEEKDAYS, nonempty=True,
-                         label="Working week", help="Stage lengths and SLAs count these days (Settings → Projects & workflow); reminders and digests go out on them only."),
+                         label="Working week", help="Stage lengths and SLAs count these days (Settings › Projects & workflow); reminders and digests go out on them only."),
     "holidays": dict(area="general", kind="dates", default="", max=4000, optional=True, label="Public holidays",
                      help="One per line: \"2026-12-02 National Day\", or a span \"2027-03-20 to 2027-03-22 Eid al-Fitr\" (dates as announced). Not counted as working days; no digest or reminders on them."),
     "default_theme": dict(area="general", kind="choice", default="system", choices=THEME_CHOICES,
@@ -67,7 +67,7 @@ POLICIES = {
                              label="Partner email domains", help="e.g. partner.com, vendor.ae. Only these can be invited or sent a sign-in link. Blank: any domain."),
     "undo_minutes": dict(area="security", kind="int", default=5, min=1, max=60,
                          label="Undo window (minutes)", help="How long deletes and stage moves can be undone."),
-    # ---- Sign-up links and time on Odin (Settings → Sign-up & activity)
+    # ---- Sign-up links and time on Odin (Settings › Sign-up & activity)
     "signup_enabled": dict(area="people", kind="bool", default=True,
                            label="Sign-up links work", help="Off: no new links can be made and every open link stops working until this is on again (links past their date stay expired)."),
     "signup_domains": dict(area="people", kind="domains", default="", max=500, optional=True,
@@ -84,7 +84,7 @@ POLICIES = {
     "digest_time": dict(area="notifications", kind="time", default="08:00",
                         label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
     "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500, query=True,
-                              label="Teams Workflows webhook", help="From a Teams channel: Workflows → \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
+                              label="Teams Workflows webhook", help="From a Teams channel: Workflows › \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
     # ---- Reports
     "kibana_dashboards": dict(area="integrations", kind="lines", default="", max=4000, optional=True, label="Kibana dashboards",
                               help="One per line, \"Name | address\", e.g. SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true&_a=(query:(language:kuery,query:'client:{client}')). "
@@ -136,7 +136,7 @@ POLICIES = {
                        label="Copy to a network share", help="A NAS or file-server folder mounted into the server (SMB/NFS)."),
     "share_path": dict(area="backups", kind="text", default="", max=200, optional=True,
                        label="Share folder path", help="The absolute path where the share is mounted, e.g. /mnt/nas/odin."),
-    # ---- AI (Settings → AI): the server, then how Odin watches it (services/ai)
+    # ---- AI (Settings › AI): the server, then how Odin watches it (services/ai)
     "ai_enabled": dict(area="ai", kind="bool", default=False,
                        label="Use AI features", help="Off: Odin never calls the AI server and every feature uses its usual behaviour."),
     "ai_base_url": dict(area="ai", kind="url", default="", max=200,
@@ -169,7 +169,7 @@ POLICIES = {
     "default_stage_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Default stage length (days)",
                                help="How long a stage is assumed to take when neither the plan nor its SLA says — for the forecast and the suggested plan."),
     "count_working_days": dict(area="workflow", kind="bool", default=True, label="Count stage lengths and SLAs in working days",
-                               help="Weekends outside the working week and public holidays (Settings → General) do not count. Off: calendar days. Gaps between dates, such as days late, are always calendar days."),
+                               help="Weekends outside the working week and public holidays (Settings › General) do not count. Off: calendar days. Gaps between dates, such as days late, are always calendar days."),
     "sla_min_visits": dict(area="workflow", kind="int", default=3, min=2, max=50, label="Finished projects before an SLA is questioned",
                            help="The SLA check under Stage templates proposes a new SLA for a stage only when at least this many rollouts have passed through it."),
     "rag_amber_days": dict(area="workflow", kind="int", default=1, min=0, max=90, label="Amber after (days late)",
@@ -468,7 +468,7 @@ def local_date(value, db=None):
 
 
 def local_today(db=None):
-    """Today's date in the workspace time zone (Settings → General). Due
+    """Today's date in the workspace time zone (Settings › General). Due
     dates, "days left" and reminders use this, not the server's clock."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -483,7 +483,7 @@ def is_working_day(day=None, db=None):
 
 
 def email_domain_allowed(email, db=None):
-    """Partner addresses must be on an allowed domain (Settings → Sign-in &
+    """Partner addresses must be on an allowed domain (Settings › Sign-in &
     security); an empty list allows any."""
     allowed = policy("external_domains", db)
     return not allowed or email.rsplit("@", 1)[-1].lower() in allowed

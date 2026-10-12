@@ -223,7 +223,7 @@ def _activity(db, scope, limit=30):
     scope_sql, scope_params = scope
     base = f"JOIN projects p ON p.id = x.project_id WHERE p.deleted_at IS NULL{scope_sql}"
     sql = " UNION ALL ".join([
-        f"SELECT 'move' AS kind, x.created_at AS at, x.author AS who, p.id AS pid, p.name AS project, x.prev_stage || ' → ' || x.stage AS text FROM status_notes x {base} AND x.prev_stage IS NOT NULL",
+        f"SELECT 'move' AS kind, x.created_at AS at, x.author AS who, p.id AS pid, p.name AS project, x.prev_stage || ' to ' || x.stage AS text FROM status_notes x {base} AND x.prev_stage IS NOT NULL",
         f"SELECT 'note', x.created_at, x.author, p.id, p.name, x.note FROM status_notes x {base} AND x.prev_stage IS NULL",
         f"SELECT 'approval', x.decided_at, x.decided_by, p.id, p.name, x.stage || ' ' || x.status FROM stage_approvals x {base} AND x.decided_at IS NOT NULL",
         f"SELECT 'task', x.done_at, NULL, p.id, p.name, x.title FROM tasks x {base} AND x.done = 1 AND x.done_at IS NOT NULL",

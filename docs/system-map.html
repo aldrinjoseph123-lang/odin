@@ -747,7 +747,8 @@ function show(tab) {
     $("#t-" + t).tabIndex = t === tab ? 0 : -1;
   }
   store.set("odin-map-tab", tab);
-  if (location.hash.slice(1) !== tab) history.replaceState(null, "", "#" + tab);
+  // framed in Odin, a #tab in the URL makes a reload open scrolled to that section
+  if (!document.documentElement.dataset.embed && location.hash.slice(1) !== tab) history.replaceState(null, "", "#" + tab);
 }
 for (const t of TABS) $("#t-" + t).addEventListener("click", () => show(t));
 $("nav.tabs").addEventListener("keydown", (e) => {

@@ -574,7 +574,7 @@ export async function previewDocTemplate(kind: DocKind, config: DocConfig): Prom
 }
 export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
 export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
-export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string
+export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: string[]; target_end_date: string | null; role: string; owner_name: string
   days_in_stage?: number | null; over_by?: number | null }
 export type MyWorkData = {
   today: string; tasks: WorkTask[]; done_by_day: { day: string; count: number }[]; projects: WorkProject[]

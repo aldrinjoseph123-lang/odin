@@ -23,7 +23,7 @@ function items(d: CalendarData, show: Show): Map<string, Item[]> {
   if (show.targets) for (const t of d.targets) add({ key: `t${t.id}`, kind: "target", day: t.day, text: t.name, sub: `target · ${t.client}`, href: `/board?rollout=${t.id}`, tone: t.state === "overdue" ? "bad" : t.state === "on_track" ? "muted" : "warn" })
   if (show.tasks) for (const t of d.tasks) add({ key: `k${t.id}`, kind: "task", day: t.day, text: t.title, sub: `${t.project}${t.who ? ` · ${t.who}` : ""}`, href: `/board?rollout=${t.project_id}`, done: !!t.done, tone: !t.done && t.day < d.today ? "bad" : "muted" })
   if (show.history) {
-    for (const m of d.moves) add({ key: `m${m.project_id}${m.day}${m.stage}`, kind: "move", day: m.day, text: `${m.prev_stage} → ${m.stage}`, sub: `${m.project} · ${m.who}`, href: `/board?rollout=${m.project_id}`, tone: "muted" })
+    for (const m of d.moves) add({ key: `m${m.project_id}${m.day}${m.stage}`, kind: "move", day: m.day, text: `${m.prev_stage} to ${m.stage}`, sub: `${m.project} · ${m.who}`, href: `/board?rollout=${m.project_id}`, tone: "muted" })
     for (const a of d.approvals) add({ key: `a${a.project_id}${a.day}${a.kind}`, kind: "approval", day: a.day, text: a.kind === "asked" ? `Approval asked · ${a.stage}` : `${a.stage} ${a.status}`, sub: `${a.project}${a.who ? ` · ${a.who}` : ""}`, href: `/board?rollout=${a.project_id}`, tone: a.kind === "asked" ? (a.status === "pending" ? "warn" : "muted") : a.status === "approved" ? "ok" : "bad" })
   }
   return out
@@ -135,7 +135,7 @@ export function Calendar({ wide }: { wide: boolean }) {
               })}
               {/* the week's rollout bars, laid over the cells */}
               {lanes.segments.map((s) => (
-                <Link key={`${s.id}-${s.startCol}`} to={`/board?rollout=${s.id}`} title={`${s.name} · ${s.client} · ${s.stage} · ${fmtDate(s.start_date)} → ${s.target_end_date ? fmtDate(s.target_end_date) : "no target"}`}
+                <Link key={`${s.id}-${s.startCol}`} to={`/board?rollout=${s.id}`} title={`${s.name} · ${s.client} · ${s.stage} · ${fmtDate(s.start_date)} – ${s.target_end_date ? fmtDate(s.target_end_date) : "no target"}`}
                   className={cn("absolute flex h-[14px] items-center truncate rounded-full px-2 text-[11px] font-medium leading-none hover:opacity-90",
                     // the accent carries white; a stuck rollout is its state's soft fill and text, ringed in its line colour, so the name stays readable
                     s.state === "on_track" ? "bg-muted text-foreground ring-1 ring-inset ring-input" : cn(STATE[s.state].chip, "ring-1 ring-inset", s.state === "overdue" ? "ring-bad-line" : "ring-warn-line"),

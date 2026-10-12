@@ -215,7 +215,7 @@ export default function Project({ user }: { user: User }) {
             {/* configuration is rare: a summary until someone asks to edit */}
             {!editStages ? (
               <div className="flex flex-wrap items-center gap-3 text-[13px]">
-                <span className="min-w-0 flex-1 text-muted-foreground">{x.stage_rows.length} stages: {x.stage_rows.map((r) => r.name).join(" → ")}</span>
+                <span className="min-w-0 flex-1 text-muted-foreground">{x.stage_rows.length} stages: {x.stage_rows.map((r) => r.name).join(" › ")}</span>
                 <Button size="sm" variant="outline" onClick={() => setEditStages(true)}>Edit stages</Button>
               </div>
             ) : <><button type="button" onClick={() => setEditStages(false)} className="mb-2 text-[12px] text-muted-foreground hover:text-foreground">Done editing</button><StageListEditor key={stageRowsKey(x.stage_rows)} rows={x.stage_rows} current={d.stage} busy={busy} send={send}
@@ -263,7 +263,7 @@ export default function Project({ user }: { user: User }) {
             {x.guest_links.customer && <LinkRow label="Customer link (view and comment, no sign-in)" url={x.guest_links.customer} />}
             {x.guest_links.vendor && <LinkRow label="Vendor link (may advance the stage)" url={x.guest_links.vendor} />}
             {!x.guest_links_enabled && <p className="text-[13px] text-muted-foreground">Anonymous guest links are switched off in Settings. Partners and customers are invited from the Team panel instead.</p>}
-            {can.manage && x.guest_links_enabled && <p className="mt-2 text-[12px] text-muted-foreground">Rotate the links from ⋯ at the top of the page.</p>}
+            {can.manage && x.guest_links_enabled && <p className="mt-2 text-[12px] text-muted-foreground">Rotate the links from More actions at the top of the page.</p>}
           </Panel>
         )}
       </div>

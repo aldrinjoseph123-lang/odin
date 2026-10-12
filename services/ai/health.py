@@ -70,7 +70,7 @@ def heartbeat(db):
         if prev.get("state") == "down":
             _notify_admins(db, "The AI server is answering again", f"{c['model']} is back. AI features that passed validation are running again.")
         if prev.get("fingerprint") and prev["fingerprint"] != c["fingerprint"]:
-            queue(db, "validate", payload={"reason": f"the model changed ({prev['fingerprint']} → {c['fingerprint']})"})
+            queue(db, "validate", payload={"reason": f"the model changed ({prev['fingerprint']} to {c['fingerprint']})"})
         elif any(not _has_current_check(db, f, c["fingerprint"]) for f in FEATURES.values()) and not _validated_recently(db):
             queue(db, "validate", payload={"reason": "features not yet validated on this model"})
         return new

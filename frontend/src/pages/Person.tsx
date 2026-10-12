@@ -13,7 +13,7 @@ import { ApiError, notifyPerson, person, type PersonData, type User } from "@/li
 import { cn } from "@/lib/utils"
 import { ActivityPanel } from "@/components/ActivityPanel"
 import { STATE } from "@/lib/state"
-import { fmtDate, lateBy } from "@/lib/format"
+import { fmtDate, lateBy, shortDay } from "@/lib/format"
 
 // One person: what they carry, how it is going, what they did, and a way to
 // reach them that lands in their bell and their inbox.
@@ -78,7 +78,7 @@ export default function Person(_props: { user: User }) {
               <li key={w.week} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`week of ${fmtDate(w.week)}: ${w.done}`}>
                 {w.done > 0 && w.done === peak && <span className="text-foreground">{w.done}</span>}
                 <span className={cn("block w-full rounded-t-[3px]", w.done ? "bg-nav-fg/60" : "bg-muted")} style={{ height: `${Math.max(w.done ? 8 : 3, (w.done / peak) * 100)}%` }} aria-hidden />
-                <span aria-hidden>{w.week.slice(8, 10)}/{w.week.slice(5, 7)}</span>
+                <span aria-hidden>{shortDay(w.week)}</span>
                 <span className="sr-only">week of {fmtDate(w.week)}: {w.done}</span>
               </li>
             ))}
@@ -97,7 +97,7 @@ export default function Person(_props: { user: User }) {
                   <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
                 </div>
                 <div className="mt-1 flex items-center gap-3 pl-4">
-                  <span className="w-20 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
+                  <span className="w-20 shrink-0"><Stepper stages={p.stages} index={p.stage_index} state={p.state} selected={false} /></span>
                   <span className="truncate text-[13px]" title={p.stage}>{p.stage}</span>
                   <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "on_track" ? "text-muted-foreground" : STATE[p.state].chip.split(" ")[1])}>{STATE[p.state].label}</span>
                 </div>

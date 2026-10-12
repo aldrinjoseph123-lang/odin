@@ -198,7 +198,7 @@ export default function ProjectForm(_props: { user: User }) {
 
         <div className="flex items-center gap-3 lg:col-span-2">
           <Button type="submit" size="sm" loading={busy}>{editing ? "Save changes" : "Create project"}</Button>
-          {!editing && <span className="text-[12px] text-muted-foreground">Pick-lists are managed under Settings → Contacts & partners.</span>}
+          {!editing && <span className="text-[12px] text-muted-foreground">Pick-lists are managed under Settings › Contacts & partners.</span>}
         </div>
       </form>
     </div>

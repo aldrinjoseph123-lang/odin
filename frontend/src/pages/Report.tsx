@@ -199,9 +199,9 @@ export default function Report({ user }: { user: User }) {
           <div className="mt-4">
             <Table head={["Stage", "Planned", "Actual", "Forecast", ...(customer ? [] : ["Slip"])]}
               rows={d.stages.map((s) => [<span key="name" className={cn(s.status === "current" && "font-semibold")}>{s.name}{s.status === "current" && <span className="ml-1 text-[11px] font-normal text-primary-text">now</span>}</span>,
-                s.plan_start ? `${fmtDate(s.plan_start)} → ${fmtDate(s.plan_end)}` : "—",
-                s.actual_start ? `${fmtDate(s.actual_start)} → ${s.actual_end ? fmtDate(s.actual_end) : "now"}` : s.status === "skipped" ? "skipped" : "—",
-                s.forecast_end ? `${fmtDate(s.forecast_start)} → ${fmtDate(s.forecast_end)}` : "—",
+                s.plan_start ? `${fmtDate(s.plan_start)} – ${fmtDate(s.plan_end)}` : "—",
+                s.actual_start ? `${fmtDate(s.actual_start)} – ${s.actual_end ? fmtDate(s.actual_end) : "now"}` : s.status === "skipped" ? "skipped" : "—",
+                s.forecast_end ? `${fmtDate(s.forecast_start)} – ${fmtDate(s.forecast_end)}` : "—",
                 ...(customer ? [] : [slip(s.slip_days)])])}
               tone={(i, c) => (c === 4 && (d.stages[i].slip_days ?? 0) > 0 ? "font-medium text-warn" : undefined)} />
           </div>
@@ -214,7 +214,7 @@ export default function Report({ user }: { user: User }) {
                 <li key={m.stage} className="flex items-center gap-3 rounded-xl bg-muted/50 px-3 py-2 text-[13px]">
                   <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", i === 0 ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}>{i + 1}</span>
                   <span className="min-w-0 flex-1 font-medium">{m.stage}</span>
-                  <span className="text-[13px] text-muted-foreground">{fmtDate(m.start)} → <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
+                  <span className="text-[13px] text-muted-foreground">{fmtDate(m.start)} – <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
                   {!customer && m.planned_end && m.end && m.end > m.planned_end && <span className="text-[12px] font-medium text-warn">plan {fmtDate(m.planned_end)}</span>}
                 </li>
               ))}
@@ -300,7 +300,7 @@ export default function Report({ user }: { user: User }) {
                 <div>
                   <h3 className="mb-1 text-[13px] font-semibold text-nav-fg">What moved in the plan</h3>
                   <ul className="divide-y divide-border text-[13px]">{d.plan_changes.slice(0, 10).map((c, i) => (
-                    <li key={i} className="py-2">{c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</>}
+                    <li key={i} className="py-2">{c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} to {c.new ? fmtDate(c.new) : "unset"}</>}
                       {c.reason && <span className="text-muted-foreground"> — {c.reason}</span>}<span className="block text-[12px] text-muted-foreground">{c.author} · {fmtDate(c.created_at)}</span></li>))}</ul>
                 </div>
               )}

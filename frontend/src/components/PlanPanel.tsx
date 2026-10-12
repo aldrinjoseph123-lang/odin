@@ -99,7 +99,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
                   </>}
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{days ?? "—"}</td>
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
-                  <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` → ${fmtDate(s.actual_end)}` : " → now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
+                  <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` – ${fmtDate(s.actual_end)}` : " – now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
                   <td className="px-2 py-2">{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
                   {/* a finished stage's slip is history (muted); a running or coming stage that slips is amber;
                       red only once the target date itself has passed: red means overdue (critique 10 Oct) */}
@@ -134,7 +134,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
             <ul className="mt-2 divide-y divide-border text-[13px]">
               {d.changes.map((c, i) => (
                 <li key={i} className="flex flex-wrap items-baseline gap-x-2 py-2">
-                  {c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <span><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</span>}
+                  {c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <span><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} to {c.new ? fmtDate(c.new) : "unset"}</span>}
                   {c.reason && <span className="text-muted-foreground">— {c.reason}</span>}
                   <span className="ml-auto text-[12px] text-muted-foreground">{c.author} · <Ago iso={c.created_at} /></span>
                 </li>

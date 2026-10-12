@@ -14,7 +14,8 @@ import { ApiError, dashboard, dashboardVersion, resetLayout, saveLayout, type Ag
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/toast"
 import { STATE } from "@/lib/state"
-import { dayOf, deltaText, fmtDate, lateBy, monthTicks, timelineDomain } from "@/lib/format"
+import { dayOf, deltaText, fmtDate, lateBy, monthName, monthTicks, shortDay, timelineDomain, weekday } from "@/lib/format"
+import { addDays } from "@/lib/plan"
 import { configure, GRID_CLASS, keyOf, move, newUid, pack, pctChange, remove, reorder, resize, SPAN_CLASS, splitWindow, type LayoutItem, type Width } from "@/lib/dashboard"
 import { useMedia, useWidth } from "@/lib/useMeasure"
 
@@ -34,9 +35,6 @@ const tip = {
 }
 const axis = { tickLine: false, axisLine: false, tick: { fontSize: 11, fill: "var(--muted-foreground)" } }
 const badge = "rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
-const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-const dayLabel = (iso: string) => WEEKDAY[new Date(`${iso}T00:00:00`).getDay()]
 
 // Each grid cell hands its widget the ⋯ menu to show in the header.
 const MenuSlot = createContext<ReactNode>(null)
@@ -213,7 +211,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
                         style={{ left: pct(b), width: `calc(${pct(now)} - ${pct(b)})`, background: "repeating-linear-gradient(135deg, var(--bad-line) 0 3px, transparent 3px 6px)" }} />
                       <span className="absolute top-1/2 -translate-y-1/2 pl-2 text-[11px] font-semibold text-bad" style={{ left: pct(now) }} aria-hidden>{over} d</span>
                     </>}
-                    <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} → {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
+                    <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} – {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
                   </Tooltip>
                 </div>
                 <div className="flex items-center justify-end py-2">{r.team.length > 0 && <TeamStack people={r.team} avatarClass="h-5 w-5" className="flex" />}</div>
@@ -275,8 +273,8 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
 // ---- schedule ---------------------------------------------------------------
 function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; today: string; s: S; onExpand?: () => void; large?: boolean }) {
   const days = Number(s.days ?? 7)
-  const until = new Date(`${today}T00:00:00Z`); until.setUTCDate(until.getUTCDate() + days)
-  const due = sch.due.filter((t) => t.due_date <= until.toISOString().slice(0, 10))
+  const until = addDays(today, days)
+  const due = sch.due.filter((t) => t.due_date <= until)
   const cap = large ? 100 : 6
   const lateCount = due.filter((t) => lateBy(t.due_date, today) > 0).length
   const group = "border-0 bg-muted/60 px-2 py-1 text-[12px] font-semibold text-nav-fg"
@@ -292,7 +290,7 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
             {head && <li className={group}>{head}</li>}
             <li className="flex items-center gap-3 py-2">
               <span className={cn("w-14 shrink-0 whitespace-nowrap rounded-lg px-1 py-1 text-center text-[11px] leading-tight", late > 0 ? "bg-bad-soft text-bad" : "bg-muted text-muted-foreground")}>
-                <span className="block text-[13px] font-semibold text-foreground">{Number(t.due_date.slice(8, 10))} {MONTH[Number(t.due_date.slice(5, 7)) - 1]}</span>{late > 0 ? `${late} d late` : dayLabel(t.due_date)}
+                <span className="block text-[13px] font-semibold text-foreground">{shortDay(t.due_date)}</span>{late > 0 ? `${late} d late` : weekday(t.due_date)}
               </span>
               <Link to={`/board?rollout=${t.project_id}`} className="min-w-0 flex-1 hover:underline">
                 <span className="block truncate font-medium">{t.title}</span>
@@ -330,7 +328,7 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
   const sum = (xs: typeof series) => xs.reduce((a, x) => a + x.count, 0)
   const total = sum(now), prev = sum(before), peak = Math.max(0, ...now.map((x) => x.count))
   const change = pctChange(total, prev)
-  const data = now.map((x) => ({ ...x, label: n <= 7 ? dayLabel(x.day).slice(0, 1) : x.day.slice(8, 10) }))
+  const data = now.map((x) => ({ ...x, label: n <= 7 ? weekday(x.day).slice(0, 1) : x.day.slice(8, 10) }))
   return (
     <Widget title="Tasks completed" sub={`last ${n} days`} onExpand={onExpand}>
       {total === 0 ? <Quiet>No tasks completed in the last {n} days{prev ? ` (${prev} in the ${n} days before)` : ""}.</Quiet> : <>
@@ -530,7 +528,7 @@ function MyWork({ m, today, onExpand }: { m: D["mywork"]; today: string; onExpan
 // ---- cycle time -------------------------------------------------------------
 function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () => void; large?: boolean }) {
   const d1 = (n: number | null) => (n == null ? "—" : n > 0 && n < 0.05 ? "<0.1" : n.toFixed(1))   // a same-day close is not "0.0 days" (UX-23)
-  const data = c?.throughput.map(([m, n]) => ({ m: m.slice(5), n })) ?? []
+  const data = c?.throughput.map(([m, n]) => ({ m: monthName(m), n })) ?? []
   return (
     <Widget title="Cycle time" sub={c?.template} action={<Link to="/analytics" className={pill}>Detail</Link>} onExpand={onExpand}>
       {!c ? <Quiet>No stage template yet.</Quiet> : c.completed_count === 0 ? <Quiet>No rollout on {c.template} has closed yet; lead times appear after the first one does.</Quiet> : (
@@ -634,7 +632,7 @@ function renderWidget(item: LayoutItem, d: D, today: string, on: { tile: (k: Das
 // ---- customising: each widget's own ⋯ menu -------------------------------------
 // Every change saves at once to this person's arrangement (with an Undo);
 // text and number settings save a moment after typing stops.
-const WIDTHS: { w: Width; label: string }[] = [{ w: 1, label: "⅓" }, { w: 2, label: "⅔" }, { w: 3, label: "Full" }]
+const WIDTHS: { w: Width; label: string }[] = [{ w: 1, label: "1/3" }, { w: 2, label: "2/3" }, { w: 3, label: "Full" }]
 const tool = "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
 function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove, onSettings }: {
   item: LayoutItem; info: WidgetInfo; title: string; first: boolean; last: boolean

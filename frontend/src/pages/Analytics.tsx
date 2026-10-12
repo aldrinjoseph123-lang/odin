@@ -54,7 +54,7 @@ export default function Analytics(_props: { user: User }) {
                   return (
                     <tr key={r.stage} className="border-b border-border last:border-0">
                       <td className="px-3 py-2 font-medium">{r.stage}</td>
-                      <td className="px-3 py-2">{target ? <span className={cn(r.avg_days != null && r.avg_days > target && "rounded-md bg-bad-soft px-2 py-1 font-medium text-bad")}>{target} d</span> : "—"}</td>
+                      <td className="px-3 py-2">{target ? <span className={cn("whitespace-nowrap", r.avg_days != null && r.avg_days > target && "rounded-md bg-bad-soft px-2 py-1 font-medium text-bad")}>{target} d{r.avg_days != null && r.avg_days > target && " · over"}</span> : "—"}</td>
                       <td className="px-3 py-2 text-muted-foreground">{r.visits || "—"}</td>
                       <td className="px-3 py-2">{r.avg_days == null ? "—" : (
                         <span className="flex items-center gap-2"><span className="h-1.5 w-32 rounded-full bg-muted"><span className="block h-1.5 rounded-full bg-foreground" style={{ width: `${scale ? (r.avg_days / scale) * 100 : 0}%` }} /></span>{d1(r.avg_days)}</span>
@@ -76,7 +76,7 @@ export default function Analytics(_props: { user: User }) {
                   <li key={`${a.project_id}-${a.stage}`} className="flex items-center gap-3 py-2">
                     <a href={`/board?rollout=${a.project_id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{a.project_name}</a>
                     <span className="truncate text-[13px] text-muted-foreground">{a.stage}</span>
-                    <span className={cn("w-10 text-right", a.days >= 30 ? "font-medium text-bad" : a.days >= 14 ? "font-medium text-warn" : "")}>{Math.round(a.days)}</span>
+                    <span className={cn("whitespace-nowrap text-right tabular-nums", a.days >= 30 ? "font-medium text-bad" : a.days >= 14 ? "font-medium text-warn" : "")}>{Math.round(a.days)} d{a.days >= 30 ? " · over 30" : a.days >= 14 ? " · over 14" : ""}</span>
                   </li>
                 ))}
                 {s.aging.length === 0 && <li className="py-2 text-muted-foreground">Nothing in progress.</li>}

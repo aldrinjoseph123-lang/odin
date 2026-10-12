@@ -308,7 +308,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
       </nav>
       <ScrollArea className="min-h-0 flex-1">
         <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-2 text-[12px] text-muted-foreground md:grid">
-          <span>Rollout · next step <span className="ml-1">(↑↓ or j/k, Enter opens, → to its actions)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
+          <span>Rollout · next step <span className="ml-1">(↑↓ or j/k, Enter opens, right arrow to its actions)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid grid-cols-1 gap-1 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {group ? groupRows(shown, group).map((g) => (
@@ -534,7 +534,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                       {arrow}
                       <button type="button" onClick={() => setShowAll(true)} aria-expanded={false}
                         aria-label={`${it.kind === "done" ? "Finished" : "Later"} stages: ${names.join(", ")}. Show every stage`}
-                        title={names.join(" → ")}
+                        title={names.join(" › ")}
                         className={cn("block min-h-[58px] w-full rounded-lg border-[1.5px] px-3 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                           it.kind === "done" ? "border-ok-line bg-ok-soft hover:bg-ok-soft/70" : "border-dashed border-input bg-card hover:bg-muted")}>
                         <span className={cn("flex items-start gap-1 text-[13px] font-semibold leading-tight", it.kind === "later" && "text-nav-fg")}>

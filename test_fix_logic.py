@@ -151,6 +151,7 @@ class CountsAgreeTestCase(FixBase):
         self.assertGreater(rows["Over"]["days_in_stage"], rows["Over"]["over_by"])
         self.assertEqual(rows["Over"]["sla_days"], 1)
         self.assertEqual(rows["Both"]["target_end_date"], "2020-01-01")
+        self.assertIn(rows["Over"]["stage"], rows["Over"]["stages"])   # names for the stepper's tooltips, not a count
 
     def test_people_count_moves_by_author_id_not_name(self):
         self.new_project(name="P", client="C")

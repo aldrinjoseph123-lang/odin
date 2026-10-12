@@ -62,7 +62,7 @@ def _current_user():
         "must_enroll_mfa": bool(session.get("must_enroll_mfa")),
         "permissions": _permissions_for(session.get("role")),
         "nav": nav_counts(),
-        # workspace-wide display choices from Settings → General
+        # workspace-wide display choices from Settings › General
         "prefs": {"date_format": policy("date_format"), "undo_minutes": policy("undo_minutes"),
                   "activity_idle_minutes": policy("activity_idle_minutes") if policy("activity_tracking") else 0},
     }
@@ -550,7 +550,7 @@ def api_calendar():
 @app.route("/api/kibana")
 @permission_required("view_board")
 def api_kibana():
-    """The Kibana view's dashboards (Settings → Integrations); staff only."""
+    """The Kibana view's dashboards (Settings › Integrations); staff only."""
     from urllib.parse import quote
     from policies import kibana_dashboards
     if session.get("kind") == "external":
@@ -703,7 +703,7 @@ def api_project_form():
         "products": [{"name": r["name"], "vendor": vendor_names.get(r["vendor_id"], "")} for r in lists["products"]],
         "outsourcers": [{"name": r["name"], "email": r["email"]} for r in lists["outsourcers"]],
         "templates": [{"id": t["id"], "name": t["name"]} for t in db.execute("SELECT id, name FROM stage_templates ORDER BY name")],
-        # Settings → Projects & workflow: what a new project starts with
+        # Settings › Projects & workflow: what a new project starts with
         "defaults": {"stage_template_id": int(policy("default_template")) if policy("default_template")
                       else (db.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone() or [None])[0],
                      "customer_approval": policy("default_customer_approval")},
@@ -1165,7 +1165,7 @@ def api_raid_item(project_id, item_id):
         return jsonify(error=str(exc)), 400
     touch_project(db, project_id)
     raid.update(item, fields)
-    audit_log("update_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:60]} → {fields['status']}")
+    audit_log("update_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:60]} to {fields['status']}")
     _raid_notify_owner(project, fields["title"], fields["owner_id"], before=item["owner_id"])
     return jsonify(ok=True)
 

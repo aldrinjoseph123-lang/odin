@@ -36,8 +36,15 @@ export function fmtDate(iso: string | null | undefined): string {
   if (dateFormat === "yyyy-MM-dd") return `${y}-${m}-${d}`
   if (dateFormat === "dd/MM/yyyy") return `${d}/${m}/${y}`
   if (dateFormat === "MM/dd/yyyy") return `${m}/${d}/${y}`
-  return `${Number(d)} ${MONTHS[Number(m) - 1]}`
+  return shortDay(ymd)
 }
+// "27 Sep" whatever the workspace format: for tiles too narrow for a numeric date.
+export const shortDay = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`
+// "Sep" from "2026-09" or "2026-09-27"
+export const monthName = (iso: string) => MONTHS[Number(iso.slice(5, 7)) - 1]
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+// "Mon" for a YYYY-MM-DD date (the date itself, not shifted by the reader's zone)
+export const weekday = (iso: string) => WEEKDAYS[new Date(`${iso.slice(0, 10)}T00:00:00Z`).getUTCDay()]
 export const days = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n)} d`)
 
 // whole calendar days past the target, as the timeline and dashboard count them (never rounded from the clock, sim L-9)

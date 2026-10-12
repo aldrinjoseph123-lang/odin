@@ -1,4 +1,4 @@
-"""Read-only API tokens and the small API they open (Settings → API tokens).
+"""Read-only API tokens and the small API they open (Settings › API tokens).
 
 An admin names a token and picks how long it lives; the token is shown once
 and only its SHA-256 is stored. A script sends it as

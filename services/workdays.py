@@ -1,4 +1,4 @@
-"""Working days: the working week (Settings → General) minus the holidays.
+"""Working days: the working week (Settings › General) minus the holidays.
 
 Stage lengths, SLAs and time in a stage count working days when the
 workspace says so (policy count_working_days); gaps between two dates

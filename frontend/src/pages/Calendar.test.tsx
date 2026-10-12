@@ -16,7 +16,7 @@ describe("Calendar", () => {
     mount()
     expect(await screen.findByRole("heading", { level: 2 })).toHaveTextContent("September 2026")
     expect(screen.getAllByRole("link", { name: /EDR Rollout - Globex/ }).length).toBeGreaterThan(0)   // the span's bars
-    expect(screen.getByText("PO Received → Scoping")).toBeInTheDocument()                          // the move
+    expect(screen.getByText("PO Received to Scoping")).toBeInTheDocument()                          // the move
     expect(screen.getByRole("button", { name: "+1 more" })).toBeInTheDocument()                    // 4 tasks, 3 shown
     await user.click(screen.getByRole("button", { name: "+1 more" }))
     expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("10 Sep · 4 items")

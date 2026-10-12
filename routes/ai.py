@@ -1,4 +1,4 @@
-"""Settings → AI: the server (with a Check before saving), its status, and
+"""Settings › AI: the server (with a Check before saving), its status, and
 every AI feature's validation. The model is never called from here: checks
 that need the model are queued for the scheduler's AI worker (services/ai)."""
 import json
