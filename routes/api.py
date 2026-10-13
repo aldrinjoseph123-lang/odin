@@ -175,7 +175,7 @@ def api_settings():
             "channel_id": connection["channel_id"] if connected else None,
             "teams": teams, "channels": channels, "team_id": team_id, "teams_error": teams_error,
         },
-        "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled")},
+        "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "notify_teams_chat_enabled", "onedrive_mirror_uploads_enabled")},
                     "guest_links_enabled": get_setting("guest_links_enabled", "1") == "1"},
         "policies": policy_view(),
         "sso": _sso_view(),
@@ -276,7 +276,7 @@ def api_settings_contacts():
 def api_users():
     rows = get_db().execute(
         "SELECT u.id, u.username, u.name, u.email, u.role, u.active, u.kind, u.last_login_at, u.created_at, u.avatar, u.pending, u.password_login, u.ms_oid, "
-        "u.notify_via, u.totp_enabled_at IS NOT NULL AS two_step, l.label AS signup_label, p.name AS signup_project, u.signup_project_role FROM users u "
+        "u.totp_enabled_at IS NOT NULL AS two_step, l.label AS signup_label, p.name AS signup_project, u.signup_project_role FROM users u "
         "LEFT JOIN signup_links l ON l.id = u.signup_link_id LEFT JOIN projects p ON p.id = u.signup_project_id ORDER BY u.name"
     ).fetchall()
     from routes.sso import sso_enforced
@@ -450,7 +450,7 @@ def api_rollout_report_save(project_id):
 def api_account():
     from constants import ADMIN_KINDS, NOTIFICATION_KINDS
     from db import get_setting
-    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, notify_via, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
     return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
                    has_password=bool(u["password_hash"] and "$" in u["password_hash"]),
@@ -459,8 +459,7 @@ def api_account():
                                 if k not in ADMIN_KINDS or session.get("role") == "Admin"],   # access requests and AI health reach admins only
                    mail_enabled=get_setting("notify_email_enabled") == "1",
                    activity=activity_summary(session["user_id"]) if activity_enabled() else None,
-                   activity_viewers=policy("activity_roles"), notify_via=u["notify_via"],
-                   teams_ready=get_setting("notify_teams_enabled") == "1")
+                   activity_viewers=policy("activity_roles"))
 
 
 @app.route("/api/my-work")

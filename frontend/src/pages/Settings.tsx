@@ -137,9 +137,10 @@ export default function Settings(_props: { user: User }) {
         {section === "notifications" && (
           <Toggles data={data} busy={busy} send={send} title="Channels" keys={[
             { key: "notify_email_enabled", label: "Email notifications on rollout events (stage changes, approvals, assignments, mentions, due tasks)" },
+            { key: "notify_teams_chat_enabled", label: "Teams messages to each person: every notification also as a direct chat from the connected account (staff only)" },
             { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
           ]} extra={<>
-            {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings › Integrations), so email and Teams channel posts cannot be delivered. The bell and the Teams webhook still work.</p>}
+            {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings › Integrations), so email and Teams messages cannot be delivered. The bell and the Teams webhook still work.</p>}
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-email")}>Send test email</Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send test Teams message</Button>
           </>} />

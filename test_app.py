@@ -982,7 +982,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual([t["name"] for t in c.get("/api/settings").get_json()["templates"]][-1], "SIEM")
         r = c.post("/settings/integrations", data={"notify_email_enabled": "on"}, headers=h).get_json()
         self.assertEqual(r["messages"], ["Saved"])
-        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "onedrive_mirror_uploads_enabled": False, "guest_links_enabled": False})
+        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "notify_teams_chat_enabled": False, "onedrive_mirror_uploads_enabled": False, "guest_links_enabled": False})
         m, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
         self.assertEqual(m.get("/api/settings").status_code, 403)
 
@@ -1535,6 +1535,43 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             bell = [r[0] for r in db.execute("SELECT title FROM notifications")]
         self.assertIn("Odin's email went out from the mailbox, not its alias", bell)
+
+    def test_every_notification_reaches_staff_in_a_teams_chat(self):
+        import graph
+        from services.notifications import notify_users
+        staff = self._make_user("tina", "Member")
+        partner = self._make_user("pat", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'tina@corp.example' WHERE id = ?", (staff,))
+            db.execute("UPDATE users SET email = 'pat@partner.example', kind = 'external' WHERE id = ?", (partner,))
+            db.execute("INSERT INTO settings (key, value) VALUES ('notify_teams_chat_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+            db.commit()
+        sent = []
+        with app_module.app.test_request_context(), patch("graph.send_teams_chat", side_effect=lambda e, h: (sent.append((e, h)), (True, None))[1]):
+            notify_users([staff, partner], "stage", None, "Stage moved", "<p>Scoping to Deployment</p>", link="/board")
+        self.assertEqual([e for e, _ in sent], ["tina@corp.example"])   # partners sit in other tenants: email only
+        self.assertIn("<b>Stage moved</b>", sent[0][1])
+        # the person's topic choices cover Teams too
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email_off = 'stage' WHERE id = ?", (staff,)); db.commit()
+        sent.clear()
+        with app_module.app.test_request_context(), patch("graph.send_teams_chat", side_effect=lambda e, h: (sent.append((e, h)), (True, None))[1]):
+            notify_users([staff], "stage", None, "Stage moved", "<p>x</p>")
+        self.assertEqual(sent, [])
+
+    def test_teams_chat_opens_once_and_reopens_a_dead_chat(self):
+        import graph
+        def reply(code, body=None):
+            return MagicMock(status_code=code, text="", json=MagicMock(return_value=body or {}))
+        with patch("graph.is_connected", return_value=True), patch("graph._headers", return_value=({}, None)), \
+             patch("graph.requests.get", side_effect=[reply(200, {"id": "me"}), reply(200, {"id": "tina"})] * 2) as get, \
+             patch("graph.requests.post", side_effect=[reply(201, {"id": "chat-1"}), reply(201), reply(201), reply(404), reply(201, {"id": "chat-2"}), reply(201)]) as post:
+            self.assertEqual(graph.send_teams_chat("Tina@corp.example", "<p>1</p>"), (True, None))   # open the chat, then post
+            self.assertEqual(graph.send_teams_chat("tina@corp.example", "<p>2</p>"), (True, None))   # the kept chat: one call
+            self.assertEqual(graph.send_teams_chat("tina@corp.example", "<p>3</p>"), (True, None))   # gone: reopened once
+        urls = [c.args[0].rsplit("/v1.0", 1)[1] for c in post.call_args_list]
+        self.assertEqual(urls, ["/chats", "/chats/chat-1/messages", "/chats/chat-1/messages", "/chats/chat-1/messages", "/chats", "/chats/chat-2/messages"][:len(urls)])
+        self.assertEqual(post.call_args_list[0].kwargs["json"]["chatType"], "oneOnOne")
 
     def test_send_email_as_takes_one_address(self):
         c, csrf = self._api_client()

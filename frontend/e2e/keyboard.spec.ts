@@ -21,6 +21,7 @@ test("@keys flow: j/k move, Enter opens, Esc closes, Home/End jump", async ({ pa
   await expect(page.getByRole("list", { name: "Stages" })).toBeVisible()   // the rollout is open before Esc is asked to close it
   await page.keyboard.press("Escape")
   await expect(page).not.toHaveURL(/rollout=/)
+  await expect(rows.first()).toBeFocused()   // focus comes back to the row it opened, a frame later
   // the whole list is one tab stop: Tab from a row leaves the list
   await rows.first().focus()
   await page.keyboard.press("Tab")

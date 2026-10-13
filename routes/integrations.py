@@ -114,6 +114,7 @@ def integrations_set_channel():
 def settings_integrations():
     set_setting("notify_email_enabled", "1" if request.form.get("notify_email_enabled") == "on" else "0")
     set_setting("notify_teams_enabled", "1" if request.form.get("notify_teams_enabled") == "on" else "0")
+    set_setting("notify_teams_chat_enabled", "1" if request.form.get("notify_teams_chat_enabled") == "on" else "0")
     set_setting(
         "onedrive_mirror_uploads_enabled",
         "1" if request.form.get("onedrive_mirror_uploads_enabled") == "on" else "0",
@@ -145,9 +146,19 @@ def settings_test_email():
 @app.route("/settings/integrations/test-teams", methods=["POST"])
 @permission_required("manage_integrations")
 def settings_test_teams():
+    """A direct Teams chat to the admin who asked, and a post in the chosen channel when one is set."""
     audit_log("test_teams")
-    ok, error = graph.send_teams_message("<b>Odin test notification</b><br>This is a test message from Odin.")
-    flash("Test Teams message sent" if ok else f"Test Teams message failed: {error}", "message" if ok else "error")
+    me = get_db().execute("SELECT email FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    results = []
+    if me and me["email"]:
+        ok, error = graph.send_teams_chat(me["email"], "<p><b>Odin test notification</b></p><p>This is how Odin's notifications reach you in Teams.</p>")
+        results.append(f"Chat to {me['email']}: " + ("sent" if ok else f"failed ({error})"))
+    else:
+        results.append("Chat: add your email address on My account first")
+    if graph.teams_configured():
+        ok, error = graph.send_teams_message("<b>Odin test notification</b><br>This is a test message from Odin.")
+        results.append("Channel: " + ("posted" if ok else f"failed ({error})"))
+    flash(" · ".join(results), "message" if all("failed" not in r and "first" not in r for r in results) else "error")
     return redirect(url_for("settings"))
 
 

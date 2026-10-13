@@ -38,6 +38,7 @@ DEFAULT_DOC_CATEGORIES = ["Client PO", "Deliverable", "Sign-off"]
 DEFAULT_SETTINGS = {
     "notify_email_enabled": "0",
     "notify_teams_enabled": "0",
+    "notify_teams_chat_enabled": "0",
     "onedrive_mirror_uploads_enabled": "0",
 }
 

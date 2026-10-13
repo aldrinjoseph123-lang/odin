@@ -86,7 +86,7 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
           <li key={u.id} className="flex flex-wrap items-center gap-2 text-[13px]">
             <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.username} · {u.email} · asked {fmtWhen(u.created_at, true)}
               {u.signup_label ? ` · via sign-up link "${u.signup_label}"` : u.microsoft ? " · via Microsoft sign-in" : ""}{u.signup_project ? ` · joins ${u.signup_project} as ${u.signup_project_role}` : ""}
-              {u.notify_via === "teams" ? " · prefers Teams" : ""}</span></span>
+              </span></span>
             <select value={role[u.id] ?? (u.signup_label ? u.role : "Viewer")} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={fieldAuto}>
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>

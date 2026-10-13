@@ -29,7 +29,10 @@ DB_PATH = os.path.join(os.environ.get("ODIN_DATA_DIR") or os.path.dirname(__file
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 AUTH_BASE = "https://login.microsoftonline.com"
 # Sites.ReadWrite.All: backups into a SharePoint site the connected admin can reach (Settings → Backups).
-SCOPES = "offline_access User.Read Mail.Send Files.ReadWrite Sites.ReadWrite.All ChannelMessage.Send Team.ReadBasic.All Channel.ReadBasic.All"
+# Chat.Create, ChatMessage.Send, User.ReadBasic.All: each notification as a one-to-one Teams chat
+# from the connected account to the colleague it is for (13 Oct 2026).
+SCOPES = ("offline_access User.Read Mail.Send Files.ReadWrite Sites.ReadWrite.All ChannelMessage.Send Team.ReadBasic.All Channel.ReadBasic.All "
+          "Chat.Create ChatMessage.Send User.ReadBasic.All")
 
 
 def _env(key):
@@ -205,9 +208,20 @@ def complete_connection(code, redirect_uri):
         return False, str(exc)
 
 
+def _set_db_setting(key, value):
+    db = _db()
+    if value:
+        db.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    else:
+        db.execute("DELETE FROM settings WHERE key = ?", (key,))
+    db.commit()
+    db.close()
+
+
 def disconnect():
     db = _db()
     db.execute("DELETE FROM ms_connection WHERE id = 1")
+    db.execute("DELETE FROM settings WHERE key LIKE 'teams_chat:%'")   # chats belong to the account that opened them
     db.commit()
     db.close()
 
@@ -372,6 +386,63 @@ def post_teams_webhook(url, title, lines, link=None):
         return (resp.status_code < 400), (None if resp.status_code < 400 else f"webhook answered {resp.status_code}")
     except Exception as exc:  # noqa: BLE001
         return False, f"webhook failed: {exc}"
+
+
+def send_teams_chat(email, html):
+    """A message in the one-to-one Teams chat between the connected account and
+    a colleague in the same tenant. The chat is opened on the first message and
+    its id kept per address, so later messages are one call. Returns (ok, error);
+    never raises."""
+    if not is_connected():
+        return False, "Microsoft 365 is not connected"
+    headers, error = _headers()
+    if error:
+        return False, error
+    key = f"teams_chat:{email.lower()}"
+    try:
+        for attempt in (1, 2):
+            chat = _db_setting(key)
+            if not chat:
+                chat, error = _open_chat(headers, email)
+                if error:
+                    return False, error
+                _set_db_setting(key, chat)
+            resp = requests.post(f"{GRAPH_BASE}/chats/{chat}/messages", headers=headers,
+                                 json={"body": {"contentType": "html", "content": html}}, timeout=15)
+            if resp.status_code < 400:
+                return True, None
+            if resp.status_code in (403, 404) and attempt == 1:
+                _set_db_setting(key, None)   # a chat this account can no longer post to: open it again
+                continue
+            return False, f"Teams chat failed: {resp.status_code} {resp.text[:300]}"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Teams chat failed: {exc}"
+
+
+def _open_chat(headers, email):
+    """(chat id, None) for the one-to-one chat with `email`, or (None, error)."""
+    me = requests.get(f"{GRAPH_BASE}/me?$select=id", headers=headers, timeout=15)
+    if me.status_code >= 400:
+        return None, f"Teams chat failed: {me.status_code} {me.text[:200]}"
+    # the address as a sign-in name first, then as a mail address (an alias that is not the UPN)
+    who = requests.get(f"{GRAPH_BASE}/users/{requests.utils.quote(email)}?$select=id", headers=headers, timeout=15)
+    uid = who.json().get("id") if who.status_code < 400 else None
+    if not uid:
+        found = requests.get(f"{GRAPH_BASE}/users", headers=headers, timeout=15,
+                             params={"$filter": f"mail eq '{email.replace(chr(39), chr(39) * 2)}'", "$select": "id"})
+        hits = found.json().get("value", []) if found.status_code < 400 else []
+        uid = hits[0]["id"] if hits else None
+    if not uid:
+        return None, f"No one in Microsoft 365 has the address {email}"
+    if uid == me.json()["id"]:
+        return None, "That is the connected account itself"
+    member = lambda u: {"@odata.type": "#microsoft.graph.aadUserConversationMember", "roles": ["owner"],   # noqa: E731
+                        "user@odata.bind": f"{GRAPH_BASE}/users('{u}')"}
+    resp = requests.post(f"{GRAPH_BASE}/chats", headers=headers, timeout=15,
+                         json={"chatType": "oneOnOne", "members": [member(me.json()["id"]), member(uid)]})   # an existing 1:1 chat comes back as is
+    if resp.status_code >= 400:
+        return None, f"Teams chat failed: {resp.status_code} {resp.text[:200]}"
+    return resp.json()["id"], None
 
 
 def send_teams_message(text):

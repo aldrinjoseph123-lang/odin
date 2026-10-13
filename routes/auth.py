@@ -544,21 +544,6 @@ def user_avatar(user_id, stored):
     return response
 
 
-@app.route("/account/notify-via", methods=["POST"])
-@login_required
-def account_notify_via():
-    choice = request.form.get("notify_via", "")
-    if choice not in ("email", "teams"):
-        flash("Pick email or Teams", "error")
-        return redirect(url_for("account"))
-    db = get_db()
-    db.execute("UPDATE users SET notify_via = ? WHERE id = ?", (choice, session["user_id"]))
-    db.commit()
-    audit_log("change_notify_via", "user", session["user_id"], session.get("user_name"), choice)
-    flash("Saved: " + ("Microsoft Teams (email until Teams is connected)" if choice == "teams" else "email"))
-    return redirect(url_for("account"))
-
-
 @app.route("/account/email", methods=["POST"])
 @login_required
 def account_email():

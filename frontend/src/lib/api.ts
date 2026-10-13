@@ -454,7 +454,7 @@ export type SettingsData = {
     connected: boolean; connected_email: string | null; team_name: string | null; channel_name: string | null; channel_id: string | null
     teams: { id: string; name: string }[]; channels: { id: string; name: string }[]; team_id: string; teams_error: string | null
   }
-  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "guest_links_enabled", boolean>
+  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "notify_teams_chat_enabled" | "onedrive_mirror_uploads_enabled" | "guest_links_enabled", boolean>
   backups: BackupsView | null
   api_tokens: { id: number; name: string; created_by: string; created_at: string; expires_at: string; last_used_at: string | null; revoked_at: string | null }[]
   audit_archives: { name: string; size: number }[]
@@ -500,7 +500,7 @@ export const contacts = () => getJson<ContactsData>("/api/settings/contacts")
 export type AdminUser = {
   id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"
   last_login_at: string | null; created_at: string | null; avatar_url: string | null; pending: boolean; password_login: boolean; two_step: boolean; microsoft: boolean
-  notify_via?: "email" | "teams"; signup_label?: string | null; signup_project?: string | null; signup_project_role?: string | null
+  signup_label?: string | null; signup_project?: string | null; signup_project_role?: string | null
 }
 export type UsersData = { users: AdminUser[]; roles: string[]; me: number; microsoft_only: boolean }
 export const users = () => getJson<UsersData>("/api/users")
@@ -529,7 +529,7 @@ export const reportAll = (template?: number | null) => getJson<ReportAllData>(`/
 
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; has_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
-  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[]; notify_via: "email" | "teams"; teams_ready: boolean }>("/api/account")
+  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[] }>("/api/account")
 // active minutes (services/activity.py): today, 7 and 30 days, one row per day
 export type Activity = { today: number; week: number; month: number; days: { day: string; minutes: number }[]; last_seen_at: string | null; last_login_at: string | null }
 // sign-up links (services/signup.py): admins make them; a new colleague fills /join/<token>
@@ -543,7 +543,7 @@ export const revokeSignupLink = (id: number) => post<{ ok: true }>(`/api/signup-
 export const revokeAllSignupLinks = () => post<{ ok: true; revoked: number }>("/api/signup-links/revoke-all")
 export type JoinInfo = { role: string; project: string | null; project_role: string | null; expires_at: string; company: string; domains: string[] }
 export const joinInfo = (token: string) => getJson<JoinInfo>(`/api/join/${token}`)
-export const joinSubmit = (token: string, b: { name: string; username: string; email: string; password: string; notify_via: "email" | "teams" }) =>
+export const joinSubmit = (token: string, b: { name: string; username: string; email: string; password: string }) =>
   post<{ ok: true }>(`/api/join/${token}`, b)
 // document templates (services/doc_templates.py)
 export type DocKind = "rollout" | "portfolio" | "signoff"

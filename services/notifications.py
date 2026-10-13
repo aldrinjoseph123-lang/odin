@@ -37,7 +37,9 @@ def _plain(html):
 def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user_id=None, link=None, email=True):
     """The one way a person hears about an event. Every recipient gets an
     in-app notification; those with an address who have not switched this
-    kind off by email also get a mail (when mail is on). Recipients are
+    kind off also get a mail (when mail is on) and, staff only, a direct Teams
+    chat from the connected account (when Teams messages are on; partners and
+    customers sit in other tenants). Recipients are
     de-duplicated and the person who caused the event is never told about
     their own action. `email=False` keeps it to the bell. Best effort: mail
     failures never break the request."""
@@ -62,11 +64,11 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             (r["id"], project_id, kind, title[:300], body[:2000], link, actor, now.isoformat()),
         )
     db.commit()
-    if not email or get_setting("notify_email_enabled") != "1":
+    if not email:
         return
-    for r in rows:
-        if not r["email"] or kind in (r["email_off"] or "").split(","):
-            continue
+    # the per-kind choices on the Account page ("Tell me about") cover email and Teams alike
+    wanted = [r for r in rows if r["email"] and kind not in (r["email_off"] or "").split(",")]
+    for r in wanted if get_setting("notify_email_enabled") == "1" else []:
         try:
             extra = project_link(project_id, r, link if link and link.startswith("/projects/") else None) if project_id else ""
             ok, error = graph.send_mail(r["email"], subject, message_html + extra)
@@ -74,24 +76,49 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             ok, error = False, str(exc)
         if not ok:
             print(f"[notify_users] email to {r['email']} failed: {error}")
+    # ponytail: one Graph call per person in the request, as mail is; queue it if large teams make saves slow
+    for r in [r for r in wanted if r["kind"] != "external"] if get_setting("notify_teams_chat_enabled") == "1" else []:
+        try:
+            ok, error = graph.send_teams_chat(r["email"], f"<p><b>{subject}</b></p>{message_html}{_open_link(project_id, r, link)}")
+        except Exception as exc:   # never let Teams break the request that caused it
+            ok, error = False, str(exc)
+        if not ok:
+            print(f"[notify_users] Teams chat to {r['email']} failed: {error}")
+            report_mail_failure(error, teams=True)
 
 
-def report_mail_failure(error, alias=False):
+def _open_link(project_id, user, link):
+    """The way back into Odin under a Teams message (staff: no sign-in link)."""
+    if project_id:
+        return project_link(project_id, user, link if link and link.startswith("/projects/") else None)
+    from policies import policy
+    base = policy("public_url")
+    return f'<p><a href="{base}{link}">Open in Odin</a></p>' if base and link else ""
+
+
+def report_mail_failure(error, alias=False, teams=False):
     """Email is switched on but a message failed: tell the admins in the bell,
     at most once a day, instead of failing silently (system map #2). `alias`:
     the mail went out, but from the mailbox, because Microsoft refused the
-    "Send email as" alias (its own daily notice, so it never hides a failure)."""
+    "Send email as" alias; `teams`: a direct Teams message failed (each its
+    own daily notice, so one never hides another)."""
     from datetime import datetime, timedelta
     from markupsafe import escape
     from db import set_setting
-    if get_setting("notify_email_enabled") != "1":
+    if get_setting("notify_teams_chat_enabled" if teams else "notify_email_enabled") != "1":
         return
-    key = "mail_alias_reported_at" if alias else "mail_failure_reported_at"
+    key = "teams_failure_reported_at" if teams else "mail_alias_reported_at" if alias else "mail_failure_reported_at"
     last, now = get_setting(key), datetime.utcnow()
     if last and datetime.fromisoformat(last) > now - timedelta(hours=24):
         return
     set_setting(key, now.isoformat())
     admins = [r[0] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+    if teams:
+        notify_users(admins, "access", None, "Odin could not send a Teams message",
+                     f"Teams messages to people are on but one failed ({escape(str(error)[:200])}). Everything still reaches the bell and email. "
+                     "Check that Microsoft 365 is connected with the Teams chat permissions (Settings › Integrations), "
+                     "or switch Teams messages off there.", link="/settings/integrations", email=False)
+        return
     if alias:
         notify_users(admins, "access", None, "Odin's email went out from the mailbox, not its alias",
                      f"Microsoft refused the address under Settings › Notifications › Send email as ({escape(str(error)[:200])}). "

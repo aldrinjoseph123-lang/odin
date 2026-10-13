@@ -526,7 +526,6 @@ test("@flow sign-up link: an admin makes it, a colleague asks, the admin approve
   await guest.getByLabel("Username").fill("e2ejoiner")
   await guest.getByLabel("Password", { exact: true }).fill("Correct-Horse-Battery-9")
   await guest.getByLabel("Again").fill("Correct-Horse-Battery-9")
-  await guest.getByRole("radio", { name: "Microsoft Teams" }).click()
   await guest.getByRole("button", { name: "Ask to join" }).click()
   await expect(guest.getByRole("heading", { level: 1 })).toHaveText("Request sent")
   // the admin approves it

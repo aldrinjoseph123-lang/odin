@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { PageHeader } from "@/components/PageHeader"
-import { Segmented } from "@/components/Segmented"
 import { toast } from "@/lib/toast"
 import { PanelTitle } from "@/components/PanelTitle"
 import { chip, danger } from "@/lib/ui"
@@ -108,14 +107,6 @@ export default function Account({ user }: { user: User }) {
           )}
           <div><Button type="submit" size="sm" loading={busy} disabled={email === (me.email ?? "") || (me.has_password && !emailPw)}>Save email</Button></div>
         </form>
-        {me.kind === "internal" && (
-          <section className="grid grid-cols-1 content-start gap-2 panel p-4" aria-label="How Odin reaches you">
-            <PanelTitle className="mb-0" hint="besides the bell">Reach me by</PanelTitle>
-            <Segmented label="Reach me by" full disabled={busy} value={me.notify_via} onChange={(v) => void send("/account/notify-via", { notify_via: v })}
-              options={[{ value: "email", label: "Email" }, { value: "teams", label: "Microsoft Teams" }]} />
-            {me.notify_via === "teams" && !me.teams_ready && <p className="text-[12px] text-muted-foreground">Teams is not connected on this installation yet; you get email until it is.</p>}
-          </section>
-        )}
         {me.kind === "internal" ? (
           <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" })) }} className={cn("grid grid-cols-1 content-start gap-2 panel p-4", me.must_change_password && "order-first ring-2 ring-primary lg:col-span-2")}>
             <PanelTitle className="mb-0">Change password</PanelTitle>
@@ -129,7 +120,7 @@ export default function Account({ user }: { user: User }) {
         <form key={me.email_kinds.map((k) => `${k.key}:${k.on}`).join("|")}
           onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); void send("/account/notifications", Object.fromEntries(me.email_kinds.filter((k) => fd.get(k.key)).map((k) => [k.key, "on"]))) }}
           className="grid grid-cols-1 content-start gap-2 panel p-4">
-          <PanelTitle className="mb-0" hint="the bell shows everything either way">Email me about</PanelTitle>
+          <PanelTitle className="mb-0" hint={me.kind === "internal" ? "by email and in Teams; the bell shows everything either way" : "by email; the bell shows everything either way"}>Tell me about</PanelTitle>
           {me.email_kinds.map((k) => (
             <label key={k.key} className="flex items-start gap-2 text-[13px]">
               <Switch name={k.key} defaultChecked={k.on} className="mt-1" />
