@@ -76,19 +76,29 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             print(f"[notify_users] email to {r['email']} failed: {error}")
 
 
-def report_mail_failure(error):
+def report_mail_failure(error, alias=False):
     """Email is switched on but a message failed: tell the admins in the bell,
-    at most once a day, instead of failing silently (system map #2)."""
+    at most once a day, instead of failing silently (system map #2). `alias`:
+    the mail went out, but from the mailbox, because Microsoft refused the
+    "Send email as" alias (its own daily notice, so it never hides a failure)."""
     from datetime import datetime, timedelta
     from markupsafe import escape
     from db import set_setting
     if get_setting("notify_email_enabled") != "1":
         return
-    last, now = get_setting("mail_failure_reported_at"), datetime.utcnow()
+    key = "mail_alias_reported_at" if alias else "mail_failure_reported_at"
+    last, now = get_setting(key), datetime.utcnow()
     if last and datetime.fromisoformat(last) > now - timedelta(hours=24):
         return
-    set_setting("mail_failure_reported_at", now.isoformat())
+    set_setting(key, now.isoformat())
     admins = [r[0] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+    if alias:
+        notify_users(admins, "access", None, "Odin's email went out from the mailbox, not its alias",
+                     f"Microsoft refused the address under Settings › Notifications › Send email as ({escape(str(error)[:200])}). "
+                     "Mail still goes out, from the connected mailbox's own address. Allow sending from aliases in Exchange "
+                     "(Set-OrganizationConfig -SendFromAliasEnabled $true) or clear the setting.",
+                     link="/settings/notifications", email=False)
+        return
     notify_users(admins, "access", None, "Odin could not send email",
                  f"Email is switched on but a message failed ({escape(str(error)[:200])}). Everything still reaches the bell. "
                  "Connect Microsoft 365 under Settings › Integrations, or switch email off under Settings › Notifications.",

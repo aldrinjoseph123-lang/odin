@@ -133,10 +133,12 @@ def settings_test_email():
     if not user or not user["email"]:
         flash("Set your email on the Account page first", "error")
         return redirect(url_for("settings"))
+    from policies import policy
+    sender = next(iter(policy("mail_from")), None) or "the connected mailbox"   # Settings › Notifications › Send email as
     ok, error = graph.send_mail(
-        user["email"], "Odin test notification", "This is a test email from Odin."
+        user["email"], "Odin test notification", f"<p>This is a test email from Odin, sent as {sender}.</p>"
     )
-    flash("Test email sent" if ok else f"Test email failed: {error}", "message" if ok else "error")
+    flash(f"Test email sent to {user['email']} as {sender}" if ok else f"Test email failed: {error}", "message" if ok else "error")
     return redirect(url_for("settings"))
 
 

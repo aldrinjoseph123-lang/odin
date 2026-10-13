@@ -316,8 +316,9 @@ def _send_mail(to_email, subject, html_body, attachments=None):
     try:   # the footer names the company from Settings → General; a script without the app still sends
         from policies import policy
         company = policy("company_name").upper()
+        alias = next(iter(policy("mail_from")), None)   # Settings › Notifications › Send email as
     except Exception:  # noqa: BLE001
-        company = "PROTECT24X7"
+        company, alias = "PROTECT24X7", None
     html_body = EMAIL_SHELL.format(body=html_body, company=escape(company))
     if not is_connected():
         return False, "Outlook mail is not connected"
@@ -335,8 +336,21 @@ def _send_mail(to_email, subject, html_body, attachments=None):
         },
         "saveToSentItems": "true",
     }
+    if alias:   # an alias of the connected mailbox, so a shared mailbox's mail says it is Odin's
+        payload["message"]["from"] = {"emailAddress": {"address": alias, "name": "Odin by Protect24x7"}}
     try:
         resp = requests.post(f"{GRAPH_BASE}/me/sendMail", headers=headers, json=payload, timeout=15)
+        if resp.status_code >= 400 and alias:
+            # the tenant refused the alias: deliver from the mailbox itself, and tell the admins once a day
+            refused = f"{alias}: {resp.status_code} {resp.text[:200]}"
+            del payload["message"]["from"]
+            resp = requests.post(f"{GRAPH_BASE}/me/sendMail", headers=headers, json=payload, timeout=15)
+            if resp.status_code < 400:
+                try:
+                    from services.notifications import report_mail_failure
+                    report_mail_failure(refused, alias=True)
+                except Exception:  # noqa: BLE001
+                    pass
         if resp.status_code >= 400:
             return False, f"sendMail failed: {resp.status_code} {resp.text[:300]}"
         return True, None

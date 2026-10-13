@@ -8,7 +8,7 @@ import tempfile
 from datetime import datetime
 import unittest
 from datetime import date, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from flask.testing import FlaskClient
 
@@ -1515,6 +1515,32 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         body = post.call_args.kwargs["json"]["message"]["body"]["content"]
         self.assertIn("<p>Stage moved</p>", body)
         self.assertIn("BY PROTECT", body); self.assertIn("EVERY PROJECT. ON WATCH.", body)
+
+    def test_mail_goes_out_as_the_alias_and_falls_back_to_the_mailbox(self):
+        import graph
+        self._set_policy(mail_from="odin-pms@protect24x7.com")
+        with self.raw_db() as db:   # email on, so a refusal is worth telling the admins
+            db.execute("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"); db.commit()
+        with app_module.app.app_context(), patch("graph.is_connected", return_value=True), patch("graph._headers", return_value=({}, None)), \
+             patch("graph.requests.post") as post:
+            post.return_value.status_code = 202
+            self.assertEqual(graph.send_mail("a@example.com", "Hi", "<p>x</p>"), (True, None))
+            self.assertEqual(post.call_args.kwargs["json"]["message"]["from"]["emailAddress"]["address"], "odin-pms@protect24x7.com")
+            # the tenant refuses the alias: one retry from the mailbox, and the admins hear of it
+            refused, sent = MagicMock(status_code=403, text="ErrorSendAsDenied"), MagicMock(status_code=202, text="")
+            post.reset_mock(); post.side_effect = [refused, sent]
+            self.assertEqual(graph.send_mail("a@example.com", "Hi", "<p>x</p>"), (True, None))
+            self.assertEqual(post.call_count, 2)
+            self.assertNotIn("from", post.call_args.kwargs["json"]["message"])
+        with self.raw_db() as db:
+            bell = [r[0] for r in db.execute("SELECT title FROM notifications")]
+        self.assertIn("Odin's email went out from the mailbox, not its alias", bell)
+
+    def test_send_email_as_takes_one_address(self):
+        c, csrf = self._api_client()
+        r = c.post("/settings/policies/notifications", data={"mail_from": "a@x.com, b@x.com", "digest_time": "08:00", "teams_webhook_url": ""},
+                   headers={"X-CSRF-Token": csrf, "Accept": "application/json"})
+        self.assertIn("one email address", r.get_data(as_text=True))
 
     # ---- appearance and profile pictures --------------------------------------
 

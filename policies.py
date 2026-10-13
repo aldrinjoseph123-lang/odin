@@ -83,6 +83,8 @@ POLICIES = {
     # ---- Notifications
     "digest_time": dict(area="notifications", kind="time", default="08:00",
                         label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
+    "mail_from": dict(area="notifications", kind="emails", one=True, default="", max=254,
+                      label="Send email as", help="An alias of the connected Microsoft 365 mailbox (e.g. odin-pms@company.com), so people can tell the mail comes from Odin when the mailbox is shared with other systems. Blank: the mailbox's own address. Exchange must allow sending from aliases (SendFromAliasEnabled); if Microsoft refuses the alias, Odin sends from the mailbox and tells the admins."),
     "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500, query=True,
                               label="Teams Workflows webhook", help="From a Teams channel: Workflows › \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
     # ---- Reports
@@ -242,6 +244,8 @@ def _parse(entry, raw):
         parts = sorted({p.lower() for p in re.split(r"[\s,;]+", v) if p})
         if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(rf"[^@\s<>\"']+@{_HOST}", p) or "." not in p.split("@")[1] for p in parts):
             raise ValueError("email addresses separated by commas")
+        if entry.get("one") and len(parts) > 1:
+            raise ValueError("one email address")
         return parts
     if kind == "domains":
         parts = sorted({p.lower().lstrip("@") for p in re.split(r"[\s,;]+", v) if p})
@@ -331,6 +335,7 @@ _GROUPS = {
     "Sign-up links": ("signup_enabled", "signup_domains", "signup_days"),
     "Time on Odin": ("activity_tracking", "activity_roles", "activity_idle_minutes"),
     "Daily digest": ("digest_time",),
+    "Sender": ("mail_from",),
     "Teams webhook": ("teams_webhook_url",),
     "Kibana": ("kibana_dashboards",),
     "When it goes out": ("report_enabled", "report_days", "report_time"),
@@ -368,6 +373,7 @@ _HINTS = {
     "activity_roles": "Which roles may see other people's time. Everyone always sees their own.",
     "activity_idle_minutes": "Stop counting after this long without mouse or keyboard, e.g. 5 minutes.",
     "digest_time": "When the daily summary email and reminders go out, e.g. 08:00.",
+    "mail_from": "The address people see Odin's email come from, e.g. odin-pms@company.com.",
     "teams_webhook_url": "Paste a Teams channel's webhook address to post updates there.",
     "kibana_dashboards": "Dashboards shown on the Flow page, one per line: Name | address.",
     "report_enabled": "Email a weekly summary of every rollout.",
