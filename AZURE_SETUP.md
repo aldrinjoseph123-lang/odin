@@ -32,7 +32,7 @@ On the app's **Overview** page, copy:
 - `Team.ReadBasic.All`
 - `Channel.ReadBasic.All`
 - `Sites.ReadWrite.All` (backups into a SharePoint site)
-- `Chat.Create`, `ChatMessage.Send`, `User.ReadBasic.All` (13 Oct 2026: each notification also as a direct Teams chat to the person it is for; `User.ReadBasic.All` finds a colleague by their email address)
+- `User.ReadBasic.All` (13 Oct 2026: finds a colleague by email for the Odin PMS Teams app)
 - `offline_access` (usually pre-added — this is what lets the app refresh tokens for background jobs without you re-logging-in constantly)
 - `User.Read` (usually pre-added)
 
@@ -58,7 +58,12 @@ That's it — no `MS_SENDER_UPN`, `MS_TEAM_ID`, or `MS_CHANNEL_ID` env vars anym
 4. Settings now shows "Connected as you@yourcompany.com" — mail and OneDrive work immediately from this identity.
 5. Pick a **Team** then a **Channel** from the dropdowns (populated live from your actual joined Teams — no manual IDs) and click **Save Channel**.
 6. Check the boxes for which notifications/mirroring/backup you want, then **Send Test Email** / **Send Test Teams Message** to confirm before relying on it.
-7. **Teams messages to people** (Settings › Notifications › Channels): every notification also goes to each staff member as a one-to-one Teams chat from the connected account, alongside the email. Partners and customers get email only (they sit in other tenants). Adding these permissions to an existing connection needs a **reconnect** (Disconnect, then Connect) so Microsoft asks for the new consent.
+7. **Odin PMS in Teams** (13 Oct 2026): every notification also reaches each staff member as a card in their own chat with the **Odin PMS** Teams app — Odin's name and icon, apart from other systems that share the mailbox. Partners and customers get email only (other tenants). One-time setup:
+   1. Azure portal → **Create a resource** → **Azure Bot** → type **Single Tenant**, **Use existing app registration** with this app's client ID (and the same client secret). Messaging endpoint: `https://<your Odin address>/api/teams/messages`. Under **Channels**, add **Microsoft Teams**.
+   2. In Odin: Settings › Integrations › **Odin PMS in Teams** → **Download the Odin PMS app package**.
+   3. Teams admin centre → **Teams apps › Manage apps › Upload new app** → the zip. Then **Teams apps › Setup policies** → Global (or a staff policy) → **Installed apps** → add **Odin PMS**, so it is installed for everyone.
+   4. Settings › Notifications → switch on **Teams messages to each person**; **Send me a test in Teams** to check.
+   Adding `User.ReadBasic.All` to an existing connection needs a **reconnect** (Disconnect, then Connect) so Microsoft asks for the new consent.
 8. **Send email as** (Settings › Notifications): an alias of the connected mailbox to put in the From line, e.g. when the mailbox is shared with other systems. Needs `Set-OrganizationConfig -SendFromAliasEnabled $true` in Exchange Online; if Microsoft refuses the alias, Odin sends from the mailbox and tells the admins.
 9. Each user (including you) still needs to set their own email on the **Account** page — that's who real-time project notifications get addressed to. The Microsoft 365 connection is just the "postman"; individual notification routing still uses each user's email field.
 

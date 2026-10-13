@@ -1,5 +1,6 @@
 import io
 import json
+import time
 import os
 import re
 import secrets
@@ -1536,8 +1537,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             bell = [r[0] for r in db.execute("SELECT title FROM notifications")]
         self.assertIn("Odin's email went out from the mailbox, not its alias", bell)
 
-    def test_every_notification_reaches_staff_in_a_teams_chat(self):
-        import graph
+    def test_every_notification_reaches_staff_through_the_odin_pms_app(self):
         from services.notifications import notify_users
         staff = self._make_user("tina", "Member")
         partner = self._make_user("pat", "Member")
@@ -1547,31 +1547,50 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("INSERT INTO settings (key, value) VALUES ('notify_teams_chat_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
             db.commit()
         sent = []
-        with app_module.app.test_request_context(), patch("graph.send_teams_chat", side_effect=lambda e, h: (sent.append((e, h)), (True, None))[1]):
+        fake = lambda e, t, x, link=None: (sent.append((e, t, x, link)), (True, None))[1]   # noqa: E731
+        with app_module.app.test_request_context(), patch("services.teams_bot.send", side_effect=fake):
             notify_users([staff, partner], "stage", None, "Stage moved", "<p>Scoping to Deployment</p>", link="/board")
-        self.assertEqual([e for e, _ in sent], ["tina@corp.example"])   # partners sit in other tenants: email only
-        self.assertIn("<b>Stage moved</b>", sent[0][1])
+        self.assertEqual([(e, t, x) for e, t, x, _ in sent], [("tina@corp.example", "Stage moved", "Scoping to Deployment")])   # partners: email only
         # the person's topic choices cover Teams too
         with self.raw_db() as db:
             db.execute("UPDATE users SET email_off = 'stage' WHERE id = ?", (staff,)); db.commit()
         sent.clear()
-        with app_module.app.test_request_context(), patch("graph.send_teams_chat", side_effect=lambda e, h: (sent.append((e, h)), (True, None))[1]):
+        with app_module.app.test_request_context(), patch("services.teams_bot.send", side_effect=fake):
             notify_users([staff], "stage", None, "Stage moved", "<p>x</p>")
         self.assertEqual(sent, [])
 
-    def test_teams_chat_opens_once_and_reopens_a_dead_chat(self):
-        import graph
+    def test_odin_pms_opens_the_conversation_once_and_reopens_a_gone_one(self):
+        from services import teams_bot
         def reply(code, body=None):
             return MagicMock(status_code=code, text="", json=MagicMock(return_value=body or {}))
-        with patch("graph.is_connected", return_value=True), patch("graph._headers", return_value=({}, None)), \
-             patch("graph.requests.get", side_effect=[reply(200, {"id": "me"}), reply(200, {"id": "tina"})] * 2) as get, \
-             patch("graph.requests.post", side_effect=[reply(201, {"id": "chat-1"}), reply(201), reply(201), reply(404), reply(201, {"id": "chat-2"}), reply(201)]) as post:
-            self.assertEqual(graph.send_teams_chat("Tina@corp.example", "<p>1</p>"), (True, None))   # open the chat, then post
-            self.assertEqual(graph.send_teams_chat("tina@corp.example", "<p>2</p>"), (True, None))   # the kept chat: one call
-            self.assertEqual(graph.send_teams_chat("tina@corp.example", "<p>3</p>"), (True, None))   # gone: reopened once
-        urls = [c.args[0].rsplit("/v1.0", 1)[1] for c in post.call_args_list]
-        self.assertEqual(urls, ["/chats", "/chats/chat-1/messages", "/chats/chat-1/messages", "/chats/chat-1/messages", "/chats", "/chats/chat-2/messages"][:len(urls)])
-        self.assertEqual(post.call_args_list[0].kwargs["json"]["chatType"], "oneOnOne")
+        teams_bot._token.update(value="bot-token", until=time.time() + 3600)
+        with patch("services.teams_bot.configured", return_value=True), patch("graph.user_id", return_value=("aad-tina", None)), \
+             patch("graph._client_id", return_value="app-1"), patch("graph._tenant", return_value="tenant-1"), \
+             patch("services.teams_bot.requests.post", side_effect=[reply(201, {"id": "conv-1"}), reply(201), reply(201), reply(404), reply(201, {"id": "conv-2"}), reply(201)]) as post:
+            self.assertEqual(teams_bot.send("Tina@corp.example", "Stage moved", "x", "https://odin.example/board"), (True, None))
+            self.assertEqual(teams_bot.send("tina@corp.example", "Again", "y"), (True, None))   # the kept conversation: one call
+            self.assertEqual(teams_bot.send("tina@corp.example", "Gone", "z"), (True, None))    # uninstalled and back: reopened once
+        urls = [c.args[0].split("/teams", 1)[1] for c in post.call_args_list]
+        self.assertEqual(urls, ["/v3/conversations", "/v3/conversations/conv-1/activities", "/v3/conversations/conv-1/activities",
+                                "/v3/conversations/conv-1/activities", "/v3/conversations", "/v3/conversations/conv-2/activities"])
+        opened = post.call_args_list[0].kwargs["json"]
+        self.assertEqual((opened["bot"]["id"], opened["members"], opened["tenantId"]), ("28:app-1", [{"id": "aad-tina"}], "tenant-1"))
+        card = post.call_args_list[1].kwargs["json"]["attachments"][0]["content"]
+        self.assertEqual(card["body"][0]["text"], "Stage moved"); self.assertEqual(card["actions"][0]["url"], "https://odin.example/board")
+
+    def test_teams_app_package_and_inbound_address(self):
+        import zipfile, io as _io
+        c, _ = self._api_client()
+        self._set_policy(public_url="https://odin.example.com")
+        with patch("services.teams_bot.configured", return_value=True), patch("graph._client_id", return_value="11111111-2222-3333-4444-555555555555"):
+            r = c.get("/settings/teams-app.zip")
+        z = zipfile.ZipFile(_io.BytesIO(r.data))
+        self.assertEqual(sorted(z.namelist()), ["color.png", "manifest.json", "outline.png"])
+        m = json.loads(z.read("manifest.json"))
+        self.assertEqual((m["name"]["short"], m["bots"][0]["botId"], m["bots"][0]["isNotificationOnly"], m["validDomains"]),
+                         ("Odin PMS", "11111111-2222-3333-4444-555555555555", True, ["odin.example.com"]))
+        # Teams posts installs here without a CSRF token or a session: answered, nothing read
+        self.assertEqual(app_module.app.test_client().post("/api/teams/messages", json={"type": "conversationUpdate"}).status_code, 200)
 
     def test_send_email_as_takes_one_address(self):
         c, csrf = self._api_client()
@@ -4072,6 +4091,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "/api/notifications/read": "marks the caller's own inbox read: personal UI state, not an act on shared data",
             "/api/activity": "the active-minute ping is itself the record (user_activity); an audit row a minute would drown the trail",
             "/api/doc-templates/preview.pdf": "renders an unsaved template to look at; changes nothing",
+            "/api/teams/messages": "the Odin PMS Teams app's inbound address: Odin only sends, so it answers and reads nothing",
         }
         missing = []
         for rule in app_module.app.url_map.iter_rules():

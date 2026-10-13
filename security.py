@@ -312,7 +312,7 @@ def csrf_token():
 
 def _validate_csrf():
     """before_request hook: every state-changing request must carry the token."""
-    if request.method in CSRF_SAFE_METHODS:
+    if request.method in CSRF_SAFE_METHODS or request.path == "/api/teams/messages":   # Teams' calls: answered, never read
         return None
     submitted = request.form.get(CSRF_FIELD) or request.headers.get("X-CSRF-Token", "")
     expected = session.get("_csrf_token", "")

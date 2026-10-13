@@ -37,9 +37,9 @@ def _plain(html):
 def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user_id=None, link=None, email=True):
     """The one way a person hears about an event. Every recipient gets an
     in-app notification; those with an address who have not switched this
-    kind off also get a mail (when mail is on) and, staff only, a direct Teams
-    chat from the connected account (when Teams messages are on; partners and
-    customers sit in other tenants). Recipients are
+    kind off also get a mail (when mail is on) and, staff only, a card in
+    their own chat with the Odin PMS Teams app (when Teams messages are on;
+    partners and customers sit in other tenants). Recipients are
     de-duplicated and the person who caused the event is never told about
     their own action. `email=False` keeps it to the bell. Best effort: mail
     failures never break the request."""
@@ -79,7 +79,8 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
     # ponytail: one Graph call per person in the request, as mail is; queue it if large teams make saves slow
     for r in [r for r in wanted if r["kind"] != "external"] if get_setting("notify_teams_chat_enabled") == "1" else []:
         try:
-            ok, error = graph.send_teams_chat(r["email"], f"<p><b>{subject}</b></p>{message_html}{_open_link(project_id, r, link)}")
+            from services import teams_bot
+            ok, error = teams_bot.send(r["email"], _plain(subject), _plain(message_html), _odin_url(project_id, link))
         except Exception as exc:   # never let Teams break the request that caused it
             ok, error = False, str(exc)
         if not ok:
@@ -87,13 +88,12 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             report_mail_failure(error, teams=True)
 
 
-def _open_link(project_id, user, link):
-    """The way back into Odin under a Teams message (staff: no sign-in link)."""
-    if project_id:
-        return project_link(project_id, user, link if link and link.startswith("/projects/") else None)
+def _odin_url(project_id, link):
+    """The address behind a Teams card's "Open in Odin" (staff: no sign-in link needed)."""
     from policies import policy
     base = policy("public_url")
-    return f'<p><a href="{base}{link}">Open in Odin</a></p>' if base and link else ""
+    path = link or (url_for("project_detail", project_id=project_id) if project_id else None)
+    return f"{base}{path}" if base and path else None
 
 
 def report_mail_failure(error, alias=False, teams=False):
@@ -116,8 +116,8 @@ def report_mail_failure(error, alias=False, teams=False):
     if teams:
         notify_users(admins, "access", None, "Odin could not send a Teams message",
                      f"Teams messages to people are on but one failed ({escape(str(error)[:200])}). Everything still reaches the bell and email. "
-                     "Check that Microsoft 365 is connected with the Teams chat permissions (Settings › Integrations), "
-                     "or switch Teams messages off there.", link="/settings/integrations", email=False)
+                     "Check that the Odin PMS app is installed in Teams for everyone and Microsoft 365 is connected "
+                     "(Settings › Integrations), or switch Teams messages off under Settings › Notifications.", link="/settings/integrations", email=False)
         return
     if alias:
         notify_users(admins, "access", None, "Odin's email went out from the mailbox, not its alias",

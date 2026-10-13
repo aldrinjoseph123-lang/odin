@@ -137,7 +137,7 @@ export default function Settings(_props: { user: User }) {
         {section === "notifications" && (
           <Toggles data={data} busy={busy} send={send} title="Channels" keys={[
             { key: "notify_email_enabled", label: "Email notifications on rollout events (stage changes, approvals, assignments, mentions, due tasks)" },
-            { key: "notify_teams_chat_enabled", label: "Teams messages to each person: every notification also as a direct chat from the connected account (staff only)" },
+            { key: "notify_teams_chat_enabled", label: "Teams messages to each person: every notification also as a card from the Odin PMS app (staff only; set it up under Integrations)" },
             { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
           ]} extra={<>
             {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings › Integrations), so email and Teams messages cannot be delivered. The bell and the Teams webhook still work.</p>}
@@ -148,6 +148,17 @@ export default function Settings(_props: { user: User }) {
         {section === "integrations" && (
           <>
             <Microsoft key={`${data.m365.azure_app.client_id ?? ""}|${data.m365.azure_app.tenant_id ?? ""}|${data.m365.oauth_client_configured}`} data={data} busy={busy} send={send} teamId={teamId} onTeam={(id) => { setTeamId(id); void load(id) }} />
+            <Panel title="Odin PMS in Teams" hint="each notification as a card in the person's own chat with Odin">
+              <ol className="grid max-w-prose list-decimal gap-1 pl-5 text-[13px]">
+                <li>In the Azure portal, create an <b>Azure Bot</b> (single tenant) that uses this app registration, set its messaging endpoint to <code className="font-mono text-[12px]">{"{public address}"}/api/teams/messages</code> and turn on its Microsoft Teams channel.</li>
+                <li>Download the app package below and upload it in the Teams admin centre (Manage apps › Upload new app).</li>
+                <li>Install it for everyone with a setup policy (Teams apps › Setup policies › Installed apps), then switch on <b>Teams messages to each person</b> under Settings › Notifications.</li>
+              </ol>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a href="/settings/teams-app.zip" className={buttonVariants({ size: "sm", variant: "outline" })}>Download the Odin PMS app package</a>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send me a test in Teams</Button>
+              </div>
+            </Panel>
             <Toggles data={data} busy={busy} send={send} title="OneDrive" keys={[
               { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
             ]} />
