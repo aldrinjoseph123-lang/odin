@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { Segmented } from "@/components/Segmented"
 import { chip, fieldAuto, filterSelect } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
-import { Inbox, ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
+import { Inbox, ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
@@ -22,7 +22,6 @@ import { StateChip } from "@/components/StateChip"
 import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { Calendar } from "@/pages/Calendar"
-import { Kibana } from "@/pages/Kibana"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { useMedia, useWidth } from "@/lib/useMeasure"
 
@@ -724,11 +723,11 @@ export default function Flow({ user }: { user: User }) {
   // the rollout the pane is for: a slower answer for the previous one is dropped
   const wanted = useRef(selectedId)
   wanted.current = selectedId
-  // Three ways to look at the portfolio, kept in the URL: the list, a month, or Kibana.
+  // Two ways to look at the portfolio, kept in the URL: the list or a month.
   const vw = params.get("view")
-  const view: "list" | "calendar" | "kibana" = vw === "calendar" || (vw === "kibana" && user.kind !== "external") ? vw : "list"
-  useEffect(() => { document.title = `${view === "calendar" ? "Calendar" : view === "kibana" ? "Kibana" : "Flow"} · Odin` }, [view])   // test report UX-17
-  const setView = useCallback((v: "list" | "calendar" | "kibana") => {
+  const view: "list" | "calendar" = vw === "calendar" ? vw : "list"
+  useEffect(() => { document.title = `${view === "calendar" ? "Calendar" : "Flow"} · Odin` }, [view])   // test report UX-17
+  const setView = useCallback((v: "list" | "calendar") => {
     setParams((prev) => { const next = new URLSearchParams(prev); if (v === "list") next.delete("view"); else next.set("view", v); next.delete("month"); next.delete("day"); return next }, { replace: true })
   }, [setParams])
   // The filter lives in the URL too, so a reload keeps it.
@@ -808,17 +807,17 @@ export default function Flow({ user }: { user: User }) {
 
   const views = (
     <Segmented label="View" value={view} onChange={setView}
-      options={([["list", LayoutList, "Rollouts"], ["calendar", CalendarDays, "Calendar"], ...(user.kind === "external" ? [] : [["kibana", BarChart3, "Kibana"] as const])] as const)
+      options={([["list", LayoutList, "Rollouts"], ["calendar", CalendarDays, "Calendar"]] as const)
         .map(([v, Icon, label]) => ({ value: v, label, icon: <Icon className="h-3.5 w-3.5" aria-hidden /> }))} />
   )
   // the same header row, in the same card at the same place, on all three views, so the switcher never moves (critique 10 Oct)
   if (view !== "list") return (
     <div className={cn("panel mb-4 flex min-h-0 flex-1 flex-col overflow-hidden", wide ? "mx-4" : "mx-3")}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
-        <h1 className={TITLE}>{view === "calendar" ? "Calendar" : "Kibana"}</h1>
+        <h1 className={TITLE}>Calendar</h1>
         {views}
       </div>
-      {view === "calendar" ? <Calendar wide={wide} /> : <Kibana rollout={selectedId} onRollout={setSelectedId} />}
+      <Calendar wide={wide} />
     </div>
   )
   const list = <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} tools={views} />

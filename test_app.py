@@ -2733,7 +2733,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(m.put("/api/dashboard/layout", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 200)
         self.assertEqual(m.put("/api/dashboard/layout/default", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 403)
 
-    def test_calendar_and_kibana_views(self):
+    def test_calendar_view(self):
         from datetime import date as _date
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
         self.new_project(name="Soon", client="C", target_end_date=(_date.today() + timedelta(days=3)).isoformat())
@@ -2752,24 +2752,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual({s["name"] for s in d["spans"]}, {"Soon"})           # Late's span ended in 2020
         self.assertEqual((d["moves"][0]["project"], d["moves"][0]["stage"]), ("Soon", stages[1]))
         self.assertEqual(c.get("/api/calendar?month=junk").get_json()["month"], month)
-        # Kibana: nothing until an admin lists dashboards; then the Flow page may frame their origins
-        k0 = c.get("/api/kibana").get_json()
-        self.assertEqual((k0["dashboards"], k0["can_manage"], k0["rollout"], [r["name"] for r in k0["rollouts"]]), ([], True, None, ["Late", "Soon"]))
-        self.assertIn("frame-src 'self' blob:", c.get("/board").headers["Content-Security-Policy"])   # only our own rendered PDFs
-        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
-        r = c.post("/settings/policies/integrations", data={"kibana_dashboards": "SOC | not-a-url"}, headers=h).get_json()
-        self.assertIn('each line as "Name | https://address"', r["messages"][0])
-        r = c.post("/settings/policies/integrations", data={"kibana_dashboards": "SOC overview | https://kibana.example.com/app/dashboards#/view/abc?embed=true&_g=(time:(from:now-7d))\n\n Threats | https://kibana.example.com/app/dashboards#/view/def "}, headers=h).get_json()
-        self.assertEqual(r["messages"], ["Saved"])
-        self.assertEqual([x["name"] for x in c.get("/api/kibana").get_json()["dashboards"]], ["SOC overview", "Threats"])
-        # a placeholder takes the chosen rollout's values; the picker lists the active rollouts
-        c.post("/settings/policies/integrations", data={"kibana_dashboards": "Per client | https://kibana.example.com/app/dashboards#/view/x?_a=(query:(query:'client:{client} and po:{po}'))"}, headers=h)
-        k = c.get("/api/kibana?rollout=2").get_json()
-        self.assertEqual(k["rollout"], 2); self.assertEqual([r["name"] for r in k["rollouts"]], ["Late", "Soon"])
-        self.assertTrue(k["dashboards"][0]["per_rollout"]); self.assertIn("client:C and", k["dashboards"][0]["url"].replace("%20", " "))
-        self.assertIn("{client}", c.get("/api/kibana").get_json()["dashboards"][0]["url"])   # nothing chosen: shown as typed
-        self.assertIn("frame-src 'self' blob: https://kibana.example.com", c.get("/board").headers["Content-Security-Policy"])
-        self.assertNotIn("kibana.example.com", c.get("/projects").headers["Content-Security-Policy"])
+        self.assertEqual(c.get("/api/kibana").status_code, 404)   # removed 13 Oct 2026
 
     def test_my_work_people_and_a_note_to_a_colleague(self):
         from datetime import date as _date

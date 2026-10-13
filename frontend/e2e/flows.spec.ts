@@ -195,7 +195,7 @@ test("@flow projects: table or cards, remembered; sort and search", async ({ pag
   expectClean(errors)
 })
 
-test("@flow settings: a policy saves and takes effect; Kibana dashboards appear as tabs", async ({ page }) => {
+test("@flow settings: a policy saves and takes effect", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/settings/general")
   const name = page.locator("#pol-company_name")
@@ -208,33 +208,7 @@ test("@flow settings: a policy saves and takes effect; Kibana dashboards appear 
   await page.locator("#pol-company_name").fill(original)
   await page.getByRole("button", { name: "Save" }).first().click()
   await expect(page.getByText("Saved").first()).toBeVisible()
-  // Kibana: a bad line is refused with the reason; good lines become tabs on the Flow page
-  await page.goto("/settings/integrations")
-  const lines = page.locator("#pol-kibana_dashboards")
-  await lines.fill("SOC | not-a-url")
-  await lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
-  await expect(page.getByText(/each line as/)).toBeVisible()
-  await lines.fill("SOC overview | https://kibana.example.com/app/dashboards#/view/soc?embed=true\nThreats | https://kibana.example.com/app/dashboards#/view/threats?embed=true")
-  // wait for this save itself: an earlier "Saved" on the page would otherwise let the test run ahead
-  await Promise.all([
-    page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()),
-    lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click(),
-  ])
-  await page.goto("/board?view=kibana")
-  await expect(page.getByRole("tab", { name: "SOC overview" })).toHaveAttribute("aria-selected", "true")
-  await page.getByRole("tab", { name: "Threats" }).click()
-  await expect(page.locator("iframe")).toHaveAttribute("src", /threats/)
-  await expect(page.getByRole("link", { name: /Open in Kibana/ })).toHaveAttribute("href", /threats/)
-  await page.goto("/settings/integrations")
-  await page.locator("#pol-kibana_dashboards").fill("")
-  await page.locator("#pol-kibana_dashboards").locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
-  await expect(page.getByText("Saved").first()).toBeVisible()
-  await page.goto("/board?view=kibana")
-  await expect(page.getByText("No Kibana dashboards yet")).toBeVisible()
-  await page.getByRole("link", { name: "Open Integrations" }).click()
-  await expect(page).toHaveURL(/\/settings\/integrations/)
-  // the frame is blocked for the Kibana test host, and the bad line's save is refused with a 400: both expected
-  expectClean(errors.filter((e) => !/kibana\.example\.com|\/settings\/policies\/integrations|400 \(BAD REQUEST\)/.test(e)))
+  expectClean(errors)
 })
 
 test("@flow account: the home page is a choice", async ({ page }) => {

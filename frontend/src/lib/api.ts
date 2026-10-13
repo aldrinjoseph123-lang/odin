@@ -342,7 +342,7 @@ export async function uploadSignoff(id: number, v: number, form: FormData): Prom
   return data as { ok: true }
 }
 
-// ---- calendar and kibana (views on the Flow page) ----
+// ---- calendar (a view on the Flow page) ----
 export type CalendarData = {
   month: string; today: string; from: string; to: string
   spans: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState }[]
@@ -352,8 +352,6 @@ export type CalendarData = {
   approvals: { project_id: number; project: string; stage: string; day: string; kind: "asked" | "decided"; status: ApprovalStatus; who: string | null }[]
 }
 export const calendar = (month: string) => getJson<CalendarData>(`/api/calendar?month=${encodeURIComponent(month)}`)
-export type KibanaData = { dashboards: { name: string; url: string; per_rollout: boolean }[]; rollouts: { id: number; name: string; client: string; po_number: string | null }[]; rollout: number | null; can_manage: boolean }
-export const kibana = (rollout?: number | null) => getJson<KibanaData>(`/api/kibana${rollout ? `?rollout=${rollout}` : ""}`)
 
 // ---- dashboard ----
 export type DashKey = "active" | "overdue" | "over_sla" | "due_soon" | "awaiting" | "idle"
@@ -436,7 +434,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 // ---- settings ----
 export type Policy = {
   key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "ai" | "ai_schedule" | "backups" | "reports" | "audit"
-  kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines" | "dates"
+  kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "dates"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
   group: string; hint?: string  // the card it sits on; the one plain line shown under it (help then sits behind "What is this?")
 }

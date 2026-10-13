@@ -546,30 +546,6 @@ def api_calendar():
     return jsonify(calendar.build(month, project_scope()))
 
 
-@app.route("/api/kibana")
-@permission_required("view_board")
-def api_kibana():
-    """The Kibana view's dashboards (Settings › Integrations); staff only."""
-    from urllib.parse import quote
-    from policies import kibana_dashboards
-    if session.get("kind") == "external":
-        abort(403)
-    db = get_db()
-    scope_sql, scope_params = project_scope()
-    rollouts = [{"id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"]} for r in db.execute(
-        f"SELECT p.id, p.name, p.client, p.po_number FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY p.name", scope_params)]
-    wanted = request.args.get("rollout", type=as_id)
-    current = next((r for r in rollouts if r["id"] == wanted), None)
-    # {project}, {client} and {po} in an address take the chosen rollout's values (URL-encoded)
-    def fill(url):
-        if not current:
-            return url
-        return url.replace("{project}", quote(current["name"])).replace("{client}", quote(current["client"] or "")).replace("{po}", quote(current["po_number"] or ""))
-    dashboards = [{"name": d["name"], "url": fill(d["url"]), "per_rollout": any(k in d["url"] for k in ("{project}", "{client}", "{po}"))} for d in kibana_dashboards()]
-    return jsonify(dashboards=dashboards, rollouts=rollouts, rollout=current["id"] if current else None,
-                   can_manage=role_has_permission(session.get("role"), "manage_settings"))
-
-
 @app.route("/api/dashboard/version")
 @permission_required("view_board")
 def api_dashboard_version():

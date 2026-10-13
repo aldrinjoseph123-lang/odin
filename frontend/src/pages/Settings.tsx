@@ -34,7 +34,7 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   people: { title: "Sign-up & activity", lede: "Sign-up links, and whether Odin records each person's active time." },
   workflow: { title: "Rollouts & workflow", lede: "What new rollouts start with, their stages and the alerts they raise." },
   notifications: { title: "Notifications", lede: "Which channels carry rollout events; each person tunes their own email." },
-  integrations: { title: "Integrations", lede: "Microsoft 365 mail, Teams and OneDrive, and the Kibana dashboards." },
+  integrations: { title: "Integrations", lede: "Microsoft 365 mail, Teams and OneDrive." },
   ai: { title: "AI", lede: "The AI server, its health, and which features pass on today's model." },
   reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
   documents: { title: "Documents", lede: "Brand, sections and wording for reports and the sign-off." },
@@ -162,7 +162,6 @@ export default function Settings(_props: { user: User }) {
             <Toggles data={data} busy={busy} send={send} title="OneDrive" keys={[
               { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
             ]} />
-            {policyForm("integrations")}
           </>
         )}
         {section === "ai" && (
@@ -284,10 +283,6 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               {p.kind === "dates" && (
                 <textarea id={`pol-${p.key}`} rows={5} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
                   placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className={cn(fieldArea, "max-w-2xl")} />
-              )}
-              {p.kind === "lines" && (
-                <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
-                  placeholder={"SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true"} className={cn(fieldArea, "max-w-2xl font-mono")} />
               )}
               {p.kind === "choice" && (
                 <select id={`pol-${p.key}`} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className={cn(fieldAuto, "max-w-sm")}>
