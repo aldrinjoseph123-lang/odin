@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
+import { Segmented } from "@/components/Segmented"
 import { StatTile } from "@/components/StatTile"
-import { pill } from "@/lib/ui"
+import { pill, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
@@ -25,7 +26,7 @@ import { TemplatePicker } from "@/components/TemplatePicker"
 // to the customer's copy; the project manager's words are edited in place and
 // "Save as version" freezes the lot. Partners and customers read saved
 // versions only (the server enforces it). Every version exports to PDF.
-const MISSING = "This project does not exist, or you are not on it."
+const MISSING = "This rollout does not exist, or you are not on it."
 const slip = (n: number | null | undefined) => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d late` : `${-n} d early`)
 const tip = { contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--elevation-pop)", fontSize: 12 }, labelStyle: { color: "var(--muted-foreground)" } }
 
@@ -59,13 +60,13 @@ export default function Report({ user }: { user: User }) {
   const editable = !!r && r.is_live && r.can_edit
   const dirty = !!r && editable && (words.summary !== r.words.summary || words.next_steps !== r.words.next_steps || words.asks !== r.words.asks)
   useUnsavedGuard(dirty)
-  if (error === MISSING) return <LoadError message={error} back={{ href: "/projects", label: "All projects" }} />
+  if (error === MISSING) return <LoadError message={error} back={{ href: "/projects", label: "All rollouts" }} />
   if (error) return <div className="p-5"><Alert role="status"><AlertDescription>{error}</AlertDescription></Alert></div>
   if (!r) return <PageSkeleton />
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
     // the words are shared: say so before they go out, not after (sim roles-3)
-    if (!(await askConfirm("Save this version? Partners and customers on the project will read these words in their copy of the report."))) return
+    if (!(await askConfirm("Save this version? Partners and customers on the rollout will read these words in their copy of the report."))) return
     setBusy(true); setNotice(null)
     try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
@@ -75,10 +76,8 @@ export default function Report({ user }: { user: User }) {
       <Link to={`/projects/${id}`} className="inline-flex min-w-0 max-w-full items-start gap-1 text-[13px] text-muted-foreground wrap-anywhere hover:text-foreground"><ChevronLeft className="mt-1 h-3.5 w-3.5 shrink-0" />{r.project.name}</Link>
       <span className="ml-auto flex flex-wrap items-center gap-2">
         {r.can_edit && (
-          <span className="flex rounded-full bg-muted p-1" role="group" aria-label="Audience">
-            {(["internal", "customer"] as const).map((a) => <button key={a} type="button" aria-pressed={r.audience === a} onClick={() => set("audience", a === "internal" ? null : a)}
-              className={cn("h-7 rounded-full px-3 text-[13px] font-medium", r.audience === a ? "bg-card shadow-card" : "text-muted-foreground")}>{a === "internal" ? "Internal" : "Customer copy"}</button>)}
-          </span>
+          <Segmented label="Audience" value={r.audience} onChange={(a) => set("audience", a === "internal" ? null : a)}
+            options={[{ value: "internal", label: "Internal" }, { value: "customer", label: "Customer copy" }]} />
         )}
         {r.versions.length > 0 && (
           <select value={r.version?.version ?? ""} onChange={(e) => set("v", e.target.value || null)} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
@@ -89,7 +88,7 @@ export default function Report({ user }: { user: User }) {
         {r.is_live && r.can_edit && <TemplatePicker kind="rollout" value={template} onChange={(t) => set("template", t ? String(t) : null)} />}
         {r.data && <a href={pdf} target="_blank" rel="noreferrer" className={pill}><Download className="h-3.5 w-3.5" /> PDF</a>}
         <button type="button" onClick={() => window.print()} className={pill}><Printer className="h-3.5 w-3.5" /> Print</button>
-        {editable && <Button size="sm" className="h-8 rounded-full" loading={busy} disabled={!words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
+        {editable && <Button size="sm" className="h-8" loading={busy} disabled={!words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
       </span>
     </div>
   )
@@ -127,7 +126,7 @@ export default function Report({ user }: { user: User }) {
     { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
     { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", warn: d.work.late > 0 },
   ]
-  const textarea = "w-full rounded-lg border border-input bg-background p-3 text-[14px] leading-relaxed"
+  const textarea = cn(fieldArea, "p-3 text-[14px]")
   const wordBlock = (key: "summary" | "next_steps" | "asks", label: string, rows: number, hint: string) => (
     <div>
       <div className="mb-1 flex items-center gap-2"><h3 className="text-[13px] font-semibold text-nav-fg">{label}</h3>
@@ -199,9 +198,9 @@ export default function Report({ user }: { user: User }) {
           <div className="mt-4">
             <Table head={["Stage", "Planned", "Actual", "Forecast", ...(customer ? [] : ["Slip"])]}
               rows={d.stages.map((s) => [<span key="name" className={cn(s.status === "current" && "font-semibold")}>{s.name}{s.status === "current" && <span className="ml-1 text-[11px] font-normal text-primary-text">now</span>}</span>,
-                s.plan_start ? `${fmtDate(s.plan_start)} → ${fmtDate(s.plan_end)}` : "—",
-                s.actual_start ? `${fmtDate(s.actual_start)} → ${s.actual_end ? fmtDate(s.actual_end) : "now"}` : s.status === "skipped" ? "skipped" : "—",
-                s.forecast_end ? `${fmtDate(s.forecast_start)} → ${fmtDate(s.forecast_end)}` : "—",
+                s.plan_start ? `${fmtDate(s.plan_start)} – ${fmtDate(s.plan_end)}` : "—",
+                s.actual_start ? `${fmtDate(s.actual_start)} – ${s.actual_end ? fmtDate(s.actual_end) : "now"}` : s.status === "skipped" ? "skipped" : "—",
+                s.forecast_end ? `${fmtDate(s.forecast_start)} – ${fmtDate(s.forecast_end)}` : "—",
                 ...(customer ? [] : [slip(s.slip_days)])])}
               tone={(i, c) => (c === 4 && (d.stages[i].slip_days ?? 0) > 0 ? "font-medium text-warn" : undefined)} />
           </div>
@@ -214,7 +213,7 @@ export default function Report({ user }: { user: User }) {
                 <li key={m.stage} className="flex items-center gap-3 rounded-xl bg-muted/50 px-3 py-2 text-[13px]">
                   <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", i === 0 ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}>{i + 1}</span>
                   <span className="min-w-0 flex-1 font-medium">{m.stage}</span>
-                  <span className="text-[13px] text-muted-foreground">{fmtDate(m.start)} → <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
+                  <span className="text-[13px] text-muted-foreground">{fmtDate(m.start)} – <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
                   {!customer && m.planned_end && m.end && m.end > m.planned_end && <span className="text-[12px] font-medium text-warn">plan {fmtDate(m.planned_end)}</span>}
                 </li>
               ))}
@@ -300,7 +299,7 @@ export default function Report({ user }: { user: User }) {
                 <div>
                   <h3 className="mb-1 text-[13px] font-semibold text-nav-fg">What moved in the plan</h3>
                   <ul className="divide-y divide-border text-[13px]">{d.plan_changes.slice(0, 10).map((c, i) => (
-                    <li key={i} className="py-2">{c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</>}
+                    <li key={i} className="py-2">{c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} to {c.new ? fmtDate(c.new) : "unset"}</>}
                       {c.reason && <span className="text-muted-foreground"> — {c.reason}</span>}<span className="block text-[12px] text-muted-foreground">{c.author} · {fmtDate(c.created_at)}</span></li>))}</ul>
                 </div>
               )}

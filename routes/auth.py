@@ -142,7 +142,7 @@ def send_login_link(user, raw_token, invited_by=None, project_name=None, project
                         **({"next": url_for("project_detail", project_id=project_id)} if project_id else {}))
     # Names come from the users table and the project form: escape them, this
     # is HTML going into a mail client.
-    intro = (f"{escape(invited_by)} added you to the project <b>{escape(project_name)}</b> in Odin." if project_name
+    intro = (f"{escape(invited_by)} added you to the rollout <b>{escape(project_name)}</b> in Odin." if project_name
              else "Here is your Odin sign-in link.")
     html = (f"<p>{intro}</p><p><a href=\"{link}\">Sign in to Odin</a></p>"
             f"<p>The link works once and expires in {policy('link_minutes')} minutes. If it has expired, request a new one from the sign-in page.</p>")
@@ -182,7 +182,7 @@ def auth_link_request():
             if user and email_domain_allowed(email):
                 send_login_link(user, issue_login_link(user["id"]))
             audit_log("login_link_requested", "user", user["id"] if user else None, email, actor=email)
-            flash("If that address is on a project, a sign-in link is on its way")
+            flash("If that address is on a rollout, a sign-in link is on its way")
         return redirect(url_for("auth_link_request"))
     return spa_index()
 
@@ -542,21 +542,6 @@ def user_avatar(user_id, stored):
     response = send_from_directory(AVATAR_DIR, stored, as_attachment=False, max_age=31536000)
     response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
     return response
-
-
-@app.route("/account/notify-via", methods=["POST"])
-@login_required
-def account_notify_via():
-    choice = request.form.get("notify_via", "")
-    if choice not in ("email", "teams"):
-        flash("Pick email or Teams", "error")
-        return redirect(url_for("account"))
-    db = get_db()
-    db.execute("UPDATE users SET notify_via = ? WHERE id = ?", (choice, session["user_id"]))
-    db.commit()
-    audit_log("change_notify_via", "user", session["user_id"], session.get("user_name"), choice)
-    flash("Saved: " + ("Microsoft Teams (email until Teams is connected)" if choice == "teams" else "email"))
-    return redirect(url_for("account"))
 
 
 @app.route("/account/email", methods=["POST"])

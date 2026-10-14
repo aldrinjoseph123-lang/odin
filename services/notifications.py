@@ -20,12 +20,12 @@ def project_link(project_id, user, target=None):
     page = target or url_for("project_detail", project_id=project_id)
     if user["kind"] == "external":
         href = external_url("auth_link_consume", token=issue_login_link(user["id"]), next=page)
-        return (f'<p><a href="{href}">Open the project in Odin</a> — this sign-in link works once and '
+        return (f'<p><a href="{href}">Open the rollout in Odin</a> — this sign-in link works once and '
                 f"expires in {policy('link_minutes')} minutes; after that, request a new one from the sign-in page.</p>")
     href = external_url("project_detail", project_id=project_id)
     if target:
         href = href.rsplit(url_for("project_detail", project_id=project_id), 1)[0] + target
-    return f'<p><a href="{href}">Open the project in Odin</a></p>'
+    return f'<p><a href="{href}">Open the rollout in Odin</a></p>'
 
 
 def _plain(html):
@@ -37,7 +37,9 @@ def _plain(html):
 def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user_id=None, link=None, email=True):
     """The one way a person hears about an event. Every recipient gets an
     in-app notification; those with an address who have not switched this
-    kind off by email also get a mail (when mail is on). Recipients are
+    kind off also get a mail (when mail is on) and, staff only, a card in
+    their own chat with the Odin PMS Teams app (when Teams messages are on;
+    partners and customers sit in other tenants). Recipients are
     de-duplicated and the person who caused the event is never told about
     their own action. `email=False` keeps it to the bell. Best effort: mail
     failures never break the request."""
@@ -62,11 +64,11 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             (r["id"], project_id, kind, title[:300], body[:2000], link, actor, now.isoformat()),
         )
     db.commit()
-    if not email or get_setting("notify_email_enabled") != "1":
+    if not email:
         return
-    for r in rows:
-        if not r["email"] or kind in (r["email_off"] or "").split(","):
-            continue
+    # the per-kind choices on the Account page ("Tell me about") cover email and Teams alike
+    wanted = [r for r in rows if r["email"] and kind not in (r["email_off"] or "").split(",")]
+    for r in wanted if get_setting("notify_email_enabled") == "1" else []:
         try:
             extra = project_link(project_id, r, link if link and link.startswith("/projects/") else None) if project_id else ""
             ok, error = graph.send_mail(r["email"], subject, message_html + extra)
@@ -74,29 +76,64 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
             ok, error = False, str(exc)
         if not ok:
             print(f"[notify_users] email to {r['email']} failed: {error}")
+    # ponytail: one Graph call per person in the request, as mail is; queue it if large teams make saves slow
+    for r in [r for r in wanted if r["kind"] != "external"] if get_setting("notify_teams_chat_enabled") == "1" else []:
+        try:
+            from services import teams_bot
+            ok, error = teams_bot.send(r["email"], _plain(subject), _plain(message_html), _odin_url(project_id, link))
+        except Exception as exc:   # never let Teams break the request that caused it
+            ok, error = False, str(exc)
+        if not ok:
+            print(f"[notify_users] Teams chat to {r['email']} failed: {error}")
+            report_mail_failure(error, teams=True)
 
 
-def report_mail_failure(error):
+def _odin_url(project_id, link):
+    """The address behind a Teams card's "Open in Odin" (staff: no sign-in link needed)."""
+    from policies import policy
+    base = policy("public_url")
+    path = link or (url_for("project_detail", project_id=project_id) if project_id else None)
+    return f"{base}{path}" if base and path else None
+
+
+def report_mail_failure(error, alias=False, teams=False):
     """Email is switched on but a message failed: tell the admins in the bell,
-    at most once a day, instead of failing silently (system map #2)."""
+    at most once a day, instead of failing silently (system map #2). `alias`:
+    the mail went out, but from the mailbox, because Microsoft refused the
+    "Send email as" alias; `teams`: a direct Teams message failed (each its
+    own daily notice, so one never hides another)."""
     from datetime import datetime, timedelta
     from markupsafe import escape
     from db import set_setting
-    if get_setting("notify_email_enabled") != "1":
+    if get_setting("notify_teams_chat_enabled" if teams else "notify_email_enabled") != "1":
         return
-    last, now = get_setting("mail_failure_reported_at"), datetime.utcnow()
+    key = "teams_failure_reported_at" if teams else "mail_alias_reported_at" if alias else "mail_failure_reported_at"
+    last, now = get_setting(key), datetime.utcnow()
     if last and datetime.fromisoformat(last) > now - timedelta(hours=24):
         return
-    set_setting("mail_failure_reported_at", now.isoformat())
+    set_setting(key, now.isoformat())
     admins = [r[0] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+    if teams:
+        notify_users(admins, "access", None, "Odin could not send a Teams message",
+                     f"Teams messages to people are on but one failed ({escape(str(error)[:200])}). Everything still reaches the bell and email. "
+                     "Check that the Odin PMS app is installed in Teams for everyone and Microsoft 365 is connected "
+                     "(Settings › Integrations), or switch Teams messages off under Settings › Notifications.", link="/settings/integrations", email=False)
+        return
+    if alias:
+        notify_users(admins, "access", None, "Odin's email went out from the mailbox, not its alias",
+                     f"Microsoft refused the address under Settings › Notifications › Send email as ({escape(str(error)[:200])}). "
+                     "Mail still goes out, from the connected mailbox's own address. Allow sending from aliases in Exchange "
+                     "(Set-OrganizationConfig -SendFromAliasEnabled $true) or clear the setting.",
+                     link="/settings/notifications", email=False)
+        return
     notify_users(admins, "access", None, "Odin could not send email",
                  f"Email is switched on but a message failed ({escape(str(error)[:200])}). Everything still reaches the bell. "
-                 "Connect Microsoft 365 under Settings → Integrations, or switch email off under Settings → Notifications.",
+                 "Connect Microsoft 365 under Settings › Integrations, or switch email off under Settings › Notifications.",
                  link="/settings/integrations", email=False)
 
 
 def trim(db=None):
-    """Read notifications past Settings → Retention; unread ones stay. Nightly (scheduler housekeeping)."""
+    """Read notifications past Settings › Retention; unread ones stay. Nightly (scheduler housekeeping)."""
     from datetime import datetime, timedelta
     from policies import policy
     db = db or get_db()
@@ -154,7 +191,7 @@ def notify_event(project, subject, message_html, channels=None):
         ok, error = graph.send_teams_message(f"<b>{subject}</b><br>{message_html}")
         if not ok:
             print(f"[notify_event] teams failed: {error}")
-        # the same event to a Teams Workflows webhook, when one is set (Settings → Notifications)
+        # the same event to a Teams Workflows webhook, when one is set (Settings › Notifications)
         from policies import policy
         if policy("teams_webhook_url"):
             from core import external_url

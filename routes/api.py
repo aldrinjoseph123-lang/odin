@@ -62,7 +62,7 @@ def _current_user():
         "must_enroll_mfa": bool(session.get("must_enroll_mfa")),
         "permissions": _permissions_for(session.get("role")),
         "nav": nav_counts(),
-        # workspace-wide display choices from Settings → General
+        # workspace-wide display choices from Settings › General
         "prefs": {"date_format": policy("date_format"), "undo_minutes": policy("undo_minutes"),
                   "activity_idle_minutes": policy("activity_idle_minutes") if policy("activity_tracking") else 0},
     }
@@ -175,7 +175,7 @@ def api_settings():
             "channel_id": connection["channel_id"] if connected else None,
             "teams": teams, "channels": channels, "team_id": team_id, "teams_error": teams_error,
         },
-        "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "onedrive_mirror_uploads_enabled")},
+        "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "notify_teams_chat_enabled", "onedrive_mirror_uploads_enabled")},
                     "guest_links_enabled": get_setting("guest_links_enabled", "1") == "1"},
         "policies": policy_view(),
         "sso": _sso_view(),
@@ -276,7 +276,7 @@ def api_settings_contacts():
 def api_users():
     rows = get_db().execute(
         "SELECT u.id, u.username, u.name, u.email, u.role, u.active, u.kind, u.last_login_at, u.created_at, u.avatar, u.pending, u.password_login, u.ms_oid, "
-        "u.notify_via, u.totp_enabled_at IS NOT NULL AS two_step, l.label AS signup_label, p.name AS signup_project, u.signup_project_role FROM users u "
+        "u.totp_enabled_at IS NOT NULL AS two_step, l.label AS signup_label, p.name AS signup_project, u.signup_project_role FROM users u "
         "LEFT JOIN signup_links l ON l.id = u.signup_link_id LEFT JOIN projects p ON p.id = u.signup_project_id ORDER BY u.name"
     ).fetchall()
     from routes.sso import sso_enforced
@@ -450,7 +450,7 @@ def api_rollout_report_save(project_id):
 def api_account():
     from constants import ADMIN_KINDS, NOTIFICATION_KINDS
     from db import get_setting
-    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, notify_via, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
     return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
                    has_password=bool(u["password_hash"] and "$" in u["password_hash"]),
@@ -459,8 +459,7 @@ def api_account():
                                 if k not in ADMIN_KINDS or session.get("role") == "Admin"],   # access requests and AI health reach admins only
                    mail_enabled=get_setting("notify_email_enabled") == "1",
                    activity=activity_summary(session["user_id"]) if activity_enabled() else None,
-                   activity_viewers=policy("activity_roles"), notify_via=u["notify_via"],
-                   teams_ready=get_setting("notify_teams_enabled") == "1")
+                   activity_viewers=policy("activity_roles"))
 
 
 @app.route("/api/my-work")
@@ -544,31 +543,13 @@ def api_calendar():
     month = request.args.get("month", "")
     if not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", month):   # the window parse_date keeps; year 1 overflowed the grid's arithmetic
         month = ""   # the current month
-    return jsonify(calendar.build(month, project_scope()))
-
-
-@app.route("/api/kibana")
-@permission_required("view_board")
-def api_kibana():
-    """The Kibana view's dashboards (Settings → Integrations); staff only."""
-    from urllib.parse import quote
-    from policies import kibana_dashboards
-    if session.get("kind") == "external":
-        abort(403)
-    db = get_db()
-    scope_sql, scope_params = project_scope()
-    rollouts = [{"id": r["id"], "name": r["name"], "client": r["client"], "po_number": r["po_number"]} for r in db.execute(
-        f"SELECT p.id, p.name, p.client, p.po_number FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY p.name", scope_params)]
-    wanted = request.args.get("rollout", type=as_id)
-    current = next((r for r in rollouts if r["id"] == wanted), None)
-    # {project}, {client} and {po} in an address take the chosen rollout's values (URL-encoded)
-    def fill(url):
-        if not current:
-            return url
-        return url.replace("{project}", quote(current["name"])).replace("{client}", quote(current["client"] or "")).replace("{po}", quote(current["po_number"] or ""))
-    dashboards = [{"name": d["name"], "url": fill(d["url"]), "per_rollout": any(k in d["url"] for k in ("{project}", "{client}", "{po}"))} for d in kibana_dashboards()]
-    return jsonify(dashboards=dashboards, rollouts=rollouts, rollout=current["id"] if current else None,
-                   can_manage=role_has_permission(session.get("role"), "manage_settings"))
+    d = calendar.build(month, project_scope())
+    # who may drag a task to another day: whoever manages the rollout's tasks, or the person it is on (task_edit decides again)
+    manages = {pid: project_allows(pid, "manage_tasks") for pid in {t["project_id"] for t in d["tasks"]}}
+    for t in d["tasks"]:
+        mine = t.pop("assignee_id") == session["user_id"]
+        t["can_edit"] = bool(manages[t["project_id"]] or mine) and not t["done"]
+    return jsonify(d)
 
 
 @app.route("/api/dashboard/version")
@@ -703,7 +684,7 @@ def api_project_form():
         "products": [{"name": r["name"], "vendor": vendor_names.get(r["vendor_id"], "")} for r in lists["products"]],
         "outsourcers": [{"name": r["name"], "email": r["email"]} for r in lists["outsourcers"]],
         "templates": [{"id": t["id"], "name": t["name"]} for t in db.execute("SELECT id, name FROM stage_templates ORDER BY name")],
-        # Settings → Projects & workflow: what a new project starts with
+        # Settings › Projects & workflow: what a new project starts with
         "defaults": {"stage_template_id": int(policy("default_template")) if policy("default_template")
                       else (db.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone() or [None])[0],
                      "customer_approval": policy("default_customer_approval")},
@@ -1006,6 +987,13 @@ def api_flow():
             next_task[t["project_id"]] = {"title": t["title"], "due_date": t["due_date"], "assignee": t["assignee_name"], "here": here}
     for v in next_task.values():
         del v["here"]
+    # may this person move each rollout (the Kanban's drag): project_allows, for every row in one query
+    from constants import PROJECT_ACTIONS
+    move_perm, move_roles = PROJECT_ACTIONS["move_stage"]
+    role = session.get("role", "Viewer")
+    my_roles = {r["project_id"]: r["role"] for r in db.execute("SELECT project_id, role FROM project_participants WHERE user_id = ?", (session["user_id"],))}
+    may_move = lambda pid: role_has_permission(role, move_perm) and (role == "Admin" or my_roles.get(pid) in move_roles)   # noqa: E731
+    signoff_on = bool(policy("signoff_required"))
     alert_settings = get_alert_type_settings()
     stale_days = (alert_settings.get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
     soon_days = (alert_settings.get("project_due_soon") or DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
@@ -1020,6 +1008,8 @@ def api_flow():
         state = _flow_state(p, sla, schedule)
         idle = _days_since(p["updated_at"], now)
         in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
+        at = stages.index(p["stage"]) if p["stage"] in stages else 0
+        nxt = stages[at + 1] if at + 1 < len(stages) else None
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
@@ -1032,12 +1022,51 @@ def api_flow():
             "late_tasks": p["late_tasks"], "late_since": p["late_since"],
             "next_task": next_task.get(p["id"]), "updated_at": p["updated_at"],
             "idle_days": None if idle is None else round(idle, 1), "stale": idle is not None and idle >= stale_days,
+            "start_date": p["start_date"], "next_stage": nxt, "can_move": bool(nxt) and may_move(p["id"]),
+            # the last stage waits for a signed sign-off (services/signoff.gate): the board refuses that drop up front
+            "signoff_needed": signoff_on and nxt is not None and nxt == terminal and not signoff_service.completed(p["id"]),
         })
     rows.sort(key=lambda r: (STATE_RANK[r["state"]], 0 if r["late_tasks"] else 1, _flow_urgency(r, now)))
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}
     counts["late_tasks"] = sum(1 for r in rows if r["state"] == "on_track" and r["late_tasks"])   # on track, but a task is late
     return jsonify({"stages": get_stage_names(), "rows": rows, "counts": counts, "today": local_today().isoformat(),
                     "can_move": role_has_permission(session.get("role"), "edit_project_stage")})
+
+
+@app.route("/api/flow/plan")
+@permission_required("view_board")
+def api_flow_plan():
+    """The Flow's Gantt: every open rollout in scope with its stages' plan,
+    actuals, forecast and baseline (services/plan.py, read in one batch), and
+    whether this person may drag its planned dates (the plan's PUT checks again).
+    Staff only: the customer cut of a plan is the rollout report's."""
+    from constants import PROJECT_ACTIONS
+    from services.portfolio import plans
+    if session.get("kind") == "external":
+        abort(403)
+    db = get_db()
+    scope_sql, scope_params = project_scope()
+    projects = db.execute(
+        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
+        f"WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY COALESCE(p.start_date, p.created_at), p.name", scope_params).fetchall()
+    perm, roles = PROJECT_ACTIONS["manage_project"]
+    role = session.get("role", "Viewer")
+    mine = {r["project_id"]: r["role"] for r in db.execute("SELECT project_id, role FROM project_participants WHERE user_id = ?", (session["user_id"],))}
+    may_edit = lambda pid: role_has_permission(role, perm) and (role == "Admin" or mine.get(pid) in roles)   # noqa: E731
+    keep = ("id", "name", "status", "sla_days", "plan_start", "plan_end", "base_start", "base_end", "actual_start", "actual_end",
+            "forecast_start", "forecast_end", "suggested_start", "suggested_end", "slip_days")
+    rows, cal = [], None
+    built = plans(projects)
+    for p in projects:
+        pl, _ = built[p["id"]]
+        cal = cal or pl["calendar"]
+        rows.append({
+            "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "owner_name": p["owner_name"],
+            "start_date": p["start_date"], "target_end_date": p["target_end_date"], "forecast": pl["finish"]["forecast"],
+            "pct_complete": pl["pct_complete"], "rag": pl["health"]["rag"], "has_plan": pl["has_plan"], "baselined": bool(pl["baseline_at"]),
+            "can_edit": may_edit(p["id"]), "stages": [{k: s.get(k) for k in keep} for s in pl["stages"]],
+        })
+    return jsonify(today=local_today().isoformat(), calendar=cal, rows=rows)
 
 
 @app.route("/api/projects/<int:project_id>/plan")
@@ -1165,7 +1194,7 @@ def api_raid_item(project_id, item_id):
         return jsonify(error=str(exc)), 400
     touch_project(db, project_id)
     raid.update(item, fields)
-    audit_log("update_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:60]} → {fields['status']}")
+    audit_log("update_raid_item", "project", project_id, project["name"], f"{fields['kind']}: {fields['title'][:60]} to {fields['status']}")
     _raid_notify_owner(project, fields["title"], fields["owner_id"], before=item["owner_id"])
     return jsonify(ok=True)
 

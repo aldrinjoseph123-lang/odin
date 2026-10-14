@@ -21,10 +21,10 @@ const VIEWS: { key: string; label: string; params: Record<string, string> }[] = 
   { key: "closed", label: "All", params: { closed: "1" } },
   { key: "overdue", label: "Overdue", params: { view: "overdue" } },
   { key: "at_risk", label: "Due soon", params: { view: "at_risk" } },
-  { key: "stale", label: "Stale", params: { view: "stale" } },
+  { key: "stale", label: "Idle", params: { view: "stale" } },
 ]
 const COLUMNS: { key: string; label: string; className?: string }[] = [
-  { key: "name", label: "Project" }, { key: "client", label: "Client", className: "hidden sm:table-cell" },
+  { key: "name", label: "Rollout" }, { key: "client", label: "Client", className: "hidden sm:table-cell" },
   { key: "po_number", label: "PO #", className: "hidden lg:table-cell" }, { key: "stage", label: "Stage" },
   { key: "owner", label: "Owner", className: "hidden md:table-cell" }, { key: "mode", label: "Mode", className: "hidden xl:table-cell" },
   { key: "vendor", label: "Vendor", className: "hidden xl:table-cell" }, { key: "product", label: "Product", className: "hidden xl:table-cell" },
@@ -35,7 +35,7 @@ type Layout = "table" | "cards"
 const readLayout = (): Layout => { try { return localStorage.getItem("odin.projects.layout") === "cards" ? "cards" : "table" } catch { return "table" } }
 
 export default function Projects({ user }: { user: User }) {
-  useEffect(() => { document.title = "Projects · Odin" }, [])
+  useEffect(() => { document.title = "Rollouts · Odin" }, [])
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<ProjectsData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -44,7 +44,7 @@ export default function Projects({ user }: { user: User }) {
   const query = params.toString()
   useEffect(() => {
     let live = true   // a slower answer to an older query must not replace the newer one
-    projects(query).then((d) => { if (live) { setData(d); setError(null) } }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load projects") })
+    projects(query).then((d) => { if (live) { setData(d); setError(null) } }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load rollouts") })
     return () => { live = false }
   }, [query])
 
@@ -71,7 +71,7 @@ export default function Projects({ user }: { user: User }) {
   return (
     <div className="flex h-full flex-col px-5 pb-4 pt-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-[17px] font-semibold tracking-tight">Projects</h1>
+        <h1 className="text-[17px] font-semibold tracking-tight">Rollouts</h1>
         <p className="text-[13px] text-muted-foreground">{data.total} {filtered ? "matching" : activeView === "closed" ? "in total" : "active"}</p>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <span className="flex h-7 overflow-hidden rounded-md border border-border" role="group" aria-label="Layout">
@@ -83,7 +83,7 @@ export default function Projects({ user }: { user: User }) {
             ))}
           </span>
           <a href={`/projects/export.csv${query ? `?${query}` : ""}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
-          <a href="/reports/all" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>All-projects report <ExternalLink className="h-3.5 w-3.5" /></a>
+          <a href="/reports/all" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>Portfolio report <ExternalLink className="h-3.5 w-3.5" /></a>
         </div>
       </div>
 
@@ -113,7 +113,7 @@ export default function Projects({ user }: { user: User }) {
           </span>
         )}
         <form onSubmit={search} className="ml-auto flex items-center gap-2">
-          <Input key={params.get("q") ?? ""} name="q" defaultValue={params.get("q") ?? ""} placeholder="Name, client, PO #" aria-label="Search projects" className="h-7 w-52 text-[13px]" />
+          <Input key={params.get("q") ?? ""} name="q" defaultValue={params.get("q") ?? ""} placeholder="Name, client, PO #" aria-label="Search rollouts" className="h-7 w-52 text-[13px]" />
           <button type="submit" aria-label="Search" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 px-2")}><Search className="h-3.5 w-3.5" /></button>
           {params.get("q") && <button type="button" onClick={() => update({ q: null })} className="text-[12px] text-muted-foreground hover:text-foreground">Clear</button>}
         </form>
@@ -121,7 +121,7 @@ export default function Projects({ user }: { user: User }) {
 
       {layout === "cards" ? (
         <div className="mt-3 min-h-0 flex-1 overflow-auto">
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Projects">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Rollouts">
             {data.rows.map((r) => {
               const done = r.total_tasks - r.open_tasks
               return (
@@ -147,7 +147,7 @@ export default function Projects({ user }: { user: User }) {
             })}
             {data.rows.length === 0 && (
               <li className="col-span-full"><Empty className="rounded-lg bg-muted/40 py-12"><EmptyHeader><EmptyMedia variant="icon"><FolderOpen /></EmptyMedia><EmptyDescription>
-                {filtered ? <>No projects match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
+                {filtered ? <>No rollouts match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
                   : <>No projects yet.{data.can_create && user.role !== "Viewer" && <> <a href="/projects/new" className="text-primary-text hover:underline">Create the first one</a></>}</>}
               
               </EmptyDescription></EmptyHeader></Empty></li>
@@ -180,7 +180,7 @@ export default function Projects({ user }: { user: User }) {
                   <td className="hidden px-3 py-2 text-muted-foreground lg:table-cell">{r.po_number ?? "—"}</td>
                   <td className="px-3 py-2">
                     <a href={`/board?rollout=${r.id}`} className="flex items-center gap-3" title="Open on the flow">
-                      <span className="w-24 shrink-0"><Stepper stages={r.stages} index={r.stage_index} state={r.state} selected={false} /></span>
+                      <span className="w-24 shrink-0"><Stepper compact stages={r.stages} index={r.stage_index} state={r.state} selected={false} /></span>
                       <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage}</span>
                       <StateChip state={r.state} target={r.target_end_date} />
                     </a>
@@ -195,7 +195,7 @@ export default function Projects({ user }: { user: User }) {
               {data.rows.length === 0 && (
                 <tr><td colSpan={COLUMNS.length}>
                   <Empty className="py-12"><EmptyHeader><EmptyMedia variant="icon"><FolderOpen /></EmptyMedia><EmptyDescription>
-                  {filtered ? <>No projects match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
+                  {filtered ? <>No rollouts match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
                     : <>No projects yet.{data.can_create && user.role !== "Viewer" && <> <a href="/projects/new" className="text-primary-text hover:underline">Create the first one</a></>}</>}
                   </EmptyDescription></EmptyHeader></Empty>
                 </td></tr>
@@ -211,7 +211,7 @@ export default function Projects({ user }: { user: User }) {
             onPage={(n) => { const q = new URLSearchParams(params); q.set("page", String(n)); setParams(q) }} />
           <span>·</span>
         </>}
-        <span>{data.total} project{data.total === 1 ? "" : "s"}</span>
+        <span>{data.total} rollout{data.total === 1 ? "" : "s"}</span>
       </div>
     </div>
   )

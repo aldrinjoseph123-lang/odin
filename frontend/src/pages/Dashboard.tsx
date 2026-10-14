@@ -1,5 +1,6 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
-import { chip, pill } from "@/lib/ui"
+import { Segmented } from "@/components/Segmented"
+import { chip, pill, danger, fieldAuto } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripHorizontal, Layers, Maximize2, MessageSquare, MoreHorizontal, PauseCircle, Plus, ShieldCheck, Timer, Trash2, UserCheck } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, Line, LineChart, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as ChartTip, XAxis } from "recharts"
@@ -14,7 +15,8 @@ import { ApiError, dashboard, dashboardVersion, resetLayout, saveLayout, type Ag
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/toast"
 import { STATE } from "@/lib/state"
-import { dayOf, deltaText, fmtDate, lateBy, monthTicks, timelineDomain } from "@/lib/format"
+import { dayOf, deltaText, fmtDate, lateBy, monthName, monthTicks, shortDay, timelineDomain, weekday } from "@/lib/format"
+import { addDays } from "@/lib/plan"
 import { configure, GRID_CLASS, keyOf, move, newUid, pack, pctChange, remove, reorder, resize, SPAN_CLASS, splitWindow, type LayoutItem, type Width } from "@/lib/dashboard"
 import { useMedia, useWidth } from "@/lib/useMeasure"
 
@@ -34,9 +36,6 @@ const tip = {
 }
 const axis = { tickLine: false, axisLine: false, tick: { fontSize: 11, fill: "var(--muted-foreground)" } }
 const badge = "rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
-const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-const dayLabel = (iso: string) => WEEKDAY[new Date(`${iso}T00:00:00`).getDay()]
 
 // Each grid cell hands its widget the ⋯ menu to show in the header.
 const MenuSlot = createContext<ReactNode>(null)
@@ -110,7 +109,7 @@ function Donut({ rows, total, unit, link, large }: { rows: Aggregate; total: num
 const TILES: { key: DashKey; label: string; icon: typeof Activity; tone?: "warn" | "bad"; worseUp: boolean }[] = [
   { key: "active", label: "Active rollouts", icon: Layers, worseUp: false },
   { key: "overdue", label: "Overdue", icon: AlertTriangle, tone: "bad", worseUp: true },
-  { key: "over_sla", label: "Over stage SLA", icon: Timer, tone: "warn", worseUp: true },
+  { key: "over_sla", label: "Over SLA", icon: Timer, tone: "warn", worseUp: true },
   { key: "due_soon", label: "Due soon", icon: CalendarClock, tone: "warn", worseUp: true },
   { key: "awaiting", label: "Waiting on customer", icon: UserCheck, worseUp: true },
   { key: "idle", label: "Idle", icon: PauseCircle, worseUp: true },
@@ -213,7 +212,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
                         style={{ left: pct(b), width: `calc(${pct(now)} - ${pct(b)})`, background: "repeating-linear-gradient(135deg, var(--bad-line) 0 3px, transparent 3px 6px)" }} />
                       <span className="absolute top-1/2 -translate-y-1/2 pl-2 text-[11px] font-semibold text-bad" style={{ left: pct(now) }} aria-hidden>{over} d</span>
                     </>}
-                    <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} → {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
+                    <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} – {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
                   </Tooltip>
                 </div>
                 <div className="flex items-center justify-end py-2">{r.team.length > 0 && <TeamStack people={r.team} avatarClass="h-5 w-5" className="flex" />}</div>
@@ -275,8 +274,8 @@ function Progress({ p, s, onExpand }: { p: D["progress"]; s: S; onExpand?: () =>
 // ---- schedule ---------------------------------------------------------------
 function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; today: string; s: S; onExpand?: () => void; large?: boolean }) {
   const days = Number(s.days ?? 7)
-  const until = new Date(`${today}T00:00:00Z`); until.setUTCDate(until.getUTCDate() + days)
-  const due = sch.due.filter((t) => t.due_date <= until.toISOString().slice(0, 10))
+  const until = addDays(today, days)
+  const due = sch.due.filter((t) => t.due_date <= until)
   const cap = large ? 100 : 6
   const lateCount = due.filter((t) => lateBy(t.due_date, today) > 0).length
   const group = "border-0 bg-muted/60 px-2 py-1 text-[12px] font-semibold text-nav-fg"
@@ -292,7 +291,7 @@ function Schedule({ sch, today, s, onExpand, large }: { sch: D["schedule"]; toda
             {head && <li className={group}>{head}</li>}
             <li className="flex items-center gap-3 py-2">
               <span className={cn("w-14 shrink-0 whitespace-nowrap rounded-lg px-1 py-1 text-center text-[11px] leading-tight", late > 0 ? "bg-bad-soft text-bad" : "bg-muted text-muted-foreground")}>
-                <span className="block text-[13px] font-semibold text-foreground">{Number(t.due_date.slice(8, 10))} {MONTH[Number(t.due_date.slice(5, 7)) - 1]}</span>{late > 0 ? `${late} d late` : dayLabel(t.due_date)}
+                <span className="block text-[13px] font-semibold text-foreground">{shortDay(t.due_date)}</span>{late > 0 ? `${late} d late` : weekday(t.due_date)}
               </span>
               <Link to={`/board?rollout=${t.project_id}`} className="min-w-0 flex-1 hover:underline">
                 <span className="block truncate font-medium">{t.title}</span>
@@ -330,7 +329,7 @@ function Completion({ series, s, onExpand, large }: { series: D["completion"]; s
   const sum = (xs: typeof series) => xs.reduce((a, x) => a + x.count, 0)
   const total = sum(now), prev = sum(before), peak = Math.max(0, ...now.map((x) => x.count))
   const change = pctChange(total, prev)
-  const data = now.map((x) => ({ ...x, label: n <= 7 ? dayLabel(x.day).slice(0, 1) : x.day.slice(8, 10) }))
+  const data = now.map((x) => ({ ...x, label: n <= 7 ? weekday(x.day).slice(0, 1) : x.day.slice(8, 10) }))
   return (
     <Widget title="Tasks completed" sub={`last ${n} days`} onExpand={onExpand}>
       {total === 0 ? <Quiet>No tasks completed in the last {n} days{prev ? ` (${prev} in the ${n} days before)` : ""}.</Quiet> : <>
@@ -396,7 +395,7 @@ function Team({ t, s, onExpand, large }: { t: D["team"]; s: S; onExpand?: () => 
 
 // ---- rollouts per stage -----------------------------------------------------
 // The pipeline in the Flow's own language: stages top to bottom on a connector,
-// each with its count and how many there are late or slipping (in words).
+// each with its count and how many are off track or at risk (in words).
 function StageFlow({ rows, link }: { rows: D["stages"]; link: (k: string) => string }) {
   const peak = Math.max(...rows.map((r) => r.count))
   return (
@@ -408,7 +407,7 @@ function StageFlow({ rows, link }: { rows: D["stages"]; link: (k: string) => str
           <Link to={link(r.stage)} className="w-32 shrink-0 truncate hover:underline" title={r.stage}>{r.stage}</Link>
           <span className="h-2 flex-1 rounded-full bg-muted"><span className="block h-2 rounded-full bg-nav-fg/60" style={{ width: `${(r.count / peak) * 100}%` }} /></span>
           <span className="w-6 text-right font-medium tabular-nums">{r.count}<span className="sr-only"> rollouts</span></span>
-          <span className="w-24 shrink-0 text-[12px]">{r.late > 0 && <span className="font-medium text-bad">{r.late} late</span>}{r.late > 0 && r.warn > 0 && <span className="text-muted-foreground"> · </span>}{r.warn > 0 && <span className="text-warn">{r.warn} slipping</span>}</span>
+          <span className="w-36 shrink-0 text-[12px]">{r.late > 0 && <span className="font-medium text-bad">{r.late} off track</span>}{r.late > 0 && r.warn > 0 && <span className="text-muted-foreground"> · </span>}{r.warn > 0 && <span className="text-warn">{r.warn} at risk</span>}</span>
         </li>
       ))}
     </ol>
@@ -530,7 +529,7 @@ function MyWork({ m, today, onExpand }: { m: D["mywork"]; today: string; onExpan
 // ---- cycle time -------------------------------------------------------------
 function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () => void; large?: boolean }) {
   const d1 = (n: number | null) => (n == null ? "—" : n > 0 && n < 0.05 ? "<0.1" : n.toFixed(1))   // a same-day close is not "0.0 days" (UX-23)
-  const data = c?.throughput.map(([m, n]) => ({ m: m.slice(5), n })) ?? []
+  const data = c?.throughput.map(([m, n]) => ({ m: monthName(m), n })) ?? []
   return (
     <Widget title="Cycle time" sub={c?.template} action={<Link to="/analytics" className={pill}>Detail</Link>} onExpand={onExpand}>
       {!c ? <Quiet>No stage template yet.</Quiet> : c.completed_count === 0 ? <Quiet>No rollout on {c.template} has closed yet; lead times appear after the first one does.</Quiet> : (
@@ -563,7 +562,7 @@ function Cycle({ c, s, onExpand, large }: { c: D["cycle"]; s: S; onExpand?: () =
 const CHOICE_LABEL: Record<string, string> = {
   all: "Every rollout", attention: "Only those needing attention", area: "Area", bars: "Bars", bar: "Bars", line: "Line", none: "None",
   radial: "Gauge", donut: "Donut", flow: "Stage flow", list: "List", number: "Number", pie: "Pie",
-  active: "Active", overdue: "Overdue", over_sla: "Over stage SLA", due_soon: "Due soon", awaiting: "Waiting on customer", idle: "Idle",
+  active: "Active", overdue: "Overdue", over_sla: "Over SLA", due_soon: "Due soon", awaiting: "Waiting on customer", idle: "Idle",
 }
 const MEASURE_LABEL: Record<string, string> = {
   rollouts_by_stage: "Rollouts by stage", rollouts_by_client: "Rollouts by client", rollouts_by_state: "Rollouts by state", rollouts_by_owner: "Rollouts by owner",
@@ -601,7 +600,7 @@ function tableFor(item: LayoutItem, d: D): Table | null {
     case "schedule": return { columns: ["Due", "Task", "Rollout", "Who"], rows: d.schedule.due.map((t) => [fmtDate(t.due_date), t.title, t.project, t.who ?? "—"]) }
     case "completion": return { columns: ["Day", "Tasks completed"], rows: d.completion.slice(-28).map((x) => [fmtDate(x.day), x.count]) }
     case "team": return { columns: ["Person", "Role", "Rollouts", "Open", "Late"], rows: d.team.people.map((m) => [m.name, m.role, m.projects, m.open, m.late]) }
-    case "stages": return { columns: ["Stage", "Rollouts", "Late", "Slipping"], rows: d.stages.map((s) => [s.stage, s.count, s.late, s.warn]) }
+    case "stages": return { columns: ["Stage", "Rollouts", "Off track", "At risk"], rows: d.stages.map((s) => [s.stage, s.count, s.late, s.warn]) }
     case "activity": return { columns: ["When", "Who", "Rollout", "What"], rows: d.activity.map((a) => [a.at.slice(0, 16).replace("T", " "), a.who ?? "—", a.project, a.text]) }
     case "alerts": return { columns: ["Severity", "Alert", "Rollout", "Raised"], rows: d.alerts.map((a) => [a.severity, a.title, a.project, a.created_at.slice(0, 10)]) }
     case "mywork": return { columns: ["Due", "Task", "Rollout", "Stage"], rows: d.mywork.tasks.map((t) => [t.due_date ? fmtDate(t.due_date) : "—", t.title, t.project, t.stage ?? "—"]) }
@@ -634,7 +633,7 @@ function renderWidget(item: LayoutItem, d: D, today: string, on: { tile: (k: Das
 // ---- customising: each widget's own ⋯ menu -------------------------------------
 // Every change saves at once to this person's arrangement (with an Undo);
 // text and number settings save a moment after typing stops.
-const WIDTHS: { w: Width; label: string }[] = [{ w: 1, label: "⅓" }, { w: 2, label: "⅔" }, { w: 3, label: "Full" }]
+const WIDTHS: { w: Width; label: string }[] = [{ w: 1, label: "1/3" }, { w: 2, label: "2/3" }, { w: 3, label: "Full" }]
 const tool = "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
 function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove, onSettings }: {
   item: LayoutItem; info: WidgetInfo; title: string; first: boolean; last: boolean
@@ -664,11 +663,11 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
               return (
                 <label key={s.key} htmlFor={id} className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{s.label}</span>
                   {s.kind === "choice" ? (
-                    <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 max-w-[60%] rounded-md border border-input bg-background px-2 text-[13px]">
+                    <select id={id} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className={cn(fieldAuto, "h-7 max-w-[60%]")}>
                       {s.choices?.map((c) => <option key={c} value={c}>{MEASURE_LABEL[c] ?? CHOICE_LABEL[c] ?? c}</option>)}
                     </select>
-                  ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className="h-7 w-40 rounded-md border border-input bg-background px-2 text-[13px]" />
-                  : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className="h-7 w-20 rounded-md border border-input bg-background px-2 text-[13px]" />}
+                  ) : s.kind === "text" ? <input id={id} type="text" maxLength={s.max} value={String(v)} onChange={(e) => onSettings({ [s.key]: e.target.value })} className={cn(fieldAuto, "h-7 w-40")} />
+                  : <input id={id} type="number" min={s.min} max={s.max} value={Number(v)} onChange={(e) => onSettings({ [s.key]: Math.max(s.min ?? 0, Math.min(s.max ?? 999, Number(e.target.value) || 0)) })} className={cn(fieldAuto, "h-7 w-20")} />}
                 </label>
               )
             })}
@@ -676,19 +675,14 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
         )}
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-muted-foreground">Width</span>
-          <span className="flex rounded-full bg-muted p-1" role="group" aria-label={`Width of ${title}`}>
-            {WIDTHS.map((x) => (
-              <button key={x.w} type="button" onClick={() => onResize(x.w)} aria-pressed={item.w === x.w}
-                className={cn("h-6 rounded-full px-3 text-[12px] font-medium", item.w === x.w ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground")}>{x.label}</button>
-            ))}
-          </span>
+          <Segmented label={`Width of ${title}`} value={item.w} onChange={onResize} options={WIDTHS.map((x) => ({ value: x.w, label: x.label }))} />
         </div>
         <div className="mt-2 flex items-center gap-1">
           <span className="mr-auto text-muted-foreground">Position</span>
           <button type="button" onClick={() => onMove(-1)} disabled={first} className={cn(tool, "w-auto px-3 text-[12px]")} aria-label={`Move ${title} earlier`}><ChevronUp className="h-3.5 w-3.5" /> Earlier</button>
           <button type="button" onClick={() => onMove(1)} disabled={last} className={cn(tool, "w-auto px-3 text-[12px]")} aria-label={`Move ${title} later`}><ChevronDown className="h-3.5 w-3.5" /> Later</button>
         </div>
-        <button type="button" onClick={onRemove} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-border py-2 text-[12px] text-bad hover:bg-bad-soft" aria-label={`Remove ${title}`}><Trash2 className="h-3.5 w-3.5" /> Remove from my dashboard</button>
+        <button type="button" onClick={onRemove} className={cn("mt-3 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[12px]", danger)} aria-label={`Remove ${title}`}><Trash2 className="h-3.5 w-3.5" /> Remove from my dashboard</button>
       </PopoverContent>
     </Popover>
   )

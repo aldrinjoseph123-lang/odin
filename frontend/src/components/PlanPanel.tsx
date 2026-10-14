@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { fieldAuto } from "@/lib/ui"
 import { CalendarRange, History, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -99,7 +100,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
                   </>}
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{days ?? "—"}</td>
                   <td className="px-2 py-2 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
-                  <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` → ${fmtDate(s.actual_end)}` : " → now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
+                  <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` – ${fmtDate(s.actual_end)}` : " – now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
                   <td className="px-2 py-2">{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
                   {/* a finished stage's slip is history (muted); a running or coming stage that slips is amber;
                       red only once the target date itself has passed: red means overdue (critique 10 Oct) */}
@@ -111,17 +112,17 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
         </table>
       </div>
 
-      {editable && !open && <Button size="sm" variant="outline" className="mt-3 rounded-full" onClick={() => setEditing(true)}><CalendarRange className="h-3.5 w-3.5" /> Edit dates</Button>}
+      {editable && !open && <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditing(true)}><CalendarRange className="h-3.5 w-3.5" /> Edit dates</Button>}
       {open && (
         <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void save() }}>
-          <Button type="button" size="sm" variant="outline" className="rounded-full" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Suggest dates from the SLAs</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Suggest dates from the SLAs</Button>
           <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
           {/* once there is a baseline, every move says why (the log and the customer read it) */}
-          {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} required placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="h-8 min-w-0 flex-1 basis-60 rounded-md border border-input bg-background px-2 text-[13px]" />}
+          {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} required placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className={cn(fieldAuto, "min-w-0 flex-1 basis-60")} />}
           <span className="ml-auto flex gap-2">
-            {(dirty || editing) && <Button type="button" size="sm" variant="ghost" className="rounded-full" disabled={busy} onClick={() => { void load(); setEditing(false) }}>{dirty ? "Discard" : "Done"}</Button>}
-            <Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!dirty}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
-            {d.baseline_at && <Button type="button" size="sm" variant="outline" className="rounded-full" disabled={busy || dirty} onClick={() => setRebase("")}>Re-baseline</Button>}
+            {(dirty || editing) && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { void load(); setEditing(false) }}>{dirty ? "Discard" : "Done"}</Button>}
+            <Button type="submit" size="sm" loading={busy} disabled={!dirty}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
+            {d.baseline_at && <Button type="button" size="sm" variant="outline" disabled={busy || dirty} onClick={() => setRebase("")}>Re-baseline</Button>}
           </span>
         </form>
       )}
@@ -134,7 +135,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
             <ul className="mt-2 divide-y divide-border text-[13px]">
               {d.changes.map((c, i) => (
                 <li key={i} className="flex flex-wrap items-baseline gap-x-2 py-2">
-                  {c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <span><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} → {c.new ? fmtDate(c.new) : "unset"}</span>}
+                  {c.field === "baseline" ? <span className="font-medium">Re-baselined</span> : <span><span className="font-medium">{c.stage}</span> {c.field} {c.old ? fmtDate(c.old) : "unset"} to {c.new ? fmtDate(c.new) : "unset"}</span>}
                   {c.reason && <span className="text-muted-foreground">— {c.reason}</span>}
                   <span className="ml-auto text-[12px] text-muted-foreground">{c.author} · <Ago iso={c.created_at} /></span>
                 </li>
@@ -148,10 +149,10 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Re-baseline the plan</DialogTitle><DialogDescription>The current plan becomes what the rollout is measured against from now on. The old baseline stays in the log.</DialogDescription></DialogHeader>
           <label htmlFor="rebase-reason" className="text-[13px] font-medium">Why</label>
-          <input id="rebase-reason" autoFocus value={rebase ?? ""} onChange={(e) => setRebase(e.target.value)} maxLength={300} placeholder="Scope change agreed with the customer on 3 Oct" className="h-8 rounded-md border border-input bg-background px-2 text-[13px]" />
+          <input id="rebase-reason" autoFocus value={rebase ?? ""} onChange={(e) => setRebase(e.target.value)} maxLength={300} placeholder="Scope change agreed with the customer on 3 Oct" className={fieldAuto} />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setRebase(null)}>Cancel</Button>
-            <Button size="sm" className="rounded-full" loading={busy} disabled={!rebase?.trim()} onClick={() => { const why = rebase!.trim(); void run(async () => { await rebaseline(projectId, why); setRebase(null); return "The current plan is the new baseline." }) }}>Re-baseline</Button>
+            <Button size="sm" variant="ghost" onClick={() => setRebase(null)}>Cancel</Button>
+            <Button size="sm" loading={busy} disabled={!rebase?.trim()} onClick={() => { const why = rebase!.trim(); void run(async () => { await rebaseline(projectId, why); setRebase(null); return "The current plan is the new baseline." }) }}>Re-baseline</Button>
           </div>
         </DialogContent>
       </Dialog>

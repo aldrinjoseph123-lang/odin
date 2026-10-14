@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { fieldArea } from "@/lib/ui"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
@@ -62,7 +63,7 @@ export function AINotesTasks({ projectId }: { projectId: number }) {
         <div className="mt-2 grid grid-cols-1 gap-2">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} maxLength={3500} aria-label="Meeting minutes"
             placeholder={"e.g. Omar to cable the Site B racks by 13 Oct.\nAnn will send the log samples by Friday."}
-            className="w-full rounded-md border border-input bg-background p-2 text-[13px] leading-relaxed" />
+            className={fieldArea} />
           <div><Button size="sm" variant="outline" className="h-7" loading={busy} disabled={text.trim().length < 20} onClick={() => void find()}>Find the actions</Button></div>
         </div>
       )}

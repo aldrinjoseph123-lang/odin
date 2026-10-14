@@ -312,7 +312,7 @@ def csrf_token():
 
 def _validate_csrf():
     """before_request hook: every state-changing request must carry the token."""
-    if request.method in CSRF_SAFE_METHODS:
+    if request.method in CSRF_SAFE_METHODS or request.path == "/api/teams/messages":   # Teams' calls: answered, never read
         return None
     submitted = request.form.get(CSRF_FIELD) or request.headers.get("X-CSRF-Token", "")
     expected = session.get("_csrf_token", "")
@@ -360,17 +360,9 @@ def csp_nonce():
 
 
 def _csp():
-    """The policy above with this response's nonce instead of
-    'unsafe-inline'; the Flow page (which draws the Kibana view) may
-    additionally frame the origins of the configured Kibana dashboards."""
-    from flask import g, request
-    policy = CSP.replace("script-src 'self' 'unsafe-inline'; ", "script-src 'self'%s; " % (f" 'nonce-{g.csp_nonce}'" if "csp_nonce" in g else ""))
-    if request.endpoint != "board":
-        return policy
-    from urllib.parse import urlsplit
-    from policies import kibana_dashboards
-    origins = sorted({f"{urlsplit(d['url']).scheme}://{urlsplit(d['url']).netloc}" for d in kibana_dashboards()})
-    return policy + (f" {' '.join(origins)}" if origins else "")   # extends the frame-src directive at the end of CSP
+    """The policy above with this response's nonce instead of 'unsafe-inline'."""
+    from flask import g
+    return CSP.replace("script-src 'self' 'unsafe-inline'; ", "script-src 'self'%s; " % (f" 'nonce-{g.csp_nonce}'" if "csp_nonce" in g else ""))
 
 
 def _security_headers(response):

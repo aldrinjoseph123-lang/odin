@@ -24,7 +24,7 @@ CHANNELS = ("email", "teams")
 def create(label, role, project_id, project_role, days, max_uses, author):
     """Returns the raw token (shown once in the link)."""
     if not policy("signup_enabled"):
-        raise ValueError("Sign-up links are switched off (Settings → Sign-up & activity)")
+        raise ValueError("Sign-up links are switched off (Settings › Sign-up & activity)")
     label = (label or "").strip()[:80]
     if not label:
         raise ValueError("Name the link (e.g. who it is for)")
@@ -33,9 +33,9 @@ def create(label, role, project_id, project_role, days, max_uses, author):
     db = get_db()
     if project_id:
         if not db.execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
-            raise ValueError("That project does not exist")
+            raise ValueError("That rollout does not exist")
         if project_role not in PROJECT_LINK_ROLES:
-            raise ValueError(f"The project role is one of: {', '.join(PROJECT_LINK_ROLES)}")
+            raise ValueError(f"The rollout role is one of: {', '.join(PROJECT_LINK_ROLES)}")
     else:
         project_id, project_role = None, None
     try:   # test report FN-16: int()'s own error text reached the page

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -37,10 +37,10 @@ describe("fmtDate", () => {
 describe("stateText", () => {
   it("says the one thing each state needs", () => {
     expect(stateText({ state: "on_track", days_in_stage: 3.2, over_by: null, target_end_date: null })).toBe("3 d")
-    expect(stateText({ state: "over_sla", days_in_stage: 9, over_by: 4, target_end_date: null })).toBe("9 d · 4 over SLA")
-    expect(stateText({ state: "over_sla", days_in_stage: null, over_by: null, target_end_date: null })).toBe("Over SLA")   // not "— · 0 over SLA" (V12)
-    expect(stateText({ state: "due_soon", days_in_stage: 1, over_by: null, target_end_date: "2026-11-30" })).toMatch(/^Due /)
-    expect(stateText({ state: "overdue", days_in_stage: 1, over_by: null, target_end_date: "2020-01-01" })).toMatch(/^Overdue \d+ d$/)
+    expect(stateText({ state: "over_sla", days_in_stage: 9, over_by: 4, target_end_date: null })).toBe("4 d over SLA")
+    expect(stateText({ state: "over_sla", days_in_stage: null, over_by: null, target_end_date: null })).toBe("over SLA")   // not "0 d over SLA" (V12)
+    expect(stateText({ state: "due_soon", days_in_stage: 1, over_by: null, target_end_date: "2026-11-30" })).toMatch(/^due /)
+    expect(stateText({ state: "overdue", days_in_stage: 1, over_by: null, target_end_date: "2020-01-01" })).toMatch(/^overdue \d+ d$/)
   })
 })
 
@@ -345,5 +345,14 @@ describe("dates never follow the browser's locale", () => {
     setDateFormat("d MMM yyyy")
     expect(timeAgo("2026-09-01T12:00:00", Date.parse("2026-09-27T12:00:00Z"))).toBe("1 Sep")
     expect(localDateTime("2026-09-25T03:32:31")).toMatch(/^2[56] Sep 2026, \d\d:\d\d$/)
+  })
+})
+
+describe("short date labels", () => {
+  it("reads the date itself, in English, whatever the reader's zone", () => {
+    expect(shortDay("2026-09-07")).toBe("7 Sep")
+    expect(monthName("2026-12")).toBe("Dec")
+    expect(weekday("2026-10-12")).toBe("Mon")
+    expect(weekday("2026-10-11T23:30:00")).toBe("Sun")
   })
 })

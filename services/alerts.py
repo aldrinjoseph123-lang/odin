@@ -90,7 +90,7 @@ def sync_alerts_to_db(alerts):
             )
             if inserted:
                 project = id_to_project[project_id]
-                title, body = ALERT_TYPE_TITLES[alert_type], f"Project: {escape(project['name'])} ({escape(project['client'])})"
+                title, body = ALERT_TYPE_TITLES[alert_type], f"Rollout: {escape(project['name'])} ({escape(project['client'])})"
                 # the AI's plain-words reason and first move, when one was written in the last day and a half (services/ai)
                 from services.ai import latest_project
                 why = latest_project("health_explained", project_id, db)

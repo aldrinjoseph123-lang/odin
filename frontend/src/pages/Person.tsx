@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { StatTile } from "@/components/StatTile"
-import { pill } from "@/lib/ui"
+import { pill, field, fieldArea } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
 import { ArrowRight, CheckSquare, ChevronLeft, MessageSquare, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,8 @@ import { ApiError, notifyPerson, person, type PersonData, type User } from "@/li
 import { cn } from "@/lib/utils"
 import { ActivityPanel } from "@/components/ActivityPanel"
 import { STATE } from "@/lib/state"
-import { fmtDate, lateBy } from "@/lib/format"
+import { fmtDate, lateBy, shortDay, stateText } from "@/lib/format"
+import { StateChip } from "@/components/StateChip"
 
 // One person: what they carry, how it is going, what they did, and a way to
 // reach them that lands in their bell and their inbox.
@@ -58,7 +59,7 @@ export default function Person(_props: { user: User }) {
           <h1 className="text-[17px] font-semibold tracking-tight">{d.user.name}</h1>
           <p className="text-[13px] text-muted-foreground">{d.user.role}{d.user.email && ` · ${d.user.email}`}{(d.activity?.last_seen_at ?? d.user.last_login_at) && <> · seen <Ago iso={(d.activity?.last_seen_at ?? d.user.last_login_at)!} /></>}</p>
         </div>
-        {d.can_notify && <Button size="sm" className="rounded-full" onClick={() => setOpen(true)}><Send className="h-3.5 w-3.5" /> Notify {d.user.name.split(" ")[0]}</Button>}
+        {d.can_notify && <Button size="sm" onClick={() => setOpen(true)}><Send className="h-3.5 w-3.5" /> Notify {d.user.name.split(" ")[0]}</Button>}
       </div>
       {notice && <p className="mt-2 text-[13px] text-muted-foreground" role="status">{notice}</p>}
 
@@ -78,7 +79,7 @@ export default function Person(_props: { user: User }) {
               <li key={w.week} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`week of ${fmtDate(w.week)}: ${w.done}`}>
                 {w.done > 0 && w.done === peak && <span className="text-foreground">{w.done}</span>}
                 <span className={cn("block w-full rounded-t-[3px]", w.done ? "bg-nav-fg/60" : "bg-muted")} style={{ height: `${Math.max(w.done ? 8 : 3, (w.done / peak) * 100)}%` }} aria-hidden />
-                <span aria-hidden>{w.week.slice(8, 10)}/{w.week.slice(5, 7)}</span>
+                <span aria-hidden>{shortDay(w.week)}</span>
                 <span className="sr-only">week of {fmtDate(w.week)}: {w.done}</span>
               </li>
             ))}
@@ -97,9 +98,10 @@ export default function Person(_props: { user: User }) {
                   <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
                 </div>
                 <div className="mt-1 flex items-center gap-3 pl-4">
-                  <span className="w-20 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
+                  <span className="w-20 shrink-0"><Stepper compact stages={p.stages} index={p.stage_index} state={p.state} selected={false} /></span>
                   <span className="truncate text-[13px]" title={p.stage}>{p.stage}</span>
-                  <span className={cn("ml-auto whitespace-nowrap text-[12px]", p.state === "on_track" ? "text-muted-foreground" : STATE[p.state].chip.split(" ")[1])}>{STATE[p.state].label}</span>
+                  <StateChip state={p.state} className="ml-auto" quiet="On track"
+                    text={stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })} />
                 </div>
               </li>
             ))}
@@ -167,19 +169,19 @@ export default function Person(_props: { user: User }) {
             </DialogHeader>
             <label htmlFor="notify-message" className="mt-3 block text-[13px] font-medium">Message</label>
             <textarea id="notify-message" value={message} onChange={(e) => setMessage(e.target.value)} rows={4} maxLength={1000} required autoFocus
-              className="mt-1 w-full rounded-md border border-input bg-background p-2 text-[13px]" placeholder="Could you look at the pilot sign-off today?" />
+              className={cn(fieldArea, "mt-1")} placeholder="Could you look at the pilot sign-off today?" />
             {d.projects.length > 0 && (
               <>
                 <label htmlFor="notify-about" className="mt-3 block text-[13px] font-medium">About <span className="font-normal text-muted-foreground">(optional)</span></label>
-                <select id="notify-about" value={about ?? ""} onChange={(e) => setAbout(e.target.value ? Number(e.target.value) : null)} className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-[13px]">
+                <select id="notify-about" value={about ?? ""} onChange={(e) => setAbout(e.target.value ? Number(e.target.value) : null)} className={cn(field, "mt-1")}>
                   <option value="">No particular rollout</option>
                   {d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </>
             )}
             <div className="mt-4 flex justify-end gap-2">
-              <Button type="button" variant="ghost" size="sm" className="rounded-full" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
-              <Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!message.trim()}><Send className="h-3.5 w-3.5" /> Send</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
+              <Button type="submit" size="sm" loading={busy} disabled={!message.trim()}><Send className="h-3.5 w-3.5" /> Send</Button>
             </div>
           </form>
         </DialogContent>

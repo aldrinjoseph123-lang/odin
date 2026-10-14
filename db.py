@@ -261,6 +261,8 @@ def migrate_db(db):
         db.execute("UPDATE users SET accent = 'blue' WHERE accent = 'red' OR accent IS NULL")
         db.execute("UPDATE settings SET value = 'blue' WHERE key = 'policy.default_accent' AND value = 'red'")
         db.execute("INSERT INTO settings (key, value) VALUES ('migrated.accent_blue', '1')")
+    # 13 Oct 2026: the Kibana view was removed (the user's call); its saved dashboard list goes with it
+    db.execute("DELETE FROM settings WHERE key = 'policy.kibana_dashboards'")
     if role_column_is_new:
         # pre-RBAC installs: promote the original (lowest-id) user to Admin once
         db.execute("UPDATE users SET role = 'Admin' WHERE id = (SELECT MIN(id) FROM users)")

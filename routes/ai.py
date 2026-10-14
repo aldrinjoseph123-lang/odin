@@ -1,4 +1,4 @@
-"""Settings → AI: the server (with a Check before saving), its status, and
+"""Settings › AI: the server (with a Check before saving), its status, and
 every AI feature's validation. The model is never called from here: checks
 that need the model are queued for the scheduler's AI worker (services/ai)."""
 import json
@@ -107,7 +107,7 @@ def settings_ai_validate():
         return redirect(url_for("settings_section", section="ai"))
     job = queue(get_db(), "validate", payload={"reason": "asked for in Settings"}, actor=session.get("user_name"))
     audit_log("validate_ai", "settings", job, "ai")
-    flash("Validation queued. It runs every feature on its test project; this page updates as it goes.")
+    flash("Validation queued. It runs every feature on its test rollout; this page updates as it goes.")
     return redirect(url_for("settings_section", section="ai"))
 
 

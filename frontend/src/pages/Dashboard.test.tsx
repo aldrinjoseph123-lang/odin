@@ -25,7 +25,7 @@ describe("Dashboard", () => {
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/Good (morning|afternoon|evening), Admin/)
     expect(titles()).toEqual(["Headline numbers", "Timeline", "Portfolio progress", "Open alerts"])
     expect(screen.getByText("Active rollouts")).toBeInTheDocument()
-    expect(screen.queryByText("Over stage SLA")).toBeNull()                        // tiles setting hid it
+    expect(screen.queryByText("Over SLA")).toBeNull()                        // tiles setting hid it
     expect(screen.getByText("+1")).toBeInTheDocument()                             // active: 4 vs 3
     expect(screen.getByText("−1")).toBeInTheDocument()                             // overdue: 1 vs 2
   })
@@ -42,7 +42,7 @@ describe("Dashboard", () => {
     await user.click(screen.getByRole("button", { name: "Expand Open alerts" }))
     const big = await screen.findByRole("dialog")
     expect(within(big).getByRole("columnheader", { name: "Severity" })).toBeInTheDocument()
-    expect(within(big).getByRole("cell", { name: "Project overdue" })).toBeInTheDocument()
+    expect(within(big).getByRole("cell", { name: "Rollout overdue" })).toBeInTheDocument()
   })
 
   it("a custom metric can be added more than once, titled and charted, saved on its own", async () => {
@@ -76,7 +76,7 @@ describe("Dashboard", () => {
     expect((await screen.findAllByText("Saved to your dashboard.")).length).toBeGreaterThan(0)
     await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "Customise Timeline" }))
-    await user.click(within(screen.getByRole("group", { name: "Width of Timeline" })).getByRole("button", { name: "Full" }))
+    await user.click(within(screen.getByRole("radiogroup", { name: "Width of Timeline" })).getByRole("radio", { name: "Full" }))
     await user.selectOptions(screen.getByLabelText("Show"), "attention")
     await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "Customise Open alerts" }))

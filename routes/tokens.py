@@ -1,4 +1,4 @@
-"""Read-only API tokens and the small API they open (Settings → API tokens).
+"""Read-only API tokens and the small API they open (Settings › API tokens).
 
 An admin names a token and picks how long it lives; the token is shown once
 and only its SHA-256 is stored. A script sends it as
@@ -13,7 +13,7 @@ from functools import wraps
 
 from flask import abort, flash, g, jsonify, redirect, request, session, url_for
 
-from core import app, permission_required
+from core import app, permission_required, wants_json
 from db import PROJECT_OPEN_SQL, get_db, get_stage_names
 from routes.projects import load_project
 from security import token_hash
@@ -63,6 +63,9 @@ def api_token_create():
                      (name, token_hash(raw), session.get("user_name", "?"), now.isoformat(), (now + timedelta(days=days)).isoformat()))
     db.commit()
     audit_log("create_api_token", "api_token", cur.lastrowid, name, f"read-only, {days} days")
+    if wants_json():
+        # the page keeps it on screen with a Copy button until dismissed (review P1-2); never in a toast
+        return jsonify(ok=True, messages=[f"Token for {name} made"], undo=None, location=None, token=raw)
     flash(f"Token for {name} (shown once — copy it now): {raw}")
     return redirect(url_for("settings_section", section="api"))
 
@@ -118,5 +121,5 @@ def api_v1_report(project_id):
     row = get_db().execute("SELECT version, body, created_by, created_at FROM project_reports WHERE project_id = ? ORDER BY version DESC LIMIT 1",
                            (project_id,)).fetchone()
     if row is None:
-        return jsonify(error="No saved report for this project"), 404
+        return jsonify(error="No saved report for this rollout"), 404
     return jsonify(dict(row))

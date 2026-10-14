@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { PageHeader } from "@/components/PageHeader"
 import { EmptyState } from "@/components/EmptyState"
 import { toast } from "@/lib/toast"
-import { PanelTitle } from "@/components/PanelTitle"
-import { fieldAuto } from "@/lib/ui"
+import { Panel } from "@/components/PanelTitle"
+import { fieldAuto, danger, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Navigate, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
@@ -11,8 +12,9 @@ import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
-import { ApiError, postForm, settingsData, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
+import { ApiError, postForm, settingsData, type FormReply, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
 import { Ago } from "@/components/Ago"
+import { fmtDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { isDark } from "@/lib/theme"
 import { DocTemplates } from "@/components/DocTemplates"
@@ -20,16 +22,8 @@ import { AISettings } from "@/components/AISettings"
 import { SlaCheck } from "@/components/SlaCheck"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
+type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<FormReply | null>
 
-function Panel({ title, hint, children, id }: { title: string; hint?: string; children: ReactNode; id?: string }) {
-  return (
-    <section id={id} aria-label={title} className="panel p-4">
-      <PanelTitle hint={hint}>{title}</PanelTitle>
-      {children}
-    </section>
-  )
-}
 
 // Settings → one area per address (/settings/<section>); the side menu is
 // SettingsLayout. Each area draws only its own panels and loads without
@@ -38,13 +32,13 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   general: { title: "General", lede: "How the workspace reads for everyone." },
   security: { title: "Sign-in & security", lede: "Sessions, passwords, uploads and outside access." },
   people: { title: "Sign-up & activity", lede: "Sign-up links, and whether Odin records each person's active time." },
-  workflow: { title: "Projects & workflow", lede: "What new projects start with, their stages and the alerts they raise." },
-  notifications: { title: "Notifications", lede: "Which channels carry project events; each person tunes their own email." },
-  integrations: { title: "Integrations", lede: "Microsoft 365 mail, Teams and OneDrive, and the Kibana dashboards." },
+  workflow: { title: "Rollouts & workflow", lede: "What new rollouts start with, their stages and the alerts they raise." },
+  notifications: { title: "Notifications", lede: "Which channels carry rollout events; each person tunes their own email." },
+  integrations: { title: "Integrations", lede: "Microsoft 365 mail, Teams and OneDrive." },
   ai: { title: "AI", lede: "The AI server, its health, and which features pass on today's model." },
   reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
   documents: { title: "Documents", lede: "Brand, sections and wording for reports and the sign-off." },
-  api: { title: "API tokens", lede: "Read-only access for scripts: projects, stages, tasks and saved reports." },
+  api: { title: "API tokens", lede: "Read-only access for scripts: rollouts, stages, tasks and saved reports." },
   audit: { title: "Retention", lede: "How long the audit trail, notifications and activity are kept." },
   map: { title: "System map & changes", lede: "How this version of Odin works, what changed, and the known gaps." },
   backups: { title: "Backups", lede: "Scheduled, restore-tested copies of the database, documents and pictures." },
@@ -92,8 +86,7 @@ export default function Settings(_props: { user: User }) {
 
   return (
     <div className="px-5 pb-6 pt-4">
-      <h1 className="text-[17px] font-semibold tracking-tight">{TITLES[section].title}</h1>
-      <p className="mt-1 text-[13px] text-muted-foreground">{TITLES[section].lede}</p>
+      <PageHeader title={TITLES[section].title} lede={TITLES[section].lede} />
 
       {/* min-w-0 on every grid item: a wide table scrolls inside its panel
           instead of stretching the page on a phone */}
@@ -112,12 +105,12 @@ export default function Settings(_props: { user: User }) {
         {section === "workflow" && (
           <>
             {policyForm("workflow")}
-            <Panel title="Stage templates" hint="a new project copies one, then owns its list" id="templates">
+            <Panel title="Stage templates" hint="a new rollout copies one, then owns its list" id="templates">
               <div className="grid grid-cols-1 gap-5">
                 {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
               </div>
               <AddForm placeholder="New template name (e.g. EDR rollout)" label="New template name" button="Add template" busy={busy} onSubmit={(name) => send("/settings/templates/add", { name })} />
-              <p className="mt-2 text-[12px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for projects using it.</p>
+              <p className="mt-2 text-[12px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for rollouts using it.</p>
               <SlaCheck templates={data.templates} busy={busy} send={send} />
             </Panel>
             <Panel title="Document categories" hint="untick to keep a kind from partners and customers">
@@ -125,7 +118,7 @@ export default function Settings(_props: { user: User }) {
                 {data.doc_categories.map((c) => (
                   <li key={c.id} className="flex items-center gap-2">
                     <span className="flex-1">{c.name}</span>
-                    <label className="flex items-center gap-2 text-[12px] text-muted-foreground" title="Partners and customers on the project can see and download these">
+                    <label className="flex items-center gap-2 text-[12px] text-muted-foreground" title="Partners and customers on the rollout can see and download these">
                       <Switch size="sm" checked={c.partners} disabled={busy} onCheckedChange={(on) => send(`/settings/doc-categories/${c.id}/partners`, on ? { partners: "on" } : {})}
                         aria-label={`Partners see ${c.name}`} className="h-3.5 w-3.5 accent-primary" />partners</label>
                     <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -143,10 +136,11 @@ export default function Settings(_props: { user: User }) {
         )}
         {section === "notifications" && (
           <Toggles data={data} busy={busy} send={send} title="Channels" keys={[
-            { key: "notify_email_enabled", label: "Email notifications on project events (stage changes, approvals, assignments, mentions, due tasks)" },
+            { key: "notify_email_enabled", label: "Email notifications on rollout events (stage changes, approvals, assignments, mentions, due tasks)" },
+            { key: "notify_teams_chat_enabled", label: "Teams messages to each person: every notification also as a card from the Odin PMS app (staff only; set it up under Integrations)" },
             { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
           ]} extra={<>
-            {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings → Integrations), so email and Teams channel posts cannot be delivered. The bell and the Teams webhook still work.</p>}
+            {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings › Integrations), so email and Teams messages cannot be delivered. The bell and the Teams webhook still work.</p>}
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-email")}>Send test email</Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send test Teams message</Button>
           </>} />
@@ -154,10 +148,20 @@ export default function Settings(_props: { user: User }) {
         {section === "integrations" && (
           <>
             <Microsoft key={`${data.m365.azure_app.client_id ?? ""}|${data.m365.azure_app.tenant_id ?? ""}|${data.m365.oauth_client_configured}`} data={data} busy={busy} send={send} teamId={teamId} onTeam={(id) => { setTeamId(id); void load(id) }} />
+            <Panel title="Odin PMS in Teams" hint="each notification as a card in the person's own chat with Odin">
+              <ol className="grid max-w-prose list-decimal gap-1 pl-5 text-[13px]">
+                <li>In the Azure portal, create an <b>Azure Bot</b> (single tenant) that uses this app registration, set its messaging endpoint to <code className="font-mono text-[12px]">{"{public address}"}/api/teams/messages</code> and turn on its Microsoft Teams channel.</li>
+                <li>Download the app package below and upload it in the Teams admin centre (Manage apps › Upload new app).</li>
+                <li>Install it for everyone with a setup policy (Teams apps › Setup policies › Installed apps), then switch on <b>Teams messages to each person</b> under Settings › Notifications.</li>
+              </ol>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a href="/settings/teams-app.zip" className={buttonVariants({ size: "sm", variant: "outline" })}>Download the Odin PMS app package</a>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send me a test in Teams</Button>
+              </div>
+            </Panel>
             <Toggles data={data} busy={busy} send={send} title="OneDrive" keys={[
               { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
             ]} />
-            {policyForm("integrations")}
           </>
         )}
         {section === "ai" && (
@@ -204,7 +208,7 @@ export default function Settings(_props: { user: User }) {
 const GROUP_HINTS: Record<string, string> = {
   "Sessions": "applies at everyone's next request", "Sign-up links": "links are made and revoked on the Users page",
   "Where copies go": "a local copy is always kept on the server", "Watching the server": "applies from the next heartbeat",
-  "Health colours": "green, amber or red on every project",
+  "Plan health": "on track, at risk or off track on every rollout",
 }
 // the longer explanation of a setting, one tap away
 function WhatIsThis({ label, text }: { label: string; text: string }) {
@@ -274,15 +278,11 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               )}
               {p.kind === "text" && p.multiline && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })}
-                  className="w-full max-w-2xl rounded-md border border-input bg-background p-2 text-[13px] leading-relaxed" />
+                  className={cn(fieldArea, "max-w-2xl")} />
               )}
               {p.kind === "dates" && (
                 <textarea id={`pol-${p.key}`} rows={5} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
-                  placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className="w-full max-w-2xl rounded-lg border border-input bg-background px-3 py-2 text-[13px]" />
-              )}
-              {p.kind === "lines" && (
-                <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} spellCheck={false}
-                  placeholder={"SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true"} className="w-full max-w-2xl rounded-md border border-input bg-background p-2 font-mono text-[13px]" />
+                  placeholder={"2026-12-02 National Day\n2027-03-20 to 2027-03-22 Eid al-Fitr"} className={cn(fieldArea, "max-w-2xl")} />
               )}
               {p.kind === "choice" && (
                 <select id={`pol-${p.key}`} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className={cn(fieldAuto, "max-w-sm")}>
@@ -319,24 +319,37 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
   )
 }
 
-// Read-only API tokens: shown once when made (in the notice above), then
+// Read-only API tokens: shown once when made (in a box that stays until dismissed), then
 // only their name, age, last use and expiry; revoking is immediate.
 function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"]; busy: boolean; send: Send }) {
   const [name, setName] = useState("")
   const [days, setDays] = useState("90")
+  // the new token stays on screen until dismissed: the server keeps only its hash (review P1-2)
+  const [made, setMade] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const now = new Date().toISOString()
   return (
     <>
       <Panel title="New token">
-        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then((r) => { if (r) setName("") }) }} className="flex flex-wrap items-end gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then((r) => { if (r) { setName(""); setMade(r.token ?? null); setCopied(false) } }) }} className="flex flex-wrap items-end gap-2">
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">What uses it<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Valid for
             <select value={days} onChange={(e) => setDays(e.target.value)} className={fieldAuto}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
           </label>
           <Button type="submit" size="sm" loading={busy} disabled={!name.trim()}>Create token</Button>
         </form>
+        {made && (
+          <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
+            <input id="new-api-token" readOnly value={made} aria-label="New API token" onFocus={(e) => e.currentTarget.select()} className={cn(fieldAuto, "w-full font-mono text-[12px]")} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => document.getElementById("new-api-token")?.focus())}>{copied ? "Copied" : "Copy the token"}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setMade(null)}>I have saved it</Button>
+              <span className="text-[12px] text-muted-foreground">Shown once: Odin keeps only a fingerprint of it.</span>
+            </div>
+          </div>
+        )}
         <p className="mt-3 text-[12px] text-muted-foreground">
-          Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code> to <code className="font-mono">/api/v1/projects</code>, <code className="font-mono">/api/v1/projects/&lt;id&gt;</code> and <code className="font-mono">/api/v1/projects/&lt;id&gt;/report</code>. It can read every project and change nothing. Behind Cloudflare Access, /api/v1 needs its own Access policy (a service token).
+          Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code> to <code className="font-mono">/api/v1/projects</code>, <code className="font-mono">/api/v1/projects/&lt;id&gt;</code> and <code className="font-mono">/api/v1/projects/&lt;id&gt;/report</code>. It can read every rollout and change nothing. Behind Cloudflare Access, /api/v1 needs its own Access policy (a service token).
         </p>
       </Panel>
       <Panel title="Tokens">
@@ -351,8 +364,8 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
                     <td className="py-2 pr-3 font-medium">{t.name}</td>
                     <td className="whitespace-nowrap py-2 pr-3"><Ago iso={t.created_at} /> · {t.created_by}</td>
                     <td className="whitespace-nowrap py-2 pr-3">{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3">{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : t.expires_at.slice(0, 10)}</td>
-                    <td className="py-2 text-right">{!dead && <Button size="sm" variant="ghost" className="h-7 text-destructive hover:text-destructive" disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDate(t.expires_at)}</td>
+                    <td className="py-2 text-right">{!dead && <Button size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
                   </tr>
                 )
               })}
@@ -394,7 +407,7 @@ function BackupHistory({ runs }: { runs: BackupRun[] }) {
             {runs.map((r) => (
               <tr key={r.id} className="border-t border-border align-top">
                 <td className="whitespace-nowrap py-2 pr-3"><Ago iso={r.started_at} /><span className="block text-[12px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
-                <td className="py-2 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-bad">Problem</span>}</td>
+                <td className="py-2 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-destructive">Problem</span>}</td>
                 <td className="py-2 pr-3">{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-destructive">Failed</span>}
                   {r.restore_detail && <span className="block text-[12px] text-muted-foreground">{r.restore_detail}</span>}</td>
                 <td className="py-2 pr-3 text-[13px]">{r.destinations}</td>
@@ -414,13 +427,14 @@ function BackupHistory({ runs }: { runs: BackupRun[] }) {
 function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; send: Send }) {
   const [f, setF] = useState({ client_id: sso.client_id ?? "", tenant_id: sso.tenant_id ?? "", client_secret: "" })
   const [enforced, setEnforced] = useState(sso.enforced)
+  const ssoDirty = f.client_id !== (sso.client_id ?? "") || f.tenant_id !== (sso.tenant_id ?? "") || f.client_secret !== "" || enforced !== sso.enforced
   const status = !sso.configured ? "Not set up: staff sign in with a password." : sso.enforced ? "Required: staff sign in with Microsoft only." : "Set up: staff can use Microsoft or a password."
   return (
     <Panel title="Microsoft sign-in" hint="staff; partners keep their email link">
       <form onSubmit={(e) => { e.preventDefault(); void send("/settings/sso", { ...f, ...(enforced ? { enforced: "on" } : {}) }).then((r) => { if (r) setF({ ...f, client_secret: "" }) }) }} className="grid grid-cols-1 gap-3">
         <p className="text-[13px]">{status}</p>
         <div className="grid grid-cols-1 gap-1 text-[13px]">
-          <span className="text-muted-foreground">Redirect URI to add to the app registration (Authentication → Web)</span>
+          <span className="text-muted-foreground">Redirect URI to add to the app registration (Authentication › Web)</span>
           <code className="w-fit max-w-full break-all rounded-md border border-border bg-secondary px-2 py-1 font-mono text-[12px]">{sso.redirect_uri}</code>
           <span className="text-muted-foreground">In Entra ID: a separate app registration, single tenant, ID tokens only; a client secret under Certificates &amp; secrets.</span>
         </div>
@@ -434,9 +448,9 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
           <span>Staff must sign in with Microsoft <span className="block text-[12px] text-muted-foreground">The password form disappears. Accounts ticked "Password" on the Users page ({sso.password_admins} admin{sso.password_admins === 1 ? "" : "s"} now) keep an emergency form at /login/password; each use is recorded and the admins are told.</span></span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="sm" loading={busy}>Save</Button>
+          <Button type="submit" size="sm" loading={busy} disabled={!ssoDirty}>Save</Button>
           {sso.configured && <a href="/auth/microsoft" className={buttonVariants({ size: "sm", variant: "outline" })}>Try Microsoft sign-in</a>}
-          {sso.configured && <Button type="button" size="sm" variant="ghost" className="ml-auto text-bad hover:text-destructive" disabled={busy}
+          {sso.configured && <Button type="button" size="sm" variant="ghost" className={cn("ml-auto", danger)} disabled={busy}
             onClick={() => send("/settings/sso", { clear: "1" }, "Remove Microsoft sign-in? Staff go back to passwords; anyone who only ever used Microsoft will need a password reset.")}>Remove</Button>}
         </div>
       </form>
@@ -492,13 +506,13 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
           {name !== t.name && <Button type="submit" size="sm" variant="outline" loading={busy}>Rename</Button>}
         </form>
         <span className="whitespace-nowrap text-[12px] text-muted-foreground">{t.projects} project{t.projects === 1 ? "" : "s"}</span>
-        <button type="button" disabled={busy || onlyOne} onClick={() => send(`${base}/delete`, {}, `Delete template ${t.name}? Projects keep their own copies.`)} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-destructive disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
+        <button type="button" disabled={busy || onlyOne} onClick={() => send(`${base}/delete`, {}, `Delete template ${t.name}? Rollouts keep their own copies.`)} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-destructive disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
       </div>
       <StageListEditor key={stageRowsKey(t.stages)} rows={t.stages} busy={busy} send={send} label={t.name}
         paths={{ add: `${base}/stages/add`, rename: (s) => `${base}/stages/${s}/rename`, move: (s) => `${base}/stages/${s}/move`, remove: (s) => `${base}/stages/${s}/delete`, sla: `${base}/sla` }} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => send(`${base}/sla/from-measured`, {}, "Overwrite this template's SLAs with measured averages?")}>Set SLAs from measured averages</Button>
-        <span className="text-[12px] text-muted-foreground">From projects created with this template. Applies to new projects; existing ones keep their own.</span>
+        <span className="text-[12px] text-muted-foreground">From rollouts created with this template. Applies to new rollouts; existing ones keep their own.</span>
       </div>
     </div>
   )
@@ -542,7 +556,7 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
             ))}
           </tbody>
         </table></div>
-        <Button type="submit" size="sm" className="mt-3" loading={busy}>Save alert settings</Button>
+        <Button type="submit" size="sm" className="mt-3" loading={busy} disabled={JSON.stringify(rows) === JSON.stringify(data.alerts)}>Save alert settings</Button>
       </form>
     </Panel>
   )
@@ -561,14 +575,14 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
       )}
       {editing && (
         <form onSubmit={(e) => { e.preventDefault(); void send("/settings/azure-app", app).then((r) => { if (r) setApp({ ...app, client_secret: "" }) }) }} className="mb-3 grid grid-cols-1 max-w-md gap-2">
-          {!m.oauth_client_configured && <p className="text-[13px] text-muted-foreground">Enter the details of the app registration made once in the Azure portal (Microsoft Entra ID → App registrations): its tenant ID, client ID and a client secret.</p>}
+          {!m.oauth_client_configured && <p className="text-[13px] text-muted-foreground">Enter the details of the app registration made once in the Azure portal (Microsoft Entra ID › App registrations): its tenant ID, client ID and a client secret.</p>}
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[13px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[13px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[13px]" /></label>
           <div className="flex gap-2">
-            <Button type="submit" size="sm" loading={busy} disabled={!app.client_id || !app.tenant_id}>Save</Button>
+            <Button type="submit" size="sm" loading={busy} disabled={!app.client_id || !app.tenant_id || (app.client_id === (m.azure_app.client_id ?? "") && app.tenant_id === (m.azure_app.tenant_id ?? "") && !app.client_secret)}>Save</Button>
             {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>}
-            {m.oauth_client_configured && <Button type="button" size="sm" variant="outline" className="ml-auto text-bad hover:text-destructive" disabled={busy} onClick={() => send("/settings/azure-app/clear", {}, "Clear Azure credentials and disconnect Microsoft 365?")}>Clear & disconnect</Button>}
+            {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" className={cn("ml-auto", danger)} disabled={busy} onClick={() => send("/settings/azure-app/clear", {}, "Clear Azure credentials and disconnect Microsoft 365?")}>Clear & disconnect</Button>}
           </div>
         </form>
       )}
@@ -581,7 +595,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
       {m.connected && (
         <div className="mt-2 grid grid-cols-1 gap-2 text-[13px]">
           <p>Connected as <span className="font-medium">{m.connected_email ?? "—"}</span> · Teams channel <span className="font-medium">{m.channel_id ? `${m.team_name} / ${m.channel_name}` : "not selected yet"}</span>
-            <button type="button" disabled={busy} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-bad hover:underline">Disconnect</button></p>
+            <button type="button" disabled={busy} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-destructive hover:underline">Disconnect</button></p>
           {m.teams_error && <p className="text-[13px] text-destructive">Could not load teams: {m.teams_error}</p>}
           <div className="flex flex-wrap items-center gap-2">
             <select value={teamId} onChange={(e) => onTeam(e.target.value)} aria-label="Microsoft Teams team" className={fieldAuto}>

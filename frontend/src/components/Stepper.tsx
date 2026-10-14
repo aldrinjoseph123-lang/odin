@@ -16,7 +16,23 @@ const CURRENT: Record<FlowState, string> = {
   overdue: "bg-bad-line",
 }
 
-export function Stepper({ stages, index, state, selected, columns }: { stages: string[]; index: number; state: FlowState; selected: boolean; columns?: string[] }) {
+// `compact` (a 96 px slot: My work, a person, the projects table) draws one
+// continuous bar instead, so ten or more stages never shrink to slivers.
+export function Stepper({ stages, index, state, selected, columns, compact }: { stages: string[]; index: number; state: FlowState; selected: boolean; columns?: string[]; compact?: boolean }) {
+  if (compact) {
+    const n = Math.max(stages.length, 1), label = `Stage ${index + 1} of ${stages.length}: ${stages[index]}`
+    return (
+      <Tooltip>
+        <TooltipTrigger render={<span />} role="img" aria-label={label} className="relative flex h-4 items-center before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']">
+          <span className="flex h-1.5 w-full overflow-hidden rounded-full bg-input/70">
+            <span className="h-full bg-ok-line" style={{ width: `${(index / n) * 100}%` }} />
+            <span className={cn("h-full rounded-r-full", CURRENT[state])} style={{ width: `${100 / n}%` }} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    )
+  }
   const shared = columns && columns.length > 1 ? columns : null
   const col = (i: number) => (shared ? Math.max(0, shared.indexOf(stages[i])) : i) + 1
   return (

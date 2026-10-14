@@ -121,7 +121,7 @@ AREA_SECTION = {"ai_schedule": "ai"}
 @permission_required("manage_settings")
 def settings_map_page():
     """The Odin System Map (docs/system-map.html, regenerated with every change
-    and shipped in the image), framed by Settings → System map & changes. The
+    and shipped in the image), framed by Settings › System map & changes. The
     one page Odin lets itself frame: same origin only, admins only."""
     import os
     from flask import send_file
@@ -346,7 +346,7 @@ def settings_stage_delete(template_id, stage_id):
     gone = next((s["name"] for s in rows if s["id"] == stage_id), None)
     error = stage_ops.delete_stage("template", template_id, stage_id)
     if not error and gone == SIGNOFF_STAGE and len(names) >= 2 and names[-2] == gone:   # R14: allowed, but said
-        flash(f"Removed '{gone}': new projects from this template send their sign-off from the stage before {names[-1]} instead")
+        flash(f"Removed '{gone}': new rollouts from this template send their sign-off from the stage before {names[-1]} instead")
     return _template_change("delete_template_stage", error, str(stage_id))
 
 

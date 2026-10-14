@@ -9,7 +9,7 @@ from markupsafe import escape
 
 import graph
 from constants import SIGNOFF_DOC_CATEGORY
-from core import admin_required, app, json_body, external_url, login_required, permission_required, project_allows, project_role_required
+from core import admin_required, app, json_body, external_url, login_required, permission_required, project_allows, project_role_required, sees_po
 from db import get_db, get_setting
 from routes.projects import load_project, save_document
 from policies import policy
@@ -22,6 +22,13 @@ from spa import spa_index
 
 def _staff():
     return session.get("kind") != "external"
+
+
+def _partner_cut(project_id, row):
+    """A partner or contractor reads a sign-off without the PO, the partner
+    channel, the signatory's email and the signatures, unless they are the one
+    asked to sign it (they sign the whole document). Staff and the Customer read it all."""
+    return not sees_po(project_id) and row["signer_id"] != session.get("user_id")
 
 
 def _link(project_id):
@@ -63,7 +70,7 @@ def api_signoff(project_id):
         # why it cannot be sent from this stage yet (None: it can), shown before anyone fills the form in (sim roles-8)
         "not_yet": signoff.sendable(project) if manage and not st["complete"] else None,
         "versions": [{"version": r["version"], "status": r["status"], "created_at": r["created_at"], "created_by": r["created_by"]} for r in rows],
-        "current": signoff.view(row, _staff()) if row else None,
+        "current": signoff.view(row, _staff(), _partner_cut(project_id, row)) if row else None,
         "can": {
             "manage": manage and not st["complete"],
             "sign": bool(row) and row["status"] == "sent" and row["signer_id"] == me,
@@ -89,7 +96,7 @@ def _scope_locked(project_id):
     """Why the scope cannot change now, or None: it is final once signed off,
     and frozen while a version is out for signature (L12) — withdraw it first."""
     if signoff.completed(project_id):
-        return "The project is signed off; its scope is final"
+        return "The rollout is signed off; its scope is final"
     last = signoff.latest(project_id)
     if last and last["status"] in signoff.OPEN:
         return f"Version {last['version']} of the sign-off is out for signature; withdraw it before changing the scope"
@@ -235,7 +242,7 @@ def api_signoff_countersign(project_id, version):
     audit_log("signoff_countersign", "project", project_id, project["name"], f"v{version} countersigned by {session['user_name']}")
     ids = [r[0] for r in get_db().execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,))]
     notify_users(ids, "approval", project_id, f"{project['name']} is signed off",
-                 f"<p>The sign-off for <b>{escape(project['name'])}</b> is signed by the customer and countersigned. The project can now close.</p>",
+                 f"<p>The sign-off for <b>{escape(project['name'])}</b> is signed by the customer and countersigned. The rollout can now close.</p>",
                  exclude_user_id=session["user_id"], link=_link(project_id))
     _completed_mail(project, row)
     return jsonify(ok=True)
@@ -254,7 +261,7 @@ def api_signoff_reject(project_id, version):
         return _bad(e)
     audit_log("signoff_reject", "project", project_id, project["name"], f"v{version} not accepted")
     notify_users([project["owner_id"], row["counter_id"]], "approval", project_id, f"{project['name']}: the sign-off was not accepted",
-                 f"<p>{escape(session['user_name'])} did not sign version {version}: {escape(_body().get('comment') or '')}</p><p>It is now an open issue on the project; send a new version once it is resolved.</p>",
+                 f"<p>{escape(session['user_name'])} did not sign version {version}: {escape(_body().get('comment') or '')}</p><p>It is now an open issue on the rollout; send a new version once it is resolved.</p>",
                  exclude_user_id=session["user_id"], link=_link(project_id))
     return jsonify(ok=True)
 
@@ -345,7 +352,7 @@ def api_signoff_upload(project_id, version):
     audit_log("signoff_upload", "project", project_id, project["name"], f"v{version} signed copy {original}, signed by {name} on {signed_on}")
     ids = [r[0] for r in get_db().execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,))]
     notify_users(ids, "approval", project_id, f"{project['name']} is signed off",
-                 f"<p>The signed copy of the sign-off for <b>{escape(project['name'])}</b> was uploaded. The project can now close.</p>",
+                 f"<p>The signed copy of the sign-off for <b>{escape(project['name'])}</b> was uploaded. The rollout can now close.</p>",
                  exclude_user_id=session["user_id"], link=_link(project_id))
     return jsonify(ok=True)
 
@@ -374,5 +381,5 @@ def signoff_pdf(project_id):
     if row is None:
         abort(404)
     safe = file_stem(project["name"])
-    return Response(render(signoff.view(row, _staff())), mimetype="application/pdf",
+    return Response(render(signoff.view(row, _staff(), _partner_cut(project_id, row))), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{safe}-signoff-v{row["version"]}.pdf"'})

@@ -132,7 +132,7 @@ def completed(project_id):
                             (project_id, *DONE)).fetchone()
 
 
-GATE_MESSAGE = "The project closes once the sign-off is signed by the customer and countersigned. Send it from the Sign-off page, or ask an admin to waive it."
+GATE_MESSAGE = "The rollout closes once the sign-off is signed by the customer and countersigned. Send it from the Sign-off page, or ask an admin to waive it."
 
 
 def gate(project, new_stage, terminal=None):
@@ -239,10 +239,10 @@ def sendable(project):
     project cannot jump from its first stage to Closed (D5/L22)."""
     names = get_stage_names(project["id"])
     if len(names) < 2:
-        return "The project needs a stage before its finish to send a sign-off from"
+        return "The rollout needs a stage before its finish to send a sign-off from"
     if project["stage"] in (names[-2], SIGNOFF_STAGE) and project["stage"] != names[-1]:
         return None
-    return f"Send the sign-off once the project is in {names[-2]}, the stage before {names[-1]}"
+    return f"Send the sign-off once the rollout is in {names[-2]}, the stage before {names[-1]}"
 
 
 def send(project, body, author, commit=True):
@@ -251,7 +251,7 @@ def send(project, body, author, commit=True):
     the same transaction)."""
     pid = project["id"]
     if completed(pid):
-        raise ValueError("This project is already signed off")
+        raise ValueError("This rollout is already signed off")
     why = sendable(project)
     if why:
         raise ValueError(why)
@@ -259,7 +259,7 @@ def send(project, body, author, commit=True):
     signer = next((s for s in signers if s["id"] == body.get("signer_id")), None)
     counter = next((s for s in counters if s["id"] == body.get("counter_id")), None)
     if not signer:
-        raise ValueError("Pick the customer's signatory: a Customer or Reseller contact on the project with an email address")
+        raise ValueError("Pick the customer's signatory: a Customer or Reseller contact on the rollout with an email address")
     if not counter:
         raise ValueError("Pick who countersigns for us")
     items = scope(pid)
@@ -430,7 +430,7 @@ def waive(project, reason, author):
     if len(reason) < 10:
         raise ValueError("Give the reason in a sentence")
     if completed(project["id"]):
-        raise ValueError("This project is already signed off")
+        raise ValueError("This rollout is already signed off")
     early = sendable(project)   # a waiver stands in for the signatures, not for the stages before them (sim L-12)
     if early:
         raise ValueError(early.replace("Send the sign-off", "Waive the sign-off"))
@@ -449,8 +449,11 @@ def waive(project, reason, author):
     return get(project["id"], version)
 
 
-def view(row, staff):
-    """A version as the page shows it. The signing record (IP, browser) is for staff."""
+def view(row, staff, partner_cut=False):
+    """A version as the page shows it. The signing record (IP, browser) is for staff.
+    `partner_cut`: a partner or contractor who is not the named signatory reads it
+    without the PO, the partner channel, the signatory's email or the drawn
+    signatures (core.sees_po: the PO is ours and the customer's; review P1-1)."""
     d = {k: row[k] for k in ("version", "status", "content_hash", "created_by", "created_at", "signer_name", "signer_title", "signer_email", "signed_at",
                              "counter_name", "counter_title", "counter_signed_at", "reject_comment", "rejected_at", "document_id", "waiver_reason",
                              "waived_by", "completed_at", "signer_id", "counter_id", "link_issued_by", "link_issued_at")}
@@ -460,4 +463,11 @@ def view(row, staff):
     d["intact"] = intact(row)
     if staff:
         d.update(signed_ip=row["signed_ip"], signed_agent=row["signed_agent"], counter_ip=row["counter_ip"], counter_agent=row["counter_agent"])
+    if partner_cut:
+        for k in ("po_number", "po_date", "partner_name"):
+            d["content"].get("project", {}).pop(k, None)
+        if isinstance(d["content"].get("signer"), dict):
+            d["content"]["signer"] = {k: v for k, v in d["content"]["signer"].items() if k != "email"}
+        d["signer_email"] = None
+        d["signature"] = d["counter_signature"] = None
     return d

@@ -32,7 +32,7 @@ GOOD_STATES = ("passed", "slow")
 @dataclass(frozen=True)
 class AIFeature:
     key: str                        # stable id, used in settings and history
-    label: str                      # what admins see in Settings → AI
+    label: str                      # what admins see in Settings › AI
     description: str                # one sentence: what it does for whom
     prompt: str                     # file in services/ai/prompts, versioned in its name (weekly_words.v1.txt)
     schema: dict                    # the JSON form the answer must take
@@ -215,7 +215,7 @@ def gate(key, db=None):
     """None when the feature may run now, else the reason it may not."""
     st = status(db)
     if st["state"] == "off":
-        return "AI is switched off (Settings → AI)"
+        return "AI is switched off (Settings › AI)"
     if st["state"] != "up":
         return "The AI server is not answering"
     if st.get("stale"):

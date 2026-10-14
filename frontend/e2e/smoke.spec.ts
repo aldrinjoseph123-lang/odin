@@ -8,11 +8,12 @@ const PAGES: { path: string; h1: RegExp; who?: Who[] }[] = [
   { path: "/dashboard", h1: /Good (morning|afternoon|evening)/ },
   { path: "/board", h1: /Active rollouts/ },
   { path: "/board?view=calendar", h1: /Calendar/ },
-  { path: "/board?view=kibana", h1: /Kibana/ },
+  { path: "/board?view=kanban", h1: /Active rollouts/ },
+  { path: "/board?view=gantt", h1: /Active rollouts/ },
   { path: "/my-work", h1: /My work/ },
   { path: "/people", h1: /People/ },
   { path: "/people/2", h1: /./ },
-  { path: "/projects", h1: /Projects/ },
+  { path: "/projects", h1: /Rollouts/ },
   { path: "/projects/1", h1: /EDR Rollout - Globex/ },
   { path: "/projects/new", h1: /New project/, who: ["admin", "member"] },
   { path: "/projects/1/edit", h1: /Edit/, who: ["admin"] },   // editing needs a role on the project
@@ -70,7 +71,7 @@ test("@smoke the header: every link lands, every button does something", async (
   const errors = watch(page)
   await signIn(page, "admin")
   // the logo and the nav pills
-  for (const [label, path] of [["Dashboard", "/dashboard"], ["Flow", "/board"], ["My work", "/my-work"], ["Projects", "/projects"], ["People", "/people"], ["Cycle time", "/analytics"], ["Alerts", "/alerts"], ["Settings", "/settings/general"]]) {
+  for (const [label, path] of [["Dashboard", "/dashboard"], ["Flow", "/board"], ["My work", "/my-work"], ["Rollouts", "/projects"], ["People", "/people"], ["Cycle time", "/analytics"], ["Alerts", "/alerts"], ["Settings", "/settings/general"]]) {
     await page.getByRole("navigation").getByRole("link", { name: new RegExp(`^${label}`) }).click()
     await expect(page, label).toHaveURL(new RegExp(path.replace("?", "\\?")))
   }
@@ -79,7 +80,7 @@ test("@smoke the header: every link lands, every button does something", async (
   // the current pill is filled
   await expect(page.getByRole("navigation").getByRole("link", { name: /^Dashboard/ })).toHaveAttribute("aria-current", /page/).catch(() => { /* aria-current is optional here; the fill is checked visually */ })
   // search opens the palette and Esc closes it
-  await page.getByRole("button", { name: "Search projects and tasks" }).click()
+  await page.getByRole("button", { name: "Search rollouts and tasks" }).click()
   const palette = page.getByRole("dialog").or(page.getByPlaceholder(/Search|Jump/))
   await expect(palette.first()).toBeVisible()
   await page.keyboard.press("Escape")

@@ -114,6 +114,7 @@ def integrations_set_channel():
 def settings_integrations():
     set_setting("notify_email_enabled", "1" if request.form.get("notify_email_enabled") == "on" else "0")
     set_setting("notify_teams_enabled", "1" if request.form.get("notify_teams_enabled") == "on" else "0")
+    set_setting("notify_teams_chat_enabled", "1" if request.form.get("notify_teams_chat_enabled") == "on" else "0")
     set_setting(
         "onedrive_mirror_uploads_enabled",
         "1" if request.form.get("onedrive_mirror_uploads_enabled") == "on" else "0",
@@ -133,20 +134,65 @@ def settings_test_email():
     if not user or not user["email"]:
         flash("Set your email on the Account page first", "error")
         return redirect(url_for("settings"))
+    from policies import policy
+    sender = next(iter(policy("mail_from")), None) or "the connected mailbox"   # Settings › Notifications › Send email as
     ok, error = graph.send_mail(
-        user["email"], "Odin test notification", "This is a test email from Odin."
+        user["email"], "Odin test notification", f"<p>This is a test email from Odin, sent as {sender}.</p>"
     )
-    flash("Test email sent" if ok else f"Test email failed: {error}", "message" if ok else "error")
+    flash(f"Test email sent to {user['email']} as {sender}" if ok else f"Test email failed: {error}", "message" if ok else "error")
     return redirect(url_for("settings"))
 
 
 @app.route("/settings/integrations/test-teams", methods=["POST"])
 @permission_required("manage_integrations")
 def settings_test_teams():
+    """A card from the Odin PMS Teams app to the admin who asked, and a post in the chosen channel when one is set."""
     audit_log("test_teams")
-    ok, error = graph.send_teams_message("<b>Odin test notification</b><br>This is a test message from Odin.")
-    flash("Test Teams message sent" if ok else f"Test Teams message failed: {error}", "message" if ok else "error")
+    me = get_db().execute("SELECT email FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    results = []
+    if me and me["email"]:
+        from services import teams_bot
+        ok, error = teams_bot.send(me["email"], "Odin test notification", "This is how Odin's notifications reach you in Teams.")
+        results.append(f"Odin PMS to {me['email']}: " + ("sent" if ok else f"failed ({error})"))
+    else:
+        results.append("Chat: add your email address on My account first")
+    if graph.teams_configured():
+        ok, error = graph.send_teams_message("<b>Odin test notification</b><br>This is a test message from Odin.")
+        results.append("Channel: " + ("posted" if ok else f"failed ({error})"))
+    flash(" · ".join(results), "message" if all("failed" not in r and "first" not in r for r in results) else "error")
     return redirect(url_for("settings"))
+
+
+@app.route("/api/teams/messages", methods=["POST"])
+def teams_bot_inbound():
+    """The Odin PMS app's messaging endpoint (set on the Azure Bot). Odin only
+    sends; installs and anything else Teams posts here are answered and ignored,
+    so nothing from this unauthenticated door is read or stored."""
+    return "", 200
+
+
+@app.route("/settings/teams-app.zip")
+@permission_required("manage_integrations")
+def settings_teams_app():
+    """The Odin PMS Teams app package for a Teams admin to upload: the manifest
+    (bot id = the Azure app's id) and the two icons from static/teams."""
+    import io
+    import zipfile
+    from flask import send_file
+    from policies import policy
+    from services import teams_bot
+    if not teams_bot.configured() or not policy("public_url").startswith("https://"):
+        flash("Save the Azure app (id, secret, tenant) and an https public address under Settings › General first", "error")
+        return redirect(url_for("settings_section", section="integrations"))
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    version = open(os.path.join(here, "VERSION")).read().strip()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("manifest.json", teams_bot.manifest(version, policy("public_url")))
+        for name in ("color.png", "outline.png"):
+            z.write(os.path.join(here, "static", "teams", name), name)
+    buf.seek(0)
+    return send_file(buf, mimetype="application/zip", as_attachment=True, download_name="odin-pms-teams-app.zip")
 
 
 @app.route("/settings/integrations/backup-now", methods=["POST"])

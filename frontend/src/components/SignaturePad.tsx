@@ -1,4 +1,6 @@
 import { useRef, useState, type PointerEvent } from "react"
+import { Segmented } from "@/components/Segmented"
+import { fieldAuto } from "@/lib/ui"
 import { Eraser } from "lucide-react"
 import type { Signature } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -41,10 +43,7 @@ export function SignaturePad({ value, onChange, typedDefault }: { value: Signatu
   return (
     <div>
       <div className="mb-2 flex items-center gap-2">
-        <span className="flex rounded-full bg-muted p-1" role="group" aria-label="How to sign">
-          {(["draw", "type"] as const).map((m) => <button key={m} type="button" aria-pressed={mode === m} onClick={() => setKind(m)}
-            className={cn("h-6 rounded-full px-3 text-[12px]", mode === m ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{m === "draw" ? "Draw" : "Type"}</button>)}
-        </span>
+        <Segmented label="How to sign" value={mode} onChange={setKind} options={[{ value: "draw", label: "Draw" }, { value: "type", label: "Type" }]} />
         {mode === "draw" && strokes.length > 0 && <button type="button" onClick={() => onChange(null)} className="ml-auto inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground"><Eraser className="h-3.5 w-3.5" /> Clear</button>}
       </div>
       {mode === "draw" ? (
@@ -58,7 +57,7 @@ export function SignaturePad({ value, onChange, typedDefault }: { value: Signatu
       ) : (
         <div className="grid grid-cols-1 gap-2">
           <input aria-label="Typed signature" maxLength={80} value={value?.kind === "typed" ? value.text : ""} onChange={(e) => onChange(e.target.value ? { kind: "typed", text: e.target.value } : null)}
-            className="h-9 rounded-md border border-input bg-background px-2 text-[14px]" />
+            className={cn(fieldAuto, "h-9 text-[14px]")} />
           <div className="flex h-20 items-center rounded-lg border border-dashed border-input bg-card px-4"><SignatureView sig={value} /></div>
         </div>
       )}

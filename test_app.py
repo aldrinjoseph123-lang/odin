@@ -1,5 +1,6 @@
 import io
 import json
+import time
 import os
 import re
 import secrets
@@ -8,7 +9,7 @@ import tempfile
 from datetime import datetime
 import unittest
 from datetime import date, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from flask.testing import FlaskClient
 
@@ -982,7 +983,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual([t["name"] for t in c.get("/api/settings").get_json()["templates"]][-1], "SIEM")
         r = c.post("/settings/integrations", data={"notify_email_enabled": "on"}, headers=h).get_json()
         self.assertEqual(r["messages"], ["Saved"])
-        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "onedrive_mirror_uploads_enabled": False, "guest_links_enabled": False})
+        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "notify_teams_chat_enabled": False, "onedrive_mirror_uploads_enabled": False, "guest_links_enabled": False})
         m, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
         self.assertEqual(m.get("/api/settings").status_code, 403)
 
@@ -1516,6 +1517,87 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertIn("<p>Stage moved</p>", body)
         self.assertIn("BY PROTECT", body); self.assertIn("EVERY PROJECT. ON WATCH.", body)
 
+    def test_mail_goes_out_as_the_alias_and_falls_back_to_the_mailbox(self):
+        import graph
+        self._set_policy(mail_from="odin-pms@protect24x7.com")
+        with self.raw_db() as db:   # email on, so a refusal is worth telling the admins
+            db.execute("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"); db.commit()
+        with app_module.app.app_context(), patch("graph.is_connected", return_value=True), patch("graph._headers", return_value=({}, None)), \
+             patch("graph.requests.post") as post:
+            post.return_value.status_code = 202
+            self.assertEqual(graph.send_mail("a@example.com", "Hi", "<p>x</p>"), (True, None))
+            self.assertEqual(post.call_args.kwargs["json"]["message"]["from"]["emailAddress"]["address"], "odin-pms@protect24x7.com")
+            # the tenant refuses the alias: one retry from the mailbox, and the admins hear of it
+            refused, sent = MagicMock(status_code=403, text="ErrorSendAsDenied"), MagicMock(status_code=202, text="")
+            post.reset_mock(); post.side_effect = [refused, sent]
+            self.assertEqual(graph.send_mail("a@example.com", "Hi", "<p>x</p>"), (True, None))
+            self.assertEqual(post.call_count, 2)
+            self.assertNotIn("from", post.call_args.kwargs["json"]["message"])
+        with self.raw_db() as db:
+            bell = [r[0] for r in db.execute("SELECT title FROM notifications")]
+        self.assertIn("Odin's email went out from the mailbox, not its alias", bell)
+
+    def test_every_notification_reaches_staff_through_the_odin_pms_app(self):
+        from services.notifications import notify_users
+        staff = self._make_user("tina", "Member")
+        partner = self._make_user("pat", "Member")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email = 'tina@corp.example' WHERE id = ?", (staff,))
+            db.execute("UPDATE users SET email = 'pat@partner.example', kind = 'external' WHERE id = ?", (partner,))
+            db.execute("INSERT INTO settings (key, value) VALUES ('notify_teams_chat_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+            db.commit()
+        sent = []
+        fake = lambda e, t, x, link=None: (sent.append((e, t, x, link)), (True, None))[1]   # noqa: E731
+        with app_module.app.test_request_context(), patch("services.teams_bot.send", side_effect=fake):
+            notify_users([staff, partner], "stage", None, "Stage moved", "<p>Scoping to Deployment</p>", link="/board")
+        self.assertEqual([(e, t, x) for e, t, x, _ in sent], [("tina@corp.example", "Stage moved", "Scoping to Deployment")])   # partners: email only
+        # the person's topic choices cover Teams too
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET email_off = 'stage' WHERE id = ?", (staff,)); db.commit()
+        sent.clear()
+        with app_module.app.test_request_context(), patch("services.teams_bot.send", side_effect=fake):
+            notify_users([staff], "stage", None, "Stage moved", "<p>x</p>")
+        self.assertEqual(sent, [])
+
+    def test_odin_pms_opens_the_conversation_once_and_reopens_a_gone_one(self):
+        from services import teams_bot
+        def reply(code, body=None):
+            return MagicMock(status_code=code, text="", json=MagicMock(return_value=body or {}))
+        teams_bot._token.update(value="bot-token", until=time.time() + 3600)
+        with patch("services.teams_bot.configured", return_value=True), patch("graph.user_id", return_value=("aad-tina", None)), \
+             patch("graph._client_id", return_value="app-1"), patch("graph._tenant", return_value="tenant-1"), \
+             patch("services.teams_bot.requests.post", side_effect=[reply(201, {"id": "conv-1"}), reply(201), reply(201), reply(404), reply(201, {"id": "conv-2"}), reply(201)]) as post:
+            self.assertEqual(teams_bot.send("Tina@corp.example", "Stage moved", "x", "https://odin.example/board"), (True, None))
+            self.assertEqual(teams_bot.send("tina@corp.example", "Again", "y"), (True, None))   # the kept conversation: one call
+            self.assertEqual(teams_bot.send("tina@corp.example", "Gone", "z"), (True, None))    # uninstalled and back: reopened once
+        urls = [c.args[0].split("/teams", 1)[1] for c in post.call_args_list]
+        self.assertEqual(urls, ["/v3/conversations", "/v3/conversations/conv-1/activities", "/v3/conversations/conv-1/activities",
+                                "/v3/conversations/conv-1/activities", "/v3/conversations", "/v3/conversations/conv-2/activities"])
+        opened = post.call_args_list[0].kwargs["json"]
+        self.assertEqual((opened["bot"]["id"], opened["members"], opened["tenantId"]), ("28:app-1", [{"id": "aad-tina"}], "tenant-1"))
+        card = post.call_args_list[1].kwargs["json"]["attachments"][0]["content"]
+        self.assertEqual(card["body"][0]["text"], "Stage moved"); self.assertEqual(card["actions"][0]["url"], "https://odin.example/board")
+
+    def test_teams_app_package_and_inbound_address(self):
+        import zipfile, io as _io
+        c, _ = self._api_client()
+        self._set_policy(public_url="https://odin.example.com")
+        with patch("services.teams_bot.configured", return_value=True), patch("graph._client_id", return_value="11111111-2222-3333-4444-555555555555"):
+            r = c.get("/settings/teams-app.zip")
+        z = zipfile.ZipFile(_io.BytesIO(r.data))
+        self.assertEqual(sorted(z.namelist()), ["color.png", "manifest.json", "outline.png"])
+        m = json.loads(z.read("manifest.json"))
+        self.assertEqual((m["name"]["short"], m["bots"][0]["botId"], m["bots"][0]["isNotificationOnly"], m["validDomains"]),
+                         ("Odin PMS", "11111111-2222-3333-4444-555555555555", True, ["odin.example.com"]))
+        # Teams posts installs here without a CSRF token or a session: answered, nothing read
+        self.assertEqual(app_module.app.test_client().post("/api/teams/messages", json={"type": "conversationUpdate"}).status_code, 200)
+
+    def test_send_email_as_takes_one_address(self):
+        c, csrf = self._api_client()
+        r = c.post("/settings/policies/notifications", data={"mail_from": "a@x.com, b@x.com", "digest_time": "08:00", "teams_webhook_url": ""},
+                   headers={"X-CSRF-Token": csrf, "Accept": "application/json"})
+        self.assertIn("one email address", r.get_data(as_text=True))
+
     # ---- appearance and profile pictures --------------------------------------
 
     def test_appearance_is_per_user_and_validated(self):
@@ -1575,7 +1657,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # every setting sits on a titled card
         everything = c.get("/api/settings").get_json()["policies"]
         self.assertEqual([p["key"] for p in everything if not p["group"]], [])
-        self.assertEqual({p["group"] for p in everything if p["area"] == "workflow"}, {"Defaults", "Stage timing", "Health colours", "Sign-off", "Customer approval"})
+        self.assertEqual({p["group"] for p in everything if p["area"] == "workflow"}, {"Defaults", "Stage timing", "Plan health", "Sign-off", "Customer approval"})
         # only admins, and only known areas
         self.assertEqual(c.post("/settings/policies/nope", data={}, headers=h).status_code, 404)
 
@@ -2379,7 +2461,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual(db.execute("SELECT stage FROM status_notes WHERE project_id=1 ORDER BY id DESC LIMIT 1").fetchone()[0], "Order received")
         # cannot delete the stage the project is in
         self.client.post(f"/projects/1/stages/{first['id']}/delete")
-        self.assertIn("the project is in it", flashed(self.client))
+        self.assertIn("the rollout is in it", flashed(self.client))
         # a stage cannot be moved through the other project's route
         self.assertEqual(self.client.post(f"/projects/2/stages/{first['id']}/rename", data={"name": "x"}, follow_redirects=True).status_code, 200)
         with self.raw_db() as db:
@@ -2549,6 +2631,41 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(data["counts"]["overdue"], 1)
         self.assertEqual(app_module.app.test_client().get("/api/flow").status_code, 401)
 
+    def test_api_flow_tells_the_kanban_where_each_card_may_go(self):
+        self.new_project(name="Board", client="C", start_date="2026-09-01")
+        with self.raw_db() as db:
+            names = [r["name"] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position")]
+        c, _ = self._api_client()
+        row = c.get("/api/flow").get_json()["rows"][0]
+        self.assertEqual((row["next_stage"], row["can_move"], row["signoff_needed"], row["start_date"]), (names[1], True, False, "2026-09-01"))
+        # one stage before the last: the drop waits for the signed sign-off (signoff.gate)
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET stage = ? WHERE id = 1", (names[-2],)); db.commit()
+        row = c.get("/api/flow").get_json()["rows"][0]
+        self.assertEqual((row["next_stage"], row["signoff_needed"]), (names[-1], True))
+        # a Viewer sees the board but moves nothing
+        self._make_user("vic", "Viewer")
+        with self.raw_db() as db:
+            vid = db.execute("SELECT id FROM users WHERE username = 'vic'").fetchone()["id"]
+            db.execute("INSERT INTO project_participants (project_id, user_id, role, added_at) VALUES (1, ?, 'Coordinator', datetime('now'))", (vid,)); db.commit()
+        v, _ = self._api_client("vic", STRONG_PASSWORD)
+        self.assertFalse(v.get("/api/flow").get_json()["rows"][0]["can_move"])
+
+    def test_api_flow_plan_feeds_the_gantt(self):
+        self.new_project(name="Plan me", client="C", start_date="2026-09-01", target_end_date="2026-12-01")
+        c, csrf = self._api_client()
+        d = c.get("/api/flow/plan").get_json()
+        row = d["rows"][0]
+        self.assertEqual((row["name"], row["can_edit"], row["baselined"]), ("Plan me", True, False))
+        self.assertGreater(len(row["stages"]), 2); self.assertIn("suggested_start", row["stages"][0]); self.assertIn("forecast_end", row["stages"][0])
+        self.assertIn("working", d["calendar"])
+        # a drag saves through the plan's own route: the first save is the baseline
+        s0 = row["stages"][1]
+        r = c.put("/api/projects/1/plan", json={"stages": [{"id": s0["id"], "plan_start": s0["suggested_start"], "plan_end": s0["suggested_end"]}]}, headers={"X-CSRF-Token": csrf}).get_json()
+        self.assertTrue(r["baselined"])
+        self.assertTrue(c.get("/api/flow/plan").get_json()["rows"][0]["baselined"])
+        self.assertEqual(app_module.app.test_client().get("/api/flow/plan").status_code, 401)
+
     def test_api_flow_orders_the_worst_first_inside_a_state_and_flags_idle(self):
         self.new_project(name="A little late", client="C", target_end_date="2025-06-01")
         self.new_project(name="Very late", client="C", target_end_date="2020-01-01")
@@ -2651,7 +2768,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(m.put("/api/dashboard/layout", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 200)
         self.assertEqual(m.put("/api/dashboard/layout/default", json={"layout": []}, headers={"X-CSRF-Token": mcsrf}).status_code, 403)
 
-    def test_calendar_and_kibana_views(self):
+    def test_calendar_view(self):
         from datetime import date as _date
         self.new_project(name="Late", client="C", target_end_date="2020-01-01")
         self.new_project(name="Soon", client="C", target_end_date=(_date.today() + timedelta(days=3)).isoformat())
@@ -2666,28 +2783,12 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         d = c.get(f"/api/calendar?month={month}").get_json()
         self.assertEqual(d["month"], month); self.assertLess(d["from"], _date.today().isoformat()); self.assertGreater(d["to"], _date.today().isoformat())
         self.assertEqual([t["title"] for t in d["tasks"]], ["Call"])
+        self.assertTrue(d["tasks"][0]["can_edit"]); self.assertNotIn("assignee_id", d["tasks"][0])   # the drag's flag, not who it is on
         self.assertEqual([t["name"] for t in d["targets"]], ["Soon"])          # the 2020 target is outside the range
         self.assertEqual({s["name"] for s in d["spans"]}, {"Soon"})           # Late's span ended in 2020
         self.assertEqual((d["moves"][0]["project"], d["moves"][0]["stage"]), ("Soon", stages[1]))
         self.assertEqual(c.get("/api/calendar?month=junk").get_json()["month"], month)
-        # Kibana: nothing until an admin lists dashboards; then the Flow page may frame their origins
-        k0 = c.get("/api/kibana").get_json()
-        self.assertEqual((k0["dashboards"], k0["can_manage"], k0["rollout"], [r["name"] for r in k0["rollouts"]]), ([], True, None, ["Late", "Soon"]))
-        self.assertIn("frame-src 'self' blob:", c.get("/board").headers["Content-Security-Policy"])   # only our own rendered PDFs
-        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
-        r = c.post("/settings/policies/integrations", data={"kibana_dashboards": "SOC | not-a-url"}, headers=h).get_json()
-        self.assertIn('each line as "Name | https://address"', r["messages"][0])
-        r = c.post("/settings/policies/integrations", data={"kibana_dashboards": "SOC overview | https://kibana.example.com/app/dashboards#/view/abc?embed=true&_g=(time:(from:now-7d))\n\n Threats | https://kibana.example.com/app/dashboards#/view/def "}, headers=h).get_json()
-        self.assertEqual(r["messages"], ["Saved"])
-        self.assertEqual([x["name"] for x in c.get("/api/kibana").get_json()["dashboards"]], ["SOC overview", "Threats"])
-        # a placeholder takes the chosen rollout's values; the picker lists the active rollouts
-        c.post("/settings/policies/integrations", data={"kibana_dashboards": "Per client | https://kibana.example.com/app/dashboards#/view/x?_a=(query:(query:'client:{client} and po:{po}'))"}, headers=h)
-        k = c.get("/api/kibana?rollout=2").get_json()
-        self.assertEqual(k["rollout"], 2); self.assertEqual([r["name"] for r in k["rollouts"]], ["Late", "Soon"])
-        self.assertTrue(k["dashboards"][0]["per_rollout"]); self.assertIn("client:C and", k["dashboards"][0]["url"].replace("%20", " "))
-        self.assertIn("{client}", c.get("/api/kibana").get_json()["dashboards"][0]["url"])   # nothing chosen: shown as typed
-        self.assertIn("frame-src 'self' blob: https://kibana.example.com", c.get("/board").headers["Content-Security-Policy"])
-        self.assertNotIn("kibana.example.com", c.get("/projects").headers["Content-Security-Policy"])
+        self.assertEqual(c.get("/api/kibana").status_code, 404)   # removed 13 Oct 2026
 
     def test_my_work_people_and_a_note_to_a_colleague(self):
         from datetime import date as _date
@@ -2973,6 +3074,31 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             acts = [r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action LIKE 'signoff_%' ORDER BY id")]
         self.assertEqual(acts, ["signoff_send", "signoff_sign", "signoff_countersign"])
 
+    def test_signoff_is_cut_for_partners_who_are_not_the_signatory(self):
+        """Review P1-1: the PO, the partner channel, the signatory's email and the
+        signatures are the customer's and ours; a Contractor reads the rest."""
+        c, h, ann, _ = self._signoff_setup()
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET po_number = 'PO-SECRET-7', po_date = '2026-09-01' WHERE id = 1"); db.commit()
+        self._invite(1, "jane@vendor.example", "Contractor", "Jane")
+        c.post("/api/projects/1/scope", json={"title": "Sensors"}, headers=h)
+        item = c.get("/api/projects/1/scope").get_json()["items"][0]
+        c.put(f"/api/projects/1/scope/{item['id']}", json={"status": "delivered"}, headers=h)
+        self.assertEqual(c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1}, headers=h).status_code, 200)
+        e, eh = self._ext("ann@globex.example")
+        e.post("/api/projects/1/signoff/1/sign", json={"name": "Ann Reyes", "accept": True, "signature": self.DRAWN}, headers=eh)
+        j, _ = self._ext("jane@vendor.example")
+        cur = j.get("/api/projects/1/signoff").get_json()["current"]
+        self.assertNotIn("po_number", cur["content"]["project"]); self.assertNotIn("po_date", cur["content"]["project"])
+        self.assertIsNone(cur["signer_email"]); self.assertIsNone(cur["signature"]); self.assertNotIn("email", cur["content"]["signer"])
+        self.assertTrue(cur["intact"])   # the cut is the reader's copy; the stored document and its fingerprint are untouched
+        self.assertNotIn(b"PO-SECRET-7", j.get("/projects/1/signoff.pdf").data)
+        # the customer, and staff, read it all
+        full = e.get("/api/projects/1/signoff").get_json()["current"]
+        self.assertEqual(full["content"]["project"]["po_number"], "PO-SECRET-7"); self.assertIsNotNone(full["signature"])
+        self.assertEqual(c.get("/api/projects/1/signoff").get_json()["current"]["signer_email"], "ann@globex.example")
+        self.assertIn(b"PO-SECRET-7", e.get("/projects/1/signoff.pdf").data)   # so the PDF check above means something
+
     def test_signoff_link_by_hand_lands_the_signatory_on_the_document(self):
         c, h, ann, _ = self._signoff_setup()
         c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["Everything"]}, headers=h)
@@ -3129,7 +3255,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         both = lambda mode: len(c.get("/api/projects", query_string={"stage": stage, "delivery_mode": mode}).get_json()["rows"])   # noqa: E731  FN-13
         self.assertEqual((both("Distribution/MSSP"), both("Direct")), (1, 0))
         r = c.post("/api/signup-links", json={"label": "x", "role": "Member", "days": "soon"}, headers=h).get_json()              # FN-16
-        self.assertIn(r.get("error"), ("Days and uses are whole numbers", "Sign-up links are switched off (Settings → Sign-up & activity)"))
+        self.assertIn(r.get("error"), ("Days and uses are whole numbers", "Sign-up links are switched off (Settings › Sign-up & activity)"))
         # FN-7: a Contributor names the PM, who hears it in the bell
         eng = self._make_user("eng", "Contributor")
         e, ecsrf = self._api_client("eng", STRONG_PASSWORD)
@@ -3749,9 +3875,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="Tok", client="C")
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
-        msg = c.post("/settings/api-tokens", data={"name": "Power BI", "days": "30"}, headers=h).get_json()["messages"][0]
-        raw = msg.rsplit(": ", 1)[1]
+        made = c.post("/settings/api-tokens", data={"name": "Power BI", "days": "30"}, headers=h).get_json()
+        raw = made["token"]
         self.assertTrue(raw.startswith("odin_"))
+        self.assertNotIn(raw, " ".join(made["messages"]))   # the secret is never a toast (review P1-2)
         anon = app_module.app.test_client()
         auth = {"Authorization": f"Bearer {raw}"}
         self.assertEqual([p["name"] for p in anon.get("/api/v1/projects", headers=auth).get_json()["projects"]], ["Tok"])
@@ -4009,6 +4136,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "/api/notifications/read": "marks the caller's own inbox read: personal UI state, not an act on shared data",
             "/api/activity": "the active-minute ping is itself the record (user_activity); an audit row a minute would drown the trail",
             "/api/doc-templates/preview.pdf": "renders an unsaved template to look at; changes nothing",
+            "/api/teams/messages": "the Odin PMS Teams app's inbound address: Odin only sends, so it answers and reads nothing",
         }
         missing = []
         for rule in app_module.app.url_map.iter_rules():
@@ -4546,7 +4674,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             self.assertTrue(db.execute("SELECT 1 FROM doc_categories WHERE name = 'Runbook'").fetchone())   # the matrix, not the role name
         c, csrf = self._api_client()
-        raw = c.post("/settings/api-tokens", data={"name": "BI", "days": "30"}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()["messages"][0].rsplit(": ", 1)[1]
+        raw = c.post("/settings/api-tokens", data={"name": "BI", "days": "30"}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()["token"]
         anon = app_module.app.test_client()
         for _ in range(3):
             anon.get("/api/v1/projects", headers={"Authorization": f"Bearer {raw}"})
@@ -4925,9 +5053,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
         __import__("scheduler").sync_alerts()   # the scheduler records alerts and sends their mail (B9)
-        sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Project inactive: Proj")]
+        sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Rollout idle: Proj")]
         self.assertEqual(len(sent), 1)
-        self.assertTrue(sent[0].args[2].startswith("Project: Proj (C)"))
+        self.assertTrue(sent[0].args[2].startswith("Rollout: Proj (C)"))
         self.assertIn("http://localhost/projects/1", sent[0].args[2])     # the alert mail links to the project too
 
     def test_audit_logs_filter_by_user_action_and_project(self):
@@ -5193,7 +5321,7 @@ class AITestBase(unittest.TestCase):
 
 class AIFrameworkTestCase(AITestBase):
     """services/ai: the address guard, the client, the gate, validation, the
-    heartbeat and Settings → AI, all against FakeAIServer."""
+    heartbeat and Settings › AI, all against FakeAIServer."""
 
     def test_address_guard_keeps_customer_text_on_the_private_network(self):
         from services.ai.client import address_problem, is_local
@@ -5258,7 +5386,7 @@ class AIFrameworkTestCase(AITestBase):
         with self._ctx():
             from db import get_db
             db = get_db()
-            self.assertEqual(gate("test_feature"), "AI is switched off (Settings → AI)")
+            self.assertEqual(gate("test_feature"), "AI is switched off (Settings › AI)")
             self._enable()
             self.assertEqual(gate("test_feature"), "The AI server is not answering")   # no heartbeat yet
             heartbeat(db)
@@ -5545,7 +5673,7 @@ class WeeklyWordsTestCase(AITestBase):
     def test_no_draft_while_the_gate_is_closed_and_dismiss_is_recorded(self):
         self._project()
         r = self.client.post("/api/projects/1/ai/weekly_words", json={}, headers=self._csrf())
-        self.assertEqual((r.status_code, r.get_json()["error"]), (409, "AI is switched off (Settings → AI)"))
+        self.assertEqual((r.status_code, r.get_json()["error"]), (409, "AI is switched off (Settings › AI)"))
         self.assertFalse(self.client.get("/api/projects/1/ai/weekly_words").get_json()["available"])
         with self._db() as con:
             con.execute("INSERT INTO ai_suggestions (project_id, feature, payload, status, created_at) VALUES (1, 'weekly_words', ?, 'new', '2026-10-08T03:40:00')", (self.GOOD,))

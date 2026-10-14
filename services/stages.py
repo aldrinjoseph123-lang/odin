@@ -98,7 +98,7 @@ def move_stage(scope, scope_id, stage_id, direction):
     if scope == "project" and names[-1] != stages[-1]["name"]:
         project = db.execute("SELECT stage FROM projects WHERE id = ?", (scope_id,)).fetchone()
         if project and project["stage"] == stages[-1]["name"]:   # closed: a reorder would reopen it with no note or audit (sim L-6)
-            return "The project is closed. Move it back to a working stage before changing which stage is last"
+            return "The rollout is closed. Move it back to a working stage before changing which stage is last"
     refused = _closes_unsigned(scope, scope_id, names)
     if refused:
         return refused
@@ -120,7 +120,7 @@ def delete_stage(scope, scope_id, stage_id):
     if scope == "project":
         current = db.execute("SELECT stage FROM projects WHERE id = ?", (scope_id,)).fetchone()
         if current and current["stage"] == row["name"]:
-            return f"Cannot delete '{row['name']}' — the project is in it"
+            return f"Cannot delete '{row['name']}' — the rollout is in it"
         refused = _closes_unsigned(scope, scope_id, [s["name"] for s in list_stages(scope, scope_id) if s["id"] != stage_id])
         if refused:
             return refused

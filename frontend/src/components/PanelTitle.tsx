@@ -14,3 +14,13 @@ export function PanelTitle({ children, hint, n = true, icon, id, className }: { 
     </div>
   )
 }
+
+// A card section with its label: the one panel shape (Settings, AI, the project page).
+export function Panel({ title, hint, children, id, className }: { title: string; hint?: string; children: ReactNode; id?: string; className?: string }) {
+  return (
+    <section id={id} aria-label={title} className={cn("panel scroll-mt-16 p-4", className)}>
+      <PanelTitle hint={hint}>{title}</PanelTitle>
+      {children}
+    </section>
+  )
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { EmptyState } from "@/components/EmptyState"
 import { StatTile } from "@/components/StatTile"
-import { pill } from "@/lib/ui"
+import { pill, filterSelect } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide-react"
 import { Stepper } from "@/components/Stepper"
@@ -11,17 +11,16 @@ import { ApiError, editTask, myWork, toggleTask, type MyWorkData, type User, typ
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
-import { fmtDate, lateBy, stateText } from "@/lib/format"
+import { fmtDate, lateBy, stateText, weekday } from "@/lib/format"
+import { addDays } from "@/lib/plan"
 
 // My work: what needs doing, in the order it needs doing. Headline numbers,
 // the fortnight of what got done, tasks grouped by urgency with a tick that
 // finishes them in place, and the rollouts this person is on with their state.
-const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"]
 type Group = { key: string; title: string; hint: string; tone?: "bad" | "warn"; tasks: WorkTask[] }
 
 function groupTasks(tasks: WorkTask[], today: string): Group[] {
-  const week = new Date(`${today}T00:00:00Z`); week.setUTCDate(week.getUTCDate() + 7)
-  const w = week.toISOString().slice(0, 10)
+  const w = addDays(today, 7)
   const g: Record<string, WorkTask[]> = { overdue: [], today: [], week: [], later: [], undated: [] }
   for (const t of tasks) {
     if (!t.due_date) g.undated.push(t)
@@ -80,7 +79,7 @@ export default function MyWork({ user }: { user: User }) {
   async function redate(t: WorkTask, due: string) {
     setBusy(t.id)
     try { await editTask(t.project_id, t.id, { title: t.title, assignee_id: user.id, due_date: due || null }); toast(due ? `${t.title}: due ${fmtDate(due)}` : `${t.title}: no date`); await load() }
-    catch (e) { toast(e instanceof ApiError && e.status === 403 ? "Only someone who manages this project's tasks can move its date." : e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(null) }
+    catch (e) { toast(e instanceof ApiError && e.status === 403 ? "Only someone who manages this rollout's tasks can move its date." : e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(null) }
   }
   const tiles: { label: string; value: number; sub: string; icon: typeof Layers; tone?: "bad" | "warn" }[] = [
     { label: "Open tasks", value: c.open, sub: `${c.due_week} due this week`, icon: CheckSquare },
@@ -106,7 +105,7 @@ export default function MyWork({ user }: { user: User }) {
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h2 className="text-[14px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h2>
             {d.projects.length > 1 && (
-              <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className="ml-auto h-7 rounded-md border border-input bg-background px-2 text-[13px]">
+              <select value={project ?? ""} onChange={(e) => setProject(e.target.value ? Number(e.target.value) : null)} aria-label="Only this rollout" className={cn(filterSelect, "ml-auto")}>
                 <option value="">Every rollout</option>
                 {d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -145,7 +144,7 @@ export default function MyWork({ user }: { user: User }) {
               {d.done_by_day.map((x) => (
                 <li key={x.day} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
                   <span className={cn("block w-full rounded-t-[3px]", x.count ? "bg-nav-fg/60" : "bg-muted")} style={{ height: `${Math.max(x.count ? 8 : 3, (x.count / peak) * 100)}%` }} aria-hidden />
-                  <span aria-hidden>{WEEKDAY[new Date(`${x.day}T00:00:00`).getDay()]}</span>
+                  <span aria-hidden>{weekday(x.day)[0]}</span>
                   <span className="sr-only">{fmtDate(x.day)}: {x.count}</span>
                 </li>
               ))}
@@ -162,7 +161,7 @@ export default function MyWork({ user }: { user: User }) {
                     <span className="shrink-0 text-[12px] text-muted-foreground">{p.role}</span>
                   </div>
                   <div className="mt-1 flex items-center gap-3 pl-4">
-                    <span className="w-24 shrink-0"><Stepper stages={Array.from({ length: p.stages }, (_, i) => String(i))} index={p.stage_index} state={p.state} selected={false} /></span>
+                    <span className="w-24 shrink-0"><Stepper compact stages={p.stages} index={p.stage_index} state={p.state} selected={false} /></span>
                     <span className="truncate text-[13px]">{p.stage}</span>
                     <StateChip state={p.state} className="ml-auto" quiet={p.target_end_date ? `target ${fmtDate(p.target_end_date)}` : "no target"}
                       text={stateText({ state: p.state, days_in_stage: p.days_in_stage ?? null, over_by: p.over_by ?? null, target_end_date: p.target_end_date })} />

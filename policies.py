@@ -35,7 +35,7 @@ POLICIES = {
     "date_format": dict(area="general", kind="choice", default="d MMM yyyy", choices=tuple(DATE_FORMATS),
                         label="Date format", help="How dates read across the app."),
     "working_days": dict(area="general", kind="multi", default="Mon,Tue,Wed,Thu,Fri", choices=WEEKDAYS, nonempty=True,
-                         label="Working week", help="Stage lengths and SLAs count these days (Settings → Projects & workflow); reminders and digests go out on them only."),
+                         label="Working week", help="Stage lengths and SLAs count these days (Settings › Rollouts & workflow); reminders and digests go out on them only."),
     "holidays": dict(area="general", kind="dates", default="", max=4000, optional=True, label="Public holidays",
                      help="One per line: \"2026-12-02 National Day\", or a span \"2027-03-20 to 2027-03-22 Eid al-Fitr\" (dates as announced). Not counted as working days; no digest or reminders on them."),
     "default_theme": dict(area="general", kind="choice", default="system", choices=THEME_CHOICES,
@@ -67,7 +67,7 @@ POLICIES = {
                              label="Partner email domains", help="e.g. partner.com, vendor.ae. Only these can be invited or sent a sign-in link. Blank: any domain."),
     "undo_minutes": dict(area="security", kind="int", default=5, min=1, max=60,
                          label="Undo window (minutes)", help="How long deletes and stage moves can be undone."),
-    # ---- Sign-up links and time on Odin (Settings → Sign-up & activity)
+    # ---- Sign-up links and time on Odin (Settings › Sign-up & activity)
     "signup_enabled": dict(area="people", kind="bool", default=True,
                            label="Sign-up links work", help="Off: no new links can be made and every open link stops working until this is on again (links past their date stay expired)."),
     "signup_domains": dict(area="people", kind="domains", default="", max=500, optional=True,
@@ -83,13 +83,11 @@ POLICIES = {
     # ---- Notifications
     "digest_time": dict(area="notifications", kind="time", default="08:00",
                         label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
+    "mail_from": dict(area="notifications", kind="emails", one=True, default="", max=254,
+                      label="Send email as", help="An alias of the connected Microsoft 365 mailbox (e.g. odin-pms@company.com), so people can tell the mail comes from Odin when the mailbox is shared with other systems. Blank: the mailbox's own address. Exchange must allow sending from aliases (SendFromAliasEnabled); if Microsoft refuses the alias, Odin sends from the mailbox and tells the admins."),
     "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500, query=True,
-                              label="Teams Workflows webhook", help="From a Teams channel: Workflows → \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
+                              label="Teams Workflows webhook", help="From a Teams channel: Workflows › \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
     # ---- Reports
-    "kibana_dashboards": dict(area="integrations", kind="lines", default="", max=4000, optional=True, label="Kibana dashboards",
-                              help="One per line, \"Name | address\", e.g. SOC overview | https://kibana.example.com/app/dashboards#/view/…?embed=true&_a=(query:(language:kuery,query:'client:{client}')). "
-                                   "They appear as the Kibana view on the Flow page; {project}, {client} and {po} in an address take the chosen rollout's values. Use the dashboard's share link with embed=true, and let Kibana be framed by this site "
-                                   "(kibana.yml: server.customResponseHeaders with a Content-Security-Policy frame-ancestors that names the Odin address)."),
     "report_enabled": dict(area="reports", kind="bool", default=False,
                            label="Send the weekly report", help="Stuck and overdue rollouts first, stages moved this week, due next week, counts per stage."),
     "report_days": dict(area="reports", kind="multi", default="Mon", choices=WEEKDAYS,
@@ -101,7 +99,7 @@ POLICIES = {
     "report_emails": dict(area="reports", kind="emails", default="", max=1000,
                           label="And these addresses", help="e.g. ceo@company.com. The attached PDFs go only to addresses that belong to Odin staff accounts; any other address gets the summary alone."),
     "report_attach": dict(area="reports", kind="bool", default=False,
-                          label="Attach the portfolio report and each project's latest saved report as PDFs", help="Project reports only for projects with a saved version."),
+                          label="Attach the portfolio report and each rollout's latest saved report as PDFs", help="Rollout reports only for rollouts with a saved version."),
     "report_teams": dict(area="reports", kind="bool", default=False,
                          label="Also post a summary to Teams", help="The channel chosen under Integrations and/or the Workflows webhook under Notifications."),
     # ---- Audit & compliance
@@ -136,7 +134,7 @@ POLICIES = {
                        label="Copy to a network share", help="A NAS or file-server folder mounted into the server (SMB/NFS)."),
     "share_path": dict(area="backups", kind="text", default="", max=200, optional=True,
                        label="Share folder path", help="The absolute path where the share is mounted, e.g. /mnt/nas/odin."),
-    # ---- AI (Settings → AI): the server, then how Odin watches it (services/ai)
+    # ---- AI (Settings › AI): the server, then how Odin watches it (services/ai)
     "ai_enabled": dict(area="ai", kind="bool", default=False,
                        label="Use AI features", help="Off: Odin never calls the AI server and every feature uses its usual behaviour."),
     "ai_base_url": dict(area="ai", kind="url", default="", max=200,
@@ -146,7 +144,7 @@ POLICIES = {
     "ai_identity": dict(area="ai", kind="text", default="You are P24x7-AI, the assistant for Odin.", max=200,
                         label="Identity line", help="Starts every system prompt Odin sends, as the AI server's integration guide asks; without it the model may name itself something else. Changing it validates every feature again."),
     "ai_allow_external": dict(area="ai", kind="bool", default=False,
-                              label="Allow an external AI provider", help="Off: Odin refuses any address outside the private network, so customer notes never leave the building. On: a hosted provider may be used; every AI request then sends project text to it."),
+                              label="Allow an external AI provider", help="Off: Odin refuses any address outside the private network, so customer notes never leave the building. On: a hosted provider may be used; every AI request then sends rollout text to it."),
     "ai_heartbeat_minutes": dict(area="ai_schedule", kind="int", default=5, min=1, max=60,
                                  label="Heartbeat every (minutes)", help="A light check that the server answers and which model it runs. No model work."),
     "ai_down_after": dict(area="ai_schedule", kind="int", default=2, min=1, max=10,
@@ -165,23 +163,23 @@ POLICIES = {
                          label="Give up on an answer after (seconds)", help="The server answers one request at a time; allow for waiting behind another application's request."),
     # ---- Projects & workflow
     "default_template": dict(area="workflow", kind="choice", default="", choices="templates",
-                             label="Stage template for new projects", help="Pre-selected on the new project form."),
+                             label="Stage template for new rollouts", help="Pre-selected on the new project form."),
     "default_stage_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Default stage length (days)",
                                help="How long a stage is assumed to take when neither the plan nor its SLA says — for the forecast and the suggested plan."),
     "count_working_days": dict(area="workflow", kind="bool", default=True, label="Count stage lengths and SLAs in working days",
-                               help="Weekends outside the working week and public holidays (Settings → General) do not count. Off: calendar days. Gaps between dates, such as days late, are always calendar days."),
-    "sla_min_visits": dict(area="workflow", kind="int", default=3, min=2, max=50, label="Finished projects before an SLA is questioned",
+                               help="Weekends outside the working week and public holidays (Settings › General) do not count. Off: calendar days. Gaps between dates, such as days late, are always calendar days."),
+    "sla_min_visits": dict(area="workflow", kind="int", default=3, min=2, max=50, label="Finished rollouts before an SLA is questioned",
                            help="The SLA check under Stage templates proposes a new SLA for a stage only when at least this many rollouts have passed through it."),
-    "rag_amber_days": dict(area="workflow", kind="int", default=1, min=0, max=90, label="Amber after (days late)",
-                           help="A rollout turns amber when it is forecast to finish more than this many days after its target date."),
-    "rag_red_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Red after (days late)",
-                         help="…and red past this many days, or when it is already past its target, or has an open blocker."),
+    "rag_amber_days": dict(area="workflow", kind="int", default=1, min=0, max=90, label="At risk after (days late)",
+                           help="A rollout is at risk when it is forecast to finish more than this many days after its target date."),
+    "rag_red_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Off track after (days late)",
+                         help="…and off track past this many days, or when it is already past its target, or has an open blocker."),
     "signoff_required": dict(area="workflow", kind="bool", default=True,
-                             label="A signed sign-off closes a project",
+                             label="A signed sign-off closes a rollout",
                              help="The last stage cannot be reached until the customer has signed the sign-off document and we have countersigned (or a signed copy is uploaded). An admin can waive it with a written reason."),
     "signoff_statement": dict(area="workflow", kind="text", default=(
         "By signing, the customer confirms that the work listed above has been delivered in line with the agreed scope, "
-        "that the items marked descoped or outstanding are recorded as stated, and that the project is accepted as complete."),
+        "that the items marked descoped or outstanding are recorded as stated, and that the rollout is accepted as complete."),
         max=1200, multiline=True, label="Acceptance statement", help="The sentence the customer signs under, on every sign-off document."),
     "signoff_terms": dict(area="workflow", kind="text", default=(
         "Support continues under the terms of the existing agreement.\n"
@@ -190,7 +188,7 @@ POLICIES = {
         help="Printed on the sign-off under Handover; one point per line. The project manager can edit it per document."),
     "default_customer_approval": dict(area="workflow", kind="bool", default=False,
                                       label="Ask the customer to approve each stage by default",
-                                      help="Pre-ticked on the new project form; each project can still change it."),
+                                      help="Pre-ticked on the new project form; each rollout can still change it."),
 }
 
 
@@ -242,6 +240,8 @@ def _parse(entry, raw):
         parts = sorted({p.lower() for p in re.split(r"[\s,;]+", v) if p})
         if len(",".join(parts)) > entry["max"] or any(not re.fullmatch(rf"[^@\s<>\"']+@{_HOST}", p) or "." not in p.split("@")[1] for p in parts):
             raise ValueError("email addresses separated by commas")
+        if entry.get("one") and len(parts) > 1:
+            raise ValueError("one email address")
         return parts
     if kind == "domains":
         parts = sorted({p.lower().lstrip("@") for p in re.split(r"[\s,;]+", v) if p})
@@ -252,23 +252,6 @@ def _parse(entry, raw):
         if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):
             raise ValueError("a time like 08:00")
         return v
-    if kind == "lines":
-        # "Name | https://…" per line; blank lines dropped, each address checked loosely (Kibana links carry #, ?, ( and ')
-        from urllib.parse import urlsplit
-        out = []
-        for line in v.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            name, sep, url = (x.strip() for x in line.partition("|"))
-            parts = urlsplit(url) if sep else None
-            if not sep or not name or parts.scheme not in ("http", "https") or not parts.netloc:
-                raise ValueError('each line as "Name | https://address"')
-            out.append(f"{name} | {url}")
-        text = "\n".join(out)
-        if len(text) > entry["max"]:
-            raise ValueError(f"up to {entry['max']} characters")
-        return text
     if kind == "dates":
         from services.workdays import parse_holidays
         parse_holidays(v)
@@ -331,8 +314,8 @@ _GROUPS = {
     "Sign-up links": ("signup_enabled", "signup_domains", "signup_days"),
     "Time on Odin": ("activity_tracking", "activity_roles", "activity_idle_minutes"),
     "Daily digest": ("digest_time",),
+    "Sender": ("mail_from",),
     "Teams webhook": ("teams_webhook_url",),
-    "Kibana": ("kibana_dashboards",),
     "When it goes out": ("report_enabled", "report_days", "report_time"),
     "Who gets it": ("report_roles", "report_emails"),
     "What it carries": ("report_attach", "report_teams"),
@@ -345,7 +328,7 @@ _GROUPS = {
                             "ai_budget_s", "ai_max_input_chars", "ai_timeout_s"),
     "Defaults": ("default_template",),
     "Stage timing": ("default_stage_days", "count_working_days", "sla_min_visits"),
-    "Health colours": ("rag_amber_days", "rag_red_days"),
+    "Plan health": ("rag_amber_days", "rag_red_days"),
     "Sign-off": ("signoff_required", "signoff_statement", "signoff_terms"),
     "Customer approval": ("default_customer_approval",),
 }
@@ -368,8 +351,8 @@ _HINTS = {
     "activity_roles": "Which roles may see other people's time. Everyone always sees their own.",
     "activity_idle_minutes": "Stop counting after this long without mouse or keyboard, e.g. 5 minutes.",
     "digest_time": "When the daily summary email and reminders go out, e.g. 08:00.",
+    "mail_from": "The address people see Odin's email come from, e.g. odin-pms@company.com.",
     "teams_webhook_url": "Paste a Teams channel's webhook address to post updates there.",
-    "kibana_dashboards": "Dashboards shown on the Flow page, one per line: Name | address.",
     "report_enabled": "Email a weekly summary of every rollout.",
     "report_emails": "Extra people to email, e.g. ceo@company.com.",
     "audit_keep": "How many years of the audit log to keep, e.g. 3.",
@@ -378,16 +361,16 @@ _HINTS = {
     "ai_identity": "The first line of every instruction Odin sends the AI.",
     "ai_allow_external": "Off keeps customer notes inside the office network.",
     "ai_max_input_chars": "Longer text is trimmed to this before it is sent, e.g. 4,000 characters.",
-    "default_template": "The stage list a new project starts with.",
+    "default_template": "The stage list a new rollout starts with.",
     "default_stage_days": "How long a stage is expected to take when nothing else says, e.g. 7 days.",
     "count_working_days": "Skip weekends and holidays when counting stage days: Friday to Monday is one day.",
-    "sla_min_visits": "How many projects must finish a stage before Odin suggests a new time limit, e.g. 3.",
-    "rag_amber_days": "A project turns amber when forecast to finish more than this many days late, e.g. 1.",
-    "rag_red_days": "It turns red when forecast more than this many days late, e.g. 7.",
-    "signoff_required": "A project cannot close until the customer has signed it off.",
+    "sla_min_visits": "How many rollouts must finish a stage before Odin suggests a new time limit, e.g. 3.",
+    "rag_amber_days": "A rollout is at risk when forecast to finish more than this many days late, e.g. 1.",
+    "rag_red_days": "It is off track when forecast more than this many days late, e.g. 7.",
+    "signoff_required": "A rollout cannot close until the customer has signed it off.",
     "signoff_statement": "What the customer agrees to when they sign.",
     "signoff_terms": "Support terms printed on the sign-off, one per line.",
-    "default_customer_approval": "New projects ask the customer to approve each stage move.",
+    "default_customer_approval": "New rollouts ask the customer to approve each stage move.",
 }
 for _title, _keys in _GROUPS.items():
     for _key in _keys:
@@ -468,7 +451,7 @@ def local_date(value, db=None):
 
 
 def local_today(db=None):
-    """Today's date in the workspace time zone (Settings → General). Due
+    """Today's date in the workspace time zone (Settings › General). Due
     dates, "days left" and reminders use this, not the server's clock."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -483,17 +466,7 @@ def is_working_day(day=None, db=None):
 
 
 def email_domain_allowed(email, db=None):
-    """Partner addresses must be on an allowed domain (Settings → Sign-in &
+    """Partner addresses must be on an allowed domain (Settings › Sign-in &
     security); an empty list allows any."""
     allowed = policy("external_domains", db)
     return not allowed or email.rsplit("@", 1)[-1].lower() in allowed
-
-
-def kibana_dashboards():
-    """The configured Kibana dashboards as [{name, url}], in the order typed."""
-    out = []
-    for line in policy("kibana_dashboards").splitlines():
-        name, _, url = (x.strip() for x in line.partition("|"))
-        if name and url:
-            out.append({"name": name, "url": url})
-    return out

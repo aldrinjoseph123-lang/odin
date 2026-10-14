@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { addDays, daysBetween, fillSuggested, setDate, workDays, type PlanRow } from "./plan"
+import { addDays, changedStages, daysBetween, dragPlan, fillSuggested, setDate, workDays, type PlanRow } from "./plan"
 
 const rows: PlanRow[] = [
   { id: 1, plan_start: "2026-10-01", plan_end: "2026-10-06", suggested_start: "2026-10-01", suggested_end: "2026-10-08" },
@@ -33,5 +33,26 @@ describe("plan editing", () => {
   it("fills unplanned stages from the suggestion", () => {
     const out = fillSuggested(rows)
     expect(out[2]).toMatchObject({ plan_start: "2026-10-15", plan_end: "2026-10-22" }); expect(out[0]).toBe(rows[0])
+  })
+})
+
+describe("dragging a planned bar on the Gantt", () => {
+  const r = (id: number, s: string | null, e: string | null): PlanRow => ({ id, plan_start: s, plan_end: e, suggested_start: "2026-10-01", suggested_end: "2026-10-05" })
+  const rows = [r(1, "2026-10-01", "2026-10-10"), r(2, "2026-10-10", "2026-10-20"), r(3, null, null)]
+  it("moves a bar whole, and the later stages with it when asked", () => {
+    const moved = dragPlan(rows, 0, "move", 3, true)
+    expect([moved[0].plan_start, moved[0].plan_end, moved[1].plan_start, moved[1].plan_end]).toEqual(["2026-10-04", "2026-10-13", "2026-10-13", "2026-10-23"])
+    expect(moved[2].plan_start).toBeNull()   // an unplanned stage stays unplanned
+    expect(dragPlan(rows, 0, "move", 3, false)[1].plan_start).toBe("2026-10-10")
+    expect(changedStages(rows, moved).map((x) => x.id)).toEqual([1, 2])
+  })
+  it("resizes one edge and never past the other", () => {
+    expect(dragPlan(rows, 1, "end", -20, true)[1].plan_end).toBe("2026-10-10")
+    expect(dragPlan(rows, 1, "start", 30, true)[1].plan_start).toBe("2026-10-20")
+    const later = dragPlan(rows, 0, "start", 2, true)
+    expect([later[0].plan_start, later[0].plan_end, later[1].plan_start]).toEqual(["2026-10-03", "2026-10-10", "2026-10-10"])   // a new start moves nothing else
+  })
+  it("plans an unplanned stage from its suggestion", () => {
+    expect(dragPlan(rows, 2, "move", 1, false)[2]).toMatchObject({ plan_start: "2026-10-02", plan_end: "2026-10-06" })
   })
 })

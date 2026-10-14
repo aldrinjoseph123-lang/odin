@@ -1,12 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useParams } from "react-router-dom"
-import { CheckCircle2, Mail, MessageSquare } from "lucide-react"
+import { CheckCircle2 } from "lucide-react"
 import { AuthHeading, AuthLayout } from "@/components/Brand"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, joinInfo, joinSubmit, type JoinInfo } from "@/lib/api"
-import { cn } from "@/lib/utils"
 import { fmtDate } from "@/lib/format"
 
 // A sign-up link from an admin: the new colleague gives their details and a
@@ -16,7 +15,7 @@ export default function Join() {
   const token = useParams().token ?? ""
   const [info, setInfo] = useState<JoinInfo | null>(null)
   const [bad, setBad] = useState<string | null>(null)
-  const [f, setF] = useState({ name: "", username: "", email: "", password: "", confirm: "", notify_via: "email" as "email" | "teams" })
+  const [f, setF] = useState({ name: "", username: "", email: "", password: "", confirm: "" })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
@@ -30,7 +29,7 @@ export default function Join() {
     e.preventDefault()
     if (f.password !== f.confirm) { setError("The two passwords differ"); return }
     setBusy(true); setError(null)
-    try { await joinSubmit(token, { name: f.name, username: f.username, email: f.email, password: f.password, notify_via: f.notify_via }); setDone(true) }
+    try { await joinSubmit(token, { name: f.name, username: f.username, email: f.email, password: f.password }); setDone(true) }
     catch (x) { setError(x instanceof ApiError ? x.message : "Could not reach Odin — try again") } finally { setBusy(false) }
   }
 
@@ -65,17 +64,6 @@ export default function Join() {
           <label className={label}>Again<Input required type="password" autoComplete="new-password" value={f.confirm} onChange={set("confirm")} className="h-10" /></label>
         </div>
         <p className="-mt-2 text-[12px] text-muted-foreground">At least 12 characters, mixing letters with numbers or symbols.</p>
-        <fieldset>
-          <legend className="mb-2 text-[13px] font-medium">How should Odin reach you?</legend>
-          <div className="grid grid-cols-2 gap-2" role="radiogroup">
-            {([["email", "Email", Mail], ["teams", "Microsoft Teams", MessageSquare]] as const).map(([v, text, Icon]) => (
-              <button key={v} type="button" role="radio" aria-checked={f.notify_via === v} onClick={() => setF({ ...f, notify_via: v })}
-                className={cn("flex h-11 items-center justify-center gap-2 rounded-lg border text-[13px]", f.notify_via === v ? "border-primary bg-accent font-medium" : "border-input hover:bg-muted")}>
-                <Icon className="h-4 w-4" aria-hidden />{text}</button>
-            ))}
-          </div>
-          <p className="mt-2 text-[12px] text-muted-foreground">Always in Odin's bell too. Change it later on your account page.</p>
-        </fieldset>
         {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
         <Button type="submit" className="h-11 text-sm" loading={busy}>Ask to join</Button>
       </form>

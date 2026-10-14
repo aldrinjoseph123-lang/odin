@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react"
+import { PanelTitle } from "@/components/PanelTitle"
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,12 +14,13 @@ export type StagePaths = { add: string; rename: (id: number) => string; move: (i
 export const stageRowsKey = (rows: StageRow[]) => rows.map((s) => `${s.id}:${s.name}:${s.sla_days ?? ""}`).join("|")
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
-export function StageListEditor({ rows, current, busy, send, paths, label = "this project" }: { rows: StageRow[]; current?: string; busy: boolean; send: Send; paths: StagePaths; label?: string }) {
+export function StageListEditor({ rows, current, busy, send, paths, label = "this rollout" }: { rows: StageRow[]; current?: string; busy: boolean; send: Send; paths: StagePaths; label?: string }) {
   // Edit state is seeded once; the parent remounts this editor (key) when the
   // rows change, so a save never fights a half-typed rename.
   const [names, setNames] = useState<Record<number, string>>(() => Object.fromEntries(rows.map((s) => [s.id, s.name])))
   const [slas, setSlas] = useState<Record<number, string>>(() => Object.fromEntries(rows.map((s) => [s.id, s.sla_days == null ? "" : String(s.sla_days)])))
   const [newName, setNewName] = useState("")
+  const slasChanged = rows.some((s) => (slas[s.id] ?? "") !== (s.sla_days == null ? "" : String(s.sla_days)))
   function saveSlas(e: FormEvent) {
     e.preventDefault()
     void send(paths.sla, Object.fromEntries(rows.map((s) => [`sla::${s.id}`, slas[s.id] ?? ""])))
@@ -43,7 +45,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
         <span className="text-[12px] text-muted-foreground">Added before the last stage.</span>
       </form>
       <form onSubmit={saveSlas} className="mt-1 border-t border-border pt-3">
-        <div className="mb-2 text-[12px] font-semibold text-nav-fg">SLA days per stage</div>
+        <PanelTitle n={false} className="mb-2">SLA days per stage</PanelTitle>
         <div className="flex flex-wrap gap-2">
           {rows.map((s) => (
             <label key={s.id} className="flex items-center gap-2 text-[13px]">
@@ -52,7 +54,7 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
             </label>
           ))}
         </div>
-        <Button type="submit" size="sm" className="mt-2" loading={busy}>Save SLAs</Button>
+        <Button type="submit" size="sm" className="mt-2" loading={busy} disabled={!slasChanged}>Save SLAs</Button>
       </form>
     </div>
   )

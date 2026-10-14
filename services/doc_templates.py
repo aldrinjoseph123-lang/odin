@@ -1,5 +1,5 @@
 """Document templates: how the rollout report, the portfolio report and the
-sign-off look and read (Settings → Documents).
+sign-off look and read (Settings › Documents).
 
 A template carries a brand (our logo, an optional customer co-brand logo, an
 accent colour, a company line and a footer), which sections appear and in
@@ -35,10 +35,10 @@ KINDS = {
         "texts": [("intro", "Opening text", "Printed under the title."), ("closing", "Closing text", "Printed at the end.")],
     },
     "signoff": {
-        "label": "Sign-off", "title": "Project sign-off",
-        "sections": [("facts", "Project facts"), ("summary", "Summary"), ("scope", "Scope and what was delivered"), ("outstanding", "Outstanding items"),
+        "label": "Sign-off", "title": "Rollout sign-off",
+        "sections": [("facts", "Rollout facts"), ("summary", "Summary"), ("scope", "Scope and what was delivered"), ("outstanding", "Outstanding items"),
                      ("terms", "Handover and support")],
-        "texts": [("intro", "Opening text", "Printed under the title."), ("statement", "Acceptance statement", "What the customer signs under. Blank: the workspace's (Settings → Workflow)."),
+        "texts": [("intro", "Opening text", "Printed under the title."), ("statement", "Acceptance statement", "What the customer signs under. Blank: the workspace's (Settings › Workflow)."),
                   ("terms", "Handover and support terms", "One point per line. Blank: the workspace's."), ("closing", "Closing text", "Printed before the signatures.")],
     },
 }

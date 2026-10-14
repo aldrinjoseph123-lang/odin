@@ -14,7 +14,7 @@ describe("Projects", () => {
     render(<MemoryRouter><Projects user={admin} /></MemoryRouter>)
     expect(await screen.findByRole("table")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Cards" }))
-    expect(screen.getByRole("list", { name: "Projects" })).toBeInTheDocument()
+    expect(screen.getByRole("list", { name: "Rollouts" })).toBeInTheDocument()
     expect(screen.getByText("1 of 2 tasks done")).toBeInTheDocument()
     expect(screen.getByRole("combobox", { name: "Sort by" })).toBeInTheDocument()   // cards have no column heads
     expect(localStorage.getItem("odin.projects.layout")).toBe("cards")

@@ -17,7 +17,7 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   await expect(page.getByText(/Saved to your dashboard/).first()).toBeVisible()   // a toast
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Customise Timeline" }).click()
-  await page.getByRole("group", { name: "Width of Timeline" }).getByRole("button", { name: "Full" }).click()
+  await page.getByRole("radiogroup", { name: "Width of Timeline" }).getByRole("radio", { name: "Full" }).click()
   await page.locator("#timeline-show").selectOption("attention")
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Customise Open alerts" }).click()
@@ -151,6 +151,7 @@ test("@flow flow detail: advance with the confirm step, then undo", async ({ pag
 test("@flow calendar: months, toggles, a day, and a chip into the flow", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/board?view=calendar")
+  await expect(page.getByRole("button", { name: "Next month" })).toBeVisible()   // the calendar loads on first use
   const title = page.locator("h2")
   const start = await title.textContent()
   await page.getByRole("button", { name: "Next month" }).click()
@@ -159,7 +160,7 @@ test("@flow calendar: months, toggles, a day, and a chip into the flow", async (
   await page.getByRole("button", { name: "Today" }).click()
   await expect(title).toHaveText(start!)
   // hiding tasks removes their chips
-  const chips = page.locator(".grid-cols-7 a[title]")
+  const chips = page.locator(".grid-cols-7 :is(a, button)[title]")
   await page.waitForLoadState("networkidle")               // the month's data has landed before counting
   const before = await chips.count()
   await page.getByRole("button", { name: "Tasks", exact: true }).click()
@@ -170,9 +171,9 @@ test("@flow calendar: months, toggles, a day, and a chip into the flow", async (
   await expect(page.locator("h3", { hasText: /item/ })).toBeVisible()
   await expect(page).toHaveURL(/day=\d{4}-\d{2}-\d{2}/)
   await page.getByRole("button", { name: "Close" }).click()
-  // a chip opens the rollout
+  // a chip opens the rollout under the calendar
   await chips.first().click()
-  await expect(page).toHaveURL(/\/board\?rollout=\d+/)
+  await expect(page).toHaveURL(/view=calendar.*rollout=\d+/)
   expectClean(errors)
 })
 
@@ -181,13 +182,13 @@ test("@flow projects: table or cards, remembered; sort and search", async ({ pag
   await signIn(page, "admin", "/projects")
   await expect(page.getByRole("table")).toBeVisible()
   await page.getByRole("button", { name: "Cards" }).click()
-  await expect(page.getByRole("list", { name: "Projects" })).toBeVisible()
+  await expect(page.getByRole("list", { name: "Rollouts" })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole("list", { name: "Projects" })).toBeVisible()
+  await expect(page.getByRole("list", { name: "Rollouts" })).toBeVisible()
   await page.getByRole("combobox", { name: "Sort by" }).selectOption("name")
   await expect(page).toHaveURL(/sort=name/)
   await page.getByRole("button", { name: "Table" }).click()
-  await page.getByRole("textbox", { name: "Search projects" }).fill("Globex")
+  await page.getByRole("textbox", { name: "Search rollouts" }).fill("Globex")
   await page.getByRole("button", { name: "Search", exact: true }).click()
   await expect(page).toHaveURL(/q=Globex/)
   await expect(page.getByText(/\d+ matching/)).toBeVisible()
@@ -195,7 +196,7 @@ test("@flow projects: table or cards, remembered; sort and search", async ({ pag
   expectClean(errors)
 })
 
-test("@flow settings: a policy saves and takes effect; Kibana dashboards appear as tabs", async ({ page }) => {
+test("@flow settings: a policy saves and takes effect", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/settings/general")
   const name = page.locator("#pol-company_name")
@@ -208,33 +209,7 @@ test("@flow settings: a policy saves and takes effect; Kibana dashboards appear 
   await page.locator("#pol-company_name").fill(original)
   await page.getByRole("button", { name: "Save" }).first().click()
   await expect(page.getByText("Saved").first()).toBeVisible()
-  // Kibana: a bad line is refused with the reason; good lines become tabs on the Flow page
-  await page.goto("/settings/integrations")
-  const lines = page.locator("#pol-kibana_dashboards")
-  await lines.fill("SOC | not-a-url")
-  await lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
-  await expect(page.getByText(/each line as/)).toBeVisible()
-  await lines.fill("SOC overview | https://kibana.example.com/app/dashboards#/view/soc?embed=true\nThreats | https://kibana.example.com/app/dashboards#/view/threats?embed=true")
-  // wait for this save itself: an earlier "Saved" on the page would otherwise let the test run ahead
-  await Promise.all([
-    page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/") && r.ok()),
-    lines.locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click(),
-  ])
-  await page.goto("/board?view=kibana")
-  await expect(page.getByRole("tab", { name: "SOC overview" })).toHaveAttribute("aria-selected", "true")
-  await page.getByRole("tab", { name: "Threats" }).click()
-  await expect(page.locator("iframe")).toHaveAttribute("src", /threats/)
-  await expect(page.getByRole("link", { name: /Open in Kibana/ })).toHaveAttribute("href", /threats/)
-  await page.goto("/settings/integrations")
-  await page.locator("#pol-kibana_dashboards").fill("")
-  await page.locator("#pol-kibana_dashboards").locator("xpath=ancestor::form").getByRole("button", { name: "Save" }).click()
-  await expect(page.getByText("Saved").first()).toBeVisible()
-  await page.goto("/board?view=kibana")
-  await expect(page.getByText("No Kibana dashboards yet")).toBeVisible()
-  await page.getByRole("link", { name: "Open Integrations" }).click()
-  await expect(page).toHaveURL(/\/settings\/integrations/)
-  // the frame is blocked for the Kibana test host, and the bad line's save is refused with a 400: both expected
-  expectClean(errors.filter((e) => !/kibana\.example\.com|\/settings\/policies\/integrations|400 \(BAD REQUEST\)/.test(e)))
+  expectClean(errors)
 })
 
 test("@flow account: the home page is a choice", async ({ page }) => {
@@ -281,10 +256,10 @@ test("@flow plan, RAID and the rollout report: move a date, log a risk, save a v
   // the report: the customer copy hides the baseline; a saved version is listed; both PDFs render
   await page.goto("/projects/1/report")
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/EDR Rollout - Globex/)
-  await page.getByRole("button", { name: "Customer copy" }).click()
+  await page.getByRole("radio", { name: "Customer copy" }).click()
   await expect(page).toHaveURL(/audience=customer/)
   await expect(page.locator("main")).not.toContainText(/baseline/i)
-  await page.getByRole("button", { name: "Internal" }).click()
+  await page.getByRole("radio", { name: "Internal" }).click()
   await page.getByRole("textbox", { name: "What we need from the customer" }).fill("E2E: confirm the change window.")
   await page.getByRole("button", { name: "Save as version" }).click()
   await expect(page.getByRole("alertdialog")).toContainText(/Partners and customers/)
@@ -526,7 +501,6 @@ test("@flow sign-up link: an admin makes it, a colleague asks, the admin approve
   await guest.getByLabel("Username").fill("e2ejoiner")
   await guest.getByLabel("Password", { exact: true }).fill("Correct-Horse-Battery-9")
   await guest.getByLabel("Again").fill("Correct-Horse-Battery-9")
-  await guest.getByRole("radio", { name: "Microsoft Teams" }).click()
   await guest.getByRole("button", { name: "Ask to join" }).click()
   await expect(guest.getByRole("heading", { level: 1 })).toHaveText("Request sent")
   // the admin approves it
@@ -676,7 +650,7 @@ test("@flow project page: health in the title row, a section index, rare setting
   const errors = watch(page)
   await signIn(page, "admin", "/projects/1")
   await expect(page.getByText(/^(On track|At risk|Off track|Complete)$/).first()).toBeVisible()
-  const index = page.getByRole("navigation", { name: "Sections of this project" })
+  const index = page.getByRole("navigation", { name: "Sections of this rollout" })
   await index.getByRole("link", { name: "Documents" }).click()
   await expect(page).toHaveURL(/#documents$/)
   // rotate and delete live behind ⋯
@@ -697,5 +671,124 @@ test("@flow project page: health in the title row, a section index, rare setting
   await ask.getByRole("button", { name: "Cancel" }).click()
   await expect(ask).toHaveCount(0)
   await expect(remove).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow kanban: a card moves to its next stage from the keyboard and by dragging, through the confirm, and back with Undo", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?view=kanban")
+  await expect(page.locator('[data-slot="kanban-column"]').first()).toBeVisible()   // the board loads on first use
+  const columns = await page.locator('[data-slot="kanban-column"]').evaluateAll((els) => els.map((e) => e.getAttribute("data-value")))
+  const rows: { name: string; stage: string; next_stage: string | null; can_move: boolean; signoff_needed: boolean }[] = await page.evaluate(async () => (await (await fetch("/api/flow")).json()).rows)
+  // a rollout whose next stage is the very next column
+  // (and early on the board, so its next column is on screen for the drag)
+  const r = rows.find((x) => x.can_move && !x.signoff_needed && x.next_stage && columns.indexOf(x.stage) <= 1 && columns[columns.indexOf(x.stage) + 1] === x.next_stage)!
+  const handle = page.getByRole("button", { name: `Move ${r.name} to ${r.next_stage}` })
+  await handle.focus()
+  await page.keyboard.press("Enter")   // the handle asks for the move from the keyboard
+  const dialog = page.getByRole("dialog", { name: `Move ${r.name} to ${r.next_stage}` })
+  await expect(dialog).toBeVisible()
+  await page.waitForTimeout(450)   // the confirm ignores a click within 400 ms of the drop
+  await dialog.getByRole("group", { name: `Confirm the move to ${r.next_stage}` }).getByRole("button", { name: /^Move / }).click()
+  await expect(page.getByText(`${r.name} moved to ${r.next_stage}.`)).toBeVisible()
+  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.getByText(/Moved back/)).toBeVisible()
+  // the same move by dragging the handle into the next column opens the same confirm
+  const from = (await handle.boundingBox())!
+  const to = (await page.locator(`[data-slot="kanban-column"][data-value="${r.next_stage}"]`).boundingBox())!
+  await page.mouse.move(from.x + 4, from.y + 4); await page.mouse.down()
+  await page.mouse.move(from.x + 30, from.y + 30, { steps: 4 }); await page.waitForTimeout(150)
+  await page.mouse.move(to.x + to.width / 2, to.y + 80, { steps: 12 }); await page.waitForTimeout(150)
+  await page.mouse.up()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole("button", { name: "Cancel" }).click()
+  await expect(dialog).toHaveCount(0)
+  // a card that may not move has no handle
+  await signIn(page, "viewer", "/board?view=kanban")
+  await expect(page.locator('[data-slot="kanban-column"]').first()).toBeVisible()
+  await expect(page.getByRole("button", { name: /^Move .* to / })).toHaveCount(0)
+  expectClean(errors)
+})
+
+test("@flow gantt: zoom, a rollout's stages, and a planned bar opened by keyboard", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?view=gantt")
+  await page.getByRole("radio", { name: "Week" }).click()
+  await expect(page.getByRole("radio", { name: "Week" })).toHaveAttribute("aria-checked", "true")
+  await page.getByRole("button", { name: "Open every rollout" }).click()   // some rollouts have nothing left to plan
+  const bar = page.getByRole("button", { name: /plan .* press Enter to pick dates/ }).first()
+  await bar.focus()
+  await page.keyboard.press("Enter")
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByRole("button", { name: "Save plan" })).toBeDisabled()   // nothing changed yet
+  await expect(dialog.getByText(/plan's log/)).toBeVisible()
+  await dialog.getByRole("button", { name: "Cancel" }).click()
+  await expect(dialog).toHaveCount(0)
+  // clicking a rollout opens it under the timeline
+  await page.getByRole("button", { name: /\d+% done/ }).first().click()
+  await expect(page).toHaveURL(/view=gantt.*rollout=\d+/)
+  expectClean(errors)
+})
+
+test("@flow calendar week: a task dragged to another day, and back with Undo", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?view=calendar")
+  await page.getByRole("radio", { name: "Week" }).click()
+  await expect(page).toHaveURL(/cal=week/)
+  await expect(page.locator("h2")).toHaveText(/–/)
+  const days = page.locator(".grid.min-h-80 > div")
+  // a task this admin may move, and a day it is not on
+  let chip = page.locator(".grid.min-h-80 button[title*='drag to another day']").first()
+  for (let i = 0; i < 6 && !(await chip.count()); i++) {
+    await page.getByRole("button", { name: "Next week" }).click()
+    chip = page.locator(".grid.min-h-80 button[title*='drag to another day']").first()
+  }
+  const from = await chip.boundingBox()
+  // the day the chip sits in, by where its middle falls; the target is a day at the other end of the week
+  const boxes = await Promise.all([0, 1, 2, 3, 4, 5, 6].map((i) => days.nth(i).boundingBox()))
+  const mid = from!.x + from!.width / 2
+  const fromCol = boxes.findIndex((b) => b && mid >= b.x && mid < b.x + b.width)
+  const to = boxes[fromCol >= 3 ? 0 : 6]!
+  await page.mouse.move(from!.x + 8, from!.y + 8)
+  await page.mouse.down()
+  await page.mouse.move(from!.x + 30, from!.y + 30, { steps: 4 }); await page.waitForTimeout(150)
+  await page.mouse.move(to.x + to.width / 2, to.y + 60, { steps: 12 }); await page.waitForTimeout(150)
+  await page.mouse.up()
+  await expect(page.getByText(/: due /)).toBeVisible()
+  await page.getByRole("button", { name: "Undo" }).click()
+  expectClean(errors)
+})
+
+test("@flow delete a rollout, then Undo from the flow brings it back", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/2")
+  const name = (await page.getByRole("heading", { level: 1 }).first().textContent())!.trim()
+  await page.getByRole("button", { name: "More actions" }).click()
+  await page.getByRole("menuitem", { name: "Delete project" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
+  await expect(page).toHaveURL(/\/board/)
+  await expect(page.getByText(/Project deleted/)).toBeVisible()
+  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page).toHaveURL(/\/projects\/2$/)
+  await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(name)
+  await expect(page.getByText(/restored/).first()).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow a new API token stays on screen with Copy until it is put away", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/api")
+  await page.getByLabel("What uses it").fill("E2E token")
+  await page.getByRole("button", { name: "Create token" }).click()
+  const box = page.getByRole("textbox", { name: "New API token" })
+  await expect(box).toHaveValue(/^odin_/)
+  await page.waitForTimeout(4500)   // longer than any toast: it is still there
+  await expect(box).toBeVisible()
+  await expect(page.getByRole("button", { name: /Copy the token|Copied/ })).toBeVisible()
+  await page.getByRole("button", { name: "I have saved it" }).click()
+  await expect(box).toHaveCount(0)
+  // tidy: revoke it
+  await page.getByRole("row", { name: /E2E token/ }).getByRole("button", { name: "Revoke" }).click()
+  await page.locator("[data-confirm-yes]").click()
   expectClean(errors)
 })

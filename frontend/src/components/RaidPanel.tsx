@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { field } from "@/lib/ui"
+import { Segmented } from "@/components/Segmented"
+import { field, danger, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { AlertOctagon, Eye, Gavel, Plus, ShieldAlert, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -66,10 +67,8 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
           const K = RAID_KIND[k]
           return <span key={k} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px]", n && (k === "blocker" ? "bg-bad-soft text-bad" : k === "issue" ? "bg-warn-soft text-warn" : "bg-muted"), !n && "text-muted-foreground")}><K.icon className="h-3 w-3" aria-hidden />{n} {K.label.toLowerCase()}{n === 1 ? "" : "s"}</span>
         })}
-        <span className="ml-auto flex rounded-full bg-muted p-1" role="group" aria-label="Show">
-          {(["open", "all"] as const).map((v) => <button key={v} type="button" aria-pressed={show === v} onClick={() => setShow(v)} className={cn("h-6 rounded-full px-3 text-[12px]", show === v ? "bg-card shadow-card" : "text-muted-foreground")}>{v === "open" ? "Open" : "All"}</button>)}
-        </span>
-        {d.can_edit && <Button size="sm" className="rounded-full" onClick={() => { setError(null); setFromAI(null); setEdit({ kind: "risk", title: "", impact: "medium", likelihood: "medium" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
+        <Segmented label="Show" className="ml-auto" value={show} onChange={setShow} options={[{ value: "open", label: "Open" }, { value: "all", label: "All" }]} />
+        {d.can_edit && <Button size="sm" onClick={() => { setError(null); setFromAI(null); setEdit({ kind: "risk", title: "", impact: "medium", likelihood: "medium" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
       {d.can_edit && (
         <AIRaidProposals projectId={projectId} refresh={aiRefresh} onAdd={(p, suggestion, index) => {
@@ -104,11 +103,10 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
           {edit && (
             <form onSubmit={submit} className="grid grid-cols-1 gap-3">
               <DialogHeader><DialogTitle>{edit.id ? `Edit ${RAID_KIND[edit.kind].label.toLowerCase()}` : "Add to the register"}</DialogTitle><DialogDescription>Risks and issues with high impact, and every open blocker, count against the rollout's health.</DialogDescription></DialogHeader>
-              <div className="flex rounded-full bg-muted p-1" role="radiogroup" aria-label="Kind">
-                {(Object.keys(RAID_KIND) as RaidKind[]).map((k) => <button key={k} type="button" role="radio" aria-checked={edit.kind === k} onClick={() => set({ kind: k, status: d.statuses[k][0] })} className={cn("h-7 flex-1 rounded-full text-[13px]", edit.kind === k ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{RAID_KIND[k].label}</button>)}
-              </div>
+              <Segmented label="Kind" full value={edit.kind} onChange={(k) => set({ kind: k, status: d.statuses[k][0] })}
+                options={(Object.keys(RAID_KIND) as RaidKind[]).map((k) => ({ value: k, label: RAID_KIND[k].label }))} />
               <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Title<input className={field} required maxLength={200} value={edit.title} onChange={(e) => set({ title: e.target.value })} autoFocus /></label>
-              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Detail<textarea rows={3} maxLength={4000} className="w-full rounded-md border border-input bg-background p-2 text-[13px]" value={edit.detail ?? ""} onChange={(e) => set({ detail: e.target.value })} /></label>
+              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Detail<textarea rows={3} maxLength={4000} className={fieldArea} value={edit.detail ?? ""} onChange={(e) => set({ detail: e.target.value })} /></label>
               <div className="grid grid-cols-2 gap-3">
                 {edit.kind !== "decision" && <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Impact<select className={field} value={edit.impact ?? "medium"} onChange={(e) => set({ impact: e.target.value as RaidItem["impact"] })}>{["low", "medium", "high"].map((x) => <option key={x}>{x}</option>)}</select></label>}
                 {edit.kind === "risk" && <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Likelihood<select className={field} value={edit.likelihood ?? "medium"} onChange={(e) => set({ likelihood: e.target.value as RaidItem["likelihood"] })}>{["low", "medium", "high"].map((x) => <option key={x}>{x}</option>)}</select></label>}
@@ -121,8 +119,8 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
               <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="accent-primary" checked={!!edit.customer_visible} onChange={(e) => set({ customer_visible: e.target.checked })} /> Show in the customer's report</label>
               {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
               <div className="flex gap-2">
-                {edit.id && <Button type="button" size="sm" variant="ghost" className="rounded-full text-destructive" disabled={busy} onClick={remove}>Delete</Button>}
-                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" className="rounded-full" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
+                {edit.id && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={remove}>Delete</Button>}
+                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
               </div>
             </form>
           )}

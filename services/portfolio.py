@@ -17,18 +17,15 @@ RAG_ORDER = {"red": 0, "amber": 1, "green": 2, "done": 3}
 INTERNAL = ("reasons", "confidence", "baseline", "vs_baseline_days")
 
 
-def build(projects, customer=False):
-    """projects: rows of projects joined with owner_name. The customer cut
-    (partners and customers) drops the reasons, the baseline and every RAID
-    item not marked for them."""
+def plans(projects):
+    """{project id: (plan, every RAID item)} for many projects, the plan
+    engine's inputs read in one query each (not one per project): the
+    portfolio report and the Flow's Gantt."""
     db = get_db()
-    today = local_today()
-    rows, risks = [], []
-    # everything per project in one query each, not one per project (the report of all rollouts)
     ids = [p["id"] for p in projects]
     marks = ",".join("?" * len(ids)) or "NULL"
     stage_rows = stages_for_projects(ids)
-    notes, raid, latest_of = {}, {}, {}
+    notes, raid = {}, {}
     for n in db.execute(f"SELECT project_id, stage, created_at FROM status_notes WHERE project_id IN ({marks}) ORDER BY created_at", ids):
         notes.setdefault(n["project_id"], []).append(n)
     for r in db.execute(
@@ -36,11 +33,28 @@ def build(projects, customer=False):
             "ORDER BY r.status IN ('closed', 'decided'), CASE r.kind WHEN 'blocker' THEN 0 WHEN 'issue' THEN 1 WHEN 'risk' THEN 2 ELSE 3 END, "
             "CASE r.impact WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, r.due_date IS NULL, r.due_date, r.id", ids):
         raid.setdefault(r["project_id"], []).append(dict(r) | {"customer_visible": bool(r["customer_visible"]), "open": r["status"] not in raid_service.DONE})
-    for r in db.execute(f"SELECT project_id, version, kind, created_at FROM project_reports WHERE project_id IN ({marks}) ORDER BY version", ids):
-        latest_of[r["project_id"]] = r
+    out = {}
     for p in projects:
         every = raid.get(p["id"], [])
-        pl = plan_service.build(p, stage_rows.get(p["id"]) or [], notes.get(p["id"], []), [r for r in every if r["open"]])
+        out[p["id"]] = (plan_service.build(p, stage_rows.get(p["id"]) or [], notes.get(p["id"], []), [r for r in every if r["open"]]), every)
+    return out
+
+
+def build(projects, customer=False):
+    """projects: rows of projects joined with owner_name. The customer cut
+    (partners and customers) drops the reasons, the baseline and every RAID
+    item not marked for them."""
+    db = get_db()
+    today = local_today()
+    rows, risks = [], []
+    ids = [p["id"] for p in projects]
+    marks = ",".join("?" * len(ids)) or "NULL"
+    latest_of = {}
+    for r in db.execute(f"SELECT project_id, version, kind, created_at FROM project_reports WHERE project_id IN ({marks}) ORDER BY version", ids):
+        latest_of[r["project_id"]] = r
+    planned = plans(projects)
+    for p in projects:
+        pl, every = planned[p["id"]]
         items = [r for r in every if r["customer_visible"]] if customer else every
         if customer:   # the colour from what they may see: a hidden blocker never turns it red
             from services.report_data import customer_health

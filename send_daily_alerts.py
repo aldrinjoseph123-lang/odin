@@ -21,10 +21,10 @@ def _format_alerts_html(alerts):
     from markupsafe import escape
     lines = []
     labels = {
-        "project_overdue": "Projects overdue",
-        "project_due_soon": "Projects due soon",
-        "stage_sla_breach": "Projects over their stage SLA",
-        "stale": "Projects untouched for a while",
+        "project_overdue": "Rollouts overdue",
+        "project_due_soon": "Rollouts due soon",
+        "stage_sla_breach": "Rollouts over their stage SLA",
+        "stale": "Idle rollouts",
         "approval_waiting": "Customer approvals waiting",
         "blocker_open": "Blockers still open",
         "task_unowned": "Overdue tasks nobody owns",

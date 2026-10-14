@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
-import { chip } from "@/lib/ui"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { Segmented } from "@/components/Segmented"
+import { MoveConfirm } from "@/components/MoveConfirm"
+import { chip, fieldAuto, filterSelect } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
-import { Inbox, ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
+import { Inbox, ArrowRight, CalendarDays, GanttChart, Kanban as KanbanIcon, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
@@ -11,18 +13,25 @@ import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ApiError, addTask, changeStage, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
+import { ApiError, addTask, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
+import { StateChip } from "@/components/StateChip"
 import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
-import { Calendar } from "@/pages/Calendar"
-import { Kibana } from "@/pages/Kibana"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { useMedia, useWidth } from "@/lib/useMeasure"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+
+// the heavier views load when first opened, so the list stays fast
+const FlowKanban = lazy(() => import("@/pages/FlowKanban"))
+const FlowGantt = lazy(() => import("@/pages/FlowGantt"))
+const Calendar = lazy(() => import("@/pages/Calendar").then((m) => ({ default: m.Calendar })))
+type View = "list" | "kanban" | "gantt" | "calendar"
+const VIEWS: View[] = ["list", "kanban", "gantt", "calendar"]
 
 
 // Customer approval of the current stage: amber while open, green/red once decided.
@@ -32,6 +41,10 @@ const APPROVAL: Record<ApprovalStatus, { label: string; chip: string } | null> =
   declined:   { label: "Declined",          chip: "bg-bad-soft text-bad" },
   superseded: null,
 }
+
+// one width for every view's title, so the view switcher after it stays put
+const TITLE = "w-36 shrink-0 text-[17px] font-semibold tracking-tight"
+
 function ApprovalChip({ status, className }: { status: ApprovalStatus | null; className?: string }) {
   const a = status && APPROVAL[status]
   return a ? <span className={cn("whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-medium", a.chip, className)}>{a.label}</span> : null
@@ -59,7 +72,7 @@ function TaskForm({ d, label, init, busy, onSave, onCancel, submitLabel }: {
     <form className="mt-2 grid grid-cols-1 gap-1" onSubmit={async (e) => { e.preventDefault(); if (v.title.trim() && await onSave(v) && !init.title) setV({ ...v, title: "" }) }}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel() } }}>
       <Input autoFocus value={v.title} onChange={set("title")} placeholder="Task" aria-label={label} maxLength={200} className="h-7 px-2 text-[13px]" />
-      <select value={v.assignee} onChange={set("assignee")} aria-label="Assign to" className="h-7 min-w-0 rounded-md border border-input bg-background px-2 text-[12px]">
+      <select value={v.assignee} onChange={set("assignee")} aria-label="Assign to" className={cn(fieldAuto, "h-7 min-w-0 text-[12px]")}>
         <option value="">Unassigned</option>
         {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
       </select>
@@ -173,15 +186,15 @@ function NextLine({ r, today }: { r: FlowRow; today: string }) {
 function RolloutRow({ r, selected, tabStop, onSelect, today, me }: {
   r: FlowRow; selected: boolean; tabStop: boolean; onSelect: (id: number) => void; today: string; me: number
 }) {
-  const chip = <span className={cn("whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium", STATE[r.state].chip, r.state === "on_track" && "bg-transparent px-0 font-normal text-muted-foreground")}>
-    <span className="sr-only">{STATE[r.state].label}: </span>{stateText(r)}</span>
+  const chip = r.state === "on_track" ? <span className="whitespace-nowrap text-[12px] text-muted-foreground"><span className="sr-only">On track: </span>{stateText(r)}</span>
+    : <StateChip state={r.state} text={stateText(r)} />
   // The viewer is on most of their own rows: show who else is.
   const others = r.team.filter((p) => p.id !== me)
   const t = r.next_task
   return (
     <li>
       <button type="button" data-row data-id={r.id} onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={tabStop ? 0 : -1}
-        aria-label={`${r.name}${r.name.includes(r.client) ? "" : `, ${r.client}`}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : stateText(r)}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
+        aria-label={`${r.name}${r.name.includes(r.client) ? "" : `, ${r.client}`}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : `${STATE[r.state].label}, ${stateText(r)}`}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
         className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
           "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] md:gap-x-4 md:gap-y-1",
           selected ? "border-transparent bg-muted shadow-[inset_3px_0_0_var(--ring)]" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
@@ -214,33 +227,77 @@ function RolloutRow({ r, selected, tabStop, onSelect, today, me }: {
   )
 }
 
-function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilter, stage, setStage, group, setGroup, tools }: {
-  data: FlowData; me: number; partner?: boolean; selectedId: number | null; onSelect: (id: number) => void; tools?: ReactNode
-  filter: Filter; setFilter: (f: Filter) => void
-  stage: string | null; setStage: (s: string | null) => void
-  group: FlowGroupBy | null; setGroup: (g: FlowGroupBy | null) => void
+// attention: off track, or on track with a task past its date (critique 10 Oct; the state stays On track)
+const match = (r: FlowRow, f: Filter) =>
+  f === "attention" ? needsAttention(r) : f === "customer" ? r.approval === "pending" : f === "mine" ? r.mine : true
+
+// One header for every view of the flow: the title, the view switcher, the
+// counts and the filters, in the same place, so switching views moves nothing.
+function FlowHeader({ data, title, views, filter, setFilter, group, setGroup, stage, setStage }: {
+  data: FlowData; title: string; views: ReactNode; filter?: Filter; setFilter?: (f: Filter) => void
+  group?: FlowGroupBy | null; setGroup?: (g: FlowGroupBy | null) => void
+  stage?: string | null; setStage?: (s: string | null) => void   // shown as a removable chip where the view has no stage pills
 }) {
-  // attention: off track, or on track with a task past its date (critique 10 Oct; the state stays On track)
-  const match = useCallback((r: FlowRow, f: Filter) =>
-    f === "attention" ? needsAttention(r) : f === "customer" ? r.approval === "pending" : f === "mine" ? r.mine : true, [])
-  const rows = useMemo(() => data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage)), [data.rows, filter, stage, match])
+  const count = (f: Filter) => data.rows.filter((r) => match(r, f)).length
+  const chips = ([
+    { key: "all", label: "All", n: data.rows.length },
+    { key: "attention", label: "Needs attention", n: data.rows.filter(needsAttention).length },
+    { key: "customer", label: "Waiting on customer", n: count("customer") },
+    { key: "mine", label: "Mine", n: count("mine") },
+  ] as { key: Filter; label: string; n: number }[])
+    // a filter that changes nothing is noise: "Mine" for someone on every rollout, "Waiting" with none waiting
+    .filter((c) => c.key === filter || c.key === "all" || (c.n > 0 && c.n < data.rows.length) || (c.key === "attention" && c.n > 0))
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
+      <h1 className={TITLE}>{title}</h1>
+      {views}
+      {filter && (
+        <p className="text-[13px] text-muted-foreground">
+          {data.rows.length} active
+          {data.counts.overdue ? <> · <span className="font-medium text-bad">{data.counts.overdue} overdue</span></> : null}
+          {data.counts.over_sla ? <> · <span className="font-medium text-warn">{data.counts.over_sla} over SLA</span></> : null}
+          {data.counts.due_soon ? <> · <span className="font-medium text-warn">{data.counts.due_soon} due soon</span></> : null}
+          {data.counts.late_tasks ? <> · <span className="font-medium text-bad">{data.counts.late_tasks} on track with late tasks</span></> : null}
+        </p>
+      )}
+      {filter && setFilter && (
+        <div className="flex flex-wrap items-center gap-2 md:ml-auto">
+          {stage && setStage && (
+            <button type="button" onClick={() => setStage(null)} aria-label={`Stage ${stage}: show every stage`} className={cn(chip(true), "flex items-center gap-1")}>{stage} <X className="h-3 w-3" aria-hidden /></button>
+          )}
+          {chips.map((c) => (
+            <button key={c.key} type="button" onClick={() => setFilter(c.key)} aria-pressed={filter === c.key} aria-label={`${c.label}, ${c.n}`}
+              className={cn(chip(filter === c.key), "flex items-center gap-1")}>
+              {c.label}{c.n ? <span className={filter === c.key ? "text-background/70" : "text-muted-foreground"}>{c.n}</span> : null}
+            </button>
+          ))}
+          {setGroup && (
+            <label className="flex items-center gap-2 pl-1 text-[13px] text-muted-foreground">
+              Group
+              <select aria-label="Group rollouts by" value={group ?? ""} onChange={(e) => setGroup((e.target.value || null) as FlowGroupBy | null)}
+                className={cn(filterSelect, "pointer-coarse:h-10")}>
+                <option value="">None</option><option value="stage">Stage</option><option value="client">Client</option><option value="owner">Owner</option>
+              </select>
+            </label>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilter, stage, setStage, group, header }: {
+  data: FlowData; me: number; partner?: boolean; selectedId: number | null; onSelect: (id: number) => void; header: ReactNode
+  filter: Filter; setFilter: (f: Filter) => void; stage: string | null; setStage: (s: string | null) => void; group: FlowGroupBy | null
+}) {
+  const rows = useMemo(() => data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage)), [data.rows, filter, stage])
   // Every row's stages in one column order, so a stage lines up down the list.
   const columns = useMemo(() => stageColumns(data.rows.map((r) => r.stages)), [data.rows])
   const inStage = useMemo(() => {
     const n = new Map<string, number>()
     for (const r of data.rows) if (match(r, filter)) n.set(r.stage, (n.get(r.stage) ?? 0) + 1)
     return n
-  }, [data.rows, filter, match])
-  const stuck = data.rows.filter(needsAttention).length
-  const count = (f: Filter) => data.rows.filter((r) => match(r, f)).length
-  const chips = ([
-    { key: "all", label: "All", n: data.rows.length },
-    { key: "attention", label: "Needs attention", n: stuck },
-    { key: "customer", label: "Waiting on customer", n: count("customer") },
-    { key: "mine", label: "Mine", n: count("mine") },
-  ] as { key: Filter; label: string; n: number }[])
-    // a filter that changes nothing is noise: "Mine" for someone on every rollout, "Waiting" with none waiting
-    .filter((c) => c.key === filter || c.key === "all" || (c.n > 0 && c.n < data.rows.length) || (c.key === "attention" && c.n > 0))
+  }, [data.rows, filter])
   // On track needs no attention: folded into one line while anything else does.
   const calm = group ? [] : rows.filter((r) => !needsAttention(r))
   const [showCalm, setShowCalm] = useState(false)
@@ -266,32 +323,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
   const row = (r: FlowRow) => <RolloutRow key={r.id} r={r} selected={r.id === selectedId} tabStop={r.id === tabStop} onSelect={onSelect} today={data.today} me={me} />
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
-        <h1 className="text-[17px] font-semibold tracking-tight">Active rollouts</h1>
-        {tools}
-        <p className="text-[13px] text-muted-foreground">
-          {data.rows.length} active
-          {data.counts.overdue ? <> · <span className="font-medium text-bad">{data.counts.overdue} overdue</span></> : null}
-          {data.counts.over_sla ? <> · <span className="font-medium text-warn">{data.counts.over_sla} over SLA</span></> : null}
-          {data.counts.due_soon ? <> · <span className="font-medium text-warn">{data.counts.due_soon} due soon</span></> : null}
-          {data.counts.late_tasks ? <> · <span className="font-medium text-bad">{data.counts.late_tasks} on track with late tasks</span></> : null}
-        </p>
-        <div className="flex flex-wrap items-center gap-2 md:ml-auto">
-          {chips.map((c) => (
-            <button key={c.key} type="button" onClick={() => setFilter(c.key)} aria-pressed={filter === c.key} aria-label={`${c.label}, ${c.n}`}
-              className={cn(chip(filter === c.key), "flex items-center gap-1")}>
-              {c.label}{c.n ? <span className={filter === c.key ? "text-background/70" : "text-muted-foreground"}>{c.n}</span> : null}
-            </button>
-          ))}
-          <label className="flex items-center gap-2 pl-1 text-[13px] text-muted-foreground">
-            Group
-            <select aria-label="Group rollouts by" value={group ?? ""} onChange={(e) => setGroup((e.target.value || null) as FlowGroupBy | null)}
-              className="h-8 rounded-md border border-input bg-background px-2 text-[13px] text-foreground pointer-coarse:h-10">
-              <option value="">None</option><option value="stage">Stage</option><option value="client">Client</option><option value="owner">Owner</option>
-            </select>
-          </label>
-        </div>
-      </div>
+      {header}
       {/* how many sit in each stage, named; a tap shows only that stage */}
       <nav aria-label="Rollouts in each stage" className="fade-x flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none]">
         {columns.filter((c) => inStage.get(c) || stage === c).map((c) => {
@@ -308,7 +340,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
       </nav>
       <ScrollArea className="min-h-0 flex-1">
         <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-2 text-[12px] text-muted-foreground md:grid">
-          <span>Rollout · next step <span className="ml-1">(↑↓ or j/k, Enter opens, → to its actions)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
+          <span>Rollout · next step <span className="ml-1">(↑↓ or j/k, Enter opens, right arrow to its actions)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid grid-cols-1 gap-1 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
           {group ? groupRows(shown, group).map((g) => (
@@ -411,8 +443,6 @@ function TimeStrip({ d }: { d: FlowDetail }) {
 export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string, undo?: string) => void; onClose?: () => void; standalone?: boolean }) {
   // on the project page the name is the h1, so the rail's headings are h2s there
   const H = standalone ? "h2" : "h3"
-  const [note, setNote] = useState("")
-  const [confirming, setConfirming] = useState(false)
   // The flowchart fits its width: measure it, and fold stages that don't fit
   // (finished ones first) until someone asks to see them all.
   const [flowWidth, measure] = useWidth<HTMLOListElement>()
@@ -436,30 +466,14 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
   const open = d.tasks.filter((t) => !t.done)
   const next = nextUp(open, d.stage)
   const openHere = open.filter((t) => t.stage === d.stage).length
-  const approvalPending = d.approval?.stage === d.stage && d.approval.status === "pending"
-  const told = d.participants.filter((p) => p.user_id !== d.me).length
   // the terminal stage is the end: the project is closed, nothing is "next"
   const closed = !d.next_stage && d.stage_index === d.stages.length - 1
   const closedOn = closed ? d.stages[d.stage_index]?.entered_at ?? null : null
   const workFirst = openHere > 0 && !!next && next.stage === d.stage
-  const risky = openHere > 0 || approvalPending || (d.approval?.status === "declined" && d.approval.stage === d.stage)
-  const confirmAt = useRef(0)
-  const advanceRef = useRef<HTMLButtonElement>(null)
-  const cancelMove = () => { setConfirming(false); requestAnimationFrame(() => advanceRef.current?.focus()) }
   // with no open task, "next" is the move itself: ready to advance, or the sign-off, or nothing to do here
   const nextMove = d.can_move && d.next_stage
     ? d.signoff?.needed ? `Sign-off: ${signoffText(d.signoff.status)}` : `Ready to move to ${d.next_stage}`
     : `No open task in ${d.stage}`
-  async function advance() {
-    if (!d.next_stage) return
-    setBusy(true); setErr(null)
-    try {
-      const r = await changeStage(d.id, d.next_stage, note)
-      setNote(""); setConfirming(false)
-      onMoved(`${d.name} moved to ${d.next_stage}.`, r.undo)
-      await reload()
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not move the stage") } finally { setBusy(false) }
-  }
   // Next up, as a panel: first in the rail while work is open in the stage, after the move otherwise
   // (with no task left and the sign-off panel showing, it would only repeat that panel)
   const nextUpPanel = closed || (!next && d.can_move && d.next_stage && d.signoff?.needed) ? null : (
@@ -502,9 +516,10 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           <div className="flex flex-wrap items-center gap-2">
             {d.approval && d.approval.stage === d.stage && <ApprovalChip status={d.approval.status} className="px-2 py-1 text-[12px]" />}
             {closed && <span className="rounded-md bg-ok-soft px-2 py-1 text-[12px] font-medium text-ok">Closed{closedOn ? ` on ${fmtDate(closedOn)}` : ""}</span>}
-            {!closed && d.state !== "on_track" && <span className={cn("rounded-md px-2 py-1 text-[12px] font-medium", STATE[d.state].chip)}>{stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })}</span>}
+            {/* the project page shows the plan's verdict in its title row instead (one health, not two) */}
+            {!closed && !standalone && <StateChip state={d.state} text={stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })} />}
             {!standalone && <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>}
-            {!standalone && <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open project <ExternalLink className="h-3.5 w-3.5" /></a>}
+            {!standalone && <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open rollout <ExternalLink className="h-3.5 w-3.5" /></a>}
             {onClose && <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close this rollout (Esc)" title="Close (Esc)"><X className="h-4 w-4" /></Button>}
           </div>
         </div>
@@ -534,7 +549,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                       {arrow}
                       <button type="button" onClick={() => setShowAll(true)} aria-expanded={false}
                         aria-label={`${it.kind === "done" ? "Finished" : "Later"} stages: ${names.join(", ")}. Show every stage`}
-                        title={names.join(" → ")}
+                        title={names.join(" › ")}
                         className={cn("block min-h-[58px] w-full rounded-lg border-[1.5px] px-3 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                           it.kind === "done" ? "border-ok-line bg-ok-soft hover:bg-ok-soft/70" : "border-dashed border-input bg-card hover:bg-muted")}>
                         <span className={cn("flex items-start gap-1 text-[13px] font-semibold leading-tight", it.kind === "later" && "text-nav-fg")}>
@@ -594,7 +609,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {d.approval && d.approval.stage === d.stage && d.approval.status === "pending" && d.can_approve && (
           <section className="rounded-lg bg-warn-soft p-3">
             <H className="mb-1 text-[12px] font-semibold text-nav-fg">Your approval</H>
-            <p className="mb-2 text-[13px] text-muted-foreground">The project moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
+            <p className="mb-2 text-[13px] text-muted-foreground">The rollout moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
             <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (optional)" aria-label="Approval comment" maxLength={2000} className="h-8 text-[13px]" />
             <div className="mt-2 flex gap-2">
               <Button size="sm" className="flex-1" disabled={busy} onClick={() => decide("approved")}>Approve</Button>
@@ -616,36 +631,12 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         {d.can_move && d.next_stage && d.signoff?.needed && !d.signoff.awaiting_me && (
           <section className="panel p-3">
             <H className="mb-1 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><FileSignature className="h-3.5 w-3.5" /> Sign-off before {d.next_stage}</H>
-            <p className="mb-2 text-[13px] text-muted-foreground">{signoffText(d.signoff.status)}. The project closes once the customer has signed and we have countersigned.</p>
+            <p className="mb-2 text-[13px] text-muted-foreground">{signoffText(d.signoff.status)}. The rollout closes once the customer has signed and we have countersigned.</p>
             <Link to={`/projects/${d.id}/signoff`} className={cn(buttonVariants({ size: "sm" }), "w-full")}>{d.signoff.status ? "Open the sign-off" : "Prepare the sign-off"}</Link>
           </section>
         )}
         {d.can_move && d.next_stage && !d.signoff?.needed && (
-          <section className="panel p-3" aria-labelledby={`move-h-${d.id}`} onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); cancelMove() } }}>
-            <H id={`move-h-${d.id}`} className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ArrowRight className="h-3.5 w-3.5" /> Move to {d.next_stage}</H>
-            {/* what the move will do, next to the button that does it */}
-            <ul className="mb-2 grid grid-cols-1 gap-1 text-[13px] text-muted-foreground">
-              {openHere > 0 && <li className="font-medium text-warn">{openHere} open task{openHere === 1 ? "" : "s"} still in {d.stage}</li>}
-              {approvalPending && <li className="font-medium text-warn">The customer has not approved {d.stage} yet</li>}
-              {d.approval?.status === "declined" && d.approval.stage === d.stage && <li className="font-medium text-bad">The customer declined {d.stage}{d.approval.comment ? `: “${d.approval.comment}”` : ""}</li>}
-              <li>Tells {told} {told === 1 ? "person" : "people"} on the team</li>
-            </ul>
-            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Stage change note, shared with the customer and partners" aria-describedby={`move-note-${d.id}`} maxLength={5000} className="h-8 text-[13px]" />
-            <p id={`move-note-${d.id}`} className="mt-1 text-[12px] text-muted-foreground">Shared with the customer and partners.</p>
-            {/* the confirm names the risk, opens with Cancel first when there is one, and
-                ignores a second click that lands within a moment of the first (a double-click) */}
-            {confirming ? (
-              <div className="mt-2 grid grid-cols-1 gap-2" role="group" aria-label={`Confirm the move to ${d.next_stage}`}>
-                {risky && <Button size="sm" variant="outline" onClick={cancelMove} disabled={busy} autoFocus>Cancel</Button>}
-                <Button size="sm" onClick={() => { if (Date.now() - confirmAt.current > 400) void advance() }} loading={busy} autoFocus={!risky}>
-                  {openHere > 0 ? `Move with ${openHere} open task${openHere === 1 ? "" : "s"}` : approvalPending ? "Move without the customer's approval" : `Move to ${d.next_stage} now`}</Button>
-                {!risky && <Button size="sm" variant="ghost" onClick={cancelMove} disabled={busy}>Cancel</Button>}
-              </div>
-            ) : (
-              <Button ref={advanceRef} className="mt-2 w-full" size="sm" variant={workFirst ? "outline" : "default"} onClick={() => { confirmAt.current = Date.now(); setConfirming(true) }} disabled={busy}>Move to {d.next_stage} <ArrowRight className="h-3.5 w-3.5" /></Button>
-            )}
-            {err && <p className="mt-2 text-[12px] text-destructive" role="alert">{err}</p>}
-          </section>
+          <MoveConfirm d={d} quiet={workFirst} heading={H} onMoved={async (text, undo) => { onMoved(text, undo); await reload() }} />
         )}
         {!workFirst && nextUpPanel}
         <section className="panel p-3">
@@ -717,11 +708,12 @@ export default function Flow({ user }: { user: User }) {
   // the rollout the pane is for: a slower answer for the previous one is dropped
   const wanted = useRef(selectedId)
   wanted.current = selectedId
-  // Three ways to look at the portfolio, kept in the URL: the list, a month, or Kibana.
+  // Ways to look at the portfolio, kept in the URL: the list, a Kanban by stage, or a month.
   const vw = params.get("view")
-  const view: "list" | "calendar" | "kibana" = vw === "calendar" || (vw === "kibana" && user.kind !== "external") ? vw : "list"
-  useEffect(() => { document.title = `${view === "calendar" ? "Calendar" : view === "kibana" ? "Kibana" : "Flow"} · Odin` }, [view])   // test report UX-17
-  const setView = useCallback((v: "list" | "calendar" | "kibana") => {
+  // the Gantt reads plans, which are staff-only (the customer cut is the rollout report's)
+  const view: View = VIEWS.includes(vw as View) && !(vw === "gantt" && user.kind === "external") ? vw as View : "list"
+  useEffect(() => { document.title = `${{ list: "Flow", kanban: "Kanban", gantt: "Gantt", calendar: "Calendar" }[view]} · Odin` }, [view])   // test report UX-17
+  const setView = useCallback((v: View) => {
     setParams((prev) => { const next = new URLSearchParams(prev); if (v === "list") next.delete("view"); else next.set("view", v); next.delete("month"); next.delete("day"); return next }, { replace: true })
   }, [setParams])
   // The filter lives in the URL too, so a reload keeps it.
@@ -787,38 +779,58 @@ export default function Flow({ user }: { user: User }) {
     return () => window.removeEventListener("keydown", onKey)
   }, [selectedId, setSelectedId])
 
-  async function undoMove(path: string) {
+  async function undoMove(path: string, say: (text: string, bad: boolean) => void = (text, bad) => setNotice({ text, bad })) {
     try {
       const r = await postForm(path)
       const back = r.messages.join(" ")
-      setNotice({ text: back || "Move undone", bad: !back.startsWith("Moved back") })
+      say(back || "Move undone", !back.startsWith("Moved back"))
       await Promise.all([load(), selectedId != null ? loadDetail(selectedId) : Promise.resolve()])
-    } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "Could not undo the move", bad: true }) }
+    } catch (e) { say(e instanceof ApiError ? e.message : "Could not undo the move", true) }
+  }
+  // a Kanban drop: the rollout's own detail feeds the same confirm the rail shows
+  const [moving, setMoving] = useState<FlowDetail | null>(null)
+  async function askMove(r: FlowRow) {
+    try { setMoving(await flowDetail(r.id)) } catch (e) { toast(e instanceof ApiError ? e.message : "Could not load the rollout", { tone: "bad" }) }
   }
 
   if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
 
   const views = (
-    <span className="flex rounded-full bg-muted p-1" role="group" aria-label="View">
-      {([["list", LayoutList, "Rollouts"], ["calendar", CalendarDays, "Calendar"], ...(user.kind === "external" ? [] : [["kibana", BarChart3, "Kibana"] as const])] as const).map(([v, Icon, label]) => (
-        <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v}
-          className={cn("flex h-7 items-center gap-2 rounded-full px-3 text-[12px] font-medium", view === v ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground")}>
-          <Icon className="h-3.5 w-3.5" aria-hidden />{label}
-        </button>
-      ))}
-    </span>
+    <Segmented label="View" value={view} onChange={setView}
+      options={([["list", LayoutList, "List"], ["kanban", KanbanIcon, "Kanban"], ...(user.kind === "external" ? [] : [["gantt", GanttChart, "Gantt"] as const]), ["calendar", CalendarDays, "Calendar"]] as const)
+        .map(([v, Icon, label]) => ({ value: v, label, icon: <Icon className="h-3.5 w-3.5" aria-hidden /> }))} />
   )
-  if (view !== "list") return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
-        <h1 className="text-[17px] font-semibold tracking-tight">{view === "calendar" ? "Calendar" : "Kibana"}</h1>
-        {views}
-      </div>
-      <div className="panel mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden">{view === "calendar" ? <Calendar wide={wide} /> : <Kibana rollout={selectedId} onRollout={setSelectedId} />}</div>
+  const shownRows = data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage))
+  // the same header row, in the same card at the same place, on every view, so the switcher never moves (critique 10 Oct)
+  const list = view === "calendar" ? (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col"><FlowHeader data={data} title="Calendar" views={views} /><Suspense fallback={<PageSkeleton />}><Calendar wide={wide} /></Suspense></div>
+  ) : view === "gantt" ? (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />
+      <Suspense fallback={<PageSkeleton />}><FlowGantt ids={shownRows.map((r) => r.id)} selectedId={selectedId} onSelect={setSelectedId} /></Suspense>
     </div>
+  ) : view === "kanban" ? (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />
+      <Suspense fallback={<PageSkeleton />}>
+        <FlowKanban rows={shownRows} columns={stageColumns(data.rows.map((r) => r.stages))} selectedId={selectedId} onSelect={setSelectedId} onMove={(r) => void askMove(r)} onOnly={setStage} />
+      </Suspense>
+      <Dialog open={moving != null} onOpenChange={(o) => { if (!o) setMoving(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Move {moving?.name} to {moving?.next_stage}</DialogTitle><DialogDescription>From {moving?.stage} to {moving?.next_stage}.</DialogDescription></DialogHeader>
+          {moving && <MoveConfirm d={moving} confirmNow bare onCancel={() => setMoving(null)} onMoved={async (text, undo) => {
+            setMoving(null)
+            toast(text, undo ? { action: { label: "Undo", run: () => void undoMove(undo, (t, bad) => toast(t, { tone: bad ? "bad" : "ok" })) } } : {})
+            await Promise.all([load(), selectedId != null ? loadDetail(selectedId) : Promise.resolve()])
+          }} />}
+        </DialogContent>
+      </Dialog>
+    </div>
+  ) : (
+    <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group}
+      header={<FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} group={group} setGroup={setGroup} />} />
   )
-  const list = <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group} setGroup={setGroup} tools={views} />
   const pane = selectedId != null && (
     <>
               {!wide && (
@@ -827,7 +839,7 @@ export default function Flow({ user }: { user: User }) {
                 </button>
               )}
               {notice && (
-                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[13px]", notice.bad ? "bg-bad-soft text-bad" : "bg-ok-soft text-ok")} role="status">
+                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[13px]", notice.bad ? "bg-destructive/10 text-destructive" : "bg-ok-soft text-ok")} role="status">
                   <span>{notice.text}
                     {/* the mover can put it back for five minutes; the server decides */}
                     {notice.undo && <button type="button" onClick={() => void undoMove(notice.undo!)} className="ml-2 font-semibold underline-offset-2 hover:underline">Undo</button>}

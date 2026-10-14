@@ -36,16 +36,25 @@ export function fmtDate(iso: string | null | undefined): string {
   if (dateFormat === "yyyy-MM-dd") return `${y}-${m}-${d}`
   if (dateFormat === "dd/MM/yyyy") return `${d}/${m}/${y}`
   if (dateFormat === "MM/dd/yyyy") return `${m}/${d}/${y}`
-  return `${Number(d)} ${MONTHS[Number(m) - 1]}`
+  return shortDay(ymd)
 }
+// "27 Sep" whatever the workspace format: for tiles too narrow for a numeric date.
+export const shortDay = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`
+// "Sep" from "2026-09" or "2026-09-27"
+export const monthName = (iso: string) => MONTHS[Number(iso.slice(5, 7)) - 1]
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+// "Mon" for a YYYY-MM-DD date (the date itself, not shifted by the reader's zone)
+export const weekday = (iso: string) => WEEKDAYS[new Date(`${iso.slice(0, 10)}T00:00:00Z`).getUTCDay()]
 export const days = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n)} d`)
 
 // whole calendar days past the target, as the timeline and dashboard count them (never rounded from the clock, sim L-9)
 export const daysLate = (target: string | null) => (target ? lateBy(target, localToday()) : 0)
+// The reason behind a rollout's health word (lib/state.ts): "overdue 4 d",
+// "6 d over SLA", "due 30 Nov"; on track, its days in the stage.
 export function stateText(r: { state: FlowState; days_in_stage: number | null; over_by: number | null; target_end_date: string | null }) {
-  if (r.state === "overdue") return `Overdue ${daysLate(r.target_end_date)} d`
-  if (r.state === "over_sla") return r.days_in_stage == null ? "Over SLA" : `${days(r.days_in_stage)} · ${Math.round(r.over_by ?? 0)} over SLA`
-  if (r.state === "due_soon") return `Due ${fmtDate(r.target_end_date)}`
+  if (r.state === "overdue") return `overdue ${daysLate(r.target_end_date)} d`
+  if (r.state === "over_sla") return r.over_by == null ? "over SLA" : `${Math.round(r.over_by)} d over SLA`
+  if (r.state === "due_soon") return `due ${fmtDate(r.target_end_date)}`
   return days(r.days_in_stage)
 }
 

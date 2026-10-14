@@ -1,5 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { PlanStage } from "@/lib/api"
+import type { PlanStage, Rag } from "@/lib/api"
+import { HEALTH } from "@/lib/state"
 import { cn } from "@/lib/utils"
 import { dayOf, fmtDate, monthTicks } from "@/lib/format"
 import { useWidth } from "@/lib/useMeasure"
@@ -43,7 +44,7 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
         </div>
         {stages.map((s) => {
           const late = s.status === "current" && s.plan_end && s.forecast_end && s.forecast_end > s.plan_end
-          const label = `${s.name}: plan ${s.plan_start ? `${fmtDate(s.plan_start)} → ${fmtDate(s.plan_end)}` : "not set"}; ${s.actual_start ? `actual from ${fmtDate(s.actual_start)}${s.actual_end ? ` to ${fmtDate(s.actual_end)}` : ""}` : "not started"}; forecast to end ${fmtDate(s.forecast_end)}${s.slip_days ? `, ${s.slip_days > 0 ? `${s.slip_days} d late` : `${-s.slip_days} d early`}` : ""}`
+          const label = `${s.name}: plan ${s.plan_start ? `${fmtDate(s.plan_start)} – ${fmtDate(s.plan_end)}` : "not set"}; ${s.actual_start ? `actual from ${fmtDate(s.actual_start)}${s.actual_end ? ` to ${fmtDate(s.actual_end)}` : ""}` : "not started"}; forecast to end ${fmtDate(s.forecast_end)}${s.slip_days ? `, ${s.slip_days > 0 ? `${s.slip_days} d late` : `${-s.slip_days} d early`}` : ""}`
           return (
             <div key={s.id} className="contents">
               <div className={cn("flex min-w-0 flex-col justify-center border-t border-border", row)}>
@@ -86,10 +87,10 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
 // The dates a reader wants beside the stage: done = when it ran; current =
 // since when and the forecast end; upcoming = the plan (or the forecast).
 function stageDates(s: PlanStage): string {
-  if (s.status === "done" && s.actual_start) return `${fmtDate(s.actual_start)} → ${fmtDate(s.actual_end ?? s.actual_start)}`
+  if (s.status === "done" && s.actual_start) return `${fmtDate(s.actual_start)} – ${fmtDate(s.actual_end ?? s.actual_start)}`
   if (s.status === "current" && s.actual_start) return `since ${fmtDate(s.actual_start)} · ends ${fmtDate(s.forecast_end ?? s.plan_end)}`
-  if (s.plan_start && s.plan_end) return `${fmtDate(s.plan_start)} → ${fmtDate(s.plan_end)} planned`
-  if (s.forecast_start && s.forecast_end) return `${fmtDate(s.forecast_start)} → ${fmtDate(s.forecast_end)} forecast`
+  if (s.plan_start && s.plan_end) return `${fmtDate(s.plan_start)} – ${fmtDate(s.plan_end)} planned`
+  if (s.forecast_start && s.forecast_end) return `${fmtDate(s.forecast_start)} – ${fmtDate(s.forecast_end)} forecast`
   return "no dates yet"
 }
 
@@ -108,9 +109,7 @@ export function StatusPill({ tone, children, className }: { tone: string; childr
   return <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold", tone, className)}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{children}</span>
 }
 
-// The health pill: RAG in its state colour, with the word.
-export function RagPill({ rag, className }: { rag: "green" | "amber" | "red" | "done"; className?: string }) {
-  const map = { green: ["bg-muted text-nav-fg", "On track"], amber: ["bg-warn-soft text-warn", "At risk"], red: ["bg-bad-soft text-bad", "Off track"], done: ["bg-muted text-muted-foreground", "Complete"] } as const
-  const [cls, word] = map[rag]
-  return <StatusPill tone={cls} className={className}>{word}</StatusPill>
+// The health pill: the plan word in its state colour (lib/state.ts HEALTH).
+export function RagPill({ rag, className }: { rag: Rag; className?: string }) {
+  return <StatusPill tone={HEALTH[rag].tone} className={className}>{HEALTH[rag].label}</StatusPill>
 }

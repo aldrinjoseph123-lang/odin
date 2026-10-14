@@ -159,6 +159,8 @@ export type FlowRow = {
   over_by: number | null; state: FlowState; open_tasks: number; total_tasks: number; late_tasks: number; late_since: string | null
   next_task: { title: string; due_date: string | null; assignee: string | null } | null; updated_at: string
   idle_days: number | null; stale: boolean
+  // the Kanban's drag: the one stage a drop may go to, and whether this person may make the move
+  start_date: string | null; next_stage: string | null; can_move: boolean; signoff_needed: boolean
 }
 export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState | "late_tasks", number>; can_move: boolean; today: string }
 export type FlowStage = { name: string; status: "done" | "current" | "next"; sla_days: number | null; entered_at: string | null; days: number | null }
@@ -204,6 +206,14 @@ export type PlanData = {
   can_edit: boolean; project: { id: number; name: string; start_date: string | null; target_end_date: string | null }
 }
 export const plan = (id: number) => getJson<PlanData>(`/api/projects/${id}/plan`)
+// the Flow's Gantt: every open rollout's stages at once (staff only)
+export type GanttStage = Pick<PlanStage, "id" | "name" | "status" | "sla_days" | "plan_start" | "plan_end" | "base_start" | "base_end" | "actual_start" | "actual_end" | "forecast_start" | "forecast_end" | "suggested_start" | "suggested_end" | "slip_days">
+export type GanttRow = {
+  id: number; name: string; client: string; stage: string; owner_name: string; start_date: string | null; target_end_date: string | null
+  forecast: string | null; pct_complete: number; rag: Rag; has_plan: boolean; baselined: boolean; can_edit: boolean; stages: GanttStage[]
+}
+export type GanttData = { today: string; calendar: { working: boolean; week: number[]; off: string[] } | null; rows: GanttRow[] }
+export const flowPlan = () => getJson<GanttData>("/api/flow/plan")
 export const savePlan = (id: number, stages: { id: number; plan_start: string | null; plan_end: string | null }[], reason: string) =>
   send<{ ok: true; changed: number; baselined: boolean; warning?: string }>(`/api/projects/${id}/plan`, "PUT", { stages, reason })
 export const rebaseline = (id: number, reason: string) => post<{ ok: true }>(`/api/projects/${id}/plan/baseline`, { reason })
@@ -342,18 +352,16 @@ export async function uploadSignoff(id: number, v: number, form: FormData): Prom
   return data as { ok: true }
 }
 
-// ---- calendar and kibana (views on the Flow page) ----
+// ---- calendar (a view on the Flow page) ----
 export type CalendarData = {
   month: string; today: string; from: string; to: string
   spans: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState }[]
   targets: { id: number; name: string; client: string; day: string; state: FlowState }[]
-  tasks: { id: number; project_id: number; title: string; day: string; done: number; project: string; who: string | null }[]
+  tasks: { id: number; project_id: number; title: string; day: string; done: number; project: string; who: string | null; can_edit: boolean }[]
   moves: { project_id: number; project: string; day: string; prev_stage: string; stage: string; who: string }[]
   approvals: { project_id: number; project: string; stage: string; day: string; kind: "asked" | "decided"; status: ApprovalStatus; who: string | null }[]
 }
 export const calendar = (month: string) => getJson<CalendarData>(`/api/calendar?month=${encodeURIComponent(month)}`)
-export type KibanaData = { dashboards: { name: string; url: string; per_rollout: boolean }[]; rollouts: { id: number; name: string; client: string; po_number: string | null }[]; rollout: number | null; can_manage: boolean }
-export const kibana = (rollout?: number | null) => getJson<KibanaData>(`/api/kibana${rollout ? `?rollout=${rollout}` : ""}`)
 
 // ---- dashboard ----
 export type DashKey = "active" | "overdue" | "over_sla" | "due_soon" | "awaiting" | "idle"
@@ -418,14 +426,14 @@ export const projectExtras = (id: number) => getJson<ProjectExtras>(`/api/projec
 // Post to one of Flask's form routes and read its flashes back as JSON. The
 // route is unchanged (same permission, audit row and validation); only the
 // answer differs because we ask for JSON.
-export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null }
+export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null; token?: string }
 export async function postForm(path: string, fields: Record<string, string> | FormData = {}): Promise<FormReply> {
   const body = fields instanceof FormData ? fields : new URLSearchParams(fields)
   const res = await withToken(path, { method: "POST", body, headers: { Accept: "application/json" } })
   if (!res.ok) {
     // a refused form answers 400 {ok: false, error, messages}: its own words
     const d = (await res.json().catch(() => null)) as { error?: string; messages?: string[] } | null
-    throw await failure(res, res.status === 403 ? "You cannot do that on this project" : d?.messages?.join(" ") || d?.error || undefined)
+    throw await failure(res, res.status === 403 ? "You cannot do that on this rollout" : d?.messages?.join(" ") || d?.error || undefined)
   }
   const data = notJson(res) ? null : (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
   if (!data) throw new ApiError(401, SIGNED_OUT)
@@ -436,7 +444,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 // ---- settings ----
 export type Policy = {
   key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "ai" | "ai_schedule" | "backups" | "reports" | "audit"
-  kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "lines" | "dates"
+  kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "dates"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
   group: string; hint?: string  // the card it sits on; the one plain line shown under it (help then sits behind "What is this?")
 }
@@ -454,7 +462,7 @@ export type SettingsData = {
     connected: boolean; connected_email: string | null; team_name: string | null; channel_name: string | null; channel_id: string | null
     teams: { id: string; name: string }[]; channels: { id: string; name: string }[]; team_id: string; teams_error: string | null
   }
-  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "onedrive_mirror_uploads_enabled" | "guest_links_enabled", boolean>
+  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "notify_teams_chat_enabled" | "onedrive_mirror_uploads_enabled" | "guest_links_enabled", boolean>
   backups: BackupsView | null
   api_tokens: { id: number; name: string; created_by: string; created_at: string; expires_at: string; last_used_at: string | null; revoked_at: string | null }[]
   audit_archives: { name: string; size: number }[]
@@ -500,7 +508,7 @@ export const contacts = () => getJson<ContactsData>("/api/settings/contacts")
 export type AdminUser = {
   id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"
   last_login_at: string | null; created_at: string | null; avatar_url: string | null; pending: boolean; password_login: boolean; two_step: boolean; microsoft: boolean
-  notify_via?: "email" | "teams"; signup_label?: string | null; signup_project?: string | null; signup_project_role?: string | null
+  signup_label?: string | null; signup_project?: string | null; signup_project_role?: string | null
 }
 export type UsersData = { users: AdminUser[]; roles: string[]; me: number; microsoft_only: boolean }
 export const users = () => getJson<UsersData>("/api/users")
@@ -529,7 +537,7 @@ export const reportAll = (template?: number | null) => getJson<ReportAllData>(`/
 
 // ---- account, my work, alerts, analytics ----
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; has_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
-  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[]; notify_via: "email" | "teams"; teams_ready: boolean }>("/api/account")
+  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[] }>("/api/account")
 // active minutes (services/activity.py): today, 7 and 30 days, one row per day
 export type Activity = { today: number; week: number; month: number; days: { day: string; minutes: number }[]; last_seen_at: string | null; last_login_at: string | null }
 // sign-up links (services/signup.py): admins make them; a new colleague fills /join/<token>
@@ -543,7 +551,7 @@ export const revokeSignupLink = (id: number) => post<{ ok: true }>(`/api/signup-
 export const revokeAllSignupLinks = () => post<{ ok: true; revoked: number }>("/api/signup-links/revoke-all")
 export type JoinInfo = { role: string; project: string | null; project_role: string | null; expires_at: string; company: string; domains: string[] }
 export const joinInfo = (token: string) => getJson<JoinInfo>(`/api/join/${token}`)
-export const joinSubmit = (token: string, b: { name: string; username: string; email: string; password: string; notify_via: "email" | "teams" }) =>
+export const joinSubmit = (token: string, b: { name: string; username: string; email: string; password: string }) =>
   post<{ ok: true }>(`/api/join/${token}`, b)
 // document templates (services/doc_templates.py)
 export type DocKind = "rollout" | "portfolio" | "signoff"
@@ -574,7 +582,7 @@ export async function previewDocTemplate(kind: DocKind, config: DocConfig): Prom
 }
 export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
 export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
-export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: number; target_end_date: string | null; role: string; owner_name: string
+export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: string[]; target_end_date: string | null; role: string; owner_name: string
   days_in_stage?: number | null; over_by?: number | null }
 export type MyWorkData = {
   today: string; tasks: WorkTask[]; done_by_day: { day: string; count: number }[]; projects: WorkProject[]
@@ -646,4 +654,6 @@ export const toggleTask = (projectId: number, taskId: number) => post<{ ok: true
 // a task corrected in place: the route takes the whole task (title, assignee, due date)
 export const editTask = (projectId: number, taskId: number, task: { title: string; assignee_id: number | null; due_date: string | null }) =>
   post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, task)
+// only the due date changes (the calendar's drag); task_edit lets the assignee do this much
+export const moveTaskDue = (projectId: number, taskId: number, due_date: string) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, { due_date })
 export const deleteTask = (projectId: number, taskId: number) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/delete`, {})

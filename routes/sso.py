@@ -13,7 +13,7 @@ audience, nonce and expiry before trusting a single claim. Accounts are bound
 by the immutable object id (oid), never by a changeable email; the email only
 links an existing Odin user on their first Microsoft sign-in.
 
-This uses its own app registration (Settings → Sign-in & security), separate
+This uses its own app registration (Settings › Sign-in & security), separate
 from the Microsoft 365 mail/Teams connection, so signing in can never touch
 the connected mailbox's token.
 """

@@ -38,7 +38,7 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
     const taskItems = results.tasks.map((t) => ({ kind: "task" as const, label: t.title, hint: `${t.project_name}${t.done ? " · done" : ""}`, href: `/board?rollout=${t.project_id}` }))
     const where = { note: "note", risk: "RAID", scope: "scope", document: "document" } as const
     const mentionItems = (results.mentions ?? []).map((m) => ({ kind: "mention" as const, label: m.snippet, hint: `${where[m.kind]} · ${m.project_name}`, href: m.href }))
-    const all = term.length >= 2 ? [{ kind: "all" as const, label: `Search all projects for “${q.trim()}”`, href: `/projects?q=${encodeURIComponent(q.trim())}` }] : []
+    const all = term.length >= 2 ? [{ kind: "all" as const, label: `Search all rollouts for “${q.trim()}”`, href: `/projects?q=${encodeURIComponent(q.trim())}` }] : []
     return [...projectItems, ...taskItems, ...mentionItems, ...pageItems, ...all]
   }, [q, pages, results])
 
@@ -60,7 +60,7 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
       <div className="flex items-center gap-2 border-b border-border px-3">
         <Search className="h-4 w-4 text-muted-foreground" />
         <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setActive(0) }} onKeyDown={onKey}
-          placeholder="Search projects, tasks, notes and documents, or jump to a page" aria-label="Search" role="combobox" aria-expanded aria-controls="palette-list"
+          placeholder="Search rollouts, tasks, notes and documents, or jump to a page" aria-label="Search" role="combobox" aria-expanded aria-controls="palette-list"
           aria-activedescendant={items[active] ? `palette-${active}` : undefined}
           className="h-11 w-full bg-transparent text-[14px] outline-none placeholder:text-muted-foreground" />
         <Kbd>Esc</Kbd>

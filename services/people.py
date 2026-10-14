@@ -11,7 +11,6 @@ from policies import local_date, local_today, policy
 from services.alerts import project_states as _states
 from services.analytics import days_in_stage, sla_by_stage, stage_sla_state
 
-STATE_LABEL = {"overdue": "Overdue", "over_sla": "Over SLA", "due_soon": "Due soon", "on_track": "On track"}
 
 
 def _since(day):
@@ -51,7 +50,7 @@ def _project_rows(db, projects, states, stage_lists):
         sla = stage_sla_state(p, slas, names[-1] if names else None, now)
         in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         out.append({"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "state": states[p["id"]],
-                    "stage_index": names.index(p["stage"]) if p["stage"] in names else 0, "stages": len(names),
+                    "stage_index": names.index(p["stage"]) if p["stage"] in names else 0, "stages": names,
                     "target_end_date": p["target_end_date"], "role": p["my_role"], "owner_name": p["owner_name"],
                     "days_in_stage": None if in_stage is None else round(in_stage, 1), "sla_days": slas.get(p["stage"]),
                     "over_by": round(sla["over_by"], 1) if sla else None})
@@ -135,7 +134,7 @@ def person(uid, scope):
     moves = db.execute(f"SELECT COUNT(*) FROM status_notes n JOIN projects p ON p.id = n.project_id WHERE (n.author_id = ? OR (n.author_id IS NULL AND n.author = ?)) AND n.prev_stage IS NOT NULL AND n.created_at >= ? AND p.deleted_at IS NULL{scope_sql}",
                        (uid, u["name"], month_ago, *scope_params)).fetchone()[0]
     recent = [dict(r) for r in db.execute(
-        "SELECT * FROM (SELECT 'move' AS kind, n.created_at AS at, p.id AS project_id, p.name AS project, n.prev_stage || ' → ' || n.stage AS text FROM status_notes n JOIN projects p ON p.id = n.project_id "
+        "SELECT * FROM (SELECT 'move' AS kind, n.created_at AS at, p.id AS project_id, p.name AS project, n.prev_stage || ' to ' || n.stage AS text FROM status_notes n JOIN projects p ON p.id = n.project_id "
         f"WHERE (n.author_id = ? OR (n.author_id IS NULL AND n.author = ?)) AND n.prev_stage IS NOT NULL AND p.deleted_at IS NULL{scope_sql} "
         "UNION ALL SELECT 'note', n.created_at, p.id, p.name, n.note FROM status_notes n JOIN projects p ON p.id = n.project_id "
         f"WHERE (n.author_id = ? OR (n.author_id IS NULL AND n.author = ?)) AND n.prev_stage IS NULL AND p.deleted_at IS NULL{scope_sql} "

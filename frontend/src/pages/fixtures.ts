@@ -13,7 +13,8 @@ export const flowRow = (over: Partial<FlowRow>): FlowRow => ({
   id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", stages, stage_index: 1, owner_name: "Admin User", mine: true,
   team: [{ id: 1, name: "Admin User", avatar_url: null }], approval: null, delivery_mode: "Direct", target_end_date: "2026-12-01",
   days_in_stage: 3, sla_days: 5, over_by: null, state: "on_track", open_tasks: 1, total_tasks: 2, late_tasks: 0, late_since: null,
-  next_task: { title: "Collect asset inventory", due_date: "2026-10-02", assignee: "Priya" }, updated_at: "2026-09-28T10:00:00", idle_days: 1, stale: false, ...over,
+  next_task: { title: "Collect asset inventory", due_date: "2026-10-02", assignee: "Priya" }, updated_at: "2026-09-28T10:00:00", idle_days: 1, stale: false,
+  start_date: "2026-09-01", next_stage: "Sensor pilot", can_move: true, signoff_needed: false, ...over,
 })
 export const flow: FlowData = {
   stages, today: "2026-09-29", can_move: true,
@@ -49,7 +50,7 @@ export const dashboard: DashboardData = {
     attention: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", worst: "overdue", reasons: [{ kind: "overdue", text: "5 d late" }] }],
     timeline: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", start_date: "2026-09-01", target_end_date: "2026-12-01", state: "on_track", progress: 0.25, team: [] }],
     progress: { done: 3, current: 4, pending: 10, pct: 18 }, stages: [{ stage: "Scoping", count: 4, late: 0, warn: 0 }], completion: Array.from({ length: 56 }, (_, i) => ({ day: `2026-08-${String(i + 1).padStart(2, "0")}`, count: i % 3 })),
-    schedule: { due: [], approvals: [] }, team: { people: [], unassigned: 0 }, activity: [], alerts: [{ id: 1, project_id: 1, project: "EDR Rollout - Globex", type: "project_overdue", title: "Project overdue", severity: "critical", created_at: "2026-09-29T08:00:00" }],
+    schedule: { due: [], approvals: [] }, team: { people: [], unassigned: 0 }, activity: [], alerts: [{ id: 1, project_id: 1, project: "EDR Rollout - Globex", type: "project_overdue", title: "Rollout overdue", severity: "critical", created_at: "2026-09-29T08:00:00" }],
     mywork: { tasks: [], owned: 2 }, cycle: null,
   },
 }
@@ -63,7 +64,7 @@ export const calendarData: CalendarData = {
   month: "2026-09", today: "2026-09-29", from: "2026-08-24", to: "2026-10-19",
   spans: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", start_date: "2026-09-01", target_end_date: "2026-10-15", state: "on_track" }],
   targets: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", day: "2026-10-15", state: "on_track" }],
-  tasks: [1, 2, 3, 4].map((i) => ({ id: i, project_id: 1, title: `Task ${i}`, day: "2026-09-10", done: 0, project: "EDR Rollout - Globex", who: "Priya" })),
+  tasks: [1, 2, 3, 4].map((i) => ({ id: i, project_id: 1, title: `Task ${i}`, day: "2026-09-10", done: 0, project: "EDR Rollout - Globex", who: "Priya", can_edit: true })),
   moves: [{ project_id: 1, project: "EDR Rollout - Globex", day: "2026-09-08", prev_stage: "PO Received", stage: "Scoping", who: "Admin" }],
   approvals: [],
 }

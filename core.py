@@ -73,7 +73,7 @@ def localdt(value, mode="datetime"):
 
 def external_url(endpoint, **values):
     """An absolute link for email and for Microsoft's redirect: built from the
-    public address in Settings → General when set, never from the Host
+    public address in Settings › General when set, never from the Host
     header of whoever made the request (a forged Host would otherwise put an
     attacker's domain into a sign-in or reset link)."""
     from policies import policy

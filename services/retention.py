@@ -1,4 +1,4 @@
-"""Audit log retention (Settings → Audit & compliance → Keep for N years).
+"""Audit log retention (Settings › Audit & compliance › Keep for N years).
 
 The audit log is append-only: triggers refuse UPDATE and DELETE, so no
 account can thin its own evidence. Retention is the one exception and it is

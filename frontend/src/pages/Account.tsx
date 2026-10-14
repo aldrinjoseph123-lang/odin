@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { PageHeader } from "@/components/PageHeader"
 import { toast } from "@/lib/toast"
 import { PanelTitle } from "@/components/PanelTitle"
-import { chip } from "@/lib/ui"
+import { chip, danger } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -43,10 +44,7 @@ export default function Account({ user }: { user: User }) {
   if (!me) return <PageSkeleton />
   return (
     <div className="px-5 pb-6 pt-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-[17px] font-semibold tracking-tight">My account</h1>
-        <p className="text-[13px] text-muted-foreground">{me.name} · {me.username}{me.kind === "external" ? ` · ${user.external_role === "Customer" ? "customer" : "partner"} access` : ""}</p>
-      </div>
+      <PageHeader title="My account" lede={`${me.name} · ${me.username}${me.kind === "external" ? ` · ${user.external_role === "Customer" ? "customer" : "partner"} access` : ""}`} />
       {me.must_change_password && <Alert className="mt-3"><AlertDescription>Set a new password before continuing. The one you were given is a shared secret.</AlertDescription></Alert>}
       <div className="mt-3 grid max-w-5xl grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
@@ -88,7 +86,7 @@ export default function Account({ user }: { user: User }) {
               <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="w-full" />
               <div className="flex gap-2">
                 <Button type="submit" size="sm" variant="outline" loading={busy}>Upload</Button>
-                {me.avatar_url && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => send("/account/avatar/remove", {})}>Remove</Button>}
+                {me.avatar_url && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => send("/account/avatar/remove", {})}>Remove</Button>}
               </div>
               <p className="text-[12px] text-muted-foreground">PNG, JPG, GIF or WebP, up to 2 MB. Square images look best.</p>
             </div>
@@ -109,24 +107,12 @@ export default function Account({ user }: { user: User }) {
           )}
           <div><Button type="submit" size="sm" loading={busy} disabled={email === (me.email ?? "") || (me.has_password && !emailPw)}>Save email</Button></div>
         </form>
-        {me.kind === "internal" && (
-          <section className="grid grid-cols-1 content-start gap-2 panel p-4" aria-label="How Odin reaches you">
-            <PanelTitle className="mb-0" hint="besides the bell">Reach me by</PanelTitle>
-            <div className="flex rounded-full bg-muted p-1" role="radiogroup" aria-label="Reach me by">
-              {(["email", "teams"] as const).map((v) => (
-                <button key={v} type="button" role="radio" aria-checked={me.notify_via === v} disabled={busy} onClick={() => void send("/account/notify-via", { notify_via: v })}
-                  className={cn("h-7 flex-1 rounded-full text-[13px]", me.notify_via === v ? "bg-card font-medium shadow-card" : "text-muted-foreground")}>{v === "email" ? "Email" : "Microsoft Teams"}</button>
-              ))}
-            </div>
-            {me.notify_via === "teams" && !me.teams_ready && <p className="text-[12px] text-muted-foreground">Teams is not connected on this installation yet; you get email until it is.</p>}
-          </section>
-        )}
         {me.kind === "internal" ? (
           <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" })) }} className={cn("grid grid-cols-1 content-start gap-2 panel p-4", me.must_change_password && "order-first ring-2 ring-primary lg:col-span-2")}>
             <PanelTitle className="mb-0">Change password</PanelTitle>
             <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Current password<Input autoFocus={me.must_change_password} type="password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required autoComplete="current-password" aria-label="Current password" className="h-8 text-[13px]" /></label>
             <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">New password<Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={8} autoComplete="new-password" aria-label="New password" className="h-8 text-[13px]" /><span className="text-[12px]">Use a few unrelated words: at least 12 characters, unless your admin set another length.</span></label>
-            <div><Button type="submit" size="sm" loading={busy}>Update password</Button></div>
+            <div><Button type="submit" size="sm" loading={busy} disabled={!pw.new_password}>Update password</Button></div>
           </form>
         ) : (
           <p className="panel p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
@@ -134,7 +120,7 @@ export default function Account({ user }: { user: User }) {
         <form key={me.email_kinds.map((k) => `${k.key}:${k.on}`).join("|")}
           onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); void send("/account/notifications", Object.fromEntries(me.email_kinds.filter((k) => fd.get(k.key)).map((k) => [k.key, "on"]))) }}
           className="grid grid-cols-1 content-start gap-2 panel p-4">
-          <PanelTitle className="mb-0" hint="the bell shows everything either way">Email me about</PanelTitle>
+          <PanelTitle className="mb-0" hint={me.kind === "internal" ? "by email and in Teams; the bell shows everything either way" : "by email; the bell shows everything either way"}>Tell me about</PanelTitle>
           {me.email_kinds.map((k) => (
             <label key={k.key} className="flex items-start gap-2 text-[13px]">
               <Switch name={k.key} defaultChecked={k.on} className="mt-1" />
