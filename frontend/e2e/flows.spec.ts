@@ -715,7 +715,7 @@ test("@flow gantt: zoom, a rollout's stages, and a planned bar opened by keyboar
   await signIn(page, "admin", "/board?view=gantt")
   await page.getByRole("radio", { name: "Week" }).click()
   await expect(page.getByRole("radio", { name: "Week" })).toHaveAttribute("aria-checked", "true")
-  await page.getByRole("button", { name: /^Open the stages of / }).first().click()
+  await page.getByRole("button", { name: "Open every rollout" }).click()   // some rollouts have nothing left to plan
   const bar = page.getByRole("button", { name: /plan .* press Enter to pick dates/ }).first()
   await bar.focus()
   await page.keyboard.press("Enter")
@@ -756,5 +756,39 @@ test("@flow calendar week: a task dragged to another day, and back with Undo", a
   await page.mouse.up()
   await expect(page.getByText(/: due /)).toBeVisible()
   await page.getByRole("button", { name: "Undo" }).click()
+  expectClean(errors)
+})
+
+test("@flow delete a rollout, then Undo from the flow brings it back", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/2")
+  const name = (await page.getByRole("heading", { level: 1 }).first().textContent())!.trim()
+  await page.getByRole("button", { name: "More actions" }).click()
+  await page.getByRole("menuitem", { name: "Delete project" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
+  await expect(page).toHaveURL(/\/board/)
+  await expect(page.getByText(/Project deleted/)).toBeVisible()
+  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page).toHaveURL(/\/projects\/2$/)
+  await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(name)
+  await expect(page.getByText(/restored/).first()).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow a new API token stays on screen with Copy until it is put away", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/api")
+  await page.getByLabel("What uses it").fill("E2E token")
+  await page.getByRole("button", { name: "Create token" }).click()
+  const box = page.getByRole("textbox", { name: "New API token" })
+  await expect(box).toHaveValue(/^odin_/)
+  await page.waitForTimeout(4500)   // longer than any toast: it is still there
+  await expect(box).toBeVisible()
+  await expect(page.getByRole("button", { name: /Copy the token|Copied/ })).toBeVisible()
+  await page.getByRole("button", { name: "I have saved it" }).click()
+  await expect(box).toHaveCount(0)
+  // tidy: revoke it
+  await page.getByRole("row", { name: /E2E token/ }).getByRole("button", { name: "Revoke" }).click()
+  await page.locator("[data-confirm-yes]").click()
   expectClean(errors)
 })

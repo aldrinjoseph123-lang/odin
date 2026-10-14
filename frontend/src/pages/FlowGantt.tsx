@@ -108,7 +108,7 @@ export default function FlowGantt({ ids, selectedId, onSelect }: { ids: number[]
   const months = days.filter((d, i) => i === 0 || d.endsWith("-01"))
   const mondays = days.filter((d) => weekday(d) === "Mon")
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
         <Button size="sm" variant="outline" onClick={() => { if (scroller.current) scroller.current.scrollLeft = Math.max(0, x(data.today) - 6 * px) }}><Crosshair className="h-3.5 w-3.5" /> Today</Button>
         <Segmented label="Zoom" value={zoom} onChange={setZoom} options={[{ value: "week", label: "Week" }, { value: "month", label: "Month" }, { value: "quarter", label: "Quarter" }]} />

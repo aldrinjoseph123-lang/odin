@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
-import { ApiError, postForm, settingsData, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
+import { ApiError, postForm, settingsData, type FormReply, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
 import { Ago } from "@/components/Ago"
 import { fmtDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -22,7 +22,7 @@ import { AISettings } from "@/components/AISettings"
 import { SlaCheck } from "@/components/SlaCheck"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
-type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
+type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<FormReply | null>
 
 
 // Settings → one area per address (/settings/<section>); the side menu is
@@ -319,22 +319,35 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
   )
 }
 
-// Read-only API tokens: shown once when made (in the notice above), then
+// Read-only API tokens: shown once when made (in a box that stays until dismissed), then
 // only their name, age, last use and expiry; revoking is immediate.
 function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"]; busy: boolean; send: Send }) {
   const [name, setName] = useState("")
   const [days, setDays] = useState("90")
+  // the new token stays on screen until dismissed: the server keeps only its hash (review P1-2)
+  const [made, setMade] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const now = new Date().toISOString()
   return (
     <>
       <Panel title="New token">
-        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then((r) => { if (r) setName("") }) }} className="flex flex-wrap items-end gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then((r) => { if (r) { setName(""); setMade(r.token ?? null); setCopied(false) } }) }} className="flex flex-wrap items-end gap-2">
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">What uses it<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></label>
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Valid for
             <select value={days} onChange={(e) => setDays(e.target.value)} className={fieldAuto}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
           </label>
           <Button type="submit" size="sm" loading={busy} disabled={!name.trim()}>Create token</Button>
         </form>
+        {made && (
+          <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
+            <input id="new-api-token" readOnly value={made} aria-label="New API token" onFocus={(e) => e.currentTarget.select()} className={cn(fieldAuto, "w-full font-mono text-[12px]")} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => document.getElementById("new-api-token")?.focus())}>{copied ? "Copied" : "Copy the token"}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setMade(null)}>I have saved it</Button>
+              <span className="text-[12px] text-muted-foreground">Shown once: Odin keeps only a fingerprint of it.</span>
+            </div>
+          </div>
+        )}
         <p className="mt-3 text-[12px] text-muted-foreground">
           Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code> to <code className="font-mono">/api/v1/projects</code>, <code className="font-mono">/api/v1/projects/&lt;id&gt;</code> and <code className="font-mono">/api/v1/projects/&lt;id&gt;/report</code>. It can read every rollout and change nothing. Behind Cloudflare Access, /api/v1 needs its own Access policy (a service token).
         </p>

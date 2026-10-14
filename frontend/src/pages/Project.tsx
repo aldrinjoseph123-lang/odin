@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Panel } from "@/components/PanelTitle"
+import { toastAfterLoad } from "@/lib/toast"
 import { fieldAuto, fieldArea } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
 import { Copy, MoreHorizontal, Trash2 } from "lucide-react"
@@ -70,7 +71,8 @@ export default function Project({ user }: { user: User }) {
     let leaving = false
     try {
       const r = await postForm(path, fields)
-      if (r.location === "/board") { leaving = true; window.location.assign("/board"); return r }
+      // a deleted rollout: the flow shows what happened, with the Undo the server offered (review P1-3)
+      if (r.location === "/board") { leaving = true; toastAfterLoad(r.messages.join(" ") || "Rollout deleted", r.undo); window.location.assign("/board"); return r }
       setNotice(r.messages.length ? { text: r.messages.join(" "), undo: r.undo } : null)
       await reload()
       return r

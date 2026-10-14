@@ -55,7 +55,7 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
   const toggle = (list: string[], set: (v: string[]) => void, c: string) => set(list.includes(c) ? list.filter((x) => x !== c) : [...list, c])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
         <p className="text-[12px] text-muted-foreground">Drag a card by its handle to its next stage, or press Enter on the handle.</p>
         <Popover>

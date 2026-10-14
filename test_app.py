@@ -3074,6 +3074,31 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             acts = [r[0] for r in db.execute("SELECT action FROM audit_logs WHERE action LIKE 'signoff_%' ORDER BY id")]
         self.assertEqual(acts, ["signoff_send", "signoff_sign", "signoff_countersign"])
 
+    def test_signoff_is_cut_for_partners_who_are_not_the_signatory(self):
+        """Review P1-1: the PO, the partner channel, the signatory's email and the
+        signatures are the customer's and ours; a Contractor reads the rest."""
+        c, h, ann, _ = self._signoff_setup()
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET po_number = 'PO-SECRET-7', po_date = '2026-09-01' WHERE id = 1"); db.commit()
+        self._invite(1, "jane@vendor.example", "Contractor", "Jane")
+        c.post("/api/projects/1/scope", json={"title": "Sensors"}, headers=h)
+        item = c.get("/api/projects/1/scope").get_json()["items"][0]
+        c.put(f"/api/projects/1/scope/{item['id']}", json={"status": "delivered"}, headers=h)
+        self.assertEqual(c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1}, headers=h).status_code, 200)
+        e, eh = self._ext("ann@globex.example")
+        e.post("/api/projects/1/signoff/1/sign", json={"name": "Ann Reyes", "accept": True, "signature": self.DRAWN}, headers=eh)
+        j, _ = self._ext("jane@vendor.example")
+        cur = j.get("/api/projects/1/signoff").get_json()["current"]
+        self.assertNotIn("po_number", cur["content"]["project"]); self.assertNotIn("po_date", cur["content"]["project"])
+        self.assertIsNone(cur["signer_email"]); self.assertIsNone(cur["signature"]); self.assertNotIn("email", cur["content"]["signer"])
+        self.assertTrue(cur["intact"])   # the cut is the reader's copy; the stored document and its fingerprint are untouched
+        self.assertNotIn(b"PO-SECRET-7", j.get("/projects/1/signoff.pdf").data)
+        # the customer, and staff, read it all
+        full = e.get("/api/projects/1/signoff").get_json()["current"]
+        self.assertEqual(full["content"]["project"]["po_number"], "PO-SECRET-7"); self.assertIsNotNone(full["signature"])
+        self.assertEqual(c.get("/api/projects/1/signoff").get_json()["current"]["signer_email"], "ann@globex.example")
+        self.assertIn(b"PO-SECRET-7", e.get("/projects/1/signoff.pdf").data)   # so the PDF check above means something
+
     def test_signoff_link_by_hand_lands_the_signatory_on_the_document(self):
         c, h, ann, _ = self._signoff_setup()
         c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["Everything"]}, headers=h)
@@ -3850,9 +3875,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="Tok", client="C")
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
-        msg = c.post("/settings/api-tokens", data={"name": "Power BI", "days": "30"}, headers=h).get_json()["messages"][0]
-        raw = msg.rsplit(": ", 1)[1]
+        made = c.post("/settings/api-tokens", data={"name": "Power BI", "days": "30"}, headers=h).get_json()
+        raw = made["token"]
         self.assertTrue(raw.startswith("odin_"))
+        self.assertNotIn(raw, " ".join(made["messages"]))   # the secret is never a toast (review P1-2)
         anon = app_module.app.test_client()
         auth = {"Authorization": f"Bearer {raw}"}
         self.assertEqual([p["name"] for p in anon.get("/api/v1/projects", headers=auth).get_json()["projects"]], ["Tok"])
@@ -4648,7 +4674,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             self.assertTrue(db.execute("SELECT 1 FROM doc_categories WHERE name = 'Runbook'").fetchone())   # the matrix, not the role name
         c, csrf = self._api_client()
-        raw = c.post("/settings/api-tokens", data={"name": "BI", "days": "30"}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()["messages"][0].rsplit(": ", 1)[1]
+        raw = c.post("/settings/api-tokens", data={"name": "BI", "days": "30"}, headers={"X-CSRF-Token": csrf, "Accept": "application/json"}).get_json()["token"]
         anon = app_module.app.test_client()
         for _ in range(3):
             anon.get("/api/v1/projects", headers={"Authorization": f"Bearer {raw}"})

@@ -68,7 +68,7 @@ function SignatureBlock({ label, sig, name, title, when, pending, paper }: { lab
     <div className="min-w-0">
       <div className="text-[13px] font-semibold">{label}</div>
       <div className="mt-2 flex h-24 items-center rounded-lg border border-border bg-card px-3 text-foreground">
-        {sig ? <SignatureView sig={sig} /> : <span className="text-[13px] text-muted-foreground">{paper ? "Signed on paper; the copy is on file" : pending ? `Waiting for ${pending}` : "—"}</span>}
+        {sig ? <SignatureView sig={sig} /> : <span className="text-[13px] text-muted-foreground">{paper ? "Signed on paper; the copy is on file" : when ? "Signed (the signature is shown to the parties only)" : pending ? `Waiting for ${pending}` : "—"}</span>}
       </div>
       <dl className="mt-2 grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[13px]">
         <dt className="text-muted-foreground">Name</dt><dd>{name ?? "—"}</dd>
@@ -107,7 +107,7 @@ function Document({ v }: { v: SignoffVersion }) {
           <dt className="text-muted-foreground">Fingerprint</dt><dd className="break-all font-mono text-[12px]">SHA-256 {v.content_hash}</dd>
           <dt className="text-muted-foreground">Integrity</dt>
           <dd className={cn("flex items-center gap-2", v.intact ? "text-ok" : "font-medium text-destructive")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{v.intact ? "The content matches its fingerprint." : "The content no longer matches its fingerprint."}</dd>
-          {v.signed_at && v.status !== "uploaded" && <><dt className="text-muted-foreground">Customer</dt><dd>{v.signer_name} ({v.signer_email}) signed {fmtWhen(v.signed_at, true)} in Odin, after a one-time sign-in link sent to that address{v.signed_ip ? `; from ${v.signed_ip}` : ""}</dd></>}
+          {v.signed_at && v.status !== "uploaded" && <><dt className="text-muted-foreground">Customer</dt><dd>{v.signer_name}{v.signer_email && ` (${v.signer_email})`} signed {fmtWhen(v.signed_at, true)} in Odin, after a one-time sign-in link sent to that address{v.signed_ip ? `; from ${v.signed_ip}` : ""}</dd></>}
           {v.link_issued_by && <><dt className="text-muted-foreground">Sign-in link</dt><dd>Issued by {v.link_issued_by}, {fmtWhen(v.link_issued_at, true)}, and passed on by hand</dd></>}
           {v.counter_signed_at && <><dt className="text-muted-foreground">Countersigned</dt><dd>{v.counter_name}, {fmtWhen(v.counter_signed_at, true)}{v.counter_ip ? `; from ${v.counter_ip}` : ""}</dd></>}
           {v.status === "uploaded" && <><dt className="text-muted-foreground">Paper copy</dt><dd>Signed by {v.signer_name} on {fmtDate(v.signed_at)}; the scan is in the project's documents</dd></>}

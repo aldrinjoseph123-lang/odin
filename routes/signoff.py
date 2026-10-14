@@ -9,7 +9,7 @@ from markupsafe import escape
 
 import graph
 from constants import SIGNOFF_DOC_CATEGORY
-from core import admin_required, app, json_body, external_url, login_required, permission_required, project_allows, project_role_required
+from core import admin_required, app, json_body, external_url, login_required, permission_required, project_allows, project_role_required, sees_po
 from db import get_db, get_setting
 from routes.projects import load_project, save_document
 from policies import policy
@@ -22,6 +22,13 @@ from spa import spa_index
 
 def _staff():
     return session.get("kind") != "external"
+
+
+def _partner_cut(project_id, row):
+    """A partner or contractor reads a sign-off without the PO, the partner
+    channel, the signatory's email and the signatures, unless they are the one
+    asked to sign it (they sign the whole document). Staff and the Customer read it all."""
+    return not sees_po(project_id) and row["signer_id"] != session.get("user_id")
 
 
 def _link(project_id):
@@ -63,7 +70,7 @@ def api_signoff(project_id):
         # why it cannot be sent from this stage yet (None: it can), shown before anyone fills the form in (sim roles-8)
         "not_yet": signoff.sendable(project) if manage and not st["complete"] else None,
         "versions": [{"version": r["version"], "status": r["status"], "created_at": r["created_at"], "created_by": r["created_by"]} for r in rows],
-        "current": signoff.view(row, _staff()) if row else None,
+        "current": signoff.view(row, _staff(), _partner_cut(project_id, row)) if row else None,
         "can": {
             "manage": manage and not st["complete"],
             "sign": bool(row) and row["status"] == "sent" and row["signer_id"] == me,
@@ -374,5 +381,5 @@ def signoff_pdf(project_id):
     if row is None:
         abort(404)
     safe = file_stem(project["name"])
-    return Response(render(signoff.view(row, _staff())), mimetype="application/pdf",
+    return Response(render(signoff.view(row, _staff(), _partner_cut(project_id, row))), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{safe}-signoff-v{row["version"]}.pdf"'})

@@ -426,7 +426,7 @@ export const projectExtras = (id: number) => getJson<ProjectExtras>(`/api/projec
 // Post to one of Flask's form routes and read its flashes back as JSON. The
 // route is unchanged (same permission, audit row and validation); only the
 // answer differs because we ask for JSON.
-export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null }
+export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null; token?: string }
 export async function postForm(path: string, fields: Record<string, string> | FormData = {}): Promise<FormReply> {
   const body = fields instanceof FormData ? fields : new URLSearchParams(fields)
   const res = await withToken(path, { method: "POST", body, headers: { Accept: "application/json" } })

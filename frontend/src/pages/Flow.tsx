@@ -804,14 +804,14 @@ export default function Flow({ user }: { user: User }) {
   const shownRows = data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage))
   // the same header row, in the same card at the same place, on every view, so the switcher never moves (critique 10 Oct)
   const list = view === "calendar" ? (
-    <div className="flex min-h-0 flex-1 flex-col"><FlowHeader data={data} title="Calendar" views={views} /><Suspense fallback={<PageSkeleton />}><Calendar wide={wide} /></Suspense></div>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col"><FlowHeader data={data} title="Calendar" views={views} /><Suspense fallback={<PageSkeleton />}><Calendar wide={wide} /></Suspense></div>
   ) : view === "gantt" ? (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />
       <Suspense fallback={<PageSkeleton />}><FlowGantt ids={shownRows.map((r) => r.id)} selectedId={selectedId} onSelect={setSelectedId} /></Suspense>
     </div>
   ) : view === "kanban" ? (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />
       <Suspense fallback={<PageSkeleton />}>
         <FlowKanban rows={shownRows} columns={stageColumns(data.rows.map((r) => r.stages))} selectedId={selectedId} onSelect={setSelectedId} onMove={(r) => void askMove(r)} onOnly={setStage} />
