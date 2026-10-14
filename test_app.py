@@ -2631,6 +2631,26 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(data["counts"]["overdue"], 1)
         self.assertEqual(app_module.app.test_client().get("/api/flow").status_code, 401)
 
+    def test_api_flow_tells_the_kanban_where_each_card_may_go(self):
+        self.new_project(name="Board", client="C", start_date="2026-09-01")
+        with self.raw_db() as db:
+            names = [r["name"] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position")]
+        c, _ = self._api_client()
+        row = c.get("/api/flow").get_json()["rows"][0]
+        self.assertEqual((row["next_stage"], row["can_move"], row["signoff_needed"], row["start_date"]), (names[1], True, False, "2026-09-01"))
+        # one stage before the last: the drop waits for the signed sign-off (signoff.gate)
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET stage = ? WHERE id = 1", (names[-2],)); db.commit()
+        row = c.get("/api/flow").get_json()["rows"][0]
+        self.assertEqual((row["next_stage"], row["signoff_needed"]), (names[-1], True))
+        # a Viewer sees the board but moves nothing
+        self._make_user("vic", "Viewer")
+        with self.raw_db() as db:
+            vid = db.execute("SELECT id FROM users WHERE username = 'vic'").fetchone()["id"]
+            db.execute("INSERT INTO project_participants (project_id, user_id, role, added_at) VALUES (1, ?, 'Coordinator', datetime('now'))", (vid,)); db.commit()
+        v, _ = self._api_client("vic", STRONG_PASSWORD)
+        self.assertFalse(v.get("/api/flow").get_json()["rows"][0]["can_move"])
+
     def test_api_flow_orders_the_worst_first_inside_a_state_and_flags_idle(self):
         self.new_project(name="A little late", client="C", target_end_date="2025-06-01")
         self.new_project(name="Very late", client="C", target_end_date="2020-01-01")

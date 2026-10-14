@@ -13,7 +13,8 @@ export const flowRow = (over: Partial<FlowRow>): FlowRow => ({
   id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", stages, stage_index: 1, owner_name: "Admin User", mine: true,
   team: [{ id: 1, name: "Admin User", avatar_url: null }], approval: null, delivery_mode: "Direct", target_end_date: "2026-12-01",
   days_in_stage: 3, sla_days: 5, over_by: null, state: "on_track", open_tasks: 1, total_tasks: 2, late_tasks: 0, late_since: null,
-  next_task: { title: "Collect asset inventory", due_date: "2026-10-02", assignee: "Priya" }, updated_at: "2026-09-28T10:00:00", idle_days: 1, stale: false, ...over,
+  next_task: { title: "Collect asset inventory", due_date: "2026-10-02", assignee: "Priya" }, updated_at: "2026-09-28T10:00:00", idle_days: 1, stale: false,
+  start_date: "2026-09-01", next_stage: "Sensor pilot", can_move: true, signoff_needed: false, ...over,
 })
 export const flow: FlowData = {
   stages, today: "2026-09-29", can_move: true,

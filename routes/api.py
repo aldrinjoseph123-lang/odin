@@ -981,6 +981,13 @@ def api_flow():
             next_task[t["project_id"]] = {"title": t["title"], "due_date": t["due_date"], "assignee": t["assignee_name"], "here": here}
     for v in next_task.values():
         del v["here"]
+    # may this person move each rollout (the Kanban's drag): project_allows, for every row in one query
+    from constants import PROJECT_ACTIONS
+    move_perm, move_roles = PROJECT_ACTIONS["move_stage"]
+    role = session.get("role", "Viewer")
+    my_roles = {r["project_id"]: r["role"] for r in db.execute("SELECT project_id, role FROM project_participants WHERE user_id = ?", (session["user_id"],))}
+    may_move = lambda pid: role_has_permission(role, move_perm) and (role == "Admin" or my_roles.get(pid) in move_roles)   # noqa: E731
+    signoff_on = bool(policy("signoff_required"))
     alert_settings = get_alert_type_settings()
     stale_days = (alert_settings.get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
     soon_days = (alert_settings.get("project_due_soon") or DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
@@ -995,6 +1002,8 @@ def api_flow():
         state = _flow_state(p, sla, schedule)
         idle = _days_since(p["updated_at"], now)
         in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
+        at = stages.index(p["stage"]) if p["stage"] in stages else 0
+        nxt = stages[at + 1] if at + 1 < len(stages) else None
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
@@ -1007,6 +1016,9 @@ def api_flow():
             "late_tasks": p["late_tasks"], "late_since": p["late_since"],
             "next_task": next_task.get(p["id"]), "updated_at": p["updated_at"],
             "idle_days": None if idle is None else round(idle, 1), "stale": idle is not None and idle >= stale_days,
+            "start_date": p["start_date"], "next_stage": nxt, "can_move": bool(nxt) and may_move(p["id"]),
+            # the last stage waits for a signed sign-off (services/signoff.gate): the board refuses that drop up front
+            "signoff_needed": signoff_on and nxt is not None and nxt == terminal and not signoff_service.completed(p["id"]),
         })
     rows.sort(key=lambda r: (STATE_RANK[r["state"]], 0 if r["late_tasks"] else 1, _flow_urgency(r, now)))
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}

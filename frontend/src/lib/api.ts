@@ -159,6 +159,8 @@ export type FlowRow = {
   over_by: number | null; state: FlowState; open_tasks: number; total_tasks: number; late_tasks: number; late_since: string | null
   next_task: { title: string; due_date: string | null; assignee: string | null } | null; updated_at: string
   idle_days: number | null; stale: boolean
+  // the Kanban's drag: the one stage a drop may go to, and whether this person may make the move
+  start_date: string | null; next_stage: string | null; can_move: boolean; signoff_needed: boolean
 }
 export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState | "late_tasks", number>; can_move: boolean; today: string }
 export type FlowStage = { name: string; status: "done" | "current" | "next"; sla_days: number | null; entered_at: string | null; days: number | null }
