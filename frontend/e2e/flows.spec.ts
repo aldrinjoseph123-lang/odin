@@ -151,6 +151,7 @@ test("@flow flow detail: advance with the confirm step, then undo", async ({ pag
 test("@flow calendar: months, toggles, a day, and a chip into the flow", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/board?view=calendar")
+  await expect(page.getByRole("button", { name: "Next month" })).toBeVisible()   // the calendar loads on first use
   const title = page.locator("h2")
   const start = await title.textContent()
   await page.getByRole("button", { name: "Next month" }).click()
@@ -159,7 +160,7 @@ test("@flow calendar: months, toggles, a day, and a chip into the flow", async (
   await page.getByRole("button", { name: "Today" }).click()
   await expect(title).toHaveText(start!)
   // hiding tasks removes their chips
-  const chips = page.locator(".grid-cols-7 a[title]")
+  const chips = page.locator(".grid-cols-7 :is(a, button)[title]")
   await page.waitForLoadState("networkidle")               // the month's data has landed before counting
   const before = await chips.count()
   await page.getByRole("button", { name: "Tasks", exact: true }).click()
@@ -170,9 +171,9 @@ test("@flow calendar: months, toggles, a day, and a chip into the flow", async (
   await expect(page.locator("h3", { hasText: /item/ })).toBeVisible()
   await expect(page).toHaveURL(/day=\d{4}-\d{2}-\d{2}/)
   await page.getByRole("button", { name: "Close" }).click()
-  // a chip opens the rollout
+  // a chip opens the rollout under the calendar
   await chips.first().click()
-  await expect(page).toHaveURL(/\/board\?rollout=\d+/)
+  await expect(page).toHaveURL(/view=calendar.*rollout=\d+/)
   expectClean(errors)
 })
 
@@ -670,5 +671,90 @@ test("@flow project page: health in the title row, a section index, rare setting
   await ask.getByRole("button", { name: "Cancel" }).click()
   await expect(ask).toHaveCount(0)
   await expect(remove).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow kanban: a card moves to its next stage from the keyboard and by dragging, through the confirm, and back with Undo", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?view=kanban")
+  await expect(page.locator('[data-slot="kanban-column"]').first()).toBeVisible()   // the board loads on first use
+  const columns = await page.locator('[data-slot="kanban-column"]').evaluateAll((els) => els.map((e) => e.getAttribute("data-value")))
+  const rows: { name: string; stage: string; next_stage: string | null; can_move: boolean; signoff_needed: boolean }[] = await page.evaluate(async () => (await (await fetch("/api/flow")).json()).rows)
+  // a rollout whose next stage is the very next column
+  // (and early on the board, so its next column is on screen for the drag)
+  const r = rows.find((x) => x.can_move && !x.signoff_needed && x.next_stage && columns.indexOf(x.stage) <= 1 && columns[columns.indexOf(x.stage) + 1] === x.next_stage)!
+  const handle = page.getByRole("button", { name: `Move ${r.name} to ${r.next_stage}` })
+  await handle.focus()
+  await page.keyboard.press("Enter")   // the handle asks for the move from the keyboard
+  const dialog = page.getByRole("dialog", { name: `Move ${r.name} to ${r.next_stage}` })
+  await expect(dialog).toBeVisible()
+  await page.waitForTimeout(450)   // the confirm ignores a click within 400 ms of the drop
+  await dialog.getByRole("group", { name: `Confirm the move to ${r.next_stage}` }).getByRole("button", { name: /^Move / }).click()
+  await expect(page.getByText(`${r.name} moved to ${r.next_stage}.`)).toBeVisible()
+  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.getByText(/Moved back/)).toBeVisible()
+  // the same move by dragging the handle into the next column opens the same confirm
+  const from = (await handle.boundingBox())!
+  const to = (await page.locator(`[data-slot="kanban-column"][data-value="${r.next_stage}"]`).boundingBox())!
+  await page.mouse.move(from.x + 4, from.y + 4); await page.mouse.down()
+  await page.mouse.move(from.x + 30, from.y + 30, { steps: 4 }); await page.waitForTimeout(150)
+  await page.mouse.move(to.x + to.width / 2, to.y + 80, { steps: 12 }); await page.waitForTimeout(150)
+  await page.mouse.up()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole("button", { name: "Cancel" }).click()
+  await expect(dialog).toHaveCount(0)
+  // a card that may not move has no handle
+  await signIn(page, "viewer", "/board?view=kanban")
+  await expect(page.locator('[data-slot="kanban-column"]').first()).toBeVisible()
+  await expect(page.getByRole("button", { name: /^Move .* to / })).toHaveCount(0)
+  expectClean(errors)
+})
+
+test("@flow gantt: zoom, a rollout's stages, and a planned bar opened by keyboard", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?view=gantt")
+  await page.getByRole("radio", { name: "Week" }).click()
+  await expect(page.getByRole("radio", { name: "Week" })).toHaveAttribute("aria-checked", "true")
+  await page.getByRole("button", { name: /^Open the stages of / }).first().click()
+  const bar = page.getByRole("button", { name: /plan .* press Enter to pick dates/ }).first()
+  await bar.focus()
+  await page.keyboard.press("Enter")
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByRole("button", { name: "Save plan" })).toBeDisabled()   // nothing changed yet
+  await expect(dialog.getByText(/plan's log/)).toBeVisible()
+  await dialog.getByRole("button", { name: "Cancel" }).click()
+  await expect(dialog).toHaveCount(0)
+  // clicking a rollout opens it under the timeline
+  await page.getByRole("button", { name: /\d+% done/ }).first().click()
+  await expect(page).toHaveURL(/view=gantt.*rollout=\d+/)
+  expectClean(errors)
+})
+
+test("@flow calendar week: a task dragged to another day, and back with Undo", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?view=calendar")
+  await page.getByRole("radio", { name: "Week" }).click()
+  await expect(page).toHaveURL(/cal=week/)
+  await expect(page.locator("h2")).toHaveText(/–/)
+  const days = page.locator(".grid.min-h-80 > div")
+  // a task this admin may move, and a day it is not on
+  let chip = page.locator(".grid.min-h-80 button[title*='drag to another day']").first()
+  for (let i = 0; i < 6 && !(await chip.count()); i++) {
+    await page.getByRole("button", { name: "Next week" }).click()
+    chip = page.locator(".grid.min-h-80 button[title*='drag to another day']").first()
+  }
+  const from = await chip.boundingBox()
+  // the day the chip sits in, by where its middle falls; the target is a day at the other end of the week
+  const boxes = await Promise.all([0, 1, 2, 3, 4, 5, 6].map((i) => days.nth(i).boundingBox()))
+  const mid = from!.x + from!.width / 2
+  const fromCol = boxes.findIndex((b) => b && mid >= b.x && mid < b.x + b.width)
+  const to = boxes[fromCol >= 3 ? 0 : 6]!
+  await page.mouse.move(from!.x + 8, from!.y + 8)
+  await page.mouse.down()
+  await page.mouse.move(from!.x + 30, from!.y + 30, { steps: 4 }); await page.waitForTimeout(150)
+  await page.mouse.move(to.x + to.width / 2, to.y + 60, { steps: 12 }); await page.waitForTimeout(150)
+  await page.mouse.up()
+  await expect(page.getByText(/: due /)).toBeVisible()
+  await page.getByRole("button", { name: "Undo" }).click()
   expectClean(errors)
 })

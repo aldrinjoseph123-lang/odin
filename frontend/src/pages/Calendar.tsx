@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { EmptyState } from "@/components/EmptyState"
 import { pill } from "@/lib/ui"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { AlarmClock, ArrowRight, Check, CheckSquare, ChevronLeft, ChevronRight, GanttChart, ShieldCheck, Target } from "lucide-react"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { Segmented } from "@/components/Segmented"
@@ -37,6 +37,8 @@ function items(d: CalendarData, show: Show): Map<string, Item[]> {
   }
   return out
 }
+// when the last drag ended: the click that follows a drop is not a click on the task
+let lastDrop = 0
 const mondayOf = (iso: string) => addDays(iso, -((new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7))
 
 const ICON = { task: CheckSquare, target: Target, move: ArrowRight, approval: ShieldCheck }
@@ -48,19 +50,24 @@ function Chip({ it, full, href, still }: { it: Item; full?: boolean; href: (id: 
   const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
   const movable = !!it.task && !still
   const { setNodeRef, listeners, transform, isDragging } = useDraggable({ id: still ? `still-${it.key}` : it.key, data: it, disabled: !movable })
-  return (
-    // draggable={false}: the browser's own link drag would swallow the pointer before ours starts
-    <Link ref={setNodeRef} {...(movable ? listeners : {})} to={href(it.id)} draggable={false}
-      className={cn("flex min-w-0 items-start gap-2 rounded-md px-2 py-1 text-[12px] leading-tight hover:bg-muted", full && "py-2 text-[13px]", movable && "cursor-grab touch-none", isDragging && "opacity-40")}
-      style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)`, position: "relative", zIndex: 30 } : undefined}
-      title={`${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}${movable ? " · drag to another day to move its due date" : ""}`}>
+  const navigate = useNavigate()
+  const className = cn("flex min-w-0 items-start gap-2 rounded-md px-2 py-1 text-left text-[12px] leading-tight hover:bg-muted", full && "py-2 text-[13px]", movable && "w-full cursor-grab touch-none", isDragging && "opacity-40")
+  const title = `${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}${movable ? " · drag to another day to move its due date" : ""}`
+  const body = (
+    <>
       <Icon className={cn("mt-px h-3 w-3 shrink-0", tone)} aria-hidden />
       <span className="min-w-0">
         <span className={cn("block truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}>{late && <span className="sr-only">Late: </span>}{it.text}</span>
         {full && it.sub && <span className="block truncate text-muted-foreground">{it.sub}</span>}
       </span>
-    </Link>
+    </>
   )
+  // a task that can move is a button that opens its rollout, so the click that ends a drag opens nothing
+  if (movable) return (
+    <button type="button" ref={setNodeRef} {...listeners} onClick={() => { if (Date.now() - lastDrop > 1000) navigate(href(it.id)) }} className={className} title={title}
+      style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)`, position: "relative", zIndex: 30 } : undefined}>{body}</button>
+  )
+  return <Link to={href(it.id)} className={className} title={title}>{body}</Link>
 }
 // a day a task can be dropped on
 function Day({ day, className, children }: { day: string; className?: string; children: ReactNode }) {
@@ -261,7 +268,7 @@ export function Calendar({ wide }: { wide: boolean }) {
     )
   }
   return (
-    <DndContext sensors={sensors} onDragEnd={(e) => void onDrop(e)}>
+    <DndContext sensors={sensors} autoScroll={false} onDragEnd={(e) => { lastDrop = Date.now(); void onDrop(e) }} onDragCancel={() => { lastDrop = Date.now() }}>
       <div className="flex h-full min-h-0">
         {rail}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{header}{body}</div>

@@ -22,7 +22,6 @@ import { STATE } from "@/lib/state"
 import { StateChip } from "@/components/StateChip"
 import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
-import { Calendar } from "@/pages/Calendar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { useMedia, useWidth } from "@/lib/useMeasure"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -30,6 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 // the heavier views load when first opened, so the list stays fast
 const FlowKanban = lazy(() => import("@/pages/FlowKanban"))
 const FlowGantt = lazy(() => import("@/pages/FlowGantt"))
+const Calendar = lazy(() => import("@/pages/Calendar").then((m) => ({ default: m.Calendar })))
 type View = "list" | "kanban" | "gantt" | "calendar"
 const VIEWS: View[] = ["list", "kanban", "gantt", "calendar"]
 
@@ -804,7 +804,7 @@ export default function Flow({ user }: { user: User }) {
   const shownRows = data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage))
   // the same header row, in the same card at the same place, on every view, so the switcher never moves (critique 10 Oct)
   const list = view === "calendar" ? (
-    <div className="flex min-h-0 flex-1 flex-col"><FlowHeader data={data} title="Calendar" views={views} /><Calendar wide={wide} /></div>
+    <div className="flex min-h-0 flex-1 flex-col"><FlowHeader data={data} title="Calendar" views={views} /><Suspense fallback={<PageSkeleton />}><Calendar wide={wide} /></Suspense></div>
   ) : view === "gantt" ? (
     <div className="flex min-h-0 flex-1 flex-col">
       <FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />

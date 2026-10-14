@@ -8,6 +8,8 @@ const PAGES: { path: string; h1: RegExp; who?: Who[] }[] = [
   { path: "/dashboard", h1: /Good (morning|afternoon|evening)/ },
   { path: "/board", h1: /Active rollouts/ },
   { path: "/board?view=calendar", h1: /Calendar/ },
+  { path: "/board?view=kanban", h1: /Active rollouts/ },
+  { path: "/board?view=gantt", h1: /Active rollouts/ },
   { path: "/my-work", h1: /My work/ },
   { path: "/people", h1: /People/ },
   { path: "/people/2", h1: /./ },

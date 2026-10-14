@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils"
 // decides. Which columns are hidden or folded is remembered per browser.
 
 const HIDDEN = "odin.kanban.hidden", FOLDED = "odin.kanban.folded"
+// when the last drag ended: the click that ends a drag on the handle is not a click
+let lastDrag = 0
 const load = (key: string): string[] | null => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) as string[] : null } catch { return null } }
 const save = (key: string, v: string[]) => { try { localStorage.setItem(key, JSON.stringify(v)) } catch { /* private mode */ } }
 
@@ -48,19 +50,14 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
     const at = columnOf(next, active.id)
     if (at && (at === active.stage || !dropRefusal(active, at))) setValue(at === active.stage ? base : next)
   }
-  function commit(next: Record<string, FlowRow[]>) {
-    const r = active
-    setActive(null); setValue(base)        // the card stays put until the server has moved it
-    if (!r) return
-    const at = columnOf(next, r.id)
-    if (at && at !== r.stage) onMove(r)
-  }
+  // the card stays put until the server has moved it; where it was dropped decides (onDragEnd)
+  function commit() { setValue(base) }
   const toggle = (list: string[], set: (v: string[]) => void, c: string) => set(list.includes(c) ? list.filter((x) => x !== c) : [...list, c])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
-        <p className="text-[12px] text-muted-foreground">Drag a card by its handle to its next stage; Space lifts it from the keyboard, arrows move it, Space drops.</p>
+        <p className="text-[12px] text-muted-foreground">Drag a card by its handle to its next stage, or press Enter on the handle.</p>
         <Popover>
           <PopoverTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }), "ml-auto")}><Columns3 className="h-3.5 w-3.5" /> Columns{hidden.length ? ` · ${hidden.length} hidden` : ""}</PopoverTrigger>
           <PopoverContent align="end" className="w-60 p-3">
@@ -78,14 +75,19 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
       </div>
       <Kanban value={value} onValueChange={preview} onValueCommit={commit} getItemValue={(r: FlowRow) => String(r.id)} restoreOnCancel
         onDragStart={(e) => setActive(byId.get(Number(e.active.id)) ?? null)}
-        onDragCancel={() => { setActive(null); setValue(base) }}
+        onDragCancel={() => { lastDrag = Date.now(); setActive(null); setValue(base) }}
         onDragEnd={(e) => {
-          // a refused drop says why (the preview never showed the card there)
-          if (!active || !e.over) return
+          lastDrag = Date.now()
+          const r = active
+          setActive(null); setValue(base)
+          if (!r || !e.over) return
+          // dropped on a column, or on a card in it: where the board was showing the cards
+          // (a card previewed in its next stage is dropped "on itself", there)
           const over = String(e.over.id)
-          const at = shown.includes(over) ? over : columnOf(base, Number(over))
-          const why = at && at !== active.stage ? dropRefusal(active, at) : null
-          if (why) toast(why, { tone: "bad" })
+          const at = shown.includes(over) ? over : columnOf(value, Number(over))
+          if (!at || at === r.stage) return
+          const why = dropRefusal(r, at)
+          if (why) toast(why, { tone: "bad" }); else onMove(r)
         }}>
         <KanbanBoard className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-5 pb-4" aria-label="Rollouts by stage">
           {shown.map((c) => {
@@ -124,20 +126,20 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
                   </DropdownMenu>
                 </div>
                 <KanbanColumnContent value={c} render={<ul />} className="min-h-24 gap-2 overflow-y-auto px-2 pb-2" aria-label={`${c}, ${items.length} rollouts`}>
-                  {items.map((r) => <Card key={r.id} r={r} selected={r.id === selectedId} onSelect={onSelect} />)}
+                  {items.map((r) => <Card key={r.id} r={r} selected={r.id === selectedId} onSelect={onSelect} onMove={onMove} />)}
                   {items.length === 0 && <li className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-[12px] text-muted-foreground">{target ? "Drop here" : "No rollouts"}</li>}
                 </KanbanColumnContent>
               </KanbanColumn>
             )
           })}
         </KanbanBoard>
-        <KanbanOverlay>{({ value: id }) => { const r = byId.get(Number(id)); return r ? <Card r={r} selected={false} onSelect={() => {}} lifted /> : null }}</KanbanOverlay>
+        <KanbanOverlay>{({ value: id }) => { const r = byId.get(Number(id)); return r ? <Card r={r} selected={false} onSelect={() => {}} onMove={() => {}} lifted /> : null }}</KanbanOverlay>
       </Kanban>
     </div>
   )
 }
 
-function Card({ r, selected, onSelect, lifted }: { r: FlowRow; selected: boolean; onSelect: (id: number) => void; lifted?: boolean }) {
+function Card({ r, selected, onSelect, onMove, lifted }: { r: FlowRow; selected: boolean; onSelect: (id: number) => void; onMove: (r: FlowRow) => void; lifted?: boolean }) {
   const movable = canDrag(r)
   const late = r.late_tasks > 0
   return (
@@ -146,7 +148,10 @@ function Card({ r, selected, onSelect, lifted }: { r: FlowRow; selected: boolean
         selected && "border-primary-text ring-2 ring-primary/30", lifted && "rotate-1 shadow-pop")}>
       <div className="flex items-start gap-2">
         {movable ? (
-          <KanbanItemHandle render={<button type="button" aria-label={`Move ${r.name} to ${r.next_stage}`} title={`Drag to ${r.next_stage}`} />}
+          // the handle drags with a pointer; Enter, Space or a plain click asks for the move straight away
+          // (the drag library's keyboard mode steps between cards, not columns)
+          <KanbanItemHandle render={<button type="button" aria-label={`Move ${r.name} to ${r.next_stage}`} title={`Drag to ${r.next_stage}, or click`}
+            onClick={() => { if (Date.now() - lastDrag > 500) onMove(r) }} onKeyDownCapture={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onMove(r) } }} />}
             className="-ml-1 mt-0.5 rounded-md p-0.5 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
             <GripVertical className="h-3.5 w-3.5" aria-hidden />
           </KanbanItemHandle>

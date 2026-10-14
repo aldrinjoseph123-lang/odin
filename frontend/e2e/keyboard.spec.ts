@@ -47,6 +47,7 @@ test("@keys dashboard: a widget's menu entirely from the keyboard", async ({ pag
 
 test("@keys calendar: months, toggles and a day, by Tab and Enter", async ({ page }) => {
   await signIn(page, "admin", "/board?view=calendar")
+  await expect(page.getByRole("button", { name: "Next month" })).toBeVisible()   // the calendar loads on first use
   const title = page.locator("h2")
   const start = await title.textContent()
   await page.getByRole("button", { name: "Next month" }).focus()
