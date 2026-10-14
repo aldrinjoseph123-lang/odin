@@ -1027,6 +1027,42 @@ def api_flow():
                     "can_move": role_has_permission(session.get("role"), "edit_project_stage")})
 
 
+@app.route("/api/flow/plan")
+@permission_required("view_board")
+def api_flow_plan():
+    """The Flow's Gantt: every open rollout in scope with its stages' plan,
+    actuals, forecast and baseline (services/plan.py, read in one batch), and
+    whether this person may drag its planned dates (the plan's PUT checks again).
+    Staff only: the customer cut of a plan is the rollout report's."""
+    from constants import PROJECT_ACTIONS
+    from services.portfolio import plans
+    if session.get("kind") == "external":
+        abort(403)
+    db = get_db()
+    scope_sql, scope_params = project_scope()
+    projects = db.execute(
+        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
+        f"WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} ORDER BY COALESCE(p.start_date, p.created_at), p.name", scope_params).fetchall()
+    perm, roles = PROJECT_ACTIONS["manage_project"]
+    role = session.get("role", "Viewer")
+    mine = {r["project_id"]: r["role"] for r in db.execute("SELECT project_id, role FROM project_participants WHERE user_id = ?", (session["user_id"],))}
+    may_edit = lambda pid: role_has_permission(role, perm) and (role == "Admin" or mine.get(pid) in roles)   # noqa: E731
+    keep = ("id", "name", "status", "sla_days", "plan_start", "plan_end", "base_start", "base_end", "actual_start", "actual_end",
+            "forecast_start", "forecast_end", "suggested_start", "suggested_end", "slip_days")
+    rows, cal = [], None
+    built = plans(projects)
+    for p in projects:
+        pl, _ = built[p["id"]]
+        cal = cal or pl["calendar"]
+        rows.append({
+            "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "owner_name": p["owner_name"],
+            "start_date": p["start_date"], "target_end_date": p["target_end_date"], "forecast": pl["finish"]["forecast"],
+            "pct_complete": pl["pct_complete"], "rag": pl["health"]["rag"], "has_plan": pl["has_plan"], "baselined": bool(pl["baseline_at"]),
+            "can_edit": may_edit(p["id"]), "stages": [{k: s.get(k) for k in keep} for s in pl["stages"]],
+        })
+    return jsonify(today=local_today().isoformat(), calendar=cal, rows=rows)
+
+
 @app.route("/api/projects/<int:project_id>/plan")
 @permission_required("view_project_detail")
 def api_plan(project_id):

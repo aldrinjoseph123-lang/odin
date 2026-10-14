@@ -2651,6 +2651,21 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         v, _ = self._api_client("vic", STRONG_PASSWORD)
         self.assertFalse(v.get("/api/flow").get_json()["rows"][0]["can_move"])
 
+    def test_api_flow_plan_feeds_the_gantt(self):
+        self.new_project(name="Plan me", client="C", start_date="2026-09-01", target_end_date="2026-12-01")
+        c, csrf = self._api_client()
+        d = c.get("/api/flow/plan").get_json()
+        row = d["rows"][0]
+        self.assertEqual((row["name"], row["can_edit"], row["baselined"]), ("Plan me", True, False))
+        self.assertGreater(len(row["stages"]), 2); self.assertIn("suggested_start", row["stages"][0]); self.assertIn("forecast_end", row["stages"][0])
+        self.assertIn("working", d["calendar"])
+        # a drag saves through the plan's own route: the first save is the baseline
+        s0 = row["stages"][1]
+        r = c.put("/api/projects/1/plan", json={"stages": [{"id": s0["id"], "plan_start": s0["suggested_start"], "plan_end": s0["suggested_end"]}]}, headers={"X-CSRF-Token": csrf}).get_json()
+        self.assertTrue(r["baselined"])
+        self.assertTrue(c.get("/api/flow/plan").get_json()["rows"][0]["baselined"])
+        self.assertEqual(app_module.app.test_client().get("/api/flow/plan").status_code, 401)
+
     def test_api_flow_orders_the_worst_first_inside_a_state_and_flags_idle(self):
         self.new_project(name="A little late", client="C", target_end_date="2025-06-01")
         self.new_project(name="Very late", client="C", target_end_date="2020-01-01")

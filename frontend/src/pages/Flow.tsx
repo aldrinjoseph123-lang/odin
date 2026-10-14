@@ -3,7 +3,7 @@ import { Segmented } from "@/components/Segmented"
 import { MoveConfirm } from "@/components/MoveConfirm"
 import { chip, fieldAuto, filterSelect } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
-import { Inbox, ArrowRight, CalendarDays, Kanban as KanbanIcon, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
+import { Inbox, ArrowRight, CalendarDays, GanttChart, Kanban as KanbanIcon, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
@@ -29,8 +29,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 // the heavier views load when first opened, so the list stays fast
 const FlowKanban = lazy(() => import("@/pages/FlowKanban"))
-type View = "list" | "kanban" | "calendar"
-const VIEWS: View[] = ["list", "kanban", "calendar"]
+const FlowGantt = lazy(() => import("@/pages/FlowGantt"))
+type View = "list" | "kanban" | "gantt" | "calendar"
+const VIEWS: View[] = ["list", "kanban", "gantt", "calendar"]
 
 
 // Customer approval of the current stage: amber while open, green/red once decided.
@@ -709,8 +710,9 @@ export default function Flow({ user }: { user: User }) {
   wanted.current = selectedId
   // Ways to look at the portfolio, kept in the URL: the list, a Kanban by stage, or a month.
   const vw = params.get("view")
-  const view: View = VIEWS.includes(vw as View) ? vw as View : "list"
-  useEffect(() => { document.title = `${view === "calendar" ? "Calendar" : view === "kanban" ? "Kanban" : "Flow"} · Odin` }, [view])   // test report UX-17
+  // the Gantt reads plans, which are staff-only (the customer cut is the rollout report's)
+  const view: View = VIEWS.includes(vw as View) && !(vw === "gantt" && user.kind === "external") ? vw as View : "list"
+  useEffect(() => { document.title = `${{ list: "Flow", kanban: "Kanban", gantt: "Gantt", calendar: "Calendar" }[view]} · Odin` }, [view])   // test report UX-17
   const setView = useCallback((v: View) => {
     setParams((prev) => { const next = new URLSearchParams(prev); if (v === "list") next.delete("view"); else next.set("view", v); next.delete("month"); next.delete("day"); return next }, { replace: true })
   }, [setParams])
@@ -796,13 +798,18 @@ export default function Flow({ user }: { user: User }) {
 
   const views = (
     <Segmented label="View" value={view} onChange={setView}
-      options={([["list", LayoutList, "List"], ["kanban", KanbanIcon, "Kanban"], ["calendar", CalendarDays, "Calendar"]] as const)
+      options={([["list", LayoutList, "List"], ["kanban", KanbanIcon, "Kanban"], ...(user.kind === "external" ? [] : [["gantt", GanttChart, "Gantt"] as const]), ["calendar", CalendarDays, "Calendar"]] as const)
         .map(([v, Icon, label]) => ({ value: v, label, icon: <Icon className="h-3.5 w-3.5" aria-hidden /> }))} />
   )
   const shownRows = data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage))
   // the same header row, in the same card at the same place, on every view, so the switcher never moves (critique 10 Oct)
   const list = view === "calendar" ? (
     <div className="flex min-h-0 flex-1 flex-col"><FlowHeader data={data} title="Calendar" views={views} /><Calendar wide={wide} /></div>
+  ) : view === "gantt" ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />
+      <Suspense fallback={<PageSkeleton />}><FlowGantt ids={shownRows.map((r) => r.id)} selectedId={selectedId} onSelect={setSelectedId} /></Suspense>
+    </div>
   ) : view === "kanban" ? (
     <div className="flex min-h-0 flex-1 flex-col">
       <FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />

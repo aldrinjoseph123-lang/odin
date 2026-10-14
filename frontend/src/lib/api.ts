@@ -206,6 +206,14 @@ export type PlanData = {
   can_edit: boolean; project: { id: number; name: string; start_date: string | null; target_end_date: string | null }
 }
 export const plan = (id: number) => getJson<PlanData>(`/api/projects/${id}/plan`)
+// the Flow's Gantt: every open rollout's stages at once (staff only)
+export type GanttStage = Pick<PlanStage, "id" | "name" | "status" | "sla_days" | "plan_start" | "plan_end" | "base_start" | "base_end" | "actual_start" | "actual_end" | "forecast_start" | "forecast_end" | "suggested_start" | "suggested_end" | "slip_days">
+export type GanttRow = {
+  id: number; name: string; client: string; stage: string; owner_name: string; start_date: string | null; target_end_date: string | null
+  forecast: string | null; pct_complete: number; rag: Rag; has_plan: boolean; baselined: boolean; can_edit: boolean; stages: GanttStage[]
+}
+export type GanttData = { today: string; calendar: { working: boolean; week: number[]; off: string[] } | null; rows: GanttRow[] }
+export const flowPlan = () => getJson<GanttData>("/api/flow/plan")
 export const savePlan = (id: number, stages: { id: number; plan_start: string | null; plan_end: string | null }[], reason: string) =>
   send<{ ok: true; changed: number; baselined: boolean; warning?: string }>(`/api/projects/${id}/plan`, "PUT", { stages, reason })
 export const rebaseline = (id: number, reason: string) => post<{ ok: true }>(`/api/projects/${id}/plan/baseline`, { reason })
