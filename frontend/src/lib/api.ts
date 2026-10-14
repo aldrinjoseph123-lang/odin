@@ -357,7 +357,7 @@ export type CalendarData = {
   month: string; today: string; from: string; to: string
   spans: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState }[]
   targets: { id: number; name: string; client: string; day: string; state: FlowState }[]
-  tasks: { id: number; project_id: number; title: string; day: string; done: number; project: string; who: string | null }[]
+  tasks: { id: number; project_id: number; title: string; day: string; done: number; project: string; who: string | null; can_edit: boolean }[]
   moves: { project_id: number; project: string; day: string; prev_stage: string; stage: string; who: string }[]
   approvals: { project_id: number; project: string; stage: string; day: string; kind: "asked" | "decided"; status: ApprovalStatus; who: string | null }[]
 }
@@ -654,4 +654,6 @@ export const toggleTask = (projectId: number, taskId: number) => post<{ ok: true
 // a task corrected in place: the route takes the whole task (title, assignee, due date)
 export const editTask = (projectId: number, taskId: number, task: { title: string; assignee_id: number | null; due_date: string | null }) =>
   post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, task)
+// only the due date changes (the calendar's drag); task_edit lets the assignee do this much
+export const moveTaskDue = (projectId: number, taskId: number, due_date: string) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, { due_date })
 export const deleteTask = (projectId: number, taskId: number) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/delete`, {})

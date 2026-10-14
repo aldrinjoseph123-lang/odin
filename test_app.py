@@ -2783,6 +2783,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         d = c.get(f"/api/calendar?month={month}").get_json()
         self.assertEqual(d["month"], month); self.assertLess(d["from"], _date.today().isoformat()); self.assertGreater(d["to"], _date.today().isoformat())
         self.assertEqual([t["title"] for t in d["tasks"]], ["Call"])
+        self.assertTrue(d["tasks"][0]["can_edit"]); self.assertNotIn("assignee_id", d["tasks"][0])   # the drag's flag, not who it is on
         self.assertEqual([t["name"] for t in d["targets"]], ["Soon"])          # the 2020 target is outside the range
         self.assertEqual({s["name"] for s in d["spans"]}, {"Soon"})           # Late's span ended in 2020
         self.assertEqual((d["moves"][0]["project"], d["moves"][0]["stage"]), ("Soon", stages[1]))

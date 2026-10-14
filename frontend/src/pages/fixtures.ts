@@ -64,7 +64,7 @@ export const calendarData: CalendarData = {
   month: "2026-09", today: "2026-09-29", from: "2026-08-24", to: "2026-10-19",
   spans: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", stage: "Scoping", start_date: "2026-09-01", target_end_date: "2026-10-15", state: "on_track" }],
   targets: [{ id: 1, name: "EDR Rollout - Globex", client: "Globex", day: "2026-10-15", state: "on_track" }],
-  tasks: [1, 2, 3, 4].map((i) => ({ id: i, project_id: 1, title: `Task ${i}`, day: "2026-09-10", done: 0, project: "EDR Rollout - Globex", who: "Priya" })),
+  tasks: [1, 2, 3, 4].map((i) => ({ id: i, project_id: 1, title: `Task ${i}`, day: "2026-09-10", done: 0, project: "EDR Rollout - Globex", who: "Priya", can_edit: true })),
   moves: [{ project_id: 1, project: "EDR Rollout - Globex", day: "2026-09-08", prev_stage: "PO Received", stage: "Scoping", who: "Admin" }],
   approvals: [],
 }

@@ -543,7 +543,13 @@ def api_calendar():
     month = request.args.get("month", "")
     if not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", month):   # the window parse_date keeps; year 1 overflowed the grid's arithmetic
         month = ""   # the current month
-    return jsonify(calendar.build(month, project_scope()))
+    d = calendar.build(month, project_scope())
+    # who may drag a task to another day: whoever manages the rollout's tasks, or the person it is on (task_edit decides again)
+    manages = {pid: project_allows(pid, "manage_tasks") for pid in {t["project_id"] for t in d["tasks"]}}
+    for t in d["tasks"]:
+        mine = t.pop("assignee_id") == session["user_id"]
+        t["can_edit"] = bool(manages[t["project_id"]] or mine) and not t["done"]
+    return jsonify(d)
 
 
 @app.route("/api/dashboard/version")

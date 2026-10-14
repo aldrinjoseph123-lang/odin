@@ -44,7 +44,7 @@ def build(month, scope):
     targets = [{"id": p["id"], "name": p["name"], "client": p["client"], "day": p["target_end_date"], "state": state(p)}
                for p in projects if p["target_end_date"] and s <= p["target_end_date"] <= e]
     tasks = [dict(r) for r in db.execute(
-        "SELECT t.id, t.project_id, t.title, t.due_date AS day, t.done, p.name AS project, u.name AS who FROM tasks t "
+        "SELECT t.id, t.project_id, t.title, t.due_date AS day, t.done, t.assignee_id, p.name AS project, u.name AS who FROM tasks t "
         "JOIN projects p ON p.id = t.project_id LEFT JOIN users u ON u.id = t.assignee_id "
         f"WHERE t.due_date BETWEEN ? AND ? AND p.deleted_at IS NULL{scope_sql} ORDER BY t.due_date, t.done, t.id", (s, e, *scope_params))]
     sw = (date.fromisoformat(s) - timedelta(days=1)).isoformat()   # a UTC day earlier: local mornings sit on the previous UTC date
