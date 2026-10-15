@@ -13,7 +13,7 @@ from flask import abort, flash, make_response, redirect, render_template, reques
 from markupsafe import escape
 
 from core import app
-from db import get_db, get_setting, get_stage_names, touch_project
+from db import get_db, get_setting, get_stage_names, get_terminal_stage, touch_project
 from security import rate_limited
 from services.audit import audit_log
 from services.notifications import notify_event, notify_users
@@ -34,7 +34,11 @@ def get_project_by_token(token):
     ).fetchone()
     if project is None:
         abort(404)
-    return project, ("vendor" if project["access_token"] == token else "customer")
+    party = "vendor" if project["access_token"] == token else "customer"
+    # the vendor link exists only for Outsourced rollouts (the page never shows it elsewhere): a mode switched away kills it
+    if party == "vendor" and project["delivery_mode"] != "Outsourced":
+        abort(404)
+    return project, party
 
 
 def next_stage_for(project):
@@ -59,6 +63,8 @@ def _guard(token):
     project, party = get_project_by_token(token)
     if rate_limited(f"guest:{token}", GUEST_WRITES_PER_MINUTE, 1):
         abort(429)
+    if project["stage"] == get_terminal_stage(project["id"]):   # a closed rollout is read-only through a link
+        abort(403)
     author = _author(project, party)
     if not author:
         flash("Add your name so the team knows who wrote this", "error")

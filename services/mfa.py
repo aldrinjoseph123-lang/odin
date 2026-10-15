@@ -26,6 +26,7 @@ from urllib.parse import quote
 
 from db import get_db
 from policies import policy
+from services.sealed import decrypt, fernet
 
 STEP = 30
 DIGITS = 6
@@ -34,23 +35,12 @@ PENDING_MINUTES = 5       # between the right password and the code
 PENDING_TRIES = 5
 
 
-def _box():
-    from cryptography.fernet import Fernet
-    from flask import current_app
-    key = hashlib.sha256(b"odin-totp:" + str(current_app.config["SECRET_KEY"]).encode()).digest()
-    return Fernet(base64.urlsafe_b64encode(key))
-
-
 def seal(secret):
-    return _box().encrypt(secret.encode()).decode()
+    return fernet(b"odin-totp:").encrypt(secret.encode()).decode()
 
 
 def unseal(sealed):
-    from cryptography.fernet import InvalidToken
-    try:
-        return _box().decrypt((sealed or "").encode()).decode()
-    except (InvalidToken, ValueError):
-        return None
+    return decrypt(b"odin-totp:", (sealed or "").encode())
 
 
 def new_secret():

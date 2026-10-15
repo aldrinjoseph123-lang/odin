@@ -15,32 +15,50 @@ import os
 PREFIX = "sealed:"
 
 
-def _box():
-    from cryptography.fernet import Fernet
+def _secrets():
+    """SECRET_KEY, then LEGACY_SECRET_KEY when core set one: values sealed on
+    dev/UAT before the key moved to DATA_DIR/secret_key (15 Oct 2026). The
+    legacy fallback (here and in core.py) can be deleted once UAT's secrets
+    and two-step sign-ins are saved again."""
     try:
         from flask import current_app
-        secret = current_app.config["SECRET_KEY"]
+        config = current_app.config
     except RuntimeError:   # a script or the scheduler outside an app context: the same app's key
         try:
             from core import app
-            secret = app.config["SECRET_KEY"]
+            config = app.config
         except Exception:  # noqa: BLE001
-            secret = os.environ.get("SECRET_KEY", "")
-    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(b"odin-secrets:" + str(secret).encode()).digest()))
+            config = {"SECRET_KEY": os.environ.get("SECRET_KEY", "")}
+    legacy = config.get("LEGACY_SECRET_KEY")
+    return [config["SECRET_KEY"]] + ([legacy] if legacy else [])
+
+
+def fernet(salt, secret=None):
+    """The Fernet for one purpose (`salt`), keyed from SECRET_KEY unless `secret` is given."""
+    from cryptography.fernet import Fernet
+    secret = _secrets()[0] if secret is None else secret
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(salt + str(secret).encode()).digest()))
+
+
+def decrypt(salt, token):
+    """`token` opened with the current key, else the legacy one; None when neither opens it."""
+    from cryptography.fernet import InvalidToken
+    for secret in _secrets():
+        try:
+            return fernet(salt, secret).decrypt(token).decode()
+        except (InvalidToken, ValueError):
+            pass
+    return None
 
 
 def seal(value):
     if not value or str(value).startswith(PREFIX):   # empty, or sealed already (a kept secret passed back)
         return value
-    return PREFIX + _box().encrypt(str(value).encode()).decode()
+    return PREFIX + fernet(b"odin-secrets:").encrypt(str(value).encode()).decode()
 
 
 def unseal(value):
     """The plain value; None when it cannot be opened (SECRET_KEY changed)."""
     if not value or not str(value).startswith(PREFIX):
         return value
-    from cryptography.fernet import InvalidToken
-    try:
-        return _box().decrypt(str(value)[len(PREFIX):].encode()).decode()
-    except (InvalidToken, ValueError):
-        return None
+    return decrypt(b"odin-secrets:", str(value)[len(PREFIX):].encode())

@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
-import { account, ApiError, postForm, type User } from "@/lib/api"
+import { account, accountMicrosoft, ApiError, postForm, type User } from "@/lib/api"
 import { UserAvatar } from "@/components/UserAvatar"
 import { ACCENTS, THEMES, applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
@@ -25,10 +25,12 @@ export default function Account({ user }: { user: User }) {
   const [pw, setPw] = useState({ current_password: "", new_password: "" })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [microsoft, setMicrosoft] = useState<{ available: boolean; linked: boolean } | null>(null)
   async function load() { const m = await account(); setMe(m); setEmail(m.email ?? ""); setName(m.name) }
   useEffect(() => {
     document.title = "Account · Odin"
     load().catch((e) => setError(e instanceof ApiError ? e.message : "Could not load your account."))   // test report UX-8: it hung on the skeleton
+    accountMicrosoft().then(setMicrosoft).catch(() => setMicrosoft(null))
   }, [])
   async function send(path: string, fields: Record<string, string> | FormData, after?: () => void) {
     setBusy(true)
@@ -39,6 +41,13 @@ export default function Account({ user }: { user: User }) {
       // a forced password change done: the shell's gate lets the rest of the app open again
       if (r.messages.includes("Password updated") && me?.must_change_password) window.location.assign("/board")
     } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(false) }
+  }
+  async function linkMicrosoft() {
+    setBusy(true)
+    try {
+      const r = await postForm("/account/microsoft")
+      if (r.location) window.location.assign(r.location)   // off to Microsoft; it comes back to this page
+    } catch (e) { toast(e instanceof ApiError ? e.message : "Could not start the Microsoft sign-in", { tone: "bad" }); setBusy(false) }
   }
   if (error) return <LoadError message={error} />
   if (!me) return <PageSkeleton />
@@ -131,6 +140,13 @@ export default function Account({ user }: { user: User }) {
           <div><Button type="submit" size="sm" loading={busy}>Save</Button></div>
         </form>
         {me.kind !== "external" && <TwoStepPanel />}
+        {microsoft?.available && !microsoft.linked && (
+          <section className="grid grid-cols-1 content-start gap-2 panel p-4">
+            <PanelTitle className="mb-0">Microsoft sign-in</PanelTitle>
+            <p className="text-[13px] text-muted-foreground">Link your Microsoft work account to sign in with it. You sign in to Microsoft once to prove it is yours.</p>
+            <div><Button type="button" size="sm" variant="outline" loading={busy} onClick={() => void linkMicrosoft()}>Link Microsoft</Button></div>
+          </section>
+        )}
         {me.activity && <ActivityPanel n a={me.activity} note={`Odin counts the minutes it is open, visible and in use (idle time never counts) and when you were last seen. ${viewersText(me.activity_viewers)}`} />}
         <section className="grid grid-cols-1 content-start gap-2 panel p-4">
           <PanelTitle className="mb-0">Sessions</PanelTitle>

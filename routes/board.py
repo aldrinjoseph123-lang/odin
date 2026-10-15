@@ -5,7 +5,7 @@ Imported for route registration side effects.
 from flask import abort, request, session
 
 from constants import ALERT_TYPES, ALERT_TYPE_TITLES
-from core import app, as_id, login_required, permission_required
+from core import app, as_id, permission_required
 from db import PROJECT_OPEN_SQL, get_db
 from spa import spa_index
 
@@ -35,7 +35,7 @@ def person(user_id):
 
 
 @app.route("/my-work")
-@login_required
+@permission_required("view_board")
 def my_work():
     return spa_index()
 
@@ -56,7 +56,7 @@ def analytics():
 
 
 @app.route("/alerts")
-@login_required
+@permission_required("view_board")
 def alerts_log_view():
     if session.get("kind") == "external":   # alerts are an internal judgement (as the API)
         abort(403)

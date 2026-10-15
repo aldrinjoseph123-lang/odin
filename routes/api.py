@@ -463,7 +463,7 @@ def api_account():
 
 
 @app.route("/api/my-work")
-@login_required
+@permission_required("view_board")
 def api_my_work():
     from services.people import my_work
     return jsonify(my_work(session["user_id"], project_scope()))
@@ -597,7 +597,7 @@ def api_dashboard_default_layout():
 
 
 @app.route("/api/alerts")
-@login_required
+@permission_required("view_board")
 def api_alerts():
     d = alerts_page_data()
     return jsonify(
@@ -1029,7 +1029,11 @@ def api_flow():
     rows.sort(key=lambda r: (STATE_RANK[r["state"]], 0 if r["late_tasks"] else 1, _flow_urgency(r, now)))
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}
     counts["late_tasks"] = sum(1 for r in rows if r["state"] == "on_track" and r["late_tasks"])   # on track, but a task is late
-    return jsonify({"stages": get_stage_names(), "rows": rows, "counts": counts, "today": local_today().isoformat(),
+    first_at = {}   # in-scope stage names only, ordered by where they typically sit (as get_stage_names() does)
+    for lst in stage_lists.values():
+        for r in lst:
+            first_at[r["name"]] = min(r["position"], first_at.get(r["name"], r["position"]))
+    return jsonify({"stages": sorted(first_at, key=lambda n: (first_at[n], n)), "rows": rows, "counts": counts, "today": local_today().isoformat(),
                     "can_move": role_has_permission(session.get("role"), "edit_project_stage")})
 
 

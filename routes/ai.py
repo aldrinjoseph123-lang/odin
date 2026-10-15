@@ -5,7 +5,7 @@ import json
 
 from flask import abort, flash, jsonify, redirect, request, session, url_for
 
-from core import app, as_id, json_body, login_required, permission_required, project_allows
+from core import app, as_id, json_body, login_required, permission_required, project_allows, role_has_permission
 from db import get_db, get_setting
 from routes.projects import load_project
 from services.audit import audit_log
@@ -161,7 +161,7 @@ def _suggestion_view(row):
 
 
 @app.route("/api/projects/<int:project_id>/ai/<key>")
-@login_required
+@permission_required("view_project_detail")
 def api_project_ai(project_id, key):
     """Whether the feature can run here now, its latest unused draft, and the
     job drafting a new one, if any."""
@@ -179,6 +179,8 @@ def api_project_ai(project_id, key):
     job = db.execute("SELECT id, feature, status, error, result, requested_by, created_at, started_at FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id = ? "
                      "ORDER BY id DESC LIMIT 1", (key, project_id)).fetchone()
     reason = gate(key, db)
+    if reason is None and not role_has_permission(session.get("role", "Viewer"), "edit_project"):
+        reason = "Drafting needs edit rights"   # a Viewer still reads the drafts that exist, but cannot queue one
     return jsonify(available=reason is None, reason=reason, label=feature.label, options=feature.options(project_id) if feature.options else None,
                    suggestion=_suggestion_view(row) if row else None,
                    job={"id": job["id"], "status": job["status"], "error": job["error"], "result": json.loads(job["result"]) if job["result"] else None,
@@ -188,7 +190,7 @@ def api_project_ai(project_id, key):
 
 
 @app.route("/api/projects/<int:project_id>/ai/<key>", methods=["POST"])
-@login_required
+@permission_required("edit_project")   # queues a job: a write, the audit row and the single AI worker
 def api_project_ai_request(project_id, key):
     """Queue a fresh draft. The AI worker writes it; the page polls."""
     from services.ai import gate
@@ -329,7 +331,7 @@ def api_sla_proposals():
 # ---- the lessons library (services/lessons.py) ------------------------------
 
 @app.route("/api/projects/<int:project_id>/lessons")
-@login_required
+@permission_required("view_project_detail")
 def api_lessons(project_id):
     """This rollout's saved lessons, and the most similar other rollouts with
     their lessons and the risks that hit them. Staff only."""

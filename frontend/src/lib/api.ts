@@ -132,6 +132,7 @@ export function loginCode(code: string) {
 
 export type TwoStep = { enabled: boolean; enabled_at: string | null; required: boolean; recovery_left: number; password: boolean }
 export const twoStep = () => getJson<TwoStep>("/api/account/two-step")
+export const accountMicrosoft = () => getJson<{ available: boolean; linked: boolean }>("/api/account/microsoft")
 // re-enrolling while two-step is on also needs a current code (or a recovery code)
 export const twoStepSetup = (password: string, code?: string) => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup", code ? { password, code } : { password })
 export const twoStepConfirm = (code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/confirm", { code })
@@ -447,6 +448,7 @@ export type Policy = {
   kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "dates"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
   group: string; hint?: string  // the card it sits on; the one plain line shown under it (help then sits behind "What is this?")
+  secret?: boolean; saved?: boolean  // write-only (value always ""): whether one is saved; blank keeps it
 }
 export type BackupRun = {
   id: number; started_at: string; finished_at: string | null; trigger: string; actor: string | null; file: string | null

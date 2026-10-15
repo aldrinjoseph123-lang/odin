@@ -21,6 +21,13 @@ def _email_taken(db, email, user_id=None):
     return db.execute("SELECT 1 FROM users WHERE lower(email) = lower(?) AND id != ?", (email, user_id or 0)).fetchone() is not None
 
 
+def admin_only(*roles):
+    """True when someone who is not an Admin acts on the Admin role (test round
+    P2-1): manage_users can be delegated, and its holder must not be able to
+    make an Admin (themselves included) or take over one's account."""
+    return "Admin" in roles and session.get("role") != "Admin"
+
+
 def _user_or_404(db, user_id):
     user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if user is None:
@@ -49,6 +56,8 @@ def users():
         flash("Name: one line, at most 120 characters", "error")
     elif role not in ROLES or role == "External":   # staff accounts; partners are invited to a project instead
         flash(f"Pick a role: {', '.join(r for r in ROLES if r != 'External')}", "error")
+    elif admin_only(role):
+        flash("Only an admin can create an admin", "error")
     elif existing:
         flash("Username already exists", "error")
     elif email and not valid_email(email):
@@ -99,12 +108,13 @@ def user_set_role(user_id):
         flash("Invalid role", "error")
         return redirect(url_for("users"))
     if user_id == session["user_id"] and role != "Admin":
-        flash("You cannot remove your own Admin role", "error")
+        flash("You cannot remove your own Admin role" if session.get("role") == "Admin" else "You cannot change your own role", "error")
         return redirect(url_for("users"))
     db = get_db()
     user = _user_or_404(db, user_id)
-    if user is None:
-        abort(404)
+    if admin_only(role, user["role"]):
+        flash("Only an admin can give or take away the Admin role", "error")
+        return redirect(url_for("users"))
     if (role == "External") != (user["kind"] == "external"):
         # the role follows the kind of account: partners stay External, staff never become it
         flash("External is the role of partner accounts only; staff take Admin, Member, Contributor or Viewer", "error")
@@ -126,10 +136,13 @@ def user_set_active(user_id):
     active = 1 if request.form.get("active") == "1" else 0
     db = get_db()
     user = _user_or_404(db, user_id)
+    if admin_only(user["role"]):
+        flash("Only an admin can deactivate or reactivate an admin", "error")
+        return redirect(url_for("users"))
     # Bumping the epoch ends any session this user currently has open.
     db.execute("UPDATE users SET active = ?, session_epoch = session_epoch + 1 WHERE id = ?", (active, user_id))
     db.commit()
-    audit_log("set_user_active", "user", user_id, user["username"] if user else None, f"active={active}")
+    audit_log("set_user_active", "user", user_id, user["username"], f"active={active}")
     flash("User updated")
     return redirect(url_for("users"))
 
@@ -137,8 +150,12 @@ def user_set_active(user_id):
 @app.route("/users/<int:user_id>/reset-password", methods=["POST"])
 @permission_required("manage_users")
 def user_reset_password(user_id):
-    if _user_or_404(get_db(), user_id)["kind"] == "external":
+    target = _user_or_404(get_db(), user_id)
+    if target["kind"] == "external":
         flash("External accounts sign in by email link — nothing to reset", "error")
+        return redirect(url_for("users"))
+    if admin_only(target["role"]):
+        flash("Only an admin can reset an admin's password", "error")
         return redirect(url_for("users"))
     new_password = request.form.get("new_password", "")
     problem = password_problem(new_password)
@@ -168,11 +185,17 @@ def user_set_email(user_id):
         return redirect(url_for("users"))
     db = get_db()
     user = _user_or_404(db, user_id)
+    if admin_only(user["role"]):   # reset links go to this address
+        flash("Only an admin can change an admin's email", "error")
+        return redirect(url_for("users"))
     if email and _email_taken(db, email, user_id):
         flash("That address belongs to another account", "error")
         return redirect(url_for("users"))
-    db.execute("UPDATE users SET email = ? WHERE id = ?", (email or None, user_id))
+    # reset links go to the address: the old one's links and sessions end (test round P2-2)
+    db.execute("UPDATE users SET email = ?, session_epoch = session_epoch + 1 WHERE id = ?", (email or None, user_id))
     db.commit()
-    audit_log("set_user_email", "user", user_id, user["username"] if user else None)
+    if user_id == session["user_id"]:   # an admin editing their own row carries on
+        session["epoch"] = db.execute("SELECT session_epoch FROM users WHERE id = ?", (user_id,)).fetchone()[0]
+    audit_log("set_user_email", "user", user_id, user["username"])
     flash("Email updated")
     return redirect(url_for("users"))

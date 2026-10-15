@@ -111,15 +111,19 @@ def login_is_blocked(username):
     return row["failures"] >= policy("login_max_attempts")
 
 
+def failed_attempts(key):
+    """Failures for this key (a username, or mfa:<id>) inside the window, from every address."""
+    return get_db().execute("SELECT COUNT(*) FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?",
+                            (key, _login_window_start())).fetchone()[0]
+
+
 def login_account_paused(username):
     """True when the account has had too many failures counted across every
     address (guessing from many machines). It only changes what a WRONG
     password hears; a correct one still signs in, or anyone could lock any
     account out by failing on purpose."""
-    total = get_db().execute("SELECT COUNT(*) FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?",
-                             (username, _login_window_start())).fetchone()[0]
     from policies import policy
-    return total >= policy("login_account_max")
+    return failed_attempts(username) >= policy("login_account_max")
 
 
 def record_login_attempt(username, success):

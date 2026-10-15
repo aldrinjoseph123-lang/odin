@@ -8,8 +8,9 @@ from werkzeug.security import check_password_hash
 
 from core import app, json_body, login_required, permission_required
 from db import get_db
+from policies import policy
 from routes.auth import finish_login
-from security import csrf_token, login_is_blocked, record_login_attempt
+from security import csrf_token, failed_attempts, login_is_blocked, record_login_attempt
 from services import mfa
 from services.audit import audit_log
 
@@ -29,12 +30,17 @@ def api_login_code():
     if datetime.fromisoformat(at) < datetime.utcnow() - timedelta(minutes=mfa.PENDING_MINUTES):
         session.clear()
         return jsonify(error="That took too long — sign in again"), 410   # 410/429: back to the password
-    user = get_db().execute("SELECT * FROM users WHERE id = ? AND active = 1", (uid,)).fetchone()
-    if user is None or login_is_blocked(user["username"]):
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE id = ? AND active = 1", (uid,)).fetchone()
+    # wrong codes are counted per account from every address, server side: the
+    # cookie's own counter can be replayed (test round P2-4)
+    key = f"mfa:{uid}"
+    if user is None or login_is_blocked(user["username"]) or failed_attempts(key) >= policy("login_max_attempts"):
         session.clear()
         return jsonify(error="Too many failed attempts. Sign in again later."), 429
     how = mfa.check(user, _text(json_body().get("code")))
     if how is None:
+        record_login_attempt(key, success=False)
         record_login_attempt(user["username"], success=False)
         audit_log("login_failure", "user", user["id"], user["username"], "wrong two-step code", actor=user["username"])
         session["mfa_tries"] = session.get("mfa_tries", 0) + 1
@@ -42,6 +48,7 @@ def api_login_code():
             session.clear()
             return jsonify(error="Too many wrong codes — sign in again"), 410
         return jsonify(error="That code is not right. Codes change every 30 seconds; check the time on your phone."), 401
+    db.execute("DELETE FROM login_attempts WHERE username = ?", (key,))
     finish_login(user, "two-step: recovery code" if how == "recovery" else "two-step: authenticator code")
     if how == "recovery" and mfa.recovery_left(get_db().execute("SELECT recovery_codes FROM users WHERE id = ?", (uid,)).fetchone()) <= 2:
         flash("You are running out of recovery codes: make new ones on your Account page")
@@ -145,6 +152,10 @@ def user_two_step_reset(user_id):
     user = db.execute("SELECT * FROM users WHERE id = ? AND kind = 'internal'", (user_id,)).fetchone()
     if user is None:
         abort(404)
+    from routes.users import admin_only
+    if admin_only(user["role"]):
+        flash("Only an admin can reset an admin's two-step sign-in", "error")
+        return redirect(url_for("users"))
     mfa.turn_off(user_id)
     # their live sessions end too: whoever holds the phone should not stay in
     db.execute("UPDATE users SET session_epoch = session_epoch + 1 WHERE id = ?", (user_id,))
