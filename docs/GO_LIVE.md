@@ -163,8 +163,17 @@ docker compose up -d --build                          # migrations run on boot
 docker compose exec app python preflight.py
 ```
 
-**Rollback:** `git checkout <previous tag> && docker compose up -d --build`;
-if the new version migrated data, restore the pre-update backup (`DEPLOY.md` → Restore).
+**Rollback:** `git checkout <previous tag> && docker compose up -d --build`.
+The database stays on the newer schema: older code ignores the tables and columns
+it does not know. From v1.7.1 on, the database carries a schema number
+(`PRAGMA user_version`, `db.SCHEMA_VERSION`); code older than the database sees it
+is a rollback, skips its destructive boot steps and keeps the newer release's
+settings (permissions, alert types), and preflight shows a **WARN** (not a FAIL, so
+the rollback still boots). Going back to **v1.7.0 or earlier** is different: those
+releases delete, on every boot, permission and alert-type settings they do not
+know, so after rolling back past v1.7.0 restore the pre-update backup if those
+settings matter (`DEPLOY.md` → Restore). Restore that backup too whenever the
+newer release's data itself must go.
 
 **Watch:** a Cloudflare health check on `/healthz`; `docker compose logs -f app`;
 Settings → Backups for the nightly run.

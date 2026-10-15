@@ -672,3 +672,69 @@ class SimulationLogicTestCase(FixBase):
         self.sql("DELETE FROM settings WHERE key = 'migrated.accent_blue'")
         app_module.init_db()
         self.assertEqual(self.sql("SELECT DISTINCT accent FROM users")[0][0], "blue")
+
+
+class OpsFixesTestCase(FixBase):
+    """14 Oct review, data/ops: P2-11 purge, P2-12 backup, P2-20 mail subject, P2-5 dev key."""
+
+    def test_purge_survives_a_deleted_vendor_that_still_has_products(self):   # P2-11
+        old = "2000-01-01T00:00:00"
+        self.sql("INSERT INTO vendors (name, deleted_at) VALUES ('Gone', ?)", old)
+        self.sql("INSERT INTO products (name, vendor_id) VALUES ('Box', (SELECT id FROM vendors WHERE name = 'Gone'))")
+        import db as db_module
+        with app_module.app.app_context():
+            db_module.cleanup_soft_deletes()   # get_db() has foreign keys on: this raised before the fix
+            db_module.get_db().close()
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM vendors WHERE name = 'Gone'")[0][0], 0)
+        self.assertIsNone(self.sql("SELECT vendor_id FROM products WHERE name = 'Box'")[0][0])
+
+    def test_a_missing_upload_file_is_a_warning_not_a_failed_backup(self):   # P2-12
+        import os, tempfile, zipfile
+        from unittest.mock import patch
+        import backup, db as db_module
+        self.new_project(name="B", client="C")
+        stored = self.sql("SELECT project_id, stored_name FROM documents WHERE stored_name IS NOT NULL")[0]
+        os.remove(os.path.join(db_module.UPLOAD_DIR, str(stored[0]), stored[1]))   # the file is gone, the row stays
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()):
+            ok, message = backup.run_backup(trigger="test")   # the exit code of backup.py --local follows ok
+            self.assertTrue(ok, message)
+            archive = os.path.join(db_module.DATA_DIR, "backups", [f for f in os.listdir(os.path.join(db_module.DATA_DIR, "backups")) if f.endswith(".zip")][0])
+            good, detail = backup.restore_test(archive)
+        self.assertTrue(good)
+        self.assertIn("WARNING: 1 of 1 documents", detail)
+        run = self.sql("SELECT ok, restore_ok, restore_detail FROM backup_runs")[0]
+        self.assertEqual((run[0], run[1]), (1, 1)); self.assertIn("WARNING", run[2])
+
+    def test_mail_subjects_are_plain_text_not_html(self):   # P2-20
+        from unittest.mock import patch
+        from services.notifications import notify_event, notify_users
+        self.sql("UPDATE users SET email = 'admin@odin.example' WHERE id = 1")
+        self.sql("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+        subject = "Smith &amp; Sons: it&#39;s in UAT"
+        with app_module.app.test_request_context(), patch("graph.send_mail", return_value=(True, None)) as mail:
+            notify_users([1], "stage", None, subject, "body")
+            self.assertEqual(mail.call_args.args[1], "Smith & Sons: it's in UAT")
+            mail.reset_mock()
+            notify_event({"owner_id": 1}, subject, "body", channels={"email": True})
+            self.assertEqual(mail.call_args.args[1], "Smith & Sons: it's in UAT")
+
+    def test_without_secret_key_the_app_keeps_a_private_key_in_the_data_dir_and_old_seals_still_open(self):   # P2-5
+        import base64, hashlib, os, stat, tempfile
+        from unittest.mock import patch
+        import core, db as db_module
+        from cryptography.fernet import Fernet
+        from services import sealed
+        tmp = tempfile.mkdtemp()
+        with patch.object(db_module, "DATA_DIR", tmp):
+            key = core._local_secret_key()
+            self.assertEqual(key, core._local_secret_key())                       # stable per data dir
+            self.assertNotEqual(key, core.DEV_SECRET); self.assertGreaterEqual(len(key), 32)
+            self.assertEqual(stat.S_IMODE(os.stat(os.path.join(tmp, "secret_key")).st_mode), 0o600)
+        # a value sealed with the old public key opens while the legacy key is configured
+        legacy = Fernet(base64.urlsafe_b64encode(hashlib.sha256(b"odin-secrets:" + core.DEV_SECRET.encode()).digest()))
+        old = sealed.PREFIX + legacy.encrypt(b"tenant-secret").decode()
+        with app_module.app.app_context():
+            self.assertTrue(app_module.app.config["USING_DEV_SECRET"])   # no SECRET_KEY in the test environment
+            self.assertEqual(sealed.unseal(old), "tenant-secret")
+            with patch.dict(app_module.app.config, {"LEGACY_SECRET_KEY": None}):
+                self.assertIsNone(sealed.unseal(old))                         # and only through the legacy key

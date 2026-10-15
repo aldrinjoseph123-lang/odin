@@ -11,8 +11,10 @@
 # healthy (it answers /healthz) and preflight passes. If the rebuild or
 # preflight fails it goes back to the previous tag and rebuilds that, and it
 # does not retry the failed tag (a newer one is tried when it appears).
-# The database only ever gains tables and columns, so the previous release
-# runs on it; the pre-update backup is there if data must be restored.
+# The previous release runs on the newer database: it ignores what it does not
+# know, and (from v1.7.1, PRAGMA user_version) skips destructive boot steps on
+# a newer schema; v1.7.0 and older still delete permission and alert-type rows
+# they do not know. The pre-update backup is there if data must be restored.
 #
 # Installed outside the checkout ($HOME/odin-update.sh) because it rewrites
 # the checkout while it runs; after a successful update it refreshes itself

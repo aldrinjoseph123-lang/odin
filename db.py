@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import sqlite3
+import sys
 from datetime import datetime, timedelta
 
 from flask import g
@@ -15,7 +16,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from constants import (
     CLIENT_PO_DOC_CATEGORY,
-    ALERT_TYPES,
     SOFT_DELETE_TABLES,
     DEFAULT_ALERT_TYPE_SETTINGS,
     DEFAULT_DOC_CATEGORIES,
@@ -142,6 +142,7 @@ def cleanup_soft_deletes(db=None):
         db.execute(f"UPDATE signoffs SET document_id = NULL WHERE document_id IN ({gone_docs})", (cutoff,))   # a deleted signed copy
         # a partner's account managers go with it, whether or not each was deleted on its own
         db.execute("DELETE FROM partner_account_managers WHERE partner_id IN (SELECT id FROM partners WHERE deleted_at IS NOT NULL AND deleted_at < ?)", (cutoff,))
+        db.execute("UPDATE products SET vendor_id = NULL WHERE vendor_id IN (SELECT id FROM vendors WHERE deleted_at IS NOT NULL AND deleted_at < ?)", (cutoff,))   # a product outlives its vendor
         for table in ["partner_account_managers", "projects", "documents", "account_managers", "partners", "vendors", "products", "outsourcers"]:
             db.execute(f"DELETE FROM {table} WHERE deleted_at IS NOT NULL AND deleted_at < ?", (cutoff,))
 
@@ -221,9 +222,33 @@ def _backfill_stage_entered_at(db):
         db.execute("UPDATE projects SET stage_entered_at = ? WHERE id = ?", (entered, project_id))
 
 
+# PRAGMA user_version. Raise SCHEMA_VERSION in any release that adds a table,
+# column, permission or alert type. A database above it was written by a newer
+# release, so this code is a rollback: it boots, but deletes nothing.
+SCHEMA_VERSION = 1
+
+# Names retired from PERMISSIONS / ALERT_TYPES; their rows are deleted on boot.
+# Retire a name by adding it here. Never delete "whatever this code does not
+# know": a rollback would wipe the newer release's settings (review P2-15).
+# The invoice permissions of the commercial phase-out predate the repository;
+# every boot up to v1.7.0 swept them, so no database still holds them.
+RETIRED_PERMISSIONS = ()
+RETIRED_ALERT_TYPES = ("due_soon_client", "due_soon_vendor")
+
+
+def schema_version(db):
+    return db.execute("PRAGMA user_version").fetchone()[0]
+
+
 # ponytail: ad-hoc ALTER-based migration, no framework. Move to a real
 # migration tool (alembic or similar) if the schema starts changing often.
 def migrate_db(db):
+    found = schema_version(db)
+    rollback = found > SCHEMA_VERSION
+    if rollback:
+        print(f"WARNING: database schema v{found} is newer than this code (v{SCHEMA_VERSION}): "
+              "a rollback. Destructive boot steps skipped; restore the pre-update backup "
+              "if the newer release's data must go.", file=sys.stderr)
     existing = {row[1] for row in db.execute("PRAGMA table_info(projects)")}
     for column, coltype in NEW_PROJECT_COLUMNS.items():
         if column not in existing:
@@ -263,6 +288,11 @@ def migrate_db(db):
         db.execute("INSERT INTO settings (key, value) VALUES ('migrated.accent_blue', '1')")
     # 13 Oct 2026: the Kibana view was removed (the user's call); its saved dashboard list goes with it
     db.execute("DELETE FROM settings WHERE key = 'policy.kibana_dashboards'")
+    # 15 Oct 2026: the Teams webhook address is a bearer key (test round P2-9): seal one saved in plain text, once
+    hook = db.execute("SELECT value FROM settings WHERE key = 'policy.teams_webhook_url'").fetchone()
+    if hook and hook[0] and not hook[0].startswith("sealed:"):
+        from services.sealed import seal
+        db.execute("UPDATE settings SET value = ? WHERE key = 'policy.teams_webhook_url'", (seal(hook[0]),))
     if role_column_is_new:
         # pre-RBAC installs: promote the original (lowest-id) user to Admin once
         db.execute("UPDATE users SET role = 'Admin' WHERE id = (SELECT MIN(id) FROM users)")
@@ -623,11 +653,10 @@ def migrate_db(db):
                 (permission, role, 1 if role in allowed_roles else 0),
             )
 
-    # Drop role_permissions rows for permissions that no longer exist (the
-    # retired invoice ones). Left behind they'd be invisible dead weight, and a
-    # future permission reusing the name would inherit stale allow/deny values.
-    perm_placeholders = ",".join("?" for _ in PERMISSIONS)
-    db.execute(f"DELETE FROM role_permissions WHERE permission NOT IN ({perm_placeholders})", tuple(PERMISSIONS))
+    # Drop rows of retired permissions, by name only (see RETIRED_PERMISSIONS):
+    # a future permission reusing the name must not inherit stale values.
+    if not rollback:
+        db.executemany("DELETE FROM role_permissions WHERE permission = ?", [(p,) for p in RETIRED_PERMISSIONS])
 
     # One unresolved alert per (type, project). Without this, two board loads
     # racing on the same newly-overdue project both saw "no existing alert" and
@@ -641,12 +670,11 @@ def migrate_db(db):
         "ON alerts (alert_type, project_id) WHERE resolved = 0"
     )
 
-    # Clear alert rows whose type is no longer defined (e.g. the retired
-    # payment alerts). Keyed off the live ALERT_TYPES set so lifecycle types
-    # added later (schedule health, etc.) are never wiped on boot.
-    placeholders = ",".join("?" for _ in ALERT_TYPES)
-    db.execute(f"DELETE FROM alert_type_settings WHERE alert_type NOT IN ({placeholders})", tuple(ALERT_TYPES))
-    db.execute(f"DELETE FROM alerts WHERE alert_type NOT IN ({placeholders})", tuple(ALERT_TYPES))
+    # Clear rows of retired alert types, by name only (see RETIRED_ALERT_TYPES),
+    # so a type added by a newer release survives a rollback.
+    if not rollback:
+        for table in ("alert_type_settings", "alerts"):
+            db.executemany(f"DELETE FROM {table} WHERE alert_type = ?", [(t,) for t in RETIRED_ALERT_TYPES])
 
     # The lookups every page makes (audit viewer and retention, My work, the
     # nav badges, approvals, purges): without these each scans its table.
@@ -665,6 +693,8 @@ def migrate_db(db):
     ):
         db.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({columns})")
 
+    if found < SCHEMA_VERSION:
+        db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     db.commit()
 
 
@@ -674,7 +704,12 @@ def init_db():
     with open(SCHEMA_PATH) as f:
         db.executescript(f.read())
     migrate_db(db)
-    cleanup_soft_deletes(db)
+    db.execute("PRAGMA foreign_keys = ON")   # as get_db: boot and the nightly purge must behave alike
+    try:
+        cleanup_soft_deletes(db)
+    except sqlite3.Error as e:   # housekeeping never stops a boot; the scheduler retries nightly
+        db.rollback()
+        print(f"boot purge skipped: {e}", file=sys.stderr)
     if first_run:
         db.execute(
             "INSERT INTO users (username, password_hash, name, role, active, must_change_password, password_login) VALUES (?, ?, ?, ?, ?, ?, 1)",

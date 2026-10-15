@@ -104,7 +104,8 @@ def _document_paths(db_file):
 
 def restore_test(zip_path):
     """(ok, detail): does this archive restore? Integrity-check the database
-    inside and check every document it names is in the archive."""
+    inside and list any document it names that is not in the archive (a
+    warning: the backup is still good)."""
     try:
         with zipfile.ZipFile(zip_path) as zf, tempfile.TemporaryDirectory() as tmp:
             bad = zf.testzip()
@@ -119,11 +120,12 @@ def restore_test(zip_path):
             finally:
                 con.close()
             stored = _document_paths(restored)
-            missing = [s for s in stored if s not in set(zf.namelist())]
+            names = set(zf.namelist())
+            missing = [s for s in stored if s not in names]
             if integrity != "ok":
                 return False, f"database integrity check: {integrity[:120]}"
-            if missing:
-                return False, f"{len(missing)} of {len(stored)} documents missing from the archive"
+            if missing:   # a warning, not a failure: the copy restores; one lost file must not stop pruning or the updater
+                return True, f"database intact, {projects} projects; WARNING: {len(missing)} of {len(stored)} documents have no file on the server: {', '.join(missing[:3])}{' ...' if len(missing) > 3 else ''}"
             return True, f"database intact, {projects} projects, all {len(stored)} documents present"
     except Exception as exc:  # noqa: BLE001 — any failure to open is a failed restore
         return False, f"could not open the archive: {exc}"
