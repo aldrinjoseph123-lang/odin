@@ -5,10 +5,13 @@ template context processor. Imports only constants + db, so route modules can
 `from core import app, login_required, ...` without an import cycle (core never
 imports routes or app.py).
 """
+import logging
 import os
+import re
+import uuid
 from functools import wraps
 
-from flask import Flask, abort, flash, g, get_flashed_messages, jsonify, redirect, request, session, url_for
+from flask import Flask, abort, flash, g, get_flashed_messages, has_request_context, jsonify, redirect, request, session, url_for
 from markupsafe import Markup, escape
 from werkzeug.routing import IntegerConverter
 
@@ -20,6 +23,30 @@ from security import csrf_token, init_security
 
 DEV_SECRET = "dev-secret-change-me"
 
+
+class _RequestIdFilter(logging.Filter):
+    """Every log line names the request it belongs to ("-" outside one)."""
+    def filter(self, record):
+        record.request_id = g.get("request_id", "-") if has_request_context() else "-"
+        return True
+
+
+def configure_logging():
+    """Python logging, once per process (the web app on import, the scheduler
+    through it): to stderr, at LOG_LEVEL (default INFO), each line with the
+    request id. Before the app exists, so Flask adds no handler of its own."""
+    root = logging.getLogger()
+    if any(isinstance(f, _RequestIdFilter) for h in root.handlers for f in h.filters):
+        return
+    handler = logging.StreamHandler()
+    handler.addFilter(_RequestIdFilter())
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s [%(request_id)s] %(message)s"))
+    root.addHandler(handler)
+    level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    root.setLevel(level if level in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") else "INFO")
+
+
+configure_logging()
 app = Flask(__name__)
 
 MAX_ID = 2 ** 63 - 1   # SQLite's largest integer
@@ -81,6 +108,9 @@ app.config["USING_DEV_SECRET"] = os.environ.get("SECRET_KEY", "") in ("", DEV_SE
 # Values sealed with the old public key (UAT before 15 Oct 2026) still open
 if app.config["USING_DEV_SECRET"]:
     app.config["LEGACY_SECRET_KEY"] = DEV_SECRET
+# Rotating SECRET_KEY (review A11): the old keys, comma-separated, keep signed-in
+# sessions and sealed values (services/sealed.py, sealed again at boot) working.
+app.config["SECRET_KEY_FALLBACKS"] = [k.strip() for k in os.environ.get("SECRET_KEY_FALLBACKS", "").split(",") if k.strip()]
 
 # cookie hardening + CSRF + security response headers (see security.py)
 init_security(app)
@@ -114,14 +144,23 @@ def localdt(value, mode="datetime"):
     )
 
 
-def external_url(endpoint, **values):
-    """An absolute link for email and for Microsoft's redirect: built from the
-    public address in Settings › General when set, never from the Host
-    header of whoever made the request (a forged Host would otherwise put an
-    attacker's domain into a sign-in or reset link)."""
+def public_base():
+    """Where links into Odin point: the public address in Settings › General.
+    Never the Host header of whoever made the request (a forged Host would put
+    an attacker's domain into a sign-in or reset link, P3-1). Blank (dev, UAT,
+    bound to 127.0.0.1): this server's own loopback address and the port it
+    really listens on, which Settings warns about."""
+    from flask import has_request_context
     from policies import policy
-    base = policy("public_url")
-    return f"{base}{url_for(endpoint, **values)}" if base else url_for(endpoint, _external=True, **values)
+    if base := policy("public_url"):
+        return base
+    port = request.environ.get("SERVER_PORT", "80") if has_request_context() else "80"
+    return "http://localhost" + (f":{port}" if port.isdigit() and port != "80" else "")
+
+
+def external_url(endpoint, **values):
+    """An absolute link for email, Teams, guest links and Microsoft's redirect."""
+    return f"{public_base()}{url_for(endpoint, **values)}"
 
 
 def undo_note():
@@ -139,10 +178,13 @@ def offer_undo(endpoint, **values):
 
 ERROR_COPY = {
     400: ("Bad request", "Odin could not read that request. Reload the page and try again."),
+    401: ("Sign in needed", "Sign in, or send a valid API token, and try again."),
     403: ("No access", "Your account doesn't have permission for that."),
     404: ("Page not found", "The link may be old, or the item was deleted."),
+    405: ("Not allowed here", "That address doesn't take this kind of request."),
     409: ("Conflict", "Someone changed this at the same moment. Reload and try again."),
     413: ("File too large", "Uploads are limited to {mb} MB per file."),
+    422: ("Could not use that", "Odin could not use what was sent. Check it and try again."),
     429: ("Too many requests", "Slow down a little and try again in a minute."),
     500: ("Something went wrong", "The error has been logged. Try again, or tell an admin if it persists."),
 }
@@ -168,8 +210,12 @@ def _error_page(error):
     said = getattr(error, "description", None)
     if code < 500 and said and said != type(error).description:
         hint = said
+    if code >= 500:   # the reference ties the person's report to the logged traceback (advice A7)
+        hint = f"{hint} Reference: {request_id()}."
     if wants_json():
         body = {"error": hint}
+        if code >= 500:
+            body["ref"] = request_id()
         if g.get("csrf_failed"):
             body["csrf"] = csrf_token()   # the page retries once with the token this session holds
         return jsonify(body), code
@@ -178,6 +224,30 @@ def _error_page(error):
 
 for _code in ERROR_COPY:
     app.register_error_handler(_code, _error_page)
+
+
+_GIVEN_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
+
+
+def request_id():
+    """This request's id (g.request_id): the caller's X-Request-Id when it
+    looks like one (a proxy's), else a new one. Made on first use, so an
+    earlier before_request that refuses the request still gets one."""
+    if "request_id" not in g:
+        given = request.headers.get("X-Request-Id", "")
+        g.request_id = given if _GIVEN_ID.fullmatch(given) else uuid.uuid4().hex[:16]
+    return g.request_id
+
+
+@app.before_request
+def _request_id():
+    request_id()   # never returned: a before_request value would replace the response
+
+
+@app.after_request
+def _echo_request_id(response):
+    response.headers["X-Request-Id"] = request_id()   # the access log and the person's report quote it
+    return response
 
 
 def json_body():
@@ -350,13 +420,12 @@ def admin_required(view):
 
 
 def role_has_permission(role, permission):
-    db = get_db()
-    row = db.execute(
-        "SELECT allowed FROM role_permissions WHERE permission = ? AND role = ?", (permission, role)
-    ).fetchone()
-    if row is None:
-        return False
-    return bool(row["allowed"])
+    """Read once per request (g.role_permissions): a page that asks per row,
+    as the Flow does for each rollout, ran one query per row (review P3-25)."""
+    if "role_permissions" not in g:
+        g.role_permissions = {(r["permission"], r["role"]) for r in get_db().execute(
+            "SELECT permission, role FROM role_permissions WHERE allowed = 1")}
+    return (permission, role) in g.role_permissions
 
 
 def permission_required(permission):

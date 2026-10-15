@@ -27,6 +27,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
   const [d, setD] = useState<RaidData | null>(null)
   const [show, setShow] = useState<"open" | "all">("open")
   const [edit, setEdit] = useState<Draft | null>(null)
+  const [opened, setOpened] = useState("")   // an existing item as opened: Save wakes when it differs (review P3-41)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fromAI, setFromAI] = useState<{ suggestion: number; index: number } | null>(null)   // the proposal this new item came from
@@ -49,7 +50,9 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
     try {
       const r = await saveRaid(projectId, edit, edit.id)
       const newId = (r as { id?: number }).id
-      if (fromAI && !edit.id && newId) { await decideAIProposal(projectId, fromAI.suggestion, fromAI.index, "accepted", newId); setAiRefresh((n) => n + 1) }
+      // the item is saved: a failed mark on the AI proposal must not leave the dialog open for a second save (review P3-38)
+      if (fromAI && !edit.id && newId) await decideAIProposal(projectId, fromAI.suggestion, fromAI.index, "accepted", newId)
+        .then(() => setAiRefresh((n) => n + 1), () => toast("Logged. The AI proposal could not be marked used: dismiss it there.", { tone: "bad" }))
       toast(edit.id ? "Saved to the log" : `${RAID_KIND[edit.kind]?.label ?? "Item"} logged`)
       setEdit(null); setFromAI(null); await load(); onChanged?.()
     } catch (err) { setError(err instanceof ApiError ? err.message : "That did not save") } finally { setBusy(false) }
@@ -60,6 +63,8 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
     try { await deleteRaid(projectId, edit.id); toast("Deleted from the log"); setEdit(null); await load(); onChanged?.() } catch (err) { setError(err instanceof ApiError ? err.message : "That did not delete") } finally { setBusy(false) }
   }
   const set = (patch: Partial<Draft>) => setEdit((x) => (x ? { ...x, ...patch } : x))
+  const open = (x: Draft) => { setOpened(x.id ? JSON.stringify(x) : ""); setEdit(x) }
+  const changed = !!edit && (!edit.id || JSON.stringify(edit) !== opened)
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
@@ -68,12 +73,12 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
           return <span key={k} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px]", n && (k === "blocker" ? "bg-bad-soft text-bad" : k === "issue" ? "bg-warn-soft text-warn" : "bg-muted"), !n && "text-muted-foreground")}><K.icon className="h-3 w-3" aria-hidden />{n} {K.label.toLowerCase()}{n === 1 ? "" : "s"}</span>
         })}
         <Segmented label="Show" className="ml-auto" value={show} onChange={setShow} options={[{ value: "open", label: "Open" }, { value: "all", label: "All" }]} />
-        {d.can_edit && <Button size="sm" onClick={() => { setError(null); setFromAI(null); setEdit({ kind: "risk", title: "", impact: "medium", likelihood: "medium" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
+        {d.can_edit && <Button size="sm" onClick={() => { setError(null); setFromAI(null); open({ kind: "risk", title: "", impact: "medium", likelihood: "medium" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
       {d.can_edit && (
         <AIRaidProposals projectId={projectId} refresh={aiRefresh} onAdd={(p, suggestion, index) => {
           setError(null); setFromAI({ suggestion, index })
-          setEdit({ kind: p.kind, title: p.title, detail: `${p.detail}\n\nFrom the notes: "${p.evidence}"`, impact: p.impact, likelihood: p.likelihood ?? (p.kind === "risk" ? "medium" : null), status: d.statuses[p.kind][0] })
+          open({ kind: p.kind, title: p.title, detail: `${p.detail}\n\nFrom the notes: "${p.evidence}"`, impact: p.impact, likelihood: p.likelihood ?? (p.kind === "risk" ? "medium" : null), status: d.statuses[p.kind][0] })
         }} />
       )}
       <ul className="mt-2 divide-y divide-border text-[13px]">
@@ -82,7 +87,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
           const late = i.open && i.due_date ? lateBy(i.due_date, today) : 0
           return (
             <li key={i.id}>
-              <button type="button" disabled={!d.can_edit} onClick={() => { setError(null); setFromAI(null); setEdit({ ...i }) }} className="flex w-full items-start gap-3 py-2 text-left enabled:hover:bg-muted/40">
+              <button type="button" disabled={!d.can_edit} onClick={() => { setError(null); setFromAI(null); open({ ...i }) }} className="flex w-full items-start gap-3 py-2 text-left enabled:hover:bg-muted/40">
                 <K.icon className={cn("mt-1 h-4 w-4 shrink-0", i.kind === "blocker" && i.open ? "text-bad" : "text-muted-foreground")} aria-hidden />
                 <span className="min-w-0 flex-1">
                   <span className={cn("block font-medium", !i.open && "text-muted-foreground line-through")}>{i.title}</span>
@@ -120,7 +125,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
               {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
               <div className="flex gap-2">
                 {edit.id && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={remove}>Delete</Button>}
-                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
+                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" loading={busy} disabled={!edit.title.trim() || !changed}>Save</Button></span>
               </div>
             </form>
           )}

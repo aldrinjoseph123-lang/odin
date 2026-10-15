@@ -15,8 +15,13 @@ to each cloud destination again).
     python scheduler.py --once   # one check, for cron instead of the service
 
 It also leaves a heartbeat that Settings shows, so an admin can see whether
-the schedule is really being kept.
+the schedule is really being kept (a thread of its own, every minute, so a
+long backup does not look like a dead scheduler). Each pass it also runs a
+backup an admin asked for (Back up now), turns the self-updater's notices
+(DATA_DIR/ops-notices, deploy/odin-update.sh) into bell items for the admins,
+and warns them once a day when the data disk runs low.
 """
+import logging
 import os
 import signal
 import sqlite3
@@ -26,12 +31,15 @@ from datetime import datetime, timedelta, timezone
 
 import db as _db
 
+log = logging.getLogger("odin.scheduler")
 
 def _utcnow():
     """Naive UTC, as every stored timestamp is (_utcnow() warns on 3.12)."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 HEARTBEAT = "scheduler.heartbeat"
+BACKUP_REQUEST = "backup.requested"   # Back up now: who asked; the next pass runs it (routes/integrations.py)
+OPS_NOTICES = "ops-notices"           # in DATA_DIR: one line per notice, appended by deploy/odin-update.sh
 # ponytail: not a policy. It is a guard against a minute-by-minute retry storm, not a business rule; no admin has a reason to tune it, and the only jobs it still applies to (report, housekeeping) are idempotent.
 RETRY_AFTER = timedelta(hours=1)   # a failing job is tried again at most this often
 RETRY_MINUTES = int(RETRY_AFTER.total_seconds() // 60)
@@ -107,7 +115,7 @@ def _run_job(job, report_on):
     elif job == "backup":
         import backup
         ok, message = backup.run_backup(trigger="schedule")
-        print(f"[scheduler] backup: {message}")
+        log.info("backup: %s", message)
         if not ok:
             raise RuntimeError(message)
     elif job == "report" and report_on:
@@ -115,7 +123,7 @@ def _run_job(job, report_on):
         from services import weekly_report
         with app.test_request_context():
             sent, failed, message = weekly_report.send()
-        print(f"[scheduler] weekly report: {message}")
+        log.info("weekly report: %s", message)
         if failed and not sent:   # a partly sent report is not re-sent: the others would get it twice
             raise RuntimeError(message)
     elif job == "housekeeping":
@@ -124,14 +132,16 @@ def _run_job(job, report_on):
         def audit_retention():
             removed, path = run_audit_retention()
             if removed:
-                print(f"[scheduler] audit retention: {removed} rows archived to {path}")
+                log.info("audit retention: %s rows archived to %s", removed, path)
         from app import app
-        from db import cleanup_soft_deletes
+        from db import cleanup_soft_deletes, optimize, trim_settled
         from services.dashboard import record_snapshot
         from services.activity import trim as trim_activity
         from services.notifications import trim as trim_notifications
         from services.signup import trim as trim_signup_links
+        from services.partner_access import end_dormant as end_dormant_partners
         from services.ai.health import trim as trim_ai
+        from services.outbox import trim as trim_outbox
         from services.doctext import extract_pending as read_documents
         failed = []
         with app.app_context():
@@ -140,9 +150,13 @@ def _run_job(job, report_on):
                          trim_activity,          # active-minute rows past activity_keep_days
                          trim_notifications,     # read bell items past notifications_keep_days
                          trim_signup_links,      # sign-up links dead for 90 days
+                         end_dormant_partners,   # partner accounts whose rollouts all closed long ago (A12)
                          trim_ai,                # AI checks past 180 days, finished AI jobs past 30
+                         trim_outbox,            # mail and Teams messages sent, or given up on long ago
+                         trim_settled,           # resolved alerts past alerts_keep_days, Teams chats of people gone
                          read_documents,         # the text of new uploads, for search and the AI
-                         record_snapshot):       # the day's portfolio counts, for the Dashboard's deltas
+                         record_snapshot,        # the day's portfolio counts, for the Dashboard's deltas
+                         optimize):              # PRAGMA optimize, last: statistics after the day's changes
                 try:   # one failing step must not skip the others
                     step()
                 except Exception as exc:  # noqa: BLE001
@@ -150,7 +164,7 @@ def _run_job(job, report_on):
                     from db import get_db
                     get_db().rollback()
                     failed.append(f"{step.__name__}: {exc}")
-                    print(f"[scheduler] housekeeping {step.__name__} failed: {exc}", file=sys.stderr)
+                    log.error("housekeeping %s failed: %s", step.__name__, exc)
         if failed:
             raise RuntimeError("; ".join(failed))
 
@@ -175,7 +189,7 @@ def _tell_admins_once_a_day(key, title, body, link):
         with app.test_request_context():
             notify_users(admins, "ops", None, title, escape(body), link=link, email=False)
     except Exception as exc:  # noqa: BLE001 — telling people must not stop the clock
-        print(f"[scheduler] could not notify admins ({key}): {exc}", file=sys.stderr)
+        log.error("could not notify admins (%s): %s", key, exc)
 
 
 def _report_failure(job, error):
@@ -247,7 +261,11 @@ def run_due():
         try:
             check_backups_fresh(con)
         except Exception as exc:  # noqa: BLE001
-            print(f"[scheduler] backup freshness check failed: {exc}", file=sys.stderr)
+            log.error("backup freshness check failed: %s", exc)
+        try:
+            check_disk(con)
+        except Exception as exc:  # noqa: BLE001
+            log.error("disk space check failed: %s", exc)
     finally:
         con.close()
         lock.close()
@@ -265,13 +283,111 @@ def run_due():
         try:
             _run_job(job, report_on)
         except Exception as exc:  # noqa: BLE001 — one failed job must not stop the clock
-            print(f"[scheduler] {job} failed: {exc}", file=sys.stderr)
+            log.error("%s failed: %s", job, exc)
             _report_failure(job, exc)
         else:
             con = sqlite3.connect(_db.DB_PATH)
             _set(con, f"job.{job}.last_run", now_local.date().isoformat())
             con.close()
+    if not _stopping:
+        run_requested_backup()
+    read_ops_notices()
     return todo
+
+
+def _tell_admins(title, body, link):
+    """A bell notice to every active admin, now (kind "ops"). Never raises."""
+    try:
+        from app import app
+        from markupsafe import escape
+        from services.notifications import notify_users
+        con = sqlite3.connect(_db.DB_PATH)
+        try:
+            admins = [r[0] for r in con.execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+        finally:
+            con.close()
+        with app.test_request_context():
+            notify_users(admins, "ops", None, title, escape(body), link=link, email=False)
+    except Exception as exc:  # noqa: BLE001 — telling people must not stop the clock
+        log.error("could not notify admins (%s): %s", title, exc)
+
+
+def run_requested_backup():
+    """Back up now (Settings › Backups) asks by leaving who asked in the
+    settings; the request is cleared before the run, so a crash does not
+    repeat it every minute. Runs here, never in a web worker (review P3-29)."""
+    con = sqlite3.connect(_db.DB_PATH)
+    try:
+        row = con.execute("SELECT value FROM settings WHERE key = ?", (BACKUP_REQUEST,)).fetchone()
+        if not row:
+            return
+        con.execute("DELETE FROM settings WHERE key = ?", (BACKUP_REQUEST,))
+        con.commit()
+    finally:
+        con.close()
+    import backup
+    ok, message = backup.run_backup(trigger="manual", actor=row[0] or None)
+    log.info("backup now (%s): %s", row[0], message)
+    if not ok:
+        _tell_admins("Odin's backup (Back up now) failed", f"The backup {row[0]} asked for did not complete: {message[:300]}", "/settings/backups")
+
+
+def read_ops_notices():
+    """The self-updater writes a line to DATA_DIR/ops-notices when an update
+    fails or its rollback fails (it cannot reach the bell itself): each line
+    becomes a bell notice for the admins, once."""
+    path = os.path.join(_db.DATA_DIR, OPS_NOTICES)
+    if not os.path.exists(path):
+        return
+    taken = f"{path}.{os.getpid()}"
+    try:
+        os.replace(path, taken)   # a line the updater appends meanwhile lands in a new file, read next pass
+        with open(taken, encoding="utf-8", errors="replace") as f:
+            lines = [line.strip() for line in f if line.strip()]
+        os.remove(taken)
+    except OSError as exc:
+        log.error("could not read %s: %s", path, exc)
+        return
+    for line in lines[-20:]:   # a flood (an updater failing for days) is the newest twenty
+        _tell_admins("Odin's update failed" if "ROLLBACK FAILED" not in line else "Odin's update failed and so did the rollback",
+                     line[:600], "/settings/map")
+
+
+def check_disk(con):
+    """Free space on the data volume (the database, uploads and local
+    backups share it) below the policy disk_free_min_pct: say so once a day."""
+    import shutil
+    from policies import policy
+    usage = shutil.disk_usage(_db.DATA_DIR)
+    free = 100 * usage.free / usage.total
+    if free < policy("disk_free_min_pct", con):
+        _tell_admins_once_a_day(
+            "disk_low", "Odin's disk is nearly full",
+            f"Only {free:.0f}% ({usage.free // 2**30} GB) of the disk holding Odin's data is free. A full disk stops every save and every backup. "
+            "Free space on the server or prune old backups (Settings > Backups > Copies kept); see docs/RUNBOOK.md, \"Disk full\".",
+            "/settings/backups")
+
+
+def beat():
+    """The heartbeat (Settings › Backups and the container health check read it)."""
+    con = sqlite3.connect(_db.DB_PATH, timeout=10)
+    try:
+        _set(con, HEARTBEAT, _utcnow().isoformat())
+    finally:
+        con.close()
+
+
+def heartbeat():
+    """The heartbeat from a thread of its own: a backup or report that takes
+    longer than the health check's three minutes must not mark the scheduler
+    dead while it works (review P3-27)."""
+    # ponytail: proves the process is alive, not that the clock loop is unstuck; a hung job shows as an overdue job instead
+    while not _stopping:
+        try:
+            beat()
+        except Exception as exc:  # noqa: BLE001 — a locked database this minute is fine next minute
+            log.error("heartbeat failed: %s", exc)
+        _nap(60)
 
 
 def healthy(max_age_minutes=3):
@@ -320,29 +436,55 @@ def ai_worker():
         try:
             busy = ai_pass()
         except Exception as exc:  # noqa: BLE001 — the worker outlives a bad pass
-            print(f"[scheduler] AI worker pass failed: {exc}", file=sys.stderr)
+            log.error("AI worker pass failed: %s", exc)
             busy = None
         _nap(1 if busy else 15)
+
+
+def outbox_pass():
+    """Send the mail and Teams messages that are due (services/outbox.py)."""
+    from app import app
+    from services.outbox import drain
+    with app.app_context():
+        return drain()
+
+
+def outbox_worker():
+    """The outbox worker, a thread beside the clock like the AI worker: a long
+    backup must not hold up a stage-move mail. The only place Odin's mail and
+    Teams messages are sent from (never a web worker)."""
+    while not _stopping:
+        try:
+            busy = outbox_pass()
+        except Exception as exc:  # noqa: BLE001 — the worker outlives a bad pass
+            log.error("outbox pass failed: %s", exc)
+            busy = None
+        _nap(1 if busy else 5)
 
 
 if __name__ == "__main__":
     if "--healthcheck" in sys.argv:
         sys.exit(0 if healthy() else 1)
+    import core  # noqa: F401 — configures logging (core.configure_logging), as in the web app
     if "--once" in sys.argv:   # cron mode: alerts too (test report OPS-15)
-        print(f"[scheduler] ran: {', '.join(run_due()) or 'nothing due'}")
+        log.info("ran: %s", ", ".join(run_due()) or "nothing due")
         sync_alerts()
         ai_pass()
+        outbox_pass()
         sys.exit(0)
     import threading
     signal.signal(signal.SIGTERM, _on_term)   # docker stop: finish the job in hand, then leave
+    threading.Thread(target=heartbeat, name="heartbeat", daemon=True).start()
     worker = threading.Thread(target=ai_worker, name="ai-worker", daemon=True)
     worker.start()
+    mailer = threading.Thread(target=outbox_worker, name="outbox-worker", daemon=True)
+    mailer.start()
     synced = None   # the quarter hour alerts were last recorded in
     while not _stopping:
         try:
             run_due()
         except Exception as exc:  # noqa: BLE001 — a bad pass (e.g. the database mid-migration) must not end the service
-            print(f"[scheduler] pass failed: {exc}", file=sys.stderr)
+            log.error("pass failed: %s", exc)
         # alerts every quarter hour, on the first pass after each boundary
         # even when a long job made this pass late, and whatever run_due did
         quarter = alert_quarter(_utcnow())
@@ -351,7 +493,8 @@ if __name__ == "__main__":
                 sync_alerts()
                 synced = quarter
             except Exception as exc:  # noqa: BLE001
-                print(f"[scheduler] alert sync failed: {exc}", file=sys.stderr)
+                log.error("alert sync failed: %s", exc)
         _nap(60 - _utcnow().second)   # wake on the minute
     worker.join(timeout=90)   # an AI job in hand finishes inside the compose grace period
-    print("[scheduler] stopped on SIGTERM")
+    mailer.join(timeout=30)   # so does a message in hand
+    log.info("stopped on SIGTERM")

@@ -310,6 +310,7 @@ class AccessControlTest(Base):
             db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('notify_email_enabled', '1')"); db.commit()
         with patch("graph.send_mail", return_value=(True, None)) as mail:
             self.new_project(name="Mine", client="C")
+            T.drain_outbox()
         self.assertNotIn("admin@odin.example", [c.args[0] for c in mail.call_args_list])
 
     def test_approval_subject_is_escaped_for_teams(self):   # S9
@@ -323,6 +324,7 @@ class AccessControlTest(Base):
         aid = ann.get("/api/projects/1/flow").get_json()["approval"]["id"]
         with patch("graph.send_teams_message", return_value=(True, None)) as teams:
             ann.post(f"/api/projects/1/approvals/{aid}", json={"decision": "approved"}, headers=self.csrf(ann))
+            T.drain_outbox()
         self.assertIn("&lt;b&gt;P&lt;/b&gt;", teams.call_args.args[0]); self.assertNotIn("<b>P</b>", teams.call_args.args[0])
 
 
@@ -635,7 +637,7 @@ class IdentityTest(Base):   # test round 14 Oct 2026: P2-1 to P2-4, P2-9
             self.assertIsNone(db.execute("SELECT ms_oid FROM users WHERE id = ?", (squat,)).fetchone()[0])
             self.assertIsNone(db.execute("SELECT 1 FROM users WHERE ms_oid = 'oid-ceo'").fetchone())   # no request row holding the oid
             self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'link_microsoft_refused'").fetchone()[0], 1)
-            self.assertIn("Link Microsoft", db.execute("SELECT body FROM notifications WHERE user_id = 1 AND kind = 'access'").fetchone()[0])
+            self.assertIn("not confirmed that address", db.execute("SELECT body FROM notifications WHERE user_id = 1 AND kind = 'access'").fetchone()[0])   # v1.8.0: an unproven address never binds
         # the real person signs in with the password and links Microsoft from the Account page
         me = self.login_as("squat")
         self.assertEqual(me.get("/api/account/microsoft").get_json(), {"available": True, "linked": False})
@@ -657,7 +659,8 @@ class IdentityTest(Base):   # test round 14 Oct 2026: P2-1 to P2-4, P2-9
         # once passwords cannot sign in (Microsoft only, no flag), the binding happens and the password is retired
         mem = self.staff("mem", email="mem@corp.example")
         with self.raw_db() as db:
-            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sso_enforced', '1')"); db.commit()
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sso_enforced', '1')")
+            db.execute("UPDATE users SET email_verified_at = '2026-10-15' WHERE id = ?", (mem,)); db.commit()   # v1.8.0: only a proven address binds
         self.assertEqual(self._ms_sign_in(c, "oid-mem", "mem@corp.example").headers["Location"], "/board")
         with self.raw_db() as db:
             self.assertEqual(tuple(db.execute("SELECT ms_oid, password_hash FROM users WHERE id = ?", (mem,)).fetchone()), ("oid-mem", "microsoft:no-password"))

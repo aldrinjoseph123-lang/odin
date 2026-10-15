@@ -9,4 +9,4 @@ These words are printed in the internal report and in the copy the customer read
 - Do not name individual people; say "the vendor", "the customer", "the team".
 - Do not repeat remarks about the customer or the vendor; state the fact instead.
 - Write dates as they are given (for example "20 Oct 2026").
-- When the health is amber or red, never call the rollout on track.
+- Say the health in the words given ("at risk", "off track"); never as a colour. When it is at risk or off track, never call the rollout on track.

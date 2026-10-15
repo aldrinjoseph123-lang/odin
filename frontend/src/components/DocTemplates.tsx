@@ -11,6 +11,7 @@ import {
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
+import { Notice } from "@/components/Notice"
 
 // Settings → Documents: templates for the rollout report, the portfolio report
 // and the sign-off. Brand (our logo, an optional customer logo, accent,
@@ -27,6 +28,7 @@ export function DocTemplates() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [saved, setSaved] = useState("")   // an existing template as opened: Save wakes when it differs (review P3-41)
   const load = useCallback(() => docTemplates().then(setD).catch(() => setNotice({ text: "Could not load the templates", bad: true })), [])
   useEffect(() => { void load() }, [load])
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
@@ -42,10 +44,11 @@ export function DocTemplates() {
     try { const blob = await previewDocTemplate(edit.kind, edit.config); if (preview) URL.revokeObjectURL(preview); setPreview(URL.createObjectURL(blob)) }
     catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "No preview", bad: true }) } finally { setBusy(false) }
   }
-  const startNew = (kind: DocKind) => { setPreview(null); setEdit({ kind, name: "", config: structuredClone(d.kinds[kind].default) }) }
+  const begin = (e: Editing) => { setPreview(null); setSaved(e.id ? JSON.stringify({ name: e.name, config: e.config }) : ""); setEdit(e) }
+  const startNew = (kind: DocKind) => begin({ kind, name: "", config: structuredClone(d.kinds[kind].default) })
 
   if (edit) return (
-    <Editor d={d} edit={edit} setEdit={setEdit} busy={busy} notice={notice} preview={preview} onPreview={showPreview}
+    <Editor d={d} edit={edit} setEdit={setEdit} busy={busy} notice={notice} preview={preview} onPreview={showPreview} changed={!edit.id || JSON.stringify({ name: edit.name, config: edit.config }) !== saved}
       onCancel={() => { setEdit(null); setPreview(null) }}
       onSave={() => run(async () => { await saveDocTemplate(edit.kind, edit.name, edit.config, edit.id); setEdit(null); setPreview(null) }, "Template saved.")}
       onLogo={async (key, file) => {
@@ -57,7 +60,7 @@ export function DocTemplates() {
 
   return (
     <div className="grid grid-cols-1 gap-4">
-      {notice && <p className={cn("text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <Notice bad={notice.bad}>{notice.text}</Notice>}
       {KINDS.map((kind) => {
         const list = d.templates.filter((t) => t.kind === kind)
         return (
@@ -69,8 +72,8 @@ export function DocTemplates() {
             {list.length === 0 && <EmptyState>No templates yet: documents use the built-in layout.</EmptyState>}
             <ul className="divide-y divide-border text-[13px]">
               {list.map((t) => <Row key={t.id} t={t} busy={busy}
-                onEdit={() => { setPreview(null); setEdit({ id: t.id, kind: t.kind, name: t.name, config: structuredClone(t.config) }) }}
-                onCopy={() => { setPreview(null); setEdit({ kind: t.kind, name: `${t.name} (copy)`, config: structuredClone(t.config) }) }}
+                onEdit={() => begin({ id: t.id, kind: t.kind, name: t.name, config: structuredClone(t.config) })}
+                onCopy={() => begin({ kind: t.kind, name: `${t.name} (copy)`, config: structuredClone(t.config) })}
                 onDefault={() => run(() => defaultDocTemplate(t.id), `${t.name} is now the default.`)}
                 onDelete={async () => { if (await askConfirm(`Delete the template ${t.name}? Documents already issued keep their look.`)) void run(() => deleteDocTemplate(t.id), "Template deleted.") }} />)}
             </ul>
@@ -95,8 +98,8 @@ function Row({ t, busy, onEdit, onCopy, onDefault, onDelete }: { t: DocTemplate;
   )
 }
 
-function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, onSave, onLogo }: {
-  d: DocTemplatesData; edit: Editing; setEdit: (e: Editing) => void; busy: boolean; notice: { text: string; bad?: boolean } | null; preview: string | null
+function Editor({ d, edit, setEdit, busy, notice, preview, changed, onPreview, onCancel, onSave, onLogo }: {
+  d: DocTemplatesData; edit: Editing; setEdit: (e: Editing) => void; busy: boolean; changed: boolean; notice: { text: string; bad?: boolean } | null; preview: string | null
   onPreview: () => void; onCancel: () => void; onSave: () => void; onLogo: (key: "logo" | "co_logo", f: File) => void
 }) {
   const k = d.kinds[edit.kind]
@@ -165,9 +168,9 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
           ))}
         </section>
 
-        {notice && <p className={cn("text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
+        {notice && <Notice bad={notice.bad}>{notice.text}</Notice>}
         <div className="flex flex-wrap gap-2">
-          <Button loading={busy} disabled={!edit.name.trim()} onClick={onSave}>Save template</Button>
+          <Button loading={busy} disabled={!edit.name.trim() || !changed} onClick={onSave}>Save template</Button>
           <Button variant="outline" disabled={busy} onClick={onPreview}><Eye className="h-4 w-4" /> Preview</Button>
           <Button variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
         </div>

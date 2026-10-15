@@ -44,7 +44,9 @@ const buttonVariants = cva(
 
 // Five states: default, hover, pressed (a slight scale), disabled (40%,
 // not-allowed) and loading: `loading` keeps the button's size, hides the
-// label behind a spinner, sets aria-busy and blocks a second click.
+// label behind a spinner, sets aria-busy and blocks a second click. A loading
+// button keeps the focus and its name (aria-disabled, the label only faded):
+// a disabled one dropped the keyboard to the top of the page (review P2-41).
 function Button({
   className,
   variant = "default",
@@ -59,12 +61,13 @@ function Button({
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }), loading && "relative")}
       disabled={disabled || loading}
+      focusableWhenDisabled={loading || props.focusableWhenDisabled}
       aria-busy={loading || undefined}
       {...props}
     >
       {loading ? (
         <>
-          <span className="invisible inline-flex items-center gap-[inherit]">{children as React.ReactNode}</span>
+          <span className="inline-flex items-center gap-[inherit] opacity-0">{children as React.ReactNode}</span>
           <Loader2 className="absolute animate-spin" aria-hidden />
         </>
       ) : children}

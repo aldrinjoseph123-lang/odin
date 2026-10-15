@@ -21,6 +21,9 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
   const span = (a: string, b: string) => ({ left: pct(a), width: `max(3px, calc(${pct(b)} - ${pct(a)}))` })
   const [width, measure] = useWidth<HTMLDivElement>()
   const months = monthTicks(t0, t1, width ? Math.max(2, Math.floor(width / 70)) : 8)
+  // the month the chart opens in is named too, at the left edge, when the first tick leaves room (review P2-50)
+  const opening = !months.length || (months[0].t - t0) / (t1 - t0) > 0.12
+    ? new Date(t0).toLocaleDateString([], { month: "short", timeZone: "UTC", ...(new Date(t0).getUTCMonth() === 0 ? { year: "numeric" } : {}) }) : null
   // a light line at each Monday (Odin's weeks start on Monday), numbered when there is room
   const weeks = mondays(t0, t1)
   const weekLabels = width > 0 && width / Math.max(weeks.length, 1) >= 28
@@ -38,6 +41,7 @@ export function PlanGantt({ stages, today, target, compact = false }: { stages: 
         <span />
         {/* the time axis: months, then each week's Monday; today and the target named */}
         <div ref={measure} className={cn("relative text-[11px] text-muted-foreground", weekLabels ? "h-10" : "h-6")}>
+          {opening && <span className="absolute left-0 top-0 font-medium text-foreground">{opening}</span>}
           {months.map((m) => <span key={m.t} className="absolute top-0 -translate-x-1/2 font-medium text-foreground" style={{ left: at(m.t) }}>{m.label}</span>)}
           {weekLabels && weeks.map((w) => <span key={w} className="absolute top-5 -translate-x-1/2 tabular-nums" style={{ left: at(w) }}>{new Date(w).getUTCDate()}</span>)}
           <span className="absolute bottom-0 h-1.5 w-[1.5px] bg-foreground" style={{ left: pct(today) }} aria-hidden />

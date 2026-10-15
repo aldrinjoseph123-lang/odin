@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiError, twoStep, twoStepCodes, twoStepConfirm, twoStepOff, twoStepSetup, type TwoStep } from "@/lib/api"
 import { toast } from "@/lib/toast"
+import { copyText } from "@/lib/copy"
 import { fmtDate } from "@/lib/format"
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 
 // Two-step sign-in on the Account page: set up with an authenticator app (QR
 // code or the key typed in), recovery codes shown once, new codes or turning
@@ -24,6 +26,8 @@ export function TwoStepPanel() {
   const [asking, setAsking] = useState(false)   // setting up: the password first
   const load = useCallback(() => twoStep().then(setS).catch(() => setErr("Could not load two-step sign-in")), [])
   useEffect(() => { void load() }, [load])
+  // the codes are shown once: leaving before they are kept asks first (review P3-38)
+  useUnsavedGuard(codes !== null, "Leave this page? Your recovery codes are shown only once: download or copy them first.")
   if (!s || !s.password) return null
 
   async function run(fn: () => Promise<void>) {
@@ -40,12 +44,14 @@ export function TwoStepPanel() {
   }) }
   const save = () => {
     const url = URL.createObjectURL(new Blob([`Odin recovery codes\nEach works once, instead of the authenticator code.\n\n${codes!.join("\n")}\n`], { type: "text/plain" }))
+    // in the page, and the address kept a moment: some browsers start the download after the click returns
     const a = Object.assign(document.createElement("a"), { href: url, download: "odin-recovery-codes.txt" })
-    a.click(); URL.revokeObjectURL(url)
+    document.body.append(a); a.click(); a.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
   const codeField = (label: string) => (
     <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">{label}
-      <Input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" inputMode="numeric" maxLength={12} className="h-8 w-40 tracking-[0.15em] tabular-nums" />
+      <Input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" inputMode="numeric" maxLength={24} className="h-8 w-40 tracking-[0.15em] tabular-nums" />
     </label>
   )
 
@@ -62,8 +68,8 @@ export function TwoStepPanel() {
           <ul className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[13px]" aria-label="Recovery codes">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={save}>Download as a file</Button>
-            <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(codes.join("\n")).then(() => toast("Recovery codes copied")).catch(() => toast("Select the codes and copy them", { tone: "bad" }))}>Copy</Button>
-            <Button size="sm" onClick={() => { setCodes(null); if (s.required) window.location.assign("/") }}>I have saved them</Button>
+            <Button size="sm" variant="outline" onClick={() => void copyText(codes.join("\n")).then((ok) => toast(ok ? "Recovery codes copied" : "Select the codes and copy them", ok ? {} : { tone: "bad" }))}>Copy</Button>
+            <Button size="sm" onClick={() => { setCodes(null); if (s.required) window.setTimeout(() => window.location.assign("/"), 0) }}>I have saved them</Button>
           </div>
         </div>
       )}

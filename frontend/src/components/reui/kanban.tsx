@@ -978,7 +978,8 @@ function KanbanOverlay({ children, className, ...props }: KanbanOverlayProps) {
 
   return createPortal(
     <DragOverlay
-      dropAnimation={dropAnimationConfig}
+      // no glide back for someone who asked the system for less motion (review P3-48)
+      dropAnimation={typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches ? null : dropAnimationConfig}
       modifiers={modifiers}
       className={cn("z-50", activeId && "cursor-grabbing", className)}
       {...props}

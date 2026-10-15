@@ -1,15 +1,16 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
+import { reportClientError } from "@/lib/api"
 
 // A render error in one page must not blank the whole app. The boundary
-// shows a way out and keeps the error in the console for whoever debugs it.
+// shows a way out, keeps the error in the console and sends it to the server's log.
 // `resetKey` (the address) clears the error when the person navigates away;
 // `inShell` draws it inside AppShell's main, under the nav.
 export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: string; inShell?: boolean }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
   componentDidUpdate(prev: { resetKey?: string }) { if (this.state.failed && prev.resetKey !== this.props.resetKey) this.setState({ failed: false }) }
-  componentDidCatch(error: Error, info: ErrorInfo) { console.error("Odin page error", error, info.componentStack) }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error("Odin page error", error, info.componentStack); reportClientError("render", error) }
   render() {
     if (!this.state.failed) return this.props.children
     const Wrap = this.props.inShell ? "div" : "main"

@@ -22,6 +22,7 @@ type Draft = Partial<ScopeItem> & { title: string; status: ScopeStatus }
 export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?: SignoffState }) {
   const [d, setD] = useState<ScopeData | null>(null)
   const [edit, setEdit] = useState<Draft | null>(null)
+  const [opened, setOpened] = useState("")   // an existing item as opened: Save wakes when it differs (review P3-41)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -33,6 +34,8 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
     : <p className="text-[13px] text-muted-foreground">Loading…</p>
   const count = (s: ScopeStatus) => d.items.filter((i) => i.status === s).length
   const set = (patch: Partial<Draft>) => setEdit((x) => (x ? { ...x, ...patch } : x))
+  const open = (x: Draft) => { setOpened(x.id ? JSON.stringify(x) : ""); setEdit(x) }
+  const changed = !!edit && (!edit.id || JSON.stringify(edit) !== opened)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -61,7 +64,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
         {d.items.length > 0 ? (["delivered", "partial", "descoped", "agreed"] as ScopeStatus[]).filter(count).map((s) =>
           <span key={s} className={cn("rounded-full px-2 py-1", SCOPE_TONE[s].replace("line-through", ""))}>{count(s)} {SCOPE_WORD[s].toLowerCase()}</span>)
           : <span className="text-muted-foreground">{d.can_edit ? "What the customer agreed to, item by item. The sign-off lists it." : "No scope recorded yet."}</span>}
-        {d.can_edit && <Button size="sm" className="ml-auto" onClick={() => { setError(null); setEdit({ title: "", status: "agreed" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
+        {d.can_edit && <Button size="sm" className="ml-auto" onClick={() => { setError(null); open({ title: "", status: "agreed" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}
       </div>
       {d.can_edit && <AISowPlan projectId={projectId} onAdded={() => void load()} />}
       {error && !edit && <p className="mt-2 text-[13px] text-destructive" role="alert">{error}</p>}
@@ -69,7 +72,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
         {d.items.map((i, n) => (
           <li key={i.id} className="flex items-start gap-2 py-2">
             <span className="w-5 shrink-0 pt-1 text-right text-[12px] tabular-nums text-muted-foreground">{n + 1}</span>
-            <button type="button" disabled={!d.can_edit} onClick={() => { setError(null); setEdit({ ...i }) }} className="min-w-0 flex-1 text-left enabled:hover:underline">
+            <button type="button" disabled={!d.can_edit} onClick={() => { setError(null); open({ ...i }) }} className="min-w-0 flex-1 text-left enabled:hover:underline">
               <span className={cn("block font-medium", i.status === "descoped" && "text-muted-foreground line-through")}>{i.title}</span>
               {(i.detail || i.note) && <span className="block text-[12px] text-muted-foreground">{[i.detail, i.note].filter(Boolean).join(" · ")}</span>}
             </button>
@@ -100,7 +103,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
               {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
               <div className="flex gap-2">
                 {edit.id && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={async () => { if (await askConfirm("Delete this scope item? It leaves the agreed scope; the history keeps a line that it existed.")) void act(async () => { await deleteScope(projectId, edit.id!); setEdit(null); toast("Scope item deleted") }) }}>Delete</Button>}
-                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" loading={busy} disabled={!edit.title.trim()}>Save</Button></span>
+                <span className="ml-auto flex gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>Cancel</Button><Button type="submit" size="sm" loading={busy} disabled={!edit.title.trim() || !changed}>Save</Button></span>
               </div>
             </form>
           )}

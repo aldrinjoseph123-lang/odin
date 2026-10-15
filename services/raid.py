@@ -28,14 +28,14 @@ def items(project_id, customer=False):
 
 def clean(body, project_id, existing=None):
     """A validated dict of fields from a posted body, or raise ValueError."""
-    from core import as_id, parse_date
+    from core import as_id, parse_date, text_field
     for k in ("title", "detail", "stage", "resolution", "due_date"):
         if body.get(k) is not None and not isinstance(body.get(k), str):
             raise ValueError(f"Send the {k.replace('_', ' ')} as text")
     kind = body.get("kind", existing["kind"] if existing else None)
     if kind not in KINDS:
         raise ValueError("Pick a kind: risk, issue, decision or blocker")
-    title = str(body.get("title", existing["title"] if existing else "") or "").strip()[:200]
+    title = text_field(body.get("title", existing["title"] if existing else ""), 200, "Title")   # too long is said, never cut (P2-27)
     if not title:
         raise ValueError("Give it a title")
     impact = body.get("impact", existing["impact"] if existing else "medium")
@@ -61,9 +61,9 @@ def clean(body, project_id, existing=None):
         owner = as_id(owner)
     return {
         "kind": kind, "title": title, "impact": impact, "likelihood": likelihood, "status": status, "due_date": due, "owner_id": owner,
-        "detail": (str(body.get("detail", existing["detail"] if existing else "") or "").strip()[:4000]) or None,
-        "stage": (str(body.get("stage", existing["stage"] if existing else "") or "").strip()[:100]) or None,
-        "resolution": (str(body.get("resolution", existing["resolution"] if existing else "") or "").strip()[:2000]) or None,
+        "detail": text_field(body.get("detail", existing["detail"] if existing else ""), 4000, "Detail", multiline=True) or None,
+        "stage": text_field(body.get("stage", existing["stage"] if existing else ""), 100, "Stage") or None,
+        "resolution": text_field(body.get("resolution", existing["resolution"] if existing else ""), 2000, "Resolution", multiline=True) or None,
         "customer_visible": 1 if body.get("customer_visible", bool(existing["customer_visible"]) if existing else False) else 0,
     }
 

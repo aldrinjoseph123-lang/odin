@@ -13,6 +13,8 @@ from unittest.mock import MagicMock, patch
 
 from flask.testing import FlaskClient
 
+# the first admin's password (db.init_db makes a random one otherwise, review A22)
+os.environ.setdefault("ODIN_ADMIN_PASSWORD", "changeme")
 import app as app_module
 import db as db_module
 import security as app_module_security
@@ -65,6 +67,7 @@ class CSRFTestClient(FlaskClient):
 
 
 app_module.app.test_client_class = CSRFTestClient
+app_module.app.config["SEND_MAIL_INLINE"] = True   # routes.auth.mail_after_reply sends before the reply, so a test sees the mail
 
 
 
@@ -78,6 +81,15 @@ def flashed(client):
     """The flashes a route left for the next page: the React app reads them
     from /api/session, so a test does too."""
     return " ".join(client.get("/api/session").get_json()["messages"])
+
+
+def drain_outbox():
+    """Send the queued mail and Teams messages now, as the scheduler's outbox
+    worker does (services/outbox.py): a test that asserts a message went out
+    drains inside its patch of graph / teams_bot."""
+    from services.outbox import drain
+    with app_module.app.app_context():
+        drain()
 
 
 def settle_seed_admin():
@@ -350,12 +362,14 @@ class IntegrationNotificationTestCase(unittest.TestCase):
         self.client.post(
             "/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Loud Proj", "client": "C", "delivery_mode": "Distribution/MSSP"}
         )
+        drain_outbox()
         mock_mail.assert_not_called()      # the creator is the owner: never mailed about their own act (D12)
         mock_teams.assert_called_once()
 
         mock_mail.reset_mock()
         mock_teams.reset_mock()
         self.client.post("/api/projects/1/stage", json={"stage": "Kickoff"})
+        drain_outbox()
         mock_mail.assert_not_called()      # the owner moved it: nobody else is on the project, and no one is told of their own act
         mock_teams.assert_called_once()    # the channel still hears
 
@@ -1228,9 +1242,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.client.post("/projects/1/participants/add", data={"user_id": pm1, "role": "Coordinator"})
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         self.client.post("/projects/1/tasks", data={"title": "Rack it", "assignee_id": pm1})
+        drain_outbox()
         mail.reset_mock()
         # the PM's own note is silent
         self.client.post("/projects/1/note", data={"note": "mine"})
+        drain_outbox()
         mail.assert_not_called()
         # the coordinator's note, finished task and upload each reach the PM once, and nobody else
         coord, csrf = self._api_client("pm1", STRONG_PASSWORD)
@@ -1239,6 +1255,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         coord.post("/projects/1/tasks/1/toggle", json={}, headers=h)
         coord.post("/projects/1/tasks/1/toggle", json={}, headers=h)       # reopening is silent
         coord.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"%PDF-1.4 x"), "asbuilt.pdf")}, headers=h)
+        drain_outbox()
         subjects = [(c.args[0], c.args[1]) for c in mail.call_args_list]
         self.assertEqual(subjects, [("admin@odin.example", "New note on Loud"), ("admin@odin.example", "Task done on Loud"), ("admin@odin.example", "Document added to Loud")])
         self.assertIn("cabling done", mail.call_args_list[0].args[2]); self.assertIn("http://localhost/projects/1", mail.call_args_list[0].args[2])
@@ -1246,9 +1263,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
+        drain_outbox()
         mail.reset_mock()
         ann = self._external_client("ann@acme.example")
         ann.post("/api/projects/1/approvals/1", json={"decision": "approved", "comment": "Go"})
+        drain_outbox()
         to = sorted(c.args[0] for c in mail.call_args_list)
         self.assertEqual(to, ["admin@odin.example", "pm1@odin.example"])   # once each — the owner is a participant, not told twice
         self.assertTrue(all("approved" in c.args[1] for c in mail.call_args_list))
@@ -1353,11 +1372,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.client.post("/projects/1/tasks", data={"title": "Done late", "assignee_id": pm1, "due_date": yesterday.isoformat()})
         with self.raw_db() as db:
             db.execute("UPDATE tasks SET done = 1 WHERE title='Done late'"); db.execute("UPDATE users SET email_off='due' WHERE username='vw'"); db.commit()
+        drain_outbox()
         mail.reset_mock()
         send_daily_alerts.main()
+        drain_outbox()
         self.assertEqual([c.args[0] for c in mail.call_args_list], ["pm1@odin.example"])   # vw switched reminders off
         body = mail.call_args.args[2]
         self.assertIn("Due today", body); self.assertIn("Late", body); self.assertNotIn("Later", body); self.assertNotIn("Done late", body)
+        drain_outbox()
         self.assertEqual(mail.call_args.args[1], "2 tasks need you today")
         with self.raw_db() as db:
             rows = db.execute("SELECT u.username, n.kind, n.link FROM notifications n JOIN users u ON u.id = n.user_id WHERE n.kind='due' ORDER BY u.username").fetchall()
@@ -1365,6 +1387,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # a day off the working week sends nothing at all
         with self.raw_db() as db:
             db.execute("UPDATE settings SET value = ? WHERE key = 'policy.working_days'", ([d for d in WEEKDAYS if d != WEEKDAYS[base.weekday()]][0],)); db.commit()
+        drain_outbox()
         mail.reset_mock()
         send_daily_alerts.main()
         self.assertEqual(mail.call_count, 0)
@@ -1422,22 +1445,28 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on", "due": "on"}, headers=ph)
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
         self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False, "brief": False})
+        drain_outbox()
         mail.reset_mock()
         self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
+        drain_outbox()
         self.assertEqual([c.args[0] for c in mail.call_args_list], [])                     # pm1 opted out; admin is the actor
         bell = p.get("/api/notifications").get_json()
         # 2 unread: being added to the project, then the stage move
         self.assertEqual((bell["unread"], bell["rows"][0]["kind"], bell["rows"][0]["link"], bell["rows"][0]["actor"]), (2, "stage", "/board?rollout=1", "Admin"))
         self.assertEqual(p.get("/api/session").get_json()["user"]["nav"]["unread_notifications"], 2)
         # mentions: by full name, by unique first name, by username; an outsider is never reached
+        drain_outbox()
         mail.reset_mock()
         self.client.post("/projects/1/note", data={"note": "@Priya Menon can you check the rack? cc @sam"})
+        drain_outbox()
         self.assertEqual([c.args[0] for c in mail.call_args_list], ["pm1@odin.example"])   # sam is not on the project
         top = p.get("/api/notifications").get_json()["rows"][0]
         self.assertEqual((top["kind"], top["title"]), ("mention", "Admin mentioned you on Bell"))
         # the owner is told about a coordinator's note once, not also as a mention
+        drain_outbox()
         mail.reset_mock()
         p.post("/projects/1/note", data={"note": "done, @Admin"}, headers=ph)
+        drain_outbox()
         self.assertEqual([(c.args[0], c.args[1]) for c in mail.call_args_list], [("admin@odin.example", "Priya Menon mentioned you on Bell")])
         admin_rows = self.client.get("/api/notifications").get_json()["rows"]
         self.assertEqual([r["kind"] for r in admin_rows], ["mention"])
@@ -1550,6 +1579,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         fake = lambda e, t, x, link=None: (sent.append((e, t, x, link)), (True, None))[1]   # noqa: E731
         with app_module.app.test_request_context(), patch("services.teams_bot.send", side_effect=fake):
             notify_users([staff, partner], "stage", None, "Stage moved", "<p>Scoping to Deployment</p>", link="/board")
+            drain_outbox()
         self.assertEqual([(e, t, x) for e, t, x, _ in sent], [("tina@corp.example", "Stage moved", "Scoping to Deployment")])   # partners: email only
         # the person's topic choices cover Teams too
         with self.raw_db() as db:
@@ -1557,6 +1587,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         sent.clear()
         with app_module.app.test_request_context(), patch("services.teams_bot.send", side_effect=fake):
             notify_users([staff], "stage", None, "Stage moved", "<p>x</p>")
+            drain_outbox()
         self.assertEqual(sent, [])
 
     def test_odin_pms_opens_the_conversation_once_and_reopens_a_gone_one(self):
@@ -1691,7 +1722,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self._sso_setup()
         pm1 = self._make_user("pm1", "Member")
         with self.raw_db() as db:
-            db.execute("UPDATE users SET email='pm1@corp.example' WHERE id=?", (pm1,))
+            db.execute("UPDATE users SET email='pm1@corp.example', email_verified_at='2026-10-15' WHERE id=?", (pm1,))   # only a proven address binds (v1.8.0)
             db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sso_enforced', '1')"); db.commit()   # binding by email needs a password that cannot sign in (P2-3)
         # an existing colleague is linked by email once, then by oid
         c = app_module.app.test_client()
@@ -2032,13 +2063,16 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE users SET email='pm1@odin.example' WHERE id=?", (pm1,)); db.commit()
         self.client.post("/projects/1/participants/add", data={"user_id": pm1, "role": "Coordinator"})
         self._invite(1, "ann@acme.example", "Customer", "Ann")
+        drain_outbox()
         mail.reset_mock()
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         self.client.post("/api/projects/1/stage", json={"stage": stages[1], "note": "kicked off"})
+        drain_outbox()
         to = sorted(c.args[0] for c in mail.call_args_list)
         # everyone on the project except the actor (admin, who is also the owner): no one hears about their own move
         self.assertEqual(to, ["ann@acme.example", "pm1@odin.example"])
+        drain_outbox()
         by = {c.args[0]: c.args[2] for c in mail.call_args_list}
         self.assertIn("kicked off", by["ann@acme.example"]); self.assertNotIn("approve", by["ann@acme.example"])   # approval switch is off
         # every mail carries a way in: staff get the project page, an external a one-time link that lands on it
@@ -3905,6 +3939,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE settings SET value='1' WHERE key='notify_teams_enabled'"); db.commit()
         with patch("graph.send_teams_message", return_value=(True, None)), patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
             c.post("/api/projects/1/stage", json={"stage": "Scoping"}, headers={"X-CSRF-Token": csrf})
+            drain_outbox()
         self.assertIn("Stage changed", hook.call_args.args[1]); self.assertTrue(hook.call_args.args[3].endswith("/projects/1"))
 
     def test_retention_keeps_daily_weekly_and_monthly_copies(self):
@@ -3952,7 +3987,13 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_healthz_and_robots(self):
         anon = app_module.app.test_client()
-        self.assertEqual(anon.get("/healthz").data, b"ok")
+        health = anon.get("/healthz")   # ok plus a line each for the database, the scheduler's beat and the disk
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.headers["Cache-Control"], "no-store")
+        text = health.get_data(as_text=True)
+        self.assertTrue(text.startswith("ok\n"), text)
+        for field in ("database: ", "scheduler: ", "disk: "):
+            self.assertIn(field, text)
         self.assertIn(b"Disallow: /", anon.get("/robots.txt").data)
 
     def test_error_pages_are_branded(self):
@@ -4139,6 +4180,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "/api/activity": "the active-minute ping is itself the record (user_activity); an audit row a minute would drown the trail",
             "/api/doc-templates/preview.pdf": "renders an unsaved template to look at; changes nothing",
             "/api/teams/messages": "the Odin PMS Teams app's inbound address: Odin only sends, so it answers and reads nothing",
+            "/api/client-errors": "a browser's crash report: one log line, never stored (routes/client.py)",
         }
         missing = []
         for rule in app_module.app.url_map.iter_rules():
@@ -5055,6 +5097,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
         __import__("scheduler").sync_alerts()   # the scheduler records alerts and sends their mail (B9)
+        drain_outbox()
         sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Rollout idle: Proj")]
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0].args[2].startswith("Rollout: Proj (C)"))
@@ -5574,7 +5617,7 @@ CHASE_GOOD = json.dumps({"subject": "SIEM onboarding: design approval and Site B
                                  "was due on 4 Oct 2026. Both are needed to keep the go-live of 20 Oct 2026. Could you approve the design, or let me "
                                  "know when you expect to? I am happy to walk through it on a call.\n\nBest regards,\nSam Rivera"})
 ANSWERS["You draft a short, polite follow-up"] = CHASE_GOOD
-BRIEF_GOOD = json.dumps({"brief": "Firewall refresh is red: past its target date by 8 d with 1 open blocker. SIEM onboarding is amber: Design is 3 d over its "
+BRIEF_GOOD = json.dumps({"brief": "Firewall refresh is off track: past its target date by 8 d with 1 open blocker. SIEM onboarding is at risk: Design is 3 d over its "
                                   "6 d SLA. Send the change window request today; the design document review is overdue.",
                          "first_move": "Review the SIEM design document."})
 ANSWERS["You write a project manager's morning brief"] = BRIEF_GOOD
@@ -5612,7 +5655,7 @@ class WeeklyWordsTestCase(AITestBase):
 
     def _project(self):
         self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Rollout One", "client": "Northwind"})
-        self.client.post("/projects/1/note", data={"note": "Site B cabling blocked: no building access yet."})
+        self.client.post("/projects/1/note", data={"note": "Site B cabling blocked: no building access yet.", "share": "1"})   # the words are the customer's: shared notes only
 
     def _ready(self):
         """AI on, server up, weekly words validated on the current model."""
@@ -5628,6 +5671,7 @@ class WeeklyWordsTestCase(AITestBase):
     def test_gather_has_the_fixtures_shape(self):
         from services.ai.features.weekly_words import fixture, gather
         self._project()
+        self.client.post("/projects/1/note", data={"note": "Internal: the vendor's engineer was useless."})
         with self._ctx():
             facts = gather(project_id=1)
 
@@ -5639,6 +5683,8 @@ class WeeklyWordsTestCase(AITestBase):
         same_keys(facts, fixture())
         self.assertEqual(facts["rollout"]["name"], "Rollout One")
         self.assertIn("Site B", facts["this_week"]["notes"][0]["text"])
+        self.assertNotIn("useless", json.dumps(facts))                          # a note the customer cannot see stays out (P2-24)
+        self.assertIn(facts["rollout"]["health"], ("on track", "at risk", "off track", "complete"))   # the plan word, never the colour
 
     def test_graders_catch_what_a_reader_would_mind(self):
         from services.ai.features.weekly_words import FEATURE, fixture
@@ -5891,7 +5937,7 @@ class CustomerWordsTestCase(AITestBase):
     def test_graders_catch_names_and_blame_and_dropped_facts(self):
         from services.ai.features.customer_words import FEATURE, fixture
         good = json.loads(CUSTOMER_GOOD)
-        self.assertEqual([g(fixture(), good) for g in FEATURE.graders], [None, None, None])
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders], [None] * len(FEATURE.graders))
         self.assertTrue(FEATURE.graders[1](fixture(), {**good, "summary": good["summary"] + " Ravi was useless."}))
         self.assertTrue(FEATURE.graders[0](fixture(), {**good, "summary": "Design slipped."}))
 

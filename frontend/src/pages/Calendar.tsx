@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { EmptyState } from "@/components/EmptyState"
 import { pill } from "@/lib/ui"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { AlarmClock, ArrowRight, CalendarClock, Check, CheckSquare, ChevronLeft, ChevronRight, GanttChart, ShieldCheck, Target } from "lucide-react"
+import { AlarmClock, ArrowRight, CalendarClock, Check, CheckSquare, ChevronLeft, ChevronRight, GanttChart, Hourglass, ShieldCheck, Target } from "lucide-react"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { Segmented } from "@/components/Segmented"
 import { Calendar as MiniMonth } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/DatePicker"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ApiError, calendar, moveTaskDue, type CalendarData } from "@/lib/api"
+import { ApiError, calendar, moveTaskDue, type CalendarData, type FlowState } from "@/lib/api"
+import { usePref } from "@/lib/usePref"
 import { addDays } from "@/lib/plan"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
@@ -26,35 +27,45 @@ import { fmtDate, addMonths, localToday, laneSpans, monthGrid, monthTitle, short
 // or the person it is on (the server checks again); the toast can undo it.
 // The keyboard way is the chip's Move button and a date dialog (P2-43): Enter
 // on the chip opens its rollout, as on any link.
-type Item = { key: string; kind: "task" | "target" | "move" | "approval"; day: string; text: string; sub?: string; id: number; tone?: "bad" | "warn" | "ok" | "muted"; done?: boolean; task?: { id: number; project_id: number; title: string } }
+type Item = { key: string; kind: "task" | "target" | "move" | "approval" | "span"; day: string; text: string; sub?: string; id: number; tone?: "bad" | "warn" | "ok" | "muted"; done?: boolean; state?: FlowState; task?: { id: number; project_id: number; title: string } }
 type Show = Record<"tasks" | "targets" | "history" | "spans", boolean>
 type Mode = "month" | "week" | "agenda"
 const LANES = 3, WEEK_LANES = 6
 
-function items(d: CalendarData, show: Show): Map<string, Item[]> {
+// `only`: the rollouts the Flow's filter leaves (null when no filter is on)
+function items(d: CalendarData, show: Show, only: Set<number> | null): Map<string, Item[]> {
   const out = new Map<string, Item[]>()
-  const add = (it: Item) => out.set(it.day, [...(out.get(it.day) ?? []), it])
-  if (show.targets) for (const t of d.targets) add({ key: `t${t.id}`, kind: "target", day: t.day, text: t.name, sub: `target · ${t.client}`, id: t.id, tone: t.state === "overdue" ? "bad" : t.state === "on_track" ? "muted" : "warn" })
+  const add = (it: Item) => { if (!only || only.has(it.id)) out.set(it.day, [...(out.get(it.day) ?? []), it]) }
+  if (show.targets) for (const t of d.targets) add({ key: `t${t.id}`, kind: "target", day: t.day, text: t.name, sub: `target · ${t.client}`, id: t.id, state: t.state, tone: t.state === "overdue" ? "bad" : t.state === "on_track" ? "muted" : "warn" })
   if (show.tasks) for (const t of d.tasks) add({ key: `k${t.id}`, kind: "task", day: t.day, text: t.title, sub: `${t.project}${t.who ? ` · ${t.who}` : ""}`, id: t.project_id, done: !!t.done, tone: !t.done && t.day < d.today ? "bad" : "muted", task: t.can_edit ? { id: t.id, project_id: t.project_id, title: t.title } : undefined })
   if (show.history) {
-    for (const m of d.moves) add({ key: `m${m.project_id}${m.day}${m.stage}`, kind: "move", day: m.day, text: `${m.prev_stage} to ${m.stage}`, sub: `${m.project} · ${m.who}`, id: m.project_id, tone: "muted" })
-    for (const a of d.approvals) add({ key: `a${a.project_id}${a.day}${a.kind}`, kind: "approval", day: a.day, text: a.kind === "asked" ? `Approval asked · ${a.stage}` : `${a.stage} ${a.status}`, sub: `${a.project}${a.who ? ` · ${a.who}` : ""}`, id: a.project_id, tone: a.kind === "asked" ? (a.status === "pending" ? "warn" : "muted") : a.status === "approved" ? "ok" : "bad" })
+    // a rollout can move, be put back and move again on one day: the place in the list keeps keys apart (P3-34)
+    d.moves.forEach((m, i) => add({ key: `m${i}-${m.project_id}`, kind: "move", day: m.day, text: `${m.prev_stage} to ${m.stage}`, sub: `${m.project} · ${m.who}`, id: m.project_id, tone: "muted" }))
+    d.approvals.forEach((a, i) => add({ key: `a${i}-${a.project_id}`, kind: "approval", day: a.day, text: a.kind === "asked" ? `Approval asked · ${a.stage}` : `${a.stage} ${a.status}`, sub: `${a.project}${a.who ? ` · ${a.who}` : ""}`, id: a.project_id, tone: a.kind === "asked" ? (a.status === "pending" ? "warn" : "muted") : a.status === "approved" ? "ok" : "bad" }))
   }
   return out
 }
 // when the last drag ended: the click that follows a drop is not a click on the task
 let lastDrop = 0
 const mondayOf = (iso: string) => addDays(iso, -((new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7))
+// a hand-edited link must not break the page (?month=2026-13 did: P3-34)
+const isDay = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`))
+const isMonth = (v: string | null): v is string => !!v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v)
 
-const ICON = { task: CheckSquare, target: Target, move: ArrowRight, approval: ShieldCheck }
-// a chip opens its rollout under the calendar (the URL keeps the view)
-function Chip({ it, full, href, still, onMove }: { it: Item; full?: boolean; href: (id: number) => string; still?: boolean; onMove?: (it: Item) => void }) {
-  // late is a glyph and a word, not red alone (WCAG 1.4.1, test report UX-19)
+const ICON = { task: CheckSquare, target: Target, move: ArrowRight, approval: ShieldCheck, span: GanttChart }
+const KIND = { task: "Task", target: "Target", move: "Moved", approval: "Approval", span: "Rollout" }
+// a chip opens its rollout under the calendar (the URL keeps the view); `scope` keeps a
+// second copy of a chip (the open day's list) from registering the same draggable (P3-34)
+function Chip({ it, full, href, still, onMove, scope = "" }: { it: Item; full?: boolean; href: (id: number) => string; still?: boolean; onMove?: (it: Item) => void; scope?: string }) {
+  // late is a glyph and a word, not red alone (WCAG 1.4.1, test report UX-19); so is a target at risk
   const late = it.tone === "bad" && !it.done && (it.kind === "task" || it.kind === "target")
-  const Icon = late ? AlarmClock : ICON[it.kind]
+  const atRisk = it.kind === "target" && it.tone === "warn"
+  const Icon = late ? AlarmClock : atRisk ? Hourglass : ICON[it.kind]
   const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
+  // what colour and the glyph say, in words for the screen reader (P2-44): "Task, late: …", "Target, due soon: …"
+  const said = `${KIND[it.kind]}${late ? ", late" : atRisk && it.state ? `, ${STATE[it.state].label.toLowerCase()}` : it.done ? ", done" : ""}:`
   const movable = !!it.task && !still
-  const { setNodeRef, listeners, transform, isDragging } = useDraggable({ id: still ? `still-${it.key}` : it.key, data: it, disabled: !movable })
+  const { setNodeRef, listeners, transform, isDragging } = useDraggable({ id: still ? `still-${it.key}` : `${scope}${it.key}`, data: it, disabled: !movable })
   const navigate = useNavigate()
   const className = cn("flex min-w-0 items-start gap-2 rounded-md px-2 py-1 text-left text-[12px] leading-tight hover:bg-muted", full && "py-2 text-[13px]", movable && "flex-1 cursor-grab touch-none", isDragging && "opacity-40")
   const title = `${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}${movable ? " · drag to another day, or use Move" : ""}`
@@ -62,8 +73,9 @@ function Chip({ it, full, href, still, onMove }: { it: Item; full?: boolean; hre
     <>
       <Icon className={cn("mt-px h-3 w-3 shrink-0", tone)} aria-hidden />
       <span className="min-w-0">
-        <span className={cn("block truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}>{late && <span className="sr-only">Late: </span>}{it.text}</span>
-        {full && it.sub && <span className="block truncate text-muted-foreground">{it.sub}</span>}
+        {/* the week is narrow at 1280: two lines each before the cut (P3-49) */}
+        <span className={cn("block", full ? "line-clamp-2" : "truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}><span className="sr-only">{said}</span> {it.text}</span>
+        {it.sub && (full ? <span className="block line-clamp-2 text-muted-foreground">{it.sub}</span> : <span className="sr-only">, {it.sub}</span>)}
       </span>
     </>
   )
@@ -71,7 +83,7 @@ function Chip({ it, full, href, still, onMove }: { it: Item; full?: boolean; hre
   // so the click that ends a drag opens nothing; Move beside it picks the day from the keyboard
   if (movable) return (
     <div className="group/chip flex min-w-0 items-start">
-      <button type="button" ref={setNodeRef} {...listeners} onClick={() => { if (Date.now() - lastDrop > 1000) navigate(href(it.id)) }} className={className} title={title}
+      <button type="button" ref={setNodeRef} {...listeners} data-task={it.task?.id} onClick={() => { if (Date.now() - lastDrop > 1000) navigate(href(it.id)) }} className={className} title={title}
         style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)`, position: "relative", zIndex: 30 } : undefined}>{body}</button>
       {onMove && <button type="button" onClick={() => onMove(it)} aria-label={`Move ${it.text} to another day`} title="Move to another day"
         className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 outline-none hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 group-hover/chip:opacity-100">
@@ -83,18 +95,22 @@ function Chip({ it, full, href, still, onMove }: { it: Item; full?: boolean; hre
 // a day a task can be dropped on
 function Day({ day, className, children }: { day: string; className?: string; children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: day })
-  return <div ref={setNodeRef} className={cn(className, isOver && "bg-accent/50 ring-2 ring-inset ring-primary/40")}>{children}</div>
+  return <div ref={setNodeRef} data-drop-day={day} className={cn(className, isOver && "bg-accent/50 ring-2 ring-inset ring-primary/40")}>{children}</div>
 }
 
-export function Calendar({ wide }: { wide: boolean }) {
+// `stamp` changes with every Flow reload (a move below, the poll): the month refetches (P2-35)
+export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: number; only?: Set<number> | null }) {
   const [params, setParams] = useSearchParams()
   const today0 = localToday()
-  const mode: Mode = params.get("cal") === "week" ? "week" : params.get("cal") === "agenda" ? "agenda" : "month"
-  const week = /^\d{4}-\d{2}-\d{2}$/.test(params.get("week") ?? "") ? mondayOf(params.get("week")!) : mondayOf(today0)
-  const month = mode === "week" ? week.slice(0, 7) : /^\d{4}-\d{2}$/.test(params.get("month") ?? "") ? params.get("month")! : today0.slice(0, 7)
+  // the mode is in the URL; a link without one gets the person's last choice (advice B1)
+  const [prefMode, setPrefMode] = usePref<Mode>("calendar.mode", "month")
+  const cal = params.get("cal") ?? prefMode
+  const mode: Mode = cal === "week" ? "week" : cal === "agenda" ? "agenda" : "month"
+  const week = isDay(params.get("week")) ? mondayOf(params.get("week")!) : mondayOf(today0)
+  const month = mode === "week" ? week.slice(0, 7) : isMonth(params.get("month")) ? params.get("month")! : today0.slice(0, 7)
   const set = (patch: Record<string, string | null>) => setParams((p) => { const n = new URLSearchParams(p); for (const [k, v] of Object.entries(patch)) { if (v == null) n.delete(k); else n.set(k, v) } return n }, { replace: true })
   const setMonth = (m: string) => set({ month: m, day: null })
-  const openDay = params.get("day")
+  const openDay = isDay(params.get("day")) ? params.get("day") : null
   const setOpenDay = (day: string | null) => set({ day })
   const href = (id: number) => { const n = new URLSearchParams(params); n.set("rollout", String(id)); return `/board?${n}` }
   const [d, setD] = useState<CalendarData | null>(null)
@@ -105,9 +121,17 @@ export function Calendar({ wide }: { wide: boolean }) {
     let live = true   // paging months quickly: only the month on screen lands
     calendar(month).then((x) => { if (live) { setD(x); setError(null) } }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load the calendar") })
     return () => { live = false }
-  }, [month, tick])
+  }, [month, tick, stamp])
   const weeks = monthGrid(month)
-  const byDay = useMemo(() => (d ? items(d, show) : new Map<string, Item[]>()), [d, show])
+  const byDay = useMemo(() => (d ? items(d, show, only) : new Map<string, Item[]>()), [d, show, only])
+  const spans = useMemo(() => (d ? d.spans.filter((s) => !only || only.has(s.id)) : []), [d, only])
+  // the agenda opens at today (or the first day after it with anything), not the 1st (P3-34)
+  const agendaList = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    if (!d) return
+    const first = [...(agendaList.current?.querySelectorAll<HTMLElement>("[data-day]") ?? [])].find((el) => el.dataset.day! >= d.today)
+    first?.scrollIntoView?.({ block: "start" })
+  }, [d, mode, wide])
   // pointer only: dnd-kit's keyboard sensor took Enter for a silent drag (P2-43); Move is the keyboard way
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
   const [moving, setMoving] = useState<{ it: Item; to: string; busy?: boolean; err?: string } | null>(null)
@@ -124,7 +148,8 @@ export function Calendar({ wide }: { wide: boolean }) {
     try {
       await moveTaskDue(project_id, id, to)
       setTick((n) => n + 1)
-      toast(`${title}: due ${fmtDate(to)}`, { action: { label: "Undo", run: () => void moveTaskDue(project_id, id, from).then(() => setTick((n) => n + 1)) } })
+      toast(`${title}: due ${fmtDate(to)}`, { action: { label: "Undo", run: () => void moveTaskDue(project_id, id, from).then(() => { setTick((n) => n + 1); toast(`${title}: due ${fmtDate(from)} again`) })
+        .catch((x) => toast(x instanceof ApiError ? x.message : "Could not undo the move", { tone: "bad" })) } })
       return null
     } catch (x) { return x instanceof ApiError ? x.message : "Could not move the task" }
   }
@@ -165,7 +190,8 @@ export function Calendar({ wide }: { wide: boolean }) {
   const header = (
     <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-3">
       <button type="button" onClick={() => mode === "week" ? set({ week: mondayOf(today), day: null }) : setMonth(today.slice(0, 7))} className={pill}>Today</button>
-      {wide && <Segmented label="Calendar view" value={mode} onChange={(m) => set({ cal: m === "month" ? null : m, week: m === "week" ? (month === today.slice(0, 7) ? mondayOf(today) : `${month}-01`) : null, day: null })}
+      {/* leaving the week lands on its month, not the one the URL had before (P3-34) */}
+      {wide && <Segmented label="Calendar view" value={mode} onChange={(m) => { setPrefMode(m); set({ cal: m === "month" ? null : m, week: m === "week" ? (month === today.slice(0, 7) ? mondayOf(today) : `${month}-01`) : null, month: m === "week" ? null : month, day: null }) }}
         options={[{ value: "month", label: "Month" }, { value: "week", label: "Week" }, { value: "agenda", label: "Agenda" }]} />}
       <div className="flex items-center gap-1">
         <button type="button" onClick={() => step(-1)} className={cn(pill, "w-7 px-0")} aria-label={mode === "week" ? "Previous week" : "Previous month"}><ChevronLeft className="h-3.5 w-3.5" /></button>
@@ -181,13 +207,13 @@ export function Calendar({ wide }: { wide: boolean }) {
   )
 
   const agenda = (fromDays: string[]) => {
-    const days = fromDays.filter((day) => byDay.get(day)?.length || (show.spans && d.spans.some((s) => s.start_date === day)))
+    const days = fromDays.filter((day) => byDay.get(day)?.length || (show.spans && spans.some((s) => s.start_date === day)))
     return (
-      <ul className="divide-y divide-border px-4 pb-4">
+      <ul ref={agendaList} className="divide-y divide-border px-4 pb-4">
         {days.map((day) => (
-          <li key={day} className="py-2">
+          <li key={day} data-day={day} className="scroll-mt-2 py-2">
             <h3 className={cn("mb-1 text-[12px] font-semibold", day === today ? "text-primary-text" : "text-nav-fg")}>{fmtDate(day)}{day === today && " · today"}</h3>
-            {show.spans && d.spans.filter((s) => s.start_date === day).map((s) => <Chip key={`s${s.id}`} full href={href} it={{ key: `s${s.id}`, kind: "target", day, text: `${s.name} starts`, sub: s.client, id: s.id, tone: "muted" }} />)}
+            {show.spans && spans.filter((s) => s.start_date === day).map((s) => <Chip key={`s${s.id}`} full href={href} it={{ key: `s${s.id}`, kind: "span", day, text: `${s.name} starts`, sub: s.client, id: s.id, tone: "muted" }} />)}
             {(byDay.get(day) ?? []).map((it) => <Chip key={it.key} it={it} full href={href} onMove={ask} />)}
           </li>
         ))}
@@ -212,11 +238,11 @@ export function Calendar({ wide }: { wide: boolean }) {
       </section>
       <section aria-labelledby="cal-layers">
         <p id="cal-layers" className="mb-1 px-2 text-[12px] font-semibold text-nav-fg">Show</p>
-        <div className="grid gap-0.5" role="group" aria-labelledby="cal-layers">
+        <div className="grid gap-1" role="group" aria-labelledby="cal-layers">
           {layers.map((t) => (
             <button key={t.key} type="button" aria-pressed={show[t.key]} onClick={() => setShow({ ...show, [t.key]: !show[t.key] })}
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
-              <span className={cn("flex h-4 w-4 items-center justify-center rounded border", show[t.key] ? "border-foreground bg-foreground text-background" : "border-input")} aria-hidden>{show[t.key] && <Check className="h-3 w-3" />}</span>
+              className="flex items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
+              <span className={cn("flex h-4 w-4 items-center justify-center rounded border", show[t.key] ? "border-foreground bg-foreground text-background" : "border-control")} aria-hidden>{show[t.key] && <Check className="h-3 w-3" />}</span>
               <t.icon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />{t.label}
             </button>
           ))}
@@ -225,6 +251,7 @@ export function Calendar({ wide }: { wide: boolean }) {
     </aside>
   )
 
+  // kind, stage and state in words as well as in the fill (P2-44)
   const bars = (days: string[], lanes: ReturnType<typeof laneSpans>, top: number) => lanes.segments.map((s) => (
     <Link key={`${s.id}-${s.startCol}`} to={href(s.id)} title={`${s.name} · ${s.client} · ${s.stage} · ${fmtDate(s.start_date)} – ${s.target_end_date ? fmtDate(s.target_end_date) : "no target"} · ${STATE[s.state].label}`}
       className={cn("absolute flex h-[14px] items-center truncate rounded-full px-2 text-[11px] font-medium leading-none hover:opacity-90",
@@ -232,14 +259,14 @@ export function Calendar({ wide }: { wide: boolean }) {
         s.state === "on_track" ? "bg-muted text-foreground ring-1 ring-inset ring-input" : cn(STATE[s.state].chip, "ring-1 ring-inset", s.state === "overdue" ? "ring-bad-line" : "ring-warn-line"),
         s.startsHere ? "" : "rounded-l-none", s.endsHere ? "" : "rounded-r-none")}
       style={{ left: `calc(${(s.startCol / days.length) * 100}% + 2px)`, width: `calc(${(s.cols / days.length) * 100}% - 4px)`, top: top + s.lane * 18 }}>
-      {s.name}
+      <span className="sr-only">Rollout:</span> {s.name}<span className="sr-only">, {s.stage}, {STATE[s.state].label}</span>
     </Link>
   ))
 
   let body: ReactNode
   if (mode === "agenda") body = <div className="min-h-0 flex-1 overflow-auto">{agenda(weeks.flat().filter(inMonth))}</div>
   else if (mode === "week") {
-    const lanes = show.spans ? laneSpans(d.spans, weekDays, WEEK_LANES) : { segments: [], overflow: new Map<string, number>() }
+    const lanes = show.spans ? laneSpans(spans, weekDays, WEEK_LANES) : { segments: [], overflow: new Map<string, number>() }
     const laneCount = Math.min(WEEK_LANES, Math.max(0, ...lanes.segments.map((s) => s.lane + 1)))
     body = (
       <div className="min-h-0 flex-1 overflow-auto">
@@ -248,11 +275,11 @@ export function Calendar({ wide }: { wide: boolean }) {
             <div key={day} className={cn("py-2", day === today ? "font-semibold text-foreground" : "text-muted-foreground")}>{weekday(day)} <span className={cn("ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full", day === today && "bg-primary text-primary-foreground")}>{Number(day.slice(8))}</span></div>
           ))}
         </div>
-        <div className="relative border-b border-border" style={{ height: Math.max(1, laneCount) * 18 + 8 }} aria-label="Rollouts running this week">{bars(weekDays, lanes, 4)}</div>
+        <div className="relative border-b border-border" style={{ height: Math.max(1, laneCount) * 18 + 8 }} role="group" aria-label="Rollouts running this week">{bars(weekDays, lanes, 4)}</div>
         {Math.max(0, ...lanes.overflow.values()) > 0 && <p className="border-b border-border px-3 py-1 text-[11px] text-muted-foreground">+{Math.max(...lanes.overflow.values())} more rollouts running this week; open a day in Month for the full list.</p>}
         <div className="grid min-h-80 grid-cols-7">
           {weekDays.map((day) => (
-            <Day key={day} day={day} className={cn("min-w-0 border-r border-border px-1 py-2 last:border-0", day === today && "bg-accent/20")}>
+            <Day key={day} day={day} className={cn("min-w-0 border-r border-border px-1 py-2 last:border-0", day === today && "bg-accent")}>
               {(byDay.get(day) ?? []).map((it) => <Chip key={it.key} it={it} full href={href} onMove={ask} />)}
               {!(byDay.get(day)?.length) && <span className="sr-only">Nothing on {fmtDate(day)}</span>}
             </Day>
@@ -263,7 +290,7 @@ export function Calendar({ wide }: { wide: boolean }) {
   } else {
     const open = openDay ? byDay.get(openDay) ?? [] : null
     // every rollout running that day, so the ones folded into "+N rollouts" can be reached
-    const running = openDay && show.spans ? d.spans.filter((s) => s.start_date <= openDay && (s.target_end_date ?? "9999") >= openDay) : []
+    const running = openDay && show.spans ? spans.filter((s) => s.start_date <= openDay && (s.target_end_date ?? "9999") >= openDay) : []
     body = (
       <>
         <div className="grid grid-cols-7 border-y border-border text-center text-[12px] text-muted-foreground">
@@ -271,7 +298,7 @@ export function Calendar({ wide }: { wide: boolean }) {
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
           {weeks.map((wk) => {
-            const lanes = show.spans ? laneSpans(d.spans, wk, LANES) : { segments: [], overflow: new Map<string, number>() }
+            const lanes = show.spans ? laneSpans(spans, wk, LANES) : { segments: [], overflow: new Map<string, number>() }
             const laneCount = Math.min(LANES, Math.max(0, ...lanes.segments.map((s) => s.lane + 1)))
             return (
               <div key={wk[0]} className="relative grid grid-cols-7 border-b border-border last:border-0" style={{ minHeight: 112 }}>
@@ -301,8 +328,8 @@ export function Calendar({ wide }: { wide: boolean }) {
               <button type="button" onClick={() => setOpenDay(null)} className="text-[12px] text-muted-foreground hover:text-foreground">Close</button>
             </div>
             <ul className="grid grid-cols-1 gap-x-6 md:grid-cols-2 xl:grid-cols-3">
-              {running.map((s) => <li key={`r${s.id}`}><Chip href={href} it={{ key: `r${s.id}`, kind: "target", day: openDay, text: s.name, sub: `${s.client} · ${s.stage}`, id: s.id, tone: "muted" }} full /></li>)}
-              {open.map((it) => <li key={it.key}><Chip it={it} full href={href} onMove={ask} /></li>)}
+              {running.map((s) => <li key={`r${s.id}`}><Chip href={href} it={{ key: `r${s.id}`, kind: "span", day: openDay, text: s.name, sub: `${s.client} · ${s.stage}`, id: s.id, tone: "muted" }} full /></li>)}
+              {open.map((it) => <li key={it.key}><Chip it={it} full href={href} onMove={ask} scope="day-" /></li>)}
               {open.length + running.length === 0 && <li className="py-1 text-[13px] text-muted-foreground">Nothing on this day.</li>}
             </ul>
           </div>

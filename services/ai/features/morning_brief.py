@@ -6,8 +6,12 @@ policy ai_brief_time to the bell (and by email unless the person turned the
 from datetime import datetime, timedelta
 
 from services.ai import AIFeature, register
-from services.ai.features.weekly_words import _fmt
-from services.ai.graders import facts_kept, max_words, never_says
+from services.ai.features.weekly_words import PLAN_WORDS, _fmt
+from services.ai.graders import facts_kept, max_words, never_says, no_health_colours, reject_health_colours
+
+# the plan words, with "on plan" for green as status_words says it, so the
+# never_says("on track") grader still catches an at-risk rollout called on track
+HEALTH = {**PLAN_WORDS, "green": "on plan"}
 
 SCHEMA = {"type": "object", "required": ["brief", "first_move"], "properties": {
     "brief": {"type": "string", "maxLength": 1200}, "first_move": {"type": "string", "maxLength": 250}}}
@@ -44,7 +48,7 @@ def gather(user_id):
                       (user_id, since)).fetchall()
     return {
         "today": _fmt(today),
-        "rollouts": [{"name": r["name"], "health": r["rag"], "stage": r["stage"], "status": status_words(r)} for r in rows][:15],
+        "rollouts": [{"name": r["name"], "health": HEALTH.get(r["rag"], r["rag"]), "stage": r["stage"], "status": status_words(r)} for r in rows][:15],
         "due_today": [{"task": t["title"], "rollout": t["rollout"]} for t in tasks if t["due_date"] == today],
         "overdue": [{"task": t["title"], "rollout": t["rollout"], "due": _fmt(t["due_date"])} for t in tasks if t["due_date"] < today],
         "since_yesterday": [n["title"] for n in news],
@@ -74,9 +78,9 @@ def deliver(db, user_id, output):
 def fixture():
     """A synthetic project manager with three rollouts, work due and overnight news."""
     return {"today": "8 Oct 2026",
-            "rollouts": [{"name": "Firewall refresh", "health": "red", "stage": "Deployment", "status": "Past its target date by 8 d; 1 open blocker"},
-                         {"name": "SIEM onboarding", "health": "amber", "stage": "Design", "status": "Design is 3 d over its 6 d SLA; forecast 4 d after the target"},
-                         {"name": "EDR rollout", "health": "green", "stage": "Deployment", "status": "on plan"}],
+            "rollouts": [{"name": "Firewall refresh", "health": "off track", "stage": "Deployment", "status": "Past its target date by 8 d; 1 open blocker"},
+                         {"name": "SIEM onboarding", "health": "at risk", "stage": "Design", "status": "Design is 3 d over its 6 d SLA; forecast 4 d after the target"},
+                         {"name": "EDR rollout", "health": "on plan", "stage": "Deployment", "status": "on plan"}],
             "due_today": [{"task": "Send the change window request", "rollout": "Firewall refresh"}],
             "overdue": [{"task": "Review the design document", "rollout": "SIEM onboarding", "due": "6 Oct 2026"}],
             "since_yesterday": ["Customer approved the Kickoff stage on EDR rollout", "AI noticed 2 things in the notes of SIEM onboarding that the register does not hold"]}
@@ -85,9 +89,9 @@ def fixture():
 FEATURE = register(AIFeature(
     key="morning_brief", label="Morning brief",
     description="Each working morning, a short note per person: rollouts needing attention, what is due and overdue, what came in, and a first move.",
-    prompt="morning_brief.v2.txt", schema=SCHEMA, gather=gather, fixture=fixture,
+    prompt="morning_brief.v3.txt", schema=SCHEMA, gather=gather, fixture=fixture, refine=reject_health_colours,
     graders=(facts_kept("Firewall refresh", "SIEM", "change window", "design document"),
              never_says("good morning", "dear", "regards", "on track", "4 days over", "4 d over", "3 days late", "3 d late", "3 days after"),
-             max_words("brief", 120), max_words("first_move", 30)),
+             no_health_colours(), max_words("brief", 120), max_words("first_move", 30)),
     runs="daily", scope="person", max_tokens=400, temperature=0.3, project_role=None, on_new=deliver,
 ))

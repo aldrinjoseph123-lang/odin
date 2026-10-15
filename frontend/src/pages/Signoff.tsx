@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { PanelTitle } from "@/components/PanelTitle"
 import { StatusPill } from "@/components/PlanGantt"
 import { toast } from "@/lib/toast"
@@ -19,6 +19,8 @@ import {
   type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User, type SignoffLink,
 } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
+import { copyText } from "@/lib/copy"
+import { useLoad } from "@/lib/useLoad"
 import { TemplatePicker } from "@/components/TemplatePicker"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
@@ -129,6 +131,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
   const [rejecting, setRejecting] = useState(false)
   const [comment, setComment] = useState("")
   const [err, setErr] = useState<string | null>(null)
+  const missing = [!name.trim() && "enter your full name", !sig && "draw or type your signature", !accept && "tick the box to accept"].filter(Boolean) as string[]
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!sig) { setErr("Sign by drawing or typing your name"); return }
@@ -162,7 +165,9 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
         <span>{counter ? "I confirm the work above is complete and countersign on our behalf." : `I have read this document and accept it on behalf of ${client}.`}</span>
       </label>
       {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
-      <Button type="submit" loading={busy} disabled={!accept || !sig || !name.trim()}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
+      {/* a disabled button says what it waits for (WCAG 3.3.1), and the reason is tied to it */}
+      {missing.length > 0 && <p id="sign-missing" className="text-[12px] text-muted-foreground">To {counter ? "countersign" : "sign"}: {missing.join(", ")}.</p>}
+      <Button type="submit" loading={busy} disabled={missing.length > 0} aria-describedby={missing.length ? "sign-missing" : undefined}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
       {canReject && <button type="button" onClick={() => setRejecting(true)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">I can't sign this yet</button>}
     </form>
   )
@@ -178,7 +183,7 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
     try { setLink(await signoffLink(id, version)) } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not make a link") }
   }
   async function copy() {
-    try { await navigator.clipboard.writeText(link!.link ?? ""); setCopied(true) } catch { setErr("Select the link and copy it") }
+    if (await copyText(link!.link ?? "")) setCopied(true); else setErr("Select the link and copy it")
   }
   return (
     <section className="panel grid grid-cols-1 gap-2 p-4">
@@ -255,7 +260,8 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
       <aside className="grid grid-cols-1 content-start gap-3 lg:sticky lg:top-4 print:hidden">
         <section className="panel grid grid-cols-1 gap-3 p-4">
           <PanelTitle n={false} className="mb-0">Send for signature</PanelTitle>
-          <TemplatePicker kind="signoff" value={template} onChange={onTemplate} />
+          {/* another template brings its own terms: typing is not dropped without asking (review P2-30) */}
+          <TemplatePicker kind="signoff" value={template} onChange={async (t) => { if (!dirty || await askConfirm("Switch the template? Its own terms replace the words on this page, and what you typed is lost.")) onTemplate(t) }} />
           <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Customer's signatory
             <select className={field} value={signer} onChange={(e) => setSigner(e.target.value ? Number(e.target.value) : "")}>
               {cand.signers.length === 0 && <option value="">Nobody yet</option>}
@@ -290,21 +296,19 @@ export default function Signoff(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
   const v = Number(params.get("v")) || null
   const template = Number(params.get("template")) || null
-  const [d, setD] = useState<SignoffData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [dialog, setDialog] = useState<"upload" | "waive" | null>(null)
   const [reason, setReason] = useState("")
   const [dialogErr, setDialogErr] = useState<string | null>(null)
-  const load = useCallback(async () => {
-    try { const x = await signoff(id, v, template); setD(x); document.title = `Sign-off · ${x.project.name} · Odin` }
-    catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This rollout or version does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the sign-off") }
-  }, [id, v, template])
-  useEffect(() => { void load() }, [load])
+  // a failed refresh keeps the page; an error clears on the next success (review P2-29)
+  const { data: d, error: failed, reload: load } = useLoad(`signoff:${id}:${v}:${template}`, () => signoff(id, v, template))
+  useEffect(() => { if (d) document.title = `Sign-off · ${d.project.name} · Odin` }, [d])
+  const error = failed ? (failed.status === 404 ? "This rollout or version does not exist, or you are not on it." : failed.message) : null
   if (error) return <LoadError message={error} back={error.startsWith("This rollout or version does not exist") ? { href: "/projects", label: "All rollouts" } : undefined} />
   if (!d) return <PageSkeleton />
   const cur = d.current
-  const composing = d.can.manage && !!d.draft && (!cur || cur.status === "rejected" || cur.status === "withdrawn") && !v
+  // a version set aside when the rollout was reopened closes nothing: the manager sends a new one
+  const composing = d.can.manage && !!d.draft && (!cur || cur.status === "rejected" || cur.status === "withdrawn" || !!cur.superseded_at) && !v
   const done = (m: string) => { toast(m); setParams({}, { replace: true }); void load() }
   async function act(fn: () => Promise<unknown>, message: string) {
     setBusy(true)
@@ -353,6 +357,12 @@ export default function Signoff(_props: { user: User }) {
           <span>Signed off. {d.project.stage === "Sign-off" ? "The rollout can move to its last stage." : ""}</span>
           <Link to={`/projects/${id}`} className="ml-auto font-medium underline">Back to the rollout</Link>
         </div>
+      )}
+      {cur?.superseded_at && (
+        <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn" role="note">
+          <b>Superseded {fmtDate(cur.superseded_at)}.</b> The rollout was reopened after version {cur.version} was signed, so it is kept on record but no longer closes the rollout.
+          {composing ? " Send a new version below." : d.can.manage ? " A new version is needed to close it again." : " The project manager has to send a new version to close it again."}
+        </p>
       )}
       {composing && cur?.status === "rejected" && (
         <p className="mt-3 rounded-lg bg-bad-soft px-3 py-2 text-[13px] text-bad">Version {cur.version} was not accepted: {cur.reject_comment}</p>

@@ -103,11 +103,14 @@ def _request(method, cfg, path, timeout, **kwargs):
         raise AIError(problem, "connect")
     host = urlsplit(url).netloc
     try:
-        resp = requests.request(method, url, headers=_headers(cfg), timeout=timeout, **kwargs)
+        # never followed: a redirect could lead rollout text out of the private network past the guard above (P3-7)
+        resp = requests.request(method, url, headers=_headers(cfg), timeout=timeout, allow_redirects=False, **kwargs)
     except requests.Timeout:
         raise AIError(f"{host} did not answer within {timeout} seconds", "timeout")
     except requests.RequestException:
         raise AIError(f"Cannot reach {host}: no server answering at that address", "connect")
+    if 300 <= resp.status_code < 400:
+        raise AIError(f"{host} answered with a redirect (HTTP {resp.status_code}); Odin does not follow them: set the address it redirects to", "http")
     if resp.status_code in (401, 403):
         raise AIError("The server refused the API key", "auth")
     if resp.status_code == 404:

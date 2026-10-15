@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Panel } from "@/components/PanelTitle"
 import { toastAfterLoad } from "@/lib/toast"
 import { fieldAuto, fieldArea } from "@/lib/ui"
@@ -21,11 +21,13 @@ import { AICatchUp } from "@/components/AICatchUp"
 import { AIAsk } from "@/components/AIAsk"
 import { AINotesTasks } from "@/components/AINotesTasks"
 import { LessonsPanel } from "@/components/LessonsPanel"
-import { ApiError, flowDetail, plan, postForm, projectActivity, projectExtras, type ActivityRow, type FlowDetail, type FormReply, type PlanData, type ProjectExtras, type User } from "@/lib/api"
+import { ApiError, flowDetail, plan, postForm, projectActivity, projectExtras, type FormReply, type PlanData, type ProjectExtras, type User } from "@/lib/api"
+import { useLoad } from "@/lib/useLoad"
 import { cn } from "@/lib/utils"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { dayBucket, fmtDate, fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
+import { copyText } from "@/lib/copy"
 
 // a 14 px bin with a 24 px target (the pseudo-element), kept clear of its neighbours
 const hit = "relative ml-1 shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-destructive"
@@ -36,13 +38,11 @@ const LABELS: Record<string, string> = {
 }
 
 
+const MISSING = "This rollout does not exist, or you are not on it."
+
 export default function Project({ user }: { user: User }) {
   const id = Number(useParams().id)
-  const [d, setD] = useState<FlowDetail | null>(null)
-  const [x, setX] = useState<ProjectExtras | null>(null)
-  const [activity, setActivity] = useState<ActivityRow[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<{ text: string; undo?: string | null } | null>(null)
+  const [notice, setNotice] = useState<{ text: string; undo?: string | null; bad?: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const [planRefresh, setPlanRefresh] = useState(0)   // a RAID change or a stage move moves the plan and the health
   const stageSeen = useRef<string | null>(null)
@@ -52,16 +52,16 @@ export default function Project({ user }: { user: User }) {
   const [editStages, setEditStages] = useState(false)
   const [allNotes, setAllNotes] = useState(false)
 
-  const reload = useCallback(async () => {
-    try {
-      const [fd, ex, act] = await Promise.all([flowDetail(id), projectExtras(id), projectActivity(id)])
-      // a stage move (or its undo) redraws the panels that read the stage, not only the header (sim PM-3)
-      if (stageSeen.current !== null && stageSeen.current !== fd.stage) setPlanRefresh((n) => n + 1)
-      stageSeen.current = fd.stage
-      setD(fd); setX(ex); setActivity(act.rows); setError(null)
-    } catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This rollout does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the rollout") }
-  }, [id])
-  useEffect(() => { void reload() }, [reload])
+  // the page is mounted afresh for each id (App.tsx); a failed refresh keeps the page (review P2-29)
+  const { data, error: failed, reload } = useLoad(`project:${id}`, async () => {
+    const [fd, ex, act] = await Promise.all([flowDetail(id), projectExtras(id), projectActivity(id)])
+    // a stage move (or its undo) redraws the panels that read the stage, not only the header (sim PM-3)
+    if (stageSeen.current !== null && stageSeen.current !== fd.stage) setPlanRefresh((n) => n + 1)
+    stageSeen.current = fd.stage
+    return { d: fd, x: ex, activity: act.rows }
+  })
+  const d = data?.d ?? null, x = data?.x ?? null, activity = data?.activity ?? []
+  const error = failed ? (failed.status === 404 ? MISSING : failed.message) : null
   useEffect(() => { document.title = x ? `${x.name} · Odin` : error ? "Rollout not found · Odin" : "Rollout · Odin" }, [x, error])
 
   // one door for every form post: show what Flask said, then refetch
@@ -76,14 +76,14 @@ export default function Project({ user }: { user: User }) {
       setNotice(r.messages.length ? { text: r.messages.join(" "), undo: r.undo } : null)
       await reload()
       return r
-    } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save" }); return null } finally { if (!leaving) setBusy(false) }
+    } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }); return null } finally { if (!leaving) setBusy(false) }
   }
   async function undo() {
     if (!notice?.undo) return
     await send(notice.undo)
   }
 
-  if (error) return <LoadError message={error} back={error === "This rollout does not exist, or you are not on it." ? { href: "/projects", label: "All rollouts" } : undefined} />
+  if (error) return <LoadError message={error} back={error === MISSING ? { href: "/projects", label: "All rollouts" } : undefined} />
   if (!d || !x) return <PageSkeleton />
   const can = x.can
   const staff = user.kind !== "external"
@@ -109,7 +109,7 @@ export default function Project({ user }: { user: User }) {
         })()}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a href={`/board?rollout=${id}`} className={buttonVariants({ variant: "ghost", size: "sm" })}>On the flow</a>
-          <a href={`/projects/${id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>
+          {user.permissions.includes("view_reports") && <a href={`/projects/${id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>}
           {can.create && <a href={`/projects/new?from=${id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Duplicate</a>}
           {can.manage && <a href={`/projects/${id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}>Edit</a>}
           {/* the rare and the destructive live behind ⋯, not at the end of the page */}
@@ -118,7 +118,7 @@ export default function Project({ user }: { user: User }) {
               <DropdownMenuTrigger render={<button type="button" />} disabled={busy} aria-label="More actions" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2")}><MoreHorizontal className="h-4 w-4" /></DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
                 {x.guest_links_enabled && <DropdownMenuItem onClick={() => send(`/projects/${id}/rotate-token`, {}, "Rotate both guest links? The current links stop working at once; anyone using them needs the new ones.")}>Rotate guest links</DropdownMenuItem>}
-                {can.delete_project && <DropdownMenuItem variant="destructive" onClick={() => send(`/projects/${id}/delete`, {}, "Delete this project? It leaves every list at once; you have five minutes to undo.")}>Delete project</DropdownMenuItem>}
+                {can.delete_project && <DropdownMenuItem variant="destructive" onClick={() => send(`/projects/${id}/delete`, {}, `Delete this project? It leaves every list at once; you have ${user.prefs?.undo_minutes ?? 5} minutes to undo.`)}>Delete project</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -134,14 +134,15 @@ export default function Project({ user }: { user: User }) {
       </nav>
       {/* sticky: a reply to the Team or Notes panel far down the page (an invite link) shows where the person is */}
       {notice && (
-        <div className="sticky top-14 z-20 mx-5 mt-3 flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-[13px] shadow-card" role="status">
+        <div className={cn("sticky top-14 z-20 mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[13px] shadow-card", notice.bad ? "bg-destructive/10 text-destructive" : "bg-muted")} role={notice.bad ? "alert" : "status"}>
           <span>{notice.text}{notice.undo && <button type="button" onClick={undo} className="ml-2 font-medium text-primary-text hover:underline">Undo</button>}</span>
           <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
         </div>
       )}
 
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
-      <Detail d={d} reload={reload} onMoved={(m, undo) => { setNotice({ text: m, undo }); void reload() }} standalone />
+      {/* Detail reloads after a move itself: the notice is all this page adds (review P3-35: it reloaded twice) */}
+      <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
 
       <div className="grid grid-cols-1 gap-4 px-5 pb-4 [&>*]:min-w-0">
         <div className="empty:hidden"><AICatchUp projectId={id} /></div>
@@ -262,7 +263,7 @@ export default function Project({ user }: { user: User }) {
             {x.guest_links.customer && <LinkRow label="Customer link (view and comment, no sign-in)" url={x.guest_links.customer} />}
             {x.guest_links.vendor && <LinkRow label="Vendor link (may advance the stage)" url={x.guest_links.vendor} />}
             {!x.guest_links_enabled && <p className="text-[13px] text-muted-foreground">Anonymous guest links are switched off in Settings. Partners and customers are invited from the Team panel instead.</p>}
-            {can.manage && x.guest_links_enabled && <p className="mt-2 text-[12px] text-muted-foreground">Rotate the links from More actions at the top of the page.</p>}
+            {can.manage && x.guest_links_enabled && <p className="mt-2 text-[12px] text-muted-foreground">{x.guest_links_expire ? `The links stop working on ${fmtDate(x.guest_links_expire)}; rotating them` : "Rotate the links"} from More actions at the top of the page{x.guest_links_expire ? " makes new ones that last as long again" : ""}.</p>}
           </Panel>
         )}
       </div>
@@ -272,14 +273,15 @@ export default function Project({ user }: { user: User }) {
 
 function LinkRow({ label, url }: { label: string; url: string }) {
   const [copied, setCopied] = useState(false)
+  const [failed, setFailed] = useState(false)
   return (
     <div className="mb-2 text-[13px]">
       <div className="text-[12px] text-muted-foreground">{label}</div>
       <div className="flex items-center gap-2">
         <a href={url} className="min-w-0 truncate text-primary-text hover:underline">{url}</a>
         <button type="button" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label={`Copy the ${label.split(" (")[0].toLowerCase()}`}
-          onClick={() => navigator.clipboard?.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })}>
-          {copied ? <span className="text-[12px]">Copied</span> : <Copy className="h-3.5 w-3.5" />}
+          onClick={() => void copyText(url).then((ok) => { setCopied(ok); setFailed(!ok); setTimeout(() => { setCopied(false); setFailed(false) }, 2500) })}>
+          {copied ? <span className="text-[12px]">Copied</span> : failed ? <span className="text-[12px] text-destructive">Select the link and copy it</span> : <Copy className="h-3.5 w-3.5" />}
         </button>
       </div>
     </div>
@@ -414,16 +416,19 @@ function UploadForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; on
   const [category, setCategory] = useState("")
   const [files, setFiles] = useState<File[]>([])
   const [over, setOver] = useState(false)
+  const [queue, setQueue] = useState(false)   // the page's busy drops between files; the button waits for the last (review P3-38)
   // One POST per file through the same route, so each keeps its own checks and audit row.
   async function upload() {
     if (!category || !files.length) return
     const left = [...files]
-    while (left.length) {
-      const fd = new FormData(); fd.append("category", category); fd.append("file", left[0])
-      if (!(await onSubmit(fd))) break   // the failed file and the rest stay picked
-      left.shift()
-    }
-    setFiles(left)
+    setQueue(true)
+    try {
+      while (left.length) {
+        const fd = new FormData(); fd.append("category", category); fd.append("file", left[0])
+        if (!(await onSubmit(fd))) break   // the failed file and the rest stay picked
+        left.shift()
+      }
+    } finally { setQueue(false); setFiles(left) }
   }
   return (
     <div onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
@@ -438,11 +443,12 @@ function UploadForm({ x, busy, onSubmit }: { x: ProjectExtras; busy: boolean; on
           Choose files<input type="file" multiple aria-label="Documents to upload" className="sr-only" onChange={(e) => setFiles([...(e.target.files ?? [])])} />
         </label>
         <span className="text-[12px] text-muted-foreground">or drop them here</span>
-        <Button type="button" size="sm" variant="outline" className="ml-auto" disabled={busy || !category || !files.length} onClick={() => void upload()}>
+        <Button type="button" size="sm" variant="outline" className="ml-auto" loading={queue} disabled={busy || queue || !category || !files.length} aria-describedby="upload-hint" onClick={() => void upload()}>
           Upload{files.length > 1 ? ` ${files.length} files` : ""}
         </Button>
       </div>
-      {files.length > 0 && <p className="truncate text-[12px] text-muted-foreground">{files.map((f) => f.name).join(", ")}{!category && " — pick a category first"}</p>}
+      {/* a disabled Upload says what it waits for */}
+      <p id="upload-hint" className="truncate text-[12px] text-muted-foreground">{files.length > 0 ? <>{files.map((f) => f.name).join(", ")}{!category && " — pick a category first"}</> : category ? "Choose a file or drop one here to upload." : "Pick a category and choose a file to upload."}</p>
     </div>
   )
 }

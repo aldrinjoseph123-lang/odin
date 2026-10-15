@@ -90,9 +90,10 @@ export default function ProjectForm(_props: { user: User }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <a href="/projects" className="text-[13px] text-muted-foreground hover:text-foreground">Rollouts</a><span className="text-[13px] text-muted-foreground">/</span>
         <h1 className="text-[17px] font-semibold tracking-tight">{title}</h1>
-        {editing && <a href={`/projects/${d.id}`} className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Cancel</a>}
+        {/* back to where it came from: the rollout being edited or copied, else the list */}
+        <a href={editing ? `/projects/${d.id}` : params.get("from") ? `/projects/${params.get("from")}` : "/projects"} className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Cancel</a>
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-[13px] text-destructive" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
 
       <p className="mt-3 text-[12px] text-muted-foreground">Fields marked * are required.</p>   {/* test report UX-26 */}
       <form onSubmit={submit} className="mt-2 grid max-w-5xl grid-cols-1 gap-4 lg:grid-cols-2">
@@ -158,9 +159,10 @@ export default function ProjectForm(_props: { user: User }) {
             <>
               <Field label="Account manager (internal)">
                 <select value={f.account_manager_name} onChange={(e) => setF({ ...f, account_manager_name: e.target.value, account_manager_email: d.account_managers.find((a) => a.name === e.target.value)?.email ?? "" })} aria-label="Account manager (internal)" className={field}>
-                  <option value="">Select…</option>{d.account_managers.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+                  <option value="">{d.account_managers.length ? "Select…" : "None set up yet"}</option>{d.account_managers.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
                 </select>
               </Field>
+              {d.account_managers.length === 0 && <p className="-mt-2 text-[12px] text-muted-foreground">Nobody to pick yet. Add account managers under <a href="/settings/contacts" className="text-primary-text hover:underline">Settings › Contacts &amp; partners</a>.</p>}
               <Field label="Account manager email"><Input value={f.account_manager_email} readOnly aria-label="Account manager email" className="h-8 text-[13px] text-muted-foreground" /></Field>
             </>
           )}

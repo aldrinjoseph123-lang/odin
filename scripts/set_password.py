@@ -1,5 +1,5 @@
 """Set a user's password from the server shell — for the first boot, before
-the hostname is public, so admin / changeme is never reachable from outside.
+the hostname is public, so the first admin's printed password is never usable from outside.
 
     docker compose exec app python scripts/set_password.py            # admin
     docker compose exec app python scripts/set_password.py priya      # anyone

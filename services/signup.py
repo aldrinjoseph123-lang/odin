@@ -13,7 +13,7 @@ from werkzeug.security import generate_password_hash
 from constants import PROJECT_MANAGER, PROJECT_ROLES, EXTERNAL_PROJECT_ROLES
 from db import get_db
 from policies import policy
-from security import password_problem, token_hash, valid_email
+from security import password_problem, token_hash, valid_email, valid_username
 
 LINK_ROLES = ("Member", "Contributor", "Viewer")                                  # never Admin by link
 PROJECT_LINK_ROLES = tuple(r for r in PROJECT_ROLES if r != PROJECT_MANAGER and r not in EXTERNAL_PROJECT_ROLES)
@@ -104,14 +104,14 @@ def register(link, form):
     if any(form.get(k) is not None and not isinstance(form.get(k), str) for k in ("name", "username", "email", "password", "notify_via")):
         raise ValueError("Send the form's fields as text")
     name = str(form.get("name") or "").strip()[:120]
-    username = str(form.get("username") or "").strip()[:40]
+    username = str(form.get("username") or "").strip()
     email = str(form.get("email") or "").strip().lower()[:200]
     password = str(form.get("password") or "")
     channel = form.get("notify_via") or "email"
     if not name:
         raise ValueError("Your full name")
-    if not username or not all(ch.isalnum() or ch in "._-" for ch in username):
-        raise ValueError("A username of letters, digits, dots, dashes or underscores")
+    if not valid_username(username):   # ASCII, as on the Users page: no look-alike of an existing name (review P3-13)
+        raise ValueError("A username of up to 64 letters (a-z), digits, dots, dashes, underscores or @")
     if not valid_email(email):
         raise ValueError("A valid email address")
     allowed = policy("signup_domains")
@@ -136,6 +136,8 @@ def register(link, form):
         (username, generate_password_hash(password, method="pbkdf2:sha256"), name, link["role"], email, datetime.utcnow().isoformat(),
          policy("default_theme"), policy("default_accent"), channel, link["id"], link["project_id"], link["project_role"]))
     db.commit()
+    from routes.auth import send_verification
+    send_verification(cur.lastrowid)   # the address is unproven until its link is opened (review P2-3)
     return cur.lastrowid
 
 

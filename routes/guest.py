@@ -7,7 +7,7 @@ Two links per project, two parties:
 Every write names its author, is rate limited, lands in the audit trail, and
 notifies the project owner. Imported for its route-registration side effect.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import abort, flash, make_response, redirect, render_template, request, url_for
 from markupsafe import escape
@@ -17,8 +17,6 @@ from db import get_db, get_setting, get_stage_names, get_terminal_stage, touch_p
 from security import rate_limited
 from services.audit import audit_log
 from services.notifications import notify_event, notify_users
-
-GUEST_WRITES_PER_MINUTE = 10
 
 
 def get_project_by_token(token):
@@ -38,7 +36,22 @@ def get_project_by_token(token):
     # the vendor link exists only for Outsourced rollouts (the page never shows it elsewhere): a mode switched away kills it
     if party == "vendor" and project["delivery_mode"] != "Outsourced":
         abort(404)
+    expires = links_expire(project)
+    if expires and expires <= datetime.utcnow().isoformat():
+        # said plainly, so the holder asks for a new link rather than thinking Odin is down (P2-6)
+        abort(make_response(render_template("error.html", code=410, title="This link has expired",
+                                            hint="Guest links last a set time. Ask the project manager for a new one."), 410))
     return project, party
+
+
+def links_expire(project):
+    """When the project's guest links stop working (UTC ISO timestamp), or
+    None when they never expire: policy guest_link_days, counted from when
+    they were minted (creation, or the last rotation)."""
+    from policies import policy
+    days = policy("guest_link_days")
+    minted = project["guest_tokens_at"] or project["created_at"]
+    return (datetime.fromisoformat(minted[:19]) + timedelta(days=days)).isoformat() if days and minted else None
 
 
 def next_stage_for(project):
@@ -60,8 +73,9 @@ def _author(project, party):
 
 def _guard(token):
     """Common front half of both write routes: throttle, then resolve author."""
+    from policies import policy
     project, party = get_project_by_token(token)
-    if rate_limited(f"guest:{token}", GUEST_WRITES_PER_MINUTE, 1):
+    if rate_limited(f"guest:{token}", policy("guest_writes_per_minute"), 1):
         abort(429)
     if project["stage"] == get_terminal_stage(project["id"]):   # a closed rollout is read-only through a link
         abort(403)

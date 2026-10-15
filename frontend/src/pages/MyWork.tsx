@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { EmptyState } from "@/components/EmptyState"
 import { StatTile } from "@/components/StatTile"
 import { pill, filterSelect } from "@/lib/ui"
@@ -7,7 +7,9 @@ import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide
 import { Stepper } from "@/components/Stepper"
 import { StateChip } from "@/components/StateChip"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
-import { ApiError, editTask, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
+import { ApiError, editTask, myWork, toggleTask, type User, type WorkTask } from "@/lib/api"
+import { useLoad } from "@/lib/useLoad"
+import { usePref } from "@/lib/usePref"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
@@ -42,6 +44,11 @@ function groupTasks(tasks: WorkTask[], today: string): Group[] {
 // The due date as a button; a click turns it into a date field that saves on change.
 function DueButton({ t, late, busy, onChange }: { t: WorkTask; late: number; busy: boolean; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false)
+  const label = t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "Set a date"
+  // the person a task is on ticks it but may not re-date it (task_edit says no): the date is only read
+  if (!t.can_edit) return t.due_date ? (
+    <span className={cn("h-7 shrink-0 whitespace-nowrap rounded-md px-2 text-[12px] leading-7", late > 0 ? "bg-bad-soft font-medium text-bad" : "text-muted-foreground")}>{label}</span>
+  ) : null
   if (open) return (
     <DatePicker autoOpen value={t.due_date ?? ""} label={`Due date for ${t.title}`} disabled={busy} onClose={() => setOpen(false)}
       onChange={(v) => { setOpen(false); if (v !== (t.due_date ?? "")) onChange(v) }} className="h-7 shrink-0 px-2 text-[12px]" />
@@ -49,20 +56,20 @@ function DueButton({ t, late, busy, onChange }: { t: WorkTask; late: number; bus
   return (
     <button type="button" onClick={() => setOpen(true)} aria-label={`${t.due_date ? `Due ${fmtDate(t.due_date)}` : "No date"}. Change the due date of ${t.title}`}
       className={cn("h-7 shrink-0 whitespace-nowrap rounded-md px-2 text-[12px] hover:bg-muted", late > 0 ? "bg-bad-soft font-medium text-bad hover:bg-bad-soft" : "text-muted-foreground")}>
-      {t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "Set a date"}
+      {label}
     </button>
   )
 }
 
 export default function MyWork({ user }: { user: User }) {
-  const [d, setD] = useState<MyWorkData | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: d, error, reload: load } = useLoad("my-work", myWork)
   const [busy, setBusy] = useState<number | null>(null)
-  const [project, setProject] = useState<number | null>(null)
-  const load = useCallback(() => myWork().then((x) => { setD(x); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")), [])
-  useEffect(() => { document.title = "My work · Odin"; void load() }, [load])
+  // the rollout filter is remembered (advice B1); one the person has left falls back to every rollout
+  const [kept, setProject] = usePref<number | null>("mywork.project", null)
+  const project = kept && d?.projects.some((p) => p.id === kept) ? kept : null
+  useEffect(() => { document.title = "My work · Odin" }, [])
   const groups = useMemo(() => (d ? groupTasks(project ? d.tasks.filter((t) => t.project_id === project) : d.tasks, d.today) : []), [d, project])
-  if (error) return <LoadError message={error} />
+  if (error) return <LoadError message={error.message} />
   if (!d) return <PageSkeleton />
   const c = d.counts
   const peak = Math.max(1, ...d.done_by_day.map((x) => x.count))
@@ -70,8 +77,8 @@ export default function MyWork({ user }: { user: User }) {
   async function tick(t: WorkTask) {
     setBusy(t.id)
     try {
-      await toggleTask(t.project_id, t.id)
-      toast(`Done: ${t.title}`, { action: { label: "Undo", run: () => void toggleTask(t.project_id, t.id).then(load).catch(() => toast("Could not reopen it", { tone: "bad" })) } })
+      await toggleTask(t.project_id, t.id, true)
+      toast(`Done: ${t.title}`, { action: { label: "Undo", run: () => void toggleTask(t.project_id, t.id, false).then(load).catch(() => toast("Could not reopen it", { tone: "bad" })) } })
       await load()
     } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(null) }
   }

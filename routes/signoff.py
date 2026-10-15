@@ -9,7 +9,7 @@ from markupsafe import escape
 
 import graph
 from constants import SIGNOFF_DOC_CATEGORY
-from core import admin_required, app, json_body, external_url, login_required, permission_required, project_allows, project_role_required, sees_po
+from core import admin_required, app, as_id, json_body, external_url, login_required, permission_required, project_allows, project_role_required, sees_po
 from db import get_db, get_setting
 from routes.projects import load_project, save_document
 from policies import policy
@@ -57,7 +57,7 @@ def project_signoff(project_id):
 def api_signoff(project_id):
     project = load_project(project_id)
     rows = signoff.versions(project_id)
-    wanted = request.args.get("v", type=int)
+    wanted = request.args.get("v", type=as_id)
     row = next((r for r in rows if r["version"] == wanted), None) if wanted else (rows[0] if rows else None)
     if wanted and row is None:
         abort(404)
@@ -83,7 +83,7 @@ def api_signoff(project_id):
     }
     if manage and not st["complete"]:
         signers, counters = signoff.candidates(project_id)
-        out["draft"] = signoff.draft(project, request.args.get("template", type=int))
+        out["draft"] = signoff.draft(project, request.args.get("template", type=as_id))
         out["candidates"] = {"signers": [{k: s[k] for k in ("id", "name", "role", "email")} for s in signers],
                              "countersigners": [{k: s[k] for k in ("id", "name", "role")} for s in counters],
                              "default_counter_id": project["owner_id"] if any(c["id"] == project["owner_id"] for c in counters) else (counters[0]["id"] if counters else None)}
@@ -207,7 +207,7 @@ def _completed_mail(project, row):
             graph.send_mail(address, f"Signed off: {project['name']}", f"<p>The sign-off for <b>{escape(project['name'])}</b> is signed by both sides. The signed copy is attached.</p>",
                             attachments=[(f"signoff-{project['id']}-v{row['version']}.pdf", pdf, "application/pdf")])
         except Exception as exc:   # mail never breaks the request
-            print(f"[signoff] mail to {address} failed: {exc}")
+            app.logger.warning("sign-off mail to %s failed: %s", address, exc)
 
 
 @app.route("/api/projects/<int:project_id>/signoff/<int:version>/sign", methods=["POST"])
@@ -343,8 +343,7 @@ def api_signoff_upload(project_id, version):
         return _bad("That file's contents don't match its extension")
     if row["status"] not in signoff.OPEN:
         return _bad("Upload the signed copy of a version that is waiting for signatures")
-    original = save_document(project_id, file, SIGNOFF_DOC_CATEGORY, session["user_name"])
-    doc_id = get_db().execute("SELECT MAX(id) FROM documents WHERE project_id = ? AND filename = ?", (project_id, original)).fetchone()[0]
+    original, doc_id = save_document(project_id, file, SIGNOFF_DOC_CATEGORY, session["user_name"])   # by id, never by name (P3-29)
     try:
         signoff.record_upload(row, doc_id, name, request.form.get("signer_title", "").strip()[:120], signed_on)
     except ValueError as e:   # completed or withdrawn by another request meanwhile; the file stays among the documents
@@ -376,10 +375,11 @@ def api_signoff_waive(project_id):
 def signoff_pdf(project_id):
     from services.signoff_pdf import render
     project = load_project(project_id)
-    v = request.args.get("v", type=int)
+    v = request.args.get("v", type=as_id)
     row = signoff.get(project_id, v) if v else signoff.latest(project_id)
     if row is None:
         abort(404)
     safe = file_stem(project["name"])
+    audit_log("download_signoff", "project", project_id, project["name"], f"v{row['version']}")   # an export like the others (P3-17)
     return Response(render(signoff.view(row, _staff(), _partner_cut(project_id, row))), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{safe}-signoff-v{row["version"]}.pdf"'})

@@ -26,6 +26,7 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { useMedia, useWidth } from "@/lib/useMeasure"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { lazyPage } from "@/lib/lazyPage"
+import { usePref } from "@/lib/usePref"
 
 // the heavier views load when first opened, so the list stays fast
 // (lazyPage: a tab open across a release reloads once for the new build)
@@ -98,47 +99,59 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const addButton = useRef<HTMLButtonElement>(null)
   const canTick = (t: FlowTask) => d.can_edit || t.assignee_id === d.me
-  async function run(fn: () => Promise<unknown>, done?: string): Promise<boolean> {
+  // Controls stay focusable while busy (a disabled one drops the keyboard to the page top);
+  // a row that went away (deleted, or ticked off a folded stage) hands the focus to the
+  // tick now in its place, or the last one (review P2-41).
+  async function run(fn: () => Promise<unknown>, done?: string, at?: number): Promise<boolean> {
+    if (busy) return false
     setBusy(true); onError(null)
     try { await fn(); await reload(); if (done) toast(done); return true }
     catch (e) { onError(e instanceof ApiError ? e.message : "That did not save"); return false }
-    finally { setBusy(false) }
+    finally {
+      setBusy(false)
+      if (at != null) requestAnimationFrame(() => {
+        const root = box.current
+        if (!root || root.contains(document.activeElement)) return
+        const ticks = root.querySelectorAll<HTMLElement>("[data-tick]")
+        ;(ticks[Math.min(at, ticks.length - 1)] ?? addButton.current)?.focus()
+      })
+    }
   }
+  const backTo = (sel: string) => requestAnimationFrame(() => box.current?.querySelector<HTMLElement>(sel)?.focus())
   const fields = (v: TaskValues) => ({ title: v.title.trim(), assignee_id: v.assignee ? Number(v.assignee) : null, due_date: v.due || null })
   return (
-    <div className="mt-2 text-[13px]">
+    <div ref={box} className="mt-2 text-[13px]">
       {tasks.length > 0 && (
         <ul className="divide-y divide-border border-t border-border">
-          {tasks.map((t) => editing === t.id ? (
+          {tasks.map((t, i) => editing === t.id ? (
             <li key={t.id} className="py-1">
               <TaskForm d={d} label={`Task title`} submitLabel={`Save ${t.title}`} busy={busy} init={{ title: t.title, assignee: t.assignee_id ? String(t.assignee_id) : "", due: t.due_date ?? "" }}
-                onCancel={() => setEditing(null)}
-                onSave={async (v) => { const ok = await run(() => editTask(d.id, t.id, fields(v)), "Task saved"); if (ok) setEditing(null); return ok }} />
+                onCancel={() => { setEditing(null); backTo(`[data-edit="${t.id}"]`) }}
+                onSave={async (v) => { const ok = await run(() => editTask(d.id, t.id, fields(v)), "Task saved"); if (ok) { setEditing(null); backTo(`[data-edit="${t.id}"]`) } return ok }} />
             </li>
           ) : (
             <li key={t.id} className={cn("group flex items-center gap-2 py-2", t.done && "text-muted-foreground")}>
-              <button type="button" disabled={!canTick(t) || busy} onClick={() => run(() => toggleTask(d.id, t.id), t.done ? `Reopened ${t.title}` : `Done: ${t.title}`)}
+              <button type="button" data-tick disabled={!canTick(t)} aria-disabled={busy || undefined} onClick={() => run(() => toggleTask(d.id, t.id, !t.done), t.done ? `Reopened ${t.title}` : `Done: ${t.title}`, i)}
                 aria-label={t.done ? `Reopen ${t.title}` : `Complete ${t.title}`}
-                className={cn("relative flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border before:absolute before:-inset-[5px] before:content-['']", t.done ? "border-ok-line bg-ok-line text-background" : "border-input bg-background", canTick(t) ? "hover:border-foreground" : "cursor-default opacity-60")}>
+                className={cn("relative flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border before:absolute before:-inset-[5px] before:content-['']", t.done ? "border-ok-line bg-ok-line text-background" : "border-control bg-background", canTick(t) ? "hover:border-foreground" : "cursor-default opacity-60")}>
                 {t.done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
               </button>
               <span className="min-w-0 flex-1">
                 {/* the title opens the task for correcting: title, who, when */}
                 {d.can_edit && !t.done
-                  ? <button type="button" onClick={() => setEditing(t.id)} title={`${t.title} — edit`} aria-label={`Edit ${t.title}`} className="line-clamp-3 text-left decoration-dotted underline-offset-2 hover:underline">{t.title}</button>
+                  ? <button type="button" data-edit={t.id} onClick={() => setEditing(t.id)} title={`${t.title} — edit`} aria-label={`Edit ${t.title}`} className="line-clamp-3 text-left decoration-dotted underline-offset-2 hover:underline">{t.title}</button>
                   : <span title={t.title} className={cn("line-clamp-3", t.done && "line-through")}>{t.title}</span>}
-                {/* the person the task is on may move its date, nothing else (the server allows the same) */}
-                {!d.can_edit && t.assignee_id === d.me && !t.done
-                  ? <DatePicker value={t.due_date ?? ""} label={`Due date of ${t.title}`} placeholder="Set a due date" disabled={busy} className="mt-1 h-7 px-2 text-[12px]"
-                      onChange={(due) => void run(() => editTask(d.id, t.id, { title: t.title, assignee_id: t.assignee_id, due_date: due || null }), due ? `${t.title}: due ${fmtDate(due)}` : `${t.title}: no date`)} />
-                  : t.due_date && !t.done && <DueDate due={t.due_date} today={d.today} />}
+                {/* the person the task is on ticks it; its date is the managers' (server: task_edit) */}
+                {t.due_date && !t.done && <DueDate due={t.due_date} today={d.today} />}
               </span>
               {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[11px]" />}
               {d.can_edit && (
-                <button type="button" disabled={busy} onClick={async () => {
+                <button type="button" aria-disabled={busy || undefined} onClick={async () => {
                   // a deleted task comes back with Undo: the same title, person, date and stage
-                  if (await run(() => deleteTask(d.id, t.id))) toast(`Deleted ${t.title}`, { action: { label: "Undo", run: () => void run(() => addTask(d.id, { title: t.title, stage: t.stage, assignee_id: t.assignee_id, due_date: t.due_date }), `${t.title} is back`) } })
+                  if (await run(() => deleteTask(d.id, t.id), undefined, i)) toast(`Deleted ${t.title}`, { action: { label: "Undo", run: () => void run(() => addTask(d.id, { title: t.title, stage: t.stage, assignee_id: t.assignee_id, due_date: t.due_date, done: t.done, done_at: t.done_at }), `${t.title} is back`) } })
                 }} aria-label={`Delete ${t.title}`}
                   className="relative hidden shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-destructive group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
@@ -149,10 +162,10 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
       {quiet && finished > 0 && <button type="button" onClick={() => setShowDone(!showDone)} className="mt-1 text-[12px] text-muted-foreground hover:text-foreground">{showDone ? "Hide finished" : `${finished} done`}</button>}
       {/* a finished stage keeps its tasks but takes no new ones */}
       {d.can_edit && !done && (adding ? (
-        <TaskForm d={d} label={`New task in ${stage}`} submitLabel="Add task" busy={busy} init={{ title: "", assignee: "", due: "" }} onCancel={() => setAdding(false)}
+        <TaskForm d={d} label={`New task in ${stage}`} submitLabel="Add task" busy={busy} init={{ title: "", assignee: "", due: "" }} onCancel={() => { setAdding(false); requestAnimationFrame(() => addButton.current?.focus()) }}
           onSave={(v) => run(() => addTask(d.id, { stage, ...fields(v) }), `Task added to ${stage}`)} />
       ) : (
-        <button type="button" onClick={() => setAdding(true)} aria-label={`Add a task to ${stage}`} className={cn("mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text", quiet && "opacity-0 transition-opacity focus:opacity-100 group-hover/node:opacity-100")}>
+        <button ref={addButton} type="button" onClick={() => setAdding(true)} aria-label={`Add a task to ${stage}`} className={cn("mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text", quiet && "opacity-0 transition-opacity focus:opacity-100 group-hover/node:opacity-100")}>
           <Plus className="h-3 w-3" /> Task
         </button>
       ))}
@@ -169,7 +182,8 @@ function NextLine({ r, today }: { r: FlowRow; today: string }) {
   const t = r.next_task
   const late = t?.due_date ? lateBy(t.due_date, today) : 0
   return (
-    <span className="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
+    // 4 px before each "·" and a space after it: even gaps between the parts (P3-49)
+    <span className="flex min-w-0 items-center gap-1 text-[12px] text-muted-foreground">
       {t ? (
         <>
           {/* the title keeps ~16 characters; the extras give way before it does */}
@@ -198,7 +212,7 @@ function RolloutRow({ r, selected, tabStop, onSelect, today, me }: {
       <button type="button" data-row data-id={r.id} onClick={() => onSelect(r.id)} aria-current={selected || undefined} tabIndex={tabStop ? 0 : -1}
         aria-label={`${r.name}${r.name.includes(r.client) ? "" : `, ${r.client}`}. ${r.stage}, stage ${r.stage_index + 1} of ${r.stages.length}. ${r.state === "on_track" ? `On track, ${stateText(r)} in stage` : `${STATE[r.state].label}, ${stateText(r)}`}${r.approval === "pending" ? ". Waiting on the customer's approval" : r.approval === "declined" ? ". Customer declined" : r.approval === "approved" ? ". Approved" : ""}. ${t ? `Next: ${t.title}${t.assignee ? `, ${t.assignee}` : ""}` : "No open task"}${r.stale ? `. Idle ${Math.round(r.idle_days ?? 0)} days` : ""}`}
         className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
-          "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] md:gap-x-4 md:gap-y-1",
+          "md:grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_104px] md:gap-x-4 md:gap-y-1",
           selected ? "border-transparent bg-muted shadow-[inset_3px_0_0_var(--ring)]" : "border-transparent hover:bg-muted focus-visible:bg-muted")}>
         <span className="flex min-w-0 items-center gap-2 md:col-start-1 md:row-start-1">
           <span className={cn("h-2 w-2 shrink-0 rounded-full md:hidden", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />
@@ -288,9 +302,9 @@ function FlowHeader({ data, title, views, filter, setFilter, group, setGroup, st
   )
 }
 
-function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilter, stage, setStage, group, header }: {
-  data: FlowData; me: number; partner?: boolean; selectedId: number | null; onSelect: (id: number) => void; header: ReactNode
-  filter: Filter; setFilter: (f: Filter) => void; stage: string | null; setStage: (s: string | null) => void; group: FlowGroupBy | null
+function RolloutList({ data, me, partner, selectedId, onSelect, filter, stage, setStage, showAll, group }: {
+  data: FlowData; me: number; partner?: boolean; selectedId: number | null; onSelect: (id: number) => void
+  filter: Filter; stage: string | null; setStage: (s: string | null) => void; showAll: () => void; group: FlowGroupBy | null
 }) {
   const rows = useMemo(() => data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage)), [data.rows, filter, stage])
   // Every row's stages in one column order, so a stage lines up down the list.
@@ -307,6 +321,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
   const shown = fold ? rows.filter(needsAttention) : rows
   // One tab stop for the whole list; ↑/↓ or j/k move between rows, Enter opens.
   function onKeys(e: KeyboardEvent<HTMLUListElement>) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return   // Ctrl/⌘ K and L belong to the app and the browser (review P3-37)
     // → or l: from the list into the open rollout's actions (the rail), without a Tab marathon
     if ((e.key === "ArrowRight" || e.key === "l") && selectedId != null) {
       const first = document.querySelector<HTMLElement>("[data-rail] button:not(:disabled), [data-rail] a, [data-rail] input")
@@ -324,8 +339,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
   const tabStop = shown.some((r) => r.id === selectedId) ? selectedId : shown[0]?.id
   const row = (r: FlowRow) => <RolloutRow key={r.id} r={r} selected={r.id === selectedId} tabStop={r.id === tabStop} onSelect={onSelect} today={data.today} me={me} />
   return (
-    <div className="flex h-full flex-col">
-      {header}
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* how many sit in each stage, named; a tap shows only that stage */}
       <nav aria-label="Rollouts in each stage" className="fade-x flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none]">
         {columns.filter((c) => inStage.get(c) || stage === c).map((c) => {
@@ -341,7 +355,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
         })}
       </nav>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_76px] gap-4 border-y border-transparent bg-card px-3 py-2 text-[12px] text-muted-foreground md:grid">
+        <div className="sticky top-0 z-10 mx-3 hidden grid-cols-[minmax(240px,1.6fr)_minmax(120px,1fr)_210px_104px] gap-4 border-y border-transparent bg-card px-3 py-2 text-[12px] text-muted-foreground md:grid">
           <span>Rollout · next step <span className="ml-1">(↑↓ or j/k, Enter opens, right arrow to its actions)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid grid-cols-1 gap-1 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
@@ -366,7 +380,7 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, setFilte
           {rows.length === 0 && (
             <li><Empty className="rounded-lg bg-muted/40 py-12"><EmptyHeader><EmptyMedia variant="icon"><Inbox /></EmptyMedia><EmptyDescription>
               {data.rows.length === 0 ? (partner ? "No rollout is shared with you yet. It appears here once a project manager adds you." : "No active rollouts yet. Create one from a client PO and it appears here.")
-                : stage ? <>No rollout in {stage} matches this filter. <button type="button" onClick={() => { setStage(null); setFilter("all") }} className="font-medium text-foreground underline underline-offset-2">Show every rollout</button></>
+                : stage ? <>No rollout in {stage} matches this filter. <button type="button" onClick={showAll} className="font-medium text-foreground underline underline-offset-2">Show every rollout</button></>
                 : filter === "customer" ? "No rollout is waiting on a customer's approval."
                 : "Nothing needs attention — every rollout is inside its stage SLA, on schedule, and no task is late."}
             </EmptyDescription></EmptyHeader></Empty></li>
@@ -463,6 +477,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
       setComment("")
       onMoved(`${d.stage} ${decision}`)
       await reload()
+      document.querySelector<HTMLElement>("[data-pane-title]")?.focus()   // the decision's section is gone (P2-41)
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not record the decision") } finally { setBusy(false) }
   }
   const open = d.tasks.filter((t) => !t.done)
@@ -485,8 +500,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             <>
               <div className="flex items-start gap-2">
                 {(d.can_edit || next.assignee_id === d.me) && (
-                  <button type="button" disabled={busy} onClick={() => void tickNext()} aria-label={`Complete ${next.title}`} title="Mark done"
-                    className="relative mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border border-input bg-background before:absolute before:-inset-[5px] before:content-[''] hover:border-foreground" />
+                  <button type="button" aria-disabled={busy || undefined} onClick={() => void tickNext()} aria-label={`Complete ${next.title}`} title="Mark done"
+                    className="relative mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border border-control bg-background before:absolute before:-inset-[5px] before:content-[''] hover:border-foreground" />
                 )}
                 <p className="font-medium">{next.title}</p>
               </div>
@@ -499,18 +514,19 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
         </section>
   )
   async function tickNext() {
-    if (!next) return
+    if (!next || busy) return
     setBusy(true); setErr(null)
-    try { await toggleTask(d.id, next.id); toast(`Done: ${next.title}`); await reload() } catch (e) { setErr(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+    try { await toggleTask(d.id, next.id, true); toast(`Done: ${next.title}`); await reload() } catch (e) { setErr(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
   return (
     <div className="grid grid-cols-1 gap-5 px-5 py-4 xl:grid-cols-[minmax(0,1fr)_280px]">
       <div className="min-w-0 xl:col-start-1 xl:row-start-1">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
+            {/* the pane's heading takes the keyboard when a rollout opens from the Kanban, Gantt or Calendar (P2-42) */}
             {standalone
-              ? <h1 className="truncate text-[17px] font-semibold tracking-tight" title={d.name}>{d.name}</h1>
-              : <h2 className="truncate text-[17px] font-semibold tracking-tight" title={d.name}>{d.name}</h2>}
+              ? <h1 data-pane-title tabIndex={-1} className="truncate rounded-sm text-[17px] font-semibold tracking-tight outline-none focus-visible:ring-[3px] focus-visible:ring-ring" title={d.name}>{d.name}</h1>
+              : <h2 data-pane-title tabIndex={-1} className="truncate rounded-sm text-[17px] font-semibold tracking-tight outline-none focus-visible:ring-[3px] focus-visible:ring-ring" title={d.name}>{d.name}</h2>}
             <p className="text-[13px] text-muted-foreground">
               {d.client}{d.vendor_name ? ` · ${d.vendor_name}` : ""}{d.product_name ? ` · ${d.product_name}` : ""}{d.outsourcer_name ? ` · via ${d.outsourcer_name}` : ""} · owner {d.owner_name}
             </p>
@@ -614,8 +630,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             <p className="mb-2 text-[13px] text-muted-foreground">The rollout moved to <span className="font-medium text-foreground">{d.stage}</span>. Do you agree with this step?</p>
             <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (optional)" aria-label="Approval comment" maxLength={2000} className="h-8 text-[13px]" />
             <div className="mt-2 flex gap-2">
-              <Button size="sm" className="flex-1" disabled={busy} onClick={() => decide("approved")}>Approve</Button>
-              <Button size="sm" variant="outline" className="flex-1" disabled={busy} onClick={() => decide("declined")}>Decline</Button>
+              <Button size="sm" className="flex-1" loading={busy} onClick={() => decide("approved")}>Approve</Button>
+              <Button size="sm" variant="outline" className="flex-1" loading={busy} onClick={() => decide("declined")}>Decline</Button>
             </div>
           </section>
         )}
@@ -689,9 +705,17 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
 
 // Phones get the rollout as its own screen with a back button, not a split.
 
+// Focus an element once React has drawn it (a few frames at most).
+function focusSoon(find: () => HTMLElement | null | undefined, tries = 10) {
+  requestAnimationFrame(() => { const el = find(); if (el) el.focus(); else if (tries > 0) focusSoon(find, tries - 1) })
+}
+
 export default function Flow({ user }: { user: User }) {
   const wide = useMedia("(min-width: 768px)")
   const [data, setData] = useState<FlowData | null>(null)
+  // bumped by every load (a reload, a move, the poll): the Gantt and the Calendar
+  // fetch their own data and refetch with it, so the views agree (review P2-35)
+  const [stamp, setStamp] = useState(0)
   // The selection is the URL (?rollout=): shareable, and it follows any
   // navigation to it — a palette jump or a link — even while this page is open.
   const [params, setParams] = useSearchParams()
@@ -709,35 +733,39 @@ export default function Flow({ user }: { user: User }) {
   const [detailError, setDetailError] = useState<string | null>(null)
   // the rollout the pane is for: a slower answer for the previous one is dropped
   const wanted = useRef(selectedId)
-  wanted.current = selectedId
-  // Ways to look at the portfolio, kept in the URL: the list, a Kanban by stage, or a month.
-  const vw = params.get("view")
+  useEffect(() => { wanted.current = selectedId }, [selectedId])
+  // Ways to look at the portfolio, kept in the URL; a link without them gets the
+  // person's last choice in this browser (advice B1).
+  const [prefView, setPrefView] = usePref<View>("flow.view", "list")
+  const [prefFilter, setPrefFilter] = usePref<Filter>("flow.filter", "all")
+  const [prefGroup, setPrefGroup] = usePref<FlowGroupBy | null>("flow.group", null)
+  const vw = params.get("view") ?? prefView
   // the Gantt reads plans, which are staff-only (the customer cut is the rollout report's)
   const view: View = VIEWS.includes(vw as View) && !(vw === "gantt" && user.kind === "external") ? vw as View : "list"
   useEffect(() => { document.title = `${{ list: "Flow", kanban: "Kanban", gantt: "Gantt", calendar: "Calendar" }[view]} · Odin` }, [view])   // test report UX-17
-  const setView = useCallback((v: View) => {
-    setParams((prev) => { const next = new URLSearchParams(prev); if (v === "list") next.delete("view"); else next.set("view", v); next.delete("month"); next.delete("day"); return next }, { replace: true })
+  const setParam = useCallback((key: string, v: string | null, also?: (n: URLSearchParams) => void) => {
+    setParams((prev) => { const next = new URLSearchParams(prev); if (v == null) next.delete(key); else next.set(key, v); also?.(next); return next }, { replace: true })
   }, [setParams])
-  // The filter lives in the URL too, so a reload keeps it.
-  const f = params.get("filter")
+  const setView = useCallback((v: View) => {
+    setPrefView(v)
+    setParam("view", v === "list" ? null : v, (n) => { n.delete("month"); n.delete("day") })
+  }, [setParam, setPrefView])
+  const f = params.get("filter") ?? prefFilter
   const filter: Filter = f === "attention" || f === "mine" || f === "customer" ? f : "all"
   const stage = params.get("stage")
-  const g = params.get("group")
+  const g = params.get("group") ?? prefGroup
   const group: FlowGroupBy | null = g === "stage" || g === "client" || g === "owner" ? g : null
-  const setGroup = useCallback((v: FlowGroupBy | null) => {
-    setParams((prev) => { const next = new URLSearchParams(prev); if (!v) next.delete("group"); else next.set("group", v); return next }, { replace: true })
-  }, [setParams])
-  const setStage = useCallback((v: string | null) => {
-    setParams((prev) => { const next = new URLSearchParams(prev); if (!v) next.delete("stage"); else next.set("stage", v); return next }, { replace: true })
-  }, [setParams])
-  const setFilter = useCallback((v: Filter) => {
-    setParams((prev) => { const next = new URLSearchParams(prev); if (v === "all") next.delete("filter"); else next.set("filter", v); return next }, { replace: true })
-  }, [setParams])
+  const setGroup = useCallback((v: FlowGroupBy | null) => { setPrefGroup(v); setParam("group", v) }, [setParam, setPrefGroup])
+  const setStage = useCallback((v: string | null) => setParam("stage", v), [setParam])
+  const setFilter = useCallback((v: Filter) => { setPrefFilter(v); setParam("filter", v === "all" ? null : v) }, [setParam, setPrefFilter])
+  // one change for both, so neither overwrites the other
+  const showAll = useCallback(() => { setPrefFilter("all"); setParam("filter", null, (n) => n.delete("stage")) }, [setParam, setPrefFilter])
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<{ text: string; undo?: string; bad?: boolean } | null>(null)
+  // the move notice belongs to the rollout it is about (review P3-37)
+  const [notice, setNotice] = useState<{ id: number; text: string; undo?: string; bad?: boolean } | null>(null)
 
   const load = useCallback(async () => {
-    try { setData(await flow()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load rollouts") }
+    try { setData(await flow()); setError(null); setStamp((n) => n + 1) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load rollouts") }
   }, [])
   const loadDetail = useCallback(async (id: number) => {
     try {
@@ -766,22 +794,42 @@ export default function Flow({ user }: { user: User }) {
     const t = setTimeout(() => document.querySelector('main [aria-current="true"]')?.scrollIntoView({ block: "nearest" }), 60)
     return () => clearTimeout(t)
   }, [selectedId])
-  // Esc closes the rollout, unless it is cancelling something inside a field or dialog.
+
+  // The keyboard's way in and out of the pane (review P2-42): the control that
+  // opened a rollout is where closing it returns; from the Kanban, Gantt or
+  // Calendar the pane's heading takes the focus (the list keeps it: ↑↓ and →).
+  const opener = useRef<HTMLElement | null>(null)
+  const focusTitle = useRef<number | null>(null)
+  useEffect(() => {
+    if (selectedId == null) return
+    const a = document.activeElement
+    if (!(a instanceof HTMLElement) || a === document.body || a.closest("[data-pane]")) return
+    opener.current = a
+    if (view !== "list") focusTitle.current = selectedId
+  }, [selectedId])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (detail && detail.id === focusTitle.current) { focusTitle.current = null; focusSoon(() => document.querySelector<HTMLElement>("[data-pane-title]")) }
+  }, [detail])
+  const close = useCallback(() => {
+    const was = selectedId
+    setSelectedId(null)
+    focusSoon(() => opener.current?.isConnected ? opener.current
+      : document.querySelector<HTMLElement>(`button[data-row][data-id="${was}"], [data-card="${was}"], [data-gantt-row="${was}"]`))
+  }, [selectedId, setSelectedId])
+  // Esc closes the rollout, unless it is cancelling something inside a field, a dialog,
+  // a menu or an open popup such as the bell (review P3-37).
   useEffect(() => {
     if (selectedId == null) return
     const onKey = (e: globalThis.KeyboardEvent) => {
       const t = e.target as HTMLElement
-      if (e.key !== "Escape" || e.defaultPrevented || t.closest("input, textarea, select, dialog, [role=dialog]")) return
-      const was = selectedId
-      setSelectedId(null)
-      // focus goes back to the row it came from, not to the page
-      requestAnimationFrame(() => document.querySelector<HTMLElement>(`button[data-row][data-id="${was}"]`)?.focus())
+      if (e.key !== "Escape" || e.defaultPrevented || t.closest("input, textarea, select, dialog, [role=dialog], [role=menu], [role=listbox], [aria-haspopup][aria-expanded=true]")) return
+      close()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [selectedId, setSelectedId])
+  }, [selectedId, close])
 
-  async function undoMove(path: string, say: (text: string, bad: boolean) => void = (text, bad) => setNotice({ text, bad })) {
+  async function undoMove(path: string, say: (text: string, bad: boolean) => void = (text, bad) => { if (selectedId != null) setNotice({ id: selectedId, text, bad }) }) {
     try {
       const r = await postForm(path)
       const back = r.messages.join(" ")
@@ -795,6 +843,14 @@ export default function Flow({ user }: { user: User }) {
     try { setMoving(await flowDetail(r.id)) } catch (e) { toast(e instanceof ApiError ? e.message : "Could not load the rollout", { tone: "bad" }) }
   }
 
+  // what the filter and the stage leave, the same for every view
+  const rows = data?.rows
+  const shownRows = useMemo(() => (rows ?? []).filter((r) => match(r, filter) && (!stage || r.stage === stage)), [rows, filter, stage])
+  const shownIds = useMemo(() => shownRows.map((r) => r.id), [shownRows])
+  const columns = useMemo(() => stageColumns((rows ?? []).map((r) => r.stages)), [rows])
+  // the Calendar shows closed rollouts' history too: it narrows only when a filter is on (review P3-34)
+  const only = useMemo(() => (filter !== "all" || stage ? new Set(shownIds) : null), [filter, stage, shownIds])
+
   if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
 
@@ -803,51 +859,76 @@ export default function Flow({ user }: { user: User }) {
       options={([["list", LayoutList, "List"], ["kanban", KanbanIcon, "Kanban"], ...(user.kind === "external" ? [] : [["gantt", GanttChart, "Gantt"] as const]), ["calendar", CalendarDays, "Calendar"]] as const)
         .map(([v, Icon, label]) => ({ value: v, label, icon: <Icon className="h-3.5 w-3.5" aria-hidden /> }))} />
   )
-  const shownRows = data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage))
-  // the same header row, in the same card at the same place, on every view, so the switcher never moves (critique 10 Oct)
-  const list = view === "calendar" ? (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col"><FlowHeader data={data} title="Calendar" views={views} /><Suspense fallback={<PageSkeleton />}><Calendar wide={wide} /></Suspense></div>
-  ) : view === "gantt" ? (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />
-      <Suspense fallback={<PageSkeleton />}><FlowGantt ids={shownRows.map((r) => r.id)} selectedId={selectedId} onSelect={setSelectedId} /></Suspense>
-    </div>
-  ) : view === "kanban" ? (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} />
-      <Suspense fallback={<PageSkeleton />}>
-        <FlowKanban rows={shownRows} columns={stageColumns(data.rows.map((r) => r.stages))} selectedId={selectedId} onSelect={setSelectedId} onMove={(r) => void askMove(r)} onOnly={setStage} />
-      </Suspense>
-      <Dialog open={moving != null} onOpenChange={(o) => { if (!o) setMoving(null) }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Move {moving?.name} to {moving?.next_stage}</DialogTitle><DialogDescription>From {moving?.stage} to {moving?.next_stage}.</DialogDescription></DialogHeader>
-          {moving && <MoveConfirm d={moving} confirmNow bare onCancel={() => setMoving(null)} onMoved={async (text, undo) => {
-            setMoving(null)
-            toast(text, undo ? { action: { label: "Undo", run: () => void undoMove(undo, (t, bad) => toast(t, { tone: bad ? "bad" : "ok" })) } } : {})
-            await Promise.all([load(), selectedId != null ? loadDetail(selectedId) : Promise.resolve()])
-          }} />}
-        </DialogContent>
-      </Dialog>
-    </div>
-  ) : (
-    <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} setFilter={setFilter} stage={stage} setStage={setStage} group={group}
-      header={<FlowHeader data={data} title="Active rollouts" views={views} filter={filter} setFilter={setFilter} group={group} setGroup={setGroup} />} />
+  // One header for every view, in the same place in the tree, so switching views
+  // keeps it (and the focus on the switcher) and moves nothing (critique 10 Oct, review P2-42).
+  const header = (
+    <FlowHeader data={data} title={view === "calendar" ? "Calendar" : "Active rollouts"} views={views} filter={filter} setFilter={setFilter}
+      group={view === "list" ? group : undefined} setGroup={view === "list" ? setGroup : undefined}
+      stage={view === "list" ? undefined : stage} setStage={view === "list" ? undefined : setStage} />
   )
+  const body = view === "calendar" ? (
+    <Suspense fallback={<PageSkeleton />}><Calendar wide={wide} stamp={stamp} only={only} /></Suspense>
+  ) : view === "gantt" ? (
+    <Suspense fallback={<PageSkeleton />}><FlowGantt ids={shownIds} stamp={stamp} selectedId={selectedId} onSelect={setSelectedId} /></Suspense>
+  ) : view === "kanban" ? (
+    <Suspense fallback={<PageSkeleton />}>
+      <FlowKanban rows={shownRows} columns={columns} selectedId={selectedId} onSelect={setSelectedId} onMove={(r) => void askMove(r)} onOnly={setStage} />
+    </Suspense>
+  ) : (
+    <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} stage={stage} setStage={setStage} showAll={showAll} group={group} />
+  )
+  const list = (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* the pane is ~80 tab stops past a busy board: a skip link to it (review P2-42) */}
+      {selectedId != null && wide && (
+        <button type="button" onClick={() => document.querySelector<HTMLElement>("[data-pane-title]")?.focus()}
+          className="sr-only focus:not-sr-only focus:mx-5 focus:mt-3 focus:self-start focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-[13px] focus:text-primary-foreground">Go to the open rollout</button>
+      )}
+      {header}
+      {body}
+      {view === "kanban" && (
+        <Dialog open={moving != null} onOpenChange={(o) => { if (!o) setMoving(null) }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader><DialogTitle>Move {moving?.name} to {moving?.next_stage}</DialogTitle><DialogDescription>From {moving?.stage} to {moving?.next_stage}.</DialogDescription></DialogHeader>
+            {moving && <MoveConfirm d={moving} confirmNow bare onCancel={() => setMoving(null)} onMoved={async (text, undo) => {
+              const { id, next_stage: to } = moving
+              setMoving(null)
+              toast(text, undo ? { action: { label: "Undo", run: () => void undoMove(undo, (t, bad) => toast(t, { tone: bad ? "bad" : "ok" })) } } : {})
+              await Promise.all([load(), selectedId != null ? loadDetail(selectedId) : Promise.resolve()])
+              // the keyboard follows the card into its new column
+              focusSoon(() => [...document.querySelectorAll<HTMLElement>(`[data-card="${id}"]`)].find((el) => el.closest("[data-slot=kanban-column]")?.getAttribute("data-value") === to))
+            }} />}
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  )
+  const hiddenHere = detail != null && detail.id === selectedId && data.rows.some((r) => r.id === detail.id) && !shownIds.includes(detail.id)
   const pane = selectedId != null && (
-    <>
+    <div data-pane>
               {!wide && (
                 <button type="button" onClick={() => setSelectedId(null)} className="flex h-11 items-center gap-1 px-4 text-[14px] font-medium text-primary-text">
                   <ChevronLeft className="h-4 w-4" aria-hidden /> All rollouts
                 </button>
               )}
-              {notice && (
-                <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[13px]", notice.bad ? "bg-destructive/10 text-destructive" : "bg-ok-soft text-ok")} role="status">
-                  <span>{notice.text}
-                    {/* the mover can put it back for five minutes; the server decides */}
-                    {notice.undo && <button type="button" onClick={() => void undoMove(notice.undo!)} className="ml-2 font-semibold underline-offset-2 hover:underline">Undo</button>}
-                  </span>
-                  <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
-                </div>
+              {/* mounted empty, then filled, so the move's words are announced (review P3-46) */}
+              <div role="status">
+                {notice && notice.id === selectedId && (
+                  <div className={cn("mx-5 mt-3 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[13px]", notice.bad ? "bg-destructive/10 text-destructive" : "bg-ok-soft text-ok")}>
+                    <span>{notice.text}
+                      {/* the mover can put it back for five minutes; the server decides */}
+                      {notice.undo && <button type="button" onClick={() => void undoMove(notice.undo!)} className="ml-2 font-semibold underline-offset-2 hover:underline">Undo</button>}
+                    </span>
+                    <button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
+                  </div>
+                )}
+              </div>
+              {/* the view above no longer shows the open rollout: say so, with the way back (review P3-37) */}
+              {hiddenHere && (
+                <p className="mx-5 mt-3 flex flex-wrap items-center gap-x-2 rounded-md bg-muted px-3 py-2 text-[13px] text-muted-foreground">
+                  The filter above hides {detail.name}.
+                  <button type="button" onClick={showAll} className="font-medium text-foreground underline underline-offset-2">Show every rollout</button>
+                </p>
               )}
               {/* always present, so a screen reader hears which rollout opened; the list keeps the focus */}
               <p className="sr-only" aria-live="polite">{detail && detail.id === selectedId ? `${detail.name} open below: ${detail.stage}${detail.state !== "on_track" ? `, ${STATE[detail.state].label}` : ""}` : ""}</p>
@@ -857,9 +938,9 @@ export default function Flow({ user }: { user: User }) {
                   <Button size="sm" variant="outline" onClick={() => setSelectedId(null)}>Back to all rollouts</Button>
                 </div>
               ) : detail && detail.id === selectedId ? (
-                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={(text, undo) => setNotice({ text, undo })} onClose={wide ? () => setSelectedId(null) : undefined} />
+                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={(text, undo) => setNotice({ id: detail.id, text, undo })} onClose={wide ? close : undefined} />
               ) : <PageSkeleton />}
-    </>
+    </div>
   )
   // each pane is a card on the ground
   if (!wide) return selectedId != null ? <ScrollArea className="panel mx-3 mb-3 min-h-0 flex-1">{pane}</ScrollArea> : <div className="panel mx-3 mb-3 flex min-h-0 flex-1 flex-col overflow-hidden">{list}</div>

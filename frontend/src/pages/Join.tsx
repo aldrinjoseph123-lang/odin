@@ -5,7 +5,8 @@ import { AuthHeading, AuthLayout } from "@/components/Brand"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ApiError, joinInfo, joinSubmit, type JoinInfo } from "@/lib/api"
+import { ApiError, joinInfo, joinSubmit, session, type JoinInfo } from "@/lib/api"
+import { MIN_PASSWORD, passwordRule } from "@/lib/password"
 import { fmtDate } from "@/lib/format"
 
 // A sign-up link from an admin: the new colleague gives their details and a
@@ -19,8 +20,10 @@ export default function Join() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
+  const [minLength, setMinLength] = useState(MIN_PASSWORD)   // the admin's password policy, once the session answers
   useEffect(() => {
     document.title = "Join Odin"
+    session().then((s) => { if (s.signin?.password_min_length) setMinLength(s.signin.password_min_length) }).catch(() => {})
     joinInfo(token).then(setInfo).catch((e) => setBad(e instanceof ApiError ? e.message : "This sign-up link could not be opened"))
   }, [token])
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
@@ -44,7 +47,7 @@ export default function Join() {
   if (done) return (
     <AuthLayout>
       <AuthHeading title="Request sent"><span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-ok" aria-hidden /> An admin will review it.</span></AuthHeading>
-      <p className="text-[14px] text-muted-foreground">Once approved, sign in with <b className="text-foreground">{f.username}</b> and the password you chose{info.project ? `; you will already be on ${info.project}` : ""}.</p>
+      <p className="text-[14px] text-muted-foreground">Once approved, sign in with <b className="text-foreground">{f.username}</b> and the password you chose{info.project ? `; you will already be on ${info.project}` : ""}. Odin emails <b className="text-foreground">{f.email}</b> when that happens; until then sign-in will not work.</p>
       <a href="/login" className="mt-6 inline-block text-[14px] text-primary-text hover:underline">Go to sign-in</a>
     </AuthLayout>
   )
@@ -54,16 +57,16 @@ export default function Join() {
       <AuthHeading title={`Join ${info.company} on Odin`}>
         You are invited as <b className="text-foreground">{info.role}</b>{info.project ? <> on <b className="text-foreground">{info.project}</b> ({info.project_role})</> : null}. The link works until {fmtDate(info.expires_at)}.
       </AuthHeading>
-      <form onSubmit={submit} className="grid grid-cols-1 gap-4" noValidate>
+      <form onSubmit={submit} className="grid grid-cols-1 gap-4">
         <label className={label}>Full name<Input required autoComplete="name" value={f.name} onChange={set("name")} className="h-10" /></label>
         <label className={label}>Work email<Input required type="email" autoComplete="email" value={f.email} onChange={set("email")} className="h-10"
           placeholder={info.domains.length ? `you@${info.domains[0]}` : "you@company.com"} /></label>
         <label className={label}>Username<Input required autoComplete="username" value={f.username} onChange={set("username")} className="h-10" placeholder="e.g. omar.haddad" /></label>
         <div className="grid grid-cols-2 gap-3">
-          <label className={label}>Password<Input required type="password" autoComplete="new-password" value={f.password} onChange={set("password")} className="h-10" /></label>
+          <label className={label}>Password<Input required type="password" autoComplete="new-password" minLength={minLength} value={f.password} onChange={set("password")} className="h-10" /></label>
           <label className={label}>Again<Input required type="password" autoComplete="new-password" value={f.confirm} onChange={set("confirm")} className="h-10" /></label>
         </div>
-        <p className="-mt-2 text-[12px] text-muted-foreground">At least 12 characters, mixing letters with numbers or symbols.</p>
+        <p className="-mt-2 text-[12px] text-muted-foreground">{passwordRule(minLength)}</p>
         {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
         <Button type="submit" className="h-11 text-sm" loading={busy}>Ask to join</Button>
       </form>

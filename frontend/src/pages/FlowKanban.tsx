@@ -74,7 +74,9 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
           </PopoverContent>
         </Popover>
       </div>
+      {/* the cards' description says what the handle really does (dnd-kit's default spoke of Space and arrow keys: P3-47) */}
       <Kanban value={value} onValueChange={preview} onValueCommit={commit} getItemValue={(r: FlowRow) => String(r.id)} restoreOnCancel
+        accessibility={{ screenReaderInstructions: { draggable: "To move this rollout to its next stage, press Enter on its handle, then confirm." } }}
         onDragStart={(e) => setActive(byId.get(Number(e.active.id)) ?? null)}
         onDragCancel={() => { lastDrag = Date.now(); setActive(null); setValue(base) }}
         onDragEnd={(e) => {
@@ -90,7 +92,7 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
           const why = dropRefusal(r, at)
           if (why) toast(why, { tone: "bad" }); else onMove(r)
         }}>
-        <KanbanBoard className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-5 pb-4" aria-label="Rollouts by stage">
+        <KanbanBoard role="group" className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-5 pb-4" aria-label="Rollouts by stage">
           {shown.map((c) => {
             const items = value[c] ?? []
             const target = active ? (c === active.next_stage && !dropRefusal(active, c)) : false
@@ -114,7 +116,7 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
                 <div className="flex items-center gap-2 px-3 py-2">
                   <CircleDashed className={cn("h-3.5 w-3.5", trouble ? "text-warn" : "text-muted-foreground")} aria-hidden />
                   <h2 className="min-w-0 truncate text-[13px] font-semibold" title={c}>{c}</h2>
-                  <span className="rounded-md bg-card px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">{items.length}</span>
+                  <span className="rounded-md bg-card px-2 py-1 text-[11px] leading-none tabular-nums text-muted-foreground">{items.length}<span className="sr-only"> rollouts</span></span>
                   {target && <span className="text-[11px] font-medium text-primary-text">Drop to move here</span>}
                   <button type="button" onClick={() => toggle(folded, setFolded, c)} aria-label={`Fold the ${c} column`} className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-card hover:text-foreground"><ChevronLeft className="h-3.5 w-3.5" /></button>
                   <DropdownMenu>
@@ -153,17 +155,18 @@ function Card({ r, selected, onSelect, onMove, lifted }: { r: FlowRow; selected:
           // (the drag library's keyboard mode steps between cards, not columns)
           <KanbanItemHandle render={<button type="button" aria-label={`Move ${r.name} to ${r.next_stage}`} title={`Drag to ${r.next_stage}, or click`}
             onClick={() => { if (Date.now() - lastDrag > 500) onMove(r) }} onKeyDownCapture={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onMove(r) } }} />}
-            className="-ml-1 mt-0.5 rounded-md p-0.5 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
+            className="-mb-1 -ml-1 rounded-md p-1 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
             <GripVertical className="h-3.5 w-3.5" aria-hidden />
           </KanbanItemHandle>
         ) : <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", r.state === "on_track" ? "bg-transparent" : STATE[r.state].dot)} aria-hidden />}
-        <button type="button" onClick={() => onSelect(r.id)} data-card={r.id} className="min-w-0 flex-1 text-left font-medium outline-none hover:underline focus-visible:underline" title={`${r.name} · ${r.client}`}>
+        {/* a ring for the keyboard, not only an underline; no title: the client is on the card (P3-49) */}
+        <button type="button" onClick={() => onSelect(r.id)} data-card={r.id} className="min-w-0 flex-1 rounded-sm text-left font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring">
           <span className="line-clamp-2">{r.name}</span>
         </button>
       </div>
-      <ul className="mt-2 grid gap-1.5 text-[12px] text-muted-foreground">
+      <ul className="mt-2 grid gap-1 text-[12px] text-muted-foreground">
         <li className="flex items-center gap-2"><UserRound className="h-3.5 w-3.5 shrink-0" aria-hidden /><span className="sr-only">Owner: </span>
-          <UserAvatar name={r.owner_name} url={r.team[0]?.avatar_url} className="h-5 w-5" textClass="text-[9px]" /><span className="truncate text-foreground">{r.owner_name}</span></li>
+          <UserAvatar name={r.owner_name} url={r.team[0]?.avatar_url} className="h-5 w-5" textClass="text-[11px]" /><span className="truncate text-foreground">{r.owner_name}</span></li>
         <li className="flex items-center gap-2"><CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden /><span className="truncate">{r.client}{r.target_end_date && ` · target ${fmtDate(r.target_end_date)}`}</span></li>
         {r.next_task && <li className="flex items-center gap-2"><ListChecks className="h-3.5 w-3.5 shrink-0" aria-hidden /><span className="truncate">{r.next_task.title}</span></li>}
         {/* the move waits for the sign-off (as the rail says): the way there instead of a grip */}
@@ -172,11 +175,13 @@ function Card({ r, selected, onSelect, onMove, lifted }: { r: FlowRow; selected:
       </ul>
       {r.state !== "on_track" && <StateChip state={r.state} text={stateText(r)} className="mt-2 inline-block" />}
       <div className="mt-2 flex items-center gap-3 border-t border-border pt-2 text-[11px] text-muted-foreground">
-        <span className="flex items-center gap-1" title={`${r.open_tasks} open of ${r.total_tasks} tasks`}><ListChecks className="h-3 w-3" aria-hidden />{r.open_tasks}/{r.total_tasks}</span>
+        {/* the short forms in words for the screen reader (P3-47) */}
+        <span className="flex items-center gap-1" title={`${r.open_tasks} open of ${r.total_tasks} tasks`}><ListChecks className="h-3 w-3" aria-hidden /><span aria-hidden>{r.open_tasks}/{r.total_tasks}</span><span className="sr-only">{r.open_tasks} of {r.total_tasks} tasks open</span></span>
         {late && <span className="font-medium text-bad">{r.late_tasks} late</span>}
         {r.approval === "pending" && <span className="font-medium text-warn">Awaiting approval</span>}
         <TeamStack people={r.team} className="ml-auto flex" avatarClass="h-5 w-5" />
-        <span className="flex items-center gap-1 tabular-nums" title="Days in this stage"><Clock className="h-3 w-3" aria-hidden />{r.days_in_stage == null ? "—" : `${Math.round(r.days_in_stage)}d`}</span>
+        <span className="flex items-center gap-1 tabular-nums" title="Days in this stage"><Clock className="h-3 w-3" aria-hidden /><span aria-hidden>{r.days_in_stage == null ? "—" : `${Math.round(r.days_in_stage)}d`}</span>
+          <span className="sr-only">{r.days_in_stage == null ? "No days counted" : `${Math.round(r.days_in_stage)} days`} in this stage</span></span>
       </div>
     </KanbanItem>
   )

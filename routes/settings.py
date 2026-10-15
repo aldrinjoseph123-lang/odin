@@ -17,13 +17,23 @@ from services.audit import audit_log
 from spa import spa_index
 
 
+def _restore_or_refuse(table, item_id):
+    """Undo a delete, or refuse: 404 when there is no such deleted entry, 409
+    when its undo window has passed. Never "restored" and an audit row for
+    nothing (P3-19)."""
+    if not get_db().execute(f"SELECT 1 FROM {table} WHERE id = ? AND deleted_at IS NOT NULL", (item_id,)).fetchone():
+        abort(404)
+    if not restore_deleted(table, item_id):
+        abort(409, description="Too late to undo — the undo window has passed")
+
+
 @app.route("/undo/contact/<list_key>/<int:item_id>", methods=["POST"])
 @permission_required("manage_contacts")
 def undo_contact(list_key, item_id):
     if list_key not in CONTACT_LISTS:
         abort(404)
     meta = CONTACT_LISTS[list_key]
-    restore_deleted(meta['table'], item_id)
+    _restore_or_refuse(meta["table"], item_id)
     flash(f"{meta['label']} entry restored")
     audit_log("restore_contact", list_key, item_id)
     return redirect(url_for("settings_contacts"))
@@ -48,7 +58,7 @@ def undo_partner(partner_id):
 @app.route("/undo/partner-manager/<int:manager_id>", methods=["POST"])
 @permission_required("manage_contacts")
 def undo_partner_manager(manager_id):
-    restore_deleted("partner_account_managers", manager_id)
+    _restore_or_refuse("partner_account_managers", manager_id)
     flash("Account manager restored")
     audit_log("restore_partner_manager", "partner_manager", manager_id)
     return redirect(url_for("settings_contacts"))
@@ -507,7 +517,11 @@ def settings_contacts_add(list_key):
 
 def _name_taken(db, table, name, exclude_id=None):
     """Another live entry with the same name, ignoring case ("SimVendor" and
-    "simvendor" are one vendor, sim roles-11)."""
+    "simvendor" are one vendor, sim roles-11). A deleted entry waiting out its
+    undo window gives the name up (the column is UNIQUE): it is renamed out of
+    the way, so it can still be undone, and the new one takes the name (P2-18).
+    The caller commits."""
+    db.execute(f"UPDATE {table} SET name = name || ' (deleted ' || id || ')' WHERE lower(name) = lower(?) AND deleted_at IS NOT NULL", (name,))
     return db.execute(f"SELECT 1 FROM {table} WHERE lower(name) = lower(?) AND deleted_at IS NULL AND id IS NOT ?",
                       (name, exclude_id)).fetchone() is not None
 

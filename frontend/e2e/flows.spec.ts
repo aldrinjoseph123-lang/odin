@@ -53,6 +53,7 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   await page.getByRole("button", { name: "Remove Cycle time" }).click()
   await page.getByRole("button", { name: "Dashboard layout" }).click()
   await page.getByRole("button", { name: /Save as workspace default/ }).click()
+  await page.locator("[data-confirm-yes]").click()   // it changes what everyone sees: asked first
   await expect(page.getByText(/Saved as the workspace default/).first()).toBeVisible()   // a toast
   await signIn(page, "member", "/dashboard")
   await expect(page.locator("main section[aria-label='Timeline']")).toBeVisible()
@@ -66,6 +67,7 @@ test("@flow dashboard: each widget's menu saves at once, rows stay full, reset, 
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "Dashboard layout" }).click()
   await page.getByRole("button", { name: /Save as workspace default/ }).click()
+  await page.locator("[data-confirm-yes]").click()   // it changes what everyone sees: asked first
   await expect(page.getByText(/Saved as the workspace default/).first()).toBeVisible()   // a toast
   expectClean(errors)
 })
@@ -736,26 +738,30 @@ test("@flow calendar week: a task dragged to another day, and back with Undo", a
   await page.getByRole("radio", { name: "Week" }).click()
   await expect(page).toHaveURL(/cal=week/)
   await expect(page.locator("h2")).toHaveText(/–/)
-  const days = page.locator(".grid.min-h-80 > div")
-  // a task this admin may move, and a day it is not on
-  let chip = page.locator(".grid.min-h-80 button[title*='drag to another day']").first()
+  // a task this admin may move, within six weeks (P3-50: it said nothing and crashed on null when there was none)
+  let chip = page.locator("[data-drop-day] button[data-task]").first()
   for (let i = 0; i < 6 && !(await chip.count()); i++) {
     await page.getByRole("button", { name: "Next week" }).click()
-    chip = page.locator(".grid.min-h-80 button[title*='drag to another day']").first()
+    chip = page.locator("[data-drop-day] button[data-task]").first()
   }
-  const from = await chip.boundingBox()
-  // the day the chip sits in, by where its middle falls; the target is a day at the other end of the week
-  const boxes = await Promise.all([0, 1, 2, 3, 4, 5, 6].map((i) => days.nth(i).boundingBox()))
-  const mid = from!.x + from!.width / 2
-  const fromCol = boxes.findIndex((b) => b && mid >= b.x && mid < b.x + b.width)
-  const to = boxes[fromCol >= 3 ? 0 : 6]!
-  await page.mouse.move(from!.x + 8, from!.y + 8)
+  expect(await chip.count(), "a movable task in the next six weeks").toBeGreaterThan(0)
+  const id = (await chip.getAttribute("data-task"))!
+  const fromDay = (await chip.locator("xpath=ancestor::*[@data-drop-day][1]").getAttribute("data-drop-day"))!
+  const days = await page.locator("[data-drop-day]").evaluateAll((els) => els.map((e) => e.getAttribute("data-drop-day")!))
+  const toDay = days[days.indexOf(fromDay) >= 3 ? 0 : 6]
+  const from = (await chip.boundingBox())!
+  const to = (await page.locator(`[data-drop-day="${toDay}"]`).boundingBox())!
+  await page.mouse.move(from.x + 8, from.y + 8)
   await page.mouse.down()
-  await page.mouse.move(from!.x + 30, from!.y + 30, { steps: 4 }); await page.waitForTimeout(150)
+  await page.mouse.move(from.x + 30, from.y + 30, { steps: 4 }); await page.waitForTimeout(150)
   await page.mouse.move(to.x + to.width / 2, to.y + 60, { steps: 12 }); await page.waitForTimeout(150)
   await page.mouse.up()
-  await expect(page.getByText(/: due /)).toBeVisible()
+  await expect(page.getByText(/: due /).first()).toBeVisible()
+  await expect(page.locator(`[data-drop-day="${toDay}"] button[data-task="${id}"]`)).toBeVisible()   // it moved
   await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.getByText(/ again$/)).toBeVisible()
+  await expect(page.locator(`[data-drop-day="${fromDay}"] button[data-task="${id}"]`)).toBeVisible()   // and Undo put it back
+  await expect(page.locator(`[data-drop-day="${toDay}"] button[data-task="${id}"]`)).toHaveCount(0)
   expectClean(errors)
 })
 
@@ -812,12 +818,12 @@ test("@flow calendar keyboard: Enter on a task opens its rollout; Move changes i
   await signIn(page, "admin", "/board?view=calendar&cal=agenda")
   await expect(page.getByRole("button", { name: "Next month" })).toBeVisible()
   // a task this admin may move (its chip has a Move button beside it)
-  let chip = page.locator("main button[title*='or use Move']").first()
+  let chip = page.locator("main button[data-task]").first()
   for (let i = 0; i < 6 && !(await chip.count()); i++) {
     const before = await page.getByRole("heading", { level: 2 }).first().textContent()
     await page.getByRole("button", { name: "Next month" }).click()
     await expect(page.getByRole("heading", { level: 2 }).first()).not.toHaveText(before ?? "")
-    chip = page.locator("main button[title*='or use Move']").first()
+    chip = page.locator("main button[data-task]").first()
   }
   const label = (await chip.locator("xpath=following-sibling::button[1]").getAttribute("aria-label"))!   // "Move <task> to another day"
   await chip.focus()
@@ -853,4 +859,23 @@ test("@flow a view's chunk gone after a release: one reload; still gone, the err
   await page.getByRole("link", { name: "Flow", exact: true }).first().click()   // ?view= goes: the boundary clears
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Active rollouts")
   expectClean(errors.filter((e) => !/FlowKanban|Odin page error|dynamically imported module|Failed to load resource.*ERR_FAILED/.test(e)))
+})
+
+test("@flow account feedback: Save wakes on a change, Upload with no file says so, Remove picture and the error toast", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "member", "/account")
+  const tell = page.locator("form", { hasText: "Tell me about" })
+  await expect(tell.getByRole("button", { name: "Save" })).toBeDisabled()
+  await tell.getByRole("switch").first().click()
+  await expect(tell.getByRole("button", { name: "Save" })).toBeEnabled()
+  await tell.getByRole("switch").first().click()
+  await expect(tell.getByRole("button", { name: "Save" })).toBeDisabled()
+  await page.getByRole("button", { name: "Upload" }).click()
+  await expect(page.getByRole("alert").filter({ hasText: "Choose a picture first" })).toBeVisible()
+  // a wrong current password is refused beside the form, and stays until it is fixed
+  await page.getByLabel("Current password").fill("not-the-password-1")
+  await page.getByLabel("New password").fill("Another-Long-Phrase-77")
+  await page.getByRole("button", { name: "Update password" }).click()
+  await expect(page.locator("form", { hasText: "Change password" }).getByRole("alert")).toBeVisible()
+  expectClean(errors.filter((e) => !/^400 \S*\/account$|status of 400/.test(e)))   // the refusal is the point
 })

@@ -12,7 +12,7 @@ import sys
 
 from app import app  # only for the Flask app context that get_db() needs
 from db import PROJECT_OPEN_SQL, get_db, get_setting
-from services.alerts import build_alerts
+from services.alerts import build_alerts, project_states
 
 import graph
 
@@ -82,6 +82,10 @@ def main():
             f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}"
         ).fetchall()
         alerts = build_alerts(projects)
+        # each rollout once in the schedule lines, in its worst state, as the Flow counts it (P3-28)
+        state = project_states(projects, alerts)
+        for key, s in (("project_overdue", "overdue"), ("stage_sla_breach", "over_sla"), ("project_due_soon", "due_soon")):
+            alerts[key] = [p for p in alerts[key] if state[p["id"]] == s]
         html = _format_alerts_html(alerts)
 
         if html is None:

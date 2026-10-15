@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS signoffs (
     waiver_reason TEXT, waived_by TEXT,
     link_issued_by TEXT, link_issued_at TEXT,
     completed_at TEXT,
+    superseded_at TEXT,   -- the rollout was reopened after this completed: kept as signed, no longer closes it
     UNIQUE (project_id, version)
 );
 

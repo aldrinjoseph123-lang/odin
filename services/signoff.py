@@ -49,17 +49,20 @@ def scope(project_id):
 
 
 def clean_scope(body, existing=None):
-    """Validated fields from a posted body, or raise ValueError."""
-    title = str(body.get("title", existing["title"] if existing else "") or "").strip()[:300]
+    """Validated fields from a posted body, or raise ValueError. Text is text:
+    a list is refused, never stored as its Python spelling and then frozen
+    into a signed document; too long is said, never cut (P2-27)."""
+    from core import text_field
+    title = text_field(body.get("title", existing["title"] if existing else ""), 300, "Title")
     if not title:
         raise ValueError("Give the scope item a title")
     status = body.get("status", existing["status"] if existing else "agreed")
     if status not in SCOPE_STATUSES:
         raise ValueError("Status is agreed, delivered, partial or descoped")
-    note = str(body.get("note", existing["note"] if existing else "") or "").strip()[:1000] or None
+    note = text_field(body.get("note", existing["note"] if existing else ""), 1000, "Note", multiline=True) or None
     if status in ("partial", "descoped") and not note:
         raise ValueError("Say what was left out, and why" if status == "partial" else "Say why it was descoped")
-    detail = str(body.get("detail", existing["detail"] if existing else "") or "").strip()[:2000] or None
+    detail = text_field(body.get("detail", existing["detail"] if existing else ""), 2000, "Detail", multiline=True) or None
     return {"title": title, "detail": detail, "status": status, "note": note}
 
 
@@ -128,8 +131,10 @@ def latest(project_id):
 
 
 def completed(project_id):
-    return get_db().execute(f"SELECT * FROM signoffs WHERE project_id = ? AND status IN ({','.join('?' * len(DONE))}) ORDER BY version DESC LIMIT 1",
-                            (project_id, *DONE)).fetchone()
+    """The version that signs the rollout off, or None. One set aside when the
+    rollout was reopened (superseded_at, P3-24) is kept as signed but closes nothing."""
+    return get_db().execute(f"SELECT * FROM signoffs WHERE project_id = ? AND status IN ({','.join('?' * len(DONE))}) AND superseded_at IS NULL "
+                            "ORDER BY version DESC LIMIT 1", (project_id, *DONE)).fetchone()
 
 
 GATE_MESSAGE = "The rollout closes once the sign-off is signed by the customer and countersigned. Send it from the Sign-off page, or ask an admin to waive it."
@@ -223,11 +228,16 @@ def draft(project, template_id=None):
 
 
 def _lines(value, label, limit=40, width=500):
-    """The non-empty lines of a list or text; more than `limit` is refused,
-    never cut silently (D6): a signed document must say everything it was sent with."""
+    """The non-empty lines of a list or text; more than `limit`, or a line
+    longer than `width`, is refused, never cut silently (D6, P2-27): a signed
+    document must say everything it was sent with."""
     if isinstance(value, str):
         value = value.splitlines()
-    out = [str(x).strip()[:width] for x in (value or []) if str(x).strip()]
+    if not isinstance(value or [], list) or any(not isinstance(x, str) for x in value or []):
+        raise ValueError(f"{label}: send lines of text")
+    out = [x.strip() for x in (value or []) if x.strip()]
+    if any(len(x) > width for x in out):
+        raise ValueError(f"{label}: at most {width} characters a line")
     if len(out) > limit:
         raise ValueError(f"At most {limit} lines under {label} (this has {len(out)}); group them or attach the full list as a document")
     return out
@@ -265,14 +275,15 @@ def send(project, body, author, commit=True):
     items = scope(pid)
     if any(x["status"] == "agreed" for x in items):
         raise ValueError("Mark every scope item delivered, partial or descoped first")
-    summary = str(body.get("summary") or "").strip()[:4000]
+    from core import as_id, text_field
+    summary = text_field(body.get("summary"), 4000, "Summary", multiline=True)
     if not summary:
         raise ValueError("Write the summary")
     delivered = _lines(body.get("delivered"), "Delivered")
     if not items and not delivered:
         raise ValueError("List what was delivered, or record the scope")
     from services.doc_templates import fill, resolve
-    tpl = resolve("signoff", body.get("template_id"))
+    tpl = resolve("signoff", as_id(body.get("template_id")))
     values = _values(project)
     content = {
         "template": tpl, "intro": fill(tpl["texts"].get("intro"), values).strip(), "closing": fill(tpl["texts"].get("closing"), values).strip(),
@@ -309,7 +320,8 @@ def clean_signature(body):
     if not isinstance(sig, dict):
         raise ValueError("Sign by drawing or typing your name")
     if sig.get("kind") == "typed":
-        text = str(sig.get("text") or "").strip()[:80]
+        from core import text_field
+        text = text_field(sig.get("text"), 80, "Signature")
         if not text:
             raise ValueError("Type your signature")
         return json.dumps({"kind": "typed", "text": text})
@@ -333,8 +345,8 @@ def clean_signature(body):
 
 
 def _who(body):
-    name = str(body.get("name") or "").strip()[:120]
-    title = str(body.get("title") or "").strip()[:120]
+    from core import text_field
+    name, title = text_field(body.get("name"), 120, "Name"), text_field(body.get("title"), 120, "Title")
     if not name:
         raise ValueError("Your full name")
     if not body.get("accept"):
@@ -383,7 +395,8 @@ def reject(project, row, comment, author):
     """The customer says no: the version is closed and the reason becomes an open issue everyone can see."""
     if row["status"] != "sent":
         raise ValueError("This version is not waiting for a signature")
-    comment = str(comment or "").strip()[:2000]
+    from core import text_field
+    comment = text_field(comment, 2000, "Comment", multiline=True)
     if not comment:
         raise ValueError("Say what needs to change before you can sign")
     now = _now()
@@ -426,7 +439,8 @@ def record_upload(row, document_id, name, title, signed_on):
 
 def waive(project, reason, author):
     """An admin closes the gate without signatures; the reason is kept on a version of its own."""
-    reason = str(reason or "").strip()[:1000]
+    from core import text_field
+    reason = text_field(reason, 1000, "Reason", multiline=True)
     if len(reason) < 10:
         raise ValueError("Give the reason in a sentence")
     if completed(project["id"]):
@@ -456,7 +470,7 @@ def view(row, staff, partner_cut=False):
     signatures (core.sees_po: the PO is ours and the customer's; review P1-1)."""
     d = {k: row[k] for k in ("version", "status", "content_hash", "created_by", "created_at", "signer_name", "signer_title", "signer_email", "signed_at",
                              "counter_name", "counter_title", "counter_signed_at", "reject_comment", "rejected_at", "document_id", "waiver_reason",
-                             "waived_by", "completed_at", "signer_id", "counter_id", "link_issued_by", "link_issued_at")}
+                             "waived_by", "completed_at", "signer_id", "counter_id", "link_issued_by", "link_issued_at", "superseded_at")}
     d["content"] = json.loads(row["content"])
     d["signature"] = json.loads(row["signature"]) if row["signature"] else None
     d["counter_signature"] = json.loads(row["counter_signature"]) if row["counter_signature"] else None

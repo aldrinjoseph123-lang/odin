@@ -15,11 +15,14 @@ import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type FormReply, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
 import { Ago } from "@/components/Ago"
 import { fmtDate } from "@/lib/format"
+import { copyText } from "@/lib/copy"
+import { Notice } from "@/components/Notice"
 import { cn } from "@/lib/utils"
 import { isDark } from "@/lib/theme"
 import { DocTemplates } from "@/components/DocTemplates"
 import { AISettings } from "@/components/AISettings"
 import { SlaCheck } from "@/components/SlaCheck"
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<FormReply | null>
@@ -50,8 +53,9 @@ export default function Settings(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [teamId, setTeamId] = useState("")
-  const load = useCallback(async (team = teamId) => {
-    try { setData(await settingsData(section, team)); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load settings") }
+  // a new team re-runs this through its dependency: once, not twice (review P3-35)
+  const load = useCallback(async () => {
+    try { setData(await settingsData(section, teamId)); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load settings") }
   }, [teamId, section])
   useEffect(() => { if (TITLES[section]) { document.title = `${TITLES[section].title} · Settings · Odin`; void load() } }, [load, section])
 
@@ -97,7 +101,7 @@ export default function Settings(_props: { user: User }) {
           <>
             <Sso key={JSON.stringify(data.sso)} sso={data.sso} busy={busy} send={send} />
             {policyForm("security")}
-            <Toggles data={data} busy={busy} send={send} title="Outside access" keys={[
+            <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="Outside access" keys={[
               { key: "guest_links_enabled", label: "Keep the legacy anonymous guest links working (turn off once invited partner and customer accounts have replaced them; every old link then stops)" },
             ]} />
           </>
@@ -132,34 +136,35 @@ export default function Settings(_props: { user: User }) {
         )}
         {section === "notifications" && policyForm("notifications")}
         {section === "notifications" && (
-          <div><Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/notifications/test-webhook")}>Send a test to the Teams webhook</Button></div>
+          <div><TestButton path="/settings/notifications/test-webhook" label="Send a test to the Teams webhook" busy={busy} /></div>
         )}
         {section === "notifications" && (
-          <Toggles data={data} busy={busy} send={send} title="Channels" keys={[
+          <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="Channels" keys={[
             { key: "notify_email_enabled", label: "Email notifications on rollout events (stage changes, approvals, assignments, mentions, due tasks)" },
             { key: "notify_teams_chat_enabled", label: "Teams messages to each person: every notification also as a card from the Odin PMS app (staff only; set it up under Integrations)" },
             { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
           ]} extra={<>
             {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings › Integrations), so email and Teams messages cannot be delivered. The bell and the Teams webhook still work.</p>}
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-email")}>Send test email</Button>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send test Teams message</Button>
+            <TestButton path="/settings/integrations/test-email" label="Send test email" busy={busy} />
+            <TestButton path="/settings/integrations/test-teams" label="Send test Teams message" busy={busy} />
           </>} />
         )}
         {section === "integrations" && (
           <>
-            <Microsoft key={`${data.m365.azure_app.client_id ?? ""}|${data.m365.azure_app.tenant_id ?? ""}|${data.m365.oauth_client_configured}`} data={data} busy={busy} send={send} teamId={teamId} onTeam={(id) => { setTeamId(id); void load(id) }} />
+            <Microsoft key={`${data.m365.azure_app.client_id ?? ""}|${data.m365.azure_app.tenant_id ?? ""}|${data.m365.oauth_client_configured}`} data={data} busy={busy} send={send} teamId={teamId} onTeam={setTeamId} />
             <Panel title="Odin PMS in Teams" hint="each notification as a card in the person's own chat with Odin">
               <ol className="grid max-w-prose list-decimal gap-1 pl-5 text-[13px]">
                 <li>In the Azure portal, create an <b>Azure Bot</b> (single tenant) that uses this app registration, set its messaging endpoint to <code className="font-mono text-[12px]">{"{public address}"}/api/teams/messages</code> and turn on its Microsoft Teams channel.</li>
                 <li>Download the app package below and upload it in the Teams admin centre (Manage apps › Upload new app).</li>
                 <li>Install it for everyone with a setup policy (Teams apps › Setup policies › Installed apps), then switch on <b>Teams messages to each person</b> under Settings › Notifications.</li>
+                <li>Connected Microsoft 365 before 13 Oct 2026? Disconnect and Connect again above, so Odin may look people up (User.ReadBasic.All).</li>
               </ol>
               <div className="mt-3 flex flex-wrap gap-2">
                 <a href="/settings/teams-app.zip" className={buttonVariants({ size: "sm", variant: "outline" })}>Download the Odin PMS app package</a>
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send me a test in Teams</Button>
+                <TestButton path="/settings/integrations/test-teams" label="Send me a test in Teams" busy={busy} />
               </div>
             </Panel>
-            <Toggles data={data} busy={busy} send={send} title="OneDrive" keys={[
+            <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="OneDrive" keys={[
               { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
             ]} />
           </>
@@ -174,7 +179,7 @@ export default function Settings(_props: { user: User }) {
           <>
             {!data.public_url_set && <p className="rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn">Set the public web address under General, so the links in scheduled mail point at Odin and not at the server's own name.</p>}
             {policyForm("reports")}
-            <div><Button size="sm" variant="outline" disabled={busy} onClick={() => send("/settings/reports/send-test")}>Send this week's report to me now</Button></div>
+            <div><TestButton path="/settings/reports/send-test" label="Send this week's report to me now" busy={busy} variant="outline" /></div>
           </>
         )}
         {section === "api" && <ApiTokens tokens={data.api_tokens} busy={busy} send={send} />}
@@ -235,6 +240,7 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
 }) {
   const [v, setV] = useState<Record<string, Policy["value"]>>(() => Object.fromEntries(policies.map((p) => [p.key, p.value])))
   const dirty = policies.some((p) => JSON.stringify(p.value) !== JSON.stringify(v[p.key]))
+  useUnsavedGuard(dirty)   // the settings menu is a link: leaving the section asks (review P2-30)
   function submit(e: FormEvent) {
     e.preventDefault()
     const fields: Record<string, string> = {}
@@ -346,7 +352,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
           <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
             <input id="new-api-token" readOnly value={made} aria-label="New API token" onFocus={(e) => e.currentTarget.select()} className={cn(fieldAuto, "w-full font-mono text-[12px]")} />
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => document.getElementById("new-api-token")?.focus())}>{copied ? "Copied" : "Copy the token"}</Button>
+              <Button size="sm" variant="outline" onClick={() => void copyText(made).then((ok) => { setCopied(ok); if (!ok) document.getElementById("new-api-token")?.focus() })}>{copied ? "Copied" : "Copy the token"}</Button>
               <Button size="sm" variant="ghost" onClick={() => setMade(null)}>I have saved it</Button>
               <span className="text-[12px] text-muted-foreground">Shown once: Odin keeps only a fingerprint of it.</span>
             </div>
@@ -394,7 +400,7 @@ function Scheduler({ view, busy, send }: { view: BackupsView; busy: boolean; sen
           </p>}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button size="sm" variant="outline" disabled={busy} onClick={() => send("/settings/integrations/backup-now")}>Back up now</Button>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/backups/test-share")}>Test the network share</Button>
+        <TestButton path="/settings/backups/test-share" label="Test the network share" busy={busy} />
       </div>
     </Panel>
   )
@@ -432,6 +438,7 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
   const [f, setF] = useState({ client_id: sso.client_id ?? "", tenant_id: sso.tenant_id ?? "", client_secret: "" })
   const [enforced, setEnforced] = useState(sso.enforced)
   const ssoDirty = f.client_id !== (sso.client_id ?? "") || f.tenant_id !== (sso.tenant_id ?? "") || f.client_secret !== "" || enforced !== sso.enforced
+  useUnsavedGuard(ssoDirty)
   const status = !sso.configured ? "Not set up: staff sign in with a password." : sso.enforced ? "Required: staff sign in with Microsoft only." : "Set up: staff can use Microsoft or a password."
   return (
     <Panel title="Microsoft sign-in" hint="staff; partners keep their email link">
@@ -466,9 +473,10 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
 // once, so each area posts its own boxes plus everyone else's saved values.
 type ToggleKey = keyof SettingsData["toggles"]
 function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData; busy: boolean; send: Send; title: string; keys: { key: ToggleKey; label: string }[]; extra?: ReactNode }) {
+  // keyed on the saved values by the caller: a reload after another button (Send test email) keeps an unsaved switch (review P2-30)
   const [t, setT] = useState(data.toggles)
-  useEffect(() => { setT(data.toggles) }, [data.toggles])
   const dirty = keys.some((k) => t[k.key] !== data.toggles[k.key])
+  useUnsavedGuard(dirty)
   function submit(e: FormEvent) {
     e.preventDefault()
     void send("/settings/integrations", Object.fromEntries((Object.keys(t) as ToggleKey[]).filter((k) => t[k]).map((k) => [k, "on"])))
@@ -539,7 +547,7 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
   }
   const set = (key: string, patch: Partial<SettingsData["alerts"][number]>) => setRows(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
   return (
-    <Panel title="Alert types" hint="In-app is the master switch; email and Teams also need their toggle under Integrations">
+    <Panel title="Alert types" hint="In-app is the master switch; email and Teams (the channel post) also need their toggle under Settings › Notifications. Teams messages to each person follow the in-app column">
       <form onSubmit={submit}>
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
           <thead><tr className="text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Threshold (days)", "Severity", "Email", "Teams", "In-app"].map((h) => <th key={h} className="pb-2 pr-2 font-normal">{h}</th>)}</tr></thead>
@@ -614,8 +622,29 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
               </>
             )}
           </div>
+          {/* the connection can be tried where it is made (review P3-40) */}
+          <div><TestButton path="/settings/integrations/test-email" label="Send me a test email" busy={busy} variant="outline" /></div>
         </div>
       )}
     </Panel>
+  )
+}
+
+// A test sends something and says what happened right beside its button: the
+// result has to be read (a refusal names the cause), so it stays here and not
+// in a toast that leaves (review P2-36).
+function TestButton({ path, label, busy, variant = "ghost" }: { path: string; label: string; busy: boolean; variant?: "ghost" | "outline" }) {
+  const [result, setResult] = useState<{ text: string; bad?: boolean } | null>(null)
+  const [running, setRunning] = useState(false)
+  async function run() {
+    setRunning(true); setResult(null)
+    try { const r = await postForm(path); setResult({ text: r.messages.join(" ") || "Done" }) }
+    catch (e) { setResult({ text: e instanceof ApiError ? e.message : "The test did not run", bad: true }) } finally { setRunning(false) }
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <Button size="sm" variant={variant} disabled={busy} loading={running} onClick={() => void run()}>{label}</Button>
+      {result && <Notice bad={result.bad}>{result.text}</Notice>}
+    </span>
   )
 }

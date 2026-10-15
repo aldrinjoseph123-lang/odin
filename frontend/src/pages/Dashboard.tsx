@@ -1,4 +1,4 @@
-import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
+import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { Segmented } from "@/components/Segmented"
 import { chip, pill, danger, fieldAuto } from "@/lib/ui"
 import { Link } from "react-router-dom"
@@ -11,9 +11,11 @@ import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
 import { Ago } from "@/components/Ago"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
+import { useLoad } from "@/lib/useLoad"
 import { ApiError, dashboard, dashboardVersion, resetLayout, saveLayout, type Aggregate, type DashboardData, type DashKey, type DetailRow, type User, type WidgetInfo } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/toast"
+import { askConfirm } from "@/lib/confirm"
 import { STATE } from "@/lib/state"
 import { dayOf, deltaText, fmtDate, lateBy, monthName, monthTicks, shortDay, timelineDomain, weekday } from "@/lib/format"
 import { addDays } from "@/lib/plan"
@@ -695,8 +697,6 @@ function useColumns() {
 }
 
 export default function Dashboard({ user }: { user: User }) {
-  const [d, setD] = useState<DashboardData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [updatedAt, setUpdatedAt] = useState<string>(() => new Date().toISOString())
   // customising: every change saves at once (typing settles first), with an Undo
   const [dragging, setDragging] = useState<string | null>(null)
@@ -710,13 +710,14 @@ export default function Dashboard({ user }: { user: User }) {
   const saved = useRef<{ layout: DashboardData["layout"]; is_custom: boolean } | null>(null)   // the arrangement the server holds
   const pending = useRef(false)
 
-  const load = useCallback(async () => {
-    try {
-      const next = await dashboard()
-      setD(next); version.current = next.version; saved.current = { layout: next.layout, is_custom: next.is_custom }; setUpdatedAt(new Date().toISOString()); setError(null)
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load") }
-  }, [])
-  useEffect(() => { document.title = "Dashboard · Odin"; void load() }, [load])
+  // a failed refresh (the live poll, a restart) keeps the dashboard on screen (review P2-29)
+  const { data: d, error: failed, reload: load, setData: setD } = useLoad("dashboard", async () => {
+    const next = await dashboard()
+    version.current = next.version; saved.current = { layout: next.layout, is_custom: next.is_custom }; setUpdatedAt(new Date().toISOString())
+    return next
+  })
+  const error = failed?.message ?? null
+  useEffect(() => { document.title = "Dashboard · Odin" }, [])
   // live: ask for the version every few seconds and whenever the tab comes back; reload the data when it moved
   useEffect(() => {
     let stop = false
@@ -767,7 +768,9 @@ export default function Dashboard({ user }: { user: User }) {
     setBusy(true)
     try { const r = await fn(); after(r); toast(label) } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(false) }
   }
-  const saveDefault = () => run("Saved as the workspace default.", () => saveLayout(layout, "default"), () => {})
+  const saveDefault = async () => {
+    if (await askConfirm("Save this as the workspace default? Everyone without their own arrangement sees it from now on.", "Save as default")) void run("Saved as the workspace default.", () => saveLayout(layout, "default"), () => {})
+  }
   const reset = () => run("Back to the workspace default.", () => resetLayout(), (r) => setD({ ...d, layout: r.layout, is_custom: false }))
   const packed = pack(layout, cols)
   const expandedItem = expanded ? layout.find((x) => keyOf(x) === expanded) : null

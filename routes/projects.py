@@ -7,6 +7,7 @@ Imported for route registration side effects.
 """
 import io
 import os
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta
@@ -35,7 +36,7 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, as_id, json_body, like_any, parse_date, sees_po, login_required, permission_required, project_allows, project_role_required, role_has_permission, offer_undo, undo_note, project_scope
+from core import app, as_id, json_body, like_any, parse_date, sees_po, text_field, login_required, permission_required, project_allows, project_role_required, role_has_permission, offer_undo, undo_note, project_scope
 from security import content_matches_extension, upload_problem, valid_email, safe_csv_writer
 from policies import local_today, policy
 from spa import spa_index
@@ -197,6 +198,7 @@ def projects_export_csv():
                 p["product_name"], p["start_date"], p["target_end_date"], p["updated_at"],
             ]
         )
+    audit_log("export_projects", details=f"{len(projects)} rollouts")   # it carries PO numbers: an export like the others (P3-17)
     return Response(
         output.getvalue(),
         mimetype="text/csv",
@@ -422,11 +424,17 @@ def project_edit(project_id):
     return redirect(url_for("project_detail", project_id=project_id))
 
 
-def change_stage(project_id, new_stage, note_text, guest=None):
+class StageConflict(str):
+    """A refusal because the rollout is not where the caller saw it (the API answers 409)."""
+
+
+def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None):
     """The one stage-change path (form, JSON and the vendor's guest link).
     Returns an error message or None; 404s when the project is gone. Staff
     callers must hold edit_project_stage; `guest` is (author, party) for the
-    vendor link, which has no session and was checked by the guest route."""
+    vendor link, which has no session and was checked by the guest route.
+    `from_stage` is the stage the caller saw: a move from a stale view is
+    refused rather than taking the rollout backwards (P2-26)."""
     db = get_db()
     # Existence first, then validity: a missing project is a 404, not an
     # "invalid stage" — and its (empty) stage list must never be consulted.
@@ -440,8 +448,10 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     actor_id = None if guest else session["user_id"]
     if new_stage not in get_stage_names(project_id):
         return "Invalid stage"
+    if from_stage is not None and from_stage != project["stage"]:
+        return StageConflict(f"The rollout has moved on: it is in {project['stage']} now")
     if new_stage == project["stage"]:   # test report FN-8: it reset the SLA clock and re-notified everyone
-        return f"The rollout is already in {new_stage}"
+        return StageConflict(f"The rollout is already in {new_stage}")
     from services.signoff import gate
     if blocked := gate(project, new_stage):
         return blocked
@@ -454,8 +464,13 @@ def change_stage(project_id, new_stage, note_text, guest=None):
     ).rowcount
     if not moved:
         db.rollback()
-        return f"The rollout has just moved; it is no longer in {project['stage']}"
-    terminal = new_stage == get_stage_names(project_id)[-1]
+        return StageConflict(f"The rollout has just moved; it is no longer in {project['stage']}")
+    names = get_stage_names(project_id)
+    terminal = new_stage == names[-1]
+    if project["stage"] == names[-1]:
+        # reopened: the sign-off that closed it no longer speaks for the work to come (P3-24);
+        # it stays on file as signed, and the finish waits for a new version
+        db.execute("UPDATE signoffs SET superseded_at = ? WHERE project_id = ? AND superseded_at IS NULL", (now, project_id))
     cur = db.execute(
         "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id, prev_stage, prev_entered_at)"
         " VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
@@ -524,9 +539,15 @@ def undo_stage_change(project_id, note_id):
         flash("That move can no longer be undone: it is too old, was made by someone else, or the rollout has moved since", "error")
         return redirect(url_for("project_detail", project_id=project_id))
     now = datetime.utcnow().isoformat()
-    db.execute("UPDATE projects SET stage = ?, stage_entered_at = ?, updated_at = ? WHERE id = ?",
-               (note["prev_stage"], note["prev_entered_at"] or now, now, project_id))
-    db.execute("DELETE FROM status_notes WHERE id = ?", (note_id,))
+    # compare-and-set, as change_stage: of two undos (or an undo and a move) racing, one wins (P3-2)
+    if not (db.execute("UPDATE projects SET stage = ?, stage_entered_at = ?, updated_at = ? WHERE id = ? AND stage = ?",
+                       (note["prev_stage"], note["prev_entered_at"] or now, now, project_id, note["stage"])).rowcount
+            and db.execute("DELETE FROM status_notes WHERE id = ?", (note_id,)).rowcount):
+        db.rollback()
+        flash("That move can no longer be undone: the rollout has moved since", "error")
+        return redirect(url_for("project_detail", project_id=project_id))
+    # undoing a reopen brings back the sign-off the reopen set aside (P3-24)
+    db.execute("UPDATE signoffs SET superseded_at = NULL WHERE project_id = ? AND superseded_at = ?", (project_id, note["created_at"]))
     # notes written since the move belong to the stage the project is back in;
     # left tagged with the undone stage they made a phantom visit in the history (D8)
     db.execute("UPDATE status_notes SET stage = ? WHERE project_id = ? AND prev_stage IS NULL AND stage = ? AND created_at >= ?",
@@ -569,10 +590,12 @@ def decide_approval(project_id, approval_id, decision, comment):
         return "That request is no longer open"
     comment = (comment or "").strip()[:2000]
     now = datetime.utcnow().isoformat()
-    db.execute(
-        "UPDATE stage_approvals SET status = ?, decided_by = ?, decided_at = ?, comment = ? WHERE id = ?",
+    if not db.execute(   # only while still open: of two decisions racing, one is recorded (P3-2)
+        "UPDATE stage_approvals SET status = ?, decided_by = ?, decided_at = ?, comment = ? WHERE id = ? AND status = 'pending'",
         (decision, session["user_name"], now, comment or None, approval_id),
-    )
+    ).rowcount:
+        db.rollback()
+        return "That request is no longer open"
     db.execute(
         "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id) VALUES (?, ?, ?, ?, ?, 1, ?)",
         (project_id, session["user_name"], f"{decision.capitalize()} {row['stage']}" + (f": {comment}" if comment else ""), project["stage"], now, session["user_id"]),
@@ -633,7 +656,8 @@ def _field_problem(form):
 def save_document(project_id, file, category, uploaded_by):
     """Save an uploaded file to disk + documents table (+ OneDrive mirror if
     enabled). Assumes the caller already validated file/category — shared by
-    the Documents panel upload and project creation's bundled PO upload."""
+    the Documents panel upload and project creation's bundled PO upload.
+    Returns (the file's name as given, the documents row id)."""
     # the name people gave the file, in any script (secure_filename kept only ASCII:
     # "日本語の報告.pdf" became "pdf"); on disk it is a random id with a plain extension
     original_name = "".join(ch for ch in os.path.basename(file.filename.replace("\\", "/")) if ch.isprintable()).strip()[:200] or "document"
@@ -645,11 +669,11 @@ def save_document(project_id, file, category, uploaded_by):
 
     db = get_db()
     now = datetime.utcnow().isoformat()
-    db.execute(
+    doc_id = db.execute(
         """INSERT INTO documents (project_id, category, filename, stored_name, uploaded_by, uploaded_at)
            VALUES (?, ?, ?, ?, ?, ?)""",
         (project_id, category, original_name, stored_name, uploaded_by, now),
-    )
+    ).lastrowid
     touch_project(db, project_id)
     db.commit()
 
@@ -658,8 +682,8 @@ def save_document(project_id, file, category, uploaded_by):
         remote_path = f"Odin-Documents/{project_id}-{secure_filename(project['name'])}/{category}/{secure_filename(original_name) or stored_name}"
         ok, error = graph.upload_file(os.path.join(project_dir, stored_name), remote_path)
         if not ok:
-            print(f"[save_document] OneDrive mirror failed: {error}")
-    return original_name
+            app.logger.warning("OneDrive mirror of an upload failed: %s", error)
+    return original_name, doc_id
 
 
 @app.route("/projects/<int:project_id>/documents", methods=["POST"])
@@ -683,7 +707,7 @@ def document_upload(project_id):
     if category not in get_doc_category_names():
         flash("Invalid category", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    original_name = save_document(project_id, file, category, session["user_name"])
+    original_name, _ = save_document(project_id, file, category, session["user_name"])
     audit_log("upload_document", "project", project_id, None, f"{category}: {original_name}")
     project = load_project(project_id)
     _tell_pm(project, f"Document added to {escape(project['name'])}",
@@ -723,15 +747,17 @@ def document_delete(project_id, doc_id):
     doc = db.execute(
         "SELECT * FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL", (doc_id, project_id)
     ).fetchone()
-    if doc is not None and db.execute("SELECT 1 FROM signoffs WHERE document_id = ?", (doc_id,)).fetchone():
+    if doc is None:
+        abort(404)   # nothing to delete is not a success (P3-19)
+    if db.execute("SELECT 1 FROM signoffs WHERE document_id = ?", (doc_id,)).fetchone():
         flash("That is the signed sign-off copy — it is the record of acceptance and cannot be deleted", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    if doc is not None:
-        touch_project(db, project_id)
-        soft_delete("documents", doc_id)
-        audit_log("delete_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
-        offer_undo("undo_document", doc_id=doc_id)
-        flash(f"Deleted {doc['filename']}. Undo {undo_note()}")
+    touch_project(db, project_id)
+    if not soft_delete("documents", doc_id):
+        abort(404)   # deleted by another request a moment ago
+    audit_log("delete_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
+    offer_undo("undo_document", doc_id=doc_id)
+    flash(f"Deleted {doc['filename']}. Undo {undo_note()}")
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -766,9 +792,9 @@ def project_rotate_token(project_id):
     project = load_project(project_id)
     if not project:
         abort(404)
-    db.execute(
-        "UPDATE projects SET access_token = ?, customer_token = ? WHERE id = ?",
-        (secrets.token_urlsafe(16), secrets.token_urlsafe(16), project_id),
+    db.execute(   # a rotation also renews the links' life (policy guest_link_days)
+        "UPDATE projects SET access_token = ?, customer_token = ?, guest_tokens_at = ? WHERE id = ?",
+        (secrets.token_urlsafe(16), secrets.token_urlsafe(16), datetime.utcnow().isoformat(), project_id),
     )
     db.commit()
     audit_log("rotate_guest_token", "project", project_id, project["name"])
@@ -806,9 +832,13 @@ def participant_add(project_id):
     role = request.form.get("role", "")
     raw = request.form.get("user_id", "")
     db = get_db()
-    user = db.execute("SELECT id, name, kind FROM users WHERE id = ? AND active = 1", (raw,)).fetchone() if raw.isdigit() else None
+    user = db.execute("SELECT id, name, kind, email FROM users WHERE id = ? AND active = 1", (raw,)).fetchone() if raw.isdigit() else None
+    from policies import email_domain_allowed
     if user is None:
         flash("Pick an active user", "error")
+    elif user["kind"] == "external" and not email_domain_allowed(user["email"] or ""):
+        # adding by id is the invite's second door: the same partner domains apply (P3-14)
+        flash(f"Partners can only be added from: {', '.join(policy('external_domains'))} (Settings › Sign-in & security)", "error")
     elif role not in PROJECT_ROLES:
         flash("Pick a role", "error")
     elif _wrong_kind_for_role(user, role):
@@ -823,8 +853,9 @@ def participant_add(project_id):
             "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
             (project_id, user["id"], role, session["user_id"], datetime.utcnow().isoformat()),
         )
+        moot = _moot_approvals(db, project_id)   # a Customer re-roled away may leave nobody to decide
         db.commit()
-        audit_log("add_participant", "project", project_id, project["name"], f"{user['name']} as {role}")
+        audit_log("add_participant", "project", project_id, project["name"], f"{user['name']} as {role}" + (f"; {moot} pending approval withdrawn" if moot else ""))
         notify_users([user["id"]], "assigned", project_id, f"You are on {escape(project['name'])}",
                      f"{escape(session['user_name'])} added you to <b>{escape(project['name'])}</b> as {escape(role)}.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
         flash(f"{user['name']} added as {role}")
@@ -914,10 +945,30 @@ def participant_remove(project_id, participant_id):
         flash("The project manager cannot be removed — reassign the owner on Edit", "error")
     else:
         db.execute("DELETE FROM project_participants WHERE id = ?", (participant_id,))
+        # their open work comes to the project manager, so its reminders still reach someone (P3-23);
+        # a colleague's tasks stay theirs only while they could still see the rollout (staff see every one)
+        kind = db.execute("SELECT kind FROM users WHERE id = ?", (row["user_id"],)).fetchone()[0]
+        moved = db.execute("UPDATE tasks SET assignee_id = ? WHERE project_id = ? AND assignee_id = ? AND done = 0",
+                           (project["owner_id"], project_id, row["user_id"])).rowcount if kind == "external" else 0
+        moot = _moot_approvals(db, project_id)
         db.commit()
-        audit_log("remove_participant", "project", project_id, project["name"], f"{row['name']} ({row['role']})")
-        flash(f"{row['name']} removed")
+        said = "".join([f"; {moved} open task{'s' if moved != 1 else ''} moved to the project manager" if moved else "",
+                        f"; {moot} pending approval withdrawn (no Customer left to decide)" if moot else ""])
+        audit_log("remove_participant", "project", project_id, project["name"], f"{row['name']} ({row['role']}){said}")
+        if moved:
+            notify_users([project["owner_id"]], "assigned", project_id, f"{moved} task{'s' if moved != 1 else ''} on {escape(project['name'])} came to you",
+                         f"{escape(session['user_name'])} removed {escape(row['name'])} from <b>{escape(project['name'])}</b>; their open tasks are yours now.",
+                         exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
+        flash(f"{row['name']} removed{said}")
     return redirect(url_for("project_detail", project_id=project_id) + "#team")
+
+
+def _moot_approvals(db, project_id):
+    """With nobody left in the Customer role, a pending approval could never be
+    decided (and would count as waiting for ever): withdraw it. The caller commits."""
+    if db.execute("SELECT 1 FROM project_participants WHERE project_id = ? AND role = 'Customer'", (project_id,)).fetchone():
+        return 0
+    return db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,)).rowcount
 
 
 # ---- a project's own stages: add / rename / reorder / delete / SLAs ---------
@@ -1071,7 +1122,7 @@ def _own_note(project_id, note_id):
 
 
 @app.route("/projects/<int:project_id>/notes/<int:note_id>/edit", methods=["POST"])
-@login_required
+@permission_required("add_project_note")   # the matrix's note right, as for writing one (P3-14)
 def note_edit(project_id, note_id):
     note = _own_note(project_id, note_id)
     text = request.form.get("note", "").strip()[:5000]
@@ -1087,7 +1138,7 @@ def note_edit(project_id, note_id):
 
 
 @app.route("/projects/<int:project_id>/notes/<int:note_id>/delete", methods=["POST"])
-@login_required
+@permission_required("add_project_note")
 def note_delete(project_id, note_id):
     note = _own_note(project_id, note_id)
     if note_id in stage_entry_note_ids(project_id):
@@ -1120,12 +1171,9 @@ def mentions_in(project_id, text, staff_only=False):
     for r in team:
         first = r["name"].split()[0].lower()
         handles = [r["name"].lower(), r["username"].lower()] + ([first] if len(firsts[first]) == 1 else [])
-        for h in handles:
-            i = low.find("@" + h)
-            end = i + 1 + len(h)
-            if i >= 0 and (end == len(low) or not low[end].isalnum()):
-                found.append(r["id"])
-                break
+        # any occurrence that ends at a word boundary: "@annabel and @ann" mentions Ann too (P3-20)
+        if any(re.search("@" + re.escape(h) + r"(?![^\W_])", low) for h in handles):
+            found.append(r["id"])
     return found
 
 
@@ -1189,6 +1237,19 @@ def _assignee(db, project_id, raw):
     return raw if ok else False
 
 
+def _done_state(form):
+    """(done, done_at) for a task added back by an undo: the state it was deleted
+    in, with its original finish time when that is a real timestamp (else now)."""
+    if form.get("done") not in (True, "1", "true"):
+        return 0, None
+    at = form.get("done_at")
+    try:
+        at = datetime.fromisoformat(at).isoformat() if isinstance(at, str) else None
+    except ValueError:
+        at = None
+    return 1, at or datetime.utcnow().isoformat()
+
+
 def _due_problem(form):
     """A due date the reports can do arithmetic on (test report FN-3); the
     route stores parse_date(form["due_date"]) once this passes."""
@@ -1207,7 +1268,10 @@ def task_add(project_id):
     if not load_project(project_id):
         abort(404)
     form = _task_input()
-    title = (form.get("title") or "").strip()[:200]
+    try:
+        title = text_field(form.get("title"), 200, "Title")   # too long is said, never cut (P2-27)
+    except ValueError as exc:
+        return _task_reply(project_id, str(exc))
     if not title:
         return _task_reply(project_id, "Task needs a title")
     assignee_id = _assignee(db, project_id, form.get("assignee_id"))
@@ -1215,10 +1279,11 @@ def task_add(project_id):
         return _task_reply(project_id, "Pick an active colleague or someone on this rollout")
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
+    done, done_at = _done_state(form)   # undo of a delete brings a finished task back finished
     cur = db.execute(
-        "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage, done, done_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (project_id, title, assignee_id, parse_date(form.get("due_date")),
-         datetime.utcnow().isoformat(), session["user_name"], _task_stage(project_id, form.get("stage"))),
+         datetime.utcnow().isoformat(), session["user_name"], _task_stage(project_id, form.get("stage")), done, done_at),
     )
     touch_project(db, project_id)
     db.commit()
@@ -1239,7 +1304,16 @@ def task_toggle(project_id, task_id):
         abort(404)
     if not (project_allows(project_id, "manage_tasks") or task["assignee_id"] == session["user_id"]):
         abort(403)
-    new_done = 0 if task["done"] else 1
+    # the page says what it wants (P2-26): a tick from a stale tab sets done, never flips it back open
+    wanted = (json_body() if request.is_json else request.form).get("done")
+    if wanted is None:
+        new_done = 0 if task["done"] else 1   # an old caller that sends nothing: the flip
+    elif wanted in (True, False, "1", "0"):
+        new_done = 1 if wanted in (True, "1") else 0
+    else:
+        abort(400, description="Send done as true or false")
+    if new_done == task["done"]:
+        return _task_reply(project_id, done=bool(new_done))   # already so: nothing changed, nobody told
     db.execute(
         "UPDATE tasks SET done = ?, done_at = ? WHERE id = ?",
         (new_done, datetime.utcnow().isoformat() if new_done else None, task_id),
@@ -1270,28 +1344,26 @@ def task_delete(project_id, task_id):
 
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/edit", methods=["POST"])
-@login_required
+@permission_required("edit_project")
+@project_role_required("manage_tasks")
 def task_edit(project_id, task_id):
     """Correct a task in place. Fixing a typo previously meant deleting the
     task and retyping it, which also threw away its done state. Only the
     fields sent change (title, assignee_id, due_date, stage): a JSON edit of
     the title keeps the assignee and the due date (L14). Whoever may manage
-    tasks changes any field; the person the task is on, only its due date."""
+    tasks changes any field. The person a task is on may tick it (task_toggle)
+    but not re-date it: that is managing the work (P2-10, PRODUCT.md: Viewers
+    read, partners tick their own tasks)."""
     load_project(project_id)   # visibility decided in one place
     db = get_db()
     task = db.execute("SELECT id, title, assignee_id, due_date, stage FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
     form = _task_input()
-    if not project_allows(project_id, "manage_tasks"):
-        if task["assignee_id"] != session["user_id"]:
-            abort(403)
-        # the assignee's own task: the page sends the whole task, so only a changed field other than the date is refused
-        same = {"title": (task["title"], lambda v: (v or "").strip()[:200]), "assignee_id": (task["assignee_id"], lambda v: int(v) if str(v or "").isdigit() else None),
-                "stage": (task["stage"], lambda v: v or None)}
-        if any(k in form and norm(form.get(k)) != old for k, (old, norm) in same.items()):
-            abort(403)
-    title = (form.get("title") or "").strip()[:200] if "title" in form else task["title"]
+    try:
+        title = text_field(form.get("title"), 200, "Title") if "title" in form else task["title"]
+    except ValueError as exc:
+        return _task_reply(project_id, str(exc))
     if not title:
         return _task_reply(project_id, "Task needs a title")
     assignee_id = _assignee(db, project_id, form.get("assignee_id")) if "assignee_id" in form else task["assignee_id"]

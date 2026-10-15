@@ -1,7 +1,6 @@
 """User administration: create users, set role/active/email, reset passwords.
 All gated on manage_users. Imported for route registration side effects.
 """
-import re
 from datetime import datetime
 
 from flask import abort, flash, redirect, request, session, url_for
@@ -12,7 +11,7 @@ from policies import policy
 from core import app, permission_required
 from spa import spa_index
 from db import get_db
-from security import password_problem, valid_email, safe_csv_writer
+from security import password_problem, valid_email, valid_username, safe_csv_writer
 from services.audit import audit_log
 
 
@@ -50,7 +49,7 @@ def users():
     problem = password_problem(password)
     if not username or not name:
         flash("Username and name are required", "error")
-    elif not re.fullmatch(r"[A-Za-z0-9._@-]{1,64}", username):
+    elif not valid_username(username):
         flash("Username: up to 64 letters, digits, dots, dashes, underscores or @", "error")
     elif len(name) > 120 or any(ord(ch) < 32 for ch in name):
         flash("Name: one line, at most 120 characters", "error")
@@ -75,7 +74,7 @@ def users():
         )
         db.commit()
         audit_log("create_user", "user", cursor.lastrowid, username, f"role={role}")
-        flash(f"User {name} created")
+        flash(f"User {name} created" + _verification_note(cursor.lastrowid, email))
     return redirect(url_for("users"))
 
 
@@ -139,6 +138,10 @@ def user_set_active(user_id):
     if admin_only(user["role"]):
         flash("Only an admin can deactivate or reactivate an admin", "error")
         return redirect(url_for("users"))
+    if user["pending"]:
+        # the switch would skip the approval: no role chosen, no rollout joined, still "waiting" (review P3-15)
+        flash("This person is waiting for approval: use Approve or Decline on the Users page", "error")
+        return redirect(url_for("users"))
     # Bumping the epoch ends any session this user currently has open.
     db.execute("UPDATE users SET active = ?, session_epoch = session_epoch + 1 WHERE id = ?", (active, user_id))
     db.commit()
@@ -191,11 +194,27 @@ def user_set_email(user_id):
     if email and _email_taken(db, email, user_id):
         flash("That address belongs to another account", "error")
         return redirect(url_for("users"))
-    # reset links go to the address: the old one's links and sessions end (test round P2-2)
-    db.execute("UPDATE users SET email = ?, session_epoch = session_epoch + 1 WHERE id = ?", (email or None, user_id))
+    if (email or None) == user["email"] and user["email_verified_at"]:
+        flash("Email unchanged")   # already confirmed: nothing to do
+        return redirect(url_for("users"))
+    # reset links go to the address: the old one's links and sessions end (test round P2-2).
+    # The address is unproven until the person opens the link mailed to it (review P2-3);
+    # saving the same unconfirmed address again sends a fresh link.
+    db.execute("UPDATE users SET email = ?, email_verified_at = NULL, session_epoch = session_epoch + 1 WHERE id = ?", (email or None, user_id))
     db.commit()
     if user_id == session["user_id"]:   # an admin editing their own row carries on
         session["epoch"] = db.execute("SELECT session_epoch FROM users WHERE id = ?", (user_id,)).fetchone()[0]
     audit_log("set_user_email", "user", user_id, user["username"])
-    flash("Email updated")
+    flash("Email updated" + _verification_note(user_id, email))
     return redirect(url_for("users"))
+
+
+def _verification_note(user_id, email):
+    """Mail a staff account's new address its confirmation link (review P2-3);
+    the words that follow "updated"/"created"."""
+    from routes.auth import send_verification
+    if not email or get_db().execute("SELECT kind FROM users WHERE id = ?", (user_id,)).fetchone()[0] != "internal":
+        return ""
+    if not send_verification(user_id):
+        return ""   # mail is off: the person sees "not confirmed" on their Account page
+    return ": they confirm the address from the link sent to it"

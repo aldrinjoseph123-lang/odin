@@ -25,7 +25,9 @@ export function AIChase({ projectId }: { projectId: number }) {
   }
   async function copy() {
     if (!sug) return
-    try { await navigator.clipboard.writeText(`${sug.payload.subject}\n\n${sug.payload.body}`); setNote("Copied: subject and body.") } catch { setNote("Select the text and copy it.") }
+    // only a copy that worked counts the draft as taken (review P3-38)
+    try { await navigator.clipboard.writeText(`${sug.payload.subject}\n\n${sug.payload.body}`) } catch { setNote("Select the text and copy it."); return }
+    setNote("Copied: subject and body.")
     void closeAISuggestion(projectId, sug.id, 1).catch(() => undefined)
   }
   async function copyReminder() {
@@ -36,8 +38,8 @@ export function AIChase({ projectId }: { projectId: number }) {
     <section className="panel p-4" aria-labelledby="waiting-h">
       <h2 data-n id="waiting-h" className="mb-3 text-[12px] font-semibold text-nav-fg">Waiting on the customer<span className="sr-only">, </span><span className="ml-2 font-normal text-muted-foreground">{contact ? contact.name : "no customer contact on the team yet"}</span></h2>
       <ul className="grid grid-cols-1 gap-1 text-[13px]">
-        {waiting.map((w) => (
-          <li key={w.what} className="flex flex-wrap justify-between gap-x-3">
+        {waiting.map((w, i) => (
+          <li key={`${i}:${w.what}`} className="flex flex-wrap justify-between gap-x-3">
             <span className="font-medium">{w.what}</span>
             <span className="text-warn">{w.days_waiting != null ? `asked ${w.since}, ${w.days_waiting} d waiting` : `due ${w.due}, ${w.days_overdue} d overdue`}</span>
           </li>

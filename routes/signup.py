@@ -78,7 +78,7 @@ def api_join(token):
 
 @app.route("/api/join/<token>", methods=["POST"])
 def api_join_submit(token):
-    if rate_limited(f"join:{request.remote_addr}", 5, 15):
+    if rate_limited(f"join:{request.remote_addr}", policy("join_attempts"), 15):
         return jsonify(error="Too many attempts from here; wait a few minutes"), 429
     link = signup.lookup(token)
     if link is None:

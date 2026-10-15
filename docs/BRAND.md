@@ -66,6 +66,7 @@ The voice is plain, direct and watchful. Wording is calm and confident, never al
 - **Supporting line:** Every rollout, stage and deadline, from kickoff to handover. Nothing stalls unseen.
 - **In the app**, brand voice is a light touch. Actions, errors and labels stay plain ("Advance to Deployment", "That did not save"). Voice may appear in empty states, sign-in and emails.
 - Write "Odin" in running text and ODIN only in the logo. Never write "O.D.I.N.".
+- **Odin PMS** is the name of Odin's Microsoft Teams app (13 Oct 2026): its short name in Teams, with "Odin by Protect24x7" as the full name. Use it only where Microsoft shows the app's name (the app, its chat, the package `odin-pms-teams-app.zip`); everywhere else, write Odin.
 
 ## Where the brand appears
 
@@ -77,6 +78,7 @@ The voice is plain, direct and watchful. Wording is calm and confident, never al
 | Project, settings, account, project form | Numbered panel titles |
 | Printed reports / PDF | Logo, byline and tagline across the top of page one |
 | Emails | Black band with wordmark and byline, tagline footer |
+| Teams app "Odin PMS" | Raven tile icons (`static/teams/color.png`, `outline.png`), accent `#0A0A0A`; cards are plain text with "Open in Odin"; privacy and terms at `static/teams/about.html` |
 | Error page, loading splash | Raven mark |
 | Favicon, home-screen icon, link preview | Raven tile, `og.png` |
 

@@ -40,7 +40,7 @@ export function MoveConfirm({ d, onMoved, quiet, confirmNow, onCancel, heading: 
   async function advance() {
     setBusy(true); setErr(null)
     try {
-      const r = await changeStage(d.id, next, note)
+      const r = await changeStage(d.id, next, note, d.stage)
       setNote(""); setConfirming(false)
       await onMoved(`${d.name} moved to ${next}.`, r.undo)
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not move the stage") } finally { setBusy(false) }

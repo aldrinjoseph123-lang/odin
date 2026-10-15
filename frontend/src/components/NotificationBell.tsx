@@ -6,7 +6,8 @@ import { markRead, notifications, type Notification } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 // The bell: what happened that concerns you, whether or not mail is on.
-// The count comes with the session; it refreshes every minute and on focus.
+// The count comes with the session; it refreshes every minute while the tab
+// is in view, and when it comes back (a hidden tab does not ask: review P3-38).
 export function NotificationBell({ initialUnread }: { initialUnread: number }) {
   const [unread, setUnread] = useState(initialUnread)
   const [open, setOpen] = useState(false)
@@ -19,9 +20,11 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
     try { const d = await notifications(); setUnread(d.unread); setRows(d.rows) } catch { /* offline: keep what we have */ }
   }, [])
   useEffect(() => {
-    const timer = window.setInterval(refresh, 60_000)
-    window.addEventListener("focus", refresh)
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh) }
+    const tick = () => { if (!document.hidden) void refresh() }
+    const timer = window.setInterval(tick, 60_000)
+    window.addEventListener("focus", tick)
+    document.addEventListener("visibilitychange", tick)
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", tick); document.removeEventListener("visibilitychange", tick) }
   }, [refresh])
   useEffect(() => {
     if (!open) return

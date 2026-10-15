@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { PanelTitle } from "@/components/PanelTitle"
 import { EmptyState } from "@/components/EmptyState"
 import { chip } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
-import { analytics, ApiError, type AnalyticsData, type User } from "@/lib/api"
+import { analytics, type User } from "@/lib/api"
+import { useLoad } from "@/lib/useLoad"
 import { cn } from "@/lib/utils"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { StatTile } from "@/components/StatTile"
@@ -12,16 +13,11 @@ const d1 = (n: number | null | undefined) => (n == null ? "—" : n > 0 && n < 0
 
 export default function Analytics(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
-  const [d, setD] = useState<AnalyticsData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const tid = Number(params.get("template")) || null
-  useEffect(() => {
-    document.title = "Cycle time · Odin"
-    let live = true   // only the latest template's answer is shown
-    analytics(tid).then((x) => { if (live) setD(x) }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load") })
-    return () => { live = false }
-  }, [tid])
-  if (error) return <LoadError message={error} />
+  // only the latest template's answer is shown; the last one stays until it lands (review P2-29)
+  const { data: d, error } = useLoad(`analytics:${tid}`, () => analytics(tid), { keep: true })
+  useEffect(() => { document.title = "Cycle time · Odin" }, [])
+  if (error) return <LoadError message={error.message} />
   if (!d) return <PageSkeleton />
   const s = d.stats
   const scale = s ? Math.max(0, ...s.stages.map((r) => r.avg_days ?? 0)) : 0

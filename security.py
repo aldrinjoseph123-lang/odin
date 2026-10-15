@@ -100,15 +100,18 @@ def _login_window_start():
 
 
 def login_is_blocked(username):
-    """True when this username+IP pair has burned through its attempts: the
-    hard stop, checked before the password."""
-    row = get_db().execute(
-        "SELECT COUNT(*) AS failures FROM login_attempts "
-        "WHERE username = ? AND ip_address IS ? AND success = 0 AND attempted_at > ?",
-        (username, request.remote_addr, _login_window_start()),
-    ).fetchone()
+    """True when this username+IP pair has burned through its attempts, or this
+    address has failed too often across every username (spraying one password
+    over many accounts, review P3-3): the hard stop, checked before the
+    password. Throttle keys (link:, mfa:, nudge-from: ...) hold a colon, which
+    no username does, so only sign-ins count."""
     from policies import policy
-    return row["failures"] >= policy("login_max_attempts")
+    db, since = get_db(), _login_window_start()
+    pair = db.execute("SELECT COUNT(*) FROM login_attempts WHERE username = ? AND ip_address IS ? AND success = 0 AND attempted_at > ?",
+                      (username, request.remote_addr, since)).fetchone()[0]
+    spray = db.execute("SELECT COUNT(*) FROM login_attempts WHERE ip_address IS ? AND success = 0 AND attempted_at > ? AND username NOT LIKE '%:%'",
+                       (request.remote_addr, since)).fetchone()[0]
+    return pair >= policy("login_max_attempts") or spray >= policy("login_ip_max")
 
 
 def failed_attempts(key):
@@ -146,22 +149,90 @@ def record_login_attempt(username, success):
     db.commit()
 
 
-def rate_limited(key, limit, window_minutes):
+def rate_limited(key, limit, window_minutes, any_ip=False):
     """Generic per-key+IP throttle, riding on the login_attempts table so it
     needs no schema of its own. Returns True (and records nothing) once the
     limit is hit; otherwise records this hit and returns False. Used for the
-    guest-link write endpoints, which are reachable without a login."""
+    guest-link write endpoints, which are reachable without a login. any_ip:
+    count the key from every address (a per-account or per-target limit)."""
     db = get_db()
     since = (datetime.utcnow() - timedelta(minutes=window_minutes)).isoformat()
     hits = db.execute(
-        "SELECT COUNT(*) AS n FROM login_attempts "
-        "WHERE username = ? AND ip_address IS ? AND success = 0 AND attempted_at > ?",
-        (key, request.remote_addr, since),
+        "SELECT COUNT(*) AS n FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?"
+        + ("" if any_ip else " AND ip_address IS ?"),
+        (key, since) if any_ip else (key, since, request.remote_addr),
     ).fetchone()["n"]
     if hits >= limit:
         return True
     record_login_attempt(key, success=False)
     return False
+
+
+def mail_flooded(email):
+    """Emailed links (sign-in, reset, address check) to one address, from
+    every network address together: at most mail_link_max an hour, so nobody
+    can fill a colleague's inbox from many machines (review P3-3)."""
+    from policies import policy
+    return rate_limited(f"mail-to:{email.lower()}", policy("mail_link_max"), 60, any_ip=True)
+
+
+def nudge_limited(sender_id, target_id):
+    """Notes to colleagues (POST /api/people/<id>/notify): at most nudge_max an
+    hour from one person, and to one person from everyone (review P3-3).
+    The words to show, or None."""
+    from policies import policy
+    if rate_limited(f"nudge-to:{target_id}", policy("nudge_max"), 60, any_ip=True):
+        return "They have had a lot of notes this hour. Try again later."
+    if rate_limited(f"nudge-from:{sender_id}", policy("nudge_max"), 60, any_ip=True):
+        return "You have sent a lot of notes this hour. Try again later."
+    return None
+
+
+def recheck_password(user, password, wrong):
+    """The current password on an account change (password, email, two-step).
+    Wrong ones count per account from every address; at login_max_attempts
+    the session ends, so a stolen session cannot guess the password (review
+    P3-3). None when right; else `wrong`, or why the session ended."""
+    from werkzeug.security import check_password_hash
+    from policies import policy
+    key = f"reauth:{user['id']}"
+    stored = user["password_hash"] or ""
+    if failed_attempts(key) < policy("login_max_attempts") and "$" in stored and check_password_hash(stored, password or ""):
+        get_db().execute("DELETE FROM login_attempts WHERE username = ?", (key,))
+        get_db().commit()
+        return None
+    record_login_attempt(key, success=False)
+    if failed_attempts(key) < policy("login_max_attempts"):
+        return wrong
+    from core import end_session
+    from services.audit import audit_log
+    audit_log("session_ended", "user", user["id"], user["username"], "too many wrong current passwords")
+    end_session()
+    return "Too many wrong passwords: you have been signed out. Sign in again."
+
+
+def clean_text(value, limit=200):
+    """Outside text (a Microsoft callback, an exception) for the audit trail
+    or a page: printable characters only, capped (review P3-4)."""
+    return "".join(ch for ch in str(value or "") if ch.isprintable())[:limit]
+
+
+def unknown_name(typed):
+    """How a sign-in for no known account is recorded: a short keyed hash, never
+    what was typed (often a password in the username box) (review P3-4). The
+    same text gives the same mark, so repeated guesses still count together."""
+    import hmac
+    from flask import current_app
+    return "unknown#" + hmac.new(str(current_app.secret_key).encode(), typed.encode(), hashlib.sha256).hexdigest()[:12]
+
+
+# Usernames: ASCII only, so no look-alike of an existing name (a Cyrillic "а")
+# can be made by an admin or through a sign-up link (review P3-13).
+_USERNAME_RE = re.compile(r"[A-Za-z0-9._@-]{1,64}")
+
+
+def valid_username(name):
+    return isinstance(name, str) and bool(_USERNAME_RE.fullmatch(name))
 
 
 # Leading bytes each allowed type must start with. Types absent here (txt, csv,
@@ -224,19 +295,32 @@ def issue_login_link(user_id, created_by=None, purpose="signin"):
     return raw
 
 
+def _live_link(raw, purpose):
+    """The unused, unexpired link of this purpose for this token, with its
+    account's state, or None."""
+    row = get_db().execute(
+        "SELECT l.*, u.active, u.kind, u.session_epoch, u.username, u.email FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
+        (token_hash(raw or ""),),
+    ).fetchone()
+    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
+        return None   # epoch: the password, email, role or active state changed since the link was issued
+    return row if row["purpose"] == purpose else None
+
+
+def take_link(row):
+    """Spend a link: the guarded UPDATE lets only one of two requests racing
+    with the same link win (review P3-2). The caller commits."""
+    return get_db().execute("UPDATE login_links SET used_at = ? WHERE id = ? AND used_at IS NULL",
+                            (datetime.utcnow().isoformat(), row["id"])).rowcount == 1
+
+
 def consume_login_link(raw):
     """The user for a valid, unexpired, unused link — marking it used — or
     None. Invalid for internal accounts: they sign in with a password."""
     db = get_db()
-    row = db.execute(
-        "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
-        (token_hash(raw or ""),),
-    ).fetchone()
-    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
-        return None   # epoch: the password, role or active state changed since the link was issued
-    if not row["active"] or row["kind"] != "external" or row["purpose"] != "signin":
+    row = _live_link(raw, "signin")
+    if row is None or not row["active"] or row["kind"] != "external" or not take_link(row):
         return None
-    db.execute("UPDATE login_links SET used_at = ? WHERE id = ?", (datetime.utcnow().isoformat(), row["id"]))
     db.commit()
     return db.execute("SELECT * FROM users WHERE id = ?", (row["user_id"],)).fetchone()
 
@@ -244,15 +328,16 @@ def consume_login_link(raw):
 def reset_link_row(raw):
     """The live password-reset link for this token, or None: unused,
     unexpired, purpose 'reset', for an active staff account."""
-    row = get_db().execute(
-        "SELECT l.*, u.active, u.kind, u.session_epoch FROM login_links l JOIN users u ON u.id = l.user_id WHERE l.token_hash = ?",
-        (token_hash(raw or ""),),
-    ).fetchone()
-    if row is None or row["used_at"] or row["expires_at"] < datetime.utcnow().isoformat() or row["epoch"] != row["session_epoch"]:
-        return None   # epoch: the password, role or active state changed since the link was issued
-    if row["purpose"] != "reset" or not row["active"] or row["kind"] != "internal":
-        return None
-    return row
+    row = _live_link(raw, "reset")
+    return row if row and row["active"] and row["kind"] == "internal" else None
+
+
+def verify_link_row(raw):
+    """The live address-check link for this token (review P2-3), or None. A
+    pending sign-up may use it before approval; the epoch ties it to the
+    address it was sent to (every email change bumps it)."""
+    row = _live_link(raw, "verify")
+    return row if row and row["email"] else None
 
 
 def file_stem(name, fallback="project"):
@@ -316,10 +401,15 @@ def csrf_token():
 
 def _validate_csrf():
     """before_request hook: every state-changing request must carry the token."""
-    if request.method in CSRF_SAFE_METHODS or request.path == "/api/teams/messages":   # Teams' calls: answered, never read
+    # Teams' calls: answered, never read; browser error reports: one log line each (routes/client.py)
+    if request.method in CSRF_SAFE_METHODS or request.path in ("/api/teams/messages", "/api/client-errors"):
         return None
-    submitted = request.form.get(CSRF_FIELD) or request.headers.get("X-CSRF-Token", "")
+    if request.path.startswith("/api/v1/"):
+        return None   # Bearer tokens only, never the session cookie (routes/tokens.token_required): nothing to forge
     expected = session.get("_csrf_token", "")
+    # the header first; a form body is parsed only when there is a token to
+    # compare it with, so an anonymous multipart post is refused unread (review P3-10)
+    submitted = request.headers.get("X-CSRF-Token") or (expected and request.form.get(CSRF_FIELD)) or ""
     # compare_digest keeps the check constant-time; the empty-expected case
     # still fails closed because compare_digest("", "") is only reached when
     # neither side has a token, which we reject explicitly first.
@@ -377,6 +467,10 @@ def _security_headers(response):
     response.headers.setdefault(
         "Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=()"
     )
+    # JSON, PDF and CSV carry account data; PDF and CSV are on Cloudflare's
+    # default cache list (review P3-11). Pictures and the app's files keep their own.
+    if response.mimetype in ("application/json", "application/pdf", "text/csv"):
+        response.headers["Cache-Control"] = "private, no-store"
     # Only meaningful over TLS; harmless otherwise, and correct once nginx
     # terminates HTTPS in front of the app.
     if request.is_secure:

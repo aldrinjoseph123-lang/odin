@@ -13,10 +13,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ApiError, createSignupLink, postForm, revokeAllSignupLinks, revokeSignupLink, signupLinks, users as fetchUsers, type AdminUser, type SignupLinks, type User, type UsersData } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
+import { copyText } from "@/lib/copy"
+import { MIN_PASSWORD } from "@/lib/password"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 
-export default function Users(_props: { user: User }) {
+export default function Users({ user }: { user: User }) {
+  const minPassword = user.prefs?.password_min_length ?? MIN_PASSWORD   // the admin's policy, not a number typed here (review P2-38)
   const [data, setData] = useState<UsersData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -62,11 +65,12 @@ export default function Users(_props: { user: User }) {
             the Manage dialog, so the list stays readable */}
         <section className="min-w-0 panel" aria-label="Team members">
           <ul className="divide-y divide-border">
-            {people.map((u) => <Row key={`${u.id}:${u.email ?? ""}:${u.active}`} u={u} roles={data.roles} me={data.me} microsoftOnly={data.microsoft_only} busy={busy} send={send} />)}
+            {/* keyed by id alone: an email change or a deactivation keeps Manage open (review P3-38) */}
+            {people.map((u) => <Row key={u.id} u={u} roles={data.roles} me={data.me} microsoftOnly={data.microsoft_only} minPassword={minPassword} busy={busy} send={send} />)}
           </ul>
         </section>
         <div className="grid grid-cols-1 content-start gap-4">
-          <AddUser roles={data.roles} busy={busy} send={send} />
+          <AddUser roles={data.roles} minPassword={minPassword} busy={busy} send={send} />
           <SignupLinksPanel />
         </div>
       </div>
@@ -91,7 +95,7 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
             <Button size="sm" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/approve`, { role: role[u.id] ?? (u.signup_label ? u.role : "Viewer") })}>Approve</Button>
-            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/decline`, {}, `Decline ${u.name}? They stay unable to sign in.`)}>Decline</Button>
+            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/decline`, {}, `Decline ${u.name}? They stay unable to sign in, and Odin does not tell them.`)}>Decline</Button>
           </li>
         ))}
       </ul>
@@ -107,7 +111,7 @@ function signInText(u: AdminUser, microsoftOnly: boolean) {
   return [...ways, u.two_step && "two-step"].filter(Boolean).join(" · ")
 }
 
-function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles: string[]; me: number; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean> }) {
+function Row({ u, roles, me, microsoftOnly, minPassword, busy, send }: { u: AdminUser; roles: string[]; me: number; microsoftOnly: boolean; minPassword: number; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean> }) {
   const [open, setOpen] = useState(false)
   const self = u.id === me
   return (
@@ -135,7 +139,7 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           {/* External is a kind of account, not a role to hand out: an invited
               partner stays External (plain text), staff never become it */}
           {u.kind === "external" ? <span className="text-muted-foreground">External</span> : (
-            <select value={u.role} disabled={self || busy} onChange={(e) => send(`/users/${u.id}/role`, { role: e.target.value }, `Make ${u.name} ${e.target.value === "Admin" ? "an Admin" : `a ${e.target.value}`}? It applies at their next click.`)} aria-label={`Role for ${u.name}`} className={cn(fieldAuto, "w-full")}>
+            <select value={u.role} disabled={self || busy} onChange={async (e) => { const to = e.target.value; if (await askConfirm(`Make ${u.name} ${to === "Admin" ? "an Admin" : `a ${to}`}? It applies at their next click.`, "Change role")) void send(`/users/${u.id}/role`, { role: to }) }} aria-label={`Role for ${u.name}`} className={cn(fieldAuto, "w-full")}>
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           )}
@@ -145,14 +149,14 @@ function Row({ u, roles, me, microsoftOnly, busy, send }: { u: AdminUser; roles:
           <p>{u.last_login_at ? <>Signed in <Ago iso={u.last_login_at} /></> : "Never signed in"}</p>
         </div>
       </div>
-      <Manage u={u} self={self} microsoftOnly={microsoftOnly} busy={busy} send={send} open={open} onClose={() => setOpen(false)} />
+      <Manage u={u} self={self} microsoftOnly={microsoftOnly} minPassword={minPassword} busy={busy} send={send} open={open} onClose={() => setOpen(false)} />
     </li>
   )
 }
 
 // Everything about one account that is changed rarely: one dialog, sections
 // separated by hairlines; destructive actions last.
-function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: AdminUser; self: boolean; microsoftOnly: boolean; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean>; open: boolean; onClose: () => void }) {
+function Manage({ u, self, microsoftOnly, minPassword, busy, send, open, onClose }: { u: AdminUser; self: boolean; microsoftOnly: boolean; minPassword: number; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean>; open: boolean; onClose: () => void }) {
   const [email, setEmail] = useState(u.email ?? "")
   const [pw, setPw] = useState("")
   const [problem, setProblem] = useState<string | null>(null)
@@ -198,7 +202,7 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
           <form className={section} onSubmit={(e) => { e.preventDefault(); void act(`/users/${u.id}/reset-password`, { new_password: pw }).then((ok) => { if (ok) setPw("") }) }}>
             <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Set a new password
               <span className="flex gap-2">
-                <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 12 characters" aria-label={`New password for ${u.name}`} minLength={12} required autoComplete="new-password" className="h-8 flex-1 text-[13px]" />
+                <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={`At least ${minPassword} characters`} aria-label={`New password for ${u.name}`} minLength={minPassword} required autoComplete="new-password" className="h-8 flex-1 text-[13px]" />
                 <Button type="submit" size="sm" loading={busy}>Set</Button>
               </span>
             </label>
@@ -217,7 +221,7 @@ function Manage({ u, self, microsoftOnly, busy, send, open, onClose }: { u: Admi
   )
 }
 
-function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean> }) {
+function AddUser({ roles, minPassword, busy, send }: { roles: string[]; minPassword: number; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean> }) {
   const [f, setF] = useState({ name: "", username: "", email: "", password: "", role: "Member" })
   const [problem, setProblem] = useState<string | null>(null)
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
@@ -232,7 +236,7 @@ function AddUser({ roles, busy, send }: { roles: string[]; busy: boolean; send: 
       <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Full name<Input value={f.name} onChange={set("name")} required maxLength={120} aria-label="Full name" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Username<Input value={f.username} onChange={set("username")} required maxLength={80} aria-label="Username" autoComplete="off" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Email (for notifications)<Input type="email" value={f.email} onChange={set("email")} placeholder="name@company.com" maxLength={254} aria-label="Email" className="h-8 text-[13px]" /></label>
-      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={12} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
+      <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Temporary password<Input type="password" value={f.password} onChange={set("password")} required minLength={minPassword} placeholder={`At least ${minPassword} characters`} aria-label="Temporary password" autoComplete="new-password" className="h-8 text-[13px]" /></label>
       <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Role
         <select value={f.role} onChange={set("role")} aria-label="Role" className={fieldAuto}>
           {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
@@ -286,7 +290,7 @@ function SignupLinksPanel() {
       {made && (
         <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
           <input readOnly value={made} aria-label="New sign-up link" onFocus={(e) => e.currentTarget.select()} className={cn(fieldAuto, "font-mono text-[12px]")} />
-          <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => {})}>{copied ? "Copied" : "Copy the link"}</Button>
+          <Button size="sm" variant="outline" onClick={() => void copyText(made).then((ok) => { setCopied(ok); if (!ok) setErr("Select the link above and copy it.") })}>{copied ? "Copied" : "Copy the link"}</Button>
           <p className="max-w-prose text-[12px] text-muted-foreground">Shown once. Send it by Teams or email yourself.</p>
         </div>
       )}

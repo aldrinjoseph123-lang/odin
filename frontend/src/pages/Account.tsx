@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react"
+import { usePref } from "@/lib/usePref"
 import { PageHeader } from "@/components/PageHeader"
 import { toast } from "@/lib/toast"
 import { PanelTitle } from "@/components/PanelTitle"
@@ -8,14 +9,28 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
-import { account, accountMicrosoft, ApiError, postForm, type User } from "@/lib/api"
+import { account, accountEmail, accountMicrosoft, ApiError, postForm, type User } from "@/lib/api"
 import { UserAvatar } from "@/components/UserAvatar"
-import { ACCENTS, THEMES, applyTheme, type Accent, type Theme } from "@/lib/theme"
+import { ACCENTS, THEMES, applyTheme, useAppearance } from "@/lib/theme"
+import { MIN_PASSWORD, passwordRule } from "@/lib/password"
+import { Notice } from "@/components/Notice"
 import { cn } from "@/lib/utils"
 import { ActivityPanel } from "@/components/ActivityPanel"
 import { viewersText } from "@/lib/format"
 import { TwoStepPanel } from "@/components/TwoStepPanel"
 import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
+
+// Arrow keys move the choice in a radio group and Tab reaches only the chosen
+// one, as in any radio group (review P3-48).
+function arrows(e: KeyboardEvent<HTMLDivElement>) {
+  const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0
+  const radios = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("[role=radio]")]
+  const at = radios.indexOf(document.activeElement as HTMLButtonElement)
+  if (!step || at < 0) return
+  e.preventDefault()
+  const to = radios[(at + step + radios.length) % radios.length]
+  to.focus(); to.click()
+}
 
 export default function Account({ user }: { user: User }) {
   const [me, setMe] = useState<Awaited<ReturnType<typeof account>> | null>(null)
@@ -25,22 +40,37 @@ export default function Account({ user }: { user: User }) {
   const [pw, setPw] = useState({ current_password: "", new_password: "" })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const look = useAppearance()   // the header button changes it too: one source for both (review P2-33)
+  const [fieldError, setFieldError] = useState<Record<string, string>>({})   // a refusal sits by its form, not in a toast that leaves (review P2-36)
+  const [picture, setPicture] = useState<string | null>(null)
+  const minPassword = user.prefs?.password_min_length ?? MIN_PASSWORD
   const [microsoft, setMicrosoft] = useState<{ available: boolean; linked: boolean } | null>(null)
-  async function load() { const m = await account(); setMe(m); setEmail(m.email ?? ""); setName(m.name) }
+  const [slash, setSlash] = usePref("shortcut.slash", true)   // read by the shell's key handler
+  // whether the address on file was proven by its emailed link (review P2-3)
+  const [mailCheck, setMailCheck] = useState<{ verified: boolean; checkable: boolean } | null>(null)
+  async function load() {
+    const m = await account(); setMe(m); setEmail(m.email ?? ""); setName(m.name)
+    accountEmail().then(setMailCheck).catch(() => setMailCheck(null))
+  }
   useEffect(() => {
     document.title = "Account · Odin"
     load().catch((e) => setError(e instanceof ApiError ? e.message : "Could not load your account."))   // test report UX-8: it hung on the skeleton
     accountMicrosoft().then(setMicrosoft).catch(() => setMicrosoft(null))
   }, [])
-  async function send(path: string, fields: Record<string, string> | FormData, after?: () => void) {
+  // `form`: where a refusal shows (under that form); without it, a toast
+  async function send(path: string, fields: Record<string, string> | FormData, after?: () => void, form?: string) {
     setBusy(true)
+    if (form) setFieldError((e) => ({ ...e, [form]: "" }))
     try {
       const r = await postForm(path, fields)
       { const said = r.messages.join(" "); if (said) toast(said) }
       await load(); after?.()
       // a forced password change done: the shell's gate lets the rest of the app open again
       if (r.messages.includes("Password updated") && me?.must_change_password) window.location.assign("/board")
-    } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(false) }
+    } catch (e) {
+      const m = e instanceof ApiError ? e.message : "That did not save"
+      if (form) setFieldError((x) => ({ ...x, [form]: m })); else toast(m, { tone: "bad" })
+    } finally { setBusy(false) }
   }
   async function linkMicrosoft() {
     setBusy(true)
@@ -58,45 +88,61 @@ export default function Account({ user }: { user: User }) {
       <div className="mt-3 grid max-w-5xl grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
           <PanelTitle className="mb-0" hint="yours, on every device you sign in on">Appearance</PanelTitle>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Theme">
+          {/* busy keeps the focus where it is: aria-disabled, not disabled (P2-41) */}
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Theme" onKeyDown={arrows}>
             {THEMES.map((t) => (
-              <button key={t} type="button" role="radio" aria-checked={me.theme === t} disabled={busy}
-                onClick={() => { applyTheme(t, me.accent as Accent); void send("/account/appearance", { theme: t, accent: me.accent }) }}
-                className={cn(chip(me.theme === t), "capitalize")}>{t}</button>
+              <button key={t} type="button" role="radio" aria-checked={look.theme === t} tabIndex={look.theme === t ? 0 : -1} aria-disabled={busy || undefined}
+                onClick={() => { if (busy || t === look.theme) return; applyTheme(t, look.accent); void send("/account/appearance", { theme: t, accent: look.accent }) }}
+                className={cn(chip(look.theme === t), "capitalize")}>{t}</button>
             ))}
           </div>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Accent colour">
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Accent colour" onKeyDown={arrows}>
             {ACCENTS.map((c) => (
-              <button key={c.key} type="button" role="radio" aria-checked={me.accent === c.key} aria-label={c.label} title={c.label} disabled={busy}
-                onClick={() => { applyTheme(me.theme as Theme, c.key); void send("/account/appearance", { theme: me.theme, accent: c.key }) }}
-                className={cn("h-7 w-7 rounded-full border-2 ring-1 ring-border ring-offset-1 ring-offset-background transition-transform", me.accent === c.key ? "scale-110 border-foreground" : "border-transparent hover:scale-105")}
+              <button key={c.key} type="button" role="radio" aria-checked={look.accent === c.key} tabIndex={look.accent === c.key ? 0 : -1} aria-label={c.label} title={c.label} aria-disabled={busy || undefined}
+                onClick={() => { if (busy || c.key === look.accent) return; applyTheme(look.theme, c.key); void send("/account/appearance", { theme: look.theme, accent: c.key }) }}
+                className={cn("h-7 w-7 rounded-full border-2 ring-1 ring-border ring-offset-1 ring-offset-background transition-transform", look.accent === c.key ? "scale-110 border-foreground" : "border-transparent hover:scale-105")}
                 style={{ background: c.swatch }} />
             ))}
           </div>
           <p className="text-[12px] text-muted-foreground">The accent is the soft colour the app spends on selection and the primary action. Blue is the default. Red is offered, but overdue items are red too, so a red accent makes them harder to spot.</p>
           {me.kind !== "external" && (
             <>
-              <div className="mt-1 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Home page">
+              <div className="mt-1 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Home page" onKeyDown={arrows}>
                 <span className="mr-1 text-[13px] text-muted-foreground">Home page</span>
                 {([["dashboard", "Dashboard"], ["board", "Flow"]] as const).map(([k, label]) => (
-                  <button key={k} type="button" role="radio" aria-checked={me.home === k} disabled={busy} onClick={() => void send("/account/home", { home: k }, load)}
+                  <button key={k} type="button" role="radio" aria-checked={me.home === k} tabIndex={me.home === k ? 0 : -1} aria-disabled={busy || undefined} onClick={() => { if (!busy && k !== me.home) void send("/account/home", { home: k }, load) }}
                     className={chip(me.home === k)}>{label}</button>
                 ))}
               </div>
               <p className="text-[12px] text-muted-foreground">Where sign-in and the Odin logo land.</p>
             </>
           )}
+          {/* a single-key shortcut must be able to go (WCAG 2.1.4); kept in this browser */}
+          <label className="mt-1 flex items-center gap-2 text-[13px]">
+            <Switch aria-label="Press / to open search" checked={slash} onCheckedChange={(v) => { setSlash(v); toast(v ? "/ opens search" : "/ no longer opens search") }} />
+            Press / to open search
+          </label>
+          <p className="text-[12px] text-muted-foreground">In this browser. {navigator.platform.includes("Mac") ? "⌘ K" : "Ctrl K"} always opens it.</p>
         </section>
-        <form onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); if ((fd.get("avatar") as File | null)?.name) void send("/account/avatar", fd, () => e.currentTarget?.reset?.()) }} className="grid grid-cols-1 content-start gap-3 panel p-4">
+        <form onSubmit={(e: FormEvent<HTMLFormElement>) => {
+          e.preventDefault()
+          const form = e.currentTarget   // read now: the event is gone by the time the upload ends, and the old file stayed picked
+          const fd = new FormData(form)
+          if (!(fd.get("avatar") as File | null)?.name) { setPicture("Choose a picture first."); return }
+          setPicture(null)
+          void send("/account/avatar", fd, () => form.reset())
+        }} className="grid grid-cols-1 content-start gap-3 panel p-4">
           <PanelTitle className="mb-0" hint="shown wherever your name is">Picture</PanelTitle>
           <div className="flex flex-wrap items-center gap-3">
             <UserAvatar name={me.name} url={me.avatar_url} className="h-14 w-14" textClass="text-[17px]" />
             <div className="grid min-w-0 grid-cols-1 gap-2">
-              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="w-full" />
+              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="w-full" onChange={() => setPicture(null)} />
               <div className="flex gap-2">
                 <Button type="submit" size="sm" variant="outline" loading={busy}>Upload</Button>
-                {me.avatar_url && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => send("/account/avatar/remove", {})}>Remove</Button>}
+                {me.avatar_url && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} focusableWhenDisabled
+                  onClick={async () => { if (!busy && await askConfirm("Remove your picture? Your initials show instead, wherever your name appears.", "Remove")) void send("/account/avatar/remove", {}) }}>Remove</Button>}
               </div>
+              {picture && <Notice bad>{picture}</Notice>}
               <p className="text-[12px] text-muted-foreground">PNG, JPG, GIF or WebP, up to 2 MB. Square images look best.</p>
             </div>
           </div>
@@ -107,38 +153,32 @@ export default function Account({ user }: { user: User }) {
           <div><Button type="submit" size="sm" loading={busy} disabled={!name.trim() || name.trim() === me.name}>Save name</Button></div>
           <p className="text-[12px] text-muted-foreground">Notes you already wrote keep the name they were written under.</p>
         </form>
-        <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email, password: emailPw }, () => setEmailPw("")) }} className="grid grid-cols-1 content-start gap-2 panel p-4">
+        <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account/email", { email, password: emailPw }, () => setEmailPw(""), "email") }} className="grid grid-cols-1 content-start gap-2 panel p-4">
           <PanelTitle className="mb-0" hint="for notifications">Email</PanelTitle>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" aria-label="Email address" className="h-8 text-[13px]" />
           {/* password reset links go to this address, so changing it takes the password */}
           {me.has_password && email !== (me.email ?? "") && (
             <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Current password<Input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} required autoComplete="current-password" className="h-8 text-[13px]" /></label>
           )}
+          {fieldError.email && <p className="field-error" role="alert">{fieldError.email}</p>}
           <div><Button type="submit" size="sm" loading={busy} disabled={email === (me.email ?? "") || (me.has_password && !emailPw)}>Save email</Button></div>
+          {mailCheck?.checkable && !mailCheck.verified && email === (me.email ?? "") && (
+            <p className="text-[12px] text-muted-foreground">Not confirmed yet · <button type="button" className="text-primary-text hover:underline" aria-disabled={busy || undefined}
+              onClick={() => { if (!busy) void send("/account/email/verify", {}) }}>Send link</button></p>
+          )}
         </form>
         {me.kind === "internal" ? (
-          <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" })) }} className={cn("grid grid-cols-1 content-start gap-2 panel p-4", me.must_change_password && "order-first ring-2 ring-primary lg:col-span-2")}>
+          <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" }), "password") }} className={cn("grid grid-cols-1 content-start gap-2 panel p-4", me.must_change_password && "order-first ring-2 ring-primary lg:col-span-2")}>
             <PanelTitle className="mb-0">Change password</PanelTitle>
             <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Current password<Input autoFocus={me.must_change_password} type="password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required autoComplete="current-password" aria-label="Current password" className="h-8 text-[13px]" /></label>
-            <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">New password<Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={8} autoComplete="new-password" aria-label="New password" className="h-8 text-[13px]" /><span className="text-[12px]">Use a few unrelated words: at least 12 characters, unless your admin set another length.</span></label>
+            <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">New password<Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={minPassword} autoComplete="new-password" aria-label="New password" className="h-8 text-[13px]" /><span className="text-[12px]">{passwordRule(minPassword)} A few unrelated words work well.</span></label>
+            {fieldError.password && <p className="field-error" role="alert">{fieldError.password}</p>}
             <div><Button type="submit" size="sm" loading={busy} disabled={!pw.new_password}>Update password</Button></div>
           </form>
         ) : (
           <p className="panel p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
         )}
-        <form key={me.email_kinds.map((k) => `${k.key}:${k.on}`).join("|")}
-          onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const fd = new FormData(e.currentTarget); void send("/account/notifications", Object.fromEntries(me.email_kinds.filter((k) => fd.get(k.key)).map((k) => [k.key, "on"]))) }}
-          className="grid grid-cols-1 content-start gap-2 panel p-4">
-          <PanelTitle className="mb-0" hint={me.kind === "internal" ? "by email and in Teams; the bell shows everything either way" : "by email; the bell shows everything either way"}>Tell me about</PanelTitle>
-          {me.email_kinds.map((k) => (
-            <label key={k.key} className="flex items-start gap-2 text-[13px]">
-              <Switch name={k.key} defaultChecked={k.on} className="mt-1" />
-              <span>{k.label}</span>
-            </label>
-          ))}
-          {!me.mail_enabled && <p className="text-[12px] text-muted-foreground">Email is not connected on this installation yet, so for now only the bell is used.</p>}
-          <div><Button type="submit" size="sm" loading={busy}>Save</Button></div>
-        </form>
+        <NotifyForm key={me.email_kinds.map((k) => `${k.key}:${k.on}`).join("|")} me={me} busy={busy} onSave={(on) => send("/account/notifications", Object.fromEntries(on.map((k) => [k, "on"])))} />
         {me.kind !== "external" && <TwoStepPanel />}
         {microsoft?.available && !microsoft.linked && (
           <section className="grid grid-cols-1 content-start gap-2 panel p-4">
@@ -151,9 +191,29 @@ export default function Account({ user }: { user: User }) {
         <section className="grid grid-cols-1 content-start gap-2 panel p-4">
           <PanelTitle className="mb-0">Sessions</PanelTitle>
           <p className="text-[13px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>
-          <div><Button type="button" size="sm" variant="outline" disabled={busy} onClick={async () => { if (await askConfirm("Sign out of every other device? Anyone signed in as you elsewhere has to sign in again.", "Sign out")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>
+          <div><Button type="button" size="sm" variant="outline" disabled={busy} focusableWhenDisabled onClick={async () => { if (!busy && await askConfirm("Sign out of every other device? Anyone signed in as you elsewhere has to sign in again.", "Sign out")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>
         </section>
       </div>
     </div>
+  )
+}
+
+// "Tell me about": Save wakes only once a switch differs from what is saved (review P3-41).
+// The parent keys it on the saved values, so a save remounts it clean.
+function NotifyForm({ me, busy, onSave }: { me: { kind: string; email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean }; busy: boolean; onSave: (on: string[]) => void }) {
+  const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries(me.email_kinds.map((k) => [k.key, k.on])))
+  const dirty = me.email_kinds.some((k) => on[k.key] !== k.on)
+  return (
+    <form onSubmit={(e: FormEvent) => { e.preventDefault(); onSave(me.email_kinds.filter((k) => on[k.key]).map((k) => k.key)) }} className="grid grid-cols-1 content-start gap-2 panel p-4">
+      <PanelTitle className="mb-0" hint={me.kind === "internal" ? "by email and in Teams; the bell shows everything either way" : "by email; the bell shows everything either way"}>Tell me about</PanelTitle>
+      {me.email_kinds.map((k) => (
+        <label key={k.key} className="flex items-start gap-2 text-[13px]">
+          <Switch checked={on[k.key]} onCheckedChange={(v) => setOn({ ...on, [k.key]: v })} className="mt-1" />
+          <span>{k.label}</span>
+        </label>
+      ))}
+      {!me.mail_enabled && <p className="text-[12px] text-muted-foreground">Email is not connected on this installation yet, so for now only the bell is used.</p>}
+      <div><Button type="submit" size="sm" loading={busy} disabled={!dirty}>Save</Button></div>
+    </form>
   )
 }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { Calendar } from "./Calendar"
@@ -10,7 +10,9 @@ import * as api from "@/lib/api"
 vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()), calendar: vi.fn(async () => calendarData), moveTaskDue: vi.fn(async () => ({ ok: true })) }))
 
 const Where = () => <output data-testid="where">{useLocation().search}</output>
-const mount = (wide = true) => render(<MemoryRouter initialEntries={["/board?view=calendar&month=2026-09"]}><Calendar wide={wide} /><Where /></MemoryRouter>)
+const mount = (wide = true, url = "/board?view=calendar&month=2026-09", only: Set<number> | null = null) =>
+  render(<MemoryRouter initialEntries={[url]}><Calendar wide={wide} only={only} /><Where /></MemoryRouter>)
+beforeEach(() => localStorage.clear())
 
 describe("Calendar", () => {
   it("draws the month with bars, chips, a cap per day and the day panel", async () => {
@@ -36,7 +38,7 @@ describe("Calendar", () => {
   it("Enter on a movable task opens its rollout; Move picks a new due date from the keyboard", async () => {
     const user = userEvent.setup()
     mount()
-    const chip = (await screen.findAllByRole("button", { name: /^Late: ?Task 1$/ }))[0]
+    const chip = (await screen.findAllByRole("button", { name: /^Task, late: Task 1,/ }))[0]
     chip.focus(); await user.keyboard("{Enter}")
     expect(screen.getByTestId("where")).toHaveTextContent("rollout=1")
     await user.click(screen.getAllByRole("button", { name: "Move Task 1 to another day" })[0])
@@ -48,5 +50,46 @@ describe("Calendar", () => {
     await user.click(screen.getByRole("button", { name: "Move task" }))
     expect(api.moveTaskDue).toHaveBeenCalledWith(1, 1, "2026-09-11")
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+
+  it("Week: the week's rollouts and every item per day, today tinted; back to Month lands on the week's month (P3-50, P3-34)", async () => {
+    const user = userEvent.setup()
+    mount(true, "/board?view=calendar&month=2026-03&cal=week&week=2026-09-09")
+    expect(await screen.findByRole("heading", { level: 2 })).toHaveTextContent("7 Sep – 13 Sep 2026")
+    expect(screen.getByRole("group", { name: "Rollouts running this week" })).toHaveTextContent("EDR Rollout - Globex")
+    expect(screen.getAllByRole("button", { name: /^Task, late: Task \d/ })).toHaveLength(4)   // no cap in a week
+    await user.click(screen.getByRole("radio", { name: "Month" }))
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("September 2026")   // not March
+  })
+
+  it("Agenda (wide): a heading per day with anything; the mode is remembered (advice B1)", async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.click(await screen.findByRole("radio", { name: "Agenda" }))
+    expect(screen.getByRole("heading", { level: 3, name: /10 Sep/ })).toBeInTheDocument()
+    expect(screen.getByText("Task 4")).toBeInTheDocument()
+    cleanup()
+    mount(true, "/board?view=calendar&month=2026-09")
+    expect(await screen.findByRole("heading", { level: 3, name: /10 Sep/ })).toBeInTheDocument()
+  })
+
+  it("a hand-edited month or week does not break the page (P3-34)", async () => {
+    mount(true, "/board?view=calendar&month=2026-13&week=2026-02-31x&day=nope")
+    expect(await screen.findByRole("heading", { level: 2 })).toBeInTheDocument()
+  })
+
+  it("honours the Flow's filter, keeps keys apart and says what a chip is (P3-34, P2-44)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    const move = calendarData.moves[0]
+    vi.mocked(api.calendar).mockResolvedValueOnce({ ...calendarData, moves: [move, move] })   // moved, put back, moved again
+    mount()
+    expect((await screen.findAllByRole("link", { name: /^Moved: PO Received to Scoping/ }))).toHaveLength(2)
+    expect(error.mock.calls.flat().join(" ")).not.toMatch(/same key/)
+    error.mockRestore()
+    cleanup()
+    mount(true, undefined, new Set([2]))   // the filter leaves only rollout 2: nothing of rollout 1
+    await screen.findByRole("heading", { level: 2 })
+    await waitFor(() => expect(screen.queryByText("Task 1")).toBeNull())
+    expect(screen.queryByRole("link", { name: /EDR Rollout - Globex/ })).toBeNull()
   })
 })

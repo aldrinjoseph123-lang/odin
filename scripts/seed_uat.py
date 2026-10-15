@@ -29,6 +29,7 @@ random.seed(7)   # the same portfolio every time
 
 if os.path.exists(DB_PATH):
     sys.exit(f"{DB_PATH} already exists — seed a fresh ODIN_DATA_DIR")
+os.environ["ODIN_ADMIN_PASSWORD"] = "changeme"   # the first boot's admin password (else random); replaced by ADMIN_PASSWORD below
 init_db()
 
 STAFF = [("pm1", "Priya Menon", "Member"), ("pm2", "Tom Keller", "Member"), ("sales1", "Sara Lind", "Contributor"),

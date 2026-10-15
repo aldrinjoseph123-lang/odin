@@ -128,7 +128,7 @@ Sign in at `https://odin.<yourdomain>` (Access PIN, then admin + the new passwor
 | Security | Sign-in link life (`link_minutes`, default 30): raise it (e.g. 240) while mail is off, since links are carried by hand; lower it again in Phase 6 |
 | Users | Your staff accounts; hand each their first password privately and have them change it on the Account page (or set it for them with `scripts/set_password.py <username>`) |
 
-**Check:** `curl -s https://odin.<yourdomain>/healthz` prints `ok`; a private
+**Check:** `curl -s https://odin.<yourdomain>/healthz` starts with `ok` (then the database, scheduler and disk lines); a private
 window gets the Access PIN page on `/` but not on `/auth/link/anything`.
 
 ---
@@ -153,17 +153,23 @@ With a throw-away project named `GO-LIVE TEST`:
 
 ## Phase 5 — Running it
 
-**Updates**
+**Updates** are the self-updater's job (`DEPLOY.md` → "Upgrades: the
+self-updater"): cron runs `~/odin-update.sh` every 5 minutes; it backs up, moves
+to the newest release tag, waits for the app and the scheduler to be healthy and
+preflight to pass, and goes back to the previous tag (telling the admins in the
+bell) if anything fails. Install it once:
 
 ```bash
-cd /opt/odin
-docker compose exec app python backup.py             # a fresh restore-tested backup first
-git fetch --tags && git checkout v1.x.y
-docker compose up -d --build                          # migrations run on boot
-docker compose exec app python preflight.py
+cp /opt/odin/deploy/odin-update.sh ~/odin-update.sh && chmod +x ~/odin-update.sh
+( crontab -l 2>/dev/null; echo '*/5 * * * * $HOME/odin-update.sh >> $HOME/odin-update.log 2>&1' ) | crontab -
 ```
 
-**Rollback:** `git checkout <previous tag> && docker compose up -d --build`.
+Do not check out a release by hand: the updater moves the server back to the
+newest tag within 5 minutes. To stop it: `touch ~/.odin-update/hold` (resume
+with `rm`). Its log is `~/odin-update.log`; a failed tag is retried twice, after
+30 and 60 minutes, and `rm ~/.odin-update/failed` retries it now.
+
+**Rollback by hand** (updater held): `git checkout <previous tag> && docker compose up -d --build`.
 The database stays on the newer schema: older code ignores the tables and columns
 it does not know. From v1.7.1 on, the database carries a schema number
 (`PRAGMA user_version`, `db.SCHEMA_VERSION`); code older than the database sees it
@@ -175,11 +181,21 @@ know, so after rolling back past v1.7.0 restore the pre-update backup if those
 settings matter (`DEPLOY.md` → Restore). Restore that backup too whenever the
 newer release's data itself must go.
 
-**Watch:** a Cloudflare health check on `/healthz`; `docker compose logs -f app`;
-Settings → Backups for the nightly run.
+**Watch:** an external uptime check on `/healthz` (`docs/RUNBOOK.md`, "Uptime
+check"); the bell, where the scheduler reports failed jobs, stale backups, a
+nearly full disk and failed updates; `docker compose logs -f app`.
 
 **Disaster recovery until Phase 6:** Odin's backups sit on the same disk, so keep a
 nightly VM backup (Proxmox `vzdump`, or your hypervisor's) on other storage.
+
+**Rotating `SECRET_KEY`** (it leaked, or on a schedule): put a new key in `SECRET_KEY`
+and the old one in `SECRET_KEY_FALLBACKS` (comma-separated if there are several), then
+`docker compose up -d`. Sessions signed with the old key keep working, and the boot
+seals every stored secret (Microsoft 365 tokens, client secrets, the AI key, two-step
+secrets) again with the new key. After that one boot, remove `SECRET_KEY_FALLBACKS`
+and restart: old sessions end and the old key opens nothing. While the old key is a
+fallback it still signs valid sessions, so after a leak remove it as soon as that
+first boot is done.
 
 ---
 

@@ -182,7 +182,7 @@ def _health(project, stages, cur, finish, risks, today, closed, has_plan):
     elif vs_t is not None and vs_t > amber:
         reasons_amber.append(f"Forecast to finish {vs_t} d after the target date.")
     vs_b = finish["vs_baseline_days"]
-    if vs_b is not None and vs_b > red and not reasons_red:
+    if vs_b is not None and vs_b > amber and not reasons_red:   # amber past the amber line, as the target (P3-22)
         reasons_amber.append(f"{vs_b} d behind the baseline.")
     c = stages[cur] if stages else None
     if c and c["sla_days"] and c["actual_days"] is not None and c["actual_days"] > c["sla_days"]:
@@ -205,14 +205,20 @@ def _health(project, stages, cur, finish, risks, today, closed, has_plan):
 
 
 def validate(rows, items):
-    """Clean {stage id: (start, end)} from posted items, or raise ValueError."""
+    """Clean {stage id: (start, end)} from posted items, or raise ValueError:
+    a body that is not a list of this rollout's stages is refused, never
+    answered "saved" with nothing saved (P2-27)."""
     known = {r["id"]: r for r in rows}
     out = {}
-    for it in items if isinstance(items, list) else []:
+    if not isinstance(items, list):
+        raise ValueError("Send the stages as a list")
+    for it in items:
         sid = it.get("id") if isinstance(it, dict) else None
-        if sid not in known:
-            continue
+        if isinstance(sid, bool) or not isinstance(sid, int) or sid not in known:
+            raise ValueError("A stage in the plan is not one of this rollout's stages; reload and try again")
         s, e = it.get("plan_start") or None, it.get("plan_end") or None
+        if any(v is not None and not isinstance(v, str) for v in (s, e)):
+            raise ValueError(f"{known[sid]['name']}: dates like 2026-10-31")
         ds, de = _d(s), _d(e)
         if (s and not ds) or (e and not de):
             raise ValueError(f"{known[sid]['name']}: dates like 2026-10-31")

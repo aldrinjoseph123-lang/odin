@@ -1,15 +1,18 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { CUT, tipText } from "@/lib/tips"
+import { cn } from "@/lib/utils"
 
 // Tooltips for the whole app, from what the markup already says: an element's
 // `title` (truncated names, icon hints) or, for an icon-only control, its
 // aria-label. One styled bubble replaces the browser's slow native tooltip:
 // after a short hover, at once on keyboard focus; gone on leave, scroll or Esc.
+// The pointer may move onto the bubble without losing it (WCAG 1.4.13).
 // Elements that use the Tooltip component (data-slot="tooltip-trigger") keep theirs.
 type Tip = { text: string; x: number; y: number; below: boolean }
 
 export function TitleTips() {
   const [tip, setTip] = useState<Tip | null>(null)
+  const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let timer: number | undefined
     let current: HTMLElement | null = null
@@ -32,7 +35,7 @@ export function TitleTips() {
       if (!el || el.closest("[data-slot='tooltip-trigger']")) return
       if (el !== current) show(el, 450)
     }
-    const out = (e: PointerEvent) => { if (current && !(e.relatedTarget instanceof Node && current.contains(e.relatedTarget))) hide() }
+    const out = (e: PointerEvent) => { if (current && !(e.relatedTarget instanceof Node && (current.contains(e.relatedTarget) || box.current?.contains(e.relatedTarget)))) hide() }
     const focus = (e: FocusEvent) => {
       const el = target(e)
       if (el && !el.closest("[data-slot='tooltip-trigger']") && el.matches(":focus-visible")) show(el, 0)
@@ -58,7 +61,8 @@ export function TitleTips() {
   }, [])
   if (!tip) return null
   return (
-    <div role="tooltip" className="pointer-events-none fixed z-[110] max-w-60 rounded-md bg-foreground px-2 py-1 text-[12px] leading-snug text-background shadow-pop animate-in fade-in duration-100"
+    // the transparent bridge over the 8 px gap keeps the bubble while the pointer crosses to it
+    <div ref={box} role="tooltip" className={cn("fixed z-[110] max-w-60 rounded-md bg-foreground px-2 py-1 text-[12px] leading-snug text-background shadow-pop animate-in fade-in duration-100 before:absolute before:inset-x-0 before:h-2 before:content-['']", tip.below ? "before:-top-2" : "before:-bottom-2")}
       style={{ left: tip.x, top: tip.y, transform: `translate(-50%, ${tip.below ? "0" : "-100%"})` }}>
       {tip.text}
     </div>

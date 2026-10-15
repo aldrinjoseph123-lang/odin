@@ -4,11 +4,25 @@ Reads the acting user from the Flask session and the caller IP from the
 request, so it must run inside a request context (every route does). Depends
 only on db — nothing depends on it except route handlers.
 """
+import re
 from datetime import datetime
 
 from flask import request, session
 
 from db import get_db
+
+
+DETAILS_MAX = 2000
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+
+
+def _clean(details):
+    """The log is append-only: no caller writes unbounded text or control characters
+    (line breaks, escapes) into it: each control character becomes a space."""
+    if details is None:
+        return None
+    details = _CONTROL.sub(" ", str(details))
+    return details if len(details) <= DETAILS_MAX else details[:DETAILS_MAX - 1] + "…"
 
 
 def audit_log(action, resource_type=None, resource_id=None, resource_name=None, details=None, actor=None):
@@ -25,6 +39,6 @@ def audit_log(action, resource_type=None, resource_id=None, resource_name=None, 
     timestamp = datetime.utcnow().isoformat()
     db.execute(
         "INSERT INTO audit_logs (user_id, username, action, resource_type, resource_id, resource_name, details, timestamp, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (user_id, username, action, resource_type, resource_id, resource_name, details, timestamp, ip_address),
+        (user_id, username, action, resource_type, resource_id, resource_name, _clean(details), timestamp, ip_address),
     )
     db.commit()

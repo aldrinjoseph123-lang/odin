@@ -162,3 +162,19 @@ test("@smoke the sign-in page says what is missing and what is wrong", async ({ 
   await page.getByRole("button", { name: "Sign in" }).click()
   await expect(page).toHaveURL(/\/dashboard/)
 })
+
+test("@smoke the / shortcut can be switched off on the Account page (WCAG 2.1.4)", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "member", "/account")
+  const slash = page.getByRole("switch", { name: "Press / to open search" })
+  await slash.click()
+  await expect(slash).toHaveAttribute("aria-checked", "false")
+  await page.locator("main").click({ position: { x: 4, y: 4 } })
+  await page.keyboard.press("/")
+  await expect(page.getByRole("dialog", { name: "Search and jump" })).toHaveCount(0)
+  await slash.click()   // back on: / opens search again
+  await page.locator("main").click({ position: { x: 4, y: 4 } })
+  await page.keyboard.press("/")
+  await expect(page.getByRole("dialog", { name: "Search and jump" })).toBeVisible()
+  expectClean(errors)
+})

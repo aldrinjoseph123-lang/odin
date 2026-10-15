@@ -27,7 +27,7 @@ export default function Login() {
   const [caps, setCaps] = useState(false)
   const [error, setError] = useState<{ field: "username" | "password" | "form"; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null)
   const [signin, setSignin] = useState<SignIn | null>(null)
   // two-step sign-in: after the right password, the code (or a recovery code)
   const [codeStep, setCodeStep] = useState(false)
@@ -41,8 +41,8 @@ export default function Login() {
   useEffect(() => {
     document.title = emergency ? "Emergency sign-in · Odin" : "Sign in · Odin"
     // e.g. "Your session has ended — please sign in again", queued before the redirect here
-    session().then((s) => { setSignin(s.signin ?? { microsoft: false, microsoft_only: false }); if (s.messages?.length) setNotice(s.messages.join(" ")) })
-      .catch(() => { setSignin({ microsoft: false, microsoft_only: false }); setNotice("Odin is not answering just now (it may be restarting). Reload in a moment if signing in fails.") })
+    session().then((s) => { setSignin(s.signin ?? { microsoft: false, microsoft_only: false }); if (s.messages?.length) setNotice({ text: s.messages.join(" ") }) })
+      .catch(() => { setSignin({ microsoft: false, microsoft_only: false }); setNotice({ text: "Odin is not answering just now (it may be restarting). Reload in a moment if signing in fails.", bad: true }) })
   }, [emergency])
   const showPassword = emergency || (signin !== null && !signin.microsoft_only)
   const microsoft = !emergency && !codeStep && !!signin?.microsoft
@@ -87,7 +87,7 @@ export default function Login() {
           : microsoft ? "Staff sign in with their work account." : "Use the username and password your admin gave you."}
       </AuthHeading>
 
-      {notice && <Alert className="mb-5" role="status"><AlertDescription>{notice}</AlertDescription></Alert>}
+      {notice && <Alert className="mb-5" role={notice.bad ? "alert" : "status"} variant={notice.bad ? "destructive" : "default"}><AlertDescription>{notice.text}</AlertDescription></Alert>}
 
       {microsoft && (
         <a href={`/auth/microsoft${next ? `?next=${encodeURIComponent(next)}` : ""}`}
@@ -106,7 +106,7 @@ export default function Login() {
           <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="code" className="text-[14px]">{recovery ? "Recovery code" : "Code"}</Label>
             <Input id="code" name="code" autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} autoCapitalize="none"
-              maxLength={recovery ? 12 : 7} value={code} onChange={(e) => { setCode(e.target.value); if (error) setError(null) }} className={`${field} tracking-[0.2em] tabular-nums`} />
+              maxLength={recovery ? 24 : 7} value={code} onChange={(e) => { setCode(e.target.value); if (error) setError(null) }} className={`${field} tracking-[0.2em] tabular-nums`} />
           </div>
           <Button type="submit" loading={busy} className="mt-1 h-11 text-sm">
             {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Checking…</> : "Continue"}

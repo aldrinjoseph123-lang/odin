@@ -1,5 +1,5 @@
-// @perf: Lighthouse on the dashboard and the flow, signed in, plus a ceiling
-// on the main bundle. Run after `playwright test` against the same server:
+// @perf: Lighthouse on the dashboard and every view of the flow, signed in,
+// plus a ceiling on the main bundle and on the largest chunk loaded later. Run after `playwright test` against the same server:
 //   node e2e/perf.mjs            (E2E_PORT, default 5099)
 // Thresholds are deliberately modest: Flask's dev server sends no
 // compression, and the pages are data-heavy by design.
@@ -11,13 +11,17 @@ import desktopConfig from "lighthouse/core/config/desktop-config.js"
 import { chromium } from "@playwright/test"
 
 const base = `http://127.0.0.1:${process.env.E2E_PORT ?? 5099}`
-const BUDGET = { performance: 75, accessibility: 90, "best-practices": 85, mainBundleGzipKB: 260 }
+const BUDGET = { performance: 75, accessibility: 90, "best-practices": 85, mainBundleGzipKB: 260, lazyChunkGzipKB: 120 }
 
 // the main bundle, gzipped, must stay under the ceiling
 const assets = readdirSync("dist/assets").filter((f) => f.endsWith(".js")).map((f) => ({ f, gz: gzipSync(readFileSync(`dist/assets/${f}`)).length }))
 const main = assets.sort((a, b) => b.gz - a.gz)[0]
 console.log(`main bundle ${main.f}: ${(main.gz / 1024).toFixed(0)} KB gzipped (ceiling ${BUDGET.mainBundleGzipKB})`)
 if (main.gz / 1024 > BUDGET.mainBundleGzipKB) { console.error("bundle over budget"); process.exit(1) }
+// the views and charts load on first use: the largest of them has a ceiling too (review P3-50; 98 KB on 15 Oct 2026)
+const lazy = assets[1]
+console.log(`largest lazy chunk ${lazy.f}: ${(lazy.gz / 1024).toFixed(0)} KB gzipped (ceiling ${BUDGET.lazyChunkGzipKB})`)
+if (lazy.gz / 1024 > BUDGET.lazyChunkGzipKB) { console.error("lazy chunk over budget"); process.exit(1) }
 
 // a signed-in cookie, through the same door the app uses
 const first = await fetch(`${base}/api/session`)   // one session: its token and its cookie together
@@ -31,7 +35,7 @@ if (!r.ok) { console.error("sign-in failed", r.status); process.exit(1) }
 const browser = await chromium.launch({ args: ["--remote-debugging-port=9222"] })
 let failed = false
 try {
-  for (const path of ["/dashboard", "/board"]) {
+  for (const path of ["/dashboard", "/board", "/board?view=kanban", "/board?view=gantt", "/board?view=calendar"]) {
     // the desktop config: a desktop screen and desktop network/CPU throttling, not the phone-on-4G default
     const result = await lighthouse(`${base}${path}`, { port: 9222, output: "json", logLevel: "error", onlyCategories: ["performance", "accessibility", "best-practices"], extraHeaders: { Cookie: cookie } }, desktopConfig)
     const scores = Object.fromEntries(Object.entries(result.lhr.categories).map(([k, v]) => [k, Math.round((v.score ?? 0) * 100)]))

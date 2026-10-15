@@ -5,6 +5,38 @@ dropped or changed, a verdict the input contradicts, answers too long, lists
 that miss what was there to find."""
 
 
+import re
+
+COLOURS = re.compile(r"\b(amber|red|green)\b", re.I)
+
+
+def _colour_echo(inputs, output):
+    """A health colour in the answer that the input never used itself (a
+    rollout may be called "Red Team"), or None."""
+    given = {c.lower() for c in COLOURS.findall(_text(inputs))}
+    return next((c for c in COLOURS.findall(_text(output)) if c.lower() not in given), None)
+
+
+def no_health_colours():
+    """Odin's internal colours stay internal: the customer reads health as on
+    track, at risk or off track (P2-24)."""
+    def grade(inputs, output):
+        said = _colour_echo(inputs, output)
+        return f"said \"{said}\", an internal health colour" if said else None
+    grade.__name__ = "no_health_colours"
+    return grade
+
+
+def reject_health_colours(inputs, output):
+    """refine= for words a customer may read: an answer naming a colour is
+    refused (the job fails, the person writes the words), never shown."""
+    from services.ai.client import AIError
+    said = _colour_echo(inputs, output)
+    if said:
+        raise AIError(f"The draft called the health \"{said}\"; Odin's health colours stay internal", "invalid")
+    return output
+
+
 def _text(value):
     """Every string in an answer, joined: graders read the whole answer."""
     if isinstance(value, str):

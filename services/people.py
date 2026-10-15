@@ -64,6 +64,11 @@ def my_work(uid, scope):
     today = local_today()
     scope_sql, scope_params = scope
     tasks = _task_rows(db, f"t.assignee_id = ? AND t.done = 0{scope_sql}", (uid, *scope_params))
+    # who may re-date a task: whoever task_edit lets (the person it is on ticks it, never re-dates it; P2-10)
+    from core import project_allows
+    manages = {pid: project_allows(pid, "manage_tasks") for pid in {t["project_id"] for t in tasks}}
+    for t in tasks:
+        t["can_edit"] = manages[t["project_id"]]
     since = _since(today - timedelta(days=13))
     done = Counter(local_date(r[0]).isoformat() for r in db.execute(
         "SELECT t.done_at FROM tasks t JOIN projects p ON p.id = t.project_id "

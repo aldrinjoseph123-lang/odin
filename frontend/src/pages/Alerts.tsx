@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useState } from "react"
+import { Fragment, useEffect } from "react"
 import { chip } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
-import { alerts, ApiError, type AlertsData, type User } from "@/lib/api"
+import { alerts, type User } from "@/lib/api"
+import { useLoad } from "@/lib/useLoad"
 import { cn } from "@/lib/utils"
 import { Pager } from "@/components/Pager"
 import { fmtWhen } from "@/lib/format"
@@ -10,21 +11,16 @@ import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 export default function Alerts(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
-  const [d, setD] = useState<AlertsData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const query = params.toString()
-  useEffect(() => {
-    document.title = "Alerts · Odin"
-    let live = true   // only the latest filter's answer is shown
-    alerts(query).then((x) => { if (live) setD(x) }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load alerts") })
-    return () => { live = false }
-  }, [query])
+  // only the latest filter's answer is shown; the last rows stay until it lands (review P2-29)
+  const { data: d, error } = useLoad(`alerts?${query}`, () => alerts(query), { keep: true })
+  useEffect(() => { document.title = "Alerts · Odin" }, [])
   function update(changes: Record<string, string | null>) {
     const next = new URLSearchParams(params); next.delete("page")
     for (const [k, v] of Object.entries(changes)) { if (v) next.set(k, v); else next.delete(k) }
     setParams(next)
   }
-  if (error) return <LoadError message={error} />
+  if (error) return <LoadError message={error.message} />
   if (!d) return <PageSkeleton />
   return (
     <div className="flex h-full flex-col px-5 pb-4 pt-4">

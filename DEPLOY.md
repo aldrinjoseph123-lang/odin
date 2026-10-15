@@ -18,10 +18,12 @@ docker compose exec app python preflight.py                 # must report "Ready
 
 Then, immediately:
 
-1. Sign in as `admin` / `changeme` and change the password on the Account page.
-   The policy rejects anything containing `changeme`, `password`, `odin`, etc.
-2. `docker compose exec app python reset_data.py` if the database carries demo
-   projects you don't want.
+1. Sign in as `admin` with the password the first boot printed once
+   (`docker compose logs app | grep "first admin"`), or set one first with
+   `docker compose exec app python scripts/set_password.py`, and change it on the
+   Account page. The policy rejects anything containing `changeme`, `password`, `odin`, etc.
+2. If the database carries demo projects you don't want, with nothing writing meanwhile:
+   `docker compose stop app scheduler && docker compose run --rm --no-deps app python reset_data.py && docker compose start app scheduler`.
 3. If you use Microsoft 365, register this deployment's exact callback URI
    (`https://your-host/integrations/callback`) in the Azure app — scheme, host,
    port and path must all match or sign-in fails with `AADSTS50011`.
@@ -78,8 +80,9 @@ docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml up -d --bu
 docker compose exec app python preflight.py                 # must say "Ready to serve"
 docker compose ps                                           # app should be "healthy"
 
-# 4. First sign-in at https://odin.yourdomain — admin / changeme, you will be
-#    forced to set a new password before anything else loads.
+# 4. First sign-in at https://odin.yourdomain — admin and the password the first
+#    boot printed once (docker compose logs app); you will be forced to set a new
+#    password before anything else loads.
 ```
 
 Then the Cloudflare side below (Access, rate limits). Keep Proxmox's own
@@ -130,18 +133,43 @@ there, locally and at each destination. Every run, and its restore-test
 result, is listed in Settings → Backups. Switch on at least one off-host
 destination: a backup on the disk it protects is only half a backup.
 
-**Restore** (tested; rehearse it quarterly):
+A backup by hand (the same restore-tested archive, never a copy of the live
+files: committed rows can still sit in the WAL beside `odin.db`):
+
+```bash
+docker compose exec app python backup.py                               # app running
+docker compose run --rm --no-deps -T app python backup.py --local      # app down
+docker compose run --rm --no-deps app ls -l /data/backups              # what is there
+```
+
+Archives and their folder are readable by the container's user only (0600,
+0700): each holds the whole database, guest tokens included.
+
+**Restore** (tested; rehearse it quarterly). Keep the same `.env`: the
+`SECRET_KEY` in it seals the Microsoft 365 tokens, client secrets, the AI key
+and every two-step secret in the database, and a restore under another key
+leaves them unreadable (people then sign in with recovery codes and an admin
+reconnects Microsoft 365). Hold the self-updater first so it does not rebuild
+mid-restore (`touch ~/.odin-update/hold`, below).
 
 ```bash
 docker compose stop app scheduler
-docker run --rm -v odin-data:/data -v "$PWD:/backup" alpine sh -c \
-  'cd /data && rm -rf odin.db odin.db-wal odin.db-shm uploads avatars brand && unzip -o /backup/odin-backup-<timestamp>.zip -x manifest.json && chown -R 10001:10001 /data'
+# an archive in the volume (/data/backups/…), or one copied from elsewhere into
+# the current folder, which is mounted at /restore:
+docker compose run --rm --no-deps -v "$PWD:/restore:ro" app sh -c \
+  'cd /data && rm -rf odin.db odin.db-wal odin.db-shm uploads avatars brand && python -m zipfile -e /data/backups/odin-backup-<timestamp>.zip . && rm -f manifest.json'
 docker compose start app scheduler
 docker compose exec app python preflight.py
+rm ~/.odin-update/hold
 ```
 
-The archive holds `odin.db`, `uploads/`, `avatars/`, `brand/` (document template logos), `audit-archive/` and `manifest.json`. `init_db()` runs on boot and
-applies any migrations the archive predates.
+(For an archive from elsewhere use `/restore/odin-backup-<timestamp>.zip`.) It
+runs as the container's own user, so the files keep the right owner. The
+archive holds `odin.db`, `uploads/`, `avatars/`, `brand/` (document template
+logos), `audit-archive/` and `manifest.json`. `init_db()` runs on boot and
+applies any migrations the archive predates. `docs/RUNBOOK.md` has this and
+the other incidents (Odin down, a failed update, a lost key, a full disk) as
+short steps.
 
 ### AI server (optional)
 
@@ -155,19 +183,57 @@ on there. The app container must be able to reach that address (Docker's
 default bridge reaches the LAN); an address outside the private network is
 refused unless "Allow an external AI provider" is ticked.
 
-### Upgrades
+### Upgrades: the self-updater
+
+Production updates itself. `deploy/odin-update.sh`, installed outside the
+checkout and run by cron every 5 minutes, moves the server to the newest
+release tag on `main` (`vX.Y.Z`, made by the Release workflow once a pull
+request from `dev` is merged and CI passed). Each update: a restore-tested
+backup (`backup.py --local`), checkout, `docker compose up -d --build`, then
+it waits until the app and the scheduler are healthy and
+`preflight.py --update` passes (settings an admin owns only warn there). If
+any step fails it goes back to the previous tag and rebuilds that; the
+admins get a bell notice either way (and "ROLLBACK FAILED" if going back
+failed too). Migrations run on boot (`init_db()` is idempotent). Never check
+out a release by hand on production: the updater moves it back to the newest
+tag within 5 minutes. Hold it first (below) if you must.
+
+**Install** (once, as the user that runs Docker, from the checkout in `/opt/odin`):
 
 ```bash
-git pull && docker compose up -d --build
+cp /opt/odin/deploy/odin-update.sh ~/odin-update.sh && chmod +x ~/odin-update.sh
+( crontab -l 2>/dev/null; echo '*/5 * * * * $HOME/odin-update.sh >> $HOME/odin-update.log 2>&1' ) | crontab -
 ```
 
-Migrations run automatically on boot (`init_db()` is idempotent), so there is no
-separate migration step. Back up the volume first anyway:
+After each good update it refreshes `~/odin-update.sh` from the new release.
+`ODIN_DIR` (default `/opt/odin`) points it at another checkout.
+
+| | |
+|---|---|
+| Log | `~/odin-update.log`: one line per step, `now on vX.Y.Z`, `... failed ...; going back to ...`, `ROLLBACK FAILED` |
+| Failed tag | `~/.odin-update/failed` holds `tag tries epoch`. A failed tag is tried again after 30 minutes, then 60, at most 3 times; a newer tag is always tried |
+| Retry now | `rm ~/.odin-update/failed` (the next run, within 5 minutes, tries again) |
+| Hold updates | `touch ~/.odin-update/hold`; resume with `rm ~/.odin-update/hold` |
+| Run now | `~/odin-update.sh` (exits at once if a run is in progress) |
+| Admin notices | the updater appends to `DATA_DIR/ops-notices`; the scheduler turns each line into a bell item for the admins within a minute |
+
+Rotate the log (the updater only appends), as root:
 
 ```bash
-docker run --rm -v odin-data:/data -v "$PWD:/backup" alpine \
-  tar czf /backup/odin-$(date +%F).tar.gz -C /data .
+cat > /etc/logrotate.d/odin-update <<'EOF'
+/home/*/odin-update.log {
+    weekly
+    rotate 8
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+EOF
 ```
+
+Outside production (or with the updater held) an upgrade by hand is
+`docker compose exec app python backup.py && git pull && docker compose up -d --build`.
 
 ---
 

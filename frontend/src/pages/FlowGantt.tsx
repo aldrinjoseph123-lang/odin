@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Crosshair } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,11 +33,29 @@ const RAG_WORD = { red: "Off track", amber: "At risk", green: "On track", done: 
 
 type Edit = { row: GanttRow; index: number; mode: "move" | "start" | "end" | "pick"; days: number; start?: string; end?: string; cascade: boolean }
 
-export default function FlowGantt({ ids, selectedId, onSelect }: { ids: number[]; selectedId: number | null; onSelect: (id: number) => void }) {
+// A label after its bar, on a card chip that sits over the target tick. A full-width
+// strip holds it, so it stays sticky in view when its bar runs past either edge
+// instead of being cut off or lost (review P2-50).
+function BarLabel({ at, children }: { at: number; children: ReactNode }) {
+  return (
+    <span className="pointer-events-none absolute inset-0 flex items-center" aria-hidden>
+      <span className="sticky z-10 whitespace-nowrap rounded-md bg-card px-1 text-[12px] text-muted-foreground" style={{ marginLeft: at, left: LEFT + 4, right: 4 }}>{children}</span>
+    </span>
+  )
+}
+
+// A stage's dates in words, for the screen reader whether or not the person may edit the plan (P3-47).
+function stageWords(s: GanttStage) {
+  return [s.plan_start && s.plan_end ? `plan ${fmtDate(s.plan_start)} to ${fmtDate(s.plan_end)}` : "no plan yet",
+    s.actual_start ? `started ${fmtDate(s.actual_start)}${s.actual_end ? `, ended ${fmtDate(s.actual_end)}` : ""}` : "",
+    s.forecast_end && s.status !== "done" ? `forecast to end ${fmtDate(s.forecast_end)}` : ""].filter(Boolean).join("; ")
+}
+
+export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: number[]; stamp?: number; selectedId: number | null; onSelect: (id: number) => void }) {
   const [data, setData] = useState<GanttData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const load = useCallback(() => flowPlan().then((d) => { setData(d); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load the plans")), [])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void load() }, [load, stamp])   // the Flow's every reload, so a new rollout or a move shows here too (P2-35)
   const [zoom, setZoom] = useState<Zoom>(() => read<Zoom>(ZOOM_KEY, "month"))
   const [open, setOpen] = useState<number[]>(() => read<number[]>(OPEN_KEY, []))
   useEffect(() => keep(ZOOM_KEY, zoom), [zoom])
@@ -112,7 +130,7 @@ export default function FlowGantt({ ids, selectedId, onSelect }: { ids: number[]
       <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
         <Button size="sm" variant="outline" onClick={() => { if (scroller.current) scroller.current.scrollLeft = Math.max(0, x(data.today) - 6 * px) }}><Crosshair className="h-3.5 w-3.5" /> Today</Button>
         <Segmented label="Zoom" value={zoom} onChange={setZoom} options={[{ value: "week", label: "Week" }, { value: "month", label: "Month" }, { value: "quarter", label: "Quarter" }]} />
-        <Button size="sm" variant="ghost" onClick={() => setOpen(open.length ? [] : rows.map((r) => r.id))}>
+        <Button size="sm" variant="ghost" aria-expanded={open.length > 0} onClick={() => setOpen(open.length ? [] : rows.map((r) => r.id))}>
           {open.length ? <><ChevronsDownUp className="h-3.5 w-3.5" /> Close all</> : <><ChevronsUpDown className="h-3.5 w-3.5" /> Open every rollout</>}</Button>
         <ul className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
           <li className="flex items-center gap-2"><span className="h-3 w-5 rounded-md border-[1.5px] border-foreground/45" />Plan</li>
@@ -121,19 +139,27 @@ export default function FlowGantt({ ids, selectedId, onSelect }: { ids: number[]
           <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-foreground/15" />Forecast</li>
           <li className="flex items-center gap-2"><span className="h-[3px] w-5 rounded-full bg-input" />Baseline</li>
           <li className="flex items-center gap-2"><span className="h-3 w-0 border-l border-dashed border-foreground/60" />Target</li>
+          <li className="flex items-center gap-2"><span className="flex h-2 w-6 overflow-hidden rounded-full"><span className="flex-1 bg-nav-fg/60" /><span className="flex-1 bg-warn-line" /><span className="flex-1 bg-bad-line" /></span>A rollout's fill: share done, in its health (on track, at risk, off track)</li>
         </ul>
       </div>
-      <div ref={scroller} className="relative min-h-0 flex-1 overflow-auto border-t border-border" role="grid" aria-label="Rollouts on a timeline" aria-rowcount={lines.length + 1}>
+      {/* a table, not a grid: Tab walks its buttons, and it has no grid's arrow-key model (P3-47) */}
+      <div ref={scroller} className="relative min-h-0 flex-1 overflow-auto border-t border-border" role="table" aria-label="Rollouts on a timeline" aria-rowcount={lines.length + 1}>
         <div style={{ width: LEFT + span * px }} className="relative">
           {/* the time axis: months (or quarters' months) over days or Mondays */}
-          <div className="sticky top-0 z-20 flex h-12 border-b border-border bg-card" role="row">
+          <div className="sticky top-0 z-20 flex h-12 border-b border-border bg-card" role="row" aria-rowindex={1}>
             <div className="sticky left-0 z-10 grid shrink-0 grid-cols-[1fr_104px_24px_56px] items-end gap-2 border-r border-border bg-card px-3 pb-2 text-[12px] text-muted-foreground" style={{ width: LEFT }} role="columnheader">
               <span>Rollout</span><span>Stage</span><span className="sr-only">Owner</span><span className="whitespace-nowrap text-right">Target</span>
             </div>
-            <div className="relative h-full" style={{ width: span * px }} aria-hidden>
-              {months.map((m) => <span key={m} className="absolute top-1 whitespace-nowrap pl-1 text-[12px] font-medium" style={{ left: x(m) }}>{monthName(m)} {m.slice(0, 4)}</span>)}
+            <div className="relative h-full" style={{ width: span * px }} role="columnheader">
+              <span className="sr-only">Timeline</span>
+              {/* each month's name sticks at the left edge while any of it is in view, so the first visible month is always named (P2-50) */}
+              {months.map((m, i) => (
+                <span key={m} className="absolute top-1" style={{ left: x(m), width: x(months[i + 1] ?? addDays(t1, 1)) - x(m) }} aria-hidden>
+                  <span className="sticky inline-block whitespace-nowrap pl-1 text-[12px] font-medium" style={{ left: LEFT }}>{monthName(m)} {m.slice(0, 4)}</span>
+                </span>
+              ))}
               {(zoom === "quarter" ? mondays : days).map((d) => (
-                <span key={d} className={cn("absolute bottom-1 text-center text-[11px] tabular-nums text-muted-foreground", d === data.today && "font-semibold text-foreground")}
+                <span key={d} aria-hidden className={cn("absolute bottom-1 text-center text-[11px] tabular-nums text-muted-foreground", d === data.today && "font-semibold text-foreground")}
                   style={{ left: x(d), width: zoom === "quarter" ? 7 * px : px }}>
                   {zoom === "week" ? `${weekday(d)[0]} ${Number(d.slice(8))}` : Number(d.slice(8))}
                 </span>
@@ -155,25 +181,25 @@ export default function FlowGantt({ ids, selectedId, onSelect }: { ids: number[]
               const isOpen = open.includes(r.id)
               return (
                 <div key={`r${r.id}`} role="row" aria-rowindex={n + 2} className={cn("relative flex border-b border-border", r.id === selectedId && "bg-accent/40")} style={{ height: ROW }}>
-                  <div role="gridcell" className={cn("sticky left-0 z-10 grid shrink-0 grid-cols-[1fr_104px_24px_56px] items-center gap-2 border-r border-border bg-card px-3 text-[13px]", r.id === selectedId && "bg-accent")} style={{ width: LEFT }}>
+                  <div role="cell" className={cn("sticky left-0 z-10 grid shrink-0 grid-cols-[1fr_104px_24px_56px] items-center gap-2 border-r border-border bg-card px-3 text-[13px]", r.id === selectedId && "bg-accent")} style={{ width: LEFT }}>
                     <span className="flex min-w-0 items-center gap-1">
-                      <button type="button" onClick={() => setOpen(isOpen ? open.filter((i) => i !== r.id) : [...open, r.id])} aria-expanded={isOpen} aria-label={`${isOpen ? "Close" : "Open"} the stages of ${r.name}`}
-                        className="rounded-md p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground">{isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</button>
-                      <button type="button" onClick={() => onSelect(r.id)} className="min-w-0 truncate text-left font-medium hover:underline" title={`${r.name} · ${r.client}`}>{r.name}</button>
+                      <button type="button" onClick={() => setOpen(isOpen ? open.filter((i) => i !== r.id) : [...open, r.id])} aria-expanded={isOpen} aria-label={`Stages of ${r.name}`}
+                        className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">{isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</button>
+                      <button type="button" data-gantt-row={r.id} onClick={() => onSelect(r.id)} className="min-w-0 truncate text-left font-medium hover:underline" title={`${r.name} · ${r.client}`}>{r.name}</button>
                     </span>
                     <span className="truncate text-[12px] text-muted-foreground" title={r.stage}>{r.stage}</span>
-                    <UserAvatar name={r.owner_name} className="h-5 w-5" textClass="text-[9px]" />
+                    <UserAvatar name={r.owner_name} className="h-5 w-5" textClass="text-[11px]" />
                     <span className="text-right text-[12px] tabular-nums text-muted-foreground">{r.target_end_date ? shortDay(r.target_end_date) : "—"}</span>
                   </div>
-                  <div role="gridcell" className="relative" style={{ width: span * px }}>
+                  <div role="cell" className="relative" style={{ width: span * px }}>
                     {from && to && (
                       <button type="button" onClick={() => onSelect(r.id)} aria-label={`${r.name}: ${fmtDate(from)} to ${fmtDate(to)}, ${r.pct_complete}% done, ${RAG_WORD[r.rag]}`}
                         className="absolute top-1/2 h-2.5 -translate-y-1/2 overflow-hidden rounded-full bg-muted outline-none ring-1 ring-inset ring-input focus-visible:ring-[3px] focus-visible:ring-ring/50" style={{ left: x(from), width: w(from, to) }}>
                         <span className={cn("block h-full rounded-full", RAG_BAR[r.rag])} style={{ width: `${r.pct_complete}%` }} />
                       </button>
                     )}
-                    {from && to && <span className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap pl-2 text-[12px] text-muted-foreground" style={{ left: x(from) + w(from, to) }}>{r.pct_complete}% · {RAG_WORD[r.rag]}{r.forecast && ` · ends ${shortDay(r.forecast)}`}</span>}
                     {r.target_end_date && <span className={cn("absolute inset-y-1 w-0 border-l border-dashed", r.forecast && r.forecast > r.target_end_date ? "border-bad-line" : "border-foreground/60")} style={{ left: x(r.target_end_date) + px }} title={`Target ${fmtDate(r.target_end_date)}`} />}
+                    {from && to && <BarLabel at={x(from) + w(from, to) + 4}>{r.pct_complete}% · {RAG_WORD[r.rag]}{r.forecast && ` · ends ${shortDay(r.forecast)}`}</BarLabel>}
                   </div>
                 </div>
               )
@@ -186,13 +212,13 @@ export default function FlowGantt({ ids, selectedId, onSelect }: { ids: number[]
             const next = preview(r)[line.i + 1]
             return (
               <div key={`s${s.id}`} role="row" aria-rowindex={n + 2} className="relative flex border-b border-border/60" style={{ height: ROW }}>
-                <div role="gridcell" className="sticky left-0 z-10 grid shrink-0 grid-cols-[1fr_104px_24px_56px] items-center gap-2 border-r border-border bg-card px-3 text-[12px]" style={{ width: LEFT }}>
-                  <span className={cn("truncate pl-8", s.status === "current" && "font-semibold")} title={s.name}>{s.name}</span>
+                <div role="cell" className="sticky left-0 z-10 grid shrink-0 grid-cols-[1fr_104px_24px_56px] items-center gap-2 border-r border-border bg-card px-3 text-[12px]" style={{ width: LEFT }}>
+                  <span className={cn("truncate pl-8", s.status === "current" && "font-semibold")} title={s.name}>{s.name}<span className="sr-only">: {stageWords(s)}</span></span>
                   <span className={cn("truncate", late ? "text-warn" : "text-muted-foreground")}>{s.status === "current" ? (late ? `${s.slip_days} d late` : "current") : s.status}</span>
                   <span />
                   <span className="text-right tabular-nums text-muted-foreground">{s.plan_end ? shortDay(s.plan_end) : s.forecast_end ? shortDay(s.forecast_end) : "—"}</span>
                 </div>
-                <div role="gridcell" className="relative" style={{ width: span * px }}>
+                <div role="cell" className="relative" style={{ width: span * px }}>
                   {s.base_start && s.base_end && <span className="absolute bottom-1 h-[3px] rounded-full bg-input" style={{ left: x(s.base_start), width: w(s.base_start, s.base_end) }} aria-hidden />}
                   {s.actual_start && (s.actual_end || s.status === "current") && (
                     <span className={cn("absolute top-1/2 h-2 -translate-y-1/2 rounded-full", late ? "bg-warn-line" : s.status === "current" ? "bg-foreground/75" : "bg-ok-line")}
@@ -213,7 +239,7 @@ export default function FlowGantt({ ids, selectedId, onSelect }: { ids: number[]
                     </button>
                   ) : <span className="absolute top-1/2 h-5 -translate-y-1/2 rounded-md border-[1.5px] border-foreground/30" style={{ left: x(pStart), width: w(pStart, pEnd) }} aria-hidden />)}
                   {moving && drag && drag.days !== 0 && pStart && pEnd && (
-                    <span className="absolute -top-0.5 z-10 whitespace-nowrap rounded-md bg-foreground px-2 py-0.5 text-[11px] text-background" style={{ left: x(pStart) }}>{shortDay(pStart)} – {shortDay(pEnd)}</span>
+                    <span className="absolute -top-1 z-20 whitespace-nowrap rounded-md bg-foreground px-2 text-[11px] text-background" style={{ left: x(pStart) }}>{shortDay(pStart)} – {shortDay(pEnd)}</span>
                   )}
                   {/* finish to start: this stage's end to the next one's start */}
                   {next && pEnd && (next.plan_start ?? next.forecast_start) && (
@@ -221,7 +247,8 @@ export default function FlowGantt({ ids, selectedId, onSelect }: { ids: number[]
                       <path d={`M0 0 H6 V${ROW} H${Math.max(6, x((next.plan_start ?? next.forecast_start)!) - x(pEnd) - px)}`} fill="none" stroke="currentColor" strokeWidth="1.2" />
                     </svg>
                   )}
-                  {pEnd && <span className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap pl-3 text-[12px] text-muted-foreground" style={{ left: x(pEnd) + px }}>{s.name}</span>}
+                  {/* after whichever ends last (plan, forecast or what ran), so it never sits on a bar */}
+                  {pEnd && <BarLabel at={x([pEnd, s.forecast_end, s.actual_end ?? (s.status === "current" ? data.today : null)].filter((v): v is string => !!v).sort().at(-1)!) + px + 8}>{s.name}</BarLabel>}
                 </div>
               </div>
             )

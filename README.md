@@ -37,7 +37,7 @@ docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml up -d --bu
 docker compose exec app python preflight.py
 ```
 
-First sign-in is `admin` / `changeme`; you are forced to set a new password before anything else loads.
+First sign-in is `admin` with the random password printed once in the app's log (`docker compose logs app`), or the one in `ODIN_ADMIN_PASSWORD` if you set it; you are forced to set a new password before anything else loads.
 
 **Development**
 
@@ -62,7 +62,8 @@ CSRF on every mutation · session regenerated on login, 60 min idle / 12 h absol
 
 | | |
 |---|---|
-| [DEPLOY.md](DEPLOY.md) | Docker, Proxmox, Cloudflare, backups and restore, security settings |
+| [DEPLOY.md](DEPLOY.md) | Docker, Proxmox, Cloudflare, backups and restore, the self-updater, security settings |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Incidents: Odin down, a failed update or rollback, a lost key, restoring a backup, a full disk; the uptime check |
 | [AZURE_SETUP.md](AZURE_SETUP.md) | Microsoft 365 app registration |
 | [docs/UAT_SCRIPT.md](docs/UAT_SCRIPT.md) | Re-runnable acceptance script (93 steps) |
 | [docs/UAT_RESULTS_2026-09-25.md](docs/UAT_RESULTS_2026-09-25.md) | Latest executed results (v2 dry run) |

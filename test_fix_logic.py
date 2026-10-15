@@ -304,7 +304,7 @@ class LifecycleTestCase(FixBase):
         from unittest.mock import patch
         with patch.object(rp, "load_project", return_value=stale):   # the second click read the project before the first moved it
             r = c.post("/api/projects/1/stage", json={"stage": s[2]}, headers=h)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)   # v1.8.0 P2-26: a conflict, not a bad request
         self.assertIn("just moved", r.get_json()["error"])
         self.assertEqual(self.sql("SELECT COUNT(*) FROM status_notes WHERE prev_stage IS NOT NULL")[0][0], 1)
 
@@ -392,7 +392,7 @@ class TasksTestCase(FixBase):
         c.post("/projects/1/tasks/1/toggle", headers=h)
         self.assertIn("done: renamed", self.sql("SELECT details FROM audit_logs WHERE action = 'toggle_task'")[0][0])
 
-    def test_assignee_may_move_only_their_own_due_date(self):
+    def test_assignee_ticks_but_never_re_dates(self):   # v1.8.0 P2-10: re-dating is managing the work
         self.new_project(name="P", client="C")
         self._invite(1, "kim@vendor.example", "Contractor", "Kim")
         kim = self.sql("SELECT id FROM users WHERE email = 'kim@vendor.example'")[0][0]
@@ -401,8 +401,9 @@ class TasksTestCase(FixBase):
         e = self._external_client("kim@vendor.example")
         h = {"X-CSRF-Token": e.get("/api/session").get_json()["csrf"]}
         whole = {"title": "mine", "assignee_id": kim, "due_date": "2026-12-15"}   # the page sends the whole task
-        self.assertEqual(e.post("/projects/1/tasks/1/edit", json=whole, headers=h).status_code, 200)
-        self.assertEqual(self.sql("SELECT due_date FROM tasks WHERE id = 1")[0][0], "2026-12-15")
+        self.assertEqual(e.post("/projects/1/tasks/1/edit", json=whole, headers=h).status_code, 403)
+        self.assertEqual(self.sql("SELECT due_date FROM tasks WHERE id = 1")[0][0], "2026-12-01")
+        self.assertEqual(e.post("/projects/1/tasks/1/toggle", json={"done": True}, headers=h).status_code, 200)
         self.assertEqual(e.post("/projects/1/tasks/1/edit", json={**whole, "title": "renamed"}, headers=h).status_code, 403)
         self.assertEqual(e.post("/projects/1/tasks/2/edit", json={"due_date": "2026-12-20"}, headers=h).status_code, 403)
         self.assertEqual(self.sql("SELECT title FROM tasks WHERE id = 1")[0][0], "mine")
@@ -713,9 +714,11 @@ class OpsFixesTestCase(FixBase):
         subject = "Smith &amp; Sons: it&#39;s in UAT"
         with app_module.app.test_request_context(), patch("graph.send_mail", return_value=(True, None)) as mail:
             notify_users([1], "stage", None, subject, "body")
+            test_app.drain_outbox()
             self.assertEqual(mail.call_args.args[1], "Smith & Sons: it's in UAT")
             mail.reset_mock()
             notify_event({"owner_id": 1}, subject, "body", channels={"email": True})
+            test_app.drain_outbox()
             self.assertEqual(mail.call_args.args[1], "Smith & Sons: it's in UAT")
 
     def test_without_secret_key_the_app_keeps_a_private_key_in_the_data_dir_and_old_seals_still_open(self):   # P2-5

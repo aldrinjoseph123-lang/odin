@@ -17,11 +17,15 @@ from datetime import datetime, timedelta
 from markupsafe import escape
 
 import graph
+
+# ponytail: Microsoft's number, not a policy. Graph's sendMail takes the whole message in one ~4 MB
+# request and base64 adds a third, so the PDFs together stay under 3 MB (P2-19).
+ATTACH_LIMIT = 3 * 1024 * 1024
 from core import external_url
 from db import PROJECT_OPEN_SQL, get_db, get_setting
 from policies import local_today, policy
 from security import file_stem
-from services.alerts import build_alerts
+from services.alerts import build_alerts, project_states
 from services.dashboard import tasks_due_by
 from services import portfolio
 from services.pdf import report_pdf
@@ -44,6 +48,7 @@ def build():
     soon = (today + timedelta(days=7)).isoformat()
     due_tasks = tasks_due_by(db, soon)
     per_stage = Counter(p["stage"] for p in projects)
+    state = Counter(project_states(projects, alerts).values())   # one state per rollout, as the Flow counts (P3-28)
 
     late = "<b style='color:#B4231C'>late</b>"
 
@@ -73,13 +78,13 @@ def build():
         if words["needs_decision"]:
             opening += "<p style='margin:8px 0 4px'><b>Needs a decision</b></p><ul style='margin:0;padding-left:18px'>" + "".join(f"<li>{escape(x)}</li>" for x in words["needs_decision"]) + "</ul>"
         opening += f"<p style='color:#6B7280;font-size:12px;margin:6px 0 14px'>Written by AI ({escape(rec['model'])}) from the figures below.</p>"
-    html = opening + (f"<p><b>{len(projects)}</b> active rollouts · <b>{len(alerts['project_overdue'])}</b> overdue · "
-            f"<b>{len(alerts['stage_sla_breach'])}</b> over SLA · <b>{len(alerts['project_due_soon'])}</b> due soon</p>"
+    html = opening + (f"<p><b>{len(projects)}</b> active rollouts · <b>{state['overdue']}</b> overdue · "
+            f"<b>{state['over_sla']}</b> over SLA · <b>{state['due_soon']}</b> due soon</p>"
             f"<p>Health: {health}</p>")
     for title, items, empty in sections:
         html += f"<h3 style='margin:18px 0 6px;font-size:14px'>{title}</h3>" + (f"<ul style='margin:0;padding-left:18px'>{''.join(items)}</ul>" if items else f"<p style='color:#6B7280;margin:0'>{empty}</p>")
     html += f"<p style='margin-top:18px'><a href=\"{external_url('board')}\">Open the flow in Odin</a></p>"
-    summary = [f"{len(projects)} active · {len(alerts['project_overdue'])} overdue · {len(alerts['stage_sla_breach'])} over SLA · {len(alerts['project_due_soon'])} due soon",
+    summary = [f"{len(projects)} active · {state['overdue']} overdue · {state['over_sla']} over SLA · {state['due_soon']} due soon",
                f"{len(moves)} stage move{'s' if len(moves) != 1 else ''} this week, {len(due_tasks)} task{'s' if len(due_tasks) != 1 else ''} due in the next 7 days", health]
 
     attachments = []
@@ -97,6 +102,16 @@ def build():
             else:   # an old plain-text version
                 pdf = report_pdf(f"{p['name']} · report v{latest['version']}", (latest["body"] or "").splitlines(), f"Odin · {company} · saved {latest['created_at'][:10]}")
             attachments.append((f"{safe}-report-v{latest['version']}.pdf", pdf, "application/pdf"))
+        kept, size = [], 0
+        for a in attachments:   # the portfolio report first, then the rollouts by name, while they fit
+            if size + len(a[1]) <= ATTACH_LIMIT:
+                kept.append(a)
+                size += len(a[1])
+        if len(kept) < len(attachments):
+            n = len(attachments) - len(kept)
+            html += (f"<p style='color:#6B7280'>{n} PDF report{'s were' if n != 1 else ' was'} left off to stay under Microsoft's "
+                     f"4 MB mail limit; open {'them' if n != 1 else 'it'} in Odin.</p>")
+        attachments = kept
     return f"Odin weekly report · {today.strftime('%d %b %Y')}", html, summary, attachments
 
 

@@ -149,8 +149,9 @@ def _may_decide(project, key, job_id):
     feature = _feature_for(project, key)
     if project_allows(project["id"], feature.project_role or "manage_tasks"):
         return feature
-    job = get_db().execute("SELECT requested_by FROM ai_jobs WHERE id = ?", (job_id,)).fetchone() if job_id else None
-    if job is None or job["requested_by"] != session.get("user_name"):
+    # by account id, never by display name: two people may share a name (P3-7)
+    job = get_db().execute("SELECT payload FROM ai_jobs WHERE id = ?", (job_id,)).fetchone() if job_id else None
+    if job is None or json.loads(job["payload"] or "{}").get("requested_by_id") != session.get("user_id"):
         abort(403)
     return feature
 
@@ -200,12 +201,17 @@ def api_project_ai_request(project_id, key):
     reason = gate(key)
     if reason:
         return jsonify(error=reason), 409
-    payload = None
+    payload = {"requested_by_id": session.get("user_id")}
     if feature.takes_input:
         given = json_body().get("input")
         if not isinstance(given, dict) or len(json.dumps(given)) > 20000:
             return jsonify(error="Nothing to work on"), 400
-        payload = {"input": given}
+        # one draft of someone's own words at a time: a second person's are refused, not dropped behind a fake ok (P3-7)
+        busy = get_db().execute("SELECT requested_by FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id = ? AND status IN ('queued', 'running')",
+                                (key, project_id)).fetchone()
+        if busy:
+            return jsonify(error=f"{busy['requested_by'] or 'Someone'} is already drafting this on this rollout; try again when it is done"), 409
+        payload["input"] = given
     job = queue(get_db(), "feature", feature=key, project_id=project_id, payload=payload, actor=session.get("user_name"))
     audit_log("request_ai_draft", "project", project_id, project["name"], f"{key}, job {job}")
     return jsonify(ok=True, job=job)

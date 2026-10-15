@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Segmented } from "@/components/Segmented"
 import { StatTile } from "@/components/StatTile"
 import { pill, fieldArea } from "@/lib/ui"
@@ -6,7 +6,7 @@ import { askConfirm } from "@/lib/confirm"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
 import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTip, XAxis, YAxis } from "recharts"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Notice } from "@/components/Notice"
 import { Button } from "@/components/ui/button"
 import { PrintBrand } from "@/components/Brand"
 import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
@@ -40,14 +40,18 @@ export default function Report({ user }: { user: User }) {
   const [r, setR] = useState<RolloutReport | null>(null)
   const [words, setWords] = useState({ summary: "", next_steps: "", asks: "" })
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const [aiDraft, setAiDraft] = useState<number | null>(null)   // the AI draft the words came from, recorded with the save
-  const load = useCallback(async () => {
+  // the words belong to a version, not to the audience or the template: switching
+  // those keeps what is typed (review P2-30); a new version, or a save, brings its own
+  const wordsOf = useRef<number | null | undefined>(undefined)
+  const load = useCallback(async (fresh = false) => {
     try {
       const x = await rolloutReport(id, audience, v, template)
       setR(x); setError(null)
-      setWords({ summary: x.words.summary ?? "", next_steps: x.words.next_steps ?? "", asks: x.words.asks ?? "" })
+      if (fresh || wordsOf.current !== v) setWords({ summary: x.words.summary ?? "", next_steps: x.words.next_steps ?? "", asks: x.words.asks ?? "" })
+      wordsOf.current = v
       document.title = `Report · ${x.project.name} · Odin`
     } catch (e) {
       const missing = e instanceof ApiError && (e.status === 404 || e.status === 403)
@@ -61,14 +65,15 @@ export default function Report({ user }: { user: User }) {
   const dirty = !!r && editable && (words.summary !== r.words.summary || words.next_steps !== r.words.next_steps || words.asks !== r.words.asks)
   useUnsavedGuard(dirty)
   if (error === MISSING) return <LoadError message={error} back={{ href: "/projects", label: "All rollouts" }} />
-  if (error) return <div className="p-5"><Alert role="status"><AlertDescription>{error}</AlertDescription></Alert></div>
+  // no saved version yet (or no such one): a way back to the rollout, not a dead end; any other failure offers the retry
+  if (error) return <LoadError message={error} back={/^(No report|That version)/.test(error) ? { href: `/projects/${id}`, label: "Back to the rollout" } : undefined} />
   if (!r) return <PageSkeleton />
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
     // the words are shared: say so before they go out, not after (sim roles-3)
     if (!(await askConfirm("Save this version? Partners and customers on the rollout will read these words in their copy of the report."))) return
     setBusy(true); setNotice(null)
-    try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice(`Version ${x.version} saved. Partners and customers now see it.`); await load() } catch (e) { setNotice(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
+    try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice({ text: `Version ${x.version} saved. Partners and customers now see it.` }); await load(true) } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
   }
   const pdf = `/projects/${id}/report.pdf?audience=${r.audience}${r.version ? `&v=${r.version.version}` : template ? `&template=${template}` : ""}`
   const toolbar = (
@@ -80,7 +85,7 @@ export default function Report({ user }: { user: User }) {
             options={[{ value: "internal", label: "Internal" }, { value: "customer", label: "Customer copy" }]} />
         )}
         {r.versions.length > 0 && (
-          <select value={r.version?.version ?? ""} onChange={(e) => set("v", e.target.value || null)} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
+          <select value={r.version?.version ?? ""} onChange={async (e) => { const to = e.target.value || null; if (!dirty || await askConfirm("Open another version? What you typed here is not saved and is lost.")) set("v", to) }} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
             {r.can_edit && <option value="">Live — today's data</option>}
             {r.versions.map((x) => <option key={x.version} value={x.version}>v{x.version} · {x.created_by} · {fmtWhen(x.created_at)}{x.kind === "text" ? " (text)" : ""}</option>)}
           </select>
@@ -143,7 +148,7 @@ export default function Report({ user }: { user: User }) {
     <div className="mx-auto w-full max-w-6xl px-5 pb-10 pt-2 print:max-w-none print:px-0">
       <PrintBrand />
       {toolbar}
-      {notice && <p className="mt-2 text-[13px] text-muted-foreground print:hidden" role="status">{notice}</p>}
+      {notice && <Notice bad={notice.bad} className="mt-2 print:hidden">{notice.text}</Notice>}
       <p className="mt-2 text-[12px] text-muted-foreground print:hidden">
         {r.is_live ? (editable ? "Live: today's numbers. Edit the words, then Save as version — partners and customers see saved versions only." : "Live: today's numbers.")
           : `Saved version ${r.version!.version} by ${r.version!.created_by}, ${fmtWhen(r.version!.created_at, true)} — the numbers as they were then.`}

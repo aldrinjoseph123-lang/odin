@@ -6,6 +6,8 @@ import { AIProgress } from "@/components/AIProgress"
 import { ApiError, cancelAIJob, deleteLesson, dismissAISuggestion, lessonsOf, projectAI, requestProjectAI, saveLessons, saveRaid,
   type Lesson, type LessonsData, type ProjectAI } from "@/lib/api"
 import { usePoll } from "@/lib/usePoll"
+import { askConfirm } from "@/lib/confirm"
+import { Notice } from "@/components/Notice"
 
 const KIND = { avoid: "Avoid", repeat: "Repeat" } as const
 
@@ -19,7 +21,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
   const [s, setS] = useState<ProjectAI<{ lessons: Lesson[] }> | null>(null)
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
-  const [note, setNote] = useState<string | null>(null)
+  const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null)
   const load = useCallback(async () => {
     try { setD(await lessonsOf(projectId)) } catch { setD(null) }
     try {
@@ -37,7 +39,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
   if (d.lessons.length === 0 && d.similar.length === 0 && !showAI) return null
   async function act(fn: () => Promise<unknown>, done?: string) {
     setBusy(true); setNote(null)
-    try { await fn(); if (done) setNote(done); await load() } catch (e) { setNote(e instanceof ApiError ? e.message : "That did not work") } finally { setBusy(false) }
+    try { await fn(); if (done) setNote({ text: done }); await load() } catch (e) { setNote({ text: e instanceof ApiError ? e.message : "That did not work", bad: true }) } finally { setBusy(false) }
   }
   return (
     <section className="panel scroll-mt-16 p-4" id="lessons" aria-labelledby="lessons-h">
@@ -46,14 +48,14 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
       <summary className="cursor-pointer list-none rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
         <h2 id="lessons-h" className="inline text-[12px] font-semibold text-nav-fg">Lessons<span className="sr-only">, </span><span className="ml-2 font-normal text-muted-foreground">{d.lessons.length} kept · {d.similar.length} similar rollout{d.similar.length === 1 ? "" : "s"} · show</span></h2>
       </summary>
-      {note && <p className="mt-2 text-[13px] text-muted-foreground" role="status">{note}</p>}
+      {note && <Notice bad={note.bad} className="mt-2">{note.text}</Notice>}
       {d.lessons.length > 0 && (
         <ul className="mt-2 divide-y divide-border text-[13px]">
           {d.lessons.map((l) => (
             <li key={l.id} className="flex items-start gap-2 py-2">
               <span className={l.kind === "avoid" ? "w-14 shrink-0 text-[12px] font-medium text-warn" : "w-14 shrink-0 text-[12px] font-medium text-ok"}>{KIND[l.kind]}</span>
               <span className="min-w-0 flex-1">{l.text}</span>
-              {d.can_edit && <button type="button" disabled={busy} onClick={() => void act(() => deleteLesson(projectId, l.id))} aria-label={`Delete lesson: ${l.text}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>}
+              {d.can_edit && <button type="button" disabled={busy} onClick={async () => { if (await askConfirm("Delete this lesson? It leaves this rollout and the library that similar rollouts read.", "Delete")) void act(() => deleteLesson(projectId, l.id)) }} aria-label={`Delete lesson: ${l.text}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>}
             </li>
           ))}
         </ul>

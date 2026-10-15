@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { fieldAuto } from "@/lib/ui"
 import { CalendarRange, History, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,7 @@ import { fillSuggested, setDate, workDays, type PlanRow } from "@/lib/plan"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
 import { fmtDate } from "@/lib/format"
+import { Notice } from "@/components/Notice"
 
 // The rollout's plan on its project page: health up top, the Gantt, then the
 // dates per stage (editable for the project manager), the baseline controls
@@ -29,13 +30,19 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
   const [log, setLog] = useState(false)
   const [failed, setFailed] = useState(false)
   const [editing, setEditing] = useState(false)   // dates are read until someone asks to edit them (critique 10 Oct)
-  const load = useCallback(async () => {
+  const typing = useRef(false)   // dates changed and not saved yet
+  // `fresh` after a save; a refresh from elsewhere (a RAID item, a stage move)
+  // keeps the dates being typed, on the same stages (review P3-38)
+  const load = useCallback(async (fresh = false) => {
     const x = await loadPlan(projectId)
+    const next = x.stages.map((s) => ({ id: s.id, name: s.name, plan_start: s.plan_start, plan_end: s.plan_end, suggested_start: s.suggested_start, suggested_end: s.suggested_end }))
     setD(x)
-    setRows(x.stages.map((s) => ({ id: s.id, name: s.name, plan_start: s.plan_start, plan_end: s.plan_end, suggested_start: s.suggested_start, suggested_end: s.suggested_end })))
+    setRows((cur) => !fresh && typing.current && cur.length === next.length && cur.every((r, i) => r.id === next[i].id)
+      ? next.map((r, i) => ({ ...r, plan_start: cur[i].plan_start, plan_end: cur[i].plan_end })) : next)
   }, [projectId])
   useEffect(() => { setFailed(false); load().catch(() => setFailed(true)) }, [load, refresh])
-  const dirty = useMemo(() => !!d && rows.some((r, i) => r.plan_start !== d.stages[i].plan_start || r.plan_end !== d.stages[i].plan_end), [d, rows])
+  const dirty = useMemo(() => !!d && rows.some((r, i) => r.plan_start !== d.stages[i]?.plan_start || r.plan_end !== d.stages[i]?.plan_end), [d, rows])
+  useEffect(() => { typing.current = dirty }, [dirty])
   if (!d) return failed
     ? <p className="flex items-center gap-2 text-[13px] text-muted-foreground" role="alert">Could not load the plan. <Button size="sm" variant="outline" onClick={() => { setFailed(false); load().catch(() => setFailed(true)) }}>Try again</Button></p>
     : <p className="text-[13px] text-muted-foreground">Loading the plan…</p>
@@ -45,7 +52,16 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
 
   async function run(fn: () => Promise<string>) {
     setBusy(true); setNotice(null)
-    try { const text = await fn(); await load(); setNotice({ text }); setEditing(false); onSaved?.() } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
+    try { const text = await fn(); await load(true); setNotice({ text }); setEditing(false); onSaved?.() } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
+  }
+  // a click that finds nothing to do says so (review P3-40)
+  function suggest() {
+    const next = fillSuggested(rows)
+    if (next.every((r, i) => r.plan_start === rows[i].plan_start && r.plan_end === rows[i].plan_end)) {
+      setNotice({ text: rows.every((r) => r.plan_start && r.plan_end) ? "Every stage already has dates. Change one to move it." : "There is nothing to suggest yet: give the stages SLA days first." })
+      return
+    }
+    setNotice(null); setRows(next)
   }
   const save = () => run(async () => {
     const r = await savePlan(projectId, rows.map(({ id, plan_start, plan_end }) => ({ id, plan_start, plan_end })), reason.trim())
@@ -115,18 +131,18 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
       {editable && !open && <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditing(true)}><CalendarRange className="h-3.5 w-3.5" /> Edit dates</Button>}
       {open && (
         <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void save() }}>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Suggest dates from the SLAs</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={suggest}><Wand2 className="h-3.5 w-3.5" /> Suggest dates from the SLAs</Button>
           <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
           {/* once there is a baseline, every move says why (the log and the customer read it) */}
           {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} required placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className={cn(fieldAuto, "min-w-0 flex-1 basis-60")} />}
           <span className="ml-auto flex gap-2">
-            {(dirty || editing) && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { void load(); setEditing(false) }}>{dirty ? "Discard" : "Done"}</Button>}
+            {(dirty || editing) && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { void load(true); setEditing(false) }}>{dirty ? "Discard" : "Done"}</Button>}
             <Button type="submit" size="sm" loading={busy} disabled={!dirty}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
             {d.baseline_at && <Button type="button" size="sm" variant="outline" disabled={busy || dirty} onClick={() => setRebase("")}>Re-baseline</Button>}
           </span>
         </form>
       )}
-      {notice && <p className={cn("mt-2 text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <Notice bad={notice.bad} className="mt-2">{notice.text}</Notice>}
 
       {d.changes.length > 0 && (
         <div className="mt-3">

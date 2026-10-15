@@ -6,7 +6,7 @@ saving. Fallback: the words as written."""
 import re
 
 from services.ai import AIFeature, register
-from services.ai.graders import facts_kept, max_words, never_says
+from services.ai.graders import facts_kept, max_words, never_says, no_health_colours, reject_health_colours
 
 SCHEMA = {"type": "object", "required": ["summary", "next_steps", "asks"], "properties": {
     "summary": {"type": "string", "maxLength": 6000},
@@ -55,8 +55,8 @@ def fixture():
 FEATURE = register(AIFeature(
     key="customer_words", label="Tidy for the customer",
     description="Rewrites the report's words, as typed, so the customer can read them: names, blame and shorthand out, every fact kept, nothing added.",
-    prompt="customer_words.v4.txt", schema=SCHEMA, gather=gather, fixture=fixture,
-    graders=(facts_kept("Site B", "20 Oct", "24 Oct", "29 Sep", "approv"), never_says("Ravi", "useless", "typical", "sitting on", "ASAP"),
+    prompt="customer_words.v4.txt", schema=SCHEMA, gather=gather, fixture=fixture, refine=reject_health_colours,
+    graders=(facts_kept("Site B", "20 Oct", "24 Oct", "29 Sep", "approv"), never_says("Ravi", "useless", "typical", "sitting on", "ASAP"), no_health_colours(),
              max_words("summary", 75)),
     runs="on_demand", max_tokens=600, temperature=0.2, takes_input=True,
 ))
