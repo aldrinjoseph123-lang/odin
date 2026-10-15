@@ -85,7 +85,9 @@ POLICIES = {
                         label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
     "mail_from": dict(area="notifications", kind="emails", one=True, default="", max=254,
                       label="Send email as", help="An alias of the connected Microsoft 365 mailbox (e.g. odin-pms@company.com), so people can tell the mail comes from Odin when the mailbox is shared with other systems. Blank: the mailbox's own address. Exchange must allow sending from aliases (SendFromAliasEnabled); if Microsoft refuses the alias, Odin sends from the mailbox and tells the admins."),
-    "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500, query=True,
+    # secret: the address is the channel's bearer key (sig=), so it is sealed at rest, never sent
+    # back to the page and audited only as set or cleared, like the AI key (test round P2-9)
+    "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500, query=True, secret=True,
                               label="Teams Workflows webhook", help="From a Teams channel: Workflows › \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
     # ---- Reports
     "report_enabled": dict(area="reports", kind="bool", default=False,
@@ -289,6 +291,9 @@ def policy(key, db=None):
     (start-up migrations, scripts)."""
     entry = POLICIES[key]
     raw = _stored(db).get(key)
+    if raw is not None and entry.get("secret"):
+        from services.sealed import unseal
+        raw = unseal(raw)   # a value saved before sealing reads as it is, and is sealed at its next save
     if raw is None:
         return _default(entry)
     try:
@@ -391,6 +396,9 @@ def policy_view(area=None):
                 item[k] = e[k]
         if "choices" in e:
             item["choices"] = _choices(e)
+        if e.get("secret"):
+            # write-only: the page shows whether one is saved; blank keeps it, "clear" removes it
+            item.update(value="", secret=True, saved=bool(item["value"]))
         out.append(item)
     return out
 
@@ -406,6 +414,8 @@ def save_policies(area, form):
         if e["area"] != area:
             continue
         raw = form.get(key)
+        if e.get("secret") and not (raw or "").strip():
+            raw = "" if form.get("clear") == key else None   # the field comes back blank: keep the saved one
         if raw is None:
             continue
         try:
@@ -424,8 +434,12 @@ def save_policies(area, form):
         if v == policy(key):
             continue
         stored = ",".join(v) if isinstance(v, list) else ("1" if v is True else "0" if v is False else str(v))
+        said = stored
+        if POLICIES[key].get("secret"):
+            from services.sealed import seal
+            stored, said = seal(stored), "set" if stored else "cleared"
         db.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (f"policy.{key}", stored))
-        changed.append(f"{key}={stored}")
+        changed.append(f"{key}={said}")
     db.commit()
     if has_request_context():
         g.pop("policy_rows", None)

@@ -78,7 +78,10 @@ url, domains, emails, time, dates), read it with `policy("key")`
 explains it. Never hard-code a number an admin could reasonably want to change.
 **Sign-in paths:** password sign-in ends in `routes/auth.finish_login` after the
 two-step check (`services/mfa.py`, `/api/login/code`); a new password path must
-go through `attempt_login`, never `start_session` directly. Stage lengths and
+go through `attempt_login`, never `start_session` directly. Microsoft binds to an existing
+account by email only when its password cannot sign in; anyone else links from a signed-in
+session (Account → Link Microsoft, `routes/sso.py`). Only an Admin acts on an Admin's account
+or the role matrix (`routes/users.admin_only`). Stage lengths and
 SLAs count working days through `services/workdays.py`; gaps between dates stay
 calendar days.
 
@@ -91,6 +94,12 @@ themselves to the next project created:
 `db.py` (`cleanup_soft_deletes`, run at boot and nightly by the scheduler) · `services/report_data.py` if it is
 project history · `scripts/seed_uat.py` if UAT needs rows · a purge for
 anything that only grows (`login_links` is trimmed as links are minted).
+**Schema number (15 Oct 2026):** a release that adds a table, column, permission or alert
+type raises `db.SCHEMA_VERSION`; boot deletes only names listed in `RETIRED_PERMISSIONS` /
+`RETIRED_ALERT_TYPES`, and older code on a newer database skips destructive steps (preflight
+warns). Dev and UAT bind to 127.0.0.1 (set `HOST` to open them) and, without `SECRET_KEY`, keep
+a private key in `DATA_DIR/secret_key`. Python tests: `test_app test_fix_logic test_fix_security
+test_release_safety test_scheduler_ops`.
 `plan_changes` and `raid_items` (30 Sep 2026) are wired this way; plan dates live
 on `project_stages` (`plan_*`, `base_*`). Reports read one structure
 (`services/report_data.py` per rollout, `services/portfolio.py` for all) that

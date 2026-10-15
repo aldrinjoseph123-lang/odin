@@ -71,7 +71,7 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
     for r in wanted if get_setting("notify_email_enabled") == "1" else []:
         try:
             extra = project_link(project_id, r, link if link and link.startswith("/projects/") else None) if project_id else ""
-            ok, error = graph.send_mail(r["email"], subject, message_html + extra)
+            ok, error = graph.send_mail(r["email"], title, message_html + extra)
         except Exception as exc:   # never let mail break the request that caused it
             ok, error = False, str(exc)
         if not ok:
@@ -183,7 +183,7 @@ def notify_event(project, subject, message_html, channels=None):
             # alert digests and creation pass a bare {"owner_id"}; only a real
             # project row has an id to link to
             link = project_link(project["id"], owner) if "id" in project.keys() else ""
-            ok, error = graph.send_mail(owner["email"], subject, message_html + link)
+            ok, error = graph.send_mail(owner["email"], _plain(subject), message_html + link)
             if not ok:
                 print(f"[notify_event] email failed: {error}")
 

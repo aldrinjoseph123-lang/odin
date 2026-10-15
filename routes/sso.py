@@ -13,6 +13,11 @@ audience, nonce and expiry before trusting a single claim. Accounts are bound
 by the immutable object id (oid), never by a changeable email; the email only
 links an existing Odin user on their first Microsoft sign-in.
 
+A colleague whose account already has a password links Microsoft from their
+Account page (signed in with that password, then through Microsoft): Odin
+never verified the address on an account, so a first Microsoft sign-in never
+takes over one that has a working password.
+
 This uses its own app registration (Settings › Sign-in & security), separate
 from the Microsoft 365 mail/Teams connection, so signing in can never touch
 the connected mailbox's token.
@@ -27,10 +32,10 @@ from datetime import datetime
 from urllib.parse import urlencode
 
 import requests
-from flask import abort, flash, redirect, request, session, url_for
+from flask import abort, flash, jsonify, redirect, request, session, url_for
 from markupsafe import escape
 
-from core import app, external_url, permission_required
+from core import app, external_url, login_required, permission_required
 from db import get_db, get_setting, set_setting
 from routes.auth import safe_next_url, start_session
 from services.audit import audit_log
@@ -70,10 +75,40 @@ def sso_start():
     if not sso_configured():
         flash("Microsoft sign-in is not set up yet", "error")
         return redirect(url_for("login"))
+    return _authorize(safe_next_url())
+
+
+@app.route("/api/account/microsoft")
+@login_required
+def api_account_microsoft():
+    """Whether the Account page offers Link Microsoft."""
+    me = get_db().execute("SELECT kind, ms_oid FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    return jsonify(available=sso_configured() and me["kind"] == "internal", linked=me["ms_oid"] is not None)
+
+
+@app.route("/account/microsoft", methods=["POST"])
+@login_required
+def account_link_microsoft():
+    """Link Microsoft to the signed-in account: this session is the Odin half,
+    the Microsoft sign-in the other; the callback binds that oid to this
+    account only (see _link)."""
+    me = get_db().execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    problem = ("Microsoft sign-in is not set up yet" if not sso_configured() else
+               "Partner and customer accounts sign in with an email link" if me["kind"] != "internal" else
+               "Your account is already linked to Microsoft" if me["ms_oid"] else None)
+    if problem:
+        flash(problem, "error")
+        return redirect(url_for("account"))
+    audit_log("link_microsoft_started", "user", me["id"], me["username"])
+    return _authorize(url_for("account"), link=me["id"])
+
+
+def _authorize(next_url, link=None):
+    """Off to Microsoft; `link` is the signed-in user Link Microsoft binds to."""
     client_id, tenant, _ = sso_config()
     verifier = _b64url(secrets.token_bytes(32))
     state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
-    session["sso"] = {"state": state, "nonce": nonce, "verifier": verifier, "next": safe_next_url()}
+    session["sso"] = {"state": state, "nonce": nonce, "verifier": verifier, "next": next_url, "link": link}
     params = {
         "client_id": client_id, "response_type": "code", "response_mode": "query",
         "redirect_uri": external_url("sso_callback"), "scope": "openid profile email",
@@ -116,12 +151,18 @@ def sso_callback():
     oid = claims["oid"]
     email = (claims.get("email") or claims.get("preferred_username") or "").strip().lower()
     name = (claims.get("name") or email or "New colleague").strip()[:120]
+    if pending.get("link"):
+        return _link(pending["link"], oid, email)
     user = db.execute("SELECT * FROM users WHERE ms_oid = ?", (oid,)).fetchone()
     if user is None and email:
         # First Microsoft sign-in of someone Odin already knows: bind by email, once.
         user = db.execute("SELECT * FROM users WHERE lower(email) = ? AND ms_oid IS NULL", (email,)).fetchone()
+        if user and user["kind"] == "internal" and _password_usable(user):
+            return _clash(user, email, name)
         if user and user["kind"] == "internal":
-            db.execute("UPDATE users SET ms_oid = ? WHERE id = ?", (oid, user["id"]))
+            # the password, if any, could not sign in anyway: retire it with the binding, end old sessions
+            db.execute("UPDATE users SET ms_oid = ?, password_hash = 'microsoft:no-password', session_epoch = session_epoch + 1 WHERE id = ?",
+                       (oid, user["id"]))
             db.commit()
             audit_log("link_microsoft_account", "user", user["id"], user["username"], email, actor=user["username"])
             user = db.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
@@ -139,18 +180,64 @@ def sso_callback():
     return redirect(pending.get("next") or url_for("board"))
 
 
+def _password_usable(user):
+    """A password that can sign in: a real hash, and password sign-in allowed for it."""
+    return "$" in (user["password_hash"] or "") and not (sso_enforced() and not user["password_login"])
+
+
+def _link(user_id, oid, email):
+    """The end of Link Microsoft: still the same live session, and an oid no account holds."""
+    from core import _session_still_valid
+    db = get_db()
+    if session.get("user_id") != user_id or not _session_still_valid():
+        return _refuse("Your session ended: sign in again, then link Microsoft on your Account page", "link: the session ended")
+    username = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()[0]
+    if db.execute("SELECT 1 FROM users WHERE ms_oid = ?", (oid,)).fetchone():
+        audit_log("link_microsoft_refused", "user", user_id, username, f"microsoft {email}: already linked to another account")
+        flash("That Microsoft account is already linked to another Odin account", "error")
+        return redirect(url_for("account"))
+    db.execute("UPDATE users SET ms_oid = ? WHERE id = ? AND ms_oid IS NULL", (oid, user_id))
+    db.commit()
+    audit_log("link_microsoft_account", "user", user_id, username, f"microsoft {email}, from the Account page")
+    flash("Microsoft linked: you can sign in with it from now on")
+    return redirect(url_for("account"))
+
+
+def _clash(user, email, name):
+    """A first Microsoft sign-in whose address is on an account with a working
+    password (test round P2-3). Odin never verified that address, so whoever
+    set the password may not be this person: nothing is linked and no account
+    is created. The person signs in with the password and links Microsoft on
+    their Account page; the admins are told in case it is someone else."""
+    from services.notifications import notify_users
+    audit_log("link_microsoft_refused", "user", user["id"], user["username"],
+              f"microsoft {email}: the account has a password; link it from the Account page", actor="microsoft")
+    admins = [r["id"] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+    notify_users(admins, "access", None, f"{escape(name)} tried to sign in with Microsoft",
+                 f"{escape(name)} ({escape(email)}) signed in with Microsoft for the first time, but {escape(email)} is the address of"
+                 f" {escape(user['name'])}'s account, which signs in with a password, so Odin linked nothing. If it is the same person,"
+                 " they sign in with the password and use Link Microsoft on their Account page. If not, check who set that address.",
+                 link="/users")
+    flash("An Odin account with your address signs in with a password, so Microsoft was not linked to it."
+          " Sign in with that password, then use Link Microsoft on your Account page")
+    return redirect(url_for("login"))
+
+
 def _request_access(oid, email, name):
-    """An unknown colleague: an inactive, pending Viewer the admins approve."""
+    """An unknown colleague: an inactive, pending Viewer the admins approve.
+    An address another account already has stays off the request (one
+    account per address)."""
     from policies import policy
     from services.notifications import notify_users
     db = get_db()
     username = (email.split("@")[0] if email else f"ms-{oid[:8]}")[:40]
     if db.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
         username = f"{username}-{oid[:6]}"
+    taken = bool(email) and db.execute("SELECT 1 FROM users WHERE lower(email) = ?", (email,)).fetchone()
     cur = db.execute(
         "INSERT INTO users (username, password_hash, name, role, active, email, created_at, kind, ms_oid, pending, theme, accent)"
         " VALUES (?, 'microsoft:no-password', ?, 'Viewer', 0, ?, ?, 'internal', ?, 1, ?, ?)",
-        (username, name, email or None, datetime.utcnow().isoformat(), oid, policy("default_theme"), policy("default_accent")))
+        (username, name, None if taken else email or None, datetime.utcnow().isoformat(), oid, policy("default_theme"), policy("default_accent")))
     db.commit()
     audit_log("access_requested", "user", cur.lastrowid, username, f"microsoft {email}", actor=username)
     admins = [r["id"] for r in db.execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
@@ -212,6 +299,10 @@ def user_approve(user_id):
     if role not in ROLES or role == "External":
         flash("Pick a role", "error")
         return redirect(url_for("users"))
+    from routes.users import admin_only
+    if admin_only(role):
+        flash("Only an admin can approve someone as an admin", "error")
+        return redirect(url_for("users"))
     db.execute("UPDATE users SET pending = 0, active = 1, role = ? WHERE id = ?", (role, user_id))
     db.commit()
     from services.signup import on_approve
@@ -246,6 +337,10 @@ def user_password_login(user_id):
     user = db.execute("SELECT * FROM users WHERE id = ? AND kind = 'internal'", (user_id,)).fetchone()
     if user is None:
         abort(404)
+    from routes.users import admin_only
+    if admin_only(user["role"]):
+        flash("Only an admin can change how an admin signs in", "error")
+        return redirect(url_for("users"))
     on = request.form.get("allowed") == "on"
     if not on and sso_enforced() and user["role"] == "Admin" and not db.execute(
             "SELECT 1 FROM users WHERE role = 'Admin' AND active = 1 AND password_login = 1 AND id != ?", (user_id,)).fetchone():

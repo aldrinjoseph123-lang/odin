@@ -81,6 +81,7 @@ NOTIFICATION_KINDS = {
     "assigned": "Tasks assigned to me",
     "access": "Sign-in requests and emergency password sign-ins (admins)",
     "ai": "AI server down or back, and AI features that failed validation (admins)",
+    "ops": "Scheduled jobs that failed and backups that are overdue (admins)",
     "mention": "When someone mentions me in a note",
     "due": "A daily reminder of my tasks due today or overdue",
     "nudge": "A note a colleague sends me from the People page",
@@ -89,7 +90,7 @@ NOTIFICATION_KINDS = {
 }
 
 # Kinds only admins receive, so only admins see them on the Account page.
-ADMIN_KINDS = ("access", "ai")
+ADMIN_KINDS = ("access", "ai", "ops")
 
 THEMES = ("system", "light", "dark")
 # Pastel accents, red first and the default (9 Oct 2026); overdue stays the solid --bad state.
@@ -143,7 +144,7 @@ ALERT_TYPE_TITLES = {
     "customer_quiet": "Customer task overdue",
 }
 
-ALERT_TYPES = set(ALERT_TYPE_TITLES)   # every type with a title; settings rows of any other are dropped at start-up
+ALERT_TYPES = set(ALERT_TYPE_TITLES)   # every type with a title; boot deletes only db.RETIRED_ALERT_TYPES, so a newer release's types survive a rollback
 
 # project_overdue has no threshold — it fires the moment the target end date passes.
 DEFAULT_ALERT_TYPE_SETTINGS = {

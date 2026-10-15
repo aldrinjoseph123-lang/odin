@@ -33,7 +33,8 @@ export default function ProjectForm(_props: { user: User }) {
   const [approval, setApproval] = useState(false)
   const [initial, setInitial] = useState("")
   const [saved, setSaved] = useState(false)
-  useUnsavedGuard(!saved && initial !== "" && initial !== JSON.stringify(f))
+  const snap = JSON.stringify({ f, approval, team })   // everything the user can change, not just the text fields
+  useUnsavedGuard(!saved && initial !== "" && initial !== snap)
 
   useEffect(() => {
     projectForm(query).then((data) => {
@@ -54,7 +55,7 @@ export default function ProjectForm(_props: { user: User }) {
     }).catch((e) => setError(editId && e instanceof ApiError && (e.status === 403 || e.status === 404) ? MISSING : e instanceof ApiError && e.status === 403 ? "You cannot create projects." : e instanceof ApiError ? e.message : "Could not load the form"))
   }, [query])
 
-  useEffect(() => { if (initial === "pending") setInitial(JSON.stringify(f)) }, [initial, f])
+  useEffect(() => { if (initial === "pending") setInitial(snap) }, [initial, snap])
   const set = (k: string) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
   const partner = d?.partners.find((p) => p.name === f.partner_name)
 
@@ -202,7 +203,7 @@ export default function ProjectForm(_props: { user: User }) {
         </section>
 
         <div className="flex items-center gap-3 lg:col-span-2">
-          <Button type="submit" size="sm" loading={busy} disabled={editing && initial === JSON.stringify(f)}>{editing ? "Save changes" : "Create project"}</Button>
+          <Button type="submit" size="sm" loading={busy} disabled={editing && initial === snap}>{editing ? "Save changes" : "Create project"}</Button>
           {!editing && <span className="text-[12px] text-muted-foreground">Pick-lists are managed under Settings › Contacts & partners.</span>}
         </div>
       </form>

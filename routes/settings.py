@@ -205,6 +205,11 @@ def settings_rbac():
 @app.route("/settings/rbac", methods=["POST"])
 @permission_required("manage_settings")
 def settings_rbac_update():
+    if session.get("role") != "Admin":
+        # manage_settings can be delegated; the matrix would let its holder grant
+        # their own role manage_users and then make themselves Admin (test round P2-1)
+        flash("Only an admin can change role permissions", "error")
+        return redirect(url_for("settings_rbac"))
     db = get_db()
     refused = [p for p in PERMISSIONS if p not in EXTERNAL_ALLOWED and request.form.get(f"{p}::External") == "on"]
     if refused:

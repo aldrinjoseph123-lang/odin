@@ -792,3 +792,65 @@ test("@flow a new API token stays on screen with Copy until it is put away", asy
   await page.locator("[data-confirm-yes]").click()
   expectClean(errors)
 })
+
+test("@flow kanban: a rollout waiting on its sign-off has no grip, only the way to the sign-off", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?view=kanban")
+  await expect(page.locator('[data-slot="kanban-column"]').first()).toBeVisible()
+  const rows: { id: number; name: string; next_stage: string | null; can_move: boolean; signoff_needed: boolean }[] = await page.evaluate(async () => (await (await fetch("/api/flow")).json()).rows)
+  const r = rows.find((x) => x.can_move && x.signoff_needed)
+  expect(r, "the seed has a rollout waiting on its sign-off").toBeTruthy()
+  await expect(page.getByRole("button", { name: `Move ${r!.name} to ${r!.next_stage}` })).toHaveCount(0)
+  const card = page.locator("li", { has: page.locator(`[data-card="${r!.id}"]`) })
+  await card.getByRole("link", { name: `Sign-off before ${r!.next_stage}` }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${r!.id}/signoff`))
+  expectClean(errors)
+})
+
+test("@flow calendar keyboard: Enter on a task opens its rollout; Move changes its due date, and Undo puts it back", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?view=calendar&cal=agenda")
+  await expect(page.getByRole("button", { name: "Next month" })).toBeVisible()
+  // a task this admin may move (its chip has a Move button beside it)
+  let chip = page.locator("main button[title*='or use Move']").first()
+  for (let i = 0; i < 6 && !(await chip.count()); i++) {
+    const before = await page.getByRole("heading", { level: 2 }).first().textContent()
+    await page.getByRole("button", { name: "Next month" }).click()
+    await expect(page.getByRole("heading", { level: 2 }).first()).not.toHaveText(before ?? "")
+    chip = page.locator("main button[title*='or use Move']").first()
+  }
+  const label = (await chip.locator("xpath=following-sibling::button[1]").getAttribute("aria-label"))!   // "Move <task> to another day"
+  await chip.focus()
+  await page.keyboard.press("Enter")   // Enter opens, it no longer starts a silent drag
+  await expect(page).toHaveURL(/view=calendar.*rollout=\d+/)
+  const move = page.getByRole("button", { name: label }).first()
+  await move.focus()
+  await page.keyboard.press("Enter")
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByRole("button", { name: "Move task" })).toBeDisabled()   // the same day: nothing to save
+  const trigger = dialog.getByRole("button", { name: /^New due date:/ })
+  const due = (await trigger.getAttribute("data-value"))!
+  await pickDate(page, trigger, new Date(Date.parse(`${due}T00:00:00Z`) + 86400000).toISOString().slice(0, 10))
+  await dialog.getByRole("button", { name: "Move task" }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByText(/: due /)).toBeVisible()
+  await page.getByRole("button", { name: "Undo" }).click()
+  expectClean(errors)
+})
+
+test("@flow a view's chunk gone after a release: one reload; still gone, the error stays under the nav and clears on the way out", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board")
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
+  // the old build's Kanban file is gone: the first failure reloads the tab once
+  let refused = 0
+  await page.route(/\/assets\/FlowKanban-[\w-]+\.js$/, (route) => { refused++; return route.abort() })
+  await page.getByRole("radio", { name: "Kanban" }).click()
+  await expect.poll(() => refused).toBeGreaterThanOrEqual(2)   // the first try, then once more after the reload
+  await expect(page.getByRole("heading", { name: "This page hit an error" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Flow", exact: true }).first()).toBeVisible()   // the nav stays
+  await page.unroute(/\/assets\/FlowKanban-[\w-]+\.js$/)
+  await page.getByRole("link", { name: "Flow", exact: true }).first().click()   // ?view= goes: the boundary clears
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Active rollouts")
+  expectClean(errors.filter((e) => !/FlowKanban|Odin page error|dynamically imported module|Failed to load resource.*ERR_FAILED/.test(e)))
+})

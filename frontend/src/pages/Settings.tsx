@@ -77,7 +77,7 @@ export default function Settings(_props: { user: User }) {
       <div className="gap-4 lg:columns-2 [&>*]:mb-4 [&>*]:min-w-0 [&>*]:break-inside-avoid [&>*:last-child]:mb-0">
         {groups.map((g) => {
           const ps = mine.filter((p) => p.group === g)
-          return <PolicyForm key={`${g}:${JSON.stringify(ps.map((p) => p.value))}`} title={g} hint={GROUP_HINTS[g]}
+          return <PolicyForm key={`${g}:${JSON.stringify(ps.map((p) => [p.value, p.saved]))}`} title={g} hint={GROUP_HINTS[g]}
             area={area} policies={ps} templates={data.templates} busy={busy} send={send} />
         })}
       </div>
@@ -270,8 +270,12 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
                 <Input id={`pol-${p.key}`} type="time" required value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 w-32 text-[13px]" />
               )}
               {(p.kind === "url" || p.kind === "domains" || p.kind === "emails") && (
-                <Input id={`pol-${p.key}`} type={p.kind === "url" ? "url" : "text"} maxLength={p.max} placeholder={p.key === "sharepoint_site" ? "https://contoso.sharepoint.com/sites/IT" : p.key === "teams_webhook_url" ? "https://…logic.azure.com/workflows/…" : p.kind === "url" ? "https://odin.example.com" : p.kind === "emails" ? "ceo@company.com, delivery@company.com" : "partner.com, vendor.ae"}
+                <Input id={`pol-${p.key}`} type={p.kind === "url" ? "url" : "text"} maxLength={p.max} placeholder={p.saved ? "Saved and hidden: paste a new one to replace it" : p.key === "sharepoint_site" ? "https://contoso.sharepoint.com/sites/IT" : p.key === "teams_webhook_url" ? "https://…logic.azure.com/workflows/…" : p.kind === "url" ? "https://odin.example.com" : p.kind === "emails" ? "ceo@company.com, delivery@company.com" : "partner.com, vendor.ae"}
                   value={Array.isArray(v[p.key]) ? (v[p.key] as string[]).join(", ") : String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-md text-[13px]" />
+              )}
+              {p.secret && p.saved && (
+                <Button type="button" size="sm" variant="ghost" className={cn("self-start", danger)} loading={busy} aria-label={`Remove the saved ${p.label}`}
+                  onClick={() => void send(`/settings/policies/${area}`, { [p.key]: "", clear: p.key }, "Remove the saved address? Odin stops posting there.")}>Remove</Button>
               )}
               {p.kind === "text" && !p.multiline && (
                 <Input id={`pol-${p.key}`} required maxLength={p.max} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-sm text-[13px]" />

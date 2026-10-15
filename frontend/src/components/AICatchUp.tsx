@@ -17,8 +17,8 @@ export function AICatchUp({ projectId }: { projectId: number }) {
   if (!s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   async function ask() {
-    setBusy(true); setOpen(true)
-    try { await requestProjectAI(projectId, "catch_up"); await load() } finally { setBusy(false) }
+    setBusy(true); setOpen(true); setError(null)
+    try { await requestProjectAI(projectId, "catch_up"); await load() } catch (e) { setError(e instanceof ApiError ? e.message : "Could not ask") } finally { setBusy(false) }
   }
   const list = (title: string, items: string[]) => items.length > 0 && (
     <section><h3 className="text-[12px] font-semibold text-nav-fg">{title}</h3><ul className="mt-1 list-disc pl-5">{items.map((x) => <li key={x}>{x}</li>)}</ul></section>

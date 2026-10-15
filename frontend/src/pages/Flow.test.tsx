@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import Flow from "./Flow"
 import { admin, flow } from "./fixtures"
+import * as api from "@/lib/api"
 
 vi.mock("@/lib/api", async (orig) => ({
   ...(await orig<typeof import("@/lib/api")>()),
@@ -50,5 +51,13 @@ describe("Flow list", () => {
     render(<MemoryRouter initialEntries={["/board?view=kibana"]}><Flow user={partner} /></MemoryRouter>)
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Active rollouts")
     expect(screen.queryByRole("radio", { name: "Kibana" })).toBeNull()   // the Kibana view was removed (13 Oct 2026)
+  })
+
+  it("Kanban: a rollout waiting on its sign-off has no grip, only the way to the sign-off", async () => {
+    vi.mocked(api.flow).mockResolvedValueOnce({ ...flow, rows: flow.rows.map((r) => r.id === 3 ? { ...r, signoff_needed: true } : r) })
+    mount("/board?view=kanban")
+    expect(await screen.findByRole("link", { name: "Sign-off before Sensor pilot" })).toHaveAttribute("href", "/projects/3/signoff")
+    expect(screen.queryByRole("button", { name: "Move Fine one to Sensor pilot" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Move Late one to Sensor pilot" })).toBeInTheDocument()   // the others keep theirs
   })
 })

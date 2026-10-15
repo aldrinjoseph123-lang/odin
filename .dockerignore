@@ -5,6 +5,7 @@
 .env
 .env.*
 deploy/certs/
+secret_key
 
 # state (dev copies; production state is the volume)
 *.db

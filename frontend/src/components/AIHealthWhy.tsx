@@ -3,7 +3,7 @@ import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
 import { Ago } from "@/components/Ago"
-import { requestProjectAI } from "@/lib/api"
+import { ApiError, requestProjectAI } from "@/lib/api"
 import { useProjectAI } from "@/lib/usePoll"
 
 type Why = { why: string; first_move: string }
@@ -16,11 +16,12 @@ export function AIHealthWhy({ projectId, rag }: { projectId: number; rag: string
   const show = rag === "amber" || rag === "red"
   const { s, load, working } = useProjectAI<Why>(projectId, "health_explained", { enabled: show })
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   if (!show || !s || (!s.available && !s.suggestion)) return null
   const sug = s.suggestion
   async function explain() {
-    setBusy(true)
-    try { await requestProjectAI(projectId, "health_explained"); await load() } finally { setBusy(false) }
+    setBusy(true); setError(null)
+    try { await requestProjectAI(projectId, "health_explained"); await load() } catch (e) { setError(e instanceof ApiError ? e.message : "Could not ask") } finally { setBusy(false) }
   }
   return (
     <div className="mt-2 flex flex-wrap items-start gap-x-3 gap-y-1 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">
@@ -33,6 +34,7 @@ export function AIHealthWhy({ projectId, rag }: { projectId: number; rag: string
               <p className="mt-1 text-[12px] text-muted-foreground">AI, <Ago iso={sug.created_at} />{sug.model ? ` · ${sug.model}` : ""}. The reasons above are Odin's own count.</p>
             </>
             : <span className="text-muted-foreground">Have the AI explain this in plain words, with a first move.</span>}
+        {error && <p className="mt-1 text-destructive" role="alert">{error}</p>}
       </div>
       {s.available && !working && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void explain()}>{sug ? "Explain again" : "Explain"}</Button>}
     </div>

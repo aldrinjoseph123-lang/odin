@@ -206,8 +206,10 @@ def auth_reset_request():
         user = get_db().execute(
             "SELECT * FROM users WHERE lower(email) = ? AND kind = 'internal' AND active = 1", (email,)
         ).fetchone()
-        if user and sso_enforced() and not user["password_login"]:
-            user = None   # no password to reset: they sign in with Microsoft (the reply stays neutral)
+        if user and (sso_enforced() or user["ms_oid"]) and not user["password_login"]:
+            # no password to reset: they sign in with Microsoft (the reply stays neutral); a
+            # Microsoft account must not mint itself a password outside its tenant's controls (P2-2)
+            user = None
         if user:
             import graph
             raw = issue_login_link(user["id"], purpose="reset")
@@ -555,16 +557,22 @@ def account_email():
     if session.get("kind") == "external":
         flash("Your email address is how you sign in; ask the project manager to change it", "error")
         return redirect(url_for("account"))
-    me = db.execute("SELECT password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
-    if me["password_hash"] and "$" in me["password_hash"] and not check_password_hash(me["password_hash"], request.form.get("password", "")):
+    me = db.execute("SELECT password_hash, ms_oid FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    if me["ms_oid"] or "$" not in (me["password_hash"] or ""):
+        # nothing to re-check the person with, and a changed address could take a reset link (test round P2-2)
+        flash("Your account signs in with Microsoft: ask an admin to change your email", "error")
+        return redirect(url_for("account"))
+    if not check_password_hash(me["password_hash"], request.form.get("password", "")):
         # reset links go to this address, so changing it is as sensitive as the password (test report SEC-5)
         flash("Enter your current password to change your email", "error")
         return redirect(url_for("account"))
     if email and db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND id != ?", (email.lower(), session["user_id"])).fetchone():
         flash("That address belongs to another account", "error")
         return redirect(url_for("account"))
-    db.execute("UPDATE users SET email = ? WHERE id = ?", (email or None, session["user_id"]))
+    # links sent to the old address die with the epoch; other sessions end, this one carries on
+    db.execute("UPDATE users SET email = ?, session_epoch = session_epoch + 1 WHERE id = ?", (email or None, session["user_id"]))
     db.commit()
+    session["epoch"] = db.execute("SELECT session_epoch FROM users WHERE id = ?", (session["user_id"],)).fetchone()[0]
     audit_log("change_own_email", "user", session["user_id"], session.get("user_name"))
     flash("Email updated")
     return redirect(url_for("account"))

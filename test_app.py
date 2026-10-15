@@ -1691,7 +1691,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self._sso_setup()
         pm1 = self._make_user("pm1", "Member")
         with self.raw_db() as db:
-            db.execute("UPDATE users SET email='pm1@corp.example' WHERE id=?", (pm1,)); db.commit()
+            db.execute("UPDATE users SET email='pm1@corp.example' WHERE id=?", (pm1,))
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sso_enforced', '1')"); db.commit()   # binding by email needs a password that cannot sign in (P2-3)
         # an existing colleague is linked by email once, then by oid
         c = app_module.app.test_client()
         self.assertEqual(self._ms_sign_in(c, "oid-pm1", "PM1@corp.example").headers["Location"], "/board")
@@ -1843,6 +1844,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         a = c.get("/api/account").get_json()
         self.assertEqual((a["username"], a["kind"], a["must_change_password"]), ("admin", "internal", False))
         self.assertEqual(c.post("/account/email", data={"email": "admin@odin.example", "password": "changeme"}, headers=h).get_json()["messages"], ["Email updated"])
+        self.client.post("/login", data={"username": "admin", "password": "changeme"})   # an email change ends the account's other sessions (P2-2)
         self.assertEqual(c.post("/account", data={"current_password": "wrong", "new_password": STRONG_PASSWORD}, headers=h).get_json()["messages"], ["Current password is wrong"])
         w = c.get("/api/my-work").get_json()
         self.assertEqual([t["title"] for t in w["tasks"]], ["Late one"]); self.assertLess(w["tasks"][0]["due_date"], w["today"])
@@ -6449,6 +6451,103 @@ class LessonsTestCase(AITestBase):
         ann = app_module.app.test_client()
         ann.post(f"/auth/link/{link}")
         self.assertEqual(ann.get("/api/projects/1/lessons").status_code, 404)
+
+
+class TestReviewAccessScope(unittest.TestCase):
+    """Review of 14 Oct 2026, P2-6 to P2-8: guest vendor link scope, the role
+    matrix on routes that only checked login, and /api/flow stage names."""
+    new_project = ContactsAndProjectMetaTestCase.new_project
+    raw_db = ContactsAndProjectMetaTestCase.raw_db
+    _make_user = ContactsAndProjectMetaTestCase._make_user
+    _api_client = ContactsAndProjectMetaTestCase._api_client
+    _invite = ContactsAndProjectMetaTestCase._invite
+    _link_for = ContactsAndProjectMetaTestCase._link_for
+    _external_client = ContactsAndProjectMetaTestCase._external_client
+    _ext = ContactsAndProjectMetaTestCase._ext
+
+    def setUp(self):
+        fd, db_module.DB_PATH = tempfile.mkstemp()
+        os.close(fd)
+        os.remove(db_module.DB_PATH)
+        isolate_uploads(self)
+        app_module.init_db()
+        settle_seed_admin()
+        self.client = app_module.app.test_client()
+        self.client.post("/login", data={"username": "admin", "password": "changeme"})
+
+    def tearDown(self):
+        os.unlink(db_module.DB_PATH)
+
+    def test_vendor_link_dies_off_outsourced_and_guest_writes_stop_at_the_terminal_stage(self):
+        self.new_project(name="V", client="C", delivery_mode="Outsourced", outsourcer_name="VendorCo")
+        with self.raw_db() as db:
+            vendor, customer = db.execute("SELECT access_token, customer_token FROM projects WHERE id=1").fetchone()
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        g = app_module.app.test_client()
+        self.assertEqual(g.get(f"/guest/{vendor}").status_code, 200)
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET delivery_mode='Distribution/MSSP' WHERE id=1"); db.commit()
+        form = {"stage": stages[1], "author": "Sam"}
+        self.assertEqual(g.get(f"/guest/{vendor}").status_code, 404)
+        self.assertEqual(g.post(f"/guest/{vendor}/stage", data=form).status_code, 404)
+        self.assertEqual(g.post(f"/guest/{vendor}/note", data={"author": "Sam", "note": "hi"}).status_code, 404)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=1").fetchone()[0], stages[0])
+        self.assertEqual(g.get(f"/guest/{customer}").status_code, 200)   # the customer link does not depend on the mode
+        # terminal stage: still readable, no longer writable, by either link
+        with self.raw_db() as db:
+            db.execute("UPDATE projects SET delivery_mode='Outsourced', stage=? WHERE id=1", (stages[-1],)); db.commit()
+        for tok in (vendor, customer):
+            self.assertEqual(g.get(f"/guest/{tok}").status_code, 200)
+            self.assertEqual(g.post(f"/guest/{tok}/note", data={"author": "Sam", "note": "late"}).status_code, 403)
+        self.assertEqual(g.post(f"/guest/{vendor}/stage", data=form).status_code, 403)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM status_notes WHERE note='late'").fetchone()[0], 0)
+
+    def test_alerts_my_work_lessons_and_ai_follow_the_role_matrix(self):
+        self.new_project(name="P", client="C")
+        self._make_user("viewer9", "Viewer")
+        viewer, _ = self._api_client("viewer9", STRONG_PASSWORD)
+        self.assertEqual(viewer.post("/api/projects/1/ai/catch_up", json={}).status_code, 403)   # a Viewer queues nothing
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM ai_jobs").fetchone()[0], 0)
+        gets = ["/api/alerts", "/api/my-work", "/alerts", "/my-work", "/api/projects/1/lessons", "/api/projects/1/ai/catch_up"]
+        with self.raw_db() as db:
+            db.execute("UPDATE role_permissions SET allowed=0 WHERE role='Viewer' AND permission IN ('view_board', 'view_project_detail')"); db.commit()
+        for url in gets:
+            self.assertEqual(viewer.get(url).status_code, 403, url)
+        admin, _ = self._api_client()
+        for url in gets[:2] + gets[4:]:
+            self.assertEqual(admin.get(url).status_code, 200, url)
+
+    def test_a_viewer_reads_an_existing_ai_draft_but_cannot_ask_for_one(self):
+        self.new_project(name="P", client="C")
+        self._make_user("viewer9", "Viewer")
+        viewer, _ = self._api_client("viewer9", STRONG_PASSWORD)
+        with self.raw_db() as db:
+            db.execute("INSERT INTO ai_suggestions (project_id, feature, payload, status, created_at) VALUES (1, 'catch_up', '{}', 'new', datetime('now'))"); db.commit()
+        got = viewer.get("/api/projects/1/ai/catch_up").get_json()
+        self.assertFalse(got["available"])
+        self.assertTrue(got["reason"])
+        self.assertEqual(got["suggestion"]["payload"], {})
+
+    def test_flow_stage_names_stay_in_scope(self):
+        self.new_project(name="Mine", client="Globex")
+        self.new_project(name="Theirs", client="Other")
+        self.new_project(name="Gone", client="Other")
+        with self.raw_db() as db:
+            db.execute("UPDATE project_stages SET name='Other-only stage' WHERE project_id=2 AND position=1")
+            db.execute("UPDATE project_stages SET name='Deleted-only stage' WHERE project_id=3 AND position=1")
+            db.execute("UPDATE projects SET deleted_at=? WHERE id=3", (datetime.utcnow().isoformat(),)); db.commit()
+        self._invite(1, "cara@client.example", "Customer", "Cara")
+        cara, _ = self._ext("cara@client.example")
+        stages = cara.get("/api/flow").get_json()["stages"]
+        self.assertNotIn("Other-only stage", stages); self.assertNotIn("Deleted-only stage", stages)
+        with self.raw_db() as db:
+            own = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        self.assertEqual(stages, own)
+        admin = self.client.get("/api/flow").get_json()["stages"]
+        self.assertIn("Other-only stage", admin); self.assertNotIn("Deleted-only stage", admin)
 
 
 if __name__ == "__main__":

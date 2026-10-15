@@ -34,10 +34,53 @@ class _BoundedInt(IntegerConverter):
 
 
 app.url_map.converters["int"] = _BoundedInt
-app.secret_key = os.environ.get("SECRET_KEY", DEV_SECRET)
-# wsgi.py refuses to boot on this flag — a predictable signing key lets anyone
-# forge a session cookie, so production must supply a real SECRET_KEY.
-app.config["USING_DEV_SECRET"] = app.secret_key == DEV_SECRET
+
+
+def _local_secret_key():
+    """Dev and UAT (no SECRET_KEY in the environment): a random key kept in
+    DATA_DIR/secret_key (0600, never in git), so it is stable for that data
+    directory but not the public DEV_SECRET. Production sets SECRET_KEY."""
+    import secrets
+    import time
+    from db import DATA_DIR
+    path = os.path.join(DATA_DIR, "secret_key")
+
+    def saved():
+        try:
+            with open(path) as f:
+                return k if len(k := f.read().strip()) >= 32 else None
+        except OSError:
+            return None
+
+    if key := saved():
+        return key
+    key = secrets.token_hex(32)
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        try:
+            # O_EXCL, never O_TRUNC: two first boots at once (the dev reloader, the
+            # scheduler) must end up with one key, not each overwrite the other's
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            for _ in range(20):   # the other process is still writing it: use theirs
+                time.sleep(0.05)
+                if theirs := saved():
+                    return theirs
+            fd = os.open(path, os.O_WRONLY | os.O_TRUNC)   # a short file nobody fills (an earlier crash): replace it
+        with os.fdopen(fd, "w") as f:
+            f.write(key)
+    except OSError:
+        pass   # read-only data dir: a per-run key (sessions end on restart)
+    return key
+
+
+app.secret_key = os.environ.get("SECRET_KEY") or _local_secret_key()
+# wsgi.py refuses to boot on this flag — production must supply a real
+# SECRET_KEY, not fall back to the per-data-dir key above.
+app.config["USING_DEV_SECRET"] = os.environ.get("SECRET_KEY", "") in ("", DEV_SECRET)
+# Values sealed with the old public key (UAT before 15 Oct 2026) still open
+if app.config["USING_DEV_SECRET"]:
+    app.config["LEGACY_SECRET_KEY"] = DEV_SECRET
 
 # cookie hardening + CSRF + security response headers (see security.py)
 init_security(app)

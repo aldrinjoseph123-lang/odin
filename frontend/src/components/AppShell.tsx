@@ -11,6 +11,7 @@ import { CommandPalette } from "@/components/CommandPalette"
 import { Toaster } from "@/components/Toaster"
 import { ConfirmHost } from "@/components/ConfirmHost"
 import { TitleTips } from "@/components/TitleTips"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { NotificationBell } from "@/components/NotificationBell"
 import { applyTheme, type Accent, type Theme } from "@/lib/theme"
 import { cn } from "@/lib/utils"
@@ -29,19 +30,19 @@ function NavLink({ item, current, onClick }: { item: Item; current: boolean; onC
   )
   const text = (
     <>
-      {item.label}
-      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-2 text-[11px] text-foreground" variant="secondary">{item.count > 99 ? "99+" : item.count}</Badge> : null}
+      {item.label}{item.count ? " " : ""}
+      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-2 text-[11px] text-foreground" variant="secondary">{item.count > 99 ? "99+" : item.count}<span className="sr-only"> open</span></Badge> : null}
     </>
   )
   return REACT_PAGES.has(item.href) ? (
-    <Link to={item.href} className={className} onClick={onClick}>{text}</Link>
+    <Link to={item.href} className={className} onClick={onClick} aria-current={current ? "page" : undefined}>{text}</Link>
   ) : (
-    <a href={item.href} className={className}>{text}</a>
+    <a href={item.href} className={className} aria-current={current ? "page" : undefined}>{text}</a>
   )
 }
 
 export default function AppShell({ user, children, messages = [], onDismiss }: { user: User; children: ReactNode; messages?: string[]; onDismiss?: () => void }) {
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   useActivityPing(user.prefs?.activity_idle_minutes ?? 5)
   const [open, setOpen] = useState(false)
   const navRef = useRef<HTMLElement>(null)
@@ -111,7 +112,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
         {/* The admin's full row needs ~1,250 px (test report UX-1): below xl the
             links fold into the menu, and up to 2xl search is just its icon;
             bell, theme and avatar stay visible at every width. */}
-        <nav ref={navRef} className={cn("absolute inset-x-0 top-14 z-40 mx-3 flex-col gap-3 rounded-2xl bg-card p-4 shadow-pop xl:static xl:mx-0 xl:flex xl:flex-1 xl:flex-row xl:items-center xl:gap-4 xl:rounded-none xl:bg-transparent xl:p-0 xl:shadow-none xl:gap-6", open ? "flex" : "hidden")}>
+        <nav ref={navRef} aria-label="Main" className={cn("absolute inset-x-0 top-14 z-40 mx-3 flex-col gap-3 rounded-2xl bg-card p-4 shadow-pop xl:static xl:mx-0 xl:flex xl:flex-1 xl:flex-row xl:items-center xl:gap-4 xl:rounded-none xl:bg-transparent xl:p-0 xl:shadow-none xl:gap-6", open ? "flex" : "hidden")}>
           <span className="flex flex-col gap-1 xl:flex-row xl:gap-0 xl:rounded-full xl:bg-card xl:p-1.5 xl:shadow-card">
             {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
           </span>
@@ -154,7 +155,8 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           <button type="button" className="font-medium" onClick={onDismiss} aria-label="Dismiss">×</button>
         </div>
       )}
-      <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none">{children}</main>
+      {/* a page's error stays under the nav and clears on any change of address (?view= too) */}
+      <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none"><ErrorBoundary inShell resetKey={pathname + search}>{children}</ErrorBoundary></main>
       <Toaster />
       <ConfirmHost />
       <TitleTips />

@@ -457,10 +457,6 @@ class RobustnessTest(Base):
         self.assertIn("'=cmd", text); self.assertIn("'@SUM(1)", text)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 
 class ExternalRoleTest(Base):
     def test_session_names_a_customer_and_a_partner(self):
@@ -533,3 +529,241 @@ class SimulationFindingsTest(Base):
         self.new_project(name="Alpha", client="C")
         self.assertEqual(self.client.get("/api/projects?q=%25%25").get_json()["total"], 0)
         self.assertEqual(self.client.get("/api/search?q=%25%25").get_json()["projects"], [])
+
+
+class IdentityTest(Base):   # test round 14 Oct 2026: P2-1 to P2-4, P2-9
+    TENANT, CLIENT = T.ContactsAndProjectMetaTestCase.TENANT, T.ContactsAndProjectMetaTestCase.CLIENT
+    _sso_setup = T.ContactsAndProjectMetaTestCase._sso_setup
+    _ms_sign_in = T.ContactsAndProjectMetaTestCase._ms_sign_in
+
+    def staff(self, username, role="Member", **cols):
+        uid = self._make_user(username, role)
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET must_change_password = 0 WHERE id = ?", (uid,))
+            for k, v in cols.items():
+                db.execute(f"UPDATE users SET {k} = ? WHERE id = ?", (v, uid))
+            db.commit()
+        return uid
+
+    def test_delegated_rights_cannot_make_an_admin(self):   # P2-1
+        pm = self.staff("pm")
+        waiting = self.staff("waiting", "Viewer", pending=1, active=0)
+        with self.raw_db() as db:
+            db.execute("UPDATE role_permissions SET allowed = 1 WHERE role = 'Member' AND permission IN ('manage_users', 'manage_settings')"); db.commit()
+        c, csrf = self._api_client("pm", STRONG_PASSWORD)
+        h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+        fields = {f"{p}::{r}": "on" for p, roles in c.get("/api/settings/rbac").get_json()["matrix"].items() for r, ok in roles.items() if ok}
+        self.assertEqual(c.post("/settings/rbac", data={**fields, "edit_project_stage::Viewer": "on"}, headers=h).status_code, 400)
+        for url, form in ((f"/users/{pm}/role", {"role": "Admin"}), (f"/users/{pm}/role", {"role": "Viewer"}), ("/users/1/role", {"role": "Member"}),
+                          (f"/users/{waiting}/approve", {"role": "Admin"}), ("/users/1/reset-password", {"new_password": STRONG_PASSWORD + "x"}),
+                          ("/users/1/email", {"email": "pm@corp.example"}),
+                          ("/users", {"username": "boss", "name": "Boss", "password": STRONG_PASSWORD, "role": "Admin"})):
+            with self.subTest(url=url, form=form):
+                self.assertEqual(c.post(url, data=form, headers=h).status_code, 400)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT role FROM users WHERE id = ?", (pm,)).fetchone()[0], "Member")
+            self.assertEqual(db.execute("SELECT allowed FROM role_permissions WHERE role = 'Viewer' AND permission = 'edit_project_stage'").fetchone()[0], 0)
+            self.assertIsNone(db.execute("SELECT 1 FROM users WHERE role = 'Admin' AND id != 1").fetchone())
+        # delegated work on everyone else still works, and an admin can still make an admin
+        self.assertEqual(c.post(f"/users/{waiting}/approve", data={"role": "Viewer"}, headers=h).status_code, 200)
+        self.client.post(f"/users/{pm}/role", data={"role": "Admin"})
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT role FROM users WHERE id = ?", (pm,)).fetchone()[0], "Admin")
+
+    def test_microsoft_account_cannot_mint_a_password_and_email_change_kills_links(self):   # P2-2
+        from security import issue_login_link, reset_link_row
+        ms = self.staff("ms1", email="ms1@corp.example")
+        m = self.login_as("ms1")
+        with self.raw_db() as db:
+            db.execute("UPDATE users SET ms_oid = 'oid-ms1', password_hash = 'microsoft:no-password' WHERE id = ?", (ms,))
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('notify_email_enabled', '1')"); db.commit()
+        r = m.post("/account/email", data={"email": "me@evil.example"}, headers={"Accept": "application/json"})
+        self.assertEqual(r.status_code, 400)
+        with patch("graph.send_mail", return_value=(True, None)) as mail:
+            app_module.app.test_client().post("/auth/reset", data={"email": "ms1@corp.example"})
+        mail.assert_not_called()
+        # a password account: the change ends other sessions and every outstanding link
+        pw = self.staff("pw1", email="pw1@corp.example")
+        a, b = self.login_as("pw1"), self.login_as("pw1")
+        with app_module.app.test_request_context():
+            raw = issue_login_link(pw, purpose="reset")
+        self.assertEqual(a.post("/account/email", data={"email": "pw1@new.example", "password": STRONG_PASSWORD}, headers={"Accept": "application/json"}).status_code, 200)
+        self.assertIsNotNone(a.get("/api/session").get_json()["user"]); self.assertIsNone(b.get("/api/session").get_json()["user"])
+        with app_module.app.test_request_context():
+            self.assertIsNone(reset_link_row(raw))
+
+    def test_delegated_rights_cannot_act_on_an_admins_account(self):   # P2-1 follow-up
+        self.staff("pm")
+        boss = self.staff("boss", "Admin")
+        with self.raw_db() as db:
+            db.execute("UPDATE role_permissions SET allowed = 1 WHERE role = 'Member' AND permission = 'manage_users'"); db.commit()
+            db.execute("UPDATE users SET password_login = 0 WHERE id = ?", (boss,)); db.commit()
+        c, csrf = self._api_client("pm", STRONG_PASSWORD)
+        routes = ((f"/users/{boss}/active", {"active": "0"}), (f"/users/{boss}/two-step-reset", {}),
+                  (f"/users/{boss}/password-login", {"allowed": "on"}))
+        for url, form in routes:
+            with self.subTest(url=url, by="delegated"):
+                r = c.post(url, data=dict(form), headers={"X-CSRF-Token": csrf, "Accept": "application/json"})
+                self.assertEqual((r.status_code, r.get_json()["error"][:18]), (400, "Only an admin can "))
+        with self.raw_db() as db:
+            self.assertEqual(tuple(db.execute("SELECT active, password_login FROM users WHERE id = ?", (boss,)).fetchone()), (1, 0))
+        for url, form in routes:
+            with self.subTest(url=url, by="admin"):
+                self.assertEqual(self.client.post(url, data=dict(form), headers={"Accept": "application/json"}).status_code, 200)
+        with self.raw_db() as db:
+            self.assertEqual(tuple(db.execute("SELECT active, password_login FROM users WHERE id = ?", (boss,)).fetchone()), (0, 1))
+
+    def _ms_finish(self, client, oid, email):
+        """Microsoft's half of a flow already started on `client` (its session holds the state)."""
+        import base64, time
+        with client.session_transaction() as s:
+            state, nonce = s["sso"]["state"], s["sso"]["nonce"]
+        claims = {"tid": self.TENANT, "iss": f"https://login.microsoftonline.com/{self.TENANT}/v2.0", "aud": self.CLIENT,
+                  "nonce": nonce, "exp": time.time() + 600, "oid": oid, "preferred_username": email, "name": email}
+        enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b"=").decode()
+        with patch("routes.sso.requests.post") as post:
+            post.return_value.json.return_value = {"id_token": f"{enc({'alg': 'RS256'})}.{enc(claims)}.sig"}
+            return client.get(f"/auth/microsoft/callback?code=abc&state={state}")
+
+    def test_first_microsoft_sign_in_never_takes_a_password_account(self):   # P2-3
+        self._sso_setup()
+        squat = self.staff("squat", email="ceo@corp.example")
+        c = app_module.app.test_client()
+        self._ms_sign_in(c, "oid-ceo", "CEO@corp.example", "The CEO")
+        self.assertIsNone(c.get("/api/session").get_json()["user"])
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT ms_oid FROM users WHERE id = ?", (squat,)).fetchone()[0])
+            self.assertIsNone(db.execute("SELECT 1 FROM users WHERE ms_oid = 'oid-ceo'").fetchone())   # no request row holding the oid
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'link_microsoft_refused'").fetchone()[0], 1)
+            self.assertIn("Link Microsoft", db.execute("SELECT body FROM notifications WHERE user_id = 1 AND kind = 'access'").fetchone()[0])
+        # the real person signs in with the password and links Microsoft from the Account page
+        me = self.login_as("squat")
+        self.assertEqual(me.get("/api/account/microsoft").get_json(), {"available": True, "linked": False})
+        start = me.post("/account/microsoft", headers={"Accept": "application/json"}).get_json()
+        self.assertIn("login.microsoftonline.com", start["location"])
+        self.assertEqual(self._ms_finish(me, "oid-ceo", "ceo@corp.example").headers["Location"], "/account")
+        self.assertTrue(me.get("/api/account/microsoft").get_json()["linked"])
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT ms_oid FROM users WHERE id = ?", (squat,)).fetchone()[0], "oid-ceo")
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'link_microsoft_account'").fetchone()[0], 1)
+        self.assertEqual(self._ms_sign_in(app_module.app.test_client(), "oid-ceo", "ceo@corp.example").headers["Location"], "/board")
+        # an oid another account holds is never moved
+        other = self.staff("other")
+        o = self.login_as("other")
+        o.post("/account/microsoft")
+        self._ms_finish(o, "oid-ceo", "ceo@corp.example")
+        with self.raw_db() as db:
+            self.assertIsNone(db.execute("SELECT ms_oid FROM users WHERE id = ?", (other,)).fetchone()[0])
+        # once passwords cannot sign in (Microsoft only, no flag), the binding happens and the password is retired
+        mem = self.staff("mem", email="mem@corp.example")
+        with self.raw_db() as db:
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sso_enforced', '1')"); db.commit()
+        self.assertEqual(self._ms_sign_in(c, "oid-mem", "mem@corp.example").headers["Location"], "/board")
+        with self.raw_db() as db:
+            self.assertEqual(tuple(db.execute("SELECT ms_oid, password_hash FROM users WHERE id = ?", (mem,)).fetchone()), ("oid-mem", "microsoft:no-password"))
+
+    def test_two_step_codes_are_limited_per_account_across_addresses(self):   # P2-4
+        import time
+        from policies import policy
+        from services import mfa
+        from security import failed_attempts
+        uid = self.staff("ts")
+        c, csrf = self._api_client("ts", STRONG_PASSWORD)
+        secret = c.post("/api/account/two-step/setup", json={"password": STRONG_PASSWORD}, headers={"X-CSRF-Token": csrf}).get_json()["secret"]
+        step = int(time.time() // mfa.STEP)
+        clock = patch("services.mfa.time")   # frozen: a 30 s rollover mid-test must not move the codes
+        clock.start().time.return_value = step * mfa.STEP + 1
+        self.addCleanup(clock.stop)
+        c.post("/api/account/two-step/confirm", json={"code": mfa.code_at(secret, step)}, headers={"X-CSRF-Token": csrf})
+        wrong = "000000" if mfa.code_at(secret, step + 1) != "000000" else "111111"
+
+        def code_from(ip, code):
+            x = app_module.app.test_client(); x.environ_base["REMOTE_ADDR"] = ip
+            r = x.post("/api/login", json={"username": "ts", "password": STRONG_PASSWORD}, headers=self.csrf(x)).get_json()
+            return x.post("/api/login/code", json={"code": code}, headers={"X-CSRF-Token": r["csrf"]}).status_code
+
+        with app_module.app.app_context():
+            limit = policy("login_max_attempts")
+        for i in range(limit - 1):
+            self.assertEqual(code_from(f"10.0.0.{i}", wrong), 401)
+        self.assertEqual(code_from("10.0.1.1", mfa.code_at(secret, step + 1)), 200)   # a success clears the count
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM login_attempts WHERE username = ?", (f"mfa:{uid}",)).fetchone()[0], 0)
+        for i in range(limit):
+            self.assertEqual(code_from(f"10.0.2.{i}", wrong), 401)
+        with app_module.app.test_request_context():
+            self.assertEqual(failed_attempts(f"mfa:{uid}"), limit)
+        self.assertEqual(code_from("10.0.3.1", mfa.code_at(secret, step + 1)), 429)   # one address each: still locked
+
+    def test_teams_webhook_is_sealed_and_write_only(self):   # P2-9
+        from policies import policy
+        h = {"Accept": "application/json"}
+        url = "https://prod-1.westeurope.logic.azure.com/workflows/abc/triggers/manual/paths/invoke?sp=x&sig=TOPSECRET"
+        with self.raw_db() as db:   # a value saved before sealing still works
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.teams_webhook_url', 'https://hook.example/old')"); db.commit()
+        with app_module.app.app_context():
+            self.assertEqual(policy("teams_webhook_url"), "https://hook.example/old")
+        self.client.post("/settings/policies/notifications", data={"teams_webhook_url": url}, headers=h)
+        self.client.post("/settings/policies/notifications", data={"teams_webhook_url": ""}, headers=h)   # blank keeps it
+        with app_module.app.app_context():
+            self.assertEqual(policy("teams_webhook_url"), url)
+        with self.raw_db() as db:
+            self.assertTrue(db.execute("SELECT value FROM settings WHERE key = 'policy.teams_webhook_url'").fetchone()[0].startswith("sealed:"))
+        item = next(p for p in self.client.get("/api/settings").get_json()["policies"] if p["key"] == "teams_webhook_url")
+        self.assertEqual((item["value"], item["secret"], item["saved"]), ("", True, True))
+        self.client.post("/settings/policies/notifications", data={"teams_webhook_url": "", "clear": "teams_webhook_url"}, headers=h)
+        with app_module.app.app_context():
+            self.assertEqual(policy("teams_webhook_url"), "")
+        with self.raw_db() as db:
+            details = [r[0] for r in db.execute("SELECT details FROM audit_logs WHERE action = 'update_policies' ORDER BY id")]
+        self.assertEqual(details, ["teams_webhook_url=set", "teams_webhook_url=cleared"])
+
+
+class SecretKeyTest(Base):   # review 15 Oct 2026
+    def test_the_public_dev_key_counts_as_no_key(self):
+        import os, subprocess, sys, tempfile
+        env = {**os.environ, "SECRET_KEY": "dev-secret-change-me", "ODIN_DATA_DIR": tempfile.mkdtemp()}
+        out = subprocess.run([sys.executable, "-c", "import core; print(core.app.config['USING_DEV_SECRET'])"],
+                             env=env, capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
+        self.assertEqual(out.stdout.strip(), "True", out.stderr)
+
+    def test_a_second_first_boot_reads_the_key_the_first_one_writes(self):
+        import core, os, tempfile, threading
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, "secret_key")
+        open(path, "w").close()   # the other process has created it, not yet written it
+        theirs = "k" * 64
+
+        def write():
+            with open(path, "w") as f:
+                f.write(theirs)
+        threading.Timer(0.1, write).start()
+        with patch.object(db_module, "DATA_DIR", tmp):
+            self.assertEqual(core._local_secret_key(), theirs)
+
+    def test_two_step_secrets_open_through_the_one_legacy_fallback(self):
+        import base64, hashlib, core
+        from cryptography.fernet import Fernet
+        from services import mfa
+        old = Fernet(base64.urlsafe_b64encode(hashlib.sha256(b"odin-totp:" + core.DEV_SECRET.encode()).digest())).encrypt(b"JBSWY3DP").decode()
+        with app_module.app.app_context():
+            self.assertEqual(mfa.unseal(mfa.seal("JBSWY3DP")), "JBSWY3DP")
+            self.assertEqual(mfa.unseal(old), "JBSWY3DP")
+            with patch.dict(app_module.app.config, {"LEGACY_SECRET_KEY": None}):
+                self.assertIsNone(mfa.unseal(old))
+
+    def test_boot_seals_a_plain_teams_webhook_once(self):
+        with self.raw_db() as db:
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.teams_webhook_url', 'https://hook.example/old?sig=x')"); db.commit()
+            db_module.migrate_db(db)
+            first = db.execute("SELECT value FROM settings WHERE key = 'policy.teams_webhook_url'").fetchone()[0]
+            db_module.migrate_db(db)
+            self.assertEqual(db.execute("SELECT value FROM settings WHERE key = 'policy.teams_webhook_url'").fetchone()[0], first)
+        self.assertTrue(first.startswith("sealed:"))
+        with app_module.app.app_context():
+            from policies import policy
+            self.assertEqual(policy("teams_webhook_url"), "https://hook.example/old?sig=x")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -20,4 +20,8 @@ describe("the Kanban's rules", () => {
     expect(dropRefusal({ ...r, next_stage: null }, "Sensor pilot")).toMatch(/last stage/)
     expect(canDrag(r)).toBe(true); expect(canDrag({ ...r, can_move: false })).toBe(false)
   })
+  it("offers no grip while a sign-off waits for the next (last) move", () => {
+    expect(canDrag({ ...r, signoff_needed: true })).toBe(false)
+    expect(canDrag({ ...r, next_stage: null })).toBe(false)
+  })
 })

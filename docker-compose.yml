@@ -18,6 +18,8 @@ services:
     logging: *logging
     build: .
     restart: unless-stopped
+    init: true               # a real PID 1: signals reach Python, zombies are reaped
+    stop_grace_period: 1m    # let a request finish before the kill
     env_file: .env
     environment:
       ODIN_DATA_DIR: /data
@@ -51,6 +53,11 @@ services:
     logging: *logging
     build: .
     restart: unless-stopped
+    # SIGTERM reaches scheduler.py (docker-entrypoint.sh execs it; init forwards
+    # it), which finishes the job in hand and exits; the grace period lets a
+    # backup complete instead of being cut off by the 10 s default and SIGKILL.
+    init: true
+    stop_grace_period: 2m
     env_file: .env
     environment:
       ODIN_DATA_DIR: /data

@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
+import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { EmptyState } from "@/components/EmptyState"
 import { pill } from "@/lib/ui"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { AlarmClock, ArrowRight, Check, CheckSquare, ChevronLeft, ChevronRight, GanttChart, ShieldCheck, Target } from "lucide-react"
+import { AlarmClock, ArrowRight, CalendarClock, Check, CheckSquare, ChevronLeft, ChevronRight, GanttChart, ShieldCheck, Target } from "lucide-react"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { Segmented } from "@/components/Segmented"
 import { Calendar as MiniMonth } from "@/components/ui/calendar"
+import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/DatePicker"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ApiError, calendar, moveTaskDue, type CalendarData } from "@/lib/api"
 import { addDays } from "@/lib/plan"
 import { toast } from "@/lib/toast"
@@ -21,6 +24,8 @@ import { fmtDate, addMonths, localToday, laneSpans, monthGrid, monthTitle, short
 // rollouts) or an agenda. Everything is all-day: Odin has dates, not hours.
 // A task can be dragged to another day by whoever manages the rollout's tasks
 // or the person it is on (the server checks again); the toast can undo it.
+// The keyboard way is the chip's Move button and a date dialog (P2-43): Enter
+// on the chip opens its rollout, as on any link.
 type Item = { key: string; kind: "task" | "target" | "move" | "approval"; day: string; text: string; sub?: string; id: number; tone?: "bad" | "warn" | "ok" | "muted"; done?: boolean; task?: { id: number; project_id: number; title: string } }
 type Show = Record<"tasks" | "targets" | "history" | "spans", boolean>
 type Mode = "month" | "week" | "agenda"
@@ -43,7 +48,7 @@ const mondayOf = (iso: string) => addDays(iso, -((new Date(`${iso}T00:00:00Z`).g
 
 const ICON = { task: CheckSquare, target: Target, move: ArrowRight, approval: ShieldCheck }
 // a chip opens its rollout under the calendar (the URL keeps the view)
-function Chip({ it, full, href, still }: { it: Item; full?: boolean; href: (id: number) => string; still?: boolean }) {
+function Chip({ it, full, href, still, onMove }: { it: Item; full?: boolean; href: (id: number) => string; still?: boolean; onMove?: (it: Item) => void }) {
   // late is a glyph and a word, not red alone (WCAG 1.4.1, test report UX-19)
   const late = it.tone === "bad" && !it.done && (it.kind === "task" || it.kind === "target")
   const Icon = late ? AlarmClock : ICON[it.kind]
@@ -51,8 +56,8 @@ function Chip({ it, full, href, still }: { it: Item; full?: boolean; href: (id: 
   const movable = !!it.task && !still
   const { setNodeRef, listeners, transform, isDragging } = useDraggable({ id: still ? `still-${it.key}` : it.key, data: it, disabled: !movable })
   const navigate = useNavigate()
-  const className = cn("flex min-w-0 items-start gap-2 rounded-md px-2 py-1 text-left text-[12px] leading-tight hover:bg-muted", full && "py-2 text-[13px]", movable && "w-full cursor-grab touch-none", isDragging && "opacity-40")
-  const title = `${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}${movable ? " · drag to another day to move its due date" : ""}`
+  const className = cn("flex min-w-0 items-start gap-2 rounded-md px-2 py-1 text-left text-[12px] leading-tight hover:bg-muted", full && "py-2 text-[13px]", movable && "flex-1 cursor-grab touch-none", isDragging && "opacity-40")
+  const title = `${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}${movable ? " · drag to another day, or use Move" : ""}`
   const body = (
     <>
       <Icon className={cn("mt-px h-3 w-3 shrink-0", tone)} aria-hidden />
@@ -62,10 +67,16 @@ function Chip({ it, full, href, still }: { it: Item; full?: boolean; href: (id: 
       </span>
     </>
   )
-  // a task that can move is a button that opens its rollout, so the click that ends a drag opens nothing
+  // a task that can move is a button that opens its rollout (Enter too: only the pointer drags),
+  // so the click that ends a drag opens nothing; Move beside it picks the day from the keyboard
   if (movable) return (
-    <button type="button" ref={setNodeRef} {...listeners} onClick={() => { if (Date.now() - lastDrop > 1000) navigate(href(it.id)) }} className={className} title={title}
-      style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)`, position: "relative", zIndex: 30 } : undefined}>{body}</button>
+    <div className="group/chip flex min-w-0 items-start">
+      <button type="button" ref={setNodeRef} {...listeners} onClick={() => { if (Date.now() - lastDrop > 1000) navigate(href(it.id)) }} className={className} title={title}
+        style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)`, position: "relative", zIndex: 30 } : undefined}>{body}</button>
+      {onMove && <button type="button" onClick={() => onMove(it)} aria-label={`Move ${it.text} to another day`} title="Move to another day"
+        className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 outline-none hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 group-hover/chip:opacity-100">
+        <CalendarClock className="h-3 w-3" aria-hidden /></button>}
+    </div>
   )
   return <Link to={href(it.id)} className={className} title={title}>{body}</Link>
 }
@@ -97,24 +108,56 @@ export function Calendar({ wide }: { wide: boolean }) {
   }, [month, tick])
   const weeks = monthGrid(month)
   const byDay = useMemo(() => (d ? items(d, show) : new Map<string, Item[]>()), [d, show])
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor))
+  // pointer only: dnd-kit's keyboard sensor took Enter for a silent drag (P2-43); Move is the keyboard way
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const [moving, setMoving] = useState<{ it: Item; to: string; busy?: boolean; err?: string } | null>(null)
   if (error) return <LoadError message={error} />
   if (!d) return <PageSkeleton />
   const today = d.today
   const inMonth = (day: string) => day.startsWith(month)
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(week, i))
 
-  async function onDrop(e: DragEndEvent) {
-    const it = e.active.data.current as Item | undefined
-    const to = e.over ? String(e.over.id) : null
-    if (!it?.task || !to || to === it.day) return
+  // a drop and the Move dialog save the same way; the toast undoes it. Returns why it failed, or null.
+  async function moveTo(it: Item, to: string): Promise<string | null> {
+    if (!it.task || to === it.day) return null
     const { id, project_id, title } = it.task, from = it.day
     try {
       await moveTaskDue(project_id, id, to)
       setTick((n) => n + 1)
       toast(`${title}: due ${fmtDate(to)}`, { action: { label: "Undo", run: () => void moveTaskDue(project_id, id, from).then(() => setTick((n) => n + 1)) } })
-    } catch (x) { toast(x instanceof ApiError ? x.message : "Could not move the task", { tone: "bad" }) }
+      return null
+    } catch (x) { return x instanceof ApiError ? x.message : "Could not move the task" }
   }
+  async function onDrop(e: DragEndEvent) {
+    const it = e.active.data.current as Item | undefined
+    if (!it || !e.over) return
+    const why = await moveTo(it, String(e.over.id))
+    if (why) toast(why, { tone: "bad" })
+  }
+  async function saveMove() {
+    if (!moving) return
+    setMoving({ ...moving, busy: true, err: undefined })
+    const why = await moveTo(moving.it, moving.to)
+    setMoving(why ? { ...moving, busy: false, err: why } : null)
+  }
+  const ask = (it: Item) => setMoving({ it, to: it.day })
+  const moveDialog = (
+    <Dialog open={moving != null} onOpenChange={(o) => { if (!o) setMoving(null) }}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Move {moving?.it.text}</DialogTitle>
+          <DialogDescription>Due {moving ? fmtDate(moving.it.day) : ""}{moving?.it.sub ? ` · ${moving.it.sub}` : ""}. Pick the new due date.</DialogDescription>
+        </DialogHeader>
+        {moving && <div className="grid grid-cols-1 gap-1 text-[13px] font-medium">New due date
+          <DatePicker value={moving.to} onChange={(v) => setMoving({ ...moving, to: v, err: undefined })} label="New due date" clearable={false} className="w-full" /></div>}
+        {moving?.err && <p className="text-[12px] text-destructive" role="alert">{moving.err}</p>}
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => setMoving(null)} disabled={moving?.busy}>Cancel</Button>
+          <Button size="sm" onClick={() => void saveMove()} loading={moving?.busy} disabled={!moving || moving.to === moving.it.day}>Move task</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 
   const step = (n: number) => mode === "week" ? set({ week: addDays(week, 7 * n), day: null }) : setMonth(addMonths(month, n))
   const title = mode === "week" ? `${shortDay(week)} – ${shortDay(addDays(week, 6))} ${addDays(week, 6).slice(0, 4)}` : monthTitle(month)
@@ -145,7 +188,7 @@ export function Calendar({ wide }: { wide: boolean }) {
           <li key={day} className="py-2">
             <h3 className={cn("mb-1 text-[12px] font-semibold", day === today ? "text-primary-text" : "text-nav-fg")}>{fmtDate(day)}{day === today && " · today"}</h3>
             {show.spans && d.spans.filter((s) => s.start_date === day).map((s) => <Chip key={`s${s.id}`} full href={href} it={{ key: `s${s.id}`, kind: "target", day, text: `${s.name} starts`, sub: s.client, id: s.id, tone: "muted" }} />)}
-            {(byDay.get(day) ?? []).map((it) => <Chip key={it.key} it={it} full href={href} />)}
+            {(byDay.get(day) ?? []).map((it) => <Chip key={it.key} it={it} full href={href} onMove={ask} />)}
           </li>
         ))}
         {days.length === 0 && <EmptyState as="li">Nothing in {monthTitle(month)}.</EmptyState>}
@@ -153,7 +196,7 @@ export function Calendar({ wide }: { wide: boolean }) {
     )
   }
 
-  if (!wide) return <DndContext sensors={sensors}><div>{header}{agenda(weeks.flat().filter(inMonth))}</div></DndContext>
+  if (!wide) return <DndContext sensors={sensors}><div>{header}{agenda(weeks.flat().filter(inMonth))}</div>{moveDialog}</DndContext>
 
   // the rail: the month at a glance, what is next, the layers
   const upNext = [...byDay.entries()].filter(([day]) => day >= today && day <= addDays(today, 7)).sort(([a], [b]) => a.localeCompare(b))
@@ -210,7 +253,7 @@ export function Calendar({ wide }: { wide: boolean }) {
         <div className="grid min-h-80 grid-cols-7">
           {weekDays.map((day) => (
             <Day key={day} day={day} className={cn("min-w-0 border-r border-border px-1 py-2 last:border-0", day === today && "bg-accent/20")}>
-              {(byDay.get(day) ?? []).map((it) => <Chip key={it.key} it={it} full href={href} />)}
+              {(byDay.get(day) ?? []).map((it) => <Chip key={it.key} it={it} full href={href} onMove={ask} />)}
               {!(byDay.get(day)?.length) && <span className="sr-only">Nothing on {fmtDate(day)}</span>}
             </Day>
           ))}
@@ -241,7 +284,7 @@ export function Calendar({ wide }: { wide: boolean }) {
                         className={cn("mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] hover:bg-muted", day === today && "bg-primary font-semibold text-primary-foreground hover:bg-primary", openDay === day && day !== today && "ring-2 ring-primary/40")}>{Number(day.slice(8, 10))}</button>
                       <div style={{ height: laneCount * 18 }} aria-hidden />
                       {extra > 0 && <button type="button" onClick={() => setOpenDay(day)} className="block px-2 text-[11px] text-muted-foreground hover:text-foreground">+{extra} rollout{extra === 1 ? "" : "s"}</button>}
-                      {list.slice(0, 3).map((it) => <Chip key={it.key} it={it} href={href} />)}
+                      {list.slice(0, 3).map((it) => <Chip key={it.key} it={it} href={href} onMove={ask} />)}
                       {list.length > 3 && <button type="button" onClick={() => setOpenDay(day)} className="px-2 text-[11px] text-muted-foreground hover:text-foreground">+{list.length - 3} more</button>}
                     </Day>
                   )
@@ -259,7 +302,7 @@ export function Calendar({ wide }: { wide: boolean }) {
             </div>
             <ul className="grid grid-cols-1 gap-x-6 md:grid-cols-2 xl:grid-cols-3">
               {running.map((s) => <li key={`r${s.id}`}><Chip href={href} it={{ key: `r${s.id}`, kind: "target", day: openDay, text: s.name, sub: `${s.client} · ${s.stage}`, id: s.id, tone: "muted" }} full /></li>)}
-              {open.map((it) => <li key={it.key}><Chip it={it} full href={href} /></li>)}
+              {open.map((it) => <li key={it.key}><Chip it={it} full href={href} onMove={ask} /></li>)}
               {open.length + running.length === 0 && <li className="py-1 text-[13px] text-muted-foreground">Nothing on this day.</li>}
             </ul>
           </div>
@@ -273,6 +316,7 @@ export function Calendar({ wide }: { wide: boolean }) {
         {rail}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{header}{body}</div>
       </div>
+      {moveDialog}
     </DndContext>
   )
 }
