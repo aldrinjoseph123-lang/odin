@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
 import { Segmented } from "@/components/Segmented"
 import { MoveConfirm } from "@/components/MoveConfirm"
 import { chip, fieldAuto, filterSelect } from "@/lib/ui"
@@ -25,11 +25,13 @@ import { Stepper } from "@/components/Stepper"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { useMedia, useWidth } from "@/lib/useMeasure"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { lazyPage } from "@/lib/lazyPage"
 
 // the heavier views load when first opened, so the list stays fast
-const FlowKanban = lazy(() => import("@/pages/FlowKanban"))
-const FlowGantt = lazy(() => import("@/pages/FlowGantt"))
-const Calendar = lazy(() => import("@/pages/Calendar").then((m) => ({ default: m.Calendar })))
+// (lazyPage: a tab open across a release reloads once for the new build)
+const FlowKanban = lazyPage(() => import("@/pages/FlowKanban"))
+const FlowGantt = lazyPage(() => import("@/pages/FlowGantt"))
+const Calendar = lazyPage(() => import("@/pages/Calendar").then((m) => ({ default: m.Calendar })))
 type View = "list" | "kanban" | "gantt" | "calendar"
 const VIEWS: View[] = ["list", "kanban", "gantt", "calendar"]
 

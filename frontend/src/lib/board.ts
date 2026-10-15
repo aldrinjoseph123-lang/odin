@@ -21,7 +21,8 @@ export function dropRefusal(r: FlowRow, column: string): string | null {
   return null
 }
 
-export const canDrag = (r: FlowRow) => r.can_move && !!r.next_stage
+// no grip while the next move waits for a sign-off: the card links to it instead
+export const canDrag = (r: FlowRow) => r.can_move && !!r.next_stage && !r.signoff_needed
 
 // The column a card ended up in, after the board's own preview moved it.
 export function columnOf(value: Record<string, FlowRow[]>, id: number): string | undefined {

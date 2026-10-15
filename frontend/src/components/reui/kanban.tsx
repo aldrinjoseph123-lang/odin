@@ -848,6 +848,7 @@ function KanbanItem({
         ref: setNodeRef,
         style,
         ...attributes,
+        "aria-disabled": undefined,   // a card that cannot be dragged is not disabled: its links still work
         className: cn(
           isSortableDragging && "opacity-50 z-50",
           disabled && "opacity-50",

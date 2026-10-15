@@ -1,25 +1,12 @@
-import { Suspense, lazy, useEffect, useState, type ComponentType } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import AppShell from "@/components/AppShell"
 import { SettingsLayout } from "@/components/SettingsLayout"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import Flow from "@/pages/Flow"
 import { LoadError } from "@/components/PageSkeleton"
+import { lazyPage } from "@/lib/lazyPage"
 
-// A deploy replaces the chunk files, so a tab opened before it asks for a
-// file that is gone. Reload once to fetch the new build; the flag stops a loop
-// and is cleared once a chunk loads again.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function lazyPage<T extends ComponentType<any>>(load: () => Promise<{ default: T }>) {
-  const flag = "odin.chunk-reload"
-  const store = { get: () => { try { return sessionStorage.getItem(flag) } catch { return "1" } },
-                  set: (v: string | null) => { try { if (v) sessionStorage.setItem(flag, v); else sessionStorage.removeItem(flag) } catch { /* private mode */ } } }
-  return lazy(() => load().then((m) => { store.set(null); return m }, (e) => {
-    if (store.get()) throw e
-    store.set("1"); window.location.reload()
-    return new Promise<{ default: T }>(() => {})
-  }))
-}
 // the dashboard carries the chart library: its own chunk, fetched on first visit
 const Dashboard = lazyPage(() => import("@/pages/Dashboard"))
 import { PageSkeleton } from "@/components/PageSkeleton"
@@ -82,9 +69,11 @@ function Protected({ children }: { children: (user: User) => React.ReactNode }) 
   return <AppShell user={user} messages={messages} onDismiss={() => setMessages([])}>{children(user)}</AppShell>
 }
 
-// The error screen clears when the address changes, so the nav still works.
+// The last resort for pages outside the shell (sign-in, links); a signed-in
+// page has its own boundary inside AppShell, so the nav stays.
 function PageBoundary({ children }: { children: React.ReactNode }) {
-  return <ErrorBoundary resetKey={useLocation().pathname}>{children}</ErrorBoundary>
+  const { pathname, search } = useLocation()
+  return <ErrorBoundary resetKey={pathname + search}>{children}</ErrorBoundary>
 }
 
 export default function App() {

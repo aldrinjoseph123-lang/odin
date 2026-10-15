@@ -78,7 +78,7 @@ test("@smoke the header: every link lands, every button does something", async (
   await page.getByRole("link", { name: "Odin, home" }).click()
   await expect(page).toHaveURL(/\/dashboard/)
   // the current pill is filled
-  await expect(page.getByRole("navigation").getByRole("link", { name: /^Dashboard/ })).toHaveAttribute("aria-current", /page/).catch(() => { /* aria-current is optional here; the fill is checked visually */ })
+  await expect(page.getByRole("navigation").getByRole("link", { name: /^Dashboard/ })).toHaveAttribute("aria-current", "page")
   // search opens the palette and Esc closes it
   await page.getByRole("button", { name: "Search rollouts and tasks" }).click()
   const palette = page.getByRole("dialog").or(page.getByPlaceholder(/Search|Jump/))
