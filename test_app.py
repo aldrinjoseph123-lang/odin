@@ -23,6 +23,9 @@ import security as app_module_security
 STRONG_PASSWORD = "Correct-Horse-9"
 
 
+SWITCHES = ("notify_email_enabled", "notify_teams_enabled", "notify_teams_chat_enabled", "onedrive_mirror_uploads_enabled", "guest_links_enabled")
+
+
 class CSRFTestClient(FlaskClient):
     """Test client that carries the CSRF token, like a real browser would.
 
@@ -341,9 +344,9 @@ class IntegrationNotificationTestCase(unittest.TestCase):
 
     def enable_notifications(self):
         with app_module.app.test_request_context():
-            app_module.set_setting("notify_email_enabled", "1")
-            app_module.set_setting("notify_teams_enabled", "1")
-            app_module.set_setting("onedrive_mirror_uploads_enabled", "1")
+            app_module.set_setting("policy.notify_email_enabled", "1")
+            app_module.set_setting("policy.notify_teams_enabled", "1")
+            app_module.set_setting("policy.onedrive_mirror_uploads_enabled", "1")
 
     @patch("app.graph.send_mail", return_value=(True, None))
     @patch("app.graph.send_teams_message", return_value=(True, None))
@@ -893,10 +896,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(d["templates"][0]["projects"], 1); self.assertEqual(len(d["templates"][0]["stages"]), 8)
         self.assertIn("Client PO", [x["name"] for x in d["doc_categories"]])
         self.assertEqual([a["key"] for a in d["alerts"]], ["project_overdue", "project_due_soon", "stage_sla_breach", "stale",
-                                                         "approval_waiting", "blocker_open", "task_unowned", "customer_quiet"])
+                                                         "approval_waiting", "blocker_open", "task_unowned", "customer_quiet", "milestone_missed"])
         self.assertEqual(d["alerts"][1]["threshold_days"], 7); self.assertTrue(d["alerts"][1]["notify_inapp"])
         self.assertFalse(d["m365"]["connected"]); self.assertEqual(d["m365"]["teams"], [])
-        self.assertEqual(d["toggles"]["notify_email_enabled"], False)
+        self.assertEqual(next(p for p in d["policies"] if p["key"] == "notify_email_enabled")["value"], False)
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         r = c.post("/settings/alerts", data={"threshold::project_due_soon": "10", "severity::project_due_soon": "critical", "notify_email::project_due_soon": "on",
                                               "severity::stale": "info", "notify_inapp::stale": "on"}, headers=h).get_json()
@@ -906,9 +909,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual((soon["threshold_days"], soon["severity"], soon["notify_email"], soon["notify_inapp"]), (10, "critical", True, False))
         self.assertEqual(c.post("/settings/templates/add", data={"name": "SIEM"}, headers=h).get_json()["ok"], True)
         self.assertEqual([t["name"] for t in c.get("/api/settings").get_json()["templates"]][-1], "SIEM")
-        r = c.post("/settings/integrations", data={"notify_email_enabled": "on"}, headers=h).get_json()
+        r = c.post("/settings/policies/notifications", data={"notify_email_enabled": "on"}, headers=h).get_json()
         self.assertEqual(r["messages"], ["Saved"])
-        self.assertEqual(c.get("/api/settings").get_json()["toggles"], {"notify_email_enabled": True, "notify_teams_enabled": False, "notify_teams_chat_enabled": False, "onedrive_mirror_uploads_enabled": False, "guest_links_enabled": False})
+        on = {p["key"]: p["value"] for p in c.get("/api/settings").get_json()["policies"] if p["key"] in SWITCHES}
+        self.assertEqual(on, {"notify_email_enabled": True, "notify_teams_enabled": False, "notify_teams_chat_enabled": False, "onedrive_mirror_uploads_enabled": False, "guest_links_enabled": True})
         m, _ = self._api_client(self._make_user("pm1", "Member") and "pm1", STRONG_PASSWORD)
         self.assertEqual(m.get("/api/settings").status_code, 403)
 
@@ -1105,15 +1109,16 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(anon.get(f"/guest/{tok}").status_code, 200)
         c, csrf = self._api_client()
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
-        self.assertTrue(c.get("/api/settings").get_json()["toggles"]["guest_links_enabled"])
+        guest_on = lambda: next(p for p in c.get("/api/settings").get_json()["policies"] if p["key"] == "guest_links_enabled")["value"]
+        self.assertTrue(guest_on())
         self.assertIsNotNone(c.get("/api/projects/1").get_json()["guest_links"]["customer"])
-        c.post("/settings/integrations", data={"notify_email_enabled": "on"}, headers=h)     # guest switch absent = off
-        self.assertFalse(c.get("/api/settings").get_json()["toggles"]["guest_links_enabled"])
+        c.post("/settings/policies/security", data={"guest_links_enabled": "0"}, headers=h)
+        self.assertFalse(guest_on())
         self.assertEqual(anon.get(f"/guest/{tok}").status_code, 404)
         self.assertEqual(anon.post(f"/guest/{tok}/note", data={"author": "x", "note": "y"}).status_code, 404)
         x = c.get("/api/projects/1").get_json()
         self.assertEqual((x["guest_links_enabled"], x["guest_links"]), (False, {"customer": None, "vendor": None}))
-        c.post("/settings/integrations", data={"guest_links_enabled": "on"}, headers=h)
+        c.post("/settings/policies/security", data={"guest_links_enabled": "on"}, headers=h)
         self.assertEqual(anon.get(f"/guest/{tok}").status_code, 200)
 
     def test_reset_data_wipes_every_project_table_and_keeps_ids_moving(self):
@@ -1143,7 +1148,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     @patch("graph.send_teams_message", return_value=(True, None))
     def test_pm_hears_about_notes_tasks_and_documents_and_everyone_hears_a_decision(self, _teams, mail):
         with app_module.app.test_request_context():
-            app_module.set_setting("notify_email_enabled", "1")
+            app_module.set_setting("policy.notify_email_enabled", "1")
         with self.raw_db() as db:
             db.execute("UPDATE users SET email='admin@odin.example' WHERE id=1"); db.commit()
         pm1 = self._make_user("pm1", "Member")
@@ -1267,7 +1272,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         import send_daily_alerts
         from datetime import date, timedelta
         with app_module.app.test_request_context():
-            app_module.set_setting("notify_email_enabled", "1")
+            app_module.set_setting("policy.notify_email_enabled", "1")
         pm1 = self._make_user("pm1", "Member"); vw = self._make_user("vw", "Viewer")
         with self.raw_db() as db:
             db.execute("UPDATE users SET email = username || '@odin.example'"); db.commit()
@@ -1342,7 +1347,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     @patch("graph.send_teams_message", return_value=(True, None))
     def test_bell_prefs_and_mentions(self, _teams, mail):
         with app_module.app.test_request_context():
-            app_module.set_setting("notify_email_enabled", "1")
+            app_module.set_setting("policy.notify_email_enabled", "1")
         pm1 = self._make_user("pm1", "Member"); sam = self._make_user("sam", "Member")
         with self.raw_db() as db:
             db.execute("UPDATE users SET email = username || '@odin.example'"); db.execute("UPDATE users SET name='Priya Menon' WHERE username='pm1'"); db.commit()
@@ -1355,7 +1360,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # pm1 switches stage emails off; the bell still gets it
         p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on", "due": "on"}, headers=ph)
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
-        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False, "brief": False})
+        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False, "milestone": False, "brief": False})
         drain_outbox()
         mail.reset_mock()
         self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
@@ -1461,7 +1466,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         import graph
         self._set_policy(mail_from="odin-pms@protect24x7.com")
         with self.raw_db() as db:   # email on, so a refusal is worth telling the admins
-            db.execute("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"); db.commit()
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"); db.commit()
         with app_module.app.app_context(), patch("graph.is_connected", return_value=True), patch("graph._headers", return_value=({}, None)), \
              patch("graph.requests.post") as post:
             post.return_value.status_code = 202
@@ -1484,7 +1489,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("UPDATE users SET email = 'tina@corp.example' WHERE id = ?", (staff,))
             db.execute("UPDATE users SET email = 'pat@partner.example', kind = 'external' WHERE id = ?", (partner,))
-            db.execute("INSERT INTO settings (key, value) VALUES ('notify_teams_chat_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.notify_teams_chat_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
             db.commit()
         sent = []
         fake = lambda e, t, x, link=None: (sent.append((e, t, x, link)), (True, None))[1]   # noqa: E731
@@ -1598,7 +1603,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # every setting sits on a titled card
         everything = c.get("/api/settings").get_json()["policies"]
         self.assertEqual([p["key"] for p in everything if not p["group"]], [])
-        self.assertEqual({p["group"] for p in everything if p["area"] == "workflow"}, {"Defaults", "Stage timing", "Plan health", "Sign-off", "Customer approval"})
+        self.assertEqual({p["group"] for p in everything if p["area"] == "workflow"}, {"Defaults", "Stage timing", "Plan health", "Sign-off", "Customer approval", "Custom field limit", "Stage gates", "Customer forms"})
         # only admins, and only known areas
         self.assertEqual(c.post("/settings/policies/nope", data={}, headers=h).status_code, 404)
 
@@ -1964,7 +1969,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
     @patch("graph.send_teams_message", return_value=(True, None))
     def test_stage_change_emails_every_participant_but_the_actor(self, _teams, mail):
         with app_module.app.test_request_context():
-            app_module.set_setting("notify_email_enabled", "1")
+            app_module.set_setting("policy.notify_email_enabled", "1")
         self.new_project(name="Loud", client="Acme")
         with self.raw_db() as db:
             db.execute("UPDATE users SET email='admin@odin.example' WHERE id=1"); db.commit()
@@ -2684,7 +2689,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertGreater(c.get("/api/dashboard/version").get_json()["version"], v)
         # the layout: the workspace default until this user saves their own
         self.assertEqual([w["id"] for w in r["layout"]], [w["id"] for w in DEFAULT_LAYOUT]); self.assertFalse(r["is_custom"])
-        self.assertEqual({w["id"] for w in r["catalogue"]}, {w["id"] for w in DEFAULT_LAYOUT} | {"custom"})   # custom is offered, never on by default
+        self.assertEqual({w["id"] for w in r["catalogue"]}, {w["id"] for w in DEFAULT_LAYOUT} | {"custom", "workload"})   # custom and workload are offered, never on by default
         self.assertTrue(next(w for w in r["catalogue"] if w["id"] == "custom")["multiple"])
         h = {"X-CSRF-Token": csrf}
         mine = [{"id": "alerts", "w": 9, "settings": {"limit": 999}}, {"id": "bogus"}, {"id": "alerts"}, {"id": "completion", "settings": {"days": "99"}}]
@@ -2947,7 +2952,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def _mail_on(self):
         with self.raw_db() as db:
-            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('notify_email_enabled', '1')"); db.commit()
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('policy.notify_email_enabled', '1')"); db.commit()
 
     def _no_signoff(self):
         with self.raw_db() as db:
@@ -3847,7 +3852,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.new_project(name="Hooked", client="C")
         with self.raw_db() as db:
             db.execute("INSERT INTO settings (key, value) VALUES ('policy.teams_webhook_url', 'https://hook.example/x')")
-            db.execute("UPDATE settings SET value='1' WHERE key='notify_teams_enabled'"); db.commit()
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.notify_teams_enabled', '1')"); db.commit()
         with patch("graph.send_teams_message", return_value=(True, None)), patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
             c.post("/api/projects/1/stage", json={"stage": "Scoping"}, headers={"X-CSRF-Token": csrf})
             drain_outbox()
@@ -4447,7 +4452,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         e.post("/api/projects/1/signoff/1/sign", json={"name": "Ann", "accept": True, "signature": self.DRAWN}, headers=eh)
         with self.raw_db() as db:
             db.execute("UPDATE users SET email = 'admin@corp.example' WHERE id = 1")
-            db.execute("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
             db.commit()
         sent = {}
         with patch("routes.signoff.graph.send_mail", side_effect=lambda to, subject, body, attachments=None: sent.update({to: attachments[0][1]}) or (True, None)), \
@@ -4567,7 +4572,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_email_failures_reach_the_admins_bell_once_a_day(self):
         with self.raw_db() as db:
-            db.execute("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"); db.commit()
+            db.execute("INSERT INTO settings (key, value) VALUES ('policy.notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"); db.commit()
         import graph
         with app_module.app.test_request_context():
             for _ in range(2):
@@ -5014,7 +5019,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "notify_email::stale": "on",
             "notify_inapp::stale": "on",
         })
-        self.client.post("/settings/integrations", data={"notify_email_enabled": "on"})
+        self.client.post("/settings/policies/notifications", data={"notify_email_enabled": "on"})
         self.new_project()
         old = (date.today() - timedelta(days=60)).isoformat() + "T00:00:00"
         with self.raw_db() as db:

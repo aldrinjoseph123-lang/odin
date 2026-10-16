@@ -15,14 +15,18 @@ import { Detail } from "@/pages/Flow"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { PlanPanel } from "@/components/PlanPanel"
 import { RaidPanel } from "@/components/RaidPanel"
+import { MilestonesPanel } from "@/components/MilestonesPanel"
 import { ScopePanel } from "@/components/ScopePanel"
 import { AIChase } from "@/components/AIChase"
 import { AICatchUp } from "@/components/AICatchUp"
 import { AIAsk } from "@/components/AIAsk"
 import { AINotesTasks } from "@/components/AINotesTasks"
 import { LessonsPanel } from "@/components/LessonsPanel"
+import { FieldValues } from "@/components/FieldValues"
+import { AsksPanel } from "@/components/AsksPanel"
 import { ApiError, flowDetail, plan, postForm, projectActivity, projectExtras, type FormReply, type PlanData, type ProjectExtras, type User } from "@/lib/api"
 import { useLoad } from "@/lib/useLoad"
+import { submitKey } from "@/lib/useSubmitShortcut"
 import { cn } from "@/lib/utils"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { dayBucket, fmtDate, fmtWhen } from "@/lib/format"
@@ -127,7 +131,7 @@ export default function Project({ user }: { user: User }) {
       </div>
       {/* the page is long: one row of anchors to every section, always in reach */}
       <nav aria-label="Sections of this rollout" className="sticky top-0 z-20 mt-2 flex gap-1 overflow-x-auto bg-background/95 px-5 py-2 text-[13px] backdrop-blur">
-        {[["notes", "Notes"], ["plan", "Plan"], ["raid", "Risks & issues"], ["scope", "Scope & sign-off"], ["details", "Details"], ["team", "Team"],
+        {[["notes", "Notes"], ["plan", "Plan"], ["raid", "Risks & issues"], ["milestones", "Milestones"], ["scope", "Scope & sign-off"], ["details", "Details"], ["team", "Team"],
           ...(can.manage ? [["stages", "Stages"]] : []), ["documents", "Documents"], ...(activity.length ? [["activity", "Activity"]] : []),
           ...((x.guest_links.customer || can.manage) ? [["sharing", "Sharing"]] : [])].map(([k, label]) => (
           <a key={k} href={`#${k}`} className="shrink-0 rounded-full px-3 py-1 text-nav-fg outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">{label}</a>
@@ -143,6 +147,8 @@ export default function Project({ user }: { user: User }) {
 
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
       {/* Detail reloads after a move itself: the notice is all this page adds (review P3-35: it reloaded twice) */}
+      {/* a customer, reseller or contractor: what the rollout needs from them comes first (services/asks.py) */}
+      {!staff && <div className="px-5 pt-4 empty:hidden"><AsksPanel projectId={id} staff={false} today={d.today} onChanged={reload} /></div>}
       <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
 
       <div className="grid grid-cols-1 gap-4 px-5 pb-4 [&>*]:min-w-0">
@@ -164,8 +170,16 @@ export default function Project({ user }: { user: User }) {
         </Panel></div>
         <div><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} refresh={planRefresh} /></Panel></div>
         <div><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} onChanged={() => setPlanRefresh((n) => n + 1)} /></Panel></div>
+        {/* staff only: a partner's cut of the RAID and tasks is the page and the customer report, not a file */}
+        {staff && <div className="-mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground" role="group" aria-label="Download this rollout's registers">
+          Download
+          <a href={`/projects/${id}/raid.csv`} className={buttonVariants({ variant: "outline", size: "sm" })}>RAID (CSV)</a>
+          <a href={`/projects/${id}/tasks.csv`} className={buttonVariants({ variant: "outline", size: "sm" })}>Tasks (CSV)</a>
+        </div>}
+        <div><Panel title="Milestones" hint="dated commitments, reached or missed" id="milestones"><MilestonesPanel projectId={id} /></Panel></div>
         {staff && <div className="empty:hidden"><LessonsPanel projectId={id} /></div>}
         <div><Panel title="Scope and sign-off" hint="what was agreed, what was delivered, and the customer's signature" id="scope"><ScopePanel projectId={id} signoff={d.signoff} /></Panel></div>
+        {staff && <div className="empty:hidden"><AsksPanel key={d.tasks.map((t) => `${t.id}:${t.done}`).join()} projectId={id} staff today={d.today} /></div>}
       </div>
       {/* the half-width panels: two columns from lg, filled across, so the panel numbers
           read in order (a masonry numbered down one column, then down the next: review P3) */}
@@ -185,6 +199,7 @@ export default function Project({ user }: { user: User }) {
             })}
             <dt className="text-muted-foreground">Customer approval</dt><dd>{x.customer_approval ? "Asked on every stage change" : "Off"}</dd>
           </dl>
+          <FieldValues projectId={id} />
         </Panel>
 
         <Panel title="Team" hint="who is on this rollout, and as what" id="team">
@@ -219,8 +234,8 @@ export default function Project({ user }: { user: User }) {
                 <span className="min-w-0 flex-1 text-muted-foreground">{x.stage_rows.length} stages: {x.stage_rows.map((r) => r.name).join(" › ")}</span>
                 <Button size="sm" variant="outline" onClick={() => setEditStages(true)}>Edit stages</Button>
               </div>
-            ) : <><button type="button" onClick={() => setEditStages(false)} className="mb-2 text-[12px] text-muted-foreground hover:text-foreground">Done editing</button><StageListEditor key={stageRowsKey(x.stage_rows)} rows={x.stage_rows} current={d.stage} busy={busy} send={send}
-              paths={{ add: `/projects/${id}/stages/add`, rename: (s) => `/projects/${id}/stages/${s}/rename`, move: (s) => `/projects/${id}/stages/${s}/move`, remove: (s) => `/projects/${id}/stages/${s}/delete`, sla: `/projects/${id}/stages/sla` }} /></>}
+            ) : <><button type="button" onClick={() => setEditStages(false)} className="mb-2 text-[12px] text-muted-foreground hover:text-foreground">Done editing</button><StageListEditor key={stageRowsKey(x.stage_rows)} rows={x.stage_rows} current={d.stage} busy={busy} send={send} categories={x.doc_categories}
+              paths={{ add: `/projects/${id}/stages/add`, rename: (s) => `/projects/${id}/stages/${s}/rename`, move: (s) => `/projects/${id}/stages/${s}/move`, remove: (s) => `/projects/${id}/stages/${s}/delete`, sla: `/projects/${id}/stages/sla`, gates: `/projects/${id}/stages/gates` }} /></>}
           </Panel>
         )}
 
@@ -305,7 +320,7 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
       {editing ? (
         <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then((r) => { if (r) setEditing(false) }) }} className="mt-1 grid grid-cols-1 gap-2">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={5000} aria-label="Edit note" autoFocus
-            className={fieldArea} onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
+            className={fieldArea} onKeyDown={(e) => { submitKey(e); if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
           <div className="flex gap-2">
             <Button type="submit" size="sm" loading={busy} disabled={!text.trim() || text.trim() === n.note}>Save</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(false); setText(n.note) }}>Cancel</Button>

@@ -224,9 +224,9 @@ def send_verification(user_id):
 def _mail_off():
     """Mail is not connected: say so honestly instead of promising a link (the
     reply is the same for every address, so nothing is revealed)."""
-    from db import get_setting
+    from policies import policy
     from services.resend import configured
-    return get_setting("notify_email_enabled") != "1" and not configured()   # Resend sends sign-in mail on its own
+    return not policy("notify_email_enabled") and not configured()   # Resend sends sign-in mail on its own
 
 
 @app.route("/auth/link", methods=["GET", "POST"])
@@ -568,13 +568,17 @@ def account_sign_out_others():
 @app.route("/account/notifications", methods=["POST"])
 @login_required
 def account_notifications():
-    """Which kinds this user wants by email. Ticked = on; the form sends only
-    the ticked ones. In-app notifications always arrive."""
-    off = [k for k in NOTIFICATION_KINDS if request.form.get(k) != "on" and (k not in ADMIN_KINDS or session.get("role") == "Admin")]
+    """How this user takes each kind by email and Teams: kind=instant (or "on",
+    the old switch), kind=summary (the daily summary), anything else or absent
+    = off. In-app notifications always arrive at once."""
+    mine = [k for k in NOTIFICATION_KINDS if k not in ADMIN_KINDS or session.get("role") == "Admin"]
+    off = [k for k in mine if request.form.get(k) not in ("on", "instant", "summary")]
+    summary = [k for k in mine if request.form.get(k) == "summary"]
     db = get_db()
-    db.execute("UPDATE users SET email_off = ? WHERE id = ?", (",".join(off), session["user_id"]))
+    db.execute("UPDATE users SET email_off = ?, email_summary = ? WHERE id = ?", (",".join(off), ",".join(summary), session["user_id"]))
     db.commit()
-    audit_log("change_own_notification_prefs", "user", session["user_id"], session.get("user_name"), f"email off: {','.join(off) or 'none'}")
+    audit_log("change_own_notification_prefs", "user", session["user_id"], session.get("user_name"),
+              f"email off: {','.join(off) or 'none'}; daily summary: {','.join(summary) or 'none'}")
     flash("Notification settings saved")
     return redirect(url_for("account"))
 

@@ -109,22 +109,6 @@ def integrations_set_channel():
     return redirect(url_for("settings"))
 
 
-@app.route("/settings/integrations", methods=["POST"])
-@permission_required("manage_integrations")
-def settings_integrations():
-    set_setting("notify_email_enabled", "1" if request.form.get("notify_email_enabled") == "on" else "0")
-    set_setting("notify_teams_enabled", "1" if request.form.get("notify_teams_enabled") == "on" else "0")
-    set_setting("notify_teams_chat_enabled", "1" if request.form.get("notify_teams_chat_enabled") == "on" else "0")
-    set_setting(
-        "onedrive_mirror_uploads_enabled",
-        "1" if request.form.get("onedrive_mirror_uploads_enabled") == "on" else "0",
-    )
-    set_setting("guest_links_enabled", "1" if request.form.get("guest_links_enabled") == "on" else "0")
-    audit_log("update_integration_settings")
-    flash("Saved")   # posted from Security, Notifications and Integrations alike (sim roles)
-    return redirect(url_for("settings"))
-
-
 @app.route("/settings/integrations/test-email", methods=["POST"])
 @permission_required("manage_integrations")
 def settings_test_email():

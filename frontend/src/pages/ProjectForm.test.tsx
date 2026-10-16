@@ -11,7 +11,7 @@ const data = {
   project: { name: "Alpha", client: "Acme", customer_approval: false, owner_id: 1, stage_template_id: 1 },
   defaults: { stage_template_id: 1, customer_approval: false },
   via_options: ["Direct"], delivery_modes: ["On-site"], account_managers: [], partners: [], vendors: [], products: [], outsourcers: [],
-  templates: [{ id: 1, name: "Standard" }], users: [{ id: 1, name: "Ada" }],
+  templates: [{ id: 1, name: "Standard" }], users: [{ id: 1, name: "Ada" }], custom_fields: [],
 }
 vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()), projectForm: vi.fn(async () => data) }))
 

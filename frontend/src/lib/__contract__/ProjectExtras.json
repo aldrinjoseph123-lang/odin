@@ -24,8 +24,8 @@
   "po_date": null,
   "po_number": "PO-GLX-0091",
   "product_name": "Falcon Complete",
-  "start_date": "2026-09-18",
-  "target_end_date": "2026-12-16",
+  "start_date": "2026-09-19",
+  "target_end_date": "2026-12-17",
   "vendor_name": "CrowdStrike",
   "via": null
  },
@@ -38,7 +38,7 @@
    "category": "Client PO",
    "filename": "po.pdf",
    "id": 1,
-   "uploaded_at": "2026-10-15T19:13:42.783734",
+   "uploaded_at": "2026-10-16T15:40:34.367946",
    "uploaded_by": "Admin"
   }
  ],
@@ -47,17 +47,17 @@
   "Reseller"
  ],
  "guest_links": {
-  "customer": "http://localhost/guest/iPQXp3mNyERkBzb5piDvKg",
+  "customer": "http://localhost/guest/2g_adwlMYFsBefCHjIuqXg",
   "vendor": null
  },
  "guest_links_enabled": true,
- "guest_links_expire": "2027-03-17T19:13:43",
+ "guest_links_expire": "2027-03-18T15:40:34",
  "id": 1,
  "name": "EDR Rollout - Globex",
  "notes": [
   {
    "author": "Admin",
-   "created_at": "2026-10-15T17:13:43.261641",
+   "created_at": "2026-10-16T13:40:34.999622",
    "edited": false,
    "id": 75,
    "mine": false,
@@ -67,7 +67,7 @@
   },
   {
    "author": "Admin",
-   "created_at": "2026-09-30T03:13:43.261641",
+   "created_at": "2026-09-30T23:40:34.999622",
    "edited": false,
    "id": 2,
    "mine": true,
@@ -103,13 +103,17 @@
  ],
  "stage_rows": [
   {
+   "gate_tasks": false,
    "id": 1,
    "name": "PO Received",
+   "required_docs": [],
    "sla_days": null
   },
   {
+   "gate_tasks": false,
    "id": 2,
    "name": "Scoping",
+   "required_docs": [],
    "sla_days": null
   }
  ],

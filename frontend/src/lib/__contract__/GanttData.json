@@ -12,7 +12,7 @@
    "baselined": true,
    "can_edit": true,
    "client": "Stark Logistics",
-   "forecast": "2026-11-09",
+   "forecast": "2026-11-10",
    "has_plan": true,
    "id": 16,
    "name": "EDR rollout - Stark Logistics",
@@ -22,48 +22,48 @@
    "stage": "Hypercare",
    "stages": [
     {
-     "actual_end": "2026-08-20",
-     "actual_start": "2026-08-10",
-     "base_end": "2026-08-18",
-     "base_start": "2026-08-10",
-     "forecast_end": "2026-08-20",
-     "forecast_start": "2026-08-10",
+     "actual_end": "2026-08-21",
+     "actual_start": "2026-08-11",
+     "base_end": "2026-08-19",
+     "base_start": "2026-08-11",
+     "forecast_end": "2026-08-21",
+     "forecast_start": "2026-08-11",
      "id": 142,
      "name": "PO Received",
-     "plan_end": "2026-08-18",
-     "plan_start": "2026-08-10",
+     "plan_end": "2026-08-19",
+     "plan_start": "2026-08-11",
      "sla_days": null,
      "slip_days": 2,
      "status": "done",
-     "suggested_end": "2026-08-19",
-     "suggested_start": "2026-08-10"
+     "suggested_end": "2026-08-20",
+     "suggested_start": "2026-08-11"
     },
     {
-     "actual_end": "2026-08-30",
-     "actual_start": "2026-08-20",
-     "base_end": "2026-08-26",
-     "base_start": "2026-08-18",
-     "forecast_end": "2026-08-30",
-     "forecast_start": "2026-08-20",
+     "actual_end": "2026-08-31",
+     "actual_start": "2026-08-21",
+     "base_end": "2026-08-27",
+     "base_start": "2026-08-19",
+     "forecast_end": "2026-08-31",
+     "forecast_start": "2026-08-21",
      "id": 143,
      "name": "Scoping",
-     "plan_end": "2026-08-26",
-     "plan_start": "2026-08-18",
+     "plan_end": "2026-08-27",
+     "plan_start": "2026-08-19",
      "sla_days": null,
      "slip_days": 4,
      "status": "done",
-     "suggested_end": "2026-08-28",
-     "suggested_start": "2026-08-19"
+     "suggested_end": "2026-08-31",
+     "suggested_start": "2026-08-20"
     }
    ],
-   "start_date": "2026-08-10",
-   "target_end_date": "2027-02-12"
+   "start_date": "2026-08-11",
+   "target_end_date": "2027-02-13"
   },
   {
    "baselined": true,
    "can_edit": true,
    "client": "Vandelay Industries",
-   "forecast": "2026-12-04",
+   "forecast": "2026-12-07",
    "has_plan": true,
    "id": 9,
    "name": "Vulnerability mgmt - Vandelay Industries",
@@ -74,42 +74,42 @@
    "stages": [
     {
      "actual_end": null,
-     "actual_start": "2026-08-10",
-     "base_end": "2026-08-17",
-     "base_start": "2026-08-10",
-     "forecast_end": "2026-10-15",
-     "forecast_start": "2026-08-10",
+     "actual_start": "2026-08-11",
+     "base_end": "2026-08-18",
+     "base_start": "2026-08-11",
+     "forecast_end": "2026-10-16",
+     "forecast_start": "2026-08-11",
      "id": 76,
      "name": "PO Received",
-     "plan_end": "2026-08-17",
-     "plan_start": "2026-08-10",
+     "plan_end": "2026-08-18",
+     "plan_start": "2026-08-11",
      "sla_days": 7,
      "slip_days": 59,
      "status": "current",
-     "suggested_end": "2026-08-19",
-     "suggested_start": "2026-08-10"
+     "suggested_end": "2026-08-20",
+     "suggested_start": "2026-08-11"
     },
     {
      "actual_end": null,
      "actual_start": null,
-     "base_end": "2026-08-23",
-     "base_start": "2026-08-17",
-     "forecast_end": "2026-10-21",
-     "forecast_start": "2026-10-15",
+     "base_end": "2026-08-24",
+     "base_start": "2026-08-18",
+     "forecast_end": "2026-10-22",
+     "forecast_start": "2026-10-16",
      "id": 77,
      "name": "Scoping",
-     "plan_end": "2026-08-23",
-     "plan_start": "2026-08-17",
+     "plan_end": "2026-08-24",
+     "plan_start": "2026-08-18",
      "sla_days": null,
      "slip_days": 59,
      "status": "next",
-     "suggested_end": "2026-08-28",
-     "suggested_start": "2026-08-19"
+     "suggested_end": "2026-08-31",
+     "suggested_start": "2026-08-20"
     }
    ],
-   "start_date": "2026-08-10",
-   "target_end_date": "2027-02-12"
+   "start_date": "2026-08-11",
+   "target_end_date": "2027-02-13"
   }
  ],
- "today": "2026-10-15"
+ "today": "2026-10-16"
 }

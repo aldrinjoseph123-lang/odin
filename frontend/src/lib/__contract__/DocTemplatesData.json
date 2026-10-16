@@ -152,6 +152,7 @@
   "client": "the customer",
   "company": "your company",
   "date": "today",
+  "field:Name": "a custom field marked for customers, by its name (Settings \u203a Rollouts & workflow)",
   "forecast": "the forecast finish",
   "pm": "the project manager",
   "po": "the PO number",

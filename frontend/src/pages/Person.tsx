@@ -4,6 +4,7 @@ import { pill, field, fieldArea } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
 import { ArrowRight, CheckSquare, ChevronLeft, MessageSquare, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Tag } from "@/components/ui/tag"
 import { Field } from "@/components/ui/field"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -12,6 +13,7 @@ import { Ago } from "@/components/Ago"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, notifyPerson, person, type User } from "@/lib/api"
 import { useLoad } from "@/lib/useLoad"
+import { submitKey } from "@/lib/useSubmitShortcut"
 import { cn } from "@/lib/utils"
 import { ActivityPanel } from "@/components/ActivityPanel"
 import { STATE } from "@/lib/state"
@@ -47,7 +49,8 @@ export default function Person(_props: { user: User }) {
     catch (err) { setSendError(err instanceof ApiError ? err.message : "That did not send") } finally { setBusy(false) }
   }
   const tiles: { label: string; value: string; sub: ReactNode; tone?: "bad" | "warn" }[] = [
-    { label: "Rollouts", value: String(k.rollouts), sub: k.stuck ? <span className="text-warn">{k.stuck} need attention</span> : "all on track" },
+    { label: "Rollouts", value: String(k.rollouts), sub: <>{k.stuck ? <span className="text-warn">{k.stuck} need attention</span> : "all on track"}
+      {k.csat != null && <> · customers rate {k.csat} of 5</>}</> },   // at sign-off (services/asks.py)
     { label: "Open tasks", value: String(k.open), sub: `${d.upcoming.length} due in 14 days` },
     { label: "Late", value: String(k.late), sub: k.late ? "past their date" : "nothing late", tone: k.late ? "bad" : undefined },
     { label: "Done, 30 days", value: String(k.done_30d), sub: k.on_time_pct == null ? "no dated tasks yet" : `${k.on_time_pct}% on time` },
@@ -97,7 +100,7 @@ export default function Person(_props: { user: User }) {
                 <div className="flex items-center gap-2">
                   <span className={cn("h-2 w-2 shrink-0 rounded-full", p.state === "on_track" ? "bg-transparent" : STATE[p.state].dot)} aria-hidden />
                   <Link to={`/board?rollout=${p.id}`} title={`${p.name} · ${p.client}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{p.name} <span className="font-normal text-muted-foreground">{p.client}</span></Link>
-                  <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{p.role}</span>
+                  <Tag kind="role">{p.role}</Tag>
                 </div>
                 <div className="mt-1 flex items-center gap-3 pl-4">
                   <span className="w-20 shrink-0"><Stepper compact stages={p.stages} index={p.stage_index} state={p.state} selected={false} /></span>
@@ -170,7 +173,7 @@ export default function Person(_props: { user: User }) {
               <DialogDescription>A note that lands in their bell{d.user.email ? " and their inbox" : ""}, with a link back to the rollout you pick.</DialogDescription>
             </DialogHeader>
             <Field label="Message" className="mt-3">
-              <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} maxLength={1000} required autoFocus
+              <textarea value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={submitKey} rows={4} maxLength={1000} required autoFocus
                 className={fieldArea} placeholder="Could you look at the pilot sign-off today?" />
             </Field>
             {d.projects.length > 0 && (

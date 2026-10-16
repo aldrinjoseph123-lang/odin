@@ -9,6 +9,7 @@ Then run the app against the same ODIN_DATA_DIR and sign in as
 admin / Glacier-Harbour-4471. Never point this at production.
 """
 import io
+import json
 import os
 import random
 import sqlite3
@@ -119,8 +120,37 @@ with app.test_client() as c:
     for s in ["Scoping", "Kickoff", "Deployment", "Log source onboarding"]:
         move(2, s, f"Now in {s}")
     post("/projects/2/tasks", title="Onboard firewall logs", assignee_id="2", stage="Log source onboarding")
+    # a chained pair (services/task_links.py): the logs wait on the forwarder, which is late
+    r = c.post("/projects/2/tasks", json={"title": "Stand up the syslog forwarder", "assignee_id": 4, "stage": "Log source onboarding",
+                                          "due_date": (today - timedelta(days=3)).isoformat(), "estimate_hours": 6}, headers={"X-CSRF-Token": token})
+    assert r.status_code == 200, r.data
+    con = sqlite3.connect(DB_PATH)
+    logs = con.execute("SELECT id FROM tasks WHERE project_id = 2 AND title = 'Onboard firewall logs'").fetchone()[0]
+    con.close()
+    assert c.post(f"/projects/2/tasks/{logs}/edit", json={"waits_on": [r.get_json()["id"]], "estimate_hours": 4}, headers={"X-CSRF-Token": token}).status_code == 200
+    # the default template's stages bring tasks to every new rollout made from it (the seeded ones above predate them)
+    generic = {s["name"]: s["id"] for s in c.get("/api/settings").get_json()["templates"][0]["stages"]}
+    first, second = list(generic.values())[:2]
+    r = c.put("/api/settings/templates/1/tasks", headers={"X-CSRF-Token": token}, json={"tasks": [
+        {"key": "a", "stage_id": first, "title": "Confirm the PO and the scope with the customer", "role": "Project manager", "offset_days": 1},
+        {"key": "b", "stage_id": first, "title": "Send the kick-off pack", "role": "Coordinator", "offset_days": 2, "waits_on": "a", "estimate_hours": 2},
+        {"key": "c", "stage_id": second, "title": "Customer names its technical contact", "role": "Customer", "offset_days": 3},
+        {"key": "d", "stage_id": second, "title": "Agree the change windows", "role": "Project manager", "offset_days": 5, "waits_on": "c"}]})
+    assert r.status_code == 200, r.data
     post("/projects/1/participants/invite", email="jane@vendorco.example", name="Jane Okafor", role="Contractor")
     post("/projects/1/participants/invite", email="ann@globex.example", name="Ann Reyes", role="Customer")
+    # what the rollout asks of its customer (services/asks.py): one of each kind, open, on Ann
+    con = sqlite3.connect(DB_PATH)
+    ann = con.execute("SELECT id FROM users WHERE email = 'ann@globex.example'").fetchone()[0]
+    con.close()
+    for ask in [{"title": "Confirm the cutover change window", "kind": "task"},
+                {"title": "Upload the signed network diagram", "kind": "upload", "ask_category": "Deliverable"},
+                {"title": "Tell us about your environment", "kind": "form", "questions": [
+                    {"label": "Endpoints in scope", "kind": "number"}, {"label": "Preferred go-live date", "kind": "date"},
+                    {"label": "Primary site", "kind": "choice", "choices": ["Dubai", "Abu Dhabi", "Riyadh"]},
+                    {"label": "Single sign-on in place?", "kind": "yesno"}, {"label": "Anything we should know", "kind": "text", "required": False}]}]:
+        r = c.post("/projects/1/tasks", json={**ask, "assignee_id": ann}, headers={"X-CSRF-Token": token})
+        assert r.status_code == 200, r.data
 
     # move the portfolio along: each rollout to a plausible stage, through the route (approvals, notes, audit)
     con = sqlite3.connect(DB_PATH)
@@ -169,7 +199,11 @@ with app.test_client() as c:
                 strokes = [[[80 + k * 40, 180 + (30 if k % 2 else -30)] for k in range(12)]]
                 so.sign(so.latest(pid), {"name": body and d["candidates"]["signers"][0]["name"], "title": "IT Director", "accept": True,
                                          "signature": {"kind": "drawn", "strokes": strokes}}, "203.0.113.7", "Seed")
-                if n == 0:
+                if n == 0:   # the customer rated the rollout as they signed (routes/signoff.py does it for a real signature)
+                    from db import get_db
+                    from services.asks import save_rating
+                    save_rating(get_db(), pid, so.latest(pid)["version"], 4, "Smooth cutover; the runbook session helped.", so.latest(pid)["signer_id"], "Mia Chen")
+                    get_db().commit()
                     so.countersign(so.latest(pid), {"name": "Admin", "title": "Delivery lead", "accept": True, "signature": {"kind": "typed", "text": "Admin"}}, "198.51.100.2", "Seed")
             if n == 0:
                 con = sqlite3.connect(DB_PATH)
@@ -274,6 +308,33 @@ for p in con.execute("SELECT id, stage, target_end_date FROM projects ORDER BY i
 con.commit()
 con.close()
 
+# three custom fields (Settings › Rollouts & workflow) and their values on every rollout, by id:
+# no random draw, so the rest of the seed stays as it was
+con = sqlite3.connect(DB_PATH)
+REGIONS = ["UAE", "KSA", "Qatar"]
+for pos, (fname, kind, choices, visible, listed) in enumerate([("Region", "choice", REGIONS, 1, 1), ("Endpoints in scope", "number", None, 1, 0),
+                                                              ("Change ticket", "text", None, 0, 0)]):
+    con.execute("INSERT INTO custom_fields (name, kind, choices, required, customer_visible, show_in_list, position) VALUES (?, ?, ?, 0, ?, ?, ?)",
+                (fname, kind, json.dumps(choices) if choices else None, visible, listed, pos))
+fid = {n: i for i, n in con.execute("SELECT id, name FROM custom_fields")}
+for (pid,) in con.execute("SELECT id FROM projects").fetchall():
+    con.executemany("INSERT INTO project_field_values (project_id, field_id, value) VALUES (?, ?, ?)",
+                    [(pid, fid["Region"], REGIONS[pid % 3]), (pid, fid["Endpoints in scope"], str(150 + 50 * (pid % 7))), (pid, fid["Change ticket"], f"CHG-{4100 + pid}")])
+con.commit()
+con.close()
+
+# two milestones (one for the customer, one internal and already missed, so the alert shows) and a weekly task that repeats
+# until its stage is done, on the first rollout; no random draw, so the rest of the seed stays as it was
+con = sqlite3.connect(DB_PATH)
+stage1 = con.execute("SELECT stage FROM projects WHERE id = 1").fetchone()[0]
+for name, days, stage, visible in (("Pilot go-live", 12, stage1, 1), ("Security review signed off", -3, stage1, 0)):
+    con.execute("INSERT INTO milestones (project_id, name, date, stage, customer_visible, created_by, created_at) VALUES (1, ?, ?, ?, ?, 'Priya Menon', ?)",
+                (name, (date.today() + timedelta(days=days)).isoformat(), stage, visible, now.isoformat()))
+con.execute("INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage, recurrence, recur_until) VALUES (1, 'Weekly status call with the customer', ?, ?, ?, 'Priya Menon', ?, 'weekly', 'stage')",
+            (staff_ids[0], (date.today() + timedelta(days=3)).isoformat(), now.isoformat(), stage1))
+con.commit()
+con.close()
+
 # a month of active minutes for the staff, and when each was last seen (People, Account)
 con = sqlite3.connect(DB_PATH)
 for (uid,) in con.execute("SELECT id FROM users WHERE kind = 'internal'").fetchall():
@@ -295,6 +356,31 @@ with app.test_request_context():
     for a in get_db().execute("SELECT id FROM alerts").fetchall():
         get_db().execute("UPDATE alerts SET created_at = ? WHERE id = ?", ((now - timedelta(days=random.randint(0, 9), hours=random.randint(1, 20))).isoformat(), a["id"]))
     get_db().commit()
+
+# one deal from the CRM, waiting for a project manager (services/intake.py), through the real door: a create-scope token, then the endpoint
+with app.test_client() as crm:
+    crm.post("/api/login", json={"username": "admin", "password": ADMIN_PASSWORD}, headers={"X-CSRF-Token": crm.get("/api/session").get_json()["csrf"]})
+    made = crm.post("/settings/api-tokens", data={"name": "crm-seed", "days": "365", "scope": "create", "_csrf": crm.get("/api/session").get_json()["csrf"]},
+                    headers={"Accept": "application/json"}).get_json()
+    got = app.test_client().post("/api/v1/intake", headers={"Authorization": f"Bearer {made['token']}"}, json={
+        "client": "Hooli", "name": "Branch SD-WAN refresh", "deal_id": "CRM-2041", "product": "FortiGate 90G", "vendor": "Fortinet",
+        "delivery_mode": "Outsourced", "target_date": (date.today() + timedelta(days=75)).isoformat(), "po_number": "PO-HOO-8812",
+        "contacts": ["it.lead@hooli.example"], "fields": {"Region": "UAE", "Endpoints in scope": 220}})
+    assert got.status_code == 201, got.data
+
+# one automation (Settings › Automations, services/rules.py), made after everything above so it fired for none of
+# it, and one entry in its run log; no random draw
+con = sqlite3.connect(DB_PATH)
+rid = con.execute("INSERT INTO rules (name, event, event_config, conditions, actions, paused, armed_at, created_by, created_at, updated_at) "
+                  "VALUES (?, 'stage_entered', '{}', ?, ?, 0, ?, 'Admin', ?, ?)",
+                  ("Deployment starts: tell the team", json.dumps([{"kind": "stage", "value": "Deployment"}]),
+                   json.dumps([{"kind": "notify", "roles": ["Project manager", "Coordinator"], "user_ids": [], "email": False,
+                                "message": "Book the deployment window with the customer."}]),
+                   (now - timedelta(days=20)).isoformat(), (now - timedelta(days=20)).isoformat(), (now - timedelta(days=20)).isoformat())).lastrowid
+con.execute("INSERT INTO rule_runs (rule_id, project_id, event, at, ok, detail) VALUES (?, 1, 'stage_entered', ?, 1, ?)",
+            (rid, (now - timedelta(days=6)).isoformat(), json.dumps({"what": "Entered Deployment", "actions": [{"kind": "notify", "ok": True, "said": "told 2 people"}]})))
+con.commit()
+con.close()
 
 con = sqlite3.connect(DB_PATH)
 for row in con.execute("SELECT id, name, stage FROM projects ORDER BY id LIMIT 3"):

@@ -43,7 +43,8 @@ KINDS = {
     },
 }
 PLACEHOLDERS = {"project": "the project's name", "client": "the customer", "company": "your company", "pm": "the project manager",
-                "po": "the PO number", "stage": "the current stage", "target": "the target date", "forecast": "the forecast finish", "date": "today"}
+                "po": "the PO number", "stage": "the current stage", "target": "the target date", "forecast": "the forecast finish", "date": "today",
+                "field:Name": "a custom field marked for customers, by its name (Settings › Rollouts & workflow)"}
 ACCENTS = {"blue": (61, 90, 254), "indigo": (79, 70, 229), "teal": (13, 148, 136), "green": (22, 163, 74), "orange": (234, 88, 12),
            "red": (225, 29, 46), "slate": (51, 65, 85), "black": (16, 17, 20)}
 LOGO_MAX = 1024 * 1024
@@ -190,8 +191,8 @@ def delete(template_id):
 
 
 def fill(text, values):
-    """Replace {placeholders}; unknown ones are left as typed."""
-    return re.sub(r"\{(\w+)\}", lambda m: str(values.get(m.group(1), m.group(0)) or ""), text or "")
+    """Replace {placeholders} and {field:Name}; unknown ones are left as typed."""
+    return re.sub(r"\{(\w+|field:[^{}\n]{1,60})\}", lambda m: str(values.get(m.group(1), m.group(0)) or ""), text or "")
 
 
 def section_on(config, key):

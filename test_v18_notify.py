@@ -17,7 +17,7 @@ class NotifyBase(FixBase):
 
     def on(self, *keys):
         for k in keys:
-            self.sql("INSERT INTO settings (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'", k)
+            self.sql("INSERT INTO settings (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'", f"policy.{k}")
 
     def user(self, username, kind="internal", role="Member"):
         self.sql("INSERT INTO users (username, password_hash, name, role, active, email, kind) VALUES (?, 'x', ?, ?, 1, ?, ?)",

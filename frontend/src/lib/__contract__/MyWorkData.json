@@ -1,8 +1,8 @@
 {
  "counts": {
   "done_week": 5,
-  "due_week": 1,
-  "open": 5,
+  "due_week": 2,
+  "open": 6,
   "overdue": 4,
   "rollouts": 22,
   "stuck": 10
@@ -10,15 +10,16 @@
  "done_by_day": [
   {
    "count": 0,
-   "day": "2026-10-02"
+   "day": "2026-10-03"
   },
   {
    "count": 0,
-   "day": "2026-10-03"
+   "day": "2026-10-04"
   }
  ],
  "projects": [
   {
+   "can_add_task": true,
    "client": "Globex",
    "days_in_stage": 11.7,
    "id": 1,
@@ -34,9 +35,10 @@
     "Scoping"
    ],
    "state": "over_sla",
-   "target_end_date": "2026-12-16"
+   "target_end_date": "2026-12-17"
   },
   {
+   "can_add_task": true,
    "client": "Acme Bank",
    "days_in_stage": 19.0,
    "id": 10,
@@ -52,17 +54,18 @@
     "Scoping"
    ],
    "state": "on_track",
-   "target_end_date": "2026-11-29"
+   "target_end_date": "2026-11-30"
   }
  ],
  "tasks": [
   {
+   "blocked_by": [],
    "can_edit": true,
    "client": "Initech",
    "done": 0,
    "done_at": null,
-   "due_date": "2026-10-02",
-   "id": 13,
+   "due_date": "2026-10-03",
+   "id": 17,
    "project": "Firewall refresh - Initech",
    "project_id": 3,
    "project_stage": "PO Received",
@@ -70,12 +73,13 @@
    "title": "Validate backups"
   },
   {
+   "blocked_by": [],
    "can_edit": true,
    "client": "Vandelay Industries",
    "done": 0,
    "done_at": null,
-   "due_date": "2026-10-05",
-   "id": 46,
+   "due_date": "2026-10-06",
+   "id": 50,
    "project": "Vulnerability mgmt - Vandelay Industries",
    "project_id": 9,
    "project_stage": "PO Received",
@@ -83,5 +87,5 @@
    "title": "Review detection coverage"
   }
  ],
- "today": "2026-10-15"
+ "today": "2026-10-16"
 }

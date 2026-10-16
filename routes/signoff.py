@@ -10,7 +10,7 @@ from markupsafe import escape
 import graph
 from constants import SIGNOFF_DOC_CATEGORY
 from core import admin_required, app, as_id, json_body, external_url, login_required, permission_required, project_allows, project_role_required, sees_po
-from db import get_db, get_setting
+from db import get_db
 from routes.projects import load_project, save_document
 from policies import policy
 from security import content_matches_extension, file_stem, issue_login_link, upload_problem
@@ -192,7 +192,7 @@ def _version(project_id, version):
 
 def _completed_mail(project, row):
     """The signed PDF to both signatories, when mail is on."""
-    if get_setting("notify_email_enabled") != "1":
+    if not policy("notify_email_enabled"):
         return
     from services.signoff_pdf import render
     signed = signoff.get(project["id"], row["version"])
@@ -217,11 +217,18 @@ def api_signoff_sign(project_id, version):
     row = _version(project_id, version)
     if row["signer_id"] != session["user_id"]:
         abort(403)
+    from services import asks
     try:
+        rated = asks.clean_rating(_body())   # the signer's optional 1-5 rating of the rollout, once per version
         signoff.sign(row, _body(), request.remote_addr, request.headers.get("User-Agent"))
     except ValueError as e:
         return _bad(e)
     audit_log("signoff_sign", "project", project_id, project["name"], f"v{version} signed by {session['user_name']}")
+    if rated:
+        db = get_db()
+        if asks.save_rating(db, project_id, version, rated[0], rated[1], session["user_id"], session["user_name"]):
+            db.commit()
+            audit_log("rate_rollout", "project", project_id, project["name"], f"v{version}: {rated[0]} of 5")
     notify_users([row["counter_id"], project["owner_id"]], "approval", project_id, f"{project['name']}: the customer has signed the sign-off",
                  f"<p>{escape(session['user_name'])} signed version {version} of the sign-off for <b>{escape(project['name'])}</b>. It now needs our countersignature.</p>",
                  exclude_user_id=session["user_id"], link=_link(project_id))

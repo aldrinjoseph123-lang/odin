@@ -20,7 +20,7 @@ WANT=${*:-$ALL}
 failed=""
 skipped=""
 # Every test_*.py module, named: CI's list and this one are checked against the files by test_v18_meta.
-PYTEST="test_app test_fix_security test_fix_logic test_release_safety test_scheduler_ops test_v18_identity test_v18_notify test_v18_projects test_v18_ops test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_resend test_v18_meta"
+PYTEST="test_app test_fix_security test_fix_logic test_release_safety test_scheduler_ops test_v18_identity test_v18_notify test_v18_projects test_v18_ops test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_resend test_v2_fields test_v2_deps test_v2_small test_v2_gates test_v2_intake test_v2_workload test_v2_milestones test_v2_selfserve test_v2_tools test_v2_rules test_v18_meta"
 
 want() { case " $WANT " in *" $1 "*) return 0 ;; esac; return 1; }
 step() {   # step <name> <description> <command...>

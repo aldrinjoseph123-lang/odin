@@ -10,6 +10,8 @@ from db import PROJECT_OPEN_SQL, avatar_url, get_db, stages_for_projects
 from policies import local_date, local_now, local_today, policy
 from services.alerts import project_states as _states
 from services.analytics import days_in_stage, sla_by_stage, stage_sla_state
+from services.task_links import parse_day
+from services.asks import averages
 
 
 
@@ -66,8 +68,18 @@ def my_work(uid, scope):
     # who may re-date a task: whoever task_edit lets (the person it is on ticks it, never re-dates it; P2-10)
     from core import project_allows
     manages = {pid: project_allows(pid, "manage_tasks") for pid in {t["project_id"] for t in tasks}}
+    # what each waits on that is still open (services/task_links.py): the page groups those as "Waiting on others"
+    held = {}
+    if tasks:
+        marks = ",".join("?" for _ in tasks)
+        for r in db.execute("SELECT l.task_id, t.id, t.title, t.due_date FROM task_links l JOIN tasks t ON t.id = l.depends_on_task_id "
+                            f"WHERE t.done = 0 AND l.task_id IN ({marks}) ORDER BY t.id", [t["id"] for t in tasks]):
+            due = parse_day(r["due_date"])
+            late = (today - due).days if due else 0
+            held.setdefault(r["task_id"], []).append({"id": r["id"], "title": r["title"], "late_by": max(0, late)})
     for t in tasks:
         t["can_edit"] = manages[t["project_id"]]
+        t["blocked_by"] = held.get(t["id"], [])
     since = _since(today - timedelta(days=13))
     done = Counter(local_date(r[0]).isoformat() for r in db.execute(
         "SELECT t.done_at FROM tasks t JOIN projects p ON p.id = t.project_id "
@@ -104,9 +116,11 @@ def people(scope):
         "FROM users u WHERE u.active = 1 AND u.kind = 'internal' ORDER BY projects DESC, open DESC, u.name",
         (*scope_params, *scope_params, today, *scope_params, month_ago, *scope_params)).fetchall()
     seen = policy("activity_tracking")   # off: Last seen is the last sign-in
+    csat = averages(by_owner=True)   # the customers' ratings of the rollouts each person managed (services/asks.py)
     return [{"id": r["id"], "name": r["name"], "role": r["role"], "avatar_url": avatar_url(r), "last_login_at": r["last_login_at"],
              "last_seen_at": (r["last_seen_at"] if seen else None) or r["last_login_at"],
-             "projects": r["projects"], "open": r["open"], "late": r["late"], "done_30d": r["done_30d"]}
+             "projects": r["projects"], "open": r["open"], "late": r["late"], "done_30d": r["done_30d"],
+             "csat": csat[r["id"]][0] if r["id"] in csat else None, "csat_count": csat[r["id"]][1] if r["id"] in csat else 0}
             for r in rows if r["projects"] or r["open"] or r["done_30d"]]
 
 
@@ -150,7 +164,9 @@ def person(uid, scope):
         "today": t_iso,
         "kpis": {"rollouts": len(projects), "stuck": sum(1 for s in states.values() if s != "on_track"), "open": len(pending),
                  "late": sum(1 for t in pending if t["due_date"] and t["due_date"] < t_iso),
-                 "done_30d": sum(1 for t in done if t["done_at"] >= month_ago), "on_time_pct": round(100 * on_time / len(dated)) if dated else None},
+                 "done_30d": sum(1 for t in done if t["done_at"] >= month_ago), "on_time_pct": round(100 * on_time / len(dated)) if dated else None,
+                 # the customers' rating of the rollouts they managed, at sign-off (services/asks.py)
+                 **dict(zip(("csat", "csat_count"), averages(by_owner=True).get(uid, (None, 0))))},
         "projects": _project_rows(db, projects, states, stages_for_projects([p["id"] for p in projects])),
         "pending": pending,
         "upcoming": [t for t in pending if t["due_date"] and t_iso <= t["due_date"] <= (today + timedelta(days=14)).isoformat()],

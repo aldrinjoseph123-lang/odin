@@ -11,7 +11,8 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
 import { Notice } from "@/components/Notice"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { HandOverDialog } from "@/components/HandOverDialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ApiError, createSignupLink, postForm, revokeAllSignupLinks, revokeSignupLink, signupLinks, users as fetchUsers, type AdminUser, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
@@ -20,12 +21,14 @@ import { MIN_PASSWORD } from "@/lib/password"
 import { useLoad } from "@/lib/useLoad"
 import { LoadFailed } from "@/components/LoadFailed"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
+import { filterUsers, noFilter, type UserFilter } from "@/lib/userFilter"
 
 
 export default function Users({ user }: { user: User }) {
   const minPassword = user.prefs?.password_min_length ?? MIN_PASSWORD   // the admin's policy, not a number typed here (review P2-38)
   const { data, error: failed, reload: load } = useLoad("users", fetchUsers)
   const [busy, setBusy] = useState(false)
+  const [f, setF] = useState<UserFilter>(noFilter)
   useEffect(() => { document.title = "Users · Odin" }, [])
 
   // true when the save went through: forms clear what was typed only then
@@ -51,6 +54,8 @@ export default function Users({ user }: { user: User }) {
   if (!data) return <PageSkeleton />
   const pending = data.users.filter((u) => u.pending)
   const people = data.users.filter((u) => !u.pending)
+  const shown = filterUsers(people, f)
+  const flagged = people.filter((u) => u.review.length).length
 
   return (
     <div className="px-5 pb-6 pt-4">
@@ -60,16 +65,34 @@ export default function Users({ user }: { user: User }) {
       {pending.length > 0 && <Pending people={pending} roles={data.roles} busy={busy} send={send} />}
 
       <div className="mt-3 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0">
+        <div role="search" className="mb-3 flex flex-wrap items-center gap-2">
+          <Input type="search" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Search name, username, email or role" aria-label="Search users" className="h-8 w-72 text-[13px]" />
+          <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} aria-label="Filter by role" className={fieldAuto}>
+            <option value="">Any role</option>
+            {data.roles.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value as UserFilter["status"] })} aria-label="Filter by status" className={fieldAuto}>
+            <option value="all">Any status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Deactivated</option>
+          </select>
+          <Button size="sm" variant={f.review ? "default" : "outline"} aria-pressed={f.review} onClick={() => setF({ ...f, review: !f.review })}>Access review{flagged ? ` (${flagged})` : ""}</Button>
+        </div>
+        {f.review && <p className="mb-3 max-w-prose text-[13px] text-muted-foreground">Accounts with no sign-in for {data.review_days} days, and partners or customers whose rollouts have all closed. Deactivate ends their sessions now and is audited. The window is a policy under Settings › People. Odin gives no one rights beyond their role, so there is nothing else to review.</p>}
         {/* one row per person, as a receipt: who on the left, role and state in
             the middle, one Manage button on the right; the rarely used
             controls (email, sign-in options, password, deactivate) live in
             the Manage dialog, so the list stays readable */}
         <section className="min-w-0 panel" aria-label="Team members">
+          {shown.length === 0 && <p className="p-4 text-[13px] text-muted-foreground">{f.review ? "Nothing to review: every active account has signed in recently and has a rollout open." : "No one matches."}</p>}
           <ul className="divide-y divide-border">
             {/* keyed by id alone: an email change or a deactivation keeps Manage open (review P3-38) */}
-            {people.map((u) => <Row key={u.id} u={u} roles={data.roles} me={data.me} microsoftOnly={data.microsoft_only} minPassword={minPassword} busy={busy} send={send} />)}
+            {shown.map((u) => <Row key={u.id} u={u} review={f.review} roles={data.roles} me={data.me} microsoftOnly={data.microsoft_only} minPassword={minPassword} capacityDefault={data.capacity_default}
+              colleagues={people.filter((c) => c.active && c.kind === "internal" && c.id !== u.id)} busy={busy} send={send} />)}
           </ul>
         </section>
+        </div>
         <div className="grid grid-cols-1 content-start gap-4">
           <AddUser roles={data.roles} minPassword={minPassword} busy={busy} send={send} />
           <SignupLinksPanel />
@@ -83,6 +106,7 @@ export default function Users({ user }: { user: User }) {
 // them in with a role, or declines (the account stays, inactive).
 function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: string[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean> }) {
   const [role, setRole] = useState<Record<number, string>>({})
+  const [declining, setDeclining] = useState<AdminUser | null>(null)
   return (
     <section className="mt-3 rounded-lg bg-warn-soft/60 p-4" aria-label="Waiting for approval">
       <PanelTitle n={false} className="mb-2" hint="asked to use Odin, not yet allowed in">Waiting for approval</PanelTitle>
@@ -96,11 +120,40 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
               {roles.filter((r) => r !== "External").map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
             <Button size="sm" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/approve`, { role: role[u.id] ?? (u.signup_label ? u.role : "Viewer") })}>Approve</Button>
-            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => send(`/users/${u.id}/decline`, {}, `Decline ${u.name}? They stay unable to sign in, and Odin does not tell them.`)}>Decline</Button>
+            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => setDeclining(u)}>Decline</Button>
           </li>
         ))}
       </ul>
+      {declining && <DeclineDialog u={declining} busy={busy} send={send} onClose={() => setDeclining(null)} />}
     </section>
+  )
+}
+
+// The reason is optional, one line, kept on the account and in the audit log; Odin does not email the person.
+export function DeclineDialog({ u, busy, send, onClose }: { u: AdminUser; busy: boolean; send: (p: string, f: Record<string, string>) => Promise<boolean>; onClose: () => void }) {
+  const [reason, setReason] = useState("")
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (await send(`/users/${u.id}/decline`, { reason: reason.trim() })) onClose()
+  }
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4">
+          <DialogHeader>
+            <DialogTitle>Decline {u.name}?</DialogTitle>
+            <DialogDescription>They stay unable to sign in, and Odin does not tell them. Your reason is kept on the account and in the audit log.</DialogDescription>
+          </DialogHeader>
+          <Field label="Reason (optional)" hint={`${reason.length} of 300`}>
+            <Input value={reason} onChange={(e) => setReason(e.target.value.replace(/[\r\n]+/g, " "))} maxLength={300} placeholder="e.g. not on the rollout team" className="h-8 text-[13px]" />
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" variant="destructive" loading={busy}>Decline</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -112,9 +165,13 @@ function signInText(u: AdminUser, microsoftOnly: boolean) {
   return [...ways, u.two_step && "two-step"].filter(Boolean).join(" · ")
 }
 
-function Row({ u, roles, me, microsoftOnly, minPassword, busy, send }: { u: AdminUser; roles: string[]; me: number; microsoftOnly: boolean; minPassword: number; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean> }) {
+function Row({ u, review, roles, me, microsoftOnly, minPassword, capacityDefault, colleagues, busy, send }: { u: AdminUser; review: boolean; roles: string[]; me: number; microsoftOnly: boolean; minPassword: number; capacityDefault: number; colleagues: AdminUser[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string) => Promise<boolean> }) {
   const [open, setOpen] = useState(false)
+  const [handing, setHanding] = useState(false)
   const self = u.id === me
+  const holds = u.holds.tasks + u.holds.rollouts + u.holds.raid
+  // the review's one click: the same route as Manage, and staff who hold work get the hand-over first
+  const deactivate = () => { if (holds > 0 && u.kind === "internal") setHanding(true); else void send(`/users/${u.id}/active`, { active: "0" }, `Deactivate ${u.name}? Their open sessions end now.`) }
   return (
     // phones: who + Manage on top, role and state on one line under it;
     // md and up: one line, the role/state pair dissolving into grid cells
@@ -130,9 +187,11 @@ function Row({ u, roles, me, microsoftOnly, minPassword, busy, send }: { u: Admi
           <p className="truncate text-[12px] text-muted-foreground" title={[u.username, u.email].filter(Boolean).join(" · ")}>
             {u.email && u.email.toLowerCase() === u.username.toLowerCase() ? u.email : `${u.username} · ${u.email || "no email"}`}
           </p>
+          {!u.active && u.declined_reason && <p className="truncate text-[12px] text-muted-foreground" title={u.declined_reason}>Declined: {u.declined_reason}</p>}
         </div>
       </div>
-      <div className="md:order-last md:justify-self-end">
+      <div className="flex gap-2 md:order-last md:justify-self-end">
+        {review && u.active && !self && <Button size="sm" variant="destructive" disabled={busy} onClick={deactivate} aria-label={`Deactivate ${u.name}`}>Deactivate</Button>}
         <Button size="sm" variant="outline" onClick={() => setOpen(true)} aria-label={`Manage ${u.name}`}>Manage</Button>
       </div>
       <div className="col-span-2 flex items-center gap-4 md:contents">
@@ -148,19 +207,24 @@ function Row({ u, roles, me, microsoftOnly, minPassword, busy, send }: { u: Admi
         <div className="min-w-0 text-[12px] text-muted-foreground">
           <p className="truncate">{u.active ? signInText(u, microsoftOnly) : <span className="font-medium text-foreground">Deactivated</span>}</p>
           <p>{u.last_login_at ? <>Signed in <Ago iso={u.last_login_at} /></> : "Never signed in"}</p>
+          {review && u.review.map((r) => <p key={r} className="font-medium text-warn">{r}</p>)}
         </div>
       </div>
-      <Manage u={u} self={self} microsoftOnly={microsoftOnly} minPassword={minPassword} busy={busy} send={send} open={open} onClose={() => setOpen(false)} />
+      <Manage u={u} self={self} microsoftOnly={microsoftOnly} minPassword={minPassword} capacityDefault={capacityDefault} colleagues={colleagues} busy={busy} send={send} open={open} onClose={() => setOpen(false)} />
+      {handing && <HandOverDialog u={u} colleagues={colleagues} busy={busy} send={send} onClose={() => setHanding(false)} />}
     </li>
   )
 }
 
 // Everything about one account that is changed rarely: one dialog, sections
 // separated by hairlines; destructive actions last.
-function Manage({ u, self, microsoftOnly, minPassword, busy, send, open, onClose }: { u: AdminUser; self: boolean; microsoftOnly: boolean; minPassword: number; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean>; open: boolean; onClose: () => void }) {
+function Manage({ u, self, microsoftOnly, minPassword, capacityDefault, colleagues, busy, send, open, onClose }: { u: AdminUser; self: boolean; microsoftOnly: boolean; minPassword: number; capacityDefault: number; colleagues: AdminUser[]; busy: boolean; send: (p: string, f: Record<string, string>, c?: string, onError?: (m: string) => void) => Promise<boolean>; open: boolean; onClose: () => void }) {
   const [email, setEmail] = useState(u.email ?? "")
   const [pw, setPw] = useState("")
   const [problem, setProblem] = useState<string | null>(null)
+  const [hours, setHours] = useState(u.capacity_hours == null ? "" : String(u.capacity_hours))
+  const [handing, setHanding] = useState(false)
+  const holds = u.holds.tasks + u.holds.rollouts + u.holds.raid
   const act = (path: string, fields: Record<string, string>, confirmText?: string) => { setProblem(null); return send(path, fields, confirmText, setProblem) }
   const canReset = u.kind !== "external" && (!microsoftOnly || u.password_login)
   const section = "grid grid-cols-1 gap-2 border-t border-border pt-4"
@@ -180,6 +244,16 @@ function Manage({ u, self, microsoftOnly, minPassword, busy, send, open, onClose
             </span>
           </Field>
         </form>
+        {u.kind !== "external" && (
+          <form className={section} onSubmit={(e) => { e.preventDefault(); void act(`/users/${u.id}/capacity`, { capacity_hours: hours.trim() }) }}>
+            <Field label="Capacity (hours a week)" hint={`Blank takes the workspace default, ${capacityDefault} h. For part-timers; People › Workload counts against it.`}>
+              <span className="flex gap-2">
+                <Input type="number" min={1} max={80} step={0.5} value={hours} onChange={(e) => setHours(e.target.value)} placeholder={`${capacityDefault} (default)`} aria-label={`Capacity for ${u.name}`} className="h-8 flex-1 text-[13px]" />
+                <Button type="submit" size="sm" loading={busy} disabled={hours.trim() === (u.capacity_hours == null ? "" : String(u.capacity_hours))}>Save</Button>
+              </span>
+            </Field>
+          </form>
+        )}
         {u.kind !== "external" && (
           <div className={section}>
             <p className="text-[12px] font-medium text-nav-fg">Sign-in</p>
@@ -213,9 +287,10 @@ function Manage({ u, self, microsoftOnly, minPassword, busy, send, open, onClose
           <div className={cn(section, "flex flex-wrap items-center justify-between gap-2")}>
             <span className="text-[13px] text-muted-foreground">{u.active ? "Deactivating ends their sessions now." : "This account can't sign in."}</span>
             <Button size="sm" variant={u.active ? "destructive" : "outline"} disabled={busy}
-              onClick={() => void act(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined).then((ok) => { if (ok) onClose() })}>{u.active ? "Deactivate" : "Reactivate"}</Button>
+              onClick={() => { if (u.active && holds > 0 && u.kind === "internal") setHanding(true); else void act(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined).then((ok) => { if (ok) onClose() }) }}>{u.active ? "Deactivate" : "Reactivate"}</Button>
           </div>
         )}
+        {handing && <HandOverDialog u={u} colleagues={colleagues} busy={busy} send={send} onClose={(done) => { setHanding(false); if (done) onClose() }} />}
       </DialogContent>
     </Dialog>
   )

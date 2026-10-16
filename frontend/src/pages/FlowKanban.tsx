@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { CalendarClock, ChevronLeft, ChevronRight, CircleDashed, Clock, Columns3, FileSignature, GripVertical, ListChecks, MoreHorizontal, UserRound } from "lucide-react"
+import { CalendarClock, ChevronLeft, ChevronRight, CircleDashed, Clock, Columns3, FileSignature, GripVertical, ListChecks, Lock, MoreHorizontal, UserRound } from "lucide-react"
 import { Kanban, KanbanBoard, KanbanColumn, KanbanColumnContent, KanbanItem, KanbanItemHandle, KanbanOverlay } from "@/components/reui/kanban"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -168,6 +168,9 @@ function Card({ r, selected, onSelect, onMove, lifted }: { r: FlowRow; selected:
         {/* the move waits for the sign-off (as the rail says): the way there instead of a grip */}
         {r.can_move && r.next_stage && r.signoff_needed && <li className="flex items-center gap-2"><FileSignature className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <Link to={`/projects/${r.id}/signoff`} className="truncate font-medium text-primary-text hover:underline">Sign-off before {r.next_stage}</Link></li>}
+        {/* a stage gate holds the move (services/gates.py): what holds it, and the way to the rollout */}
+        {r.gate_blocked && !r.signoff_needed && <li className="flex items-center gap-2"><Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <Link to={`/projects/${r.id}`} title={`Before leaving ${r.stage}: ${r.gate_reasons.join(" · ")}`} className="truncate font-medium text-primary-text hover:underline">Before {r.next_stage}: {r.gate_reasons.join(" · ")}</Link></li>}
       </ul>
       {r.state !== "on_track" && <StateChip state={r.state} text={stateText(r)} className="mt-2 inline-block" />}
       <div className="mt-2 flex items-center gap-3 border-t border-border pt-2 text-[11px] text-muted-foreground">

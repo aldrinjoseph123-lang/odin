@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto"
 import { expect, test } from "@playwright/test"
-import { dragCard, expectClean, pickDate, signIn, USERS, watch } from "./helpers"
+import { api, dragCard, expectClean, inviteExternal, pickDate, signIn, signInWithLink, USERS, watch } from "./helpers"
 
 // @flow: the journeys, end to end, on the seeded portfolio. Each test leaves
 // the data as it found it where it can (undo, reset, restore), so the order
@@ -887,4 +887,400 @@ test("@flow account feedback: Save wakes on a change, Upload with no file says s
   await page.getByRole("button", { name: "Update password" }).click()
   await expect(page.locator("form", { hasText: "Change password" }).getByRole("alert")).toBeVisible()
   expectClean(errors.filter((e) => !/^400 \S*\/account$|status of 400/.test(e)))   // the refusal is the point
+})
+
+test("@flow settings: the guest-link and channel switches are policy cards that save and persist", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/security")
+  const partner = page.getByRole("region", { name: "Partner access" })
+  const guest = partner.getByRole("switch", { name: "Legacy anonymous guest links work" })
+  await expect(guest).toBeChecked()   // on by default, as before
+  await guest.uncheck()
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/policies/security") && r.ok()), partner.getByRole("button", { name: "Save", exact: true }).click()])
+  await page.goto("/settings/security")
+  await expect(partner.getByRole("switch", { name: "Legacy anonymous guest links work" })).not.toBeChecked()
+  await partner.getByRole("switch", { name: "Legacy anonymous guest links work" }).check()   // back on, so later journeys see the defaults
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/settings/policies/security") && r.ok()), partner.getByRole("button", { name: "Save", exact: true }).click()])
+  await page.goto("/settings/notifications")
+  await expect(page.getByRole("region", { name: "Channels" }).getByRole("switch")).toHaveCount(3)
+  await page.goto("/settings/integrations")
+  await expect(page.getByRole("region", { name: "OneDrive" }).getByRole("switch", { name: "Mirror every uploaded document to OneDrive" })).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow custom fields: define one, set it on a rollout, see it in the list, its filter and the customer report", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/workflow")
+  const panel = page.getByRole("region", { name: "Custom fields" })
+  await panel.getByRole("button", { name: "Add field" }).click()
+  await panel.getByRole("textbox", { name: "Name" }).fill("E2E Site")
+  await panel.getByRole("combobox", { name: "Kind" }).selectOption("choice")
+  await panel.getByRole("textbox", { name: /Choices/ }).fill("North\nSouth")
+  await panel.getByRole("checkbox", { name: /Partners and customers see it/ }).check()
+  await panel.getByRole("checkbox", { name: /A column on the rollouts list/ }).check()
+  await panel.getByRole("button", { name: "Save field" }).click()
+  await expect(panel.getByText("Added E2E Site.")).toBeVisible()
+
+  // set on a rollout from its Details panel
+  await page.goto("/projects/1")
+  const details = page.locator("#details")
+  await details.getByRole("button", { name: "Edit fields" }).click()
+  await details.getByRole("combobox", { name: "E2E Site" }).selectOption("North")
+  await details.getByRole("button", { name: "Save fields" }).click()
+  await expect(details.getByText("North")).toBeVisible()
+
+  // a column on the list, and a filter of its own
+  await page.goto("/projects")
+  await expect(page.getByRole("columnheader", { name: "E2E Site" })).toBeVisible()
+  await page.getByRole("combobox", { name: "E2E Site" }).selectOption("North")
+  await expect(page).toHaveURL(/field\.\d+=North/)
+  await expect(page.locator("tbody tr")).toHaveCount(1)
+  await expect(page.locator("tbody tr")).toContainText("EDR Rollout - Globex")
+
+  // the customer's copy of the report carries it (it is marked for customers)
+  await page.goto("/projects/1/report?audience=customer")
+  await expect(page.locator("main")).toContainText("E2E Site: North")
+
+  // deleting takes the typed name, and the values with it
+  await page.goto("/settings/workflow")
+  await panel.getByRole("button", { name: "Delete E2E Site" }).click()
+  await panel.getByRole("textbox", { name: /Type E2E Site to delete/ }).fill("E2E Site")
+  await panel.getByRole("button", { name: "Delete field" }).click()
+  await expect(panel.getByText("Deleted E2E Site.")).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow stage gate: the flow shows what holds the move, and it clears when the task is done", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board")
+  // a rollout of its own, so the seed's tasks do not hold the gate; removed at the end
+  const id = await page.evaluate(async () => {
+    const s = await (await fetch("/api/session")).json()
+    const form = new FormData()
+    form.set("name", "E2E gated rollout"); form.set("client", "Globex")
+    form.set("po_document", new File(["%PDF-1.4 e2e"], "po.pdf", { type: "application/pdf" }))
+    const r = await (await fetch("/projects/new", { method: "POST", body: form, headers: { Accept: "application/json", "X-CSRF-Token": s.csrf } })).json()
+    const id = Number(/\/projects\/(\d+)/.exec(r.location)![1])
+    // tasks a template brought along go: the one task below is what the gate waits for
+    for (const t of (await (await fetch(`/api/projects/${id}/flow`)).json()).tasks as { id: number }[])
+      await fetch(`/projects/${id}/tasks/${t.id}/delete`, { method: "POST", headers: { Accept: "application/json", "X-CSRF-Token": s.csrf } })
+    return id
+  })
+  // the project manager says the first stage is left only with its tasks done
+  await page.goto(`/projects/${id}`)
+  await page.locator("#stages").getByRole("button", { name: "Edit stages" }).click()
+  await page.getByRole("checkbox", { name: /^All tasks done before leaving / }).first().check()
+  await page.getByRole("button", { name: "Save what each stage asks" }).click()
+  await expect(page.getByRole("checkbox", { name: /^All tasks done before leaving / }).first()).toBeChecked()
+  const first = await page.evaluate(async (id) => (await (await fetch(`/api/projects/${id}`)).json()).stage_rows[0].name as string, id)
+  await page.goto(`/board?rollout=${id}`)
+  await page.getByRole("region", { name: `Tasks in ${first}`, exact: true }).getByRole("button", { name: `Add a task to ${first}` }).click()
+  await page.getByRole("textbox", { name: /^New task in / }).fill("Gate task")
+  await page.getByRole("button", { name: "Add task" }).click()
+  // held: the stage card and the move say why, and the move is shut (an admin may override)
+  await expect(page.getByText("Before leaving this stage: 1 open task")).toBeVisible()
+  const advance = page.getByRole("button", { name: /^Move to / })
+  await expect(advance).toHaveAttribute("aria-disabled", "true")
+  await expect(page.getByRole("button", { name: "Override with a reason" })).toBeVisible()
+  // done: the gate clears and the move opens
+  await page.getByRole("region", { name: `Tasks in ${first}`, exact: true }).getByRole("button", { name: "Complete Gate task" }).click()
+  await expect(page.getByText("Before leaving this stage: 1 open task")).toHaveCount(0)
+  await expect(advance).not.toHaveAttribute("aria-disabled", "true")
+  const s = await page.evaluate(async (id) => {
+    const s = await (await fetch("/api/session")).json()
+    return (await fetch(`/projects/${id}/delete`, { method: "POST", headers: { Accept: "application/json", "X-CSRF-Token": s.csrf } })).status
+  }, id)
+  expect(s).toBe(200)
+  expectClean(errors)
+})
+
+test("@flow task links: the second of a chained pair cannot be ticked until the first is", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "member", "/board?rollout=1")   // a coordinator on rollout 1, not an Admin: no override
+  const tasks = page.getByRole("region", { name: /^Tasks in / })
+  await tasks.getByRole("button", { name: /^Add a task to / }).first().click()
+  await page.getByRole("textbox", { name: /^New task in / }).fill("E2E first")
+  await page.getByRole("button", { name: "Add task" }).click()
+  await expect(tasks.getByRole("button", { name: "Complete E2E first" })).toBeVisible()
+  await page.getByRole("textbox", { name: /^New task in / }).fill("E2E second")
+  await page.getByRole("combobox", { name: "Waits on" }).selectOption({ label: "E2E first" })
+  await page.getByRole("button", { name: "Add task" }).click()
+  await expect(tasks.getByRole("button", { name: "Complete E2E second" })).toBeDisabled()
+  await expect(page.locator("li", { has: page.getByRole("button", { name: "Edit E2E second" }) })).toContainText("waits on E2E first")
+  await tasks.getByRole("button", { name: "Complete E2E first" }).click()
+  await expect(page.getByText("Done: E2E first")).toBeVisible()
+  await expect(tasks.getByRole("button", { name: "Complete E2E second" })).toBeEnabled()
+  await tasks.getByRole("button", { name: "Complete E2E second" }).click()
+  await expect(page.getByText("Done: E2E second")).toBeVisible()
+  // leave the rollout as it was
+  for (const t of ["E2E second", "E2E first"]) {
+    await page.getByRole("button", { name: `Reopen ${t}` }).hover()
+    await page.getByRole("button", { name: `Delete ${t}` }).click()
+    await expect(page.getByRole("button", { name: new RegExp(`${t}$`) })).toHaveCount(0)
+  }
+  expectClean(errors)
+})
+
+test("@flow workload: the page lists everyone's next four weeks, filters, and opens a person", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/people")
+  await page.getByRole("link", { name: "Workload" }).click()   // People › Workload
+  await expect(page).toHaveURL(/\/people\/workload$/)
+  const table = page.getByRole("region", { name: "Workload by person" })
+  await expect(table.getByRole("columnheader")).toHaveCount(5)   // Person and four weeks
+  const everyone = await table.getByRole("rowheader").count()
+  expect(everyone).toBeGreaterThan(0)
+  await page.getByLabel("Find a person").fill("zzzz nobody")
+  await expect(page.getByText(/^Nobody matches/)).toBeVisible()
+  await page.getByLabel("Find a person").fill("")
+  await expect(table.getByRole("rowheader")).toHaveCount(everyone)
+  await page.getByRole("radio", { name: /^Heavy or over/ }).click()
+  await expect(page.getByRole("radio", { name: /^Heavy or over/ })).toBeChecked()
+  expect(await table.getByRole("rowheader").count()).toBeLessThanOrEqual(everyone)
+  await page.getByRole("radio", { name: "Everyone" }).click()
+  await table.getByRole("rowheader").first().getByRole("link").click()   // through to the person's tasks
+  await expect(page).toHaveURL(/\/people\/\d+$/)
+  expectClean(errors)
+})
+
+test("@flow workload: the task picker says how loaded each colleague is in the week it falls due", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?rollout=1")
+  await page.getByRole("button", { name: /^Add a task to / }).first().click()
+  const pick = page.getByRole("combobox", { name: "Assign to" })
+  await expect(pick.locator("option", { hasText: "that week" })).toHaveCount(0)   // no date, no hint
+  await pickDate(page, page.getByRole("button", { name: /^Due date:/ }), "2030-01-15")
+  await expect(pick.locator("option", { hasText: /· [\d.]+ h that week$/ }).first()).toBeAttached()
+  await page.getByRole("button", { name: "Cancel" }).click()
+  expectClean(errors)
+})
+
+test("@flow workload: an admin sets one person's capacity on the Users page and the workload follows", async ({ page }) => {
+  const errors = watch(page)
+  const who = USERS.contributor.name
+  await signIn(page, "admin", "/users")
+  await page.getByRole("button", { name: `Manage ${who}` }).click()
+  await page.getByLabel(`Capacity for ${who}`).fill("12")
+  await page.getByRole("button", { name: "Save" }).last().click()
+  await expect(page.getByText("Capacity saved")).toBeVisible()
+  await page.goto("/people/workload")
+  await expect(page.getByRole("rowheader", { name: new RegExp(`${who}.*12 h a week \\(own\\)`) })).toBeVisible()
+  // back to the default, as found
+  await page.goto("/users")
+  await page.getByRole("button", { name: `Manage ${who}` }).click()
+  await page.getByLabel(`Capacity for ${who}`).fill("")
+  await page.getByRole("button", { name: "Save" }).last().click()
+  await expect(page.getByText("Capacity back to the default")).toBeVisible()
+  expectClean(errors)
+})
+
+test("@flow customer self-service: from the link, each ask done in place, then a rating at sign-off", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board")
+  // a rollout of its own, without the template's tasks; removed at the end
+  const id = await page.evaluate(async () => {
+    const s = await (await fetch("/api/session")).json()
+    const form = new FormData()
+    form.set("name", "E2E self-service rollout"); form.set("client", "Globex")
+    form.set("po_document", new File(["%PDF-1.4 e2e"], "po.pdf", { type: "application/pdf" }))
+    const r = await (await fetch("/projects/new", { method: "POST", body: form, headers: { Accept: "application/json", "X-CSRF-Token": s.csrf } })).json()
+    const id = Number(/\/projects\/(\d+)/.exec(r.location)![1])
+    for (const t of (await (await fetch(`/api/projects/${id}/flow`)).json()).tasks as { id: number }[])
+      await fetch(`/projects/${id}/tasks/${t.id}/delete`, { method: "POST", headers: { Accept: "application/json", "X-CSRF-Token": s.csrf } })
+    return id
+  })
+  const { email, link } = await inviteExternal(page, id, "Customer")
+  const extras = (await api<{ participants: { user_id: number; email: string | null }[]; stage_rows: { name: string }[] }>(page, "GET", `/api/projects/${id}`)).body
+  const customer = extras.participants.find((p) => p.email === email)!.user_id
+  // two asks through the API; the form through the task form, as a project manager makes one
+  for (const body of [{ title: "E2E confirm the change window", kind: "task" }, { title: "E2E upload the network diagram", kind: "upload", ask_category: "Deliverable" }])
+    expect((await api(page, "POST", `/projects/${id}/tasks`, { ...body, assignee_id: customer })).status).toBe(200)
+  const first = extras.stage_rows[0].name
+  await page.goto(`/board?rollout=${id}`)
+  await page.getByRole("region", { name: `Tasks in ${first}`, exact: true }).getByRole("button", { name: `Add a task to ${first}` }).click()
+  await page.getByRole("textbox", { name: /^New task in / }).fill("E2E tell us about your environment")
+  await page.getByRole("combobox", { name: "Assign to" }).selectOption({ label: "E2E Customer" })
+  await page.getByRole("combobox", { name: "What it asks for" }).selectOption("form")
+  await page.getByRole("button", { name: "Question", exact: true }).click()
+  await page.getByRole("textbox", { name: "Question 1" }).fill("Endpoints in scope")
+  await page.getByRole("combobox", { name: "Answer to question 1" }).selectOption("number")
+  await page.getByRole("button", { name: "Add task" }).click()
+  await expect(page.getByText(`Task added to ${first}`)).toBeVisible()
+  // the sign-off goes to the customer from the stage before the finish
+  const stages = extras.stage_rows.map((r) => r.name)
+  expect((await api(page, "POST", `/api/projects/${id}/stage`, { stage: stages[stages.length - 2], note: "e2e: self-service" })).status).toBe(200)
+  expect((await api(page, "POST", `/api/projects/${id}/signoff`, { summary: "Done.", signer_id: customer, counter_id: 1, delivered: ["Everything"] })).status).toBe(200)
+
+  // the customer: the emailed link, then "What we need from you" at the top of their rollout
+  await signInWithLink(page, link)
+  await page.goto(`/projects/${id}`)
+  const asks = page.getByRole("region", { name: "What we need from you" })
+  await expect(asks).toContainText("3 open")
+  await asks.getByRole("button", { name: "Mark done" }).click()
+  await expect(asks).toContainText("2 open")
+  await asks.getByLabel("File for E2E upload the network diagram").setInputFiles({ name: "diagram.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 e2e diagram") })
+  await asks.getByRole("button", { name: "Upload", exact: true }).click()
+  await expect(asks).toContainText("1 open")
+  await asks.getByRole("spinbutton", { name: "Endpoints in scope" }).fill("1200")
+  await asks.getByRole("button", { name: "Send answers" }).click()
+  await expect(asks).toContainText("all done, thank you")
+  // and the rating as they sign
+  await page.goto(`/projects/${id}/signoff`)
+  await page.getByRole("radio", { name: "Type" }).click()
+  await page.getByRole("checkbox", { name: /I have read this document/ }).check()
+  await page.getByRole("radio", { name: "4 of 5" }).check({ force: true })   // the input is drawn as its numbered chip
+  await page.getByRole("textbox", { name: "A comment on the rollout (optional)" }).fill("E2E: smooth cutover")
+  await page.getByRole("button", { name: "Sign", exact: true }).click()
+  await expect(page.getByText(/Signed\. Thank you/).first()).toBeVisible()
+
+  // the project manager sees what came back and the rating
+  await page.context().clearCookies()
+  await signIn(page, "admin", `/projects/${id}`)
+  const seen = page.getByRole("region", { name: "Asked of the customer and partners" })
+  await expect(seen).toContainText("Endpoints in scope")
+  await expect(seen).toContainText("diagram.pdf")
+  await expect(seen).toContainText("4 of 5")
+  await expect(seen).toContainText("E2E: smooth cutover")
+  expect((await api(page, "POST", `/projects/${id}/delete`)).status).toBe(200)
+  expectClean(errors)
+})
+
+test("@flow milestones: add one on the rollout page, see it on the calendar, mark it reached, delete it", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/1")
+  const panel = page.locator("#milestones")
+  await expect(panel).toContainText("Pilot go-live")   // seeded, with one already missed
+  await expect(panel).toContainText("1 missed")
+  await panel.getByRole("button", { name: "Add" }).click()
+  await page.getByRole("textbox", { name: "Name" }).fill("E2E milestone")
+  await pickDate(page, page.getByRole("button", { name: /^Date: / }), new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }))   // today in the browser's zone: this month's calendar
+  await page.getByRole("checkbox", { name: /Show to the customer/ }).check()
+  await page.getByRole("button", { name: "Save" }).click()
+  await expect(panel.getByText("E2E milestone", { exact: true })).toBeVisible()
+  // a diamond on the calendar (the agenda lists every item of the month)
+  await page.goto("/board?view=calendar&cal=agenda")
+  await expect(page.getByRole("link", { name: /^Milestone: E2E milestone/ }).first()).toBeVisible()   // also under "Up next" in the rail
+  await page.getByRole("button", { name: "Milestones", exact: true }).click()   // its own layer
+  await expect(page.getByRole("link", { name: /E2E milestone/ })).toHaveCount(0)
+  await page.getByRole("button", { name: "Milestones", exact: true }).click()
+  // reached: the calendar says so; then put it back
+  await page.goto("/projects/1")
+  await panel.getByRole("button", { name: "Mark E2E milestone reached" }).click()
+  await expect(page.getByText("E2E milestone: reached")).toBeVisible()
+  await page.goto("/board?view=calendar&cal=agenda")
+  await expect(page.getByRole("link", { name: /^Milestone, reached: E2E milestone/ })).toBeVisible()
+  await page.goto("/projects/1")
+  await panel.getByRole("radio", { name: "All" }).click()
+  await panel.getByText("E2E milestone", { exact: true }).click()
+  await page.getByRole("button", { name: "Delete" }).click()
+  await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
+  await expect(panel.getByText("E2E milestone", { exact: true })).toHaveCount(0)
+  expectClean(errors)
+})
+
+test("@flow crm intake: a deal posted with a create token waits pending, then a project manager confirms it with the PO", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/integrations")
+  const name = `E2E deal ${Date.now()}`
+  // a create-scope token through the settings panel; the CRM's call is made with it, not with the session
+  await page.getByLabel(/Source \(the token's name\)/).fill("e2e-crm")
+  await page.getByRole("button", { name: "Create intake token" }).click()
+  const token = await page.getByRole("textbox", { name: "New intake token" }).inputValue()
+  expect(token).toMatch(/^odin_/)
+  const posted = await page.request.post("/api/v1/intake", { headers: { Authorization: `Bearer ${token}` }, data: { client: "E2E Client", name, deal_id: `E2E-${Date.now()}`, product: "Probe", vendor: "Acme" } })
+  expect(posted.status()).toBe(201)
+  expect((await posted.json()).rollout.status).toBe("pending")
+  // it waits in the flow's holding lane and counts nowhere
+  await page.goto("/board")
+  const lane = page.getByRole("region", { name: "Pending intake" })
+  await expect(lane.getByText(name)).toBeVisible()
+  // confirm: the PO is required, then the rollout opens as an active one
+  await lane.getByRole("button", { name: `Confirm ${name}` }).click()
+  const dialog = page.getByRole("dialog", { name: `Confirm ${name}` })
+  await dialog.getByLabel("Client PO document").setInputFiles({ name: "po.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 e2e purchase order") })
+  await dialog.getByRole("button", { name: "Confirm and take ownership" }).click()
+  await expect(page).toHaveURL(/\/projects\/\d+$/)
+  await expect(page.locator("h1").first()).toHaveText(name)
+  const id = Number(page.url().split("/").pop())
+  await page.goto("/board")
+  await expect(page.getByRole("region", { name: "Pending intake" }).getByText(name)).toHaveCount(0)
+  await expect(page.getByRole("button", { name: new RegExp(`^${name}, `) })).toBeVisible()
+  // tidy: delete the rollout and revoke the token
+  await page.evaluate(async (rid) => {
+    const s = await (await fetch("/api/session")).json()
+    await fetch(`/projects/${rid}/delete`, { method: "POST", headers: { "X-CSRF-Token": s.csrf, Accept: "application/json" } })
+    const t = (await (await fetch("/api/settings/intake")).json()).tokens.find((x: { name: string }) => x.name === "e2e-crm")
+    await fetch(`/settings/api-tokens/${t.id}/revoke`, { method: "POST", headers: { "X-CSRF-Token": s.csrf, Accept: "application/json" } })
+  }, id)
+  expectClean(errors)
+})
+
+test("@flow palette and settings filter: a policy's label leads to the setting, marked; 1–4 switch the Flow views; date quick picks", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/dashboard")
+  // ⌘K / Ctrl K, a policy label, Enter: the Security page with the undo window's row marked
+  await page.keyboard.press("Control+k")
+  const box = page.getByRole("combobox", { name: "Search" })
+  await expect(page.getByText("Recent rollouts").or(page.getByText("Actions")).first()).toBeVisible()
+  await box.fill("undo window")
+  await expect(page.getByRole("option", { name: /Undo window/ })).toBeVisible()
+  await page.keyboard.press("Enter")
+  await expect(page).toHaveURL(/\/settings\/security#pol-undo_minutes/)
+  const row = page.locator("#row-undo_minutes")
+  await expect(row).toBeVisible()
+  await expect(row).toHaveClass(/ring-accent/)
+  // the menu's own filter finds a setting by its label and Enter jumps
+  await page.getByLabel("Filter settings").fill("weekly report")
+  await page.getByLabel("Filter settings").press("Enter")
+  await expect(page).toHaveURL(/\/settings\/reports#pol-/)
+  // 1–4 on the Flow
+  await page.goto("/board")
+  await expect(page.getByRole("radiogroup", { name: "View" })).toBeVisible()
+  await page.locator("body").press("2")
+  await expect(page).toHaveURL(/view=kanban/)
+  await page.locator("body").press("4")
+  await expect(page).toHaveURL(/view=calendar/)
+  await page.locator("body").press("1")
+  await expect(page).not.toHaveURL(/view=/)
+  // a date's quick picks: Tomorrow is one day on from the Today button's date
+  await page.goto("/projects/new")
+  const trigger = page.getByRole("button", { name: /^Start date:/ })
+  await trigger.click()
+  await page.getByRole("button", { name: "Tomorrow" }).click()
+  const want = await page.evaluate(() => { const d = new Date(Date.now() + 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` })   // on the browser's own calendar
+  await expect(trigger).toHaveAttribute("data-value", want)
+  expectClean(errors)
+})
+
+test("@flow automations: build a rule in three columns, dry run it, see it fire on a stage move in its run log", async ({ page }) => {
+  const errors = watch(page)
+  const name = "E2E: tell the coordinators"
+  await signIn(page, "admin", "/settings/automations")
+  await expect(page.locator("h1").first()).toHaveText("Automations")
+  await page.getByRole("button", { name: "New rule" }).click()
+  const form = page.getByRole("form", { name: "Rule" })
+  await form.getByLabel("Name").fill(name)
+  await form.getByLabel("Trigger").selectOption("stage_entered")
+  await form.getByLabel("Add an action").selectOption("notify")
+  await form.getByRole("checkbox", { name: "Coordinator" }).check()
+  await form.getByRole("button", { name: "Dry run" }).click()
+  await expect(form.getByRole("region", { name: "Dry run" })).toContainText("in the last 30 days")
+  await form.getByRole("button", { name: "Save rule" }).click()
+  await expect(page.getByText(`Saved ${name}.`)).toBeVisible()
+  // a stage move on the first rollout fires it (past a gate, if the stage has one), and is undone after
+  const d = (await api<{ stage: string; next_stage: string }>(page, "GET", "/api/projects/1/flow")).body
+  const moved = await api<{ undo: string }>(page, "POST", "/api/projects/1/stage", { stage: d.next_stage, from_stage: d.stage, override: "e2e: automations" })
+  expect(moved.status).toBe(200)
+  await page.reload()
+  const row = page.getByRole("list", { name: "Rules" }).getByRole("listitem").filter({ hasText: name })
+  await expect(row).toContainText("ran 1 time")
+  await row.getByRole("button", { name: "Run log" }).click()
+  const log = page.getByRole("region", { name: `Run log: ${name}` })
+  await expect(log).toContainText(`Entered ${d.next_stage}`)
+  await expect(log.getByRole("link", { name: "EDR Rollout - Globex" })).toBeVisible()
+  expect((await api(page, "POST", moved.body.undo)).status).toBe(200)
+  await row.getByRole("button", { name: `Delete ${name}` }).click()
+  await page.locator("[data-confirm-yes]").click()
+  await expect(page.getByRole("list", { name: "Rules" }).getByRole("listitem").filter({ hasText: name })).toHaveCount(0)
+  expectClean(errors)
 })

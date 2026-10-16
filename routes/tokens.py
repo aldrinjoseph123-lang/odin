@@ -17,14 +17,21 @@ from core import app, permission_required, wants_json
 from db import PROJECT_OPEN_SQL, get_db, get_stage_names
 from routes.projects import load_project
 from security import token_hash
+from services.fields import named_values
 from services.audit import audit_log
 
 LIFETIMES = {"30": 30, "90": 90, "365": 365}
+SCOPES = ("read", "create")
 
 
 
-def token_required(view):
-    """Bearer token → the view, or 401. Never falls back to a session."""
+def token_required(view=None, *, scope="read"):
+    """Bearer token → the view, or 401. Never falls back to a session. A token
+    has one scope: `read` opens the GET routes below, `create` only the CRM intake
+    endpoint (services/intake.py); the wrong scope for a route is a 403."""
+    if view is None:
+        return lambda v: token_required(v, scope=scope)
+
     @wraps(view)
     def wrapped(*args, **kwargs):
         header = request.headers.get("Authorization", "")
@@ -34,6 +41,8 @@ def token_required(view):
             "SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?", (token_hash(raw), now)).fetchone()
         if not row:
             return jsonify(error="A valid API token is required (Authorization: Bearer <token>)"), 401
+        if row["scope"] != scope:
+            return jsonify(error=f"This token has the {row['scope']} scope; this route needs a token with the {scope} scope"), 403
         db = get_db()
         if (row["last_used_at"] or "")[:10] != now[:10]:
             # one audit row per token per day, naming what it read first; last_used_at keeps the rest
@@ -51,7 +60,8 @@ def token_required(view):
 def api_token_create():
     name = request.form.get("name", "").strip()[:80]
     days = LIFETIMES.get(request.form.get("days", ""))
-    if not name or not days:
+    scope = request.form.get("scope", "read")   # `create`: the CRM intake endpoint only (Settings › Integrations)
+    if not name or not days or scope not in SCOPES:
         flash("Name the token and pick how long it lives", "error")
         return redirect(url_for("settings_section", section="api"))
     raw = f"odin_{secrets.token_urlsafe(32)}"
@@ -59,10 +69,10 @@ def api_token_create():
     db = get_db()
     db.execute("DELETE FROM api_tokens WHERE (revoked_at IS NOT NULL OR expires_at < ?) AND created_at < ?",
                (now.isoformat(), (now - timedelta(days=90)).isoformat()))
-    cur = db.execute("INSERT INTO api_tokens (name, token_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-                     (name, token_hash(raw), session.get("user_name", "?"), now.isoformat(), (now + timedelta(days=days)).isoformat()))
+    cur = db.execute("INSERT INTO api_tokens (name, token_hash, created_by, created_at, expires_at, scope) VALUES (?, ?, ?, ?, ?, ?)",
+                     (name, token_hash(raw), session.get("user_name", "?"), now.isoformat(), (now + timedelta(days=days)).isoformat(), scope))
     db.commit()
-    audit_log("create_api_token", "api_token", cur.lastrowid, name, f"read-only, {days} days")
+    audit_log("create_api_token", "api_token", cur.lastrowid, name, f"{'read-only' if scope == 'read' else 'create (intake)'}, {days} days")
     if wants_json():
         # the page keeps it on screen with a Copy button until dismissed (review P1-2); never in a toast
         return jsonify(ok=True, messages=[f"Token for {name} made"], undo=None, location=None, token=raw)
@@ -86,9 +96,10 @@ def api_token_revoke(token_id):
 
 # ---- the read-only API -------------------------------------------------------
 
-def _project_json(p):
+def _project_json(p, fields):
+    """`fields`: the rollout's custom fields as {name: value} (services.fields.named_values)."""
     return {k: p[k] for k in ("id", "name", "client", "stage", "delivery_mode", "vendor_name", "product_name",
-                              "po_number", "start_date", "target_end_date", "created_at", "updated_at")} | {"owner": p["owner_name"]}
+                              "po_number", "start_date", "target_end_date", "created_at", "updated_at")} | {"owner": p["owner_name"], "fields": fields}
 
 
 @app.route("/api/v1/projects")
@@ -97,8 +108,9 @@ def api_v1_projects():
     """Active projects (?all=1 includes closed ones)."""
     where = "" if request.args.get("all") == "1" else f" AND {PROJECT_OPEN_SQL}"
     rows = get_db().execute(
-        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL" + where + " ORDER BY p.id").fetchall()
-    return jsonify(projects=[_project_json(p) for p in rows])
+        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL AND p.intake_pending = 0" + where + " ORDER BY p.id").fetchall()
+    named = named_values([p["id"] for p in rows])
+    return jsonify(projects=[_project_json(p, named[p["id"]]) for p in rows])
 
 
 @app.route("/api/v1/projects/<int:project_id>")
@@ -106,10 +118,12 @@ def api_v1_projects():
 def api_v1_project(project_id):
     """One project with its stage list and tasks."""
     p = load_project(project_id)
+    if p["intake_pending"]:   # an intake not yet confirmed is not a rollout to the readers
+        abort(404)
     db = get_db()
     tasks = db.execute("SELECT t.title, t.stage, t.done, t.due_date, u.name AS assignee FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
                        "WHERE t.project_id = ? ORDER BY t.id", (project_id,)).fetchall()
-    return jsonify(project=_project_json(p) | {"stages": get_stage_names(project_id)},
+    return jsonify(project=_project_json(p, named_values([project_id])[project_id]) | {"stages": get_stage_names(project_id)},
                    tasks=[dict(t) | {"done": bool(t["done"])} for t in tasks])
 
 
@@ -120,7 +134,8 @@ def api_v1_report(project_id):
     asks) and the frozen report data (stages, plan, health, RAID…) as the
     internal report shows them (P2-28). An old plain-text version has body only."""
     import json
-    load_project(project_id)
+    if load_project(project_id)["intake_pending"]:
+        abort(404)
     row = get_db().execute("SELECT version, kind, body, summary, next_steps, asks, data, created_by, created_at FROM project_reports "
                            "WHERE project_id = ? ORDER BY version DESC LIMIT 1", (project_id,)).fetchone()
     if row is None:

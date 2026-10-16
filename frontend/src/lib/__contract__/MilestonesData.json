@@ -1,0 +1,36 @@
+{
+ "can_delete": true,
+ "can_edit": true,
+ "items": [
+  {
+   "created_at": "2026-10-16T15:40:34.999622",
+   "created_by": "Priya Menon",
+   "customer_visible": false,
+   "date": "2026-10-13",
+   "done": false,
+   "done_at": null,
+   "id": 2,
+   "missed": true,
+   "name": "Security review signed off",
+   "project_id": 1,
+   "stage": "Sensor pilot"
+  },
+  {
+   "created_at": "2026-10-16T15:40:34.999622",
+   "created_by": "Priya Menon",
+   "customer_visible": true,
+   "date": "2026-10-28",
+   "done": false,
+   "done_at": null,
+   "id": 1,
+   "missed": false,
+   "name": "Pilot go-live",
+   "project_id": 1,
+   "stage": "Sensor pilot"
+  }
+ ],
+ "stages": [
+  "PO Received",
+  "Scoping"
+ ]
+}

@@ -3,6 +3,7 @@ import { CalendarDays } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { datePresets } from "@/lib/datePresets"
 import { fmtDate, localToday } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -33,7 +34,13 @@ export function DatePicker({ value, onChange, label, placeholder = "Pick a date"
           disabled={[...(min ? [{ before: parse(min)! }] : []), ...(max ? [{ after: parse(max)! }] : [])]}
           onSelect={(d) => d && pick(localToday(d))} autoFocus />
         <div className="flex items-center justify-between gap-2 border-t border-border p-2">
-          <button type="button" className="rounded-md px-2 py-1 text-[13px] hover:bg-muted" onClick={() => pick(localToday())}>Today</button>
+          <span className="flex flex-wrap gap-1">
+            <button type="button" className="rounded-md px-2 py-1 text-[13px] hover:bg-muted" onClick={() => pick(localToday())}>Today</button>
+            {/* quick picks from today (advice B4); one outside min/max is left out */}
+            {datePresets().filter((p) => (!min || p.value >= min) && (!max || p.value <= max)).map((p) => (
+              <button key={p.label} type="button" className="rounded-md px-2 py-1 text-[13px] hover:bg-muted" onClick={() => pick(p.value)}>{p.label}</button>
+            ))}
+          </span>
           {clearable && value && <button type="button" className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => pick("")}>Clear</button>}
         </div>
       </PopoverContent>

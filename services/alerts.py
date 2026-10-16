@@ -14,6 +14,7 @@ from constants import ALERT_TYPE_TITLES, DEFAULT_ALERT_TYPE_SETTINGS
 from policies import local_today
 from db import get_db, get_terminal_stage, stages_for_projects
 from services.analytics import sla_by_stage, stage_sla_state
+from services.milestones import missed_projects
 from services.notifications import notify_event, notify_users
 
 
@@ -100,7 +101,13 @@ def sync_alerts_to_db(alerts):
                 # email when the type says so (each person's email choices apply)
                 team = [r[0] for r in db.execute(
                     "SELECT pp.user_id FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.project_id = ? AND u.kind = 'internal'", (project_id,))]
-                notify_users([project["owner_id"], *team], "alert", project_id, f"{title}: {escape(project['name'])}", body, email=config["notify_email"])
+                kind, link = "alert", None
+                if alert_type == "milestone_missed":   # its own kind, and the page where it is marked reached
+                    kind, link = "milestone", f"/projects/{project_id}#milestones"
+                    names = [r[0] for r in db.execute(
+                        "SELECT name FROM milestones WHERE project_id = ? AND done_at IS NULL AND date < ? ORDER BY date LIMIT 5", (project_id, local_today().isoformat()))]
+                    body += f"<p>{', '.join(str(escape(n)) for n in names)}</p>"
+                notify_users([project["owner_id"], *team], kind, project_id, f"{title}: {escape(project['name'])}", body, link=link, email=config["notify_email"])
                 if config["notify_teams"]:
                     notify_event(project, title, body, channels={"email": False, "teams": True})
 
@@ -108,6 +115,9 @@ def sync_alerts_to_db(alerts):
         for alert_row in existing:
             if alert_row["project_id"] not in project_ids_with_alert:
                 resolve_alert(alert_type, alert_row["project_id"])
+
+    from services import rules   # the automations only time brings: an SLA breach, an overdue task, a missed milestone
+    rules.scan(alerts)
 
 
 def _bottlenecks(project_ids, thresholds, today):
@@ -168,8 +178,9 @@ def build_alerts(projects):
     today = local_today()
     stage_lists = stages_for_projects([p["id"] for p in projects])
     alerts = {"project_overdue": [], "project_due_soon": [], "stage_sla_breach": [], "stale": [],
-              "approval_waiting": [], "blocker_open": [], "task_unowned": [], "customer_quiet": []}
+              "approval_waiting": [], "blocker_open": [], "task_unowned": [], "customer_quiet": [], "milestone_missed": []}
     bottlenecks = _bottlenecks([p["id"] for p in projects], thresholds, today)
+    missed = missed_projects([p["id"] for p in projects], thresholds.get("milestone_missed", DEFAULT_ALERT_TYPE_SETTINGS["milestone_missed"])["threshold_days"], today)
     for p in projects:
         rows = stage_lists.get(p["id"]) or []
         terminal = rows[-1]["name"] if rows else None
@@ -186,6 +197,8 @@ def build_alerts(projects):
             alerts["stale"].append(p)
         for rule in bottlenecks.get(p["id"], {}):
             alerts[rule].append(p)
+        if p["id"] in missed:
+            alerts["milestone_missed"].append(p)
     return alerts
 
 

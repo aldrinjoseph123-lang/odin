@@ -14,7 +14,7 @@ from services import raid as raid_service
 RAG_ORDER = {"red": 0, "amber": 1, "green": 2, "done": 3}
 
 
-INTERNAL = ("reasons", "confidence", "baseline", "vs_baseline_days")
+INTERNAL = ("reasons", "confidence", "baseline", "vs_baseline_days", "csat")
 
 
 def plans(projects):
@@ -53,6 +53,13 @@ def build(projects, customer=False):
     for r in db.execute(f"SELECT project_id, version, kind, created_at FROM project_reports WHERE project_id IN ({marks}) ORDER BY version", ids):
         latest_of[r["project_id"]] = r
     planned = plans(projects)
+    from services.fields import definitions, values_for
+    names = {f["id"]: f["name"] for f in definitions(customer)}
+    field_values = values_for(ids, customer=customer)   # the customer cut: only the fields marked for them
+    from services.asks import averages
+    csat = averages(ids)   # the customer's rating at sign-off (services/asks.py): internal only
+    from services import milestones
+    marks_of = milestones.items_for(ids, customer=customer, today=today.isoformat())   # the customer cut: only those marked for them
     for p in projects:
         pl, every = planned[p["id"]]
         items = [r for r in every if r["customer_visible"]] if customer else every
@@ -74,6 +81,9 @@ def build(projects, customer=False):
             "vs_target_days": f["vs_target_days"], "vs_baseline_days": f["vs_baseline_days"], "has_plan": pl["has_plan"],
             "open": {k: sum(1 for r in open_items if r["kind"] == k) for k in ("blocker", "issue", "risk")},
             "report": None if latest is None else {"version": latest["version"], "kind": latest["kind"], "created_at": latest["created_at"]},
+            "milestones": milestones.summary_of(marks_of[p["id"]], today.isoformat()),
+            "fields": {names[fid]: v for fid, v in field_values[p["id"]].items()},
+            "csat": csat[p["id"]][0] if p["id"] in csat else None,
         })
         risks += [{"project_id": p["id"], "project": p["name"], "kind": r["kind"], "title": r["title"], "impact": r["impact"],
                    "status": r["status"], "owner_name": r["owner_name"], "due_date": r["due_date"]}
@@ -89,6 +99,10 @@ def build(projects, customer=False):
         "blockers": sum(r["open"]["blocker"] for r in rows), "finishing_30d": sum(1 for r in rows if r["forecast"] and r["forecast"] <= soon),
         "no_plan": sum(1 for r in rows if not r["has_plan"]),
     }
+    # rated rollouts have mostly closed: the average is over every live rollout rated, not only the open rows
+    rated = {} if customer else averages()
+    summary["csat"] = round(sum(v[0] for v in rated.values()) / len(rated), 1) if rated else None
+    summary["csat_count"] = len(rated)
     if customer:
         for r in rows:
             for k in INTERNAL:

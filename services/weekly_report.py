@@ -22,7 +22,7 @@ import graph
 # request and base64 adds a third, so the PDFs together stay under 3 MB (P2-19).
 ATTACH_LIMIT = 3 * 1024 * 1024
 from core import external_url
-from db import PROJECT_OPEN_SQL, get_db, get_setting
+from db import PROJECT_OPEN_SQL, get_db
 from policies import local_today, policy
 from security import file_stem
 from services.alerts import build_alerts, project_states
@@ -142,7 +142,7 @@ def send(to=None, teams=True):
             failed.append(f"{address}: {error}")
     posted = []
     if teams and policy("report_teams"):
-        if get_setting("notify_teams_enabled") == "1":
+        if policy("notify_teams_enabled"):
             ok, _ = graph.send_teams_message(f"<b>{escape(subject)}</b><br>" + "<br>".join(escape(s) for s in summary))
             posted.append("Teams channel" if ok else "Teams channel failed")
         if policy("teams_webhook_url"):

@@ -1,4 +1,4 @@
-import type { FlowState } from "@/lib/api"
+import type { FieldKind, FieldValue, FlowState } from "@/lib/api"
 
 // Pure formatting shared by the flow screen and the projects list; tested in
 // src/lib/format.test.ts, which is why nothing here touches the DOM.
@@ -313,7 +313,8 @@ export function minutesText(m: number): string {
 }
 
 // A document template's {placeholders} (services/doc_templates.fill): known ones filled, others left as typed.
-export const fillPlaceholders = (text: string, values: Record<string, string>) => text.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? values[k] : m))
+// {client}, {project}… and {field:Name} (a custom field), as services/doc_templates.fill reads them
+export const fillPlaceholders = (text: string, values: Record<string, string>) => text.replace(/\{(\w+|field:[^{}\n]{1,60})\}/g, (m, k: string) => (k in values ? values[k] : m))
 
 // Who besides the person can see their time on Odin (policy activity_roles)
 export function viewersText(roles: string[]) {
@@ -411,3 +412,23 @@ export const isDay = (v: string | null): v is string => {
   return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v
 }
 export const isMonth = (v: string | null): v is string => !!v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v)
+
+// what holds a move out of a stage (services/gates.py): "2 open tasks · Client PO missing"
+export const gateText = (reasons: { text: string }[]) => reasons.map((r) => r.text).join(" · ")
+
+// ---- custom fields (components/FieldValues) ----
+// A value as a person reads it
+export function fieldText(kind: FieldKind, value: FieldValue): string {
+  if (value === null || value === "") return "—"
+  if (kind === "yesno") return value ? "Yes" : "No"
+  if (kind === "date") return fmtDate(String(value))
+  if (kind === "number") return Number(value).toLocaleString("en-GB", { maximumFractionDigits: 6 })
+  return String(value)
+}
+
+// A value as an input holds it: "" for none, yes / no for a yes-no
+export function fieldInput(kind: FieldKind, value: FieldValue): string {
+  if (value === null) return ""
+  if (kind === "yesno") return value ? "yes" : "no"
+  return String(value)
+}

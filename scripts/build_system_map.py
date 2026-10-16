@@ -58,6 +58,7 @@ FOLDERS = {
 # Files whose first lines do not describe them.
 FILES = {
     "requirements.txt": "Python dependencies, pinned.",
+    "requirements.lock": "The same pins with the sha256 of every file production installs (scripts/make_lock.py); the Dockerfile installs from it.",
     "Dockerfile": "Two-stage image: Node builds the React bundle, then a slim Python image runs gunicorn as an unprivileged user.",
     "docker-compose.yml": "The base stack: app, scheduler and nginx sharing the odin-data volume.",
     "docker-compose.host-tunnel.yml": "Production overlay: nginx on 127.0.0.1:8080 for the cloudflared service on the host.",

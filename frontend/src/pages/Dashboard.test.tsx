@@ -30,6 +30,12 @@ describe("Dashboard", () => {
     expect(screen.getByText("−1")).toBeInTheDocument()                             // overdue: 1 vs 2
   })
 
+  it("the timeline draws each milestone as a diamond on its day, its state in words", async () => {
+    mount()
+    expect(await screen.findByRole("img", { name: "Milestone, ahead: Pilot go-live, 15 Oct" })).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: /^Milestone, reached: Kick-off held/ })).toBeInTheDocument()
+  })
+
   it("a tile opens the rollouts behind its number; a widget expands with its data as a table", async () => {
     const user = userEvent.setup()
     mount()

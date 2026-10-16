@@ -28,7 +28,7 @@ class ResendBase(FixBase):
 
 class ResendTestCase(ResendBase):
     def test_off_by_default_sign_in_mail_stays_on_microsoft(self):
-        self.sql("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+        self.sql("INSERT INTO settings (key, value) VALUES ('policy.notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
         with patch("services.resend._post") as post, patch("graph.send_mail", return_value=(True, None)) as mail:
             app_module.app.test_client().post("/auth/reset", data={"email": "pm@corp.example"})
         post.assert_not_called()

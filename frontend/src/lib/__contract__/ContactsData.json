@@ -30,12 +30,12 @@
      "name": "Fortinet",
      "used": [
       {
-       "id": 18,
-       "name": "Firewall refresh - Acme Bank"
+       "id": 24,
+       "name": "Branch SD-WAN refresh"
       },
       {
-       "id": 6,
-       "name": "Firewall refresh - Hooli"
+       "id": 18,
+       "name": "Firewall refresh - Acme Bank"
       }
      ]
     }

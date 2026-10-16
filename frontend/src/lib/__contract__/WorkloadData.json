@@ -1,0 +1,73 @@
+{
+ "capacity_default": 30,
+ "heavy": 0,
+ "over": 1,
+ "people": [
+  {
+   "avatar_url": null,
+   "capacity": 30,
+   "custom_capacity": false,
+   "id": 1,
+   "name": "Admin",
+   "peak": 320,
+   "role": "Admin",
+   "rollouts": 22,
+   "weeks": [
+    {
+     "hours": 96.0,
+     "level": "over",
+     "pct": 320,
+     "pm_hours": 88,
+     "task_hours": 8.0,
+     "tasks": 4,
+     "week": "2026-10-12"
+    },
+    {
+     "hours": 92.0,
+     "level": "over",
+     "pct": 307,
+     "pm_hours": 88,
+     "task_hours": 4.0,
+     "tasks": 2,
+     "week": "2026-10-19"
+    }
+   ]
+  },
+  {
+   "avatar_url": null,
+   "capacity": 30,
+   "custom_capacity": false,
+   "id": 4,
+   "name": "Sara Lind",
+   "peak": 60,
+   "role": "Contributor",
+   "rollouts": 0,
+   "weeks": [
+    {
+     "hours": 18.0,
+     "level": "ok",
+     "pct": 60,
+     "pm_hours": 0,
+     "task_hours": 18.0,
+     "tasks": 7,
+     "week": "2026-10-12"
+    },
+    {
+     "hours": 2.0,
+     "level": "ok",
+     "pct": 7,
+     "pm_hours": 0,
+     "task_hours": 2.0,
+     "tasks": 1,
+     "week": "2026-10-19"
+    }
+   ]
+  }
+ ],
+ "today": "2026-10-16",
+ "warn_pct": 90,
+ "weeks": [
+  "2026-10-12",
+  "2026-10-19"
+ ]
+}

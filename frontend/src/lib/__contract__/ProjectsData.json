@@ -5,12 +5,33 @@
   "Outsourced"
  ],
  "dir": "desc",
+ "field_filters": [
+  {
+   "choices": [
+    "UAE",
+    "KSA"
+   ],
+   "id": 1,
+   "name": "Region"
+  }
+ ],
+ "fields": [
+  {
+   "id": 1,
+   "kind": "choice",
+   "name": "Region"
+  }
+ ],
  "page": 1,
+ "pending": 1,
  "rows": [
   {
    "client": "Hooli",
    "closed": false,
    "delivery_mode": "Distribution/MSSP",
+   "fields": [
+    "Qatar"
+   ],
    "id": 14,
    "name": "Email security - Hooli",
    "open_tasks": 0,
@@ -24,7 +45,7 @@
     "Scoping"
    ],
    "state": "on_track",
-   "target_end_date": "2027-02-12",
+   "target_end_date": "2027-02-13",
    "team": [
     {
      "avatar_url": null,
@@ -38,13 +59,16 @@
     }
    ],
    "total_tasks": 5,
-   "updated_at": "2026-10-15T19:13:43.259674",
+   "updated_at": "2026-10-16T15:40:34.997423",
    "vendor_name": "Palo Alto"
   },
   {
    "client": "Wayne Retail",
    "closed": false,
    "delivery_mode": "Distribution/MSSP",
+   "fields": [
+    "Qatar"
+   ],
    "id": 11,
    "name": "SIEM onboarding - Wayne Retail",
    "open_tasks": 0,
@@ -58,7 +82,7 @@
     "Scoping"
    ],
    "state": "overdue",
-   "target_end_date": "2026-09-05",
+   "target_end_date": "2026-09-06",
    "team": [
     {
      "avatar_url": null,
@@ -72,7 +96,7 @@
     }
    ],
    "total_tasks": 3,
-   "updated_at": "2026-10-15T19:13:43.227693",
+   "updated_at": "2026-10-16T15:40:34.962345",
    "vendor_name": "Palo Alto"
   }
  ],

@@ -12,7 +12,11 @@ The forecast answers "when will this really finish?":
 * the current stage ends at the later of today and its start plus its
   planned length;
 * each stage after it starts when the one before ends and lasts its planned
-  length — the plan's, else the stage's SLA, else the workspace default.
+  length — the plan's, else the stage's SLA, else the workspace default;
+* a running or coming stage ends no sooner than its latest open task that
+  waits on other open work, chained through the task links
+  (services/task_links.py): a late predecessor moves the forecast, and the
+  stage says which task did it (forecast_reason, and a health reason).
 
 Lengths count working days when the workspace does (services/workdays.py);
 gaps between dates (slip, days after target) are calendar days. The last
@@ -24,7 +28,7 @@ from datetime import date, datetime
 
 from db import get_db, touch_project
 from policies import local_today, policy, local_date
-from services import workdays
+from services import task_links, workdays
 from services.analytics import _parse, clock, stage_timeline, working_days
 
 ISO = "%Y-%m-%d"
@@ -78,10 +82,35 @@ def suggested_plan(rows, start, default_days, cal=None):
     return out
 
 
-def build(project, rows=None, notes=None, risks=None):
+def _chained(project, names, tasks, links, today):
+    """{stage name: (finish, task, late root or None)}: per stage, the open
+    task waiting on open work that finishes last, chained through the links."""
+    held = task_links.blocked_by(tasks, links, today)
+    chain = task_links.chained_finish(tasks, links, today) if held else {}
+    out = {}
+    for t in tasks:
+        end, root = chain.get(t["id"], (None, None))
+        if t["id"] not in held or end is None:
+            continue
+        stage = t["stage"] if t["stage"] in names else project["stage"]   # no stage: the current one
+        if stage not in out or end > out[stage][0]:
+            out[stage] = (end, t, root)
+    return out
+
+
+def _push_reason(stage, task, root, today):
+    if root is None:
+        return None   # dates beyond the plan, nothing late: the forecast follows, health is not touched
+    late = (today - _d(root["due_date"])).days
+    via = f", which waits on {root['title']} ({late} d late)" if root["id"] != task["id"] else f" ({late} d late)"
+    return f"{stage} is forecast later: {task['title']} waits on open work{via}."
+
+
+def build(project, rows=None, notes=None, risks=None, tasks=None):
     """The plan, the actuals, the forecast and the health of one project.
     `rows` are its project_stages rows, `notes` its status notes, `risks` its
-    open RAID items (for health); each is read when not passed."""
+    open RAID items (for health), `tasks` its tasks (for the chains); each is
+    read when not passed."""
     db = get_db()
     pid = project["id"]
     if rows is None:
@@ -93,6 +122,10 @@ def build(project, rows=None, notes=None, risks=None):
     today = local_today()
     default_days = policy("default_stage_days")
     names = [r["name"] for r in rows]
+    links = task_links.links_for(pid, db)
+    if links and tasks is None:
+        tasks = db.execute("SELECT id, title, done, due_date, stage FROM tasks WHERE project_id = ?", (pid,)).fetchall()
+    pushed = _chained(project, names, tasks, links, today) if links else {}
     cur = names.index(project["stage"]) if project["stage"] in names else 0
     clk = clock()
     cal = clk[0]
@@ -126,6 +159,10 @@ def build(project, rows=None, notes=None, risks=None):
             f_start = prev_end or today
             f_end = workdays.add(f_start, length, cal)
             a_start = a_end = a_days = None
+        reason = None
+        if status in ("current", "next") and i != last and r["name"] in pushed and pushed[r["name"]][0] > f_end:
+            f_end, task, root = pushed[r["name"]]
+            reason = _push_reason(r["name"], task, root, today)
         prev_end = f_end
         compare = _d(r["base_end"]) or p_end
         stages.append({
@@ -135,6 +172,7 @@ def build(project, rows=None, notes=None, risks=None):
             "planned_days": length, "actual_days": a_days,
             "slip_days": _days(compare, f_end) if compare else None,
             "suggested_start": suggested[r["id"]]["plan_start"], "suggested_end": suggested[r["id"]]["plan_end"],
+            "forecast_reason": reason,
         })
 
     finish = {
@@ -157,7 +195,12 @@ def build(project, rows=None, notes=None, risks=None):
     closed = bool(stages) and cur == last
     pct = 100 if closed else round(100 * done / total)
 
-    health = _health(project, stages, cur, finish, risks, today, closed, has_plan)
+    # a stage gate that holds the move once the stage is due to end (services/gates.py)
+    gate = None
+    if not closed and c and cur + 1 < len(rows) and _d(c["forecast_end"]) and _d(c["forecast_end"]) <= today:
+        from services import gates
+        gate = gates.summary(gates.blocked(project, names[cur + 1], rows)) or None
+    health = _health(project, stages, cur, finish, risks, today, closed, has_plan, gate)
     return {"stages": stages, "finish": finish, "health": health, "pct_complete": pct, "has_plan": has_plan,
             "warning": past_target(max((s["plan_end"] for s in stages if s["plan_end"]), default=None), project["target_end_date"]),
             # every visit, revisits included, for the report's history
@@ -167,8 +210,9 @@ def build(project, rows=None, notes=None, risks=None):
             "calendar": {"working": policy("count_working_days"), "week": sorted(cal[0]), "off": sorted(d.isoformat() for d in cal[1])}}
 
 
-def _health(project, stages, cur, finish, risks, today, closed, has_plan):
-    """Red / amber / green with the reasons, and how far to trust the forecast."""
+def _health(project, stages, cur, finish, risks, today, closed, has_plan, gate=None):
+    """Red / amber / green with the reasons, and how far to trust the forecast.
+    `gate`: what holds a move that is due now (internal; the customer's health passes none)."""
     if closed:
         return {"rag": "done", "reasons": ["The rollout has reached its last stage."], "confidence": "high"}
     amber, red = policy("rag_amber_days"), policy("rag_red_days")
@@ -188,10 +232,13 @@ def _health(project, stages, cur, finish, risks, today, closed, has_plan):
     if c and c["sla_days"] and c["actual_days"] is not None and c["actual_days"] > c["sla_days"]:
         # whole days, as the stage chips count them ("6 over SLA"), so one fact reads one way everywhere
         reasons_amber.append(f"{c['name']} is {round(c['actual_days'] - c['sla_days'])} d over its {c['sla_days']} d SLA.")
+    if gate and c:
+        reasons_amber.append(f"Due to leave {c['name']}, held by its gate: {gate}.")
     blockers = [r for r in risks if r["kind"] == "blocker"]
     high = [r for r in risks if r["kind"] in ("risk", "issue") and r["impact"] == "high"]
     if blockers:
         reasons_red.append(f"{len(blockers)} open blocker{'s' if len(blockers) != 1 else ''}.")
+    reasons_amber += [s["forecast_reason"] for s in stages if s.get("forecast_reason")]   # a late predecessor, by name
     if high:
         reasons_amber.append(f"{len(high)} open high-impact risk{'s' if len(high) != 1 else ''} or issue{'s' if len(high) != 1 else ''}.")
     rag = "red" if reasons_red else "amber" if reasons_amber else "green"

@@ -188,10 +188,11 @@ def _meta(project):
 
 
 def _values(project):
+    from services.fields import placeholders as fields_placeholders
     from services.report_pdf import _fmt
     return {"project": project["name"], "client": project["client"], "company": policy("company_name"), "pm": project["owner_name"],
             "po": project["po_number"] or "", "stage": project["stage"], "target": _fmt(project["target_end_date"]), "forecast": "",
-            "date": _fmt(local_today().isoformat())}
+            "date": _fmt(local_today().isoformat())} | fields_placeholders(project["id"])   # {field:Name}: the customer's fields only
 
 
 def draft(project, template_id=None):
@@ -212,6 +213,9 @@ def draft(project, template_id=None):
                 delivered.append(f"{s['name']}: completed {_fmt(s['actual_end'])}" + (f" ({n} task{'s' if n != 1 else ''})" if n else ""))
         delivered += [f"Delivered: {d['filename']}" for d in db.execute(
             "SELECT filename FROM documents WHERE project_id = ? AND category = 'Deliverable' AND deleted_at IS NULL ORDER BY uploaded_at", (pid,))]
+        # the milestones reached that the customer may see (a recorded scope is its own table of what was delivered)
+        from services import milestones
+        delivered += milestones.delivered_lines(pid)
     outstanding = [t["title"] + (f" (due {_fmt(t['due_date'])})" if t["due_date"] else "") for t in tasks if not t["done"]]
     outstanding += [r["title"] for r in raid_service.items(pid, customer=True) if r["open"] and r["kind"] != "decision"]
     counts = {k: sum(1 for x in items if x["status"] == k) for k in ("delivered", "partial", "descoped")}

@@ -8,6 +8,7 @@ Depends on db (for the admin on/off toggles and the owner's email) and graph.
 from flask import url_for
 
 from db import get_db, get_setting
+from policies import policy
 from services import outbox
 
 
@@ -47,18 +48,75 @@ def _plain(html):
     return unescape(re.sub(r"\s+", " ", re.sub(r"<br\s*/?>", " ", re.sub(r"<(?!br)[^>]+>", "", html or "")))).strip()
 
 
+def delivery(user, kind):
+    """How this person takes `kind` by email and Teams (Account page): "instant",
+    "summary" (held for the daily summary) or "off"."""
+    if kind in (user["email_off"] or "").split(","):
+        return "off"
+    return "summary" if kind in (user["email_summary"] or "").split(",") else "instant"
+
+
+def watch_of(project_id, mode):
+    """Who has muted (or follows) this rollout."""
+    return {r[0] for r in get_db().execute("SELECT user_id FROM rollout_watch WHERE project_id = ? AND mode = ?", (project_id, mode))}
+
+
+def watch_state(project_id, user_id, kind):
+    """Mute or follow (B3): a participant may mute the rollout, staff not on it
+    may follow it. `can` is which one this person has, `on` whether it is set."""
+    db = get_db()
+    on_it = db.execute("SELECT 1 FROM project_participants WHERE project_id = ? AND user_id = ?", (project_id, user_id)).fetchone()
+    can = "mute" if on_it else "follow" if kind == "internal" else None
+    row = db.execute("SELECT mode FROM rollout_watch WHERE project_id = ? AND user_id = ?", (project_id, user_id)).fetchone()
+    return {"can": can, "on": bool(can and row and row["mode"] == can)}
+
+
+def set_watch(project_id, user_id, mode, on):
+    """Mute or follow (mode) the rollout, or stop (on False). No commit."""
+    db = get_db()
+    db.execute("DELETE FROM rollout_watch WHERE project_id = ? AND user_id = ?", (project_id, user_id))
+    if on:
+        from datetime import datetime
+        db.execute("INSERT INTO rollout_watch (user_id, project_id, mode, created_at) VALUES (?, ?, ?, ?)",
+                   (user_id, project_id, mode, datetime.utcnow().isoformat()))
+
+
+def next_step(user, project_id):
+    """The reader's own next step on this rollout (B18): their open tasks
+    there, the three soonest. A partner or customer reads them as what we need
+    from them (their asks, services/asks.py, are tasks assigned to them)."""
+    from markupsafe import escape
+    rows = get_db().execute("SELECT title, due_date FROM tasks WHERE project_id = ? AND assignee_id = ? AND done = 0 "
+                            "ORDER BY due_date IS NULL, due_date, id LIMIT 4", (project_id, user["id"])).fetchall()
+    if not rows:
+        return ""
+    items = "".join(f"<li>{escape(r['title'])}{' (due ' + r['due_date'] + ')' if r['due_date'] else ''}</li>" for r in rows[:3])
+    more = "<li>and more on the rollout page</li>" if len(rows) > 3 else ""
+    head = "What we need from you" if user["kind"] == "external" else "Your next step on this rollout"
+    return f"<p><b>{head}</b></p><ul>{items}{more}</ul>"
+
+
 def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user_id=None, link=None, email=True, teams=True):
     """The one way a person hears about an event. Every recipient gets an
-    in-app notification; those with an address who have not switched this
-    kind off also get a mail (when mail is on) and, staff only, a card in
-    their own chat with the Odin PMS Teams app (when Teams messages are on:
-    every notification, mailed or not, as Settings says; partners and
-    customers sit in other tenants). Recipients are de-duplicated and the
-    person who caused the event is never told about their own action.
-    `email=False` keeps it off mail, `teams=False` off Teams. Mail and Teams
-    go through the outbox: the request never waits on Microsoft."""
+    in-app notification; those with an address who take this kind (Account
+    page: at once, in the daily summary, or off) also get a mail (when mail is
+    on) and, staff only, a card in their own chat with the Odin PMS Teams app
+    (when Teams messages are on: every notification, mailed or not, as
+    Settings says; partners and customers sit in other tenants). A rollout's
+    events also reach the staff who follow it (FOLLOW_KINDS); someone who
+    muted the rollout still sees it in the bell, marked muted, and gets no
+    mail or Teams from it. Recipients are de-duplicated and the person who
+    caused the event is never told about their own action. `email=False`
+    keeps it off mail, `teams=False` off Teams. Mail and Teams go through the
+    outbox: the request never waits on Microsoft."""
     from datetime import datetime
     from flask import has_request_context, session
+    from constants import FOLLOW_KINDS
+    if project_id and kind in FOLLOW_KINDS:
+        # followers are staff only (the follow route refuses anyone else)
+        user_ids = [*user_ids, *(r[0] for r in get_db().execute(
+            "SELECT w.user_id FROM rollout_watch w JOIN users u ON u.id = w.user_id WHERE w.project_id = ? AND w.mode = 'follow' AND u.kind = 'internal' ORDER BY w.user_id",
+            (project_id,)))]
     ids = []
     for uid in user_ids:
         if uid and uid != exclude_user_id and uid not in ids:
@@ -71,23 +129,75 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
     link = link or (f"/board?rollout={project_id}" if project_id else None)
     title, body = _plain(subject), _plain(message_html)
     marks = ",".join("?" for _ in ids)
-    rows = db.execute(f"SELECT id, email, kind, email_off FROM users WHERE active = 1 AND id IN ({marks})", ids).fetchall()
+    rows = db.execute(f"SELECT id, email, kind, email_off, email_summary FROM users WHERE active = 1 AND id IN ({marks})", ids).fetchall()
+    muted = watch_of(project_id, "mute") if project_id else set()
     for r in rows:
         db.execute(
-            "INSERT INTO notifications (user_id, project_id, kind, title, body, link, actor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (r["id"], project_id, kind, title[:300], body[:2000], link, actor, now.isoformat()),
+            "INSERT INTO notifications (user_id, project_id, kind, title, body, link, actor, created_at, muted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (r["id"], project_id, kind, title[:300], body[:2000], link, actor, now.isoformat(), int(r["id"] in muted)),
         )
     db.commit()
     # the per-kind choices on the Account page ("Tell me about") cover email and Teams alike
-    wanted = [r for r in rows if r["email"] and kind not in (r["email_off"] or "").split(",")]
-    for r in wanted if email and get_setting("notify_email_enabled") == "1" else []:
-        # every mail links into Odin: the rollout, or the page the bell links to (P2-21)
+    wanted = [r for r in rows if r["email"] and r["id"] not in muted and delivery(r, kind) != "off"]
+    held = [r for r in wanted if delivery(r, kind) == "summary"]
+    held_ids = {r["id"] for r in held}
+    if held and ((email and policy("notify_email_enabled")) or (teams and policy("notify_teams_chat_enabled"))):
+        project = db.execute("SELECT name FROM projects WHERE id = ?", (project_id,)).fetchone() if project_id else None
+        for r in held:   # the outbox keeps it for the daily summary (send_summaries, at the digest time)
+            outbox.add("held", user_id=r["id"], project_id=project_id, project=project["name"] if project else None,
+                       title=title, text=body[:600], mail=email, teams=teams)
+    wanted = [r for r in wanted if r["id"] not in held_ids]
+    for r in wanted if email and policy("notify_email_enabled") else []:
+        # every mail links into Odin: the rollout, or the page the bell links to (P2-21); and says what is the reader's to do (B18)
         if project_id:
-            queue_mail(r, title, message_html, _rollout_path(project_id, link if link and link.startswith("/projects/") else None), "Open the rollout in Odin")
+            queue_mail(r, title, message_html + next_step(r, project_id), _rollout_path(project_id, link if link and link.startswith("/projects/") else None), "Open the rollout in Odin")
         else:
             queue_mail(r, title, message_html, link)
-    for r in [r for r in wanted if r["kind"] != "external"] if teams and get_setting("notify_teams_chat_enabled") == "1" else []:
+    for r in [r for r in wanted if r["kind"] != "external"] if teams and policy("notify_teams_chat_enabled") else []:
         outbox.add("teams", to=r["email"], title=title, text=body, link=_odin_url(project_id, link))
+
+
+def send_summaries(db=None):
+    """The daily summary (B2): what the outbox held for each person, one mail
+    grouped by rollout (with their next step on each) and, for staff with Teams
+    messages on, one card. Run by the scheduler's digest job; returns how many
+    people it summarised. Needs a request context (links)."""
+    import json
+    from datetime import datetime
+    from markupsafe import escape
+    from core import public_base
+    db = db or get_db()
+    held = db.execute("SELECT id, payload FROM outbox WHERE kind = 'held' AND sent_at IS NULL ORDER BY id").fetchall()
+    per = {}
+    for h in held:
+        p = json.loads(h["payload"])
+        per.setdefault(p["user_id"], []).append({**p, "row": h["id"]})
+    now = datetime.utcnow().isoformat()
+    done = 0
+    for uid, items in per.items():
+        user = db.execute("SELECT id, email, kind, active FROM users WHERE id = ?", (uid,)).fetchone()
+        if user and user["active"] and user["email"]:
+            groups = {}
+            for it in items:
+                groups.setdefault((it["project_id"], it["project"]), []).append(it)
+            parts = []
+            for (pid, name), group in groups.items():
+                head = escape(name) if name else "Elsewhere in Odin"
+                if pid and user["kind"] != "external":
+                    head = f'<a href="{public_base()}/projects/{pid}">{head}</a>'
+                lines = "".join(f"<li><b>{escape(it['title'])}</b>{' — ' + escape(it['text']) if it['text'] else ''}</li>" for it in group)
+                parts.append(f"<h3>{head}</h3><ul>{lines}</ul>" + (next_step(user, pid) if pid else ""))
+            n = len(items)
+            subject = f"Odin daily summary: {n} update{'s' if n != 1 else ''} on {len(groups)} rollout{'s' if len(groups) != 1 else ''}"
+            if policy("notify_email_enabled", db) and any(it.get("mail", True) for it in items):
+                queue_mail(user, subject, "".join(parts), "/board" if user["kind"] == "external" else "/dashboard", "Open Odin")
+            if user["kind"] != "external" and policy("notify_teams_chat_enabled", db) and any(it.get("teams", True) for it in items):
+                outbox.add("teams", to=user["email"], title=subject, text="; ".join(sorted({it["project"] or "Odin" for it in items})), link=f"{public_base()}/dashboard")
+            done += 1
+        # taken, whether sent or not (a person gone or without an address meanwhile): never summarised twice
+        db.execute(f"UPDATE outbox SET sent_at = ? WHERE id IN ({','.join('?' * len(items))})", (now, *[it["row"] for it in items]))
+    db.commit()
+    return done
 
 
 def _odin_url(project_id, link):
@@ -107,7 +217,7 @@ def report_mail_failure(error, alias=False, teams=False):
     from datetime import datetime, timedelta
     from markupsafe import escape
     from db import set_setting
-    if not teams and get_setting("notify_email_enabled") != "1":
+    if not teams and not policy("notify_email_enabled"):
         return
     key = "teams_failure_reported_at" if teams else "mail_alias_reported_at" if alias else "mail_failure_reported_at"
     last, now = get_setting(key), datetime.utcnow()
@@ -177,14 +287,15 @@ def notify_event(project, subject, message_html, channels=None):
     # alert digests and creation pass a bare {"owner_id"}; only a real project row has an id to link to
     has_id = "id" in project.keys()
 
-    if channels.get("email") and get_setting("notify_email_enabled") == "1":
+    if channels.get("email") and policy("notify_email_enabled"):
         owner = get_db().execute("SELECT id, email, kind FROM users WHERE id = ?", (project["owner_id"],)).fetchone()
         from flask import has_request_context, session
         acting = session.get("user_id") if has_request_context() else None
-        if owner and owner["email"] and owner["id"] != acting:   # never mail someone about their own action
+        muted = has_id and owner is not None and owner["id"] in watch_of(project["id"], "mute")   # B3: the bell only
+        if owner and owner["email"] and owner["id"] != acting and not muted:   # never mail someone about their own action
             queue_mail(owner, _plain(subject), message_html, _rollout_path(project["id"]) if has_id else None, "Open the rollout in Odin")
 
-    if channels.get("teams") and get_setting("notify_teams_enabled") == "1":
+    if channels.get("teams") and policy("notify_teams_enabled"):
         href = external_url("project_detail", project_id=project["id"]) if has_id else None
         outbox.add("teams", to="channel", html=f"<b>{subject}</b><br>{message_html}" + (f'<br><a href="{href}">Open in Odin</a>' if href else ""))
         # the same event to a Teams Workflows webhook, when one is set (Settings › Notifications)

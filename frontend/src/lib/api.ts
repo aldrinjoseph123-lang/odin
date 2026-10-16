@@ -167,9 +167,10 @@ export function logout() {
 
 export type Nav = { active_alert_count: number; my_open_task_count: number; unread_notifications: number; projects_nav_url: string }
 
-// from_stage: the stage the page showed; the server answers 409 when the rollout has moved on since
-export function changeStage(projectId: number, stage: string, note = "", fromStage?: string) {
-  return post<{ ok: true; undo: string }>(`/api/projects/${projectId}/stage`, { stage, note, from_stage: fromStage })
+// from_stage: the stage the page showed; the server answers 409 when the rollout has moved on since.
+// override: the typed reason for moving past a stage gate (Admin or the project manager)
+export function changeStage(projectId: number, stage: string, note = "", fromStage?: string, override?: string) {
+  return post<{ ok: true; undo: string }>(`/api/projects/${projectId}/stage`, { stage, note, from_stage: fromStage, override })
 }
 
 // ---- Flow: first screen ----
@@ -185,10 +186,40 @@ export type FlowRow = {
   idle_days: number | null; stale: boolean
   // the Kanban's drag: the one stage a drop may go to, and whether this person may make the move
   start_date: string | null; next_stage: string | null; can_move: boolean; signoff_needed: boolean
+  // a stage gate holds the next move (staff only; services/gates.py)
+  gate_blocked: boolean; gate_reasons: string[]
 }
-export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState | "late_tasks", number>; can_move: boolean; today: string }
+export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState | "late_tasks", number>; can_move: boolean; today: string
+  pending?: PendingIntakeRow[] }   // CRM intakes in the List's holding lane (staff only; counted nowhere)
 export type FlowStage = { name: string; status: "done" | "current" | "next"; sla_days: number | null; entered_at: string | null; days: number | null }
-export type FlowTask = { id: number; title: string; done: boolean; done_at?: string | null; due_date: string | null; assignee: string | null; assignee_id: number | null; assignee_avatar_url: string | null; stage: string }
+// waits_on: the tasks it waits on (finish-to-start); blocked_by: the open ones among them, and how late each is
+export type Recurrence = "weekly" | "fortnightly" | "monthly"
+export type TaskWait = { id: number; title: string; late_by: number }
+export type FlowTask = { id: number; title: string; done: boolean; done_at?: string | null; due_date: string | null; assignee: string | null; assignee_id: number | null; assignee_avatar_url: string | null; stage: string
+  estimate_hours?: number | null; waits_on?: number[]; blocked_by?: TaskWait[]
+  recurrence?: Recurrence | null; recur_until?: string | null } & TaskAsk
+// What a task asks for (services/asks.py): a tick, a document of one category, or a short form.
+// On someone outside (a customer, reseller or contractor) it is an ask: theirs alone.
+export type AskKind = "task" | "upload" | "form"
+export type AskQuestionKind = "text" | "number" | "date" | "choice" | "yesno"
+export type AskQuestion = { key?: string; label: string; kind: AskQuestionKind; choices?: string[]; required?: boolean }
+export type TaskAsk = { kind?: AskKind; ask_category?: string | null; questions?: AskQuestion[] }
+export type Ask = {
+  id: number; title: string; kind: AskKind; done: boolean; done_at: string | null; due_date: string | null; assignee: string; assignee_role: string
+  category: string | null; questions: AskQuestion[]; answers: { key: string; label: string; value: string }[]
+  answered_by: string | null; answered_at: string | null; file: { id: number; filename: string } | null
+}
+// the customer's rating at sign-off: staff only (an external's list is always empty)
+export type Rating = { signoff_version: number; rating: number; comment: string | null; by_name: string; at: string }
+export type AsksData = { asks: Ask[]; ratings: Rating[] }
+export const asks = (id: number) => getJson<AsksData>(`/api/projects/${id}/asks`)
+export const answerAsk = (id: number, taskId: number, answers: Record<string, string | boolean>) => post<{ ok: true }>(`/api/projects/${id}/asks/${taskId}/answers`, { answers })
+// an upload ask goes through the documents route, into the ask's own category
+export function uploadAsk(id: number, taskId: number, file: File) {
+  const form = new FormData()
+  form.append("file", file); form.append("ask_id", String(taskId))
+  return postForm(`/projects/${id}/documents`, form)
+}
 export type FlowDetail = {
   id: number; name: string; client: string; vendor_name: string | null; product_name: string | null; delivery_mode: string
   outsourcer_name: string | null; owner_name: string; stage: string; stage_index: number; next_stage: string | null
@@ -196,11 +227,16 @@ export type FlowDetail = {
   stages: FlowStage[]; tasks: FlowTask[]; documents: number
   recent_notes: { author: string; note: string; stage: string; created_at: string }[]; can_move: boolean
   participants: { id: number; user_id: number; name: string; role: string; avatar_url: string | null }[]
-  assignable: { id: number; name: string }[]; can_edit: boolean; me: number
+  assignable: { id: number; name: string }[]; can_edit: boolean; me: number; can_override?: boolean; doc_categories?: string[]
   customer_approval: boolean; can_approve: boolean
   approval: { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null } | null
   signoff?: SignoffState
+  // what holds the next move (services/gates.py); null for partners and customers
+  gate?: { blocked: GateReason[]; can_override: boolean } | null
 }
+export type GateReason = { stage: string; kind: "tasks" | "document"; count?: number; category?: string; text: string }
+// what a stage asks before a rollout leaves it
+export type StageGate = { gate_tasks: boolean; required_docs: string[] }
 export const decideApproval = (projectId: number, approvalId: number, decision: "approved" | "declined", comment = "") =>
   post<{ ok: true }>(`/api/projects/${projectId}/approvals/${approvalId}`, { decision, comment })
 async function getJson<T>(path: string): Promise<T> {
@@ -222,6 +258,7 @@ export type PlanStage = {
   plan_start: string | null; plan_end: string | null; base_start: string | null; base_end: string | null
   actual_start: string | null; actual_end: string | null; forecast_start: string | null; forecast_end: string | null
   planned_days: number; actual_days: number | null; slip_days: number | null; suggested_start: string; suggested_end: string
+  forecast_reason?: string | null   // the task that moved the forecast through its links, when one did
 }
 export type PlanData = {
   stages: PlanStage[]; has_plan: boolean; baseline_at: string | null; today: string; closed: boolean; default_days: number; pct_complete: number; calendar?: WorkCalendar
@@ -248,7 +285,7 @@ export type ReportPayload = {
   template?: DocConfig
   project: { id: number; name: string; client: string; po_number: string | null; stage: string; owner_name: string; start_date: string; target_end_date: string | null; vendor_name: string | null; product_name: string | null; delivery_mode: string; stage_number: number; stage_count: number }
   health: PlanData["health"]; pct_complete: number; finish: Partial<PlanData["finish"]>; baseline_at: string | null; elapsed_days: number; has_plan: boolean
-  stages: PlanStage[]; milestones: { stage: string; start: string | null; end: string | null; planned_end: string | null }[]
+  stages: PlanStage[]; milestones: { stage: string; start: string | null; end: string | null; planned_end: string | null; gate?: string }[]
   raid: RaidItem[]
   work: { total: number; done: number; late: number; by_stage: { stage: string; total: number; done: number; late: number }[]; burn: { week: string; total: number; done: number }[]
           open?: { id: number; title: string; stage: string | null; who: string | null; due_date: string | null; late: boolean }[] }
@@ -260,6 +297,9 @@ export type ReportPayload = {
   people?: { name: string; role: string | null; open: number; done: number; late: number }[]
   plan_changes?: PlanData["changes"]
   documents?: ({ category: string; filename: string; uploaded_by: string; uploaded_at: string } | { category: string; count: number })[]
+  fields?: { name: string; kind: FieldKind; value: FieldValue; customer_visible: boolean }[]   // absent from versions saved before custom fields
+  project_milestones?: Milestone[]   // the rollout's own (the customer's copy: those marked for them); absent from versions saved before 2.0
+  asks?: Ask[]; csat?: Rating[]   // internal only, absent from versions saved before 2.0
 }
 export type RolloutReport = {
   audience: "internal" | "customer"; words: ReportWords; data: ReportPayload | null; is_live: boolean
@@ -319,6 +359,17 @@ export const saveRaid = (projectId: number, item: Partial<RaidItem>, itemId?: nu
   itemId ? send<{ ok: true }>(`/api/projects/${projectId}/raid/${itemId}`, "PUT", item) : post<{ ok: true; id: number }>(`/api/projects/${projectId}/raid`, item)
 export const deleteRaid = (projectId: number, itemId: number) => send<{ ok: true }>(`/api/projects/${projectId}/raid/${itemId}`, "DELETE")
 
+// ---- milestones (services/milestones.py): dated commitments; partners and customers read the ones marked for the customer ----
+export type Milestone = {
+  id: number; project_id: number; name: string; date: string; stage: string | null; customer_visible: boolean
+  done: boolean; done_at: string | null; missed: boolean; created_by: string; created_at: string
+}
+export type MilestonesData = { items: Milestone[]; stages: string[]; can_edit: boolean; can_delete: boolean }
+export const milestones = (id: number) => getJson<MilestonesData>(`/api/projects/${id}/milestones`)
+export const saveMilestone = (projectId: number, m: { name: string; date: string; stage: string | null; customer_visible: boolean; done?: boolean }, milestoneId?: number) =>
+  milestoneId ? send<{ ok: true }>(`/api/projects/${projectId}/milestones/${milestoneId}`, "PUT", m) : post<{ ok: true; id: number }>(`/api/projects/${projectId}/milestones`, m)
+export const deleteMilestone = (projectId: number, milestoneId: number) => send<{ ok: true }>(`/api/projects/${projectId}/milestones/${milestoneId}`, "DELETE")
+
 // ---- scope and sign-off (services/signoff.py) ----
 export type ScopeStatus = "agreed" | "delivered" | "partial" | "descoped"
 export type ScopeItem = { id: number; title: string; detail: string | null; status: ScopeStatus; note: string | null; position: number }
@@ -359,7 +410,7 @@ export type SignoffData = {
   draft?: SignoffDraft
   candidates?: { signers: { id: number; name: string; role: string; email: string }[]; countersigners: { id: number; name: string; role: string }[]; default_counter_id: number | null }
 }
-export type SignBody = { name: string; title: string; accept: boolean; signature: Signature }
+export type SignBody = { name: string; title: string; accept: boolean; signature: Signature; rating?: number | null; rating_comment?: string }
 export const signoff = (id: number, v?: number | null, template?: number | null) =>
   getJson<SignoffData>(`/api/projects/${id}/signoff${v ? `?v=${v}` : template ? `?template=${template}` : ""}`)
 export const sendSignoff = (id: number, body: { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; signer_id: number; counter_id: number; template_id?: number | null; ai_suggestion?: number | null }) =>
@@ -386,6 +437,7 @@ export type CalendarData = {
   tasks: { id: number; project_id: number; title: string; day: string; done: number; project: string; who: string | null; can_edit: boolean }[]
   moves: { project_id: number; project: string; day: string; prev_stage: string; stage: string; who: string }[]
   approvals: { project_id: number; project: string; stage: string; day: string; kind: "asked" | "decided"; status: ApprovalStatus; who: string | null }[]
+  milestones: { id: number; project_id: number; project: string; name: string; day: string; stage: string | null; done: number; customer_visible: boolean }[]
 }
 export const calendar = (month: string) => getJson<CalendarData>(`/api/calendar?month=${encodeURIComponent(month)}`)
 
@@ -403,7 +455,8 @@ export type DashboardData = {
     kpis: { counts: Record<DashKey, number>; before: Record<DashKey, number> | null; since: string | null; moved_this_week: number; series: Record<DashKey, { day: string; v: number }[]>; detail: Record<DashKey, DetailRow[]> }
     aggregates: Record<string, Aggregate>
     attention: { id: number; name: string; client: string; stage: string; worst: AttentionKind; reasons: { kind: AttentionKind; text: string }[] }[]
-    timeline: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState; progress: number; team: Person[] }[]
+    timeline: { id: number; name: string; client: string; stage: string; start_date: string; target_end_date: string | null; state: FlowState; progress: number; team: Person[]
+                milestones: { name: string; date: string; done: boolean; missed: boolean }[] }[]
     progress: { done: number; current: number; pending: number; pct: number }
     stages: { stage: string; count: number; late: number; warn: number }[]
     completion: { day: string; count: number }[]
@@ -413,6 +466,7 @@ export type DashboardData = {
     activity: { kind: "move" | "note" | "approval" | "task" | "document"; at: string; who: string | null; project_id: number; project: string; text: string }[]
     alerts: { id: number; project_id: number; project: string; type: string; title: string; severity: string; created_at: string }[]
     mywork: { tasks: { id: number; title: string; project_id: number; project: string; due_date: string | null; stage: string | null }[]; owned: number }
+    workload: WorkloadData
     cycle: { template: string; lead_avg: number | null; lead_median: number | null; completed_count: number; throughput: [string, number][]; slowest: { stage: string; avg_days: number } | null; measured_projects: number } | null
   }
 }
@@ -422,17 +476,88 @@ export const saveLayout = (layout: DashboardData["layout"], scope: "mine" | "def
   send<{ ok: true; layout: DashboardData["layout"]; is_custom?: boolean }>(scope === "default" ? "/api/dashboard/layout/default" : "/api/dashboard/layout", "PUT", { layout })
 export const resetLayout = () => send<{ ok: true; layout: DashboardData["layout"]; is_custom: false }>("/api/dashboard/layout", "DELETE")
 
+// ---- custom fields (services/fields.py): defined in Settings, a value per rollout ----
+export type FieldKind = "text" | "number" | "date" | "choice" | "yesno"
+export type FieldValue = string | number | boolean | null
+export type CustomField = { id: number; name: string; kind: FieldKind; choices: string[]; required: boolean; customer_visible: boolean; show_in_list: boolean; position: number }
+export type ProjectField = CustomField & { value: FieldValue }
+export type FieldsData = { fields: CustomField[]; kinds: Record<FieldKind, string>; max: number }
+export type FieldDraft = Pick<CustomField, "name" | "kind" | "choices" | "required" | "customer_visible" | "show_in_list">
+export const customFields = () => getJson<FieldsData>("/api/fields")
+export const createField = (f: FieldDraft) => post<{ ok: true; id: number }>("/api/fields", f)
+export const updateField = (id: number, f: FieldDraft) => send<{ ok: true }>(`/api/fields/${id}`, "PUT", f)
+export const moveField = (id: number, step: -1 | 1) => post<{ ok: true }>(`/api/fields/${id}/move`, { step })
+export const deleteField = (id: number, confirm: string) => send<{ ok: true }>(`/api/fields/${id}`, "DELETE", { confirm })
+export const projectFields = (id: number) => getJson<{ fields: ProjectField[]; can_edit: boolean }>(`/api/projects/${id}/fields`)
+export const saveProjectFields = (id: number, values: Record<string, FieldValue>) =>
+  send<{ ok: true; changed: number }>(`/api/projects/${id}/fields`, "PUT", { values })
+
+// ---- automations (services/rules.py): Settings › Automations, admins (manage_rules) ----
+export type RuleEvent = "rollout_created" | "stage_entered" | "stage_sla_breached" | "task_overdue" | "ask_completed" | "document_uploaded" | "field_set" | "stage_declined" | "milestone_missed"
+export type RuleConditionKind = "stage" | "delivery_mode" | "field" | "client"
+// a field's value is held as Odin stores it (yes / no as "1" / "0")
+export type RuleCondition = { kind: RuleConditionKind; value: string | null; field_id?: number }
+export type RuleAction =
+  | { kind: "notify"; roles: string[]; user_ids: number[]; email: boolean; message: string }
+  | { kind: "add_task"; template_task_id: number }
+  | { kind: "add_raid"; raid_kind: string; title: string; impact: string }
+  | { kind: "set_field"; field_id: number; value: string }
+  | { kind: "teams"; message: string }
+export type RuleActionKind = RuleAction["kind"]
+export type RuleDraft = { name: string; event: RuleEvent; event_config: { category?: string; field_id?: number; value?: string | null }; conditions: RuleCondition[]; actions: RuleAction[] }
+export type Rule = RuleDraft & { id: number; paused: boolean; created_by: string; created_at: string; updated_at: string; runs: number; last_run: { at: string; ok: boolean } | null }
+export type RuleOptions = {
+  stages: string[]; delivery_modes: string[]; categories: string[]; roles: string[]; raid_kinds: string[]; raid_levels: string[]
+  fields: { id: number; name: string; kind: FieldKind; choices: string[] }[]; users: { id: number; name: string }[]; template_tasks: { id: number; label: string }[]
+}
+export type RulesData = {
+  rules: Rule[]; max: number; keep_days: number; options: RuleOptions
+  events: Record<RuleEvent, string>; conditions: Record<RuleConditionKind, string>; actions: Record<RuleActionKind, string>
+}
+export type RuleRun = { id: number; at: string; ok: boolean; project_id: number | null; project: string | null; what: string; actions: { kind: string; ok: boolean; said: string }[] }
+export type DryRun = { matches: { project_id: number; name: string; client: string; times: number; last_at: string; last: string }[]; total: number; replayed: string; caveat: string }
+export const rulesData = () => getJson<RulesData>("/api/rules")
+export const createRule = (r: RuleDraft) => post<{ ok: true; id: number }>("/api/rules", r)
+export const updateRule = (id: number, r: RuleDraft) => send<{ ok: true }>(`/api/rules/${id}`, "PUT", r)
+export const pauseRule = (id: number, paused: boolean) => post<{ ok: true }>(`/api/rules/${id}/pause`, { paused })
+export const deleteRule = (id: number) => send<{ ok: true }>(`/api/rules/${id}`, "DELETE")
+export const ruleRuns = (id: number) => getJson<{ runs: RuleRun[]; keep_days: number }>(`/api/rules/${id}/runs`)
+export const dryRunRule = (r: RuleDraft) => post<DryRun>("/api/rules/dry-run", r)
+
 // ---- projects list ----
 export type ProjectRow = {
   id: number; name: string; client: string; po_number: string | null; stage: string; stages: string[]; stage_index: number; closed: boolean; state: FlowState
   owner_name: string; delivery_mode: string; vendor_name: string | null; product_name: string | null; target_end_date: string | null; updated_at: string
   total_tasks: number; open_tasks: number; team: { id: number; name: string; avatar_url: string | null }[]
+  fields: FieldValue[]   // the list's custom-field columns, in the order of ProjectsData.fields
 }
 export type ProjectsData = {
   rows: ProjectRow[]; total: number; page: number; total_pages: number; sort: string; dir: "asc" | "desc"
   stages: string[]; delivery_modes: string[]; can_create: boolean
+  fields: { id: number; name: string; kind: FieldKind }[]; field_filters: { id: number; name: string; choices: string[] }[]
+  pending: number   // CRM intakes waiting for a project manager (the "Pending intake" filter)
 }
 export const projects = (query: string) => getJson<ProjectsData>(`/api/projects${query ? `?${query}` : ""}`)
+
+// ---- CRM intake (services/intake.py): deals the CRM sent, waiting for a project manager ----
+export type PendingIntakeRow = {
+  id: number; name: string; client: string; source: string | null; deal_id: string | null; delivery_mode: string
+  vendor_name: string | null; product_name: string | null; po_number: string | null; target_end_date: string | null
+  contacts: string[]; owner_name: string; created_at: string
+}
+export type PendingIntake = { rows: PendingIntakeRow[]; can_confirm: boolean; can_lead: boolean; leads: { id: number; name: string }[]; po_category: string }
+export const pendingIntake = () => getJson<PendingIntake>("/api/intake/pending")
+// the confirm: the PO file, the project manager (when the confirmer cannot move stages) and the PO number
+export const confirmIntake = (id: number, form: FormData) => postForm(`/projects/${id}/intake/confirm`, form)
+export type IntakeCall = {
+  id: number; token_name: string; at: string; status: number; result: "created" | "duplicate" | "refused" | "rate_limited"
+  deal_id: string | null; project_id: number | null; detail: string | null
+}
+export type IntakeSettingsData = {
+  tokens: { id: number; name: string; created_by: string; created_at: string; expires_at: string; last_used_at: string | null; revoked_at: string | null }[]
+  calls: IntakeCall[]; policies: Policy[]; keep: number; templates: { id: number; name: string }[]; owners: { id: number; name: string }[]; endpoint: string
+}
+export const intakeSettings = () => getJson<IntakeSettingsData>("/api/settings/intake")
 
 // ---- project page extras (beyond the flow detail) ----
 export type ProjectExtras = {
@@ -440,7 +565,7 @@ export type ProjectExtras = {
   details: Record<string, string | null>
   customer_approval: boolean
   guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean; guest_links_expire: string | null
-  stage_rows: { id: number; name: string; sla_days: number | null }[]
+  stage_rows: ({ id: number; name: string; sla_days: number | null } & StageGate)[]
   participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean; avatar_url: string | null }[]
   notes: { id: number; author: string; note: string; stage: string; created_at: string; mine: boolean; edited: boolean; stage_entry: boolean }[]
   documents: { id: number; category: string; filename: string; uploaded_by: string; uploaded_at: string }[]
@@ -471,7 +596,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
 
 // ---- settings ----
 export type Policy = {
-  key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "ai" | "ai_schedule" | "backups" | "reports" | "audit"
+  key: string; area: "general" | "security" | "people" | "workflow" | "notifications" | "integrations" | "intake" | "ai" | "ai_schedule" | "backups" | "reports" | "audit"
   kind: "int" | "bool" | "choice" | "multi" | "text" | "url" | "domains" | "emails" | "time" | "dates"
   label: string; help: string; value: number | boolean | string | string[]; min?: number; max?: number; choices?: string[]; multiline?: boolean
   group: string; hint?: string  // the card it sits on; the one plain line shown under it (help then sits behind "What is this?")
@@ -483,7 +608,7 @@ export type BackupRun = {
 }
 export type BackupsView = { runs: BackupRun[]; scheduler_seen: string | null; scheduler_alive: boolean; next_run: string | null }
 export type SettingsData = {
-  templates: { id: number; name: string; projects: number; stages: { id: number; name: string; sla_days: number | null }[] }[]
+  templates: { id: number; name: string; projects: number; stages: ({ id: number; name: string; sla_days: number | null } & StageGate)[] }[]
   doc_categories: { id: number; name: string; partners: boolean }[]
   alerts: { key: string; title: string; severity: "critical" | "warning" | "info"; threshold_days: number | null; notify_email: boolean; notify_teams: boolean; notify_inapp: boolean }[]
   m365: {
@@ -491,9 +616,8 @@ export type SettingsData = {
     connected: boolean; connected_email: string | null; team_name: string | null; channel_name: string | null; channel_id: string | null
     teams: { id: string; name: string }[]; channels: { id: string; name: string }[]; team_id: string; teams_error: string | null
   }
-  toggles: Record<"notify_email_enabled" | "notify_teams_enabled" | "notify_teams_chat_enabled" | "onedrive_mirror_uploads_enabled" | "guest_links_enabled", boolean>
   backups: BackupsView | null
-  api_tokens: { id: number; name: string; created_by: string; created_at: string; expires_at: string; last_used_at: string | null; revoked_at: string | null }[]
+  api_tokens: { id: number; name: string; created_by: string; created_at: string; expires_at: string; last_used_at: string | null; revoked_at: string | null; scope: string }[]
   audit_archives: { name: string; size: number }[]
   public_url_set: boolean
   policies: Policy[]
@@ -537,9 +661,12 @@ export const contacts = () => getJson<ContactsData>("/api/settings/contacts")
 export type AdminUser = {
   id: number; username: string; name: string; email: string | null; role: string; active: boolean; kind: "internal" | "external"
   last_login_at: string | null; created_at: string | null; avatar_url: string | null; pending: boolean; password_login: boolean; two_step: boolean; microsoft: boolean
-  signup_label?: string | null; signup_project?: string | null; signup_project_role?: string | null
+  signup_label?: string | null; signup_project?: string | null; signup_project_role?: string | null; declined_reason?: string | null
+  capacity_hours: number | null   // hours a week; null takes the workspace default
+  holds: { tasks: number; rollouts: number; raid: number }   // the open work a hand-over on leave would move
+  review: string[]   // why the access review flags this account (services/access_review.py); empty when it does not
 }
-export type UsersData = { users: AdminUser[]; roles: string[]; me: number; microsoft_only: boolean }
+export type UsersData = { users: AdminUser[]; roles: string[]; me: number; microsoft_only: boolean; capacity_default: number; review_days: number }
 export const users = () => getJson<UsersData>("/api/users")
 export type AuditRow = { id: number; timestamp: string; username: string; user_name?: string | null; action: string; resource_type: string | null; resource_id: number | null; resource_name: string | null; details: string | null; ip_address: string | null }
 export type AuditData = {
@@ -555,10 +682,12 @@ export type PortfolioRow = {
   rag: Rag; reasons?: string[]; confidence?: string; pct_complete: number; stage_number: number; stage_count: number
   start: string; forecast: string | null; planned: string | null; baseline?: string | null; vs_target_days: number | null; vs_baseline_days?: number | null; has_plan: boolean
   open: { blocker: number; issue: number; risk: number }; report: { version: number; kind: string; created_at: string } | null
+  milestones?: { total: number; done: number; missed: number; next: { name: string; date: string } | null }
 }
 export type ReportAllData = {
   audience: "internal" | "customer"; generated_at: string; today: string; company: string; template?: DocConfig
-  summary: { count: number; health: Partial<Record<Rag, number>>; late_vs_target: number; behind_baseline: number | null; avg_slip: number | null; blockers: number; finishing_30d: number; no_plan: number }
+  summary: { count: number; health: Partial<Record<Rag, number>>; late_vs_target: number; behind_baseline: number | null; avg_slip: number | null; blockers: number; finishing_30d: number; no_plan: number
+    csat?: number | null; csat_count?: number }   // the customers' ratings at sign-off: internal only
   rows: PortfolioRow[]
   risks: { project_id: number; project: string; kind: RaidKind; title: string; impact: string; status: string; owner_name: string | null; due_date: string | null }[]
 }
@@ -610,22 +739,23 @@ export async function previewDocTemplate(kind: DocKind, config: DocConfig): Prom
   return (await raw("/api/doc-templates/preview.pdf", JSON.stringify({ kind, config }), true)).blob()
 }
 export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
-export type WorkTask = { can_edit?: boolean; id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
+export type WorkTask = { blocked_by?: TaskWait[]; can_edit?: boolean; id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
 export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: string[]; target_end_date: string | null; role: string; owner_name: string
   days_in_stage?: number | null; over_by?: number | null }
 export type MyWorkData = {
-  today: string; tasks: WorkTask[]; done_by_day: { day: string; count: number }[]; projects: WorkProject[]
+  today: string; tasks: WorkTask[]; done_by_day: { day: string; count: number }[]; projects: (WorkProject & { can_add_task: boolean })[]
   counts: { open: number; overdue: number; due_week: number; done_week: number; rollouts: number; stuck: number }
 }
 export const myWork = () => getJson<MyWorkData>("/api/my-work")
 
 // ---- people ----
-export type PersonCard = { id: number; name: string; role: string; avatar_url: string | null; last_login_at: string | null; last_seen_at: string | null; projects: number; open: number; late: number; done_30d: number }
+export type PersonCard = { id: number; name: string; role: string; avatar_url: string | null; last_login_at: string | null; last_seen_at: string | null; projects: number; open: number; late: number; done_30d: number
+  csat?: number | null; csat_count?: number }   // the customers' rating of the rollouts they managed
 export type PeopleData = { people: PersonCard[]; can_notify: boolean; me: number }
 export type PersonData = {
   user: { id: number; name: string; role: string; email: string | null; avatar_url: string | null; last_login_at: string | null; since: string }
   today: string; can_notify: boolean; activity?: Activity
-  kpis: { rollouts: number; stuck: number; open: number; late: number; done_30d: number; on_time_pct: number | null }
+  kpis: { rollouts: number; stuck: number; open: number; late: number; done_30d: number; on_time_pct: number | null; csat?: number | null; csat_count?: number }
   projects: WorkProject[]; pending: WorkTask[]; upcoming: WorkTask[]
   contribution: { weeks: { week: string; done: number }[]; notes_30d: number; moves_30d: number }
   recent: { kind: "move" | "note" | "task"; at: string; project_id: number; project: string; text: string }[]
@@ -633,6 +763,14 @@ export type PersonData = {
 export const people = () => getJson<PeopleData>("/api/people")
 export const person = (id: number) => getJson<PersonData>(`/api/people/${id}`)
 export const notifyPerson = (id: number, message: string, project_id?: number | null) => post<{ ok: true }>(`/api/people/${id}/notify`, { message, project_id: project_id ?? null })
+// workload (services/workload.py): hours per person per week against capacity
+export type WorkloadCell = { week: string; tasks: number; task_hours: number; pm_hours: number; hours: number; pct: number; level: "ok" | "warn" | "over" }
+export type WorkloadPerson = { id: number; name: string; role: string; avatar_url: string | null; capacity: number; custom_capacity: boolean; rollouts: number; weeks: WorkloadCell[]; peak: number }
+export type WorkloadData = { today: string; weeks: string[]; capacity_default: number; warn_pct: number; over: number; heavy: number; people: WorkloadPerson[] }
+export const workload = () => getJson<WorkloadData>("/api/workload")
+// each person's hours in the week holding `date`: the assignee picker's "34 h that week"
+export type WorkloadWeek = { week: string; people: Record<string, { hours: number; capacity: number; level: WorkloadCell["level"] }> }
+export const workloadWeek = (date: string) => getJson<WorkloadWeek>(`/api/workload/week?date=${date}`)
 export type AlertsData = {
   rows: { id: number; project_id: number | null; project_name: string | null; alert_type: string; severity: "critical" | "warning" | "info"; title: string; description: string | null; created_at: string; resolved: boolean; resolved_at: string | null }[]
   show_resolved: boolean; alert_type: string; types: Record<string, string>; page: number; total_pages: number; total: number
@@ -673,17 +811,24 @@ export type ProjectFormData = {
   partners: { id: number; name: string; managers: { name: string; email: string }[] }[]
   vendors: string[]; products: { name: string; vendor: string }[]; outsourcers: { name: string; email: string | null }[]
   templates: { id: number; name: string }[]; users: { id: number; name: string }[]
+  custom_fields: ProjectField[]
 }
 export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/project-form${query ? `?${query}` : ""}`)
 
 // ---- tasks: the same Flask routes the project page posts as forms ----
-export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null; done?: boolean; done_at?: string | null }) =>
+export type TaskLinks = { waits_on?: number[]; estimate_hours?: number | null; recurrence?: Recurrence | null; recur_until?: string | null }
+export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null; done?: boolean; done_at?: string | null } & TaskLinks & TaskAsk) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)
 // done: the state wanted, never a blind flip (a tick from a stale tab must not reopen the task)
 export const toggleTask = (projectId: number, taskId: number, done: boolean) => post<{ ok: true; done: boolean }>(`/projects/${projectId}/tasks/${taskId}/toggle`, { done })
 // a task corrected in place: the route takes the whole task (title, assignee, due date)
-export const editTask = (projectId: number, taskId: number, task: { title: string; assignee_id: number | null; due_date: string | null }) =>
+export const editTask = (projectId: number, taskId: number, task: { title: string; assignee_id: number | null; due_date: string | null } & TaskLinks & TaskAsk) =>
   post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, task)
 // only the due date changes (the calendar's drag): whoever manages the rollout's tasks
 export const moveTaskDue = (projectId: number, taskId: number, due_date: string) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, { due_date })
 export const deleteTask = (projectId: number, taskId: number) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/delete`, {})
+// the tasks a template's stages bring to a new rollout (Settings): links name another row's key
+export type TemplateTask = { id: number; stage_id: number; title: string; role: string | null; offset_days: number; waits_on_id: number | null; estimate_hours: number | null }
+export type TemplateTaskInput = { key: string; stage_id: number; title: string; role: string | null; offset_days: number; waits_on: string | null; estimate_hours: number | null }
+export const templateTasks = (templateId: number) => getJson<{ tasks: TemplateTask[]; roles: string[] }>(`/api/settings/templates/${templateId}/tasks`)
+export const saveTemplateTasks = (templateId: number, tasks: TemplateTaskInput[]) => send<{ tasks: TemplateTask[]; roles: string[] }>(`/api/settings/templates/${templateId}/tasks`, "PUT", { tasks })

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PanelTitle } from "@/components/PanelTitle"
-import { Badge } from "@/components/ui/badge"
+import { Tag } from "@/components/ui/tag"
 import { Notice } from "@/components/Notice"
 import { AIProgress } from "@/components/AIProgress"
 import { Input } from "@/components/ui/input"
@@ -50,7 +50,7 @@ export function AIAsk({ projectId }: { projectId: number }) {
             <p className="mt-1 leading-relaxed">{a.payload.answer}</p>
             {a.payload.sources.length > 0 && (
               <ul className="mt-2 flex flex-wrap gap-2 text-[12px]">
-                {a.payload.sources.map((src) => <li key={src.n}><Badge variant="outline" render={<Link to={src.href} />}>[{src.n}] {src.from}</Badge></li>)}
+                {a.payload.sources.map((src) => <li key={src.n}><Tag kind="source" render={<Link to={src.href} />}>[{src.n}] {src.from}</Tag></li>)}
               </ul>
             )}
             {!a.payload.found && <p className="mt-1 text-[12px] text-muted-foreground">The records do not answer this; nothing was guessed.</p>}

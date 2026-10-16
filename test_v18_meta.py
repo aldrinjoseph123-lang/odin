@@ -662,7 +662,7 @@ class ApiContractTestCase(Meta):
         ("FlowData", "/api/flow", None), ("FlowDetail", "/api/projects/1/flow", None),
         ("PlanData", "/api/projects/1/plan", None), ("GanttData", "/api/flow/plan", None),
         ("RolloutReport", "/api/projects/1/rollout-report?audience=internal", None),
-        ("RaidData", "/api/projects/1/raid", None), ("ScopeData", "/api/projects/1/scope", None),
+        ("RaidData", "/api/projects/1/raid", None), ("MilestonesData", "/api/projects/1/milestones", None), ("ScopeData", "/api/projects/1/scope", None),
         ("SignoffData", "/api/projects/1/signoff", None), ("CalendarData", "/api/calendar?month={month}", None),
         ("DashboardData", "/api/dashboard", None), ("ProjectsData", "/api/projects", None),
         ("ProjectExtras", "/api/projects/1", None), ("SettingsData", "/api/settings?section=general", None),
@@ -671,10 +671,11 @@ class ApiContractTestCase(Meta):
         ("AuditData", "/api/audit", None), ("ReportAllData", "/api/reports/all", None),
         ("SignupLinks", "/api/signup-links", None), ("DocTemplatesData", "/api/doc-templates", None),
         ("MyWorkData", "/api/my-work", None), ("PeopleData", "/api/people", None),
-        ("PersonData", "/api/people/2", None), ("AlertsData", "/api/alerts", None),
+        ("PersonData", "/api/people/2", None), ("WorkloadData", "/api/workload", None), ("AlertsData", "/api/alerts", None),
         ("AnalyticsData", "/api/analytics", None), ("SearchResults", "/api/search?q=a", None),
         ("ProjectFormData", "/api/project-form", None), ("LessonsData", "/api/projects/1/lessons", None),
         ("TwoStep", "/api/account/two-step", None),
+        ("IntakeSettingsData", "/api/settings/intake", None), ("PendingIntake", "/api/intake/pending", None),
     ]
 
     @classmethod

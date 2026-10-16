@@ -13,6 +13,7 @@ const PAGES: { path: string; h1: RegExp; who?: Who[] }[] = [
   { path: "/my-work", h1: /My work/ },
   { path: "/people", h1: /People/ },
   { path: "/people/2", h1: /./ },
+  { path: "/people/workload", h1: /Workload/ },
   { path: "/projects", h1: /Rollouts/ },
   { path: "/projects/1", h1: /EDR Rollout - Globex/ },
   { path: "/projects/new", h1: /New project/, who: ["admin", "member"] },
@@ -38,6 +39,7 @@ const PAGES: { path: string; h1: RegExp; who?: Who[] }[] = [
   { path: "/settings/audit", h1: /Retention/, who: ["admin"] },
   { path: "/settings/rbac", h1: /Role permissions/, who: ["admin"] },
   { path: "/settings/contacts", h1: /Contacts/, who: ["admin"] },
+  { path: "/settings/automations", h1: /Automations/, who: ["admin"] },
   { path: "/users", h1: /Users/, who: ["admin"] },
   { path: "/audit-logs", h1: /Audit log/, who: ["admin"] },
 ]
@@ -67,6 +69,23 @@ test("@smoke a viewer is refused the admin pages, not shown a broken one", async
   }
 })
 
+test("@smoke the rollout page shows what its customer was asked, and what came back", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/1")
+  await expect(page.getByRole("region", { name: "Asked of the customer and partners" })).toContainText("Tell us about your environment")
+  expectClean(errors)
+})
+
+test("@smoke the rollout page lists its milestones, with the missed one in words", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/1")
+  const panel = page.getByRole("region", { name: "Milestones" })
+  await expect(panel).toContainText("Pilot go-live")
+  await expect(panel).toContainText("Security review signed off")   // the internal one, already missed
+  await expect(page.getByRole("link", { name: "Milestones" })).toHaveAttribute("href", "#milestones")   // the section row
+  expectClean(errors)
+})
+
 test("@smoke the header: every link lands, every button does something", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin")
@@ -85,6 +104,15 @@ test("@smoke the header: every link lands, every button does something", async (
   await expect(palette.first()).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(palette.first()).toBeHidden()
+  // "?" opens the shortcut sheet, and so does the account menu
+  await page.keyboard.press("?")
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeHidden()
+  await page.getByRole("button", { name: "Your account" }).click()
+  await page.getByRole("button", { name: /Keyboard shortcuts/ }).click()
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible()
+  await page.keyboard.press("Escape")
   // theme cycles and is remembered on the account
   const theme = page.getByRole("button", { name: /^Theme:/ })
   const before = await theme.getAttribute("aria-label")
@@ -176,5 +204,58 @@ test("@smoke the / shortcut can be switched off on the Account page (WCAG 2.1.4)
   await page.locator("main").click({ position: { x: 4, y: 4 } })
   await page.keyboard.press("/")
   await expect(page.getByRole("dialog", { name: "Search and jump" })).toBeVisible()
+  expectClean(errors)
+})
+
+test("@smoke custom fields: the settings panel, a rollout's values and the list's column", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/settings/workflow")
+  await expect(page.getByRole("region", { name: "Custom fields" }).getByText("Region", { exact: true })).toBeVisible()   // seeded
+  await page.goto("/projects/1")
+  await expect(page.locator("#details").getByRole("button", { name: "Edit fields" })).toBeVisible()
+  await page.goto("/projects")
+  await expect(page.getByRole("columnheader", { name: "Region" })).toBeVisible()
+  await expect(page.getByRole("combobox", { name: "Region" })).toBeVisible()
+  expectClean(errors)
+})
+
+test("@smoke stage gates: the stage-list editors say what each stage asks before it is left", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/projects/1")
+  await page.locator("#stages").getByRole("button", { name: "Edit stages" }).click()
+  await expect(page.getByRole("checkbox", { name: /^All tasks done before leaving / }).first()).toBeVisible()
+  await expect(page.getByRole("button", { name: "Save what each stage asks" })).toBeVisible()
+  await page.goto("/settings/workflow")
+  await expect(page.getByRole("checkbox", { name: /^All tasks done before leaving / }).first()).toBeVisible()
+  expectClean(errors)
+})
+
+test("@smoke task links: a waiting task says so, the task form picks what it waits on, templates bring tasks", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board?rollout=2")
+  // seeded: the firewall logs wait on the syslog forwarder, which is late
+  await expect(page.locator("li", { has: page.getByRole("button", { name: "Edit Onboard firewall logs" }) }).first()).toContainText("waits on Stand up the syslog forwarder")
+  await page.getByRole("region", { name: /^Tasks in / }).getByRole("button", { name: /^Add a task to / }).click()
+  await expect(page.getByRole("combobox", { name: "Waits on" })).toBeVisible()
+  await expect(page.getByRole("spinbutton", { name: "Estimate hours" })).toBeVisible()
+  await page.goto("/settings/workflow")
+  await expect(page.getByRole("heading", { name: /^Tasks that come with / }).first()).toBeVisible()
+  await expect(page.getByRole("textbox", { name: /^Task title in / }).first()).toHaveValue("Confirm the PO and the scope with the customer")
+  expectClean(errors)
+})
+
+test("@smoke crm intake: the seeded deal waits in the flow and its own list view, and Settings shows the endpoint's token panel and calls", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin", "/board")
+  const lane = page.getByRole("region", { name: "Pending intake" })
+  await expect(lane.getByText("Branch SD-WAN refresh")).toBeVisible()   // seeded through POST /api/v1/intake
+  await expect(page.locator("main").getByRole("button", { name: /^Branch SD-WAN refresh, / })).toHaveCount(0)   // a holding lane, not a rollout row
+  await page.goto("/projects")
+  await page.getByRole("button", { name: /^Pending intake/ }).click()
+  await expect(page.getByRole("region", { name: "Pending intake" }).getByRole("button", { name: "Confirm Branch SD-WAN refresh" })).toBeVisible()
+  await page.goto("/settings/integrations")
+  await expect(page.getByRole("region", { name: "CRM intake" })).toBeVisible()
+  await expect(page.getByRole("table", { name: "Recent intake calls" }).getByText("201 Created").first()).toBeVisible()
+  await expect(page.getByRole("region", { name: "Intake defaults" })).toBeVisible()
   expectClean(errors)
 })

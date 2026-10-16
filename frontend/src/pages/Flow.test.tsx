@@ -12,6 +12,7 @@ vi.mock("@/lib/api", async (orig) => ({
   flow: vi.fn(async () => flow),
   flowDetail: vi.fn(async () => { throw new Error("not in this test") }),
   flowPlan: vi.fn(async () => gantt),
+  pendingIntake: vi.fn(async () => ({ rows: [], can_confirm: true, can_lead: true, leads: [], po_category: "Client PO" })),
 }))
 
 // two rollouts on the plan: one open into its stages, one a single bar
@@ -35,6 +36,15 @@ const mount = (url = "/board") => render(<MemoryRouter initialEntries={[url]}><F
 const rows = () => screen.getAllByRole("button", { name: /, (Globex|Initech)\./ })
 
 describe("Flow list", () => {
+  it("holds CRM intakes in their own lane, in no count and not among the rollouts", async () => {
+    vi.mocked(api.flow).mockResolvedValueOnce({ ...flow, pending: [{ id: 99, name: "Branch SD-WAN", client: "Hooli", source: "crm", deal_id: "D-1", delivery_mode: "Outsourced", vendor_name: null,
+      product_name: null, po_number: null, target_end_date: null, contacts: [], owner_name: "Admin User", created_at: "2026-09-28T08:00:00" }] })
+    mount()
+    const lane = await screen.findByRole("region", { name: "Pending intake" })
+    expect(lane).toHaveTextContent("Branch SD-WAN")
+    expect(rows().map((r) => r.getAttribute("aria-label")?.split(",")[0])).toEqual(["Late one", "Stuck one"])   // the lane's deal is not a row
+  })
+
   it("lists the stuck rows and folds the on-track ones", async () => {
     mount()
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Active rollouts")
@@ -77,6 +87,13 @@ describe("Flow list", () => {
     expect(await screen.findByRole("link", { name: "Sign-off before Sensor pilot" })).toHaveAttribute("href", "/projects/3/signoff")
     expect(screen.queryByRole("button", { name: "Move Fine one to Sensor pilot" })).toBeNull()
     expect(screen.getByRole("button", { name: "Move Late one to Sensor pilot" })).toBeInTheDocument()   // the others keep theirs
+  })
+
+  it("Kanban: a rollout held by a stage gate has no grip, only what holds it and the way to the rollout", async () => {
+    vi.mocked(api.flow).mockResolvedValueOnce({ ...flow, rows: flow.rows.map((r) => r.id === 3 ? { ...r, gate_blocked: true, gate_reasons: ["2 open tasks", "Client PO missing"] } : r) })
+    mount("/board?view=kanban")
+    expect(await screen.findByRole("link", { name: "Before Sensor pilot: 2 open tasks · Client PO missing" })).toHaveAttribute("href", "/projects/3")
+    expect(screen.queryByRole("button", { name: "Move Fine one to Sensor pilot" })).toBeNull()
   })
 
   it("switching views keeps the switcher and the focus; the choice is remembered (P2-42, advice B1)", async () => {

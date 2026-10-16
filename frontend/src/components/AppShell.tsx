@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { Menu, Monitor, Moon, Search, Sun } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { Tag } from "@/components/ui/tag"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { buttonVariants } from "@/components/ui/button"
 import { logout, postForm, type User } from "@/lib/api"
 import { Logo } from "@/components/Brand"
 import { UserAvatar } from "@/components/UserAvatar"
 import { CommandPalette } from "@/components/CommandPalette"
+import { ShortcutSheet } from "@/components/ShortcutSheet"
 import { Toaster } from "@/components/Toaster"
 import { ConfirmHost } from "@/components/ConfirmHost"
 import { TitleTips } from "@/components/TitleTips"
@@ -33,7 +34,7 @@ function NavLink({ item, current, onClick }: { item: Item; current: boolean; onC
   const text = (
     <>
       {item.label}{item.count ? " " : ""}
-      {item.count ? <Badge className="h-5 min-w-5 justify-center rounded-full bg-muted px-2 text-[11px] text-foreground" variant="secondary">{item.count > 99 ? "99+" : item.count}<span className="sr-only"> open</span></Badge> : null}
+      {item.count ? <Tag className="min-w-5 justify-center">{item.count > 99 ? "99+" : item.count}<span className="sr-only"> open</span></Tag> : null}
     </>
   )
   return REACT_PAGES.has(item.href) ? (
@@ -71,6 +72,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   const { theme } = useAppearance()   // one theme for the header and the Account page (review P2-33)
   const [account, setAccount] = useState(false)   // the avatar menu
   const [palette, setPalette] = useState(false)
+  const [sheet, setSheet] = useState(false)   // the "?" shortcut sheet
   // Ctrl/⌘ K anywhere; "/" when not typing in a field, unless the person turned it
   // off on their Account page (WCAG 2.1.4: a single-key shortcut can be switched off)
   const slash = readPref("shortcut.slash", true)
@@ -79,6 +81,8 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
       const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName))
       if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setPalette(true) }
       else if (e.key === "/" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && readPref("shortcut.slash", true)) { e.preventDefault(); setPalette(true) }
+      // "?" is a single-key shortcut too, so the same switch turns it off (the avatar menu still opens the sheet)
+      else if (e.key === "?" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && readPref("shortcut.slash", true)) { e.preventDefault(); setSheet(true) }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -127,8 +131,8 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
             <Kbd className="xl:hidden 2xl:inline-flex">{isMac ? "Cmd K" : "Ctrl K"}</Kbd>
           </button>
           {user.permissions.includes("create_project") && user.kind !== "external" && <a href="/projects/new" className={buttonVariants({ size: "sm" })}>New project</a>}
-          {user.role === "Viewer" && <Badge variant="secondary">Read-only</Badge>}
-          {user.kind === "external" && <Badge variant="secondary">{user.external_role === "Customer" ? "Customer access" : user.external_role ? "Partner access" : "External access"}</Badge>}
+          {user.role === "Viewer" && <Tag kind="role">Read-only</Tag>}
+          {user.kind === "external" && <Tag kind="role">{user.external_role === "Customer" ? "Customer access" : user.external_role ? "Partner access" : "External access"}</Tag>}
           <button type="button" onClick={signOut} className="text-left text-[13px] font-medium text-nav-fg hover:text-foreground xl:hidden">Log out</button>
         </nav>
         <div className="ml-auto flex items-center gap-2 xl:ml-0 xl:gap-3">
@@ -147,6 +151,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
                 <p className="text-[12px] text-muted-foreground">{user.kind === "external" ? "Partner or customer" : user.role}</p>
               </div>
               <Link to="/account" onClick={() => setAccount(false)} className="rounded-md px-2 py-2 hover:bg-muted">Account settings</Link>
+              <button type="button" onClick={() => { setAccount(false); setSheet(true) }} className="flex items-center justify-between rounded-md px-2 py-2 text-left hover:bg-muted">Keyboard shortcuts <Kbd>?</Kbd></button>
               <button type="button" onClick={() => { setAccount(false); void signOut() }} className="rounded-md px-2 py-2 text-left hover:bg-muted">Log out</button>
             </PopoverContent>
           </Popover>
@@ -167,9 +172,9 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
       <Toaster />
       <ConfirmHost />
       <TitleTips />
-      <CommandPalette open={palette} onClose={() => setPalette(false)}
-        pages={[...items.map((i) => ({ label: i.label, href: i.href })), { label: "Account", href: "/account" },
-          ...(user.permissions.includes("create_project") && user.kind !== "external" ? [{ label: "New project", href: "/projects/new" }] : [])]} />
+      <CommandPalette user={user} open={palette} onClose={() => setPalette(false)} onShortcuts={() => setSheet(true)}
+        pages={[...items.map((i) => ({ label: i.label, href: i.href })), { label: "Account", href: "/account" }]} />
+      <ShortcutSheet open={sheet} onOpenChange={setSheet} />
     </div>
   )
 }

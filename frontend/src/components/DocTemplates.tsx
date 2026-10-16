@@ -3,7 +3,7 @@ import { PanelTitle } from "@/components/PanelTitle"
 import { EmptyState } from "@/components/EmptyState"
 import { checkbox, field, danger, fieldArea, pill } from "@/lib/ui"
 import { Field } from "@/components/ui/field"
-import { Badge } from "@/components/ui/badge"
+import { Tag } from "@/components/ui/tag"
 import { MoveArrows } from "@/components/MoveArrows"
 import { askConfirm } from "@/lib/confirm"
 import { Copy, Eye, FileText, ImageUp, Plus, Star, Trash2, X } from "lucide-react"
@@ -92,7 +92,7 @@ function Row({ t, busy, onEdit, onCopy, onDefault, onDelete }: { t: DocTemplate;
     <li className="flex flex-wrap items-center gap-2 py-2">
       <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: SWATCH[t.config.accent] }} aria-hidden />
       <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left"><span className="font-medium hover:underline">{t.name}</span>
-        {t.is_default && <Badge variant="secondary" className="ml-2">Default</Badge>}
+        {t.is_default && <Tag kind="default" className="ml-2">Default</Tag>}
         <span className="block text-[12px] text-muted-foreground">{t.config.title} · edited by {t.updated_by}, {fmtWhen(t.updated_at)}</span></button>
       {!t.is_default && <Button size="sm" variant="ghost" disabled={busy} onClick={onDefault}><Star className="h-3.5 w-3.5" /> Make default</Button>}
       <Button size="sm" variant="ghost" onClick={onCopy} aria-label={`Duplicate ${t.name}`}><Copy className="h-3.5 w-3.5" /></Button>

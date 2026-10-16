@@ -97,6 +97,8 @@ export default function ReportAll({ user }: { user: User }) {
     ...(internal ? [{ label: "Behind baseline", value: String(s.behind_baseline ?? 0), sub: s.avg_slip == null ? "no baselines yet" : `average ${s.avg_slip > 0 ? "+" : ""}${s.avg_slip} d` }] : []),
     { label: "Open blockers", value: String(s.blockers), sub: "across the portfolio", tone: s.blockers > 0 ? "bad" : undefined },
     { label: "Finishing in 30 days", value: String(s.finishing_30d), sub: "by forecast" },
+    // the customers' rating at sign-off, over every rollout rated (services/asks.py): internal only
+    ...(internal && s.csat != null ? [{ label: "Customer rating", value: `${s.csat} of 5`, sub: `${s.csat_count} rollout${s.csat_count === 1 ? "" : "s"} rated at sign-off` }] : []),
   ]
   return (
     <div className="mx-auto w-full max-w-6xl px-5 pb-10 pt-4 print:max-w-none print:px-0">
@@ -124,7 +126,7 @@ export default function ReportAll({ user }: { user: User }) {
           </ul>
           {internal && s.no_plan > 0 && <p className="mt-2 text-[12px] text-muted-foreground">{s.no_plan} without a plan: their forecast runs on stage SLAs.</p>}
         </section>
-        <div className={cn("grid grid-cols-2 gap-3", internal ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
+        <div className={cn("grid grid-cols-2 gap-3", internal ? (tiles.length > 4 ? "sm:grid-cols-5" : "sm:grid-cols-4") : "sm:grid-cols-3")}>
           {tiles.map((t) => (
             <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.tone} className="print:shadow-none" />
           ))}
@@ -162,7 +164,7 @@ export default function ReportAll({ user }: { user: User }) {
         </div>
 
         <Section n title="Every rollout" className={hide("table")}>
-          <Table head={["Rollout", "Health", "Stage", "Done", "Forecast", "Target", "PM", "Report"]}
+          <Table head={["Rollout", "Health", "Stage", "Done", "Forecast", "Target", "Next milestone", "PM", "Report"]}
             rows={d.rows.map((r) => [
               <span key="n"><Link to={`/projects/${r.id}`} className="font-medium hover:underline">{r.name}</Link><span className="block text-[12px] text-muted-foreground">{r.client}</span></span>,
               <RagPill key="h" rag={r.rag} className="whitespace-nowrap" />,
@@ -170,6 +172,9 @@ export default function ReportAll({ user }: { user: User }) {
               <span key="p" className="flex items-center gap-2"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-nav-fg/60" style={{ width: `${r.pct_complete}%` }} /></span><span className="tabular-nums">{r.pct_complete}%</span></span>,
               <span key="f" className="whitespace-nowrap">{fmtDate(r.forecast)}{r.vs_target_days != null && r.vs_target_days > 0 && <span className={cn("block text-[12px]", forecastTone(r.vs_target_days, r.target_end_date, d.today) === "bad" ? "text-bad" : "text-warn")}>{r.vs_target_days} d after target</span>}</span>,
               <span key="t" className="whitespace-nowrap">{fmtDate(r.target_end_date)}</span>,
+              // the next open milestone and any that passed unreached (the customer's cut counts only those marked for them)
+              <span key="m" className="block text-[13px]">{r.milestones?.next ? <>{r.milestones.next.name}<span className="block text-[12px] text-muted-foreground">{fmtDate(r.milestones.next.date)}</span></> : <span className="text-muted-foreground">—</span>}
+                {!!r.milestones?.missed && <span className="block text-[12px] font-medium text-warn">{r.milestones.missed} missed</span>}</span>,
               r.owner_name,
               external && !r.report ? <span key="r" className="whitespace-nowrap text-muted-foreground">Not published yet</span>
                 : <Link key="r" to={`/projects/${r.id}/report`} className="whitespace-nowrap text-primary-text hover:underline">{r.report ? `v${r.report.version} · ${fmtDate(r.report.created_at)}` : "Live"}</Link>,

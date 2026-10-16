@@ -20,14 +20,20 @@ from db import (  # noqa: F401 — re-exported for tests + backup.py
 
 # Importing each submodule registers its @app.route handlers on the shared app.
 import routes.ai  # noqa: E402,F401
+import routes.asks  # noqa: E402,F401
 import routes.api  # noqa: E402,F401
 import routes.auth  # noqa: E402,F401
 import routes.board  # noqa: E402,F401
 import routes.client  # noqa: E402,F401
+import routes.feeds  # noqa: E402,F401
+import routes.fields  # noqa: E402,F401
 import routes.guest  # noqa: E402,F401
 import routes.mfa  # noqa: E402,F401
+import routes.milestones  # noqa: E402,F401
 import routes.integrations  # noqa: E402,F401
+import routes.intake  # noqa: E402,F401
 import routes.projects  # noqa: E402,F401
+import routes.rules  # noqa: E402,F401
 import routes.settings  # noqa: E402,F401
 import routes.signoff  # noqa: E402,F401
 import routes.signup  # noqa: E402,F401
@@ -35,6 +41,7 @@ import routes.doc_templates  # noqa: E402,F401
 import routes.sso  # noqa: E402,F401
 import routes.tokens  # noqa: E402,F401
 import routes.users  # noqa: E402,F401
+import routes.workload  # noqa: E402,F401
 
 
 if __name__ == "__main__":

@@ -9,10 +9,10 @@
  "must_enroll_mfa": false,
  "name": "Admin",
  "nav": {
-  "active_alert_count": 22,
-  "my_open_task_count": 5,
+  "active_alert_count": 23,
+  "my_open_task_count": 6,
   "projects_nav_url": "/projects",
-  "unread_notifications": 22
+  "unread_notifications": 24
  },
  "permissions": [
   "add_project_note",

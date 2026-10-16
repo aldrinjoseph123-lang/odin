@@ -37,14 +37,13 @@ from constants import (
     DELIVERY_MODES,
 )
 from core import app, as_bool, as_id, json_body, like_any, parse_date, sees_po, text_field, login_required, permission_required, project_allows, project_role_required, role_has_permission, offer_undo, undo_note, project_scope
-from security import content_matches_extension, upload_problem, valid_email, safe_csv_writer
+from security import content_matches_extension, file_stem, upload_problem, valid_email, safe_csv_writer
 from policies import local_today, policy
 from spa import spa_index
 from db import (
     UPLOAD_DIR,
     get_db,
     get_doc_category_names,
-    get_setting,
     partner_hidden_categories,
     PROJECT_OPEN_SQL,
     copy_template_stages,
@@ -57,6 +56,9 @@ from db import (
     touch_project,
 )
 from services.alerts import get_alert_type_settings
+from services import fields as custom_fields
+from services import milestones
+from services import rules
 from services import stages as stage_ops
 from services.audit import audit_log
 from services.notifications import notify_event, notify_participants, notify_users
@@ -113,6 +115,8 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
     query = "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL"
     scope_sql, params = project_scope()
     query += scope_sql
+    # CRM intakes wait in their own view until confirmed (services/intake.py); no other list has them
+    query += " AND p.intake_pending = 1" if view == "pending" else " AND p.intake_pending = 0"
     if view == "stale":
         stale_threshold = get_alert_type_settings().get("stale", DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
         stale_cutoff = (datetime.utcnow() - timedelta(days=stale_threshold)).isoformat()
@@ -144,7 +148,7 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
     elif stage_filter:
         query += " AND p.stage = ?"
         params.append(stage_filter)
-    elif not show_closed:
+    elif not show_closed and view != "pending":
         query += f" AND {PROJECT_OPEN_SQL}"
     if delivery_mode_filter:   # combines with every view and stage (test report FN-13: a stage silently dropped it)
         query += " AND p.delivery_mode = ?"
@@ -159,6 +163,9 @@ def filtered_projects_query(view, stage_filter, show_closed, delivery_mode_filte
         else:
             query += " AND (p.name LIKE ? ESCAPE '\\' OR p.client LIKE ? ESCAPE '\\' OR p.po_number LIKE ? ESCAPE '\\')"
             params.extend([like, like, like])
+    field_sql, field_params = custom_fields.filter_sql(request.args, customer=session.get("kind") == "external")   # ?field.<id>=<choice>
+    query += field_sql
+    params += field_params
     if sort == "po_number" and session.get("kind") == "external":
         sort = DEFAULT_SORT
     column = SORT_COLUMNS.get(sort, SORT_COLUMNS[DEFAULT_SORT])
@@ -181,14 +188,16 @@ def projects_export_csv():
 
     output = io.StringIO()
     writer = safe_csv_writer(output)
+    external = session.get("kind") == "external"
+    defs = custom_fields.definitions(customer=external)   # partners: only the custom fields marked for them
+    values = custom_fields.values_for([p["id"] for p in projects], customer=external)
     writer.writerow(
         [
             "Project Name", "Client", "PO Number", "PO Date", "Stage", "Owner",
             "Delivery Mode", "Outsourcer", "Vendor", "Product",
             "Start Date", "Target End Date", "Updated At",
-        ]
+        ] + [f["name"] for f in defs]
     )
-    external = session.get("kind") == "external"
     for p in projects:
         po = sees_po(p["id"])   # partners: no PO, no outsourcer (as the project page)
         writer.writerow(
@@ -196,7 +205,7 @@ def projects_export_csv():
                 p["name"], p["client"], p["po_number"] if po else "", p["po_date"] if po else "", p["stage"],
                 p["owner_name"], p["delivery_mode"], "" if external else p["outsourcer_name"], p["vendor_name"],
                 p["product_name"], p["start_date"], p["target_end_date"], p["updated_at"],
-            ]
+            ] + [custom_fields.csv_cell(values[p["id"]].get(f["id"])) for f in defs]
         )
     audit_log("export_projects", details=f"{len(projects)} rollouts")   # it carries PO numbers: an export like the others (P3-17)
     return Response(
@@ -204,6 +213,53 @@ def projects_export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=projects.csv"},
     )
+
+
+def _rollout_csv(project_id, what, header, rows):
+    """One rollout's register as a download: audited like the other exports,
+    and formula-safe through safe_csv_writer. Staff only: a partner's cut of the
+    RAID and tasks is on the page and in the customer report, not in a file."""
+    project = load_project(project_id)
+    output = io.StringIO()
+    writer = safe_csv_writer(output)
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow(row)
+    audit_log(f"export_{what}", "project", project_id, project["name"], f"{len(rows)} rows")
+    return Response(output.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=odin-{what}-{file_stem(project['name'])}.csv", "Cache-Control": "private, no-store"})
+
+
+@app.route("/projects/<int:project_id>/raid.csv")
+@permission_required("view_project_detail")
+def raid_export_csv(project_id):
+    if session.get("kind") == "external":
+        abort(403)
+    from services import raid
+    rows = [[r["kind"], r["title"], r["detail"], r["impact"], r["likelihood"], r["status"], r["owner_name"], r["due_date"], r["stage"],
+             r["resolution"], "yes" if r["customer_visible"] else "", r["created_by"], r["created_at"], r["closed_at"]] for r in raid.items(project_id)]
+    return _rollout_csv(project_id, "raid", ["Kind", "Title", "Detail", "Impact", "Likelihood", "Status", "Owner", "Due date", "Stage",
+                                             "Resolution", "Shown to the customer", "Created by", "Created at", "Closed at"], rows)
+
+
+@app.route("/projects/<int:project_id>/tasks.csv")
+@permission_required("view_project_detail")
+def tasks_export_csv(project_id):
+    if session.get("kind") == "external":
+        abort(403)
+    from services import task_links
+    db = get_db()
+    project = load_project(project_id)
+    stages = get_stage_names(project_id)
+    tasks = db.execute(
+        "SELECT t.*, u.name AS assignee_name FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
+        "WHERE t.project_id = ? ORDER BY t.done, t.due_date IS NULL, t.due_date, t.id", (project_id,)).fetchall()
+    title = {t["id"]: t["title"] for t in tasks}
+    links = task_links.links_for(project_id, db)
+    rows = [[t["title"], t["stage"] if t["stage"] in stages else project["stage"], t["assignee_name"], t["due_date"], "yes" if t["done"] else "", t["done_at"],
+             t["estimate_hours"], t["recurrence"], "; ".join(title.get(i, "") for i in links.get(t["id"], [])), t["kind"] or "task", t["created_by"], t["created_at"]]
+            for t in tasks]
+    return _rollout_csv(project_id, "tasks", ["Task", "Stage", "Assignee", "Due date", "Done", "Done at", "Estimate hours", "Repeats", "Waits on", "Kind", "Created by", "Created at"], rows)
 
 
 @app.route("/reports/all")
@@ -261,6 +317,11 @@ def project_new():
     if problem := _date_problem(request.form):
         flash(problem, "error")
         return redirect(url_for("project_new"))
+    try:   # custom fields: each by its kind, the required ones present (services/fields.py)
+        field_values = custom_fields.clean_values(custom_fields.form_items(request.form), creating=True)
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("project_new"))
     # The project manager must be able to move stages. Someone who cannot
     # (a Contributor) names one and joins as a Coordinator.
     lead_id = session["user_id"]
@@ -313,6 +374,7 @@ def project_new():
     )
     project_id = cursor.lastrowid
     copy_template_stages(db, template["id"], project_id)
+    field_changes = custom_fields.save(db, project_id, field_values)
     set_project_manager(db, project_id, lead_id, session["user_id"])
     team = request.form.getlist("team_user_ids") + ([str(session["user_id"])] if lead_id != session["user_id"] else [])
     for raw in team:
@@ -321,6 +383,8 @@ def project_new():
                 "INSERT OR IGNORE INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, 'Coordinator', ?, ?)",
                 (project_id, int(raw), session["user_id"], now),
             )
+    from services import template_tasks   # the template's tasks, once the team that takes them is known
+    template_tasks.instantiate(db, template["id"], project_id, session["user_name"])
     save_document(project_id, po_document, CLIENT_PO_DOC_CATEGORY, session["user_name"])
     db.commit()
     joined = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Coordinator'", (project_id,))]
@@ -330,6 +394,8 @@ def project_new():
         notify_users([lead_id], "assigned", project_id, f"You manage {escape(name)}",
                      f"{escape(session['user_name'])} created <b>{escape(name)}</b> and made you its project manager.", link=f"/projects/{project_id}")
     audit_log("create_project", "project", project_id, name, f"client={request.form['client']}" + (f" manager_id={lead_id}" if lead_id != session["user_id"] else ""))
+    if field_changes:
+        audit_log("update_field_values", "project", project_id, name, "; ".join(field_changes))
     notify_event(
         {"owner_id": lead_id},
         f"New project: {escape(name)}",
@@ -337,6 +403,7 @@ def project_new():
         + (f" by {escape(session['user_name'])} and assigned to you." if lead_id != session["user_id"] else "."),
         channels={"email": False, "teams": True},   # the named PM already had "You manage …" by email (D12)
     )
+    rules.fire("rollout_created", project_id, {"source": "form"})   # automations (services/rules.py)
     flash("Project created")
     return redirect(url_for("project_detail", project_id=project_id))   # straight to the new rollout (P14)
 
@@ -363,6 +430,11 @@ def project_edit(project_id):
         return redirect(url_for("project_edit", project_id=project_id))
     if problem := _date_problem(request.form):
         flash(problem, "error")
+        return redirect(url_for("project_edit", project_id=project_id))
+    try:
+        field_values = custom_fields.clean_values(custom_fields.form_items(request.form))
+    except ValueError as e:
+        flash(str(e), "error")
         return redirect(url_for("project_edit", project_id=project_id))
 
     # Owner reassignment — fall back to the current owner if the submitted
@@ -409,6 +481,7 @@ def project_edit(project_id):
             now, 1 if request.form.get("customer_approval") else 0, project_id,
         ),
     )
+    field_changes = custom_fields.save(db, project_id, field_values)
     if owner_id != project["owner_id"]:
         set_project_manager(db, project_id, owner_id, session["user_id"])
     if not request.form.get("customer_approval"):   # no longer asking: an open request is moot (P7)
@@ -420,6 +493,8 @@ def project_edit(project_id):
         notify_users([project["owner_id"]], "activity", project_id, f"{escape(name)} has a new project manager",
                      f"{escape(session['user_name'])} handed <b>{escape(name)}</b> to someone else; you stay on the team as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
     audit_log("update_project", "project", project_id, name, f"client={client}; owner_id={owner_id}")
+    if field_changes:
+        audit_log("update_field_values", "project", project_id, name, "; ".join(field_changes))
     flash("Project updated")
     return redirect(url_for("project_detail", project_id=project_id))
 
@@ -428,13 +503,14 @@ class StageConflict(str):
     """A refusal because the rollout is not where the caller saw it (the API answers 409)."""
 
 
-def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None):
+def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None, override=None):
     """The one stage-change path (form, JSON and the vendor's guest link).
     Returns an error message or None; 404s when the project is gone. Staff
     callers must hold edit_project_stage; `guest` is (author, party) for the
     vendor link, which has no session and was checked by the guest route.
     `from_stage` is the stage the caller saw: a move from a stale view is
-    refused rather than taking the rollout backwards (P2-26)."""
+    refused rather than taking the rollout backwards (P2-26). `override` is
+    the typed reason for moving past a stage gate (services/gates.py)."""
     db = get_db()
     # Existence first, then validity: a missing project is a 404, not an
     # "invalid stage" — and its (empty) stage list must never be consulted.
@@ -446,6 +522,8 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None):
         abort(404)
     actor_name = f"{guest[0]} (vendor link)" if guest else session["user_name"]
     actor_id = None if guest else session["user_id"]
+    if project["intake_pending"]:
+        return "Confirm this intake first (attach the PO and take ownership); it has no stage until then"
     if new_stage not in get_stage_names(project_id):
         return "Invalid stage"
     if from_stage is not None and from_stage != project["stage"]:
@@ -455,6 +533,14 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None):
     from services.signoff import gate
     if blocked := gate(project, new_stage):
         return blocked
+    from services import gates
+    held = gates.blocked(project, new_stage)
+    if held and guest:   # the vendor link never overrides, and hears no internals
+        return StageConflict(gates.GUEST_MESSAGE)
+    if held and not override:
+        return StageConflict(f"Before leaving {project['stage']}: {gates.summary(held)}")
+    if held and not gates.may_override(project):
+        return gates.override_refusal()
     now = datetime.utcnow().isoformat()
     # compare-and-set: of two submits racing, only the first moves the project
     # (a double click used to write two notes and notify twice; F-M5)
@@ -486,6 +572,9 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None):
         ),
     )
     g.stage_note_id = cur.lastrowid
+    if held:   # staff only (guest_visible = 0): the customer hears of the move, not of the gate
+        db.execute("INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id) VALUES (?, ?, ?, ?, ?, 0, ?)",
+                   (project_id, actor_name, f"Moved past the gate: {override} ({gates.summary(held)})", new_stage, now, actor_id))
     g.stage_undo_url = url_for("undo_stage_change", project_id=project_id, note_id=cur.lastrowid)
     # A newer change makes an undecided older request moot; closing asks for
     # no approval (the sign-off is the customer's word on the finish, P7).
@@ -505,6 +594,8 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None):
         audit_log("guest_stage_change", "project", project_id, project["name"], f"stage={new_stage}; by={guest[0]}", actor=f"guest:{guest[1]}")
     else:
         audit_log("update_project_stage", "project", project_id, project["name"], f"stage={new_stage}")
+        if held:
+            audit_log("override_stage_gate", "project", project_id, project["name"], f"{project['stage']} -> {new_stage}: {gates.summary(held)}; reason={override}")
     body = (f"Stage moved to <b>{escape(new_stage)}</b> by {escape(actor_name)}."
             + (f"<br>{escape(note_text)}" if note_text else ""))
     ask = "<br>Please review and approve this step."
@@ -517,6 +608,7 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None):
     if customers:
         notify_users(customers, "approval", project_id, f"{escape(project['name'])}: please approve the move to {escape(new_stage)}", body + ask,
                      exclude_user_id=actor_id, link=f"/projects/{project_id}")
+    rules.fire("stage_entered", project_id, {"stage": new_stage, "from": project["stage"]})
     return None
 
 
@@ -607,6 +699,8 @@ def decide_approval(project_id, approval_id, decision, comment):
     body = f"{escape(session['user_name'])} {decision} <b>{escape(row['stage'])}</b>." + (f"<br>{escape(comment)}" if comment else "")
     notify_event(project, subject, body, channels={"email": False, "teams": True})
     notify_participants(project_id, subject, body, exclude_user_id=session["user_id"], kind="approval")
+    if decision == "declined":
+        rules.fire("stage_declined", project_id, {"stage": row["stage"]})
     return None
 
 
@@ -677,7 +771,7 @@ def save_document(project_id, file, category, uploaded_by):
     touch_project(db, project_id)
     db.commit()
 
-    if get_setting("onedrive_mirror_uploads_enabled") == "1":
+    if policy("onedrive_mirror_uploads_enabled"):
         project = db.execute("SELECT name FROM projects WHERE id = ?", (project_id,)).fetchone()
         remote_path = f"Odin-Documents/{project_id}-{secure_filename(project['name'])}/{category}/{secure_filename(original_name) or stored_name}"
         ok, error = graph.upload_file(os.path.join(project_dir, stored_name), remote_path)
@@ -687,14 +781,27 @@ def save_document(project_id, file, category, uploaded_by):
 
 
 @app.route("/projects/<int:project_id>/documents", methods=["POST"])
-@permission_required("upload_document")
-@project_role_required("manage_documents")
+@login_required
 def document_upload(project_id):
+    """The documents panel's upload (upload_document and the manage_documents
+    project role), and the one door for an upload ask (services/asks.py): with
+    `ask_id`, the person the ask is on uploads into its category only, rate
+    limited, and the ask is done. Nothing else is opened to them."""
+    from services import asks
     db = get_db()
     if not load_project(project_id):
         abort(404)
+    ask = None
+    if request.form.get("ask_id"):
+        ask = asks.own_ask(project_id, as_id(request.form.get("ask_id")), session["user_id"])
+        if ask is None or ask["kind"] != "upload":
+            abort(403)
+        if session.get("kind") == "external" and asks.limited(session["user_id"]):
+            abort(429, description="Too many changes in a minute; wait a moment")
+    elif not project_allows(project_id, "manage_documents"):
+        abort(403)
     file = request.files.get("file")
-    category = request.form.get("category", "")
+    category = ask["ask_category"] if ask else request.form.get("category", "")
     if not file or not file.filename:
         flash("No file selected", "error")
         return redirect(url_for("project_detail", project_id=project_id))
@@ -707,11 +814,17 @@ def document_upload(project_id):
     if category not in get_doc_category_names():
         flash("Invalid category", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    original_name, _ = save_document(project_id, file, category, session["user_name"])
+    original_name, doc_id = save_document(project_id, file, category, session["user_name"])
     audit_log("upload_document", "project", project_id, None, f"{category}: {original_name}")
     project = load_project(project_id)
-    _tell_pm(project, f"Document added to {escape(project['name'])}",
-             f"{escape(session['user_name'])} uploaded <b>{escape(original_name)}</b> ({escape(category)}).")
+    if ask:
+        asks.record_upload(db, ask, doc_id, session["user_id"], session["user_name"])
+        db.commit()
+        audit_log("complete_ask", "project", project_id, None, f"upload: {ask['title'][:80]}")
+    _tell_pm(project, f"{'Ask done on' if ask else 'Document added to'} {escape(project['name'])}",
+             f"{escape(session['user_name'])} uploaded <b>{escape(original_name)}</b> ({escape(category)})"
+             + (f" for <b>{escape(ask['title'])}</b>." if ask else "."))
+    rules.fire("document_uploaded", project_id, {"category": category, "file": original_name})
 
     flash(f"Uploaded {original_name}")
     return redirect(url_for("project_detail", project_id=project_id))
@@ -1026,6 +1139,15 @@ def project_stage_sla(project_id):
     return _stage_change(project_id, "update_project_stage_slas", stage_ops.set_slas("project", project_id, request.form), None)
 
 
+@app.route("/projects/<int:project_id>/stages/gates", methods=["POST"])
+@permission_required("edit_project")
+@project_role_required("manage_project")
+def project_stage_gates(project_id):
+    """What each stage asks before the rollout leaves it (services/gates.py)."""
+    load_project(project_id)
+    return _stage_change(project_id, "update_project_stage_gates", stage_ops.set_gates("project", project_id, request.form), None)
+
+
 @app.route("/undo/project/<int:project_id>", methods=["POST"])
 @permission_required("delete_project")
 @project_role_required("manage_project")
@@ -1262,12 +1384,28 @@ def _due_problem(form):
     return None
 
 
+def _links_and_hours(db, project_id, task_id, form, hours=None):
+    """What a posted task waits on (None: not sent, unchanged) and its
+    estimate, checked: tasks of this rollout only, never a loop
+    (services/task_links.py). Raises ValueError with the reason."""
+    from services import task_links, template_tasks
+    waits = None
+    if "waits_on" in form:
+        raw = form.get("waits_on") if request.is_json else [x for x in form.getlist("waits_on") if x]
+        waits = task_links.clean_ids(raw)
+        task_links.check(db, project_id, task_id, waits)
+    if "estimate_hours" in form:
+        hours = template_tasks.clean_hours(form.get("estimate_hours"))
+    return waits, hours
+
+
 @app.route("/projects/<int:project_id>/tasks", methods=["POST"])
 @permission_required("edit_project")
 @project_role_required("manage_tasks")
 def task_add(project_id):
     db = get_db()
-    if not load_project(project_id):
+    project = load_project(project_id)
+    if not project:
         abort(404)
     form = _task_input()
     try:
@@ -1281,12 +1419,27 @@ def task_add(project_id):
         return _task_reply(project_id, "Pick an active colleague or someone on this rollout")
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
+    try:
+        waits, hours = _links_and_hours(db, project_id, None, form)
+        from services import asks
+        kind, ask_category, ask_form = asks.clean_spec(form)   # a tick, a document, or a short form (services/asks.py)
+    except ValueError as exc:
+        return _task_reply(project_id, str(exc))
     done, done_at = _done_state(form)   # undo of a delete brings a finished task back finished
+    try:
+        every, until, stage = milestones.clean_repeat(form, parse_date(form.get("due_date")), _task_stage(project_id, form.get("stage")), project["stage"])
+    except ValueError as exc:
+        return _task_reply(project_id, str(exc))
     cur = db.execute(
-        "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage, done, done_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage, done, done_at, estimate_hours, kind, ask_category, ask_form) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (project_id, title, assignee_id, parse_date(form.get("due_date")),
-         datetime.utcnow().isoformat(), session["user_name"], _task_stage(project_id, form.get("stage")), done, done_at),
+         datetime.utcnow().isoformat(), session["user_name"], _task_stage(project_id, form.get("stage")), done, done_at, hours, kind, ask_category, ask_form),
     )
+    if every:   # repeats (services/milestones.py); "until the stage is done" pins the stage it names
+        db.execute("UPDATE tasks SET recurrence = ?, recur_until = ?, stage = ? WHERE id = ?", (every, until, stage, cur.lastrowid))
+    if waits:
+        from services import task_links
+        task_links.replace(db, project_id, cur.lastrowid, waits)
     touch_project(db, project_id)
     db.commit()
     _notify_assignee(assignee_id, project_id, title)
@@ -1301,11 +1454,19 @@ def task_toggle(project_id, task_id):
     a contractor ticks off their own work without gaining anything else."""
     project = load_project(project_id)   # visibility decided in one place
     db = get_db()
-    task = db.execute("SELECT title, done, assignee_id FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
+    task = db.execute("SELECT title, done, assignee_id, kind FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
-    if not (project_allows(project_id, "manage_tasks") or task["assignee_id"] == session["user_id"]):
+    manages = project_allows(project_id, "manage_tasks")
+    if not (manages or task["assignee_id"] == session["user_id"]):
         abort(403)
+    # an upload or a form is done by uploading or answering (services/asks.py); whoever manages the tasks may still tick it
+    if not manages and task["kind"] in ("upload", "form"):
+        return _task_reply(project_id, "Upload the file or answer the questions to finish this")
+    if session.get("kind") == "external":
+        from services import asks
+        if asks.limited(session["user_id"]):
+            abort(429, description="Too many changes in a minute; wait a moment")
     # the page says what it wants (P2-26): a tick from a stale tab sets done, never flips it back open
     wanted = (json_body() if request.is_json else request.form).get("done")
     if wanted is None:
@@ -1316,6 +1477,11 @@ def task_toggle(project_id, task_id):
         abort(400, description="Send done as true or false")
     if new_done == task["done"]:
         return _task_reply(project_id, done=bool(new_done))   # already so: nothing changed, nobody told
+    # finish-to-start (services/task_links.py): a task waiting on open work is not ticked; an Admin may, on the record
+    from services import task_links
+    waits = ", ".join(w["title"] for w in task_links.open_predecessors(db, task_id)) if new_done else ""
+    if waits and session.get("role") != "Admin":
+        return _task_reply(project_id, f"{task['title']} waits on {waits}: finish that first")
     db.execute(
         "UPDATE tasks SET done = ?, done_at = ? WHERE id = ?",
         (new_done, datetime.utcnow().isoformat() if new_done else None, task_id),
@@ -1324,8 +1490,15 @@ def task_toggle(project_id, task_id):
     db.commit()
     audit_log("toggle_task", "project", project_id, None, f"{'done' if new_done else 'reopened'}: {task['title'][:80]}")
     if new_done:
+        milestones.spawn_next(db, task_id)   # a repeating task makes its next occurrence, once (services/milestones.py)
+    if waits:
+        audit_log("override_task_wait", "project", project_id, None, f"{task['title'][:80]} ticked while it waits on {waits[:160]}")
+    if new_done:
         _tell_pm(project, f"Task done on {escape(project['name'])}",
                  f"{escape(session['user_name'])} completed <b>{escape(task['title'])}</b>.")
+        from services import asks
+        if asks.is_external(db, task["assignee_id"]):   # an ask ticked (an upload or a form fires from services/asks.save_answers)
+            rules.fire("ask_completed", project_id, {"task": task["title"], "kind": task["kind"] or "task"})
     return _task_reply(project_id, done=bool(new_done))
 
 
@@ -1338,6 +1511,8 @@ def task_delete(project_id, task_id):
     task = db.execute("SELECT title FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
+    from services import task_links
+    task_links.forget(db, task_id)   # what waited on it is free to go
     db.execute("DELETE FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id))
     touch_project(db, project_id)
     db.commit()
@@ -1351,14 +1526,14 @@ def task_delete(project_id, task_id):
 def task_edit(project_id, task_id):
     """Correct a task in place. Fixing a typo previously meant deleting the
     task and retyping it, which also threw away its done state. Only the
-    fields sent change (title, assignee_id, due_date, stage): a JSON edit of
+    fields sent change (title, assignee_id, due_date, stage, waits_on, estimate_hours): a JSON edit of
     the title keeps the assignee and the due date (L14). Whoever may manage
     tasks changes any field. The person a task is on may tick it (task_toggle)
     but not re-date it: that is managing the work (P2-10, PRODUCT.md: Viewers
     read, partners tick their own tasks)."""
-    load_project(project_id)   # visibility decided in one place
+    project = load_project(project_id)   # visibility decided in one place
     db = get_db()
-    task = db.execute("SELECT id, title, assignee_id, due_date, stage FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
+    task = db.execute("SELECT id, title, assignee_id, due_date, stage, estimate_hours, kind, ask_category, ask_form FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
     form = _task_input()
@@ -1373,12 +1548,26 @@ def task_edit(project_id, task_id):
         return _task_reply(project_id, "Pick an active colleague or someone on this rollout")
     if problem := _due_problem(form):
         return _task_reply(project_id, problem)
+    try:
+        waits, hours = _links_and_hours(db, project_id, task_id, form, task["estimate_hours"])
+        from services import asks
+        kind, ask_category, ask_form = asks.clean_spec(form, task)
+    except ValueError as exc:
+        return _task_reply(project_id, str(exc))
     due = parse_date(form.get("due_date")) if "due_date" in form else task["due_date"]
     stage = _task_stage(project_id, form.get("stage")) if "stage" in form else task["stage"]
+    try:   # Repeats (services/milestones.py): only the keys sent change
+        every, until, stage = milestones.clean_repeat(form, due, stage, project["stage"], existing=db.execute("SELECT recurrence, recur_until FROM tasks WHERE id = ?", (task_id,)).fetchone())
+    except ValueError as exc:
+        return _task_reply(project_id, str(exc))
     db.execute(
-        "UPDATE tasks SET title = ?, assignee_id = ?, due_date = ?, stage = ? WHERE id = ?",
-        (title, assignee_id, due, stage, task_id),
+        "UPDATE tasks SET title = ?, assignee_id = ?, due_date = ?, stage = ?, estimate_hours = ?, kind = ?, ask_category = ?, ask_form = ? WHERE id = ?",
+        (title, assignee_id, due, stage, hours, kind, ask_category, ask_form, task_id),
     )
+    db.execute("UPDATE tasks SET recurrence = ?, recur_until = ?, stage = ? WHERE id = ?", (every, until, stage, task_id))
+    if waits is not None:
+        from services import task_links
+        task_links.replace(db, project_id, task_id, waits)
     touch_project(db, project_id)
     db.commit()
     # only ping on a genuine reassignment, not on every title tweak
@@ -1386,3 +1575,21 @@ def task_edit(project_id, task_id):
         _notify_assignee(assignee_id, project_id, title)
     audit_log("edit_task", "project", project_id, None, title[:80] + (f" (was {task['title'][:60]})" if title != task["title"] else ""))
     return _task_reply(project_id)
+
+
+@app.route("/api/projects/<int:project_id>/watch", methods=["POST"])
+@permission_required("view_project_detail")
+def api_project_watch(project_id):
+    """Mute this rollout (a participant: no mail or Teams from it, the bell
+    still shows it) or follow it (staff not on it: its events reach them).
+    Body {on: true|false}. Audited; the answer is the new state."""
+    from services.notifications import set_watch, watch_state
+    project = load_project(project_id)
+    state = watch_state(project_id, session["user_id"], session.get("kind"))
+    if not state["can"]:
+        return jsonify(error="Only someone on this rollout may mute it, and only staff may follow it"), 403
+    on = json_body().get("on") is True
+    set_watch(project_id, session["user_id"], state["can"], on)
+    get_db().commit()
+    audit_log(f"{'' if on else 'un'}{state['can']}_rollout", "project", project_id, project["name"])
+    return jsonify(watch_state(project_id, session["user_id"], session.get("kind")))

@@ -1,6 +1,8 @@
 {
+ "capacity_default": 30,
  "me": 1,
  "microsoft_only": false,
+ "review_days": 90,
  "roles": [
   "Admin",
   "Member"
@@ -9,15 +11,23 @@
   {
    "active": true,
    "avatar_url": null,
+   "capacity_hours": null,
    "created_at": null,
+   "declined_reason": null,
    "email": null,
+   "holds": {
+    "raid": 3,
+    "rollouts": 22,
+    "tasks": 6
+   },
    "id": 1,
    "kind": "internal",
-   "last_login_at": "2026-10-15T19:13:43.567163",
+   "last_login_at": "2026-10-16T15:40:35.673978",
    "microsoft": false,
    "name": "Admin",
    "password_login": true,
    "pending": false,
+   "review": [],
    "role": "Admin",
    "signup_label": null,
    "signup_project": null,
@@ -28,8 +38,15 @@
   {
    "active": true,
    "avatar_url": null,
-   "created_at": "2026-10-15T19:13:42.910278",
+   "capacity_hours": null,
+   "created_at": "2026-10-16T15:40:34.609468",
+   "declined_reason": null,
    "email": "ann@globex.example",
+   "holds": {
+    "raid": 0,
+    "rollouts": 0,
+    "tasks": 3
+   },
    "id": 9,
    "kind": "external",
    "last_login_at": null,
@@ -37,6 +54,7 @@
    "name": "Ann Reyes",
    "password_login": false,
    "pending": false,
+   "review": [],
    "role": "External",
    "signup_label": null,
    "signup_project": null,

@@ -20,6 +20,9 @@ from datetime import date, datetime, timedelta
 
 from db import get_db, participants_for
 from policies import local_date, local_today, policy
+from services import gates
+from services import fields as fields_service
+from services import milestones as milestones_service
 from services import plan as plan_service
 from services import raid as raid_service
 
@@ -137,19 +140,33 @@ def build(project, audience="internal"):
         "milestones": [{"stage": s["name"], "start": s["forecast_start"], "end": s["forecast_end"], "planned_end": s["plan_end"]}
                        for s in p["stages"] if s["status"] in ("current", "next")][:5],
         "raid": items,
+        # the rollout's own milestones (services/milestones.py), not the stage forecast above; the customer's copy: those marked for them
+        "project_milestones": milestones_service.items(pid, customer=audience == "customer", today=t_iso),
         "work": {"total": len(tasks), "done": sum(t["done"] for t in tasks), "late": sum(t["late"] for t in tasks), "by_stage": by_stage,
                  "burn": weeks, "open": [t for t in tasks if not t["done"]][:40]},
         "team": team,
         "history": {"dwell": dwell, "approvals": approvals, "notes": notes},
         "needs": {"approval": pending_approval, "tasks": customer_tasks},
+        # custom fields with a value (services/fields.py); the customer's copy: those marked for them
+        "fields": [{"name": f["name"], "kind": f["kind"], "value": f["value"], "customer_visible": f["customer_visible"]}
+                   for f in fields_service.for_project(pid, customer=audience == "customer") if f["value"] is not None],
     }
     # The words are saved once and the customer reads them, so the suggestion
     # is always the customer's: no baseline, no blocker they cannot see.
     data["draft"] = draft_words(project, p, items, "customer")
     if audience == "internal":
+        # what the outside parties were asked and answered, and their ratings at sign-off (services/asks.py): ours only
+        from services import asks
+        data["asks"] = asks.listing(pid)
+        data["csat"] = asks.ratings(pid)
         data["people"] = [{"name": k, **v} for k, v in sorted(people.items(), key=lambda kv: (-kv[1]["late"], -kv[1]["open"]))]
         data["plan_changes"] = plan_service.changes(pid, 30)
         data["documents"] = documents
+        # what holds the next move (services/gates.py) on the current stage's line of "What's next"
+        nxt = next((s["name"] for s in p["stages"] if s["status"] == "next"), None)
+        held = gates.blocked(project, nxt) if nxt else []
+        if held and data["milestones"] and data["milestones"][0]["stage"] == project["stage"]:
+            data["milestones"][0]["gate"] = gates.summary(held)
     else:
         # the customer's health is the word, not the internal reasons
         data["health"] = customer_health(data)
@@ -190,8 +207,12 @@ def customer_words(project_id, words, snapshot=None):
     import re
     hidden = {r["title"].strip().lower() for r in get_db().execute(
         "SELECT title FROM raid_items WHERE project_id = ? AND customer_visible = 0", (project_id,))}
+    # a milestone kept for the team is not named either (unless the customer's list has one of the same name)
+    shown = {r["name"].strip().lower() for r in get_db().execute("SELECT name FROM milestones WHERE project_id = ? AND customer_visible = 1", (project_id,))}
+    hidden |= {r["name"].strip().lower() for r in get_db().execute("SELECT name FROM milestones WHERE project_id = ? AND customer_visible = 0", (project_id,))} - shown
     if snapshot:
         hidden |= {str(r.get("title") or "").strip().lower() for r in snapshot.get("raid", []) if not r.get("customer_visible")}
+        hidden |= {str(m.get("name") or "").strip().lower() for m in snapshot.get("project_milestones", []) if not m.get("customer_visible")} - shown
     hidden = {t for t in hidden if len(t) >= 3}
 
     def keep(sentence):
@@ -224,9 +245,13 @@ def customer_view(snapshot):
         s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
     d["finish"] = {k: v for k, v in d.get("finish", {}).items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
     d["raid"] = [r for r in d.get("raid", []) if r.get("customer_visible")]
+    d["project_milestones"] = [m for m in d.get("project_milestones", []) if m.get("customer_visible")]
+    d["fields"] = [f for f in d.get("fields", []) if f.get("customer_visible")]
     d["history"]["notes"] = d.get("customer_notes", [])
     d["work"].pop("open", None)
-    for k in ("people", "plan_changes"):
+    for m in d.get("milestones", []):
+        m.pop("gate", None)   # gate internals are staff only
+    for k in ("people", "plan_changes", "asks", "csat"):
         d.pop(k, None)
     d["documents"] = [{"category": c, "count": n} for c, n in Counter(x["category"] for x in d.get("documents", [])).most_common()]
     d.pop("customer_notes", None)

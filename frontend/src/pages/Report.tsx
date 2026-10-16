@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react"
 import { Segmented } from "@/components/Segmented"
+import { GateBlock } from "@/components/GateBlock"
 import { StatTile } from "@/components/StatTile"
 import { pill, filterSelect, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link, useParams, useSearchParams } from "react-router-dom"
-import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
+import { ChevronLeft, Diamond, Download, Printer, Save, Sparkles } from "lucide-react"
 import { Area, AreaChart, ResponsiveContainer, Tooltip as ChartTip, XAxis, YAxis } from "recharts"
 import { Notice } from "@/components/Notice"
 import { Button } from "@/components/ui/button"
+import { Tag } from "@/components/ui/tag"
 import { PrintBrand } from "@/components/Brand"
 import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
 import { PlanGantt, RagPill } from "@/components/PlanGantt"
@@ -18,7 +20,7 @@ import { AIWordsDraft } from "@/components/AIWordsDraft"
 import { AIDraftBar } from "@/components/AIDraftBar"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { cn } from "@/lib/utils"
-import { fillPlaceholders, fmtDate, fmtWhen, forecastTone, groupBlocks } from "@/lib/format"
+import { fieldText, fillPlaceholders, fmtDate, fmtWhen, forecastTone, groupBlocks } from "@/lib/format"
 import { TemplatePicker } from "@/components/TemplatePicker"
 import { useLoad } from "@/lib/useLoad"
 
@@ -118,7 +120,8 @@ export default function Report({ user }: { user: User }) {
   const on = (key: string) => !d.template || d.template.sections.some((s) => s.key === key && s.on)
   const hide = (key: string) => (on(key) ? undefined : "hidden")
   const tplValues = { project: d.project.name, client: d.project.client, company: d.company, pm: d.project.owner_name, po: d.project.po_number ?? "",
-    stage: d.project.stage, target: fmtDate(d.finish.target), forecast: fmtDate(d.finish.forecast), date: fmtDate(d.today) }
+    stage: d.project.stage, target: fmtDate(d.finish.target), forecast: fmtDate(d.finish.forecast), date: fmtDate(d.today),
+    ...Object.fromEntries((d.fields ?? []).map((x) => [`field:${x.name}`, fieldText(x.kind, x.value)])) }
   const intro = fillPlaceholders(d.template?.texts.intro ?? "", tplValues).trim()
   const closing = fillPlaceholders(d.template?.texts.closing ?? "", tplValues).trim()
   const f = d.finish
@@ -157,6 +160,8 @@ export default function Report({ user }: { user: User }) {
       <header className="mt-3">
         <h1 className="text-[24px] font-semibold tracking-tight">{d.project.name}</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">{[d.project.client, `PM ${d.project.owner_name}`, `stage ${d.project.stage_number} of ${d.project.stage_count}: ${d.project.stage}`, d.project.po_number, d.project.vendor_name && `${d.project.vendor_name}${d.project.product_name ? ` ${d.project.product_name}` : ""}`].filter(Boolean).join(" · ")}</p>
+        {/* custom fields: the server already cut the customer's copy to theirs */}
+        {!!d.fields?.length && <p className="mt-1 text-[13px] text-muted-foreground">{d.fields.map((x) => `${x.name}: ${fieldText(x.kind, x.value)}`).join(" · ")}</p>}
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <RagPill rag={d.health.rag} />
           {!customer && <ul className="text-[13px] text-muted-foreground">{d.health.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
@@ -210,13 +215,28 @@ export default function Report({ user }: { user: User }) {
           </div>
         </Section>
 
+        {/* the rollout's own milestones (services/milestones.py); the customer's copy carries only those marked for them */}
+        {!!d.project_milestones?.length && (
+          <Section n title="Milestones" sub={`${d.project_milestones.filter((x) => x.done).length} of ${d.project_milestones.length} reached`} className={hide("timeline")}>
+            <ul className="divide-y divide-border text-[13px]">
+              {d.project_milestones.map((x) => (
+                <li key={x.id} className="flex items-center gap-3 py-2">
+                  <Diamond className={cn("h-4 w-4 shrink-0", x.done ? "fill-current text-ok" : x.missed ? "text-warn" : "text-muted-foreground")} aria-hidden />
+                  <span className={cn("min-w-0 flex-1 font-medium", x.done && "text-muted-foreground")}>{x.name}{x.stage && <span className="font-normal text-muted-foreground"> · {x.stage}</span>}</span>
+                  <span className={cn("shrink-0 text-muted-foreground", x.missed && !x.done && "font-medium text-warn")}>{x.done ? `reached ${fmtDate(x.done_at!.slice(0, 10))}` : x.missed ? "missed" : "ahead"} · {fmtDate(x.date)}</span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Section n title="What's next" sub="the coming stages, as forecast" className={hide("timeline")}>
             <ol className="grid grid-cols-1 gap-2">
               {d.milestones.map((m, i) => (
                 <li key={m.stage} className="flex items-center gap-3 rounded-xl bg-muted/50 px-3 py-2 text-[13px]">
                   <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", i === 0 ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}>{i + 1}</span>
-                  <span className="min-w-0 flex-1 font-medium">{m.stage}</span>
+                  <span className="min-w-0 flex-1 font-medium">{m.stage}{!customer && m.gate && <GateBlock text={m.gate} className="font-normal" />}</span>
                   <span className="text-[13px] text-muted-foreground">{fmtDate(m.start)} – <span className="font-medium text-foreground">{fmtDate(m.end)}</span></span>
                   {!customer && m.planned_end && m.end && m.end > m.planned_end && <span className="text-[12px] font-medium text-warn">plan {fmtDate(m.planned_end)}</span>}
                 </li>
@@ -234,7 +254,7 @@ export default function Report({ user }: { user: User }) {
                     <K.icon className={cn("mt-1 h-4 w-4 shrink-0", x.kind === "blocker" && x.open ? "text-bad" : "text-muted-foreground")} aria-hidden />
                     <span className="min-w-0 flex-1"><span className={cn("block font-medium", !x.open && "text-muted-foreground")}>{x.title}</span>
                       <span className="block text-[12px] text-muted-foreground">{K.label} · {x.status}{x.owner_name && ` · ${x.owner_name}`}{x.due_date && ` · due ${fmtDate(x.due_date)}`}{x.resolution && ` · ${x.resolution}`}</span></span>
-                    {x.kind !== "decision" && <span className={cn("shrink-0 rounded-full px-2 py-1 text-[11px] font-medium", x.impact === "high" ? "bg-warn-soft font-semibold text-warn" : x.impact === "medium" ? "bg-muted text-foreground" : "bg-muted text-muted-foreground")}>{x.impact}</span>}
+                    {x.kind !== "decision" && <Tag kind="impact" level={x.impact}>{x.impact}</Tag>}
                   </li>
                 )
               })}
@@ -284,6 +304,15 @@ export default function Report({ user }: { user: User }) {
             <Section n title="Team" className={hide("team")}><ul className="grid grid-cols-1 gap-1 text-[13px]">{d.team.map((m) => <li key={m.name} className="flex justify-between"><span className="font-medium">{m.name}</span><span className="text-muted-foreground">{m.role}</span></li>)}</ul></Section>
           )}
         </div>
+
+        {/* what the outside parties were asked and answered, and their rating at sign-off (services/asks.py): internal only */}
+        {!customer && (!!d.asks?.length || !!d.csat?.length) && (
+          <Section n title="Asked of the customer and partners" sub={d.csat?.length ? `rated ${d.csat[d.csat.length - 1].rating} of 5 at sign-off` : undefined} className={hide("work")}>
+            <Table head={["Ask", "Who", "State", "What came back"]} rows={(d.asks ?? []).map((a) => [a.title, `${a.assignee} (${a.assignee_role})`, a.done ? "done" : a.due_date ? `open · due ${fmtDate(a.due_date)}` : "open",
+              a.file ? a.file.filename : a.answers.map((x) => `${x.label}: ${x.value}`).join(" · ") || "—"])} />
+            {d.csat?.filter((r) => r.comment).map((r) => <p key={r.signoff_version} className="mt-2 text-[13px]">“{r.comment}” <span className="text-muted-foreground">— {r.by_name}, version {r.signoff_version}</span></p>)}
+          </Section>
+        )}
 
         <Section n title="History" sub="time in each stage against its SLA, decisions, and what moved" className={hide("history")}>
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

@@ -398,6 +398,20 @@ main { counter-reset: panel; }
   nav, [role="tooltip"], [data-slot="tooltip-content"], [aria-live="polite"].fixed { display: none !important; }
   /* bars, dots and pills are data: print their fills */
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* The Gantt as shown (B20): its own landscape page, nothing but the chart. Every element that
+     neither holds the chart nor sits inside it goes; the ones that hold it lose their screen
+     height, scroll and card so the whole chart is laid out. FlowGantt squeezes the timeline to
+     the page while printing (beforeprint). */
+  @page gantt { size: A4 landscape; margin: 8mm; }
+  [data-gantt-print] { page: gantt; }
+  body:has([data-gantt-print]) *:not(:has([data-gantt-print])):not([data-gantt-print]):not([data-gantt-print] *) { display: none !important; }
+  body:has([data-gantt-print]) :has([data-gantt-print]) {
+    display: block !important; position: static !important; height: auto !important; max-height: none !important; min-height: 0 !important;
+    overflow: visible !important; margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; transform: none !important; background: transparent !important;
+  }
+  [data-gantt-print] [role="table"] { overflow: visible !important; height: auto !important; }
+  [data-gantt-print] [role="row"] { break-inside: avoid; }
 }
 
 /* Respect the OS "reduce motion" setting: no transitions, no animations. */

@@ -714,7 +714,7 @@ class OpsFixesTestCase(FixBase):
         from unittest.mock import patch
         from services.notifications import notify_event, notify_users
         self.sql("UPDATE users SET email = 'admin@odin.example' WHERE id = 1")
-        self.sql("INSERT INTO settings (key, value) VALUES ('notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
+        self.sql("INSERT INTO settings (key, value) VALUES ('policy.notify_email_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = '1'")
         subject = "Smith &amp; Sons: it&#39;s in UAT"
         with app_module.app.test_request_context(), patch("graph.send_mail", return_value=(True, None)) as mail:
             notify_users([1], "stage", None, subject, "body")

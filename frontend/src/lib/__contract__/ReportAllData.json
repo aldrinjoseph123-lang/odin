@@ -1,10 +1,10 @@
 {
  "audience": "internal",
  "company": "Protect24x7",
- "generated_at": "2026-10-15T19:13:43.724228",
+ "generated_at": "2026-10-16T15:40:35.801150",
  "risks": [
   {
-   "due_date": "2026-10-11",
+   "due_date": "2026-10-12",
    "impact": "high",
    "kind": "blocker",
    "owner_name": "Admin",
@@ -14,7 +14,7 @@
    "title": "Waiting on firewall change approval"
   },
   {
-   "due_date": "2026-10-11",
+   "due_date": "2026-10-12",
    "impact": "high",
    "kind": "blocker",
    "owner_name": "Lena Fischer",
@@ -26,13 +26,25 @@
  ],
  "rows": [
   {
-   "baseline": "2026-10-25",
+   "baseline": "2026-10-26",
    "client": "Wayne Retail",
    "confidence": "high",
+   "csat": null,
    "delivery_mode": "Distribution/MSSP",
-   "forecast": "2026-10-15",
+   "fields": {
+    "Change ticket": "CHG-4111",
+    "Endpoints in scope": 350,
+    "Region": "Qatar"
+   },
+   "forecast": "2026-10-16",
    "has_plan": true,
    "id": 11,
+   "milestones": {
+    "done": 0,
+    "missed": 0,
+    "next": null,
+    "total": 0
+   },
    "name": "SIEM onboarding - Wayne Retail",
    "open": {
     "blocker": 1,
@@ -41,7 +53,7 @@
    },
    "owner_name": "Admin",
    "pct_complete": 100,
-   "planned": "2026-11-01",
+   "planned": "2026-11-02",
    "product_name": null,
    "rag": "red",
    "reasons": [
@@ -52,20 +64,32 @@
    "stage": "Sign-off",
    "stage_count": 9,
    "stage_number": 8,
-   "start": "2026-08-14",
-   "target_end_date": "2026-09-05",
+   "start": "2026-08-15",
+   "target_end_date": "2026-09-06",
    "vendor_name": "Palo Alto",
    "vs_baseline_days": -10,
    "vs_target_days": 40
   },
   {
-   "baseline": "2026-11-09",
+   "baseline": "2026-11-10",
    "client": "Initech",
    "confidence": "high",
+   "csat": null,
    "delivery_mode": "Distribution/MSSP",
-   "forecast": "2026-10-29",
+   "fields": {
+    "Change ticket": "CHG-4107",
+    "Endpoints in scope": 150,
+    "Region": "KSA"
+   },
+   "forecast": "2026-10-30",
    "has_plan": true,
    "id": 7,
+   "milestones": {
+    "done": 0,
+    "missed": 0,
+    "next": null,
+    "total": 0
+   },
    "name": "MDR onboarding - Initech",
    "open": {
     "blocker": 1,
@@ -73,8 +97,8 @@
     "risk": 2
    },
    "owner_name": "Admin",
-   "pct_complete": 78,
-   "planned": "2026-11-23",
+   "pct_complete": 79,
+   "planned": "2026-11-24",
    "product_name": null,
    "rag": "red",
    "reasons": [
@@ -85,18 +109,20 @@
    "stage": "Hypercare",
    "stage_count": 9,
    "stage_number": 6,
-   "start": "2026-09-05",
-   "target_end_date": "2026-10-03",
+   "start": "2026-09-06",
+   "target_end_date": "2026-10-04",
    "vendor_name": "Fortinet",
    "vs_baseline_days": -11,
    "vs_target_days": 26
   }
  ],
  "summary": {
-  "avg_slip": 14.4,
+  "avg_slip": 14.3,
   "behind_baseline": 14,
   "blockers": 9,
   "count": 22,
+  "csat": 4.0,
+  "csat_count": 1,
   "finishing_30d": 8,
   "health": {
    "amber": 8,
@@ -128,5 +154,5 @@
   },
   "title": "Portfolio report"
  },
- "today": "2026-10-15"
+ "today": "2026-10-16"
 }

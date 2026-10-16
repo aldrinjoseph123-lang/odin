@@ -4,8 +4,9 @@
 # line whose marker is false is skipped and pip picks a version itself).
 # To upgrade: change a version here, build, run the tests; `pip-audit -r
 # requirements.txt` (CI) checks the set for published advisories.
-# ponytail: exact pins without hashes; a hashed lock (pip-compile
-# --generate-hashes on Linux/3.12) when a Linux build can verify it.
+# requirements.lock is these pins with the sha256 of the files production
+# installs (Python 3.12, Linux x86_64); the Dockerfile installs from it. After
+# any change here: python3 scripts/make_lock.py (docs/RELEASING.md).
 flask==3.1.3
 werkzeug==3.1.9
 jinja2==3.1.6

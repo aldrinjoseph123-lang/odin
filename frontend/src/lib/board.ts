@@ -18,11 +18,12 @@ export function dropRefusal(r: FlowRow, column: string): string | null {
   if (column !== r.next_stage) return `${r.name} can only move to ${r.next_stage}, its next stage`
   if (!r.can_move) return `You cannot move ${r.name}`
   if (r.signoff_needed) return `${r.next_stage} waits for the signed sign-off`
+  if (r.gate_blocked) return `Before leaving ${r.stage}: ${r.gate_reasons.join(" · ")}`
   return null
 }
 
-// no grip while the next move waits for a sign-off: the card links to it instead
-export const canDrag = (r: FlowRow) => r.can_move && !!r.next_stage && !r.signoff_needed
+// no grip while the next move waits for a sign-off or a stage gate: the card links to it instead
+export const canDrag = (r: FlowRow) => r.can_move && !!r.next_stage && !r.signoff_needed && !r.gate_blocked
 
 // The column a card ended up in, after the board's own preview moved it.
 export function columnOf(value: Record<string, FlowRow[]>, id: number): string | undefined {

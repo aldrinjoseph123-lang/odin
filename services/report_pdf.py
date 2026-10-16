@@ -231,6 +231,8 @@ def render(data, words, tpl=None):
     customer = data["audience"] == "customer"
     values = {"project": p["name"], "client": p["client"], "company": data["company"], "pm": p["owner_name"], "po": p.get("po_number") or "",
               "stage": p["stage"], "target": _fmt(f.get("target")), "forecast": _fmt(f.get("forecast")), "date": _fmt(data["today"])}
+    from services.fields import shown   # {field:Name}: the fields this copy carries (the customer's copy: theirs only)
+    values |= {f"field:{x['name']}": shown(x["kind"], x["value"]) for x in data.get("fields", [])}
 
     c.text(LEFT, doc.y, c.fit(p["name"], 18, WIDTH, True), 18, True)
     doc.y += 24
@@ -238,6 +240,9 @@ def render(data, words, tpl=None):
                                          p.get("po_number") and (p["po_number"] if p["po_number"].upper().startswith("PO") else f"PO {p['po_number']}")) if x)
     c.text(LEFT, doc.y, c.fit(meta, 9, WIDTH), 9, False, MUTED)
     doc.y += 18
+    if data.get("fields"):   # the custom fields this copy carries, one line
+        c.text(LEFT, doc.y - 4, c.fit(" · ".join(f"{x['name']}: {shown(x['kind'], x['value'])}" for x in data["fields"]), 9, WIDTH), 9, False, MUTED)
+        doc.y += 14
 
     soft, strong, word = RAG[h["rag"]]
     pw = c.width(word, 9.5, True) + 22
@@ -293,6 +298,12 @@ def render(data, words, tpl=None):
             rows.append(row)
             tones.append({4: (180, 35, 28)} if not customer and slip and slip > 0 else {})
         doc.table(cols, rows, widths, tones)
+        ms = data.get("project_milestones") or []   # the rollout's own milestones (the customer's copy: those marked for them)
+        if ms:
+            doc.heading("Milestones", f"{sum(1 for m in ms if m['done'])} of {len(ms)} reached")
+            doc.table(["Milestone", "Stage", "Date", "State"],
+                      [[m["name"], m.get("stage") or "-", _fmt(m["date"]), f"reached {_fmt(m['done_at'][:10])}" if m["done"] else "missed" if m["missed"] else "ahead"] for m in ms],
+                      [0.44, 0.2, 0.16, 0.2], [{3: (180, 35, 28)} if m["missed"] and not m["done"] else {} for m in ms])
 
     def raid():
         raid = data.get("raid", [])
