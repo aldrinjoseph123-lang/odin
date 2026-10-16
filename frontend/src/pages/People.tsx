@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { EmptyState } from "@/components/EmptyState"
 import { Link } from "react-router-dom"
+import { Input } from "@/components/ui/input"
 import { UserAvatar } from "@/components/UserAvatar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { Ago } from "@/components/Ago"
@@ -23,7 +24,7 @@ export default function People(_props: { user: User }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[17px] font-semibold tracking-tight">People</h1>
         <p className="text-[13px] text-muted-foreground">{d.people.length} on active rollouts</p>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a person" aria-label="Find a person" className="ml-auto h-8 w-52 rounded-full border border-input bg-card px-3 text-[13px] shadow-card" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a person" aria-label="Find a person" className="ml-auto w-52" />
       </div>
       <ul className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label="People">
         {list.map((p) => (
@@ -47,6 +48,7 @@ export default function People(_props: { user: User }) {
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${p.open - p.late} open on time, ${p.late} late`}>
                 <div className="flex h-full"><span className="bg-nav-fg/60" style={{ width: `${p.open ? ((p.open - p.late) / p.open) * 100 : 0}%` }} /><span className="bg-bad-line" style={{ width: `${p.open ? (p.late / p.open) * 100 : 0}%` }} /></div>
               </div>
+              <p className="mt-1 text-[11px] text-muted-foreground" aria-hidden>{p.open ? <>{p.open - p.late} open on time{p.late > 0 && <> · <span className="text-bad">{p.late} late</span></>}</> : "Nothing open"}</p>
             </Link>
           </li>
         ))}

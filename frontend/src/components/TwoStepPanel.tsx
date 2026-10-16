@@ -1,21 +1,25 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { danger } from "@/lib/ui"
 import { ShieldCheck } from "lucide-react"
+import { PanelTitle } from "@/components/PanelTitle"
+import { Field } from "@/components/ui/field"
+import { Notice } from "@/components/Notice"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ApiError, twoStep, twoStepCodes, twoStepConfirm, twoStepOff, twoStepSetup, type TwoStep } from "@/lib/api"
-import { toast } from "@/lib/toast"
-import { copyText } from "@/lib/copy"
+import { ApiError, twoStep, twoStepCodes, twoStepConfirm, twoStepOff, twoStepSetup } from "@/lib/api"
+import { copyWithToast } from "@/lib/copy"
 import { fmtDate } from "@/lib/format"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
+import { useLoad } from "@/lib/useLoad"
+import { LoadFailed } from "@/components/LoadFailed"
 
 // Two-step sign-in on the Account page: set up with an authenticator app (QR
 // code or the key typed in), recovery codes shown once, new codes or turning
 // it off with the password and a code. Required by the admin: no way off, and
 // sign-in lands here until it is set up.
 export function TwoStepPanel() {
-  const [s, setS] = useState<TwoStep | null>(null)
+  const { data: s, error: failed, reload: load } = useLoad("two-step", twoStep)
   const [setup, setSetup] = useState<{ secret: string; qr_svg: string } | null>(null)
   const [codes, setCodes] = useState<string[] | null>(null)
   const [code, setCode] = useState("")
@@ -24,11 +28,10 @@ export function TwoStepPanel() {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [asking, setAsking] = useState(false)   // setting up: the password first
-  const load = useCallback(() => twoStep().then(setS).catch(() => setErr("Could not load two-step sign-in")), [])
-  useEffect(() => { void load() }, [load])
   // the codes are shown once: leaving before they are kept asks first (review P3-38)
   useUnsavedGuard(codes !== null, "Leave this page? Your recovery codes are shown only once: download or copy them first.")
-  if (!s || !s.password) return null
+  if (!s) return failed ? <LoadFailed what="two-step sign-in" onRetry={() => void load()} /> : null
+  if (!s.password) return null
 
   async function run(fn: () => Promise<void>) {
     setBusy(true); setErr(null)
@@ -50,17 +53,16 @@ export function TwoStepPanel() {
     window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
   const codeField = (label: string) => (
-    <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">{label}
+    <Field label={label}>
       <Input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" inputMode="numeric" maxLength={24} className="h-8 w-40 tracking-[0.15em] tabular-nums" />
-    </label>
+    </Field>
   )
 
   return (
     <section className="grid grid-cols-1 content-start gap-3 panel p-4" aria-label="Two-step sign-in">
-      <h2 data-n className="flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Two-step sign-in
-        <span className="font-normal text-muted-foreground">{s.enabled ? `on since ${fmtDate(s.enabled_at)}` : s.required ? "required by your admin" : "off"}</span></h2>
+      <PanelTitle className="mb-0" icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />} hint={s.enabled ? `on since ${fmtDate(s.enabled_at)}` : s.required ? "required by your admin" : "off"}>Two-step sign-in</PanelTitle>
       {s.required && !s.enabled && !codes && <Alert><AlertDescription>Your admin requires two-step sign-in. Set it up to continue using Odin.</AlertDescription></Alert>}
-      {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
+      {err && <Notice bad>{err}</Notice>}
 
       {codes && (
         <div className="grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
@@ -68,7 +70,7 @@ export function TwoStepPanel() {
           <ul className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[13px]" aria-label="Recovery codes">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={save}>Download as a file</Button>
-            <Button size="sm" variant="outline" onClick={() => void copyText(codes.join("\n")).then((ok) => toast(ok ? "Recovery codes copied" : "Select the codes and copy them", ok ? {} : { tone: "bad" }))}>Copy</Button>
+            <Button size="sm" variant="outline" onClick={() => void copyWithToast(codes.join("\n"), "recovery codes")}>Copy</Button>
             <Button size="sm" onClick={() => { setCodes(null); if (s.required) window.setTimeout(() => window.location.assign("/"), 0) }}>I have saved them</Button>
           </div>
         </div>
@@ -79,7 +81,7 @@ export function TwoStepPanel() {
           <p className="text-[13px] text-muted-foreground">After your password, Odin also asks for a code from an authenticator app on your phone (Microsoft Authenticator, Google Authenticator, 1Password and the like), so a stolen password alone is not enough.</p>
           {!asking ? <div><Button size="sm" disabled={busy} onClick={() => setAsking(true)}>Set up two-step sign-in</Button></div> : (
             <form onSubmit={start} className="flex flex-wrap items-end gap-2">
-              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Your password<Input type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 w-56" /></label>
+              <Field label="Your password"><Input type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 w-56" /></Field>
               <Button type="submit" size="sm" loading={busy} disabled={!password}>Continue</Button>
               <Button type="button" size="sm" variant="ghost" onClick={() => { setAsking(false); setPassword("") }}>Cancel</Button>
             </form>
@@ -111,7 +113,7 @@ export function TwoStepPanel() {
           {mode && (
             <form onSubmit={prove} className="grid grid-cols-1 gap-2">
               <p className="text-[13px] text-muted-foreground">{mode === "off" ? "Confirm it is you to turn two-step sign-in off." : "Confirm it is you. The old codes stop working."}</p>
-              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Password<Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 max-w-xs" /></label>
+              <Field label="Password"><Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 max-w-xs" /></Field>
               {codeField("Authenticator or recovery code")}
               <div className="flex gap-2"><Button type="submit" size="sm" variant={mode === "off" ? "destructive" : "default"} loading={busy} disabled={!password || !code}>{mode === "off" ? "Turn off" : "Make new codes"}</Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => { setMode(null); setErr(null) }}>Cancel</Button></div>

@@ -216,7 +216,10 @@ def draft(project, template_id=None):
     outstanding += [r["title"] for r in raid_service.items(pid, customer=True) if r["open"] and r["kind"] != "decision"]
     counts = {k: sum(1 for x in items if x["status"] == k) for k in ("delivered", "partial", "descoped")}
     start = project["start_date"] or (stages[0]["actual_start"] if stages else None)
-    words = [f"{policy('company_name')} has completed {project['name']} for {project['client']}."]
+    # the draft is written before the last move: "completed" fits only once the work stages are done
+    now = next((i for i, s in enumerate(stages) if s["status"] == "current"), len(stages))
+    words = [f"{policy('company_name')} has completed {project['name']} for {project['client']}." if now >= len(stages) - 2
+             else f"{policy('company_name')} is delivering {project['name']} for {project['client']}; the work is now in {stages[now]['name']}."]
     if start:
         words.append(f"The work started on {_fmt(start)}" + (f" against a target of {_fmt(project['target_end_date'])}." if project["target_end_date"] else "."))
     if items:
@@ -355,14 +358,14 @@ def _who(body):
 
 
 def sign(row, body, ip, agent):
-    if row["status"] != "sent":
+    if row["status"] != "sent" or row["superseded_at"]:
         raise ValueError("This version is not waiting for a signature")
     if not intact(row):
         raise ValueError("This document has changed since it was sent; ask for a new version")
     name, title = _who(body)
     signature = clean_signature(body)
     db = get_db()
-    done = db.execute("UPDATE signoffs SET status = 'signed', signer_name = ?, signer_title = ?, signed_at = ?, signed_ip = ?, signed_agent = ?, signature = ? WHERE id = ? AND status = 'sent'",
+    done = db.execute("UPDATE signoffs SET status = 'signed', signer_name = ?, signer_title = ?, signed_at = ?, signed_ip = ?, signed_agent = ?, signature = ? WHERE id = ? AND status = 'sent' AND superseded_at IS NULL",
                       (name, title, _now(), ip, (agent or "")[:300], signature, row["id"])).rowcount
     if not done:   # signed or withdrawn a moment ago, by another request
         db.rollback()
@@ -376,6 +379,8 @@ def countersign(row, body, ip, agent):
         raise ValueError("This version is already signed off")
     if row["status"] != "signed":
         raise ValueError("The customer has not signed this version yet")
+    if row["superseded_at"]:   # the rollout was reopened after the customer signed
+        raise ValueError("The rollout was reopened since this version was signed; send a new version")
     if not intact(row):
         raise ValueError("This document has changed since it was sent; send a new version")
     name, title = _who(body)

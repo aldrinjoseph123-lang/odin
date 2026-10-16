@@ -1,0 +1,117 @@
+{
+ "baseline_at": "2026-09-19T19:13:43.261641",
+ "calendar": {
+  "off": [],
+  "week": [
+   0,
+   1
+  ],
+  "working": true
+ },
+ "can_edit": true,
+ "changes": [
+  {
+   "author": "Priya Menon",
+   "created_at": "2026-10-14T19:13:43.261641",
+   "field": "end",
+   "new": "2026-12-01",
+   "old": "2026-11-26",
+   "reason": "Waiting on firewall approval",
+   "stage": "Closed"
+  },
+  {
+   "author": "Priya Menon",
+   "created_at": "2026-10-12T19:13:43.261641",
+   "field": "end",
+   "new": "2026-12-01",
+   "old": "2026-11-26",
+   "reason": "Waiting on firewall approval",
+   "stage": "Sign-off"
+  }
+ ],
+ "closed": false,
+ "default_days": 7,
+ "finish": {
+  "baseline": "2026-11-26",
+  "days_to_target": 62,
+  "forecast": "2026-12-03",
+  "planned": "2026-12-01",
+  "target": "2026-12-16",
+  "vs_baseline_days": 7,
+  "vs_target_days": -13
+ },
+ "has_plan": true,
+ "health": {
+  "confidence": "low",
+  "rag": "amber",
+  "reasons": [
+   "7 d behind the baseline.",
+   "Sensor pilot is 7 d over its 5 d SLA."
+  ]
+ },
+ "pct_complete": 27,
+ "project": {
+  "id": 1,
+  "name": "EDR Rollout - Globex",
+  "start_date": "2026-09-18",
+  "target_end_date": "2026-12-16"
+ },
+ "stages": [
+  {
+   "actual_days": 3.7,
+   "actual_end": "2026-09-24",
+   "actual_start": "2026-09-18",
+   "base_end": "2026-09-23",
+   "base_start": "2026-09-18",
+   "forecast_end": "2026-09-24",
+   "forecast_start": "2026-09-18",
+   "id": 1,
+   "name": "PO Received",
+   "plan_end": "2026-09-23",
+   "plan_start": "2026-09-18",
+   "planned_days": 3,
+   "position": 0,
+   "sla_days": null,
+   "slip_days": 1,
+   "status": "done",
+   "suggested_end": "2026-09-29",
+   "suggested_start": "2026-09-18"
+  },
+  {
+   "actual_days": 3.7,
+   "actual_end": "2026-09-30",
+   "actual_start": "2026-09-24",
+   "base_end": "2026-10-03",
+   "base_start": "2026-09-23",
+   "forecast_end": "2026-09-30",
+   "forecast_start": "2026-09-24",
+   "id": 2,
+   "name": "Scoping",
+   "plan_end": "2026-10-03",
+   "plan_start": "2026-09-23",
+   "planned_days": 7,
+   "position": 1,
+   "sla_days": null,
+   "slip_days": -3,
+   "status": "done",
+   "suggested_end": "2026-10-08",
+   "suggested_start": "2026-09-29"
+  }
+ ],
+ "today": "2026-10-15",
+ "visits": [
+  {
+   "days": 3.7,
+   "entered": "2026-09-18",
+   "left": "2026-09-24",
+   "stage": "PO Received"
+  },
+  {
+   "days": 3.7,
+   "entered": "2026-09-24",
+   "left": "2026-09-30",
+   "stage": "Scoping"
+  }
+ ],
+ "warning": null
+}

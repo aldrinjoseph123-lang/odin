@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent } from "react"
 import { Segmented } from "@/components/Segmented"
 import { fieldAuto } from "@/lib/ui"
+import { Button } from "@/components/ui/button"
 import { Eraser } from "lucide-react"
 import type { Signature } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -44,7 +45,7 @@ export function SignaturePad({ value, onChange, typedDefault }: { value: Signatu
     <div>
       <div className="mb-2 flex items-center gap-2">
         <Segmented label="How to sign" value={mode} onChange={setKind} options={[{ value: "draw", label: "Draw" }, { value: "type", label: "Type" }]} />
-        {mode === "draw" && strokes.length > 0 && <button type="button" onClick={() => onChange(null)} className="ml-auto inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground"><Eraser className="h-3.5 w-3.5" /> Clear</button>}
+        {mode === "draw" && strokes.length > 0 && <Button type="button" size="sm" variant="ghost" onClick={() => onChange(null)} className="ml-auto text-muted-foreground"><Eraser className="h-3.5 w-3.5" /> Clear</Button>}
       </div>
       {mode === "draw" ? (
         <svg ref={svg} viewBox={`0 0 ${W} ${H}`} onPointerDown={down} onPointerMove={move} onPointerUp={() => { drawing.current = false }} onPointerCancel={() => { drawing.current = false }}

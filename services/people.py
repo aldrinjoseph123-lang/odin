@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 from db import PROJECT_OPEN_SQL, avatar_url, get_db, stages_for_projects
-from policies import local_date, local_today, policy
+from policies import local_date, local_now, local_today, policy
 from services.alerts import project_states as _states
 from services.analytics import days_in_stage, sla_by_stage, stage_sla_state
 
@@ -16,9 +16,8 @@ from services.analytics import days_in_stage, sla_by_stage, stage_sla_state
 def _since(day):
     """The UTC timestamp of the workspace's midnight starting `day`, to compare
     with stored UTC timestamps (done_at, created_at)."""
-    from zoneinfo import ZoneInfo
     from datetime import timezone
-    start = datetime.combine(day, datetime.min.time()).replace(tzinfo=ZoneInfo(policy("timezone")))
+    start = datetime.combine(day, datetime.min.time()).replace(tzinfo=local_now().tzinfo)
     return start.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
 
 

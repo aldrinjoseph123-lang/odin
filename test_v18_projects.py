@@ -12,17 +12,12 @@ J = {"Accept": "application/json"}
 
 
 class V18Base(FixBase):
-    _make_user = test_app.ContactsAndProjectMetaTestCase._make_user
-
     def client_for(self, username):
         c, csrf = self._api_client(username, STRONG_PASSWORD)
         return c, {"X-CSRF-Token": csrf, **J}
 
     def put(self, url, body):
         return self.client.put(url, json=body, headers={"X-CSRF-Token": self.client.get("/api/session").get_json()["csrf"]})
-
-    def audits(self, action):
-        return self.sql("SELECT COUNT(*) FROM audit_logs WHERE action = ?", action)[0][0]
 
     def task(self, title="T", assignee=None, due=None):
         self.client.post("/projects/1/tasks", json={"title": title, "assignee_id": assignee, "due_date": due})

@@ -12,6 +12,7 @@ import { STATE } from "@/lib/state"
 import { stateText, fmtDate } from "@/lib/format"
 import { boardColumns, canDrag, columnOf, dropRefusal } from "@/lib/board"
 import { toast } from "@/lib/toast"
+import { usePref } from "@/lib/usePref"
 import type { FlowRow } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
@@ -21,11 +22,8 @@ import { cn } from "@/lib/utils"
 // the same confirm as the detail's "Move to" (MoveConfirm), and the server
 // decides. Which columns are hidden or folded is remembered per browser.
 
-const HIDDEN = "odin.kanban.hidden", FOLDED = "odin.kanban.folded"
 // when the last drag ended: the click that ends a drag on the handle is not a click
 let lastDrag = 0
-const load = (key: string): string[] | null => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) as string[] : null } catch { return null } }
-const save = (key: string, v: string[]) => { try { localStorage.setItem(key, JSON.stringify(v)) } catch { /* private mode */ } }
 
 export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove, onOnly }: {
   rows: FlowRow[]; columns: string[]; selectedId: number | null
@@ -33,11 +31,9 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
   onMove: (r: FlowRow) => void          // a drop on the next stage: the page asks to confirm
   onOnly: (stage: string) => void       // "Show only this stage" (the Flow's stage filter)
 }) {
-  const [hidden, setHidden] = useState<string[]>(() => load(HIDDEN) ?? [])
+  const [hidden, setHidden] = usePref<string[]>("kanban.hidden", [])
   // the last stage holds closed rollouts: folded until opened
-  const [folded, setFolded] = useState<string[]>(() => load(FOLDED) ?? columns.slice(-1))
-  useEffect(() => save(HIDDEN, hidden), [hidden])
-  useEffect(() => save(FOLDED, folded), [folded])
+  const [folded, setFolded] = usePref<string[]>("kanban.folded", columns.slice(-1))
   const shown = useMemo(() => columns.filter((c) => !hidden.includes(c)), [columns, hidden])
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows])
   const base = useMemo(() => boardColumns(rows, shown), [rows, shown])
@@ -92,7 +88,7 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
           const why = dropRefusal(r, at)
           if (why) toast(why, { tone: "bad" }); else onMove(r)
         }}>
-        <KanbanBoard role="group" className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-5 pb-4" aria-label="Rollouts by stage">
+        <KanbanBoard role="group" className="relative flex min-h-0 min-w-0 flex-1 gap-3 overflow-x-auto px-5 pb-4" aria-label="Rollouts by stage">
           {shown.map((c) => {
             const items = value[c] ?? []
             const target = active ? (c === active.next_stage && !dropRefusal(active, c)) : false
@@ -128,7 +124,7 @@ export default function FlowKanban({ rows, columns, selectedId, onSelect, onMove
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                <KanbanColumnContent value={c} render={<ul />} className="min-h-24 gap-2 overflow-y-auto px-2 pb-2" aria-label={`${c}, ${items.length} rollouts`}>
+                <KanbanColumnContent value={c} render={<ul />} className="relative min-h-24 gap-2 overflow-y-auto px-2 pb-2" aria-label={`${c}, ${items.length} rollouts`}>
                   {items.map((r) => <Card key={r.id} r={r} selected={r.id === selectedId} onSelect={onSelect} onMove={onMove} />)}
                   {items.length === 0 && <li className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-[12px] text-muted-foreground">{target ? "Drop here" : "No rollouts"}</li>}
                 </KanbanColumnContent>

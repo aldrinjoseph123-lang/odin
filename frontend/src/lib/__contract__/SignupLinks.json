@@ -1,0 +1,23 @@
+{
+ "default_days": 7,
+ "enabled": true,
+ "links": [],
+ "project_roles": [
+  "Sales",
+  "Coordinator"
+ ],
+ "projects": [
+  {
+   "id": 1,
+   "name": "EDR Rollout - Globex"
+  },
+  {
+   "id": 10,
+   "name": "EDR rollout - Acme Bank"
+  }
+ ],
+ "roles": [
+  "Member",
+  "Contributor"
+ ]
+}

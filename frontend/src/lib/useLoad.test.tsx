@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 import { ApiError } from "./api"
 import { useLoad } from "./useLoad"
 import { readPref, setPrefUser, usePref } from "./usePref"
-import { cycleTheme, syncAppearance, useAppearance } from "./theme"
+import { cycleTheme, flushAppearance, syncAppearance, useAppearance } from "./theme"
 import { currentToasts } from "./toast"
 
 const later = <T,>() => { let done!: (v: T) => void, fail!: (e: unknown) => void; const p = new Promise<T>((a, b) => { done = a; fail = b }); return { p, done, fail } }
@@ -52,6 +52,14 @@ describe("useLoad (review P2-29)", () => {
     await act(async () => { next.done("B"); await next.p })
     expect(result.current.data).toBe("B")
   })
+
+  it("with keep, a filter that fails shows its error, not the old filter's rows", async () => {
+    const { result, rerender } = renderHook(({ k }) => useLoad(k, async () => { if (k === "b") throw new ApiError(502, "gone"); return "A" }, { keep: true }), { initialProps: { k: "a" } })
+    await waitFor(() => expect(result.current.data).toBe("A"))
+    rerender({ k: "b" })
+    await waitFor(() => expect(result.current.error?.status).toBe(502))
+    expect(result.current.data).toBeNull()
+  })
 })
 
 describe("usePref (advice B1)", () => {
@@ -78,7 +86,20 @@ describe("the theme (review P2-33)", () => {
     expect(result.current.theme).toBe("light")
     act(() => { vi.advanceTimersByTime(1000) })
     expect(save).toHaveBeenCalledTimes(1)
-    expect(save).toHaveBeenCalledWith("light", "blue")
+    expect(save).toHaveBeenCalledWith("light", "blue", false)
+    vi.useRealTimers()
+  })
+
+  it("a click still waiting is saved at once when the page goes, and only once", () => {
+    vi.useFakeTimers()
+    const save = vi.fn(async (_t: string, _a: string, _keep?: boolean) => undefined)
+    act(() => { cycleTheme(save) })
+    window.dispatchEvent(new Event("pagehide"))
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0][2]).toBe(true)   // keepalive: the request outlives the page
+    act(() => { vi.advanceTimersByTime(1000) })
+    void flushAppearance()
+    expect(save).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
 })

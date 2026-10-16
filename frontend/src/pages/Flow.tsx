@@ -1,7 +1,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { Notice } from "@/components/Notice"
 import { Segmented } from "@/components/Segmented"
 import { MoveConfirm } from "@/components/MoveConfirm"
-import { chip, fieldAuto, filterSelect } from "@/lib/ui"
+import { chip, fieldAuto, filterSelect, focusSoon } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Inbox, ArrowRight, CalendarDays, GanttChart, Kanban as KanbanIcon, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
@@ -27,6 +28,7 @@ import { useMedia, useWidth } from "@/lib/useMeasure"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { lazyPage } from "@/lib/lazyPage"
 import { usePref } from "@/lib/usePref"
+import { useLoad } from "@/lib/useLoad"
 
 // the heavier views load when first opened, so the list stays fast
 // (lazyPage: a tab open across a release reloads once for the new build)
@@ -81,7 +83,7 @@ function TaskForm({ d, label, init, busy, onSave, onCancel, submitLabel }: {
       </select>
       <DatePicker value={v.due} onChange={(due) => setV({ ...v, due })} label="Due date" placeholder="Due" className="h-7 px-2 text-[12px]" />
       <div className="flex items-center gap-1">
-        <Button type="submit" size="sm" className="h-7 flex-1 px-2" loading={busy} disabled={!v.title.trim()} aria-label={submitLabel}>{init.title ? "Save" : <Plus className="h-3.5 w-3.5" />}</Button>
+        <Button type="submit" size="sm" className="h-7 flex-1 px-2" loading={busy} disabled={!v.title.trim()} aria-label={submitLabel}>{init.title ? "Save" : <><Plus className="h-3.5 w-3.5" /> Add task</>}</Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={onCancel} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
       </div>
     </form>
@@ -112,15 +114,15 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
     catch (e) { onError(e instanceof ApiError ? e.message : "That did not save"); return false }
     finally {
       setBusy(false)
-      if (at != null) requestAnimationFrame(() => {
+      if (at != null) focusSoon(() => {
         const root = box.current
-        if (!root || root.contains(document.activeElement)) return
+        if (!root || root.contains(document.activeElement)) return null
         const ticks = root.querySelectorAll<HTMLElement>("[data-tick]")
-        ;(ticks[Math.min(at, ticks.length - 1)] ?? addButton.current)?.focus()
+        return ticks[Math.min(at, ticks.length - 1)] ?? addButton.current
       })
     }
   }
-  const backTo = (sel: string) => requestAnimationFrame(() => box.current?.querySelector<HTMLElement>(sel)?.focus())
+  const backTo = (sel: string) => focusSoon(() => box.current?.querySelector<HTMLElement>(sel))
   const fields = (v: TaskValues) => ({ title: v.title.trim(), assignee_id: v.assignee ? Number(v.assignee) : null, due_date: v.due || null })
   return (
     <div ref={box} className="mt-2 text-[13px]">
@@ -162,7 +164,7 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
       {quiet && finished > 0 && <button type="button" onClick={() => setShowDone(!showDone)} className="mt-1 text-[12px] text-muted-foreground hover:text-foreground">{showDone ? "Hide finished" : `${finished} done`}</button>}
       {/* a finished stage keeps its tasks but takes no new ones */}
       {d.can_edit && !done && (adding ? (
-        <TaskForm d={d} label={`New task in ${stage}`} submitLabel="Add task" busy={busy} init={{ title: "", assignee: "", due: "" }} onCancel={() => { setAdding(false); requestAnimationFrame(() => addButton.current?.focus()) }}
+        <TaskForm d={d} label={`New task in ${stage}`} submitLabel="Add task" busy={busy} init={{ title: "", assignee: "", due: "" }} onCancel={() => { setAdding(false); focusSoon(() => addButton.current) }}
           onSave={(v) => run(() => addTask(d.id, { stage, ...fields(v) }), `Task added to ${stage}`)} />
       ) : (
         <button ref={addButton} type="button" onClick={() => setAdding(true)} aria-label={`Add a task to ${stage}`} className={cn("mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text", quiet && "opacity-0 transition-opacity focus:opacity-100 group-hover/node:opacity-100")}>
@@ -186,8 +188,8 @@ function NextLine({ r, today }: { r: FlowRow; today: string }) {
     <span className="flex min-w-0 items-center gap-1 text-[12px] text-muted-foreground">
       {t ? (
         <>
-          {/* the title keeps ~16 characters; the extras give way before it does */}
-          <span className="min-w-[min(10rem,100%)] shrink truncate" title={t.title}><span className="text-nav-fg">Next:</span> {t.title}</span>
+          {/* a long title keeps ~25 characters; the extras give way before it does (a short one takes no more room than it needs) */}
+          <span className={cn("shrink truncate", t.title.length > 24 && "min-w-[min(10rem,100%)]")} title={t.title}><span className="text-nav-fg">Next:</span> {t.title}</span>
           {t.assignee && <span className="hidden min-w-0 shrink-[4] truncate sm:inline" title={t.assignee}>· {t.assignee}</span>}
           {t.due_date && <span className={cn("shrink-0", late > 0 && "font-medium text-bad")}>· {late > 0 ? `${late} d late` : `due ${fmtDate(t.due_date)}`}</span>}
         </>
@@ -456,7 +458,7 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   )
 }
 
-export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string, undo?: string) => void; onClose?: () => void; standalone?: boolean }) {
+export function Detail({ d, reload, onMoved, onClose, standalone = false, report = true }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string, undo?: string) => void; onClose?: () => void; standalone?: boolean; report?: boolean }) {
   // on the project page the name is the h1, so the rail's headings are h2s there
   const H = standalone ? "h2" : "h3"
   // The flowchart fits its width: measure it, and fold stages that don't fit
@@ -482,7 +484,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
   }
   const open = d.tasks.filter((t) => !t.done)
   const next = nextUp(open, d.stage)
-  const openHere = open.filter((t) => t.stage === d.stage).length
+  const openIn = (stage: string) => open.filter((t) => t.stage === stage).length
+  const openHere = openIn(d.stage)
   // the terminal stage is the end: the project is closed, nothing is "next"
   const closed = !d.next_stage && d.stage_index === d.stages.length - 1
   const closedOn = closed ? d.stages[d.stage_index]?.entered_at ?? null : null
@@ -536,7 +539,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             {closed && <span className="rounded-md bg-ok-soft px-2 py-1 text-[12px] font-medium text-ok">Closed{closedOn ? ` on ${fmtDate(closedOn)}` : ""}</span>}
             {/* the project page shows the plan's verdict in its title row instead (one health, not two) */}
             {!closed && !standalone && <StateChip state={d.state} text={stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })} />}
-            {!standalone && <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>}
+            {!standalone && report && <a href={`/projects/${d.id}/report`} className={buttonVariants({ variant: "ghost", size: "sm" })}>Report</a>}
             {!standalone && <a href={`/projects/${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open rollout <ExternalLink className="h-3.5 w-3.5" /></a>}
             {onClose && <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close this rollout (Esc)" title="Close (Esc)"><X className="h-4 w-4" /></Button>}
           </div>
@@ -596,8 +599,9 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
                       </div>
                     </div>
                     {/* every stage carries its own tasks — work happens here, not on the project page; the
-                        current stage's list sits full width under the chart, and the last stage takes none */}
-                    {st.status !== "current" && <StageTasks d={d} stage={st.name} done={st.status === "done" || closed || i === d.stages.length - 1} reload={reload} onError={setErr} quiet />}
+                        current stage's list sits full width under the chart, a stage with open tasks gets its own
+                        full-width list there too (a 148 px column squeezed them), and the last stage takes none */}
+                    {st.status !== "current" && !openIn(st.name) && <StageTasks d={d} stage={st.name} done={st.status === "done" || closed || i === d.stages.length - 1} reload={reload} onError={setErr} quiet />}
                   </li>
                 )
               })}
@@ -610,11 +614,17 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
             <StageTasks d={d} stage={d.stage} done={d.stage_index === d.stages.length - 1} reload={reload} onError={setErr} />
           </section>
         )}
+        {d.stages.filter((st) => st.status !== "current" && openIn(st.name)).map((st) => (
+          <section key={st.name} className="mt-3 max-w-2xl" aria-label={`Tasks in ${st.name}`}>
+            <H className="text-[12px] font-semibold text-nav-fg">In {st.name} <span className="font-normal text-muted-foreground">· {openIn(st.name)} open</span></H>
+            <StageTasks d={d} stage={st.name} done={st.status === "done" || closed || d.stages[d.stages.length - 1].name === st.name} reload={reload} onError={setErr} quiet />
+          </section>
+        ))}
         {showAll && flowWidth > 0 && d.stages.length * NODE > flowWidth + 12 && (
           <button type="button" onClick={() => setShowAll(false)} className="mt-1 text-[12px] text-muted-foreground hover:text-foreground">Fold stages to fit</button>
         )}
         {/* one place for errors: the Advance section shows its own when it is on screen */}
-        {err && !(d.can_move && d.next_stage) && <p className="mt-2 text-[12px] text-destructive" role="alert">{err}</p>}
+        {err && !(d.can_move && d.next_stage) && <Notice bad className="mt-2">{err}</Notice>}
 
         {/* the project page draws the full plan chart below; the strip is the flow pane's short version */}
         {!standalone && <TimeStrip d={d} />}
@@ -654,7 +664,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
           </section>
         )}
         {d.can_move && d.next_stage && !d.signoff?.needed && (
-          <MoveConfirm d={d} quiet={workFirst} heading={H} onMoved={async (text, undo) => { onMoved(text, undo); await reload() }} />
+          <MoveConfirm d={d} quiet={workFirst} heading={H} onStale={() => void reload()} onMoved={async (text, undo) => { onMoved(text, undo); await reload() }} />
         )}
         {!workFirst && nextUpPanel}
         <section className="panel p-3">
@@ -705,17 +715,13 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false }: { d:
 
 // Phones get the rollout as its own screen with a back button, not a split.
 
-// Focus an element once React has drawn it (a few frames at most).
-function focusSoon(find: () => HTMLElement | null | undefined, tries = 10) {
-  requestAnimationFrame(() => { const el = find(); if (el) el.focus(); else if (tries > 0) focusSoon(find, tries - 1) })
-}
-
 export default function Flow({ user }: { user: User }) {
   const wide = useMedia("(min-width: 768px)")
-  const [data, setData] = useState<FlowData | null>(null)
-  // bumped by every load (a reload, a move, the poll): the Gantt and the Calendar
+  // bumped by every load that lands (a reload, a move, the poll): the Gantt and the Calendar
   // fetch their own data and refetch with it, so the views agree (review P2-35)
   const [stamp, setStamp] = useState(0)
+  // a failed refresh (the poll, a reload) keeps the board on screen (P2-29)
+  const { data, error: failed, reload: load } = useLoad("flow", async () => { const x = await flow(); setStamp((n) => n + 1); return x })
   // The selection is the URL (?rollout=): shareable, and it follows any
   // navigation to it — a palette jump or a link — even while this page is open.
   const [params, setParams] = useSearchParams()
@@ -729,11 +735,10 @@ export default function Flow({ user }: { user: User }) {
     // opening a rollout is a step Back can undo (a phone's back gesture returns to the list); moving between rollouts is not
     }, { replace: selectedId != null || id == null })
   }, [setParams, selectedId])
-  const [detail, setDetail] = useState<FlowDetail | null>(null)
-  const [detailError, setDetailError] = useState<string | null>(null)
-  // the rollout the pane is for: a slower answer for the previous one is dropped
-  const wanted = useRef(selectedId)
-  useEffect(() => { wanted.current = selectedId }, [selectedId])
+  // the rollout the pane is for: a slower answer for the previous one is dropped (useLoad)
+  const { data: detail, error: detailFailed, reload: loadDetail } = useLoad(`flow-detail:${selectedId}`,
+    () => (selectedId == null ? Promise.resolve(null) : flowDetail(selectedId)))
+  const detailError = !detailFailed ? null : detailFailed.status === 404 || detailFailed.status === 403 ? "This rollout does not exist, or you are not on it." : detailFailed.message
   // Ways to look at the portfolio, kept in the URL; a link without them gets the
   // person's last choice in this browser (advice B1).
   const [prefView, setPrefView] = usePref<View>("flow.view", "list")
@@ -760,24 +765,9 @@ export default function Flow({ user }: { user: User }) {
   const setFilter = useCallback((v: Filter) => { setPrefFilter(v); setParam("filter", v === "all" ? null : v) }, [setParam, setPrefFilter])
   // one change for both, so neither overwrites the other
   const showAll = useCallback(() => { setPrefFilter("all"); setParam("filter", null, (n) => n.delete("stage")) }, [setParam, setPrefFilter])
-  const [error, setError] = useState<string | null>(null)
   // the move notice belongs to the rollout it is about (review P3-37)
   const [notice, setNotice] = useState<{ id: number; text: string; undo?: string; bad?: boolean } | null>(null)
 
-  const load = useCallback(async () => {
-    try { setData(await flow()); setError(null); setStamp((n) => n + 1) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load rollouts") }
-  }, [])
-  const loadDetail = useCallback(async (id: number) => {
-    try {
-      const x = await flowDetail(id)
-      if (wanted.current === id) { setDetail(x); setDetailError(null) }
-    } catch (e) {
-      if (wanted.current !== id) return
-      setDetailError(e instanceof ApiError && (e.status === 404 || e.status === 403) ? "This rollout does not exist, or you are not on it."
-        : e instanceof ApiError ? e.message : "Could not load the rollout")
-    }
-  }, [])
-  useEffect(() => { void load() }, [load])
   // the list keeps itself current: a minute's poll while the tab is visible, and on coming back to it
   // (a colleague's move shows without a reload; the open rollout's own pane is left alone)
   useEffect(() => {
@@ -786,7 +776,6 @@ export default function Flow({ user }: { user: User }) {
     window.addEventListener("focus", back)
     return () => { window.clearInterval(t); window.removeEventListener("focus", back) }
   }, [load])
-  useEffect(() => { setDetailError(null); if (selectedId != null) void loadDetail(selectedId) }, [selectedId, loadDetail])
   // Only after a click. On load the list must open at the top, where the
   // stuck rows are — scrolling to a deep-linked row would hide them.
   useEffect(() => {
@@ -834,13 +823,14 @@ export default function Flow({ user }: { user: User }) {
       const r = await postForm(path)
       const back = r.messages.join(" ")
       say(back || "Move undone", !back.startsWith("Moved back"))
-      await Promise.all([load(), selectedId != null ? loadDetail(selectedId) : Promise.resolve()])
+      await Promise.all([load(), loadDetail()])
     } catch (e) { say(e instanceof ApiError ? e.message : "Could not undo the move", true) }
   }
-  // a Kanban drop: the rollout's own detail feeds the same confirm the rail shows
-  const [moving, setMoving] = useState<FlowDetail | null>(null)
+  // a Kanban drop: the rollout's own detail feeds the same confirm the rail shows, and
+  // the move names the stage the card was in on the board, so a stale board is refused (P2-26)
+  const [moving, setMoving] = useState<{ d: FlowDetail; from: string } | null>(null)
   async function askMove(r: FlowRow) {
-    try { setMoving(await flowDetail(r.id)) } catch (e) { toast(e instanceof ApiError ? e.message : "Could not load the rollout", { tone: "bad" }) }
+    try { setMoving({ d: await flowDetail(r.id), from: r.stage }) } catch (e) { toast(e instanceof ApiError ? e.message : "Could not load the rollout", { tone: "bad" }) }
   }
 
   // what the filter and the stage leave, the same for every view
@@ -851,7 +841,7 @@ export default function Flow({ user }: { user: User }) {
   // the Calendar shows closed rollouts' history too: it narrows only when a filter is on (review P3-34)
   const only = useMemo(() => (filter !== "all" || stage ? new Set(shownIds) : null), [filter, stage, shownIds])
 
-  if (error) return <LoadError message={error} />
+  if (failed) return <LoadError message={failed.message} />
   if (!data) return <PageSkeleton />
 
   const views = (
@@ -889,12 +879,13 @@ export default function Flow({ user }: { user: User }) {
       {view === "kanban" && (
         <Dialog open={moving != null} onOpenChange={(o) => { if (!o) setMoving(null) }}>
           <DialogContent className="sm:max-w-md">
-            <DialogHeader><DialogTitle>Move {moving?.name} to {moving?.next_stage}</DialogTitle><DialogDescription>From {moving?.stage} to {moving?.next_stage}.</DialogDescription></DialogHeader>
-            {moving && <MoveConfirm d={moving} confirmNow bare onCancel={() => setMoving(null)} onMoved={async (text, undo) => {
-              const { id, next_stage: to } = moving
+            <DialogHeader><DialogTitle>Move {moving?.d.name} to {moving?.d.next_stage}</DialogTitle><DialogDescription>From {moving?.d.stage} to {moving?.d.next_stage}.</DialogDescription></DialogHeader>
+            {moving && <MoveConfirm d={moving.d} from={moving.from} confirmNow bare onCancel={() => setMoving(null)}
+              onStale={(why) => { setMoving(null); toast(why, { tone: "bad" }); void load() }} onMoved={async (text, undo) => {
+              const { id, next_stage: to } = moving.d
               setMoving(null)
               toast(text, undo ? { action: { label: "Undo", run: () => void undoMove(undo, (t, bad) => toast(t, { tone: bad ? "bad" : "ok" })) } } : {})
-              await Promise.all([load(), selectedId != null ? loadDetail(selectedId) : Promise.resolve()])
+              await Promise.all([load(), loadDetail()])
               // the keyboard follows the card into its new column
               focusSoon(() => [...document.querySelectorAll<HTMLElement>(`[data-card="${id}"]`)].find((el) => el.closest("[data-slot=kanban-column]")?.getAttribute("data-value") === to))
             }} />}
@@ -938,7 +929,7 @@ export default function Flow({ user }: { user: User }) {
                   <Button size="sm" variant="outline" onClick={() => setSelectedId(null)}>Back to all rollouts</Button>
                 </div>
               ) : detail && detail.id === selectedId ? (
-                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail(selectedId)]) }} onMoved={(text, undo) => setNotice({ id: detail.id, text, undo })} onClose={wide ? close : undefined} />
+                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail()]) }} onMoved={(text, undo) => setNotice({ id: detail.id, text, undo })} onClose={wide ? close : undefined} report={user.kind !== "external"} />
               ) : <PageSkeleton />}
     </div>
   )

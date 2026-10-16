@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
+import { Notice } from "@/components/Notice"
 import { PanelTitle } from "@/components/PanelTitle"
-import { field } from "@/lib/ui"
+import { field, checkbox } from "@/lib/ui"
 import { DatePicker } from "@/components/DatePicker"
 import { useParams, useSearchParams } from "react-router-dom"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Field } from "@/components/ui/field"
 import { ApiError, postForm, projectForm, type ProjectFormData, type User } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
@@ -14,10 +16,6 @@ import { toastAfterLoad } from "@/lib/toast"
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
 const MISSING = "This rollout does not exist, or you cannot edit it."
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">{label}{hint && <span className="ml-1 text-[12px]">({hint})</span>}{children}</label>
-}
 
 export default function ProjectForm(_props: { user: User }) {
   const editId = Number(useParams().id) || null
@@ -68,7 +66,7 @@ export default function ProjectForm(_props: { user: User }) {
     if (approval) fd.set("customer_approval", "1"); else fd.delete("customer_approval")
     if (sending.current) return
     sending.current = true
-    setBusy(true)
+    setBusy(true); setNotice(null)
     try {
       const r = await postForm(d.mode === "edit" ? `/projects/${d.id}/edit` : "/projects/new", fd)
       const failed = r.location && (r.location.endsWith("/projects/new") || r.location.endsWith("/edit"))
@@ -93,10 +91,10 @@ export default function ProjectForm(_props: { user: User }) {
         {/* back to where it came from: the rollout being edited or copied, else the list */}
         <a href={editing ? `/projects/${d.id}` : params.get("from") ? `/projects/${params.get("from")}` : "/projects"} className={`ml-auto ${buttonVariants({ variant: "ghost", size: "sm" })}`}>Cancel</a>
       </div>
-      {notice && <div className="mt-3 flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-[13px] text-destructive" role="alert"><span>{notice}</span><button type="button" className="font-medium" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
+      {notice && <Notice bad className="mt-3">{notice}</Notice>}
 
       <p className="mt-3 text-[12px] text-muted-foreground">Fields marked * are required.</p>   {/* test report UX-26 */}
-      <form onSubmit={submit} className="mt-2 grid max-w-5xl grid-cols-1 gap-4 lg:grid-cols-2">
+      <form onSubmit={submit} className="mt-2 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
           <PanelTitle className="mb-0">Project</PanelTitle>
           <Field label="Project name *"><Input value={f.name} onChange={set("name")} required maxLength={200} aria-label="Project name" className="h-8 text-[13px]" /></Field>
@@ -117,13 +115,13 @@ export default function ProjectForm(_props: { user: User }) {
               {/* ticks, not a native multi-select: no Ctrl-click to learn, nothing lost by a plain click */}
               <div role="group" aria-label="Team members" className="grid max-h-40 grid-cols-2 gap-x-4 overflow-auto rounded-lg border border-input bg-background px-3 py-2 text-[13px]">
                 {d.users.filter((u) => u.id !== d.me).map((u) => (
-                  <label key={u.id} className="flex min-w-0 items-center gap-2 py-1"><input type="checkbox" checked={team.includes(String(u.id))} className="h-3.5 w-3.5 accent-primary"
+                  <label key={u.id} className="flex min-w-0 items-center gap-2 py-1"><input type="checkbox" checked={team.includes(String(u.id))} className={checkbox}
                     onChange={(e) => setTeam(e.target.checked ? [...team, String(u.id)] : team.filter((x) => x !== String(u.id)))} /><span className="truncate">{u.name}</span></label>
                 ))}
               </div>
             </Field>
           </>)}
-          <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} className="h-3.5 w-3.5 accent-primary" /> Ask the customer contact to approve each stage change</label>
+          <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} className={checkbox} /> Ask the customer contact to approve each stage change</label>
           <div className="grid grid-cols-3 gap-2">
             <Field label="PO date"><DatePicker value={f.po_date} onChange={(v) => setF({ ...f, po_date: v, start_date: f.start_date || v })} label="PO date" className="w-full" /></Field>
             <Field label="Start date"><DatePicker value={f.start_date} onChange={(v) => setF({ ...f, start_date: v })} label="Start date" className="w-full" /></Field>
@@ -139,7 +137,7 @@ export default function ProjectForm(_props: { user: User }) {
         </section>
 
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
-          <PanelTitle className="mb-0">Commercial route and delivery</PanelTitle>
+          <PanelTitle className="mb-0">Route and delivery</PanelTitle>
           <Field label="Via *"><select value={f.via} onChange={set("via")} aria-label="Via" className={field}>{d.via_options.map((v) => <option key={v}>{v}</option>)}</select></Field>
           {f.via === "Partner" ? (
             <>
@@ -198,8 +196,7 @@ export default function ProjectForm(_props: { user: User }) {
           <Field label="PO number"><Input value={f.po_number} onChange={set("po_number")} maxLength={100} aria-label="PO number" className="h-8 text-[13px]" /></Field>
           {!editing && (
             <Field label="Client PO document *" hint="required — no rollout without the PO on file">
-              <input type="file" name="po_document" required aria-label="Client PO document"
-                className="text-[13px] text-muted-foreground file:mr-3 file:h-8 file:cursor-pointer file:rounded-lg file:border file:border-input file:bg-background file:px-3 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-muted" />
+              <Input type="file" name="po_document" required aria-label="Client PO document" className="h-auto py-1" />
             </Field>
           )}
         </section>

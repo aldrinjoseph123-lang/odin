@@ -89,7 +89,7 @@ Then the Cloudflare side below (Access, rate limits). Keep Proxmox's own
 `vzdump` of the VM nightly **in addition to** Odin's `backups/` folder — the
 VM backup is the disaster recovery, the zip is the quick restore.
 
-Updates: `cd /opt/odin && git pull && docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml up -d --build`.
+Updates are the self-updater's job (below); do not `git pull` on production.
 
 ### Public access through Cloudflare
 
@@ -145,31 +145,8 @@ docker compose run --rm --no-deps app ls -l /data/backups              # what is
 Archives and their folder are readable by the container's user only (0600,
 0700): each holds the whole database, guest tokens included.
 
-**Restore** (tested; rehearse it quarterly). Keep the same `.env`: the
-`SECRET_KEY` in it seals the Microsoft 365 tokens, client secrets, the AI key
-and every two-step secret in the database, and a restore under another key
-leaves them unreadable (people then sign in with recovery codes and an admin
-reconnects Microsoft 365). Hold the self-updater first so it does not rebuild
-mid-restore (`touch ~/.odin-update/hold`, below).
-
-```bash
-docker compose stop app scheduler
-# an archive in the volume (/data/backups/…), or one copied from elsewhere into
-# the current folder, which is mounted at /restore:
-docker compose run --rm --no-deps -v "$PWD:/restore:ro" app sh -c \
-  'cd /data && rm -rf odin.db odin.db-wal odin.db-shm uploads avatars brand && python -m zipfile -e /data/backups/odin-backup-<timestamp>.zip . && rm -f manifest.json'
-docker compose start app scheduler
-docker compose exec app python preflight.py
-rm ~/.odin-update/hold
-```
-
-(For an archive from elsewhere use `/restore/odin-backup-<timestamp>.zip`.) It
-runs as the container's own user, so the files keep the right owner. The
-archive holds `odin.db`, `uploads/`, `avatars/`, `brand/` (document template
-logos), `audit-archive/` and `manifest.json`. `init_db()` runs on boot and
-applies any migrations the archive predates. `docs/RUNBOOK.md` has this and
-the other incidents (Odin down, a failed update, a lost key, a full disk) as
-short steps.
+**Restore** is in `docs/RUNBOOK.md`, "Restore a backup" (tested; rehearse it quarterly):
+the same `.env`, the updater held, the archive unpacked as the container's user.
 
 ### AI server (optional)
 
@@ -190,11 +167,16 @@ checkout and run by cron every 5 minutes, moves the server to the newest
 release tag on `main` (`vX.Y.Z`, made by the Release workflow once a pull
 request from `dev` is merged and CI passed). Each update: a restore-tested
 backup (`backup.py --local`), checkout, `docker compose up -d --build`, then
-it waits until the app and the scheduler are healthy and
-`preflight.py --update` passes (settings an admin owns only warn there). If
-any step fails it goes back to the previous tag and rebuilds that; the
-admins get a bell notice either way (and "ROLLBACK FAILED" if going back
-failed too). Migrations run on boot (`init_db()` is idempotent). Never check
+it waits until the app and the scheduler are healthy (the scheduler's check
+accepts only a heartbeat from its own container's process, not the previous
+container's last beat) and `preflight.py --update` passes (settings an admin
+owns only warn there). If any step fails it goes back to the previous tag and
+rebuilds that; the admins get a bell notice either way (and "ROLLBACK FAILED"
+if going back failed too). A failed backup skips the update and is counted and
+told the same way. "Already on the newest tag" is judged by
+`~/.odin-update/deployed`, written only after a deploy went through, not by
+`git` HEAD, so a reboot between the checkout and `compose up` is finished on
+the next run. Migrations run on boot (`init_db()` is idempotent). Never check
 out a release by hand on production: the updater moves it back to the newest
 tag within 5 minutes. Hold it first (below) if you must.
 
@@ -211,7 +193,8 @@ After each good update it refreshes `~/odin-update.sh` from the new release.
 | | |
 |---|---|
 | Log | `~/odin-update.log`: one line per step, `now on vX.Y.Z`, `... failed ...; going back to ...`, `ROLLBACK FAILED` |
-| Failed tag | `~/.odin-update/failed` holds `tag tries epoch`. A failed tag is tried again after 30 minutes, then 60, at most 3 times; a newer tag is always tried |
+| Failed tag | `~/.odin-update/failed` holds `tag tries epoch`. A failed tag, or a failed pre-update backup, is tried again after 30 minutes, then 60, at most 3 times; a newer tag is always tried |
+| Deployed | `~/.odin-update/deployed` holds the tag whose deploy last went through (build, health, preflight) |
 | Retry now | `rm ~/.odin-update/failed` (the next run, within 5 minutes, tries again) |
 | Hold updates | `touch ~/.odin-update/hold`; resume with `rm ~/.odin-update/hold` |
 | Run now | `~/odin-update.sh` (exits at once if a run is in progress) |

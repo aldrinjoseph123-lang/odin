@@ -67,7 +67,9 @@ git -C /opt/odin describe --tags             # the release running now
 ```
 
 The updater tries that tag twice more, after 30 and 60 minutes, and a newer tag
-at once. A blip (network, a slow first boot) clears by itself. To find out why
+at once. The bell can also say the update "was skipped because the backup before
+it failed": nothing was changed, and the cause is usually a full disk ("Disk
+full", below); the skipped tag counts a try like any failed one. A blip (network, a slow first boot) clears by itself. To find out why
 it fails, hold the updater and try the release by hand:
 
 ```bash
@@ -102,6 +104,25 @@ Odin is up again: `rm ~/.odin-update/hold`. The updater will then retry the
 failed tag after its wait; to skip that release, keep the hold until a newer
 tag exists.
 
+Back on v1.7.1 from v1.8.0 or later: recovery codes made on v1.8.0 (salted)
+do not work on v1.7.1. Anyone who made new codes since the upgrade makes them
+again on their Account page; someone who has lost their phone meanwhile needs
+an admin to reset two-step sign-in on the Users page.
+
+## Going back to an older release by hand
+
+With the updater held: `git checkout <previous tag> && docker compose up -d --build`.
+The database stays on the newer schema, and older code ignores the tables and columns
+it does not know. From v1.7.1 on the database carries a schema number
+(`PRAGMA user_version`, `db.SCHEMA_VERSION`); code older than the database sees it
+is a rollback, skips its destructive boot steps and keeps the newer release's
+settings (permissions, alert types), and preflight shows a **WARN** (not a FAIL, so
+the rollback still boots). Going back to **v1.7.0 or earlier** is different: those
+releases delete, on every boot, permission and alert-type settings they do not
+know, so after rolling back past v1.7.0 restore the pre-update backup if those
+settings matter ("Restore a backup"). Restore that backup too whenever the newer
+release's data itself must go.
+
 ## SECRET_KEY lost
 
 The key lives only in `/opt/odin/.env` (and the VM's own backups; keep a copy
@@ -127,9 +148,12 @@ A key that leaked (not lost) is rotated without breaking anything:
 
 ## Restore a backup
 
-Same `.env` (the same `SECRET_KEY`), hold the updater, stop the app and the
-scheduler, unpack, start. Details and an archive from elsewhere: `DEPLOY.md`,
-"Restore".
+Rehearse it quarterly. Keep the same `.env`: the `SECRET_KEY` in it seals the
+Microsoft 365 tokens, client secrets, the AI key and every two-step secret in
+the database, and a restore under another key leaves them unreadable (people
+then sign in with recovery codes and an admin reconnects Microsoft 365). Hold
+the updater first so it does not rebuild mid-restore, stop the app and the
+scheduler, unpack, start.
 
 ```bash
 touch ~/.odin-update/hold
@@ -141,6 +165,13 @@ docker compose start app scheduler
 docker compose exec app python preflight.py
 rm ~/.odin-update/hold
 ```
+
+For an archive from elsewhere, copy it into the current folder and use
+`-v "$PWD:/restore:ro"` on the `docker compose run` and `/restore/odin-backup-<timestamp>.zip`
+as the path. The command runs as the container's own user, so the files keep the right
+owner. The archive holds `odin.db`, `uploads/`, `avatars/`, `brand/` (document template
+logos), `audit-archive/` and `manifest.json`; `init_db()` runs on boot and applies any
+migrations the archive predates. To take a backup by hand first: `DEPLOY.md`, "Backups and restore".
 
 Everything written after that backup is gone; the audit log in the archive is
 the record up to it.

@@ -2,6 +2,9 @@ import { useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PanelTitle } from "@/components/PanelTitle"
+import { Badge } from "@/components/ui/badge"
+import { Notice } from "@/components/Notice"
 import { AIProgress } from "@/components/AIProgress"
 import { Input } from "@/components/ui/input"
 import { Ago } from "@/components/Ago"
@@ -12,7 +15,7 @@ import { useProjectAI } from "@/lib/usePoll"
 // each sentence pointing at the passage it came from. Odin finds the
 // passages; the AI answers from them or says the records do not say.
 export function AIAsk({ projectId }: { projectId: number }) {
-  const { s, load, working } = useProjectAI<AskAnswer>(projectId, "ask_rollout")
+  const { s, load, working, poll } = useProjectAI<AskAnswer>(projectId, "ask_rollout")
   const [q, setQ] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,30 +30,27 @@ export function AIAsk({ projectId }: { projectId: number }) {
   const lastJob = s.job && !working && s.job.created_at > (a?.created_at ?? "") ? s.job : null
   return (
     <section className="panel p-4" aria-labelledby="ask-h">
-      <h2 id="ask-h" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] font-semibold text-nav-fg">
-        <Sparkles className="h-3.5 w-3.5 text-primary-text" aria-hidden />Ask this rollout<span className="sr-only">, </span>
-        <span className="font-normal text-muted-foreground">answered from its notes, risks, scope, tasks, plan changes and documents</span>
-      </h2>
+      <PanelTitle n={false} id="ask-h" className="mb-0" icon={<Sparkles className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />} hint="answered from its notes, risks, scope, tasks, plan changes and documents">Ask this rollout</PanelTitle>
       {s.available && (
         <form onSubmit={(e) => void ask(e)} className="mt-2 flex flex-wrap gap-2">
           <Input value={q} onChange={(e) => setQ(e.target.value)} maxLength={300} placeholder="e.g. Why did Design slip? What did the customer decide about phase 2?"
             aria-label="Question about this rollout" disabled={working} className="h-8 min-w-0 flex-1 text-[13px]" />
-          {working && s.job ? <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>
-            : <Button type="submit" size="sm" className="h-8" loading={busy} disabled={q.trim().length < 5}>Ask</Button>}
+          {working && s.job ? <Button type="button" size="sm" variant="ghost" onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>
+            : <Button type="submit" size="sm" loading={busy} disabled={q.trim().length < 5}>Ask</Button>}
         </form>
       )}
       <div aria-live="polite" className="text-[13px]">
-        {working && s.job && <AIProgress job={s.job} doing="Reading the rollout's records" />}
-        {lastJob?.status === "failed" && <p className="mt-2 text-destructive">That question did not finish: {lastJob.error}</p>}
-        {lastJob?.result?.skipped && <p className="mt-2 text-muted-foreground">{lastJob.result.skipped}</p>}
-        {error && <p className="mt-2 text-destructive" role="alert">{error}</p>}
+        {working && s.job && <AIProgress job={s.job} poll={poll} doing="Reading the rollout's records" />}
+        {lastJob?.status === "failed" && <Notice bad className="mt-2">That question did not finish: {lastJob.error}</Notice>}
+        {lastJob?.result?.skipped && <Notice className="mt-2">{lastJob.result.skipped}</Notice>}
+        {error && <Notice bad className="mt-2">{error}</Notice>}
         {a && !working && (
           <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2">
             <p className="text-[12px] text-muted-foreground">“{a.payload.question}”, <Ago iso={a.created_at} /></p>
             <p className="mt-1 leading-relaxed">{a.payload.answer}</p>
             {a.payload.sources.length > 0 && (
               <ul className="mt-2 flex flex-wrap gap-2 text-[12px]">
-                {a.payload.sources.map((src) => <li key={src.n}><Link to={src.href} className="rounded-full border border-border px-2 py-1 hover:bg-muted">[{src.n}] {src.from}</Link></li>)}
+                {a.payload.sources.map((src) => <li key={src.n}><Badge variant="outline" render={<Link to={src.href} />}>[{src.n}] {src.from}</Badge></li>)}
               </ul>
             )}
             {!a.payload.found && <p className="mt-1 text-[12px] text-muted-foreground">The records do not answer this; nothing was guessed.</p>}

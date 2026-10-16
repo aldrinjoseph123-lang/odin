@@ -91,6 +91,8 @@ NOTIFICATION_KINDS = {
 
 # Kinds only admins receive, so only admins see them on the Account page.
 ADMIN_KINDS = ("access", "ai", "ops")
+# Kinds only staff receive (People page notes, the AI morning brief): partner and customer accounts never see them.
+STAFF_KINDS = ("nudge", "brief")
 
 THEMES = ("system", "light", "dark")
 # Pastel accents (9 Oct 2026); blue the default again since 10 Oct (policy default_accent), as red read

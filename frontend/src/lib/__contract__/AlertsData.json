@@ -1,0 +1,43 @@
+{
+ "alert_type": "",
+ "page": 1,
+ "rows": [
+  {
+   "alert_type": "blocker_open",
+   "created_at": "2026-10-15T12:13:43.261641",
+   "description": null,
+   "id": 14,
+   "project_id": 4,
+   "project_name": "EDR rollout - Globex",
+   "resolved": false,
+   "resolved_at": null,
+   "severity": "critical",
+   "title": "Blocker still open"
+  },
+  {
+   "alert_type": "project_overdue",
+   "created_at": "2026-10-15T04:13:43.261641",
+   "description": null,
+   "id": 6,
+   "project_id": 12,
+   "project_name": "Firewall refresh - Globex",
+   "resolved": false,
+   "resolved_at": null,
+   "severity": "critical",
+   "title": "Rollout overdue"
+  }
+ ],
+ "show_resolved": false,
+ "total": 22,
+ "total_pages": 1,
+ "types": {
+  "approval_waiting": "Customer approval waiting",
+  "blocker_open": "Blocker still open",
+  "customer_quiet": "Customer task overdue",
+  "project_due_soon": "Rollout due soon",
+  "project_overdue": "Rollout overdue",
+  "stage_sla_breach": "Stage SLA breached",
+  "stale": "Rollout idle",
+  "task_unowned": "Overdue task with no owner"
+ }
+}

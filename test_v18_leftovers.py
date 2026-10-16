@@ -1,7 +1,7 @@
 """v1.8.0 small server leftovers (review 14 Oct 2026: P3-38 undo of a done task,
 P3-4 audit details, notify error, My work can_edit, the PDF opening month).
 Run with: python -m unittest test_v18_leftovers"""
-from datetime import date
+from datetime import date, datetime
 
 import test_app
 from test_app import STRONG_PASSWORD
@@ -9,8 +9,6 @@ from test_fix_logic import FixBase
 
 
 class LeftoversTestCase(FixBase):
-    _make_user = test_app.ContactsAndProjectMetaTestCase._make_user
-
     def test_undo_of_a_deleted_done_task_keeps_it_done(self):
         self.new_project(name="P", client="C")
         self.client.post("/projects/1/tasks", json={"title": "Back", "done": True, "done_at": "2026-10-01T09:30:00"})
@@ -19,7 +17,7 @@ class LeftoversTestCase(FixBase):
         rows = {r["title"]: r for r in self.sql("SELECT title, done, done_at FROM tasks")}
         self.assertEqual((rows["Back"]["done"], rows["Back"]["done_at"]), (1, "2026-10-01T09:30:00"))
         self.assertEqual((rows["Open"]["done"], rows["Open"]["done_at"]), (0, None))
-        self.assertEqual(rows["Junk"]["done"], 1); self.assertTrue(rows["Junk"]["done_at"].startswith(str(date.today().year)))
+        self.assertEqual(rows["Junk"]["done"], 1); self.assertTrue(rows["Junk"]["done_at"].startswith(str(datetime.utcnow().year)))
         self.assertEqual({t["title"]: t["done_at"] for t in self.client.get("/api/projects/1/flow").get_json()["tasks"]}["Back"], "2026-10-01T09:30:00")
 
     def test_notify_with_no_message_says_so(self):

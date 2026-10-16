@@ -43,7 +43,7 @@ describe("Calendar", () => {
     expect(screen.getByTestId("where")).toHaveTextContent("rollout=1")
     await user.click(screen.getAllByRole("button", { name: "Move Task 1 to another day" })[0])
     expect(await screen.findByRole("dialog")).toHaveTextContent("Due 10 Sep")
-    expect(screen.getByRole("button", { name: "Move task" })).toBeDisabled()   // same day: nothing to save
+    expect(screen.getByRole("button", { name: "Move task" })).toHaveAttribute("aria-disabled", "true")   // same day: nothing to save
     await user.click(screen.getByRole("button", { name: /New due date/ }))
     await screen.findByRole("grid", { name: /September 2026/ })   // the popover's month; the rail has one too, so take the last
     await user.click(screen.getAllByRole("button", { name: /September 11th, 2026/ }).at(-1)!)

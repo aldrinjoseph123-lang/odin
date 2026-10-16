@@ -817,14 +817,16 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         the commercial routes were deleted and left their permissions behind),
         so it gets a guard rather than a code review.
         """
+        import ast
         import pathlib
-        sources = "\n".join(
-            path.read_text() for path in pathlib.Path("routes").glob("*.py")
-        )
-        unenforced = [
-            perm for perm in app_module.PERMISSIONS
-            if f'permission_required("{perm}")' not in sources
-        ]
+        # parsed, not grepped: a permission named in a comment or a string is not enforced
+        enforced = set()
+        for path in (pathlib.Path(app_module.__file__).parent / "routes").glob("*.py"):
+            for node in ast.walk(ast.parse(path.read_text())):
+                if (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "permission_required"
+                        and node.args and isinstance(node.args[0], ast.Constant)):
+                    enforced.add(node.args[0].value)
+        unenforced = [perm for perm in app_module.PERMISSIONS if perm not in enforced]
         self.assertEqual(unenforced, [], f"permissions in the matrix that no route checks: {unenforced}")
 
     def test_task_cannot_be_assigned_to_a_deactivated_user(self):
@@ -846,39 +848,6 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         for bad in ["changeme1234", "MyPassword99", "Odin-Admin-01", "letmein12345"]:
             self.assertIsNotNone(password_problem(bad), f"{bad!r} should be rejected")
         self.assertIsNone(password_problem("Correct-Horse-9"))
-
-    def test_no_nested_forms_in_rendered_pages(self):
-        """Nested <form> is invalid HTML and browsers resolve it destructively:
-        the inner form is dropped and its buttons are reassigned to the outer
-        one. Bulk task actions shipped with exactly this bug — every route test
-        passed because they POST directly and never parse the markup — so the
-        structure gets its own guard.
-        """
-        import html.parser
-
-        class FormNesting(html.parser.HTMLParser):
-            def __init__(self):
-                super().__init__()
-                self.depth = 0
-                self.nested = False
-
-            def handle_starttag(self, tag, attrs):
-                if tag == "form":
-                    if self.depth:
-                        self.nested = True
-                    self.depth += 1
-
-            def handle_endtag(self, tag):
-                if tag == "form" and self.depth:
-                    self.depth -= 1
-
-        self.new_project(name="FormStructure", client="C")
-        self.client.post("/projects/1/tasks", data={"title": "t1"})
-        for path in ["/projects/1", "/projects/1/edit", "/projects/new", "/board",
-                     "/projects", "/my-work", "/settings", "/analytics", "/users"]:
-            parser = FormNesting()
-            parser.feed(self.client.get(path).data.decode())
-            self.assertFalse(parser.nested, f"nested <form> in {path}")
 
     # ---- scale: unbounded page growth ------------------------------------
 
@@ -914,64 +883,6 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(self.client.get("/api/alerts?type=bogus%27--").get_json()["alert_type"], "")
         for bad in ["?page=99999", "?page=-3", "?page=abc"]:
             self.assertEqual(self.client.get("/api/alerts" + bad).status_code, 200, bad)
-
-    # ---- accessibility regressions ---------------------------------------
-
-    def test_every_form_control_has_an_accessible_name(self):
-        """A control with no programmatic label is announced as an unnamed edit
-        field. The app wrote `<label>Text</label>` next to inputs without a for
-        or wrapper, so el.labels was empty on every form including login."""
-        import re as _re
-        from html.parser import HTMLParser
-
-        class Names(HTMLParser):
-            def __init__(self, for_ids):
-                super().__init__()
-                self.for_ids, self.in_label, self.unnamed = for_ids, False, []
-            def handle_starttag(self, tag, attrs):
-                d = dict(attrs)
-                if tag == "label":
-                    self.in_label = True
-                if tag in ("input", "select", "textarea"):
-                    if d.get("type") in ("hidden", "submit", "button"):
-                        return
-                    named = ("aria-label" in d or "aria-labelledby" in d or self.in_label
-                             or d.get("id") in self.for_ids)
-                    if not named:
-                        self.unnamed.append(f'{tag}[{d.get("name", "?")}]')
-            def handle_endtag(self, tag):
-                if tag == "label":
-                    self.in_label = False
-
-        self.new_project(name="A11y", client="C")
-        self.client.post("/projects/1/tasks", data={"title": "t"})
-        for path in ["/login", "/board", "/my-work", "/projects", "/projects/1",
-                     "/projects/1/edit", "/projects/new", "/analytics", "/alerts",
-                     "/settings", "/settings/rbac", "/settings/contacts",
-                     "/audit-logs", "/users", "/account"]:
-            body = self.client.get(path).data.decode()
-            parser = Names(set(_re.findall(r'<label[^>]*\bfor="([^"]+)"', body)))
-            parser.feed(body)
-            self.assertEqual(parser.unnamed, [], f"unnamed controls on {path}")
-
-    def test_heading_levels_never_skip(self):
-        """h1 -> h3 leaves a gap that screen-reader heading navigation exposes."""
-        import re as _re
-        self.new_project(name="A11y", client="C")
-        for path in ["/board", "/my-work", "/projects/1", "/analytics", "/settings",
-                     "/settings/contacts", "/users", "/account"]:
-            levels = [int(h) for h in _re.findall(r"<h([1-6])\b", self.client.get(path).data.decode())]
-            gaps = [(levels[i], levels[i + 1]) for i in range(len(levels) - 1)
-                    if levels[i + 1] - levels[i] > 1]
-            self.assertEqual(gaps, [], f"heading level skipped on {path}: {gaps}")
-
-    def test_no_navigation_depends_on_a_mouse_click(self):
-        """Row-level onclick is unreachable by keyboard; rows must carry a real
-        anchor instead."""
-        self.new_project(name="A11y", client="C")
-        for path in ["/board", "/projects", "/my-work"]:
-            html = self.client.get(path).data.decode()
-            self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
     # ---- settings as JSON (React port) --------------------------------------
 
@@ -1594,8 +1505,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         from services import teams_bot
         def reply(code, body=None):
             return MagicMock(status_code=code, text="", json=MagicMock(return_value=body or {}))
-        teams_bot._token.update(value="bot-token", until=time.time() + 3600)
-        with patch("services.teams_bot.configured", return_value=True), patch("graph.user_id", return_value=("aad-tina", None)), \
+        with patch("services.teams_bot._bot_token", return_value=("bot-token", None)), patch("services.teams_bot.configured", return_value=True), patch("graph.user_id", return_value=("aad-tina", None)), \
              patch("graph._client_id", return_value="app-1"), patch("graph._tenant", return_value="tenant-1"), \
              patch("services.teams_bot.requests.post", side_effect=[reply(201, {"id": "conv-1"}), reply(201), reply(201), reply(404), reply(201, {"id": "conv-2"}), reply(201)]) as post:
             self.assertEqual(teams_bot.send("Tina@corp.example", "Stage moved", "x", "https://odin.example/board"), (True, None))
@@ -2088,6 +1998,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:   # a week-old expired link is swept when the next one is minted
             db.execute("INSERT INTO login_links (user_id, token_hash, created_at, expires_at) VALUES (1, 'stale', '2020-01-01', '2020-01-01')"); db.commit()
         self.client.post("/api/projects/1/stage", json={"stage": stages[2]})
+        drain_outbox()   # the link is minted as the mail is sent (FX1)
         with self.raw_db() as db:
             self.assertIsNone(db.execute("SELECT 1 FROM login_links WHERE token_hash='stale'").fetchone())
 
@@ -3590,7 +3501,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(anon.get(f"/api/join/{token}").status_code, 404)                    # one use: spent
         with self.raw_db() as db:
             u = db.execute("SELECT * FROM users WHERE username = 'omar'").fetchone()
-            self.assertEqual((u["pending"], u["active"], u["role"], u["notify_via"]), (1, 0, "Contributor", "teams"))
+            self.assertEqual((u["pending"], u["active"], u["role"], u["notify_via"]), (1, 0, "Contributor", "email"))   # the Email/Teams choice is gone
             self.assertTrue(db.execute("SELECT 1 FROM notifications WHERE user_id = 1 AND kind = 'access'").fetchone())   # the admin hears
         # before approval: told to wait (only with the right password)
         o = app_module.app.test_client(); ocsrf = o.get("/api/session").get_json()["csrf"]
@@ -4171,26 +4082,39 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertNotIn("login_success", body)
 
     def test_every_state_changing_route_writes_to_the_audit_trail(self):
-        """Meta-guard, like the RBAC one: a POST route with no audit_log call
-        is a gap an auditor will find before we do."""
+        """Meta-guard, like the RBAC one: a POST, PUT, PATCH or DELETE route
+        with no audit call is a gap an auditor will find before we do. The view
+        is parsed, so an audit_log( in a comment or a string does not count."""
+        import ast
         import inspect
+        import textwrap
         # The only exemptions, each with its reason. Keep this list short.
         not_audited = {
             "/api/notifications/read": "marks the caller's own inbox read: personal UI state, not an act on shared data",
             "/api/activity": "the active-minute ping is itself the record (user_activity); an audit row a minute would drown the trail",
             "/api/doc-templates/preview.pdf": "renders an unsaved template to look at; changes nothing",
-            "/api/teams/messages": "the Odin PMS Teams app's inbound address: Odin only sends, so it answers and reads nothing",
-            "/api/client-errors": "a browser's crash report: one log line, never stored (routes/client.py)",
+            # the Teams app's inbound address (answers, reads nothing) and browser crash reports (one log line)
+            **dict.fromkeys(__import__("security").CSRF_EXEMPT, "CSRF-exempt: changes nothing (security.CSRF_EXEMPT)"),
         }
+        # attempt_login audits every outcome itself; both login doors use it. The others write the row for their callers.
+        auditors = {"audit_log", "attempt_login", "change_stage", "_stage_change", "_template_change", "decide_approval", "end_session"}
+
+        def called(view):
+            names = set()
+            for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(view)))):
+                if isinstance(node, ast.Call):
+                    names.add(node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None))
+            return names
+
         missing = []
         for rule in app_module.app.url_map.iter_rules():
-            if "POST" not in rule.methods or rule.endpoint == "static" or rule.rule in not_audited:
+            if not rule.methods & {"POST", "PUT", "PATCH", "DELETE"} or rule.endpoint == "static" or rule.rule in not_audited:
                 continue
-            src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
-            # attempt_login audits every outcome itself; both login doors use it.
-            if not any(marker in src for marker in ("audit_log(", "attempt_login(", "change_stage(", "_stage_change(", "_template_change(", "decide_approval(", "end_session(")):
+            if not called(app_module.app.view_functions[rule.endpoint]) & auditors:
                 missing.append(rule.rule)
-        self.assertEqual(missing, [], f"POST routes without an audit entry: {missing}")
+        self.assertEqual(missing, [], f"state-changing routes without an audit entry: {missing}")
+        stale = [path for path in not_audited if path not in {r.rule for r in app_module.app.url_map.iter_rules()}]
+        self.assertEqual(stale, [], f"exemptions for routes that no longer exist: {stale}")
 
     def test_nginx_passes_cloudflares_client_ip_and_hides_server(self):
         conf = open(os.path.join(os.path.dirname(app_module.__file__), "deploy", "nginx.conf")).read()

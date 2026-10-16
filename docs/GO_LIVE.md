@@ -153,33 +153,12 @@ With a throw-away project named `GO-LIVE TEST`:
 
 ## Phase 5 — Running it
 
-**Updates** are the self-updater's job (`DEPLOY.md` → "Upgrades: the
-self-updater"): cron runs `~/odin-update.sh` every 5 minutes; it backs up, moves
-to the newest release tag, waits for the app and the scheduler to be healthy and
-preflight to pass, and goes back to the previous tag (telling the admins in the
-bell) if anything fails. Install it once:
+**Updates** are the self-updater's job: install it once as `DEPLOY.md`, "Upgrades: the
+self-updater", says (it also lists the log, the hold and the retry switches). Do not check
+out a release by hand: the updater moves the server back to the newest tag within 5 minutes.
 
-```bash
-cp /opt/odin/deploy/odin-update.sh ~/odin-update.sh && chmod +x ~/odin-update.sh
-( crontab -l 2>/dev/null; echo '*/5 * * * * $HOME/odin-update.sh >> $HOME/odin-update.log 2>&1' ) | crontab -
-```
-
-Do not check out a release by hand: the updater moves the server back to the
-newest tag within 5 minutes. To stop it: `touch ~/.odin-update/hold` (resume
-with `rm`). Its log is `~/odin-update.log`; a failed tag is retried twice, after
-30 and 60 minutes, and `rm ~/.odin-update/failed` retries it now.
-
-**Rollback by hand** (updater held): `git checkout <previous tag> && docker compose up -d --build`.
-The database stays on the newer schema: older code ignores the tables and columns
-it does not know. From v1.7.1 on, the database carries a schema number
-(`PRAGMA user_version`, `db.SCHEMA_VERSION`); code older than the database sees it
-is a rollback, skips its destructive boot steps and keeps the newer release's
-settings (permissions, alert types), and preflight shows a **WARN** (not a FAIL, so
-the rollback still boots). Going back to **v1.7.0 or earlier** is different: those
-releases delete, on every boot, permission and alert-type settings they do not
-know, so after rolling back past v1.7.0 restore the pre-update backup if those
-settings matter (`DEPLOY.md` → Restore). Restore that backup too whenever the
-newer release's data itself must go.
+**Rolling back** by hand, and the schema number: `docs/RUNBOOK.md`, "Going back to an older
+release by hand".
 
 **Watch:** an external uptime check on `/healthz` (`docs/RUNBOOK.md`, "Uptime
 check"); the bell, where the scheduler reports failed jobs, stale backups, a

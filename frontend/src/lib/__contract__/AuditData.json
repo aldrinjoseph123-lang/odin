@@ -1,0 +1,57 @@
+{
+ "actions": [
+  "add_contact",
+  "add_partner"
+ ],
+ "filters": {
+  "action": "",
+  "from": "",
+  "project_id": "",
+  "to": "",
+  "user": ""
+ },
+ "page": 1,
+ "projects": [
+  {
+   "id": 1,
+   "name": "EDR Rollout - Globex"
+  },
+  {
+   "id": 10,
+   "name": "EDR rollout - Acme Bank"
+  }
+ ],
+ "rows": [
+  {
+   "action": "login_success",
+   "details": null,
+   "id": 164,
+   "ip_address": "127.0.0.1",
+   "resource_id": 1,
+   "resource_name": "admin",
+   "resource_type": "user",
+   "timestamp": "2026-10-15T19:13:43.567247",
+   "user_id": 1,
+   "user_name": "Admin",
+   "username": "admin"
+  },
+  {
+   "action": "signoff_send",
+   "details": "v1 to signer14@customer.example sha256=cde8e17423f8dfeb",
+   "id": 163,
+   "ip_address": "127.0.0.1",
+   "resource_id": 14,
+   "resource_name": "Email security - Hooli",
+   "resource_type": "project",
+   "timestamp": "2026-10-15T19:13:43.257476",
+   "user_id": 1,
+   "user_name": "Admin",
+   "username": "Admin"
+  }
+ ],
+ "total": 164,
+ "total_pages": 2,
+ "usernames": [
+  "Admin"
+ ]
+}

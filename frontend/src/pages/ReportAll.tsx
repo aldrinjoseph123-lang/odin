@@ -14,7 +14,7 @@ import { HEALTH } from "@/lib/state"
 import { ApiError, reportAll, type PortfolioRow, type Rag, type ReportAllData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { TemplatePicker } from "@/components/TemplatePicker"
-import { dayOf, fmtDate, fmtWhen, monthTicks } from "@/lib/format"
+import { dayOf, fmtDate, fmtWhen, forecastTone, monthTicks } from "@/lib/format"
 
 // The portfolio report: every open rollout's health, when each lands against
 // its target and baseline, what is blocking, and a way into each rollout's own
@@ -33,7 +33,7 @@ function Roadmap({ rows, today, external = false }: { rows: PortfolioRow[]; toda
   const span = (a: string, b: string) => ({ left: `${pct(a)}%`, width: `max(3px, ${Math.max(0, pct(b) - pct(a))}%)` })
   return (
     <div className="overflow-x-clip text-[12px]">
-      <div className="grid grid-cols-[minmax(120px,220px)_minmax(0,1fr)] gap-x-3">
+      <div className="grid grid-cols-[minmax(160px,300px)_minmax(0,1fr)] gap-x-3">
         <span />
         <div className="relative h-5 text-[11px] text-muted-foreground">
           {monthTicks(t0, t1, 8).map((m) => <span key={m.t} className="absolute top-0 -translate-x-1/2" style={{ left: `${((m.t - t0) / (t1 - t0)) * 100}%` }}>{m.label}</span>)}
@@ -46,14 +46,14 @@ function Roadmap({ rows, today, external = false }: { rows: PortfolioRow[]; toda
             + (r.baseline ? `, baseline finish ${fmtDate(r.baseline)} (${days(r.vs_baseline_days)})` : "")
           return (
             <div key={r.id} className="contents">
-              <Link to={external && !r.report ? `/projects/${r.id}` : `/projects/${r.id}/report`} title={`${r.name} · ${r.client} · ${WORD[r.rag]}`} className="flex h-9 min-w-0 items-center gap-2 hover:underline">
+              <Link to={external && !r.report ? `/projects/${r.id}` : `/projects/${r.id}/report`} title={`${r.name} · ${r.client} · ${WORD[r.rag]}`} className="flex min-h-9 min-w-0 items-center gap-2 py-0.5 hover:underline">
                 {/* the health is a word for everyone, the dot only repeats it */}
                 <span className={cn("h-2 w-2 shrink-0 rounded-full", SOLID[r.rag])} aria-hidden /><span className="sr-only">{WORD[r.rag]}: </span>
-                <span className="truncate font-medium">{r.name}</span>
+                <span className="line-clamp-2 min-w-0 font-medium">{r.name}</span>
                 <span className="hidden truncate text-muted-foreground xl:inline">{r.client}</span>
               </Link>
               <Tooltip>
-                <TooltipTrigger render={<div />} tabIndex={0} role="img" aria-label={label} className="relative h-9 border-b border-border/60 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                <TooltipTrigger render={<div />} tabIndex={0} role="img" aria-label={label} className="relative min-h-9 border-b border-border/60 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
                   <span className="absolute inset-y-0 w-[1.5px] bg-foreground/60" style={{ left: `${pct(today)}%` }} aria-hidden />
                   <span className={cn("absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full", SOLID[r.rag])} style={span(r.start, now)} aria-hidden />
                   {end > now && <span className={cn("absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full border", SOFT[r.rag])} style={span(now, end)} aria-hidden />}
@@ -90,10 +90,12 @@ export default function ReportAll({ user }: { user: User }) {
   const internal = d.audience === "internal"
   const hide = (key: string) => (!d.template || d.template.sections.some((x) => x.key === key && x.on) ? undefined : "hidden")   // the document template's sections
   const league = internal ? d.rows.filter((r) => r.vs_baseline_days).sort((a, b) => (b.vs_baseline_days ?? 0) - (a.vs_baseline_days ?? 0)).slice(0, 10) : []
-  const tiles: { label: string; value: string; sub: string; bad?: boolean }[] = [
-    { label: "Late against target", value: String(s.late_vs_target), sub: `of ${s.count} rollouts, by forecast`, bad: s.late_vs_target > 0 },
+  // a forecast past the target is amber until the target date itself has gone by (one rule with the Plan panel and the rollout report)
+  const lateTone = d.rows.some((r) => forecastTone(r.vs_target_days, r.target_end_date, d.today) === "bad") ? "bad" : s.late_vs_target > 0 ? "warn" : undefined
+  const tiles: { label: string; value: string; sub: string; tone?: "bad" | "warn" }[] = [
+    { label: "Late against target", value: String(s.late_vs_target), sub: `of ${s.count} rollouts, by forecast`, tone: lateTone },
     ...(internal ? [{ label: "Behind baseline", value: String(s.behind_baseline ?? 0), sub: s.avg_slip == null ? "no baselines yet" : `average ${s.avg_slip > 0 ? "+" : ""}${s.avg_slip} d` }] : []),
-    { label: "Open blockers", value: String(s.blockers), sub: "across the portfolio", bad: s.blockers > 0 },
+    { label: "Open blockers", value: String(s.blockers), sub: "across the portfolio", tone: s.blockers > 0 ? "bad" : undefined },
     { label: "Finishing in 30 days", value: String(s.finishing_30d), sub: "by forecast" },
   ]
   return (
@@ -124,7 +126,7 @@ export default function ReportAll({ user }: { user: User }) {
         </section>
         <div className={cn("grid grid-cols-2 gap-3", internal ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
           {tiles.map((t) => (
-            <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.bad ? "bad" : undefined} className="print:shadow-none" />
+            <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.tone} className="print:shadow-none" />
           ))}
         </div>
       </div>
@@ -137,7 +139,7 @@ export default function ReportAll({ user }: { user: User }) {
             <Section n title="Slippage" sub="against each rollout's baseline" className={hide("slippage")}>
               <Table head={["Rollout", "Stage", "Baseline", "Target", "Confidence"]}
                 rows={league.map((r) => [<Link key="n" to={`/projects/${r.id}/report`} className="font-medium hover:underline">{r.name}</Link>, r.stage, days(r.vs_baseline_days), days(r.vs_target_days, "after", "before"), r.confidence ?? "—"])}
-                tone={(i, c) => (c === 2 && (league[i].vs_baseline_days ?? 0) > 0 ? "font-medium text-warn" : c === 3 && (league[i].vs_target_days ?? 0) > 0 ? "text-warn" : undefined)} />
+                tone={(i, c) => cn(c === 2 || c === 3 ? "whitespace-nowrap" : undefined, c === 2 && (league[i].vs_baseline_days ?? 0) > 0 ? "font-medium text-warn" : c === 3 && (league[i].vs_target_days ?? 0) > 0 ? (forecastTone(league[i].vs_target_days, league[i].target_end_date, d.today) === "bad" ? "text-bad" : "text-warn") : undefined)} />
             </Section>
           )}
           <Section n title={internal ? "Blockers and high-impact risks" : "Open points"} sub={`${d.risks.length} open`} className={hide("risks")}>
@@ -166,7 +168,7 @@ export default function ReportAll({ user }: { user: User }) {
               <RagPill key="h" rag={r.rag} className="whitespace-nowrap" />,
               <span key="s" className="whitespace-nowrap">{r.stage_number}/{r.stage_count} · {r.stage}</span>,
               <span key="p" className="flex items-center gap-2"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-nav-fg/60" style={{ width: `${r.pct_complete}%` }} /></span><span className="tabular-nums">{r.pct_complete}%</span></span>,
-              <span key="f" className="whitespace-nowrap">{fmtDate(r.forecast)}{r.vs_target_days != null && r.vs_target_days > 0 && <span className="block text-[12px] text-bad">{r.vs_target_days} d after target</span>}</span>,
+              <span key="f" className="whitespace-nowrap">{fmtDate(r.forecast)}{r.vs_target_days != null && r.vs_target_days > 0 && <span className={cn("block text-[12px]", forecastTone(r.vs_target_days, r.target_end_date, d.today) === "bad" ? "text-bad" : "text-warn")}>{r.vs_target_days} d after target</span>}</span>,
               <span key="t" className="whitespace-nowrap">{fmtDate(r.target_end_date)}</span>,
               r.owner_name,
               external && !r.report ? <span key="r" className="whitespace-nowrap text-muted-foreground">Not published yet</span>

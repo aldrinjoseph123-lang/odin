@@ -1,0 +1,58 @@
+{
+ "can_edit": true,
+ "items": [
+  {
+   "closed_at": "2026-09-30T19:13:43.261641",
+   "created_at": "2026-09-30T19:13:43.261641",
+   "created_by": "Priya Menon",
+   "customer_visible": true,
+   "detail": null,
+   "due_date": "2026-10-24",
+   "id": 1,
+   "impact": "high",
+   "kind": "blocker",
+   "likelihood": null,
+   "open": false,
+   "owner_id": 5,
+   "owner_name": "Omar Haddad",
+   "project_id": 1,
+   "resolution": "Agreed in the weekly call",
+   "stage": "Sensor pilot",
+   "status": "closed",
+   "title": "Waiting on firewall change approval",
+   "updated_at": "2026-09-30T19:13:43.261641"
+  }
+ ],
+ "owners": [
+  {
+   "id": 1,
+   "name": "Admin"
+  },
+  {
+   "id": 6,
+   "name": "Lena Fischer"
+  }
+ ],
+ "stages": [
+  "PO Received",
+  "Scoping"
+ ],
+ "statuses": {
+  "blocker": [
+   "open",
+   "closed"
+  ],
+  "decision": [
+   "proposed",
+   "decided"
+  ],
+  "issue": [
+   "open",
+   "closed"
+  ],
+  "risk": [
+   "open",
+   "mitigating"
+  ]
+ }
+}

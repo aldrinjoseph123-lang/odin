@@ -13,7 +13,7 @@ import { ConfirmHost } from "@/components/ConfirmHost"
 import { TitleTips } from "@/components/TitleTips"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { NotificationBell } from "@/components/NotificationBell"
-import { cycleTheme as cycle, syncAppearance, useAppearance, type Accent } from "@/lib/theme"
+import { cycleTheme as cycle, flushAppearance, syncAppearance, useAppearance, type Accent } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 import { Kbd } from "@/components/ui/kbd"
 import { useActivityPing } from "@/lib/useActivityPing"
@@ -87,7 +87,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   // the saved choice wins over whatever this browser last painted
   useEffect(() => { syncAppearance(user.theme, user.accent as Accent) }, [user.theme, user.accent])
   function cycleTheme() {
-    cycle((t, a) => postForm("/account/appearance", { theme: t, accent: a }))
+    cycle((t, a, keepalive) => postForm("/account/appearance", { theme: t, accent: a }, keepalive))
   }
   const all: Item[] = [
     { href: "/dashboard", label: "Dashboard", match: (p) => p === "/dashboard" },
@@ -103,6 +103,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
   // External partners get their projects and the flow — nothing product-wide.
   const items = all.filter((item) => user.kind !== "external" || ["Flow", "Rollouts"].includes(item.label))
   async function signOut() {
+    await flushAppearance()   // a theme click still waiting to save
     await logout()
     window.location.assign("/login")
   }

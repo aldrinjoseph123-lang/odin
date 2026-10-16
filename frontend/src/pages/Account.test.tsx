@@ -30,11 +30,11 @@ describe("Account", () => {
     const user = userEvent.setup()
     page()
     const save = (await screen.findByText("Tell me about")).closest("form")!.querySelector("button[type=submit]") as HTMLButtonElement
-    expect(save).toBeDisabled()
+    expect(save).toHaveAttribute("aria-disabled", "true")
     await user.click(screen.getByRole("switch", { name: /Tasks/ }))
-    expect(save).toBeEnabled()
+    expect(save).toHaveAttribute("aria-disabled", "false")
     await user.click(screen.getByRole("switch", { name: /Tasks/ }))
-    expect(save).toBeDisabled()
+    expect(save).toHaveAttribute("aria-disabled", "true")
   })
 
   it("takes the password length from the session and shows a refusal beside the form", async () => {
@@ -55,7 +55,7 @@ describe("Account", () => {
     api.postForm.mockClear()
     const user = userEvent.setup()
     page()
-    await user.click(await screen.findByRole("radio", { name: "light" }))
+    await user.click(await screen.findByRole("radio", { name: "Light" }))
     expect(api.postForm).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "Remove" }))
     expect(await screen.findByText(/Remove your picture\?/)).toBeInTheDocument()

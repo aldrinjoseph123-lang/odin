@@ -47,10 +47,25 @@ export function syncAppearance(theme: Theme, accent: Accent) { if (saving === un
 
 // The header button: paint at once, save once the clicking stops, so three
 // clicks are one POST and one audit row, not three.
-export function cycleTheme(save: (theme: Theme, accent: Accent) => Promise<unknown>, ms = 800) {
+type Save = (theme: Theme, accent: Accent, keepalive?: boolean) => Promise<unknown>
+let pending: Save | null = null
+export function cycleTheme(save: Save, ms = 800) {
   applyTheme(current.theme === "system" ? "light" : current.theme === "light" ? "dark" : "system", current.accent)
+  pending = save
   window.clearTimeout(saving)
-  saving = window.setTimeout(() => { saving = undefined; void save(current.theme, current.accent).catch(() => undefined) }, ms)   // unsaved: stays local until the next save
+  saving = window.setTimeout(() => void flushAppearance(), ms)
+}
+// Save a click still waiting now: before logging out, and as the page goes
+// (a reload, a closed tab: `keepalive` lets the request outlive the page).
+export function flushAppearance(keepalive = false) {
+  const save = pending
+  if (saving === undefined || !save) return Promise.resolve()
+  window.clearTimeout(saving); saving = undefined; pending = null
+  return save(current.theme, current.accent, keepalive).catch(() => undefined)   // unsaved: stays local until the next save
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => void flushAppearance(true))
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") void flushAppearance(true) })
 }
 
 export const isDark = () => document.documentElement.dataset.theme === "dark"

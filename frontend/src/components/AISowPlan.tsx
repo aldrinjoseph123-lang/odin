@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
+import { checkbox } from "@/lib/ui"
 import { Button } from "@/components/ui/button"
 import { AIProgress } from "@/components/AIProgress"
-import { addTask, ApiError, cancelAIJob, closeAISuggestion, dismissAISuggestion, projectAI, requestProjectAI, saveScope, type ProjectAI, type SowItem, type SowPlan } from "@/lib/api"
+import { addTask, ApiError, cancelAIJob, closeAISuggestion, dismissAISuggestion, requestProjectAI, saveScope, type SowItem, type SowPlan } from "@/lib/api"
 import { fmtWhen } from "@/lib/format"
-import { usePoll } from "@/lib/usePoll"
+import { useProjectAI } from "@/lib/usePoll"
+import { useAction } from "@/lib/useAction"
+import { Notice } from "@/components/Notice"
 
 type Pick = { kind: "scope" | "task" | "customer"; item: SowItem; key: string }
 
@@ -14,43 +17,30 @@ type Pick = { kind: "scope" | "task" | "customer"; item: SowItem; key: string }
 // are added through the normal scope and task routes (audited there); key
 // dates and exclusions are shown to read, not added.
 export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: () => void }) {
-  const [s, setS] = useState<ProjectAI<SowPlan> | null>(null)
+  const { s, load, working: reading, poll } = useProjectAI<SowPlan>(projectId, "sow_plan", { every: 5000 })
   const [docs, setDocs] = useState<number[] | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const load = useCallback(async () => {
-    try {
-      const x = await projectAI<SowPlan>(projectId, "sow_plan")
-      setS(x)
-      setDocs((d) => d ?? (x.options?.documents ?? []).filter((doc) => doc.likely).map((doc) => doc.id))
-      if (x.suggestion) {
-        const p = x.suggestion.payload
-        setPicked(new Set([...p.scope_items.map((_, i) => `scope:${i}`), ...p.tasks.map((_, i) => `task:${i}`), ...p.customer_obligations.map((_, i) => `customer:${i}`)]))
-      }
-    } catch { setS(null) }
-  }, [projectId])
-  useEffect(() => { void load() }, [load])
-  const reading = !!s?.job && (s.job.status === "queued" || s.job.status === "running")
-  usePoll(reading, load, 5000)
-  if (!s || (!s.available && !s.suggestion)) return null
-  const sug = s.suggestion
+  const { busy, note, act } = useAction(load)
+  const sug = s?.suggestion
+  // the likely documents start ticked; a new suggestion starts with everything ticked
+  useEffect(() => { if (s) setDocs((d) => d ?? (s.options?.documents ?? []).filter((doc) => doc.likely).map((doc) => doc.id)) }, [s])
+  useEffect(() => {
+    if (!sug) return
+    const p = sug.payload
+    setPicked(new Set([...p.scope_items.map((_, i) => `scope:${i}`), ...p.tasks.map((_, i) => `task:${i}`), ...p.customer_obligations.map((_, i) => `customer:${i}`)]))
+  }, [sug?.id])   // eslint-disable-line react-hooks/exhaustive-deps
+  if (!s || (!s.available && !sug)) return null
   const all = s.options?.documents ?? []
   const lastJob = s.job && !reading && s.job.created_at > (sug?.created_at ?? "") ? s.job : null
 
-  async function ask() {
-    setBusy(true); setError(null)
-    try { await requestProjectAI(projectId, "sow_plan", { document_ids: docs ?? [] }); await load() } catch (e) { setError(e instanceof ApiError ? e.message : "Could not ask") } finally { setBusy(false) }
-  }
-  async function take() {
-    if (!sug) return
-    const p = sug.payload
+  const ask = () => act(() => requestProjectAI(projectId, "sow_plan", { document_ids: docs ?? [] }))
+  const take = (from: NonNullable<typeof sug>) => act(async () => {
+    const p = from.payload
     const chosen: Pick[] = [
       ...p.scope_items.map((item, i) => ({ kind: "scope" as const, item, key: `scope:${i}` })),
       ...p.tasks.map((item, i) => ({ kind: "task" as const, item, key: `task:${i}` })),
       ...p.customer_obligations.map((item, i) => ({ kind: "customer" as const, item, key: `customer:${i}` })),
     ].filter((x) => picked.has(x.key))
-    setBusy(true); setError(null)
     let taken = 0
     try {
       for (const c of chosen) {
@@ -58,19 +48,19 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
         else await addTask(projectId, { title: (c.kind === "customer" ? `Customer: ${c.item.title}` : c.item.title).slice(0, 200), stage: c.item.stage ?? "" })
         taken += 1
       }
-      await closeAISuggestion(projectId, sug.id, taken)
-      onAdded(); await load()
     } catch (e) {
-      setError(`${taken} added, then: ${e instanceof ApiError ? e.message : "that did not save"}`)
-      if (taken) { await closeAISuggestion(projectId, sug.id, taken).catch(() => undefined); onAdded(); await load() }
-    } finally { setBusy(false) }
-  }
+      if (taken) { await closeAISuggestion(projectId, from.id, taken).catch(() => undefined); onAdded() }
+      throw new ApiError(0, `${taken} added, then: ${e instanceof ApiError ? e.message : "that did not save"}`)
+    }
+    await closeAISuggestion(projectId, from.id, taken)
+    onAdded()
+  })
   const toggle = (key: string) => setPicked((p) => { const n = new Set(p); if (n.has(key)) n.delete(key); else n.add(key); return n })
   const row = (kind: string, item: SowItem, i: number, extra?: string) => {
     const key = `${kind}:${i}`
     return (
       <li key={key} className="flex items-start gap-2 py-2">
-        <input type="checkbox" className="mt-1 h-3.5 w-3.5 accent-primary" checked={picked.has(key)} onChange={() => toggle(key)} aria-label={`Add ${item.title}`} />
+        <input type="checkbox" className={`mt-1 ${checkbox}`} checked={picked.has(key)} onChange={() => toggle(key)} aria-label={`Add ${item.title}`} />
         <span className="min-w-0 flex-1">
           <span className="font-medium">{item.title}</span>{extra && <span className="text-muted-foreground"> · {extra}</span>}
           {item.detail && <span className="block text-[12px] text-muted-foreground">{item.detail}</span>}
@@ -82,31 +72,31 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
   return (
     <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-[13px]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
-        <span className="min-w-0 flex-1 basis-56" aria-live="polite">
+        <Sparkles className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="min-w-0 flex-1 basis-56" aria-live="polite">
           {reading ? "Reading the documents in parts and drafting a plan…"
             : sug ? <>AI suggested plan from the documents, {fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}. Untick what you do not want, then add the rest.</>
               : "Suggest the scope items and tasks from the PO and scope of work with AI. Pick the documents to read:"}
-          {lastJob?.status === "failed" && <span className="block text-destructive">The last reading did not finish: {lastJob.error}</span>}
-          {lastJob?.result?.skipped && <span className="block text-destructive">{lastJob.result.skipped}</span>}
-          {error && <span className="block text-destructive" role="alert">{error}</span>}
-        </span>
-        {reading && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
+          {lastJob?.status === "failed" && <Notice bad>The last reading did not finish: {lastJob.error}</Notice>}
+          {lastJob?.result?.skipped && <Notice bad>{lastJob.result.skipped}</Notice>}
+          {note && <Notice bad={note.bad}>{note.text}</Notice>}
+        </div>
+        {reading && s.job && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act(() => cancelAIJob(projectId, s.job!.id))}>Cancel</Button>}
       </div>
-      {reading && s.job && <AIProgress job={s.job} />}
+      {reading && s.job && <AIProgress job={s.job} poll={poll} />}
       {!sug && !reading && (
         <div className="mt-2">
           {all.length === 0 ? <p className="text-muted-foreground">No readable documents yet: upload the PO or scope of work (PDF, Word, Excel or text) under Documents.</p> : (
             <ul className="grid grid-cols-1 gap-1">
               {all.map((d) => (
                 <li key={d.id}><label className="flex items-center gap-2">
-                  <input type="checkbox" className="h-3.5 w-3.5 accent-primary" checked={!!docs?.includes(d.id)} onChange={() => setDocs((x) => (x ?? []).includes(d.id) ? (x ?? []).filter((i) => i !== d.id) : [...(x ?? []), d.id])} />
+                  <input type="checkbox" className={checkbox} checked={!!docs?.includes(d.id)} onChange={() => setDocs((x) => (x ?? []).includes(d.id) ? (x ?? []).filter((i) => i !== d.id) : [...(x ?? []), d.id])} />
                   <span className="font-medium">{d.filename}</span><span className="text-muted-foreground">{d.category}</span>
                 </label></li>
               ))}
             </ul>
           )}
-          {s.available && <Button size="sm" variant="outline" className="mt-2 h-7" loading={busy} disabled={!docs?.length} onClick={() => void ask()}>Suggest a plan with AI</Button>}
+          {s.available && <Button size="sm" variant="outline" className="mt-2" loading={busy} disabled={!docs?.length} onClick={() => void ask()}>Suggest a plan with AI</Button>}
         </div>
       )}
       {sug && !reading && (
@@ -121,8 +111,8 @@ export function AISowPlan({ projectId, onAdded }: { projectId: number; onAdded: 
             </section>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" className="h-7" loading={busy} disabled={picked.size === 0} onClick={() => void take()}>Add {picked.size} selected</Button>
-            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void dismissAISuggestion(projectId, sug.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Dismiss</Button>
+            <Button size="sm" loading={busy} disabled={picked.size === 0} onClick={() => void take(sug)}>Add {picked.size} selected</Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act(() => dismissAISuggestion(projectId, sug.id))}>Dismiss</Button>
           </div>
         </div>
       )}

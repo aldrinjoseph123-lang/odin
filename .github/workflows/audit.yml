@@ -1,0 +1,54 @@
+# Dependency advisories are published after the code that uses them shipped, so
+# CI's own audit steps (run on a push) are not enough: this one runs every Monday
+# on main. A failure emails the repository owner, like any failed workflow.
+# Runtime dependencies at high and above, as in CI; the dev tools are looked at
+# in the report only (they never reach production).
+name: Weekly audit
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"   # Mondays 05:17 UTC (09:17 in Dubai)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit
+  cancel-in-progress: false
+
+jobs:
+  python:
+    name: Python advisories (pip-audit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q pip-audit && pip-audit -r requirements.txt
+
+  node:
+    name: Node advisories (npm audit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - name: Runtime dependencies, high and above (fails the run)
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: frontend
+      - name: Everything including the dev tools (for the log only)
+        run: npm audit || true
+        working-directory: frontend

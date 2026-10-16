@@ -28,6 +28,13 @@ from db import get_db
 # login_window_minutes). The failure window is also the pause: failures
 # older than it stop counting.
 UPLOAD_CEILING_MB = 100     # the server never reads more, whatever the policy
+# Browser crash reports (routes/client.py), per person or address: in memory, never the database.
+CLIENT_REPORTS_PER_WINDOW, CLIENT_REPORT_WINDOW_SECONDS = 10, 600
+
+# POSTs that skip the CSRF check, each answering or logging and changing nothing: Teams'
+# calls to the Odin PMS app (answered, never read) and browser crash reports (one log
+# line each). /api/v1/ is Bearer-token only. The meta-tests read this list.
+CSRF_EXEMPT = ("/api/teams/messages", "/api/client-errors")
 
 # --- files: upload allowlist ------------------------------------------------
 # Business documents only. Deliberately excludes anything the browser will
@@ -104,12 +111,16 @@ def login_is_blocked(username):
     address has failed too often across every username (spraying one password
     over many accounts, review P3-3): the hard stop, checked before the
     password. Throttle keys (link:, mfa:, nudge-from: ...) hold a colon, which
-    no username does, so only sign-ins count."""
+    no username does, so only sign-ins count. The address limit counts the
+    usernames that failed from it, so a shared office is never paused by its
+    own typos."""
     from policies import policy
     db, since = get_db(), _login_window_start()
     pair = db.execute("SELECT COUNT(*) FROM login_attempts WHERE username = ? AND ip_address IS ? AND success = 0 AND attempted_at > ?",
                       (username, request.remote_addr, since)).fetchone()[0]
-    spray = db.execute("SELECT COUNT(*) FROM login_attempts WHERE ip_address IS ? AND success = 0 AND attempted_at > ? AND username NOT LIKE '%:%'",
+    # distinct usernames, not failures: an office behind one NAT mistyping its own passwords
+    # counts one per person, a spray one per account it tries
+    spray = db.execute("SELECT COUNT(DISTINCT username) FROM login_attempts WHERE ip_address IS ? AND success = 0 AND attempted_at > ? AND username NOT LIKE '%:%'",
                        (request.remote_addr, since)).fetchone()[0]
     return pair >= policy("login_max_attempts") or spray >= policy("login_ip_max")
 
@@ -149,42 +160,52 @@ def record_login_attempt(username, success):
     db.commit()
 
 
+def _hits(key, window_minutes, any_ip=False):
+    since = (datetime.utcnow() - timedelta(minutes=window_minutes)).isoformat()
+    return get_db().execute(
+        "SELECT COUNT(*) AS n FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?"
+        + ("" if any_ip else " AND ip_address IS ?"),
+        (key, since) if any_ip else (key, since, request.remote_addr),
+    ).fetchone()["n"]
+
+
 def rate_limited(key, limit, window_minutes, any_ip=False):
     """Generic per-key+IP throttle, riding on the login_attempts table so it
     needs no schema of its own. Returns True (and records nothing) once the
     limit is hit; otherwise records this hit and returns False. Used for the
     guest-link write endpoints, which are reachable without a login. any_ip:
     count the key from every address (a per-account or per-target limit)."""
-    db = get_db()
-    since = (datetime.utcnow() - timedelta(minutes=window_minutes)).isoformat()
-    hits = db.execute(
-        "SELECT COUNT(*) AS n FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?"
-        + ("" if any_ip else " AND ip_address IS ?"),
-        (key, since) if any_ip else (key, since, request.remote_addr),
-    ).fetchone()["n"]
-    if hits >= limit:
+    if _hits(key, window_minutes, any_ip) >= limit:
         return True
     record_login_attempt(key, success=False)
     return False
 
 
-def mail_flooded(email):
+def mail_flooded(email, anonymous=True):
     """Emailed links (sign-in, reset, address check) to one address, from
     every network address together: at most mail_link_max an hour, so nobody
-    can fill a colleague's inbox from many machines (review P3-3)."""
+    can fill a colleague's inbox from many machines (review P3-3). Requests
+    from the sign-in page (anonymous) and from the signed-in person count
+    apart, so strangers using up the first never stop the second; links staff
+    send (invites, Send link, a resend) are not counted at all, so the person
+    can always get one from their project manager."""
     from policies import policy
-    return rate_limited(f"mail-to:{email.lower()}", policy("mail_link_max"), 60, any_ip=True)
+    return rate_limited(f"mail-{'anon' if anonymous else 'to'}:{email.lower()}", policy("mail_link_max"), 60, any_ip=True)
 
 
 def nudge_limited(sender_id, target_id):
     """Notes to colleagues (POST /api/people/<id>/notify): at most nudge_max an
-    hour from one person, and to one person from everyone (review P3-3).
-    The words to show, or None."""
+    hour from one person, and nudge_pair_max from one person to one colleague
+    (review P3-3). Per pair, not per colleague: one sender cannot use up what
+    everyone else may send them. A refused note counts nowhere. The words to
+    show, or None."""
     from policies import policy
-    if rate_limited(f"nudge-to:{target_id}", policy("nudge_max"), 60, any_ip=True):
-        return "They have had a lot of notes this hour. Try again later."
-    if rate_limited(f"nudge-from:{sender_id}", policy("nudge_max"), 60, any_ip=True):
+    if _hits(f"nudge-from:{sender_id}", 60, any_ip=True) >= policy("nudge_max"):
         return "You have sent a lot of notes this hour. Try again later."
+    if _hits(f"nudge-to:{sender_id}:{target_id}", 60, any_ip=True) >= policy("nudge_pair_max"):
+        return "You have sent them a lot of notes this hour. Try again later."
+    record_login_attempt(f"nudge-from:{sender_id}", success=False)
+    record_login_attempt(f"nudge-to:{sender_id}:{target_id}", success=False)
     return None
 
 
@@ -401,8 +422,7 @@ def csrf_token():
 
 def _validate_csrf():
     """before_request hook: every state-changing request must carry the token."""
-    # Teams' calls: answered, never read; browser error reports: one log line each (routes/client.py)
-    if request.method in CSRF_SAFE_METHODS or request.path in ("/api/teams/messages", "/api/client-errors"):
+    if request.method in CSRF_SAFE_METHODS or request.path in CSRF_EXEMPT:
         return None
     if request.path.startswith("/api/v1/"):
         return None   # Bearer tokens only, never the session cookie (routes/tokens.token_required): nothing to forge
@@ -477,6 +497,8 @@ def _security_headers(response):
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
         )
+    if response.status_code == 429:   # every throttle's reply says when to come back; a route may name its own wait
+        response.headers.setdefault("Retry-After", "60")
     return response
 
 

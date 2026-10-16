@@ -27,7 +27,7 @@ DEV_SECRET = "dev-secret-change-me"
 class _RequestIdFilter(logging.Filter):
     """Every log line names the request it belongs to ("-" outside one)."""
     def filter(self, record):
-        record.request_id = g.get("request_id", "-") if has_request_context() else "-"
+        record.request_id = request_id() if has_request_context() else "-"
         return True
 
 
@@ -150,7 +150,6 @@ def public_base():
     an attacker's domain into a sign-in or reset link, P3-1). Blank (dev, UAT,
     bound to 127.0.0.1): this server's own loopback address and the port it
     really listens on, which Settings warns about."""
-    from flask import has_request_context
     from policies import policy
     if base := policy("public_url"):
         return base
@@ -231,17 +230,12 @@ _GIVEN_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
 
 def request_id():
     """This request's id (g.request_id): the caller's X-Request-Id when it
-    looks like one (a proxy's), else a new one. Made on first use, so an
-    earlier before_request that refuses the request still gets one."""
+    looks like one (a proxy's), else a new one. Made on first use (a log
+    line, an error page or the reply's header), so every request has one."""
     if "request_id" not in g:
         given = request.headers.get("X-Request-Id", "")
         g.request_id = given if _GIVEN_ID.fullmatch(given) else uuid.uuid4().hex[:16]
     return g.request_id
-
-
-@app.before_request
-def _request_id():
-    request_id()   # never returned: a before_request value would replace the response
 
 
 @app.after_request
@@ -274,20 +268,32 @@ def as_id(value):
     return value if 0 < value <= MAX_ID else None
 
 
+def as_bool(value):
+    """A yes/no from a form field or JSON value: True for true, "1" or "true",
+    False for false, "0" or "false", None for anything else (a number, a list)."""
+    if isinstance(value, bool):
+        return value
+    return {"1": True, "true": True, "0": False, "false": False}.get(value) if isinstance(value, str) else None
+
+
 def text_field(value, limit, label, multiline=False):
     """A text value from a form or JSON body, stripped. Raises ValueError with
     the words to show for a non-string (a list or number is refused, never
-    stored as its Python spelling), more than `limit` characters, a NUL, or a
-    line break when `multiline` is off."""
+    stored as its Python spelling), more than `limit` characters, or a NUL.
+    A single-line field turns line breaks into one space: a title saved with
+    one before the check existed comes back with the whole item on an edit."""
+    import re
     if value is None:
         return ""
     if not isinstance(value, str):
         raise ValueError(f"{label}: send text")
     value = value.strip()
+    if not multiline:
+        value = re.sub(r"\s*[\r\n]+\s*", " ", value)
     if len(value) > limit:
         raise ValueError(f"{label}: at most {limit} characters")
-    if "\x00" in value or (not multiline and ("\n" in value or "\r" in value)):
-        raise ValueError(f"{label}: one line of plain text")
+    if "\x00" in value:
+        raise ValueError(f"{label}: plain text")
     return value
 
 

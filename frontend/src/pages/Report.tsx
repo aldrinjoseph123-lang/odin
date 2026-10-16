@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Segmented } from "@/components/Segmented"
 import { StatTile } from "@/components/StatTile"
-import { pill, fieldArea } from "@/lib/ui"
+import { pill, filterSelect, fieldArea } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { ChevronLeft, Download, Printer, Save, Sparkles } from "lucide-react"
@@ -13,13 +13,14 @@ import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
 import { PlanGantt, RagPill } from "@/components/PlanGantt"
 import { RAID_KIND } from "@/components/RaidPanel"
 import { Section, Table } from "@/components/ReportParts"
-import { ApiError, rolloutReport, saveRolloutReport, type RolloutReport, type User } from "@/lib/api"
+import { ApiError, rolloutReport, saveRolloutReport, type User } from "@/lib/api"
 import { AIWordsDraft } from "@/components/AIWordsDraft"
 import { AIDraftBar } from "@/components/AIDraftBar"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { cn } from "@/lib/utils"
-import { fillPlaceholders, fmtDate, fmtWhen, groupBlocks } from "@/lib/format"
+import { fillPlaceholders, fmtDate, fmtWhen, forecastTone, groupBlocks } from "@/lib/format"
 import { TemplatePicker } from "@/components/TemplatePicker"
+import { useLoad } from "@/lib/useLoad"
 
 // The rollout report: where it stands, when it lands, what could stop it,
 // who is doing what, and how it got here. Staff read it live and can switch
@@ -37,30 +38,27 @@ export default function Report({ user }: { user: User }) {
   const audience = params.get("audience") === "customer" || user.kind === "external" ? "customer" : "internal"
   const v = Number(params.get("v")) || null
   const template = Number(params.get("template")) || null
-  const [r, setR] = useState<RolloutReport | null>(null)
+  // another audience or template keeps the report on screen until the new one lands
+  const { data: r, error: failed, reload } = useLoad(`report:${id}:${audience}:${v}:${template}`, () => rolloutReport(id, audience, v, template), { keep: true })
   const [words, setWords] = useState({ summary: "", next_steps: "", asks: "" })
-  const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const [aiDraft, setAiDraft] = useState<number | null>(null)   // the AI draft the words came from, recorded with the save
   // the words belong to a version, not to the audience or the template: switching
   // those keeps what is typed (review P2-30); a new version, or a save, brings its own
   const wordsOf = useRef<number | null | undefined>(undefined)
-  const load = useCallback(async (fresh = false) => {
-    try {
-      const x = await rolloutReport(id, audience, v, template)
-      setR(x); setError(null)
-      if (fresh || wordsOf.current !== v) setWords({ summary: x.words.summary ?? "", next_steps: x.words.next_steps ?? "", asks: x.words.asks ?? "" })
-      wordsOf.current = v
-      document.title = `Report · ${x.project.name} · Odin`
-    } catch (e) {
-      const missing = e instanceof ApiError && (e.status === 404 || e.status === 403)
-      setError(missing && v ? "That version of the report does not exist."
-        : missing && user.kind === "external" ? "No report has been published for this rollout yet."
-        : missing ? MISSING : e instanceof ApiError ? e.message : "Could not load the report")
-    }
-  }, [id, audience, v, template, user.kind])
-  useEffect(() => { void load() }, [load])
+  const fresh = useRef(false)
+  useEffect(() => {
+    if (!r) return
+    if (fresh.current || wordsOf.current !== v) setWords({ summary: r.words.summary ?? "", next_steps: r.words.next_steps ?? "", asks: r.words.asks ?? "" })
+    fresh.current = false
+    wordsOf.current = v
+    document.title = `Report · ${r.project.name} · Odin`
+  }, [r])   // eslint-disable-line react-hooks/exhaustive-deps
+  const missing = failed?.status === 404 || failed?.status === 403
+  const error = !failed ? null : missing && v ? "That version of the report does not exist."
+    : missing && user.kind === "external" ? "No report has been published for this rollout yet."
+    : missing ? MISSING : failed.message
   const editable = !!r && r.is_live && r.can_edit
   const dirty = !!r && editable && (words.summary !== r.words.summary || words.next_steps !== r.words.next_steps || words.asks !== r.words.asks)
   useUnsavedGuard(dirty)
@@ -73,7 +71,7 @@ export default function Report({ user }: { user: User }) {
     // the words are shared: say so before they go out, not after (sim roles-3)
     if (!(await askConfirm("Save this version? Partners and customers on the rollout will read these words in their copy of the report."))) return
     setBusy(true); setNotice(null)
-    try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice({ text: `Version ${x.version} saved. Partners and customers now see it.` }); await load(true) } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
+    try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice({ text: `Version ${x.version} saved. Partners and customers now see it.` }); fresh.current = true; await reload() } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
   }
   const pdf = `/projects/${id}/report.pdf?audience=${r.audience}${r.version ? `&v=${r.version.version}` : template ? `&template=${template}` : ""}`
   const toolbar = (
@@ -85,7 +83,7 @@ export default function Report({ user }: { user: User }) {
             options={[{ value: "internal", label: "Internal" }, { value: "customer", label: "Customer copy" }]} />
         )}
         {r.versions.length > 0 && (
-          <select value={r.version?.version ?? ""} onChange={async (e) => { const to = e.target.value || null; if (!dirty || await askConfirm("Open another version? What you typed here is not saved and is lost.")) set("v", to) }} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
+          <select value={r.version?.version ?? ""} onChange={async (e) => { const to = e.target.value || null; if (!dirty || await askConfirm("Open another version? What you typed here is not saved and is lost.")) set("v", to) }} aria-label="Version" className={filterSelect}>
             {r.can_edit && <option value="">Live — today's data</option>}
             {r.versions.map((x) => <option key={x.version} value={x.version}>v{x.version} · {x.created_by} · {fmtWhen(x.created_at)}{x.kind === "text" ? " (text)" : ""}</option>)}
           </select>
@@ -93,7 +91,7 @@ export default function Report({ user }: { user: User }) {
         {r.is_live && r.can_edit && <TemplatePicker kind="rollout" value={template} onChange={(t) => set("template", t ? String(t) : null)} />}
         {r.data && <a href={pdf} target="_blank" rel="noreferrer" className={pill}><Download className="h-3.5 w-3.5" /> PDF</a>}
         <button type="button" onClick={() => window.print()} className={pill}><Printer className="h-3.5 w-3.5" /> Print</button>
-        {editable && <Button size="sm" className="h-8" loading={busy} disabled={!words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
+        {editable && <Button size="sm" loading={busy} disabled={!words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
       </span>
     </div>
   )
@@ -124,19 +122,20 @@ export default function Report({ user }: { user: User }) {
   const intro = fillPlaceholders(d.template?.texts.intro ?? "", tplValues).trim()
   const closing = fillPlaceholders(d.template?.texts.closing ?? "", tplValues).trim()
   const f = d.finish
-  const tiles: { label: string; value: string; sub: string; bad?: boolean; warn?: boolean }[] = [
-    { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, bad: (f.vs_target_days ?? 0) > 0 },
+  const ft = forecastTone(f.vs_target_days, f.target, d.today)   // the Plan panel and the portfolio read the same rule
+  const tiles: { label: string; value: string; sub: string; tone?: "bad" | "warn" }[] = [
+    { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: ft === "ok" ? undefined : ft },
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
-    ...(customer ? [] : [{ label: "Against baseline", value: slip(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", warn: (f.vs_baseline_days ?? 0) > 0 }]),
+    ...(customer ? [] : [{ label: "Against baseline", value: slip(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", tone: (f.vs_baseline_days ?? 0) > 0 ? "warn" as const : undefined }]),
     { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
-    { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", warn: d.work.late > 0 },
+    { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", tone: d.work.late > 0 ? "warn" : undefined },
   ]
   const textarea = cn(fieldArea, "p-3 text-[14px]")
   const wordBlock = (key: "summary" | "next_steps" | "asks", label: string, rows: number, hint: string) => (
     <div>
       <div className="mb-1 flex items-center gap-2"><h3 className="text-[13px] font-semibold text-nav-fg">{label}</h3>
         {editable && r.words.suggested && r.words.suggested[key] && words[key] !== r.words.suggested[key] && (
-          <button type="button" onClick={() => setWords({ ...words, [key]: r.words.suggested![key] })} className="inline-flex items-center gap-1 text-[12px] text-primary-text hover:underline print:hidden"><Sparkles className="h-3 w-3" /> Use the suggestion</button>
+          <button type="button" onClick={() => setWords({ ...words, [key]: r.words.suggested![key] })} className="inline-flex items-center gap-1 text-[12px] text-primary-text hover:underline print:hidden"><Sparkles className="h-3 w-3 text-muted-foreground" aria-hidden /> Use the suggestion</button>
         )}
       </div>
       {editable && <textarea aria-label={label} rows={rows} maxLength={6000} value={words[key]} onChange={(e) => setWords({ ...words, [key]: e.target.value })} placeholder={hint} className={cn(textarea, "print:hidden")} />}
@@ -168,7 +167,7 @@ export default function Report({ user }: { user: User }) {
       {intro && <p className="mt-3 max-w-prose whitespace-pre-line text-[14px] leading-relaxed">{intro}</p>}
       <div className={cn("mt-4 grid grid-cols-2 gap-3", customer ? "lg:grid-cols-4" : "lg:grid-cols-5", hide("numbers"))}>
         {tiles.map((t) => (
-          <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.bad ? "bad" : t.warn ? "warn" : undefined} className="print:shadow-none" />
+          <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} tone={t.tone} className="print:shadow-none" />
         ))}
       </div>
 
@@ -207,7 +206,7 @@ export default function Report({ user }: { user: User }) {
                 s.actual_start ? `${fmtDate(s.actual_start)} – ${s.actual_end ? fmtDate(s.actual_end) : "now"}` : s.status === "skipped" ? "skipped" : "—",
                 s.forecast_end ? `${fmtDate(s.forecast_start)} – ${fmtDate(s.forecast_end)}` : "—",
                 ...(customer ? [] : [slip(s.slip_days)])])}
-              tone={(i, c) => (c === 4 && (d.stages[i].slip_days ?? 0) > 0 ? "font-medium text-warn" : undefined)} />
+              tone={(i, c) => (c === 4 && (d.stages[i].slip_days ?? 0) > 0 ? (forecastTone(d.stages[i].slip_days, f.target, d.today) === "bad" ? "font-medium text-bad" : "font-medium text-warn") : undefined)} />
           </div>
         </Section>
 

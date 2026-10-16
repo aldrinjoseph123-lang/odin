@@ -21,6 +21,7 @@ class FixBase(unittest.TestCase):
     _invite = _Meta._invite
     _link_for = _Meta._link_for
     _external_client = _Meta._external_client
+    _make_user = _Meta._make_user
 
     def ctx(self):
         c = app_module.app.test_request_context()
@@ -32,6 +33,9 @@ class FixBase(unittest.TestCase):
             rows = db.execute(query, args).fetchall()
             db.commit()
         return rows
+
+    def audits(self, action):
+        return self.sql("SELECT COUNT(*) FROM audit_logs WHERE action = ?", action)[0][0]
 
     def stages(self, pid=1):
         return [r[0] for r in self.sql("SELECT name FROM project_stages WHERE project_id = ? ORDER BY position", pid)]

@@ -1,0 +1,29 @@
+{
+ "accent": "blue",
+ "avatar_url": null,
+ "external_role": null,
+ "home": "dashboard",
+ "id": 1,
+ "kind": "internal",
+ "must_change_password": false,
+ "must_enroll_mfa": false,
+ "name": "Admin",
+ "nav": {
+  "active_alert_count": 22,
+  "my_open_task_count": 5,
+  "projects_nav_url": "/projects",
+  "unread_notifications": 22
+ },
+ "permissions": [
+  "add_project_note",
+  "create_project"
+ ],
+ "prefs": {
+  "activity_idle_minutes": 5,
+  "date_format": "d MMM yyyy",
+  "password_min_length": 12,
+  "undo_minutes": 5
+ },
+ "role": "Admin",
+ "theme": "system"
+}

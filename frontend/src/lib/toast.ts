@@ -13,7 +13,6 @@ let next = 0
 const subs = new Set<() => void>()
 const emit = () => subs.forEach((f) => f())
 
-// `ms` overrides the default: a number to leave after that long, 0 to stay.
 const timers = new Map<number, { handle?: ReturnType<typeof setTimeout>; left: number; since: number }>()
 function arm(id: number, ms: number) {
   const t = timers.get(id)!
@@ -21,12 +20,11 @@ function arm(id: number, ms: number) {
   t.handle = setTimeout(() => dismissToast(id), ms)
 }
 
-export function toast(text: string, opts: { tone?: "ok" | "bad"; action?: Toast["action"]; ms?: number } = {}) {
+export function toast(text: string, opts: { tone?: "ok" | "bad"; action?: Toast["action"] } = {}) {
   const t: Toast = { id: ++next, text, tone: opts.tone ?? "ok", action: opts.action }
   items = [...items.slice(-2), t]
   emit()
-  const ms = opts.ms ?? (t.action || t.tone === "bad" ? 0 : 4000)
-  if (ms > 0) { timers.set(t.id, { left: ms, since: 0 }); arm(t.id, ms) }
+  if (!t.action && t.tone !== "bad") { timers.set(t.id, { left: 4000, since: 0 }); arm(t.id, 4000) }
   return t.id
 }
 
@@ -64,8 +62,7 @@ try {
   const carried = typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(CARRY)
   if (carried) {
     sessionStorage.removeItem(CARRY)
-    let c: { text: string; undo: string | null }
-    try { c = JSON.parse(carried) } catch { c = { text: carried, undo: null } }   // a line carried by an older page
+    const c = JSON.parse(carried) as { text: string; undo: string | null }
     toast(c.text, c.undo ? { action: { label: "Undo", run: () => void import("@/lib/api").then(({ postForm }) => postForm(c.undo!))
       .then((r) => { toastAfterLoad(r.messages.join(" ") || "Restored"); window.location.assign(r.location ?? "/board") })
       .catch((e: Error) => toast(e.message || "Could not undo", { tone: "bad" })), } } : {})   // stays until used; the window itself is the server's

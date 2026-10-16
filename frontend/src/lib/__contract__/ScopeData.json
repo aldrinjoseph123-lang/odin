@@ -1,0 +1,25 @@
+{
+ "can_edit": true,
+ "items": [
+  {
+   "detail": null,
+   "id": 1,
+   "note": null,
+   "position": 0,
+   "status": "delivered",
+   "title": "Falcon sensor on 1,200 endpoints"
+  },
+  {
+   "detail": null,
+   "id": 2,
+   "note": null,
+   "position": 1,
+   "status": "delivered",
+   "title": "Prevention policies tuned to the baseline"
+  }
+ ],
+ "statuses": [
+  "agreed",
+  "delivered"
+ ]
+}

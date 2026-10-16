@@ -24,12 +24,11 @@ def end_dormant(db=None):
         "AND EXISTS (SELECT 1 FROM project_participants pp JOIN projects p ON p.id = pp.project_id WHERE pp.user_id = u.id AND p.deleted_at IS NULL) "
         "AND NOT EXISTS (SELECT 1 FROM project_participants pp JOIN projects p ON p.id = pp.project_id WHERE pp.user_id = u.id AND p.deleted_at IS NULL "
         f"AND ({PROJECT_OPEN_SQL} OR COALESCE(p.stage_entered_at, p.updated_at) > ?))", (cutoff,)).fetchall()
-    now = datetime.utcnow().isoformat()
+    from services.audit import audit_log
     for uid, username in rows:
         # the epoch ends any session the account still has open, as the Users page's switch does
         db.execute("UPDATE users SET active = 0, session_epoch = session_epoch + 1 WHERE id = ? AND active = 1", (uid,))
-        db.execute("INSERT INTO audit_logs (user_id, username, action, resource_type, resource_id, resource_name, details, timestamp) "
-                   "VALUES (NULL, 'scheduler', 'set_user_active', 'user', ?, ?, ?, ?)",
-                   (uid, username, f"active=0: every rollout closed over {days} days ago (external_access_days_after_close)", now))
+        audit_log("set_user_active", "user", uid, username, f"active=0: every rollout closed over {days} days ago (external_access_days_after_close)",
+                  actor="scheduler", db=db)
     db.commit()
     return len(rows)

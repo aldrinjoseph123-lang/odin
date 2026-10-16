@@ -1,9 +1,10 @@
 import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { Segmented } from "@/components/Segmented"
-import { chip, pill, danger, fieldAuto } from "@/lib/ui"
+import { chip, pill, danger, fieldAuto, th, td } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripHorizontal, Layers, Maximize2, MessageSquare, MoreHorizontal, PauseCircle, Plus, ShieldCheck, Timer, Trash2, UserCheck } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, Line, LineChart, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as ChartTip, XAxis } from "recharts"
+import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -636,7 +637,7 @@ function renderWidget(item: LayoutItem, d: D, today: string, on: { tile: (k: Das
 // Every change saves at once to this person's arrangement (with an Undo);
 // text and number settings save a moment after typing stops.
 const WIDTHS: { w: Width; label: string }[] = [{ w: 1, label: "1/3" }, { w: 2, label: "2/3" }, { w: 3, label: "Full" }]
-const tool = "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+const tool = "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 aria-disabled:opacity-40"
 function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove, onSettings }: {
   item: LayoutItem; info: WidgetInfo; title: string; first: boolean; last: boolean
   onMove: (by: -1 | 1) => void; onResize: (w: Width) => void; onRemove: () => void; onSettings: (s: Record<string, unknown>) => void
@@ -681,8 +682,8 @@ function WidgetMenu({ item, info, title, first, last, onMove, onResize, onRemove
         </div>
         <div className="mt-2 flex items-center gap-1">
           <span className="mr-auto text-muted-foreground">Position</span>
-          <button type="button" onClick={() => onMove(-1)} disabled={first} className={cn(tool, "w-auto px-3 text-[12px]")} aria-label={`Move ${title} earlier`}><ChevronUp className="h-3.5 w-3.5" /> Earlier</button>
-          <button type="button" onClick={() => onMove(1)} disabled={last} className={cn(tool, "w-auto px-3 text-[12px]")} aria-label={`Move ${title} later`}><ChevronDown className="h-3.5 w-3.5" /> Later</button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onMove(-1)} disabled={first} className="text-muted-foreground" aria-label={`Move ${title} earlier`}><ChevronUp className="h-3.5 w-3.5" /> Earlier</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onMove(1)} disabled={last} className="text-muted-foreground" aria-label={`Move ${title} later`}><ChevronDown className="h-3.5 w-3.5" /> Later</Button>
         </div>
         <button type="button" onClick={onRemove} className={cn("mt-3 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[12px]", danger)} aria-label={`Remove ${title}`}><Trash2 className="h-3.5 w-3.5" /> Remove from my dashboard</button>
       </PopoverContent>
@@ -765,6 +766,7 @@ export default function Dashboard({ user }: { user: User }) {
   }
   const add = (w: WidgetInfo) => commit((l) => [...l, { id: w.id, w: w.w, settings: Object.fromEntries(w.settings.map((s) => [s.key, s.default])), ...(w.multiple ? { uid: newUid() } : {}) }], `${w.title} added.`)
   async function run(label: string, fn: () => Promise<{ layout: DashboardData["layout"]; is_custom?: boolean }>, after: (r: { layout: DashboardData["layout"]; is_custom?: boolean }) => void) {
+    if (busy) return   // the menu buttons stay focusable while it saves (review P2-41)
     setBusy(true)
     try { const r = await fn(); after(r); toast(label) } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(false) }
   }
@@ -784,13 +786,13 @@ export default function Dashboard({ user }: { user: User }) {
 
   return (
     <div className="px-5 pb-24 pt-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-[17px] font-semibold tracking-tight">{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, {user.name.split(" ")[0]}</h1>
-        <p className="text-[13px] text-muted-foreground">The portfolio this week · {fmtDate(d.today)}{d.is_custom && " · your arrangement"}</p>
-        <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 xl:flex-nowrap">
+        <h1 className="shrink-0 text-[17px] font-semibold tracking-tight">{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, {user.name.split(" ")[0]}</h1>
+        <p className="min-w-0 text-[13px] text-muted-foreground xl:truncate">The portfolio this week · {fmtDate(d.today)}{d.is_custom && " · your arrangement"}</p>
+        <p className="flex shrink-0 items-center gap-2 text-[12px] text-muted-foreground">
           <span className="h-1.5 w-1.5 rounded-full bg-nav-fg" aria-hidden />live · updated <Ago iso={updatedAt} />
         </p>
-        <span className="ml-auto flex items-center gap-2">
+        <span className="ml-auto flex shrink-0 items-center gap-2">
           <Popover>
             <PopoverTrigger render={<button type="button" />} className={pill}><Plus className="h-3.5 w-3.5" /> Add widget</PopoverTrigger>
             <PopoverContent align="end" className="w-80 p-2 text-[13px]">
@@ -807,10 +809,10 @@ export default function Dashboard({ user }: { user: User }) {
             <Popover>
               <PopoverTrigger render={<button type="button" />} aria-label="Dashboard layout" className={cn(pill, "px-2")}><MoreHorizontal className="h-4 w-4" /></PopoverTrigger>
               <PopoverContent align="end" className="w-72 p-2 text-[13px]">
-                {admin && <button type="button" disabled={busy} onClick={saveDefault} className="grid grid-cols-1 w-full gap-1 rounded-lg px-3 py-2 text-left hover:bg-muted">
-                  <span className="font-medium">Save as workspace default</span><span className="text-[12px] text-muted-foreground">Everyone without their own arrangement sees this one</span></button>}
-                {d.is_custom && <button type="button" disabled={busy} onClick={reset} className="grid grid-cols-1 w-full gap-1 rounded-lg px-3 py-2 text-left hover:bg-muted">
-                  <span className="font-medium">Reset to default</span><span className="text-[12px] text-muted-foreground">Drop your arrangement and use the workspace's</span></button>}
+                {admin && <Button type="button" variant="ghost" disabled={busy} onClick={saveDefault} className="h-auto w-full flex-col items-start gap-1 whitespace-normal px-3 py-2 text-left font-normal">
+                  <span className="font-medium">Save as workspace default</span><span className="text-[12px] text-muted-foreground">Everyone without their own arrangement sees this one</span></Button>}
+                {d.is_custom && <Button type="button" variant="ghost" disabled={busy} onClick={reset} className="h-auto w-full flex-col items-start gap-1 whitespace-normal px-3 py-2 text-left font-normal">
+                  <span className="font-medium">Reset to default</span><span className="text-[12px] text-muted-foreground">Drop your arrangement and use the workspace's</span></Button>}
               </PopoverContent>
             </Popover>
           )}
@@ -879,8 +881,8 @@ export default function Dashboard({ user }: { user: User }) {
                 <div className="[&_section]:border-0 [&_section]:p-0 [&_section]:shadow-none [&_section>header_button]:hidden [&_section>header>h2]:sr-only">{renderWidget(expandedItem, d.data, d.today, { tile: setTile }, true)}</div>
                 {table && table.rows.length > 0 && (
                   <table className="mt-4 w-full border-collapse text-[13px]">
-                    <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">{table.columns.map((c) => <th key={c} className="px-2 py-2 font-normal">{c}</th>)}</tr></thead>
-                    <tbody>{table.rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn("px-2 py-2", typeof c === "number" && "tabular-nums")}>{c}</td>)}</tr>)}</tbody>
+                    <thead><tr className="border-b border-border">{table.columns.map((c) => <th key={c} className={th}>{c}</th>)}</tr></thead>
+                    <tbody>{table.rows.map((r, i) => <tr key={i} className="border-b border-border last:border-0">{r.map((c, j) => <td key={j} className={cn(td, typeof c === "number" && "tabular-nums")}>{c}</td>)}</tr>)}</tbody>
                   </table>
                 )}
               </div>

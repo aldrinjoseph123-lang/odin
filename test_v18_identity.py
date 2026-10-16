@@ -20,7 +20,6 @@ JSON = {"Accept": "application/json"}
 
 
 class Base(FixBase):
-    _make_user = test_app.ContactsAndProjectMetaTestCase._make_user
     _mail_on = test_app.ContactsAndProjectMetaTestCase._mail_on
     _sso_setup = test_app.ContactsAndProjectMetaTestCase._sso_setup
     _ms_sign_in = test_app.ContactsAndProjectMetaTestCase._ms_sign_in
@@ -107,11 +106,15 @@ class AddressCheckTest(Base):   # P2-3
         self.assertEqual(tuple(self.sql("SELECT active, pending FROM users WHERE id = ?", uid)[0]), (0, 1))
 
     def test_addresses_on_file_before_the_upgrade_count_as_proven(self):
+        # FX1: only where Microsoft binding needs it; an account with a working password confirms from Account
         self.sql("UPDATE users SET email = 'admin@corp.example' WHERE id = 1")
+        self.sql("INSERT INTO users (username, password_hash, name, role, active, email) VALUES ('ms', 'microsoft:no-password', 'Ms', 'Member', 1, 'ms@corp.example')")
         self.sql("ALTER TABLE users DROP COLUMN email_verified_at")
+        self.sql("PRAGMA user_version = 1")   # a v1.7.1 database
         with self.raw_db() as db:
             db_module.migrate_db(db)
-        self.assertTrue(self.verified(1))
+        self.assertFalse(self.verified(1))
+        self.assertTrue(self.verified(self.sql("SELECT id FROM users WHERE username = 'ms'")[0][0]))
 
     @patch("graph.send_mail", return_value=(True, None))
     def test_send_link_from_the_account_page(self, mail):

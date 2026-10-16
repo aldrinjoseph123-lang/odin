@@ -3,7 +3,9 @@ import { usePref } from "@/lib/usePref"
 import { PageHeader } from "@/components/PageHeader"
 import { toast } from "@/lib/toast"
 import { PanelTitle } from "@/components/PanelTitle"
-import { chip, danger } from "@/lib/ui"
+import { danger } from "@/lib/ui"
+import { Segmented } from "@/components/Segmented"
+import { Field } from "@/components/ui/field"
 import { askConfirm } from "@/lib/confirm"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -83,19 +85,14 @@ export default function Account({ user }: { user: User }) {
   if (!me) return <PageSkeleton />
   return (
     <div className="px-5 pb-6 pt-4">
-      <PageHeader title="My account" lede={`${me.name} · ${me.username}${me.kind === "external" ? ` · ${user.external_role === "Customer" ? "customer" : "partner"} access` : ""}`} />
+      <PageHeader title="Account" lede={`${me.name} · ${me.username}${me.kind === "external" ? ` · ${user.external_role === "Customer" ? "customer" : "partner"} access` : ""}`} />
       {me.must_change_password && <Alert className="mt-3"><AlertDescription>Set a new password before continuing. The one you were given is a shared secret.</AlertDescription></Alert>}
-      <div className="mt-3 grid max-w-5xl grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
           <PanelTitle className="mb-0" hint="yours, on every device you sign in on">Appearance</PanelTitle>
-          {/* busy keeps the focus where it is: aria-disabled, not disabled (P2-41) */}
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Theme" onKeyDown={arrows}>
-            {THEMES.map((t) => (
-              <button key={t} type="button" role="radio" aria-checked={look.theme === t} tabIndex={look.theme === t ? 0 : -1} aria-disabled={busy || undefined}
-                onClick={() => { if (busy || t === look.theme) return; applyTheme(t, look.accent); void send("/account/appearance", { theme: t, accent: look.accent }) }}
-                className={cn(chip(look.theme === t), "capitalize")}>{t}</button>
-            ))}
-          </div>
+          {/* busy keeps the focus where it is: the handler ignores a press, nothing is disabled (P2-41) */}
+          <Segmented label="Theme" value={look.theme} full onChange={(t) => { if (busy || t === look.theme) return; applyTheme(t, look.accent); void send("/account/appearance", { theme: t, accent: look.accent }) }}
+            options={THEMES.map((t) => ({ value: t, label: t === "system" ? "Follow the device" : t === "light" ? "Light" : "Dark" }))} />
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Accent colour" onKeyDown={arrows}>
             {ACCENTS.map((c) => (
               <button key={c.key} type="button" role="radio" aria-checked={look.accent === c.key} tabIndex={look.accent === c.key ? 0 : -1} aria-label={c.label} title={c.label} aria-disabled={busy || undefined}
@@ -107,12 +104,10 @@ export default function Account({ user }: { user: User }) {
           <p className="text-[12px] text-muted-foreground">The accent is the soft colour the app spends on selection and the primary action. Blue is the default. Red is offered, but overdue items are red too, so a red accent makes them harder to spot.</p>
           {me.kind !== "external" && (
             <>
-              <div className="mt-1 flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Home page" onKeyDown={arrows}>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="mr-1 text-[13px] text-muted-foreground">Home page</span>
-                {([["dashboard", "Dashboard"], ["board", "Flow"]] as const).map(([k, label]) => (
-                  <button key={k} type="button" role="radio" aria-checked={me.home === k} tabIndex={me.home === k ? 0 : -1} aria-disabled={busy || undefined} onClick={() => { if (!busy && k !== me.home) void send("/account/home", { home: k }, load) }}
-                    className={chip(me.home === k)}>{label}</button>
-                ))}
+                <Segmented label="Home page" value={me.home as "dashboard" | "board"} onChange={(k) => { if (!busy && k !== me.home) void send("/account/home", { home: k }, load) }}
+                  options={[{ value: "dashboard", label: "Dashboard" }, { value: "board", label: "Flow" }]} />
               </div>
               <p className="text-[12px] text-muted-foreground">Where sign-in and the Odin logo land.</p>
             </>
@@ -136,10 +131,10 @@ export default function Account({ user }: { user: User }) {
           <div className="flex flex-wrap items-center gap-3">
             <UserAvatar name={me.name} url={me.avatar_url} className="h-14 w-14" textClass="text-[17px]" />
             <div className="grid min-w-0 grid-cols-1 gap-2">
-              <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="w-full" onChange={() => setPicture(null)} />
+              <Input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Choose a picture" className="h-auto w-full py-1" onChange={() => setPicture(null)} />
               <div className="flex gap-2">
                 <Button type="submit" size="sm" variant="outline" loading={busy}>Upload</Button>
-                {me.avatar_url && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} focusableWhenDisabled
+                {me.avatar_url && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy}
                   onClick={async () => { if (!busy && await askConfirm("Remove your picture? Your initials show instead, wherever your name appears.", "Remove")) void send("/account/avatar/remove", {}) }}>Remove</Button>}
               </div>
               {picture && <Notice bad>{picture}</Notice>}
@@ -158,9 +153,9 @@ export default function Account({ user }: { user: User }) {
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" aria-label="Email address" className="h-8 text-[13px]" />
           {/* password reset links go to this address, so changing it takes the password */}
           {me.has_password && email !== (me.email ?? "") && (
-            <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Current password<Input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} required autoComplete="current-password" className="h-8 text-[13px]" /></label>
+            <Field label="Current password"><Input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} required autoComplete="current-password" className="h-8 text-[13px]" /></Field>
           )}
-          {fieldError.email && <p className="field-error" role="alert">{fieldError.email}</p>}
+          {fieldError.email && <Notice bad>{fieldError.email}</Notice>}
           <div><Button type="submit" size="sm" loading={busy} disabled={email === (me.email ?? "") || (me.has_password && !emailPw)}>Save email</Button></div>
           {mailCheck?.checkable && !mailCheck.verified && email === (me.email ?? "") && (
             <p className="text-[12px] text-muted-foreground">Not confirmed yet · <button type="button" className="text-primary-text hover:underline" aria-disabled={busy || undefined}
@@ -170,9 +165,9 @@ export default function Account({ user }: { user: User }) {
         {me.kind === "internal" ? (
           <form onSubmit={(e: FormEvent) => { e.preventDefault(); void send("/account", pw, () => setPw({ current_password: "", new_password: "" }), "password") }} className={cn("grid grid-cols-1 content-start gap-2 panel p-4", me.must_change_password && "order-first ring-2 ring-primary lg:col-span-2")}>
             <PanelTitle className="mb-0">Change password</PanelTitle>
-            <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">Current password<Input autoFocus={me.must_change_password} type="password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required autoComplete="current-password" aria-label="Current password" className="h-8 text-[13px]" /></label>
-            <label className="grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">New password<Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={minPassword} autoComplete="new-password" aria-label="New password" className="h-8 text-[13px]" /><span className="text-[12px]">{passwordRule(minPassword)} A few unrelated words work well.</span></label>
-            {fieldError.password && <p className="field-error" role="alert">{fieldError.password}</p>}
+            <Field label="Current password"><Input autoFocus={me.must_change_password} type="password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required autoComplete="current-password" className="h-8 text-[13px]" /></Field>
+            <Field label="New password" hint={`${passwordRule(minPassword)} A few unrelated words work well.`}><Input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={minPassword} autoComplete="new-password" className="h-8 text-[13px]" /></Field>
+            {fieldError.password && <Notice bad>{fieldError.password}</Notice>}
             <div><Button type="submit" size="sm" loading={busy} disabled={!pw.new_password}>Update password</Button></div>
           </form>
         ) : (
@@ -191,7 +186,7 @@ export default function Account({ user }: { user: User }) {
         <section className="grid grid-cols-1 content-start gap-2 panel p-4">
           <PanelTitle className="mb-0">Sessions</PanelTitle>
           <p className="text-[13px] text-muted-foreground">Signed in on a shared or lost device? End every other session; this one stays signed in.</p>
-          <div><Button type="button" size="sm" variant="outline" disabled={busy} focusableWhenDisabled onClick={async () => { if (!busy && await askConfirm("Sign out of every other device? Anyone signed in as you elsewhere has to sign in again.", "Sign out")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>
+          <div><Button type="button" size="sm" variant="outline" disabled={busy} onClick={async () => { if (!busy && await askConfirm("Sign out of every other device? Anyone signed in as you elsewhere has to sign in again.", "Sign out")) void send("/account/sign-out-others", {}) }}>Sign out of other devices</Button></div>
         </section>
       </div>
     </div>

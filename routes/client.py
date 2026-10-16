@@ -5,16 +5,21 @@ import json
 import os
 import time
 from collections import deque
+from functools import cache
 
-from flask import g, request, session
+from flask import request, session
 
-from core import app
+from core import app, request_id
+from security import CLIENT_REPORT_WINDOW_SECONDS, CLIENT_REPORTS_PER_WINDOW
+from services.audit import _CONTROL
 
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+@cache
 def app_version():
-    """The release this server runs (the VERSION file); "" when it is missing."""
+    """The release this server runs (the VERSION file, read once: a release
+    restarts the process); "" when it is missing."""
     try:
         with open(os.path.join(_HERE, "VERSION")) as f:
             return f.read().strip()
@@ -23,7 +28,6 @@ def app_version():
 
 
 REPORT_MAX_BYTES = 8 * 1024
-REPORTS_PER_WINDOW, WINDOW_SECONDS = 10, 600
 # ponytail: per worker process, in memory (the ceiling is the limit × workers);
 # kept out of the database so this unauthenticated door writes nothing but a log line.
 _recent = {}
@@ -34,9 +38,9 @@ def _over_limit(who):
     if len(_recent) > 1000:   # many callers at once: forget the old ones rather than grow
         _recent.clear()
     hits = _recent.setdefault(who, deque())
-    while hits and now - hits[0] > WINDOW_SECONDS:
+    while hits and now - hits[0] > CLIENT_REPORT_WINDOW_SECONDS:
         hits.popleft()
-    if len(hits) >= REPORTS_PER_WINDOW:
+    if len(hits) >= CLIENT_REPORTS_PER_WINDOW:
         return True
     hits.append(now)
     return False
@@ -58,10 +62,11 @@ def api_client_errors():
         report = {}
     if not isinstance(report, dict):
         report = {}
-    clip = lambda k, n: str(report.get(k) or "")[:n].replace("\n", " | ")   # noqa: E731 — one line per report in the log
+    # one line per report in the log, and no control character (a forged ANSI escape or line break) reaches it
+    clip = lambda k, n: _CONTROL.sub(" ", str(report.get(k) or "")[:n].replace("\n", " | "))   # noqa: E731
     app.logger.warning(
         "client error [%s] %s kind=%s path=%s version=%s: %s :: %s",
-        g.get("request_id") or request.headers.get("X-Request-Id", "-"), who, clip("kind", 20), clip("path", 200),
+        request_id(), who, clip("kind", 20), clip("path", 200),
         clip("version", 20), clip("message", 500), clip("stack", 3000),
     )
     return "", 204

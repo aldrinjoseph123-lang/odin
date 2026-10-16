@@ -59,7 +59,7 @@ POLICIES = {
     "login_window_minutes": dict(area="security", kind="int", default=15, min=5, max=120,
                                  label="Pause length (minutes)", help="Failures older than this stop counting."),
     "login_ip_max": dict(area="security", kind="int", default=50, min=10, max=1000,
-                         label="Failed sign-ins per network address before a pause", help="Across every username from one address: stops one password being tried on many accounts. That address pauses for the same length; Microsoft sign-in is not affected."),
+                         label="Accounts failing from one network address before a pause", help="How many different usernames may fail from one address inside the pause length: stops one password being tried on many accounts. Each username counts once however often it fails, so an office behind one address is not paused by its own typos (those are limited per person above). That address pauses for the same length; Microsoft sign-in is not affected."),
     "mail_link_max": dict(area="security", kind="int", default=5, min=3, max=50,
                           label="Emailed links per address per hour", help="Sign-in, password-reset and address-check links to one email address, however many machines ask: stops anyone filling a colleague's inbox."),
     "upload_max_mb": dict(area="security", kind="int", default=25, min=1, max=100,
@@ -94,7 +94,9 @@ POLICIES = {
     "activity_idle_minutes": dict(area="people", kind="int", default=5, min=1, max=30,
                                   label="Idle after (minutes)", help="No mouse, key or touch for this long stops the count until the person is back."),
     "nudge_max": dict(area="people", kind="int", default=20, min=1, max=200,
-                      label="Notes to a colleague per hour", help="From one person, and to one person from everyone together (People › Send a note)."),
+                      label="Notes a person may send per hour", help="To all their colleagues together (People › Send a note)."),
+    "nudge_pair_max": dict(area="people", kind="int", default=5, min=1, max=200,
+                           label="Notes to one colleague per hour", help="From one person to one colleague. Counted per pair, so one person's notes never use up what others may send."),
     # ---- Notifications
     "digest_time": dict(area="notifications", kind="time", default="08:00",
                         label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
@@ -106,6 +108,8 @@ POLICIES = {
                               label="Teams Workflows webhook", help="From a Teams channel: Workflows › \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
     "outbox_attempts": dict(area="notifications", kind="int", default=8, min=1, max=20,
                             label="Tries before Odin gives up on a message", help="Mail and Teams messages go out from the scheduler; one that fails is tried again after 1, 2, 4, 8 … minutes (8 tries: about two hours). After the last try the admins are told in the bell, once a day."),
+    "outbox_max_age_hours": dict(area="notifications", kind="int", default=24, min=1, max=168,
+                                 label="Give up on a message after (hours)", help="A message that could not go out within this long is dropped and the admins are told: a sign-in link or a reminder a day late does more harm than good."),
     # ---- Reports
     "report_enabled": dict(area="reports", kind="bool", default=False,
                            label="Send the weekly report", help="Stuck and overdue rollouts first, stages moved this week, due next week, counts per stage."),
@@ -351,11 +355,11 @@ _GROUPS = {
     "Undo": ("undo_minutes",),
     "Sign-up links": ("signup_enabled", "signup_domains", "signup_days", "join_attempts"),
     "Time on Odin": ("activity_tracking", "activity_roles", "activity_idle_minutes"),
-    "Notes to colleagues": ("nudge_max",),
+    "Notes to colleagues": ("nudge_max", "nudge_pair_max"),
     "Daily digest": ("digest_time",),
     "Sender": ("mail_from",),
     "Teams webhook": ("teams_webhook_url",),
-    "Delivery": ("outbox_attempts",),
+    "Delivery": ("outbox_attempts", "outbox_max_age_hours"),
     "When it goes out": ("report_enabled", "report_days", "report_time"),
     "Who gets it": ("report_roles", "report_emails"),
     "What it carries": ("report_attach", "report_teams"),
@@ -380,10 +384,11 @@ _HINTS = {
     "mfa_required": "Ask for a code from a phone app after the password, e.g. required for admins.",
     "login_max_attempts": "Pause sign-in after this many wrong passwords from one computer, e.g. 5.",
     "login_account_max": "Pause an account after this many wrong passwords from anywhere, e.g. 20.",
-    "login_ip_max": "Pause one network address after this many wrong passwords across every account, e.g. 50.",
+    "login_ip_max": "Pause one network address after wrong passwords for this many different accounts, e.g. 50.",
     "login_window_minutes": "How long the pause lasts, e.g. 15 minutes.",
     "mail_link_max": "Most sign-in, reset or address-check links one email address gets in an hour, e.g. 5.",
-    "nudge_max": "Most notes one person sends, or gets, in an hour, e.g. 20.",
+    "nudge_max": "Most notes one person sends in an hour, e.g. 20.",
+    "nudge_pair_max": "Most notes one person sends one colleague in an hour, e.g. 5.",
     "upload_types": "The kinds of file people may attach, e.g. PDF and Word.",
     "external_domains": "Partners can be invited only from these email domains, e.g. partner.com. Blank: any.",
     "link_minutes": "How long a sign-in or password-reset email link works, e.g. 30 minutes.",
@@ -505,12 +510,17 @@ def local_date(value, db=None):
         return None
 
 
+def local_now(db=None):
+    """Now, aware, in the workspace time zone (Settings › General)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo(policy("timezone", db)))
+
+
 def local_today(db=None):
     """Today's date in the workspace time zone (Settings › General). Due
     dates, "days left" and reminders use this, not the server's clock."""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    return datetime.now(ZoneInfo(policy("timezone", db))).date()
+    return local_now(db).date()
 
 
 def is_working_day(day=None, db=None):

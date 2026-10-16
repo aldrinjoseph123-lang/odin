@@ -199,7 +199,7 @@
 :root[data-accent="plum"]  { --primary: #F4D5F8; --primary-foreground: #6B1A70; --primary-text: #A21CAF; --accent: #FCF0FD; --accent-foreground: #A21CAF; --ring: #C960D6; }
 :root[data-accent="ink"]   { --primary: #E3E5EA; --primary-foreground: #101114; --primary-text: #101114; --accent: #F2F3F5; --accent-foreground: #101114; --ring: #6B7280; }
 
-:root[data-theme="dark"][data-accent="red"] { --accent: #3A1520; --accent-foreground: #FDA4B4; --primary-text: #FDA4B4; }
+:root[data-theme="dark"][data-accent="red"] { --primary-foreground: #7A0F29; --accent: #3A1520; --accent-foreground: #FDA4B4; --primary-text: #FDA4B4; }
 :root[data-theme="dark"][data-accent="blue"] { --accent: #1C2340; --accent-foreground: #9DB0FF; --primary-text: #9DB0FF; }
 :root[data-theme="dark"][data-accent="indigo"] { --accent: #1E1F45; --accent-foreground: #A5B4FC; --primary-text: #A5B4FC; }
 :root[data-theme="dark"][data-accent="violet"] { --accent: #2A1B4A; --accent-foreground: #C4B5FD; --primary-text: #C4B5FD; }
@@ -362,8 +362,40 @@ main { counter-reset: panel; }
    instead of being clipped at the page edge. */
 @page { size: A4; margin: 12mm; }
 @media print {
+  /* Paper is always light (review P2-48): a dark-theme user printed near-black
+     cards and white-on-white titles. These are the light values of the dark
+     block above, re-declared after it (same specificity, later wins), and the
+     accent text and wash go neutral so no accent prints pale on white. The
+     .dark class (shadcn dark: variants) stays; those few utilities are not tokens. */
+  :root, :root[data-theme="dark"], :root[data-theme][data-accent] {
+    --background: #FFFFFF; --foreground: #101114; --card: #FFFFFF; --card-foreground: #101114;
+    --popover: #FFFFFF; --popover-foreground: #101114; --secondary: #F7F7F8; --secondary-foreground: #101114;
+    --muted: #F3F4F6; --muted-foreground: #5B6270; --destructive: #BE2E27; --border: #E9EAF0; --input: #D0D3DA; --control: #898B91;
+    --accent: #F2F3F5; --accent-foreground: #101114; --primary-text: #101114;
+    --toast-ok: var(--ok-line); --toast-bad: var(--bad-line);
+    --elevation-card: none; --elevation-pop: none;
+    --chart-2: #101114; --chart-3: #6B7280; --chart-4: #D0D3DA; --chart-5: #E4E6EB;
+    --ok: #177A42; --ok-soft: #E6F6EC; --ok-line: #1F9D55; --warn: #8A5300; --warn-soft: #FFF4E0; --warn-line: #E39B1D;
+    --bad: #B4231C; --bad-soft: #FDECEB; --bad-line: #E0463D; --nav-fg: #4B4F58;
+    --sidebar: #F7F7F8; --sidebar-foreground: #101114; --sidebar-border: #E4E6EB; --brand-edge: transparent;
+    color-scheme: light;
+  }
+  html, body { background: #FFFFFF; }
+  /* a screen-height shell would stretch the last page; no ground tint */
+  .min-h-svh { min-height: 0; }
   .overflow-x-auto, .overflow-x-clip { overflow: visible !important; }
   table .whitespace-nowrap:not(.rounded-full) { white-space: normal; }
+  /* a name wraps on paper (it has no tooltip); a two-line row grows, its bar stays centred */
+  .truncate { overflow: visible; text-overflow: clip; white-space: normal; }
+  a.h-9, [role="img"].h-9 { height: auto; min-height: 2.25rem; }
+  /* long cards split between rows instead of leaving a blank page; a row, a
+     list item and a short card never split, and a title stays with what follows */
+  .panel { break-inside: avoid; }
+  .panel.break-inside-avoid { break-inside: auto; }
+  tr, li { break-inside: avoid; }
+  h1, h2, h3 { break-after: avoid; }
+  /* screen chrome: menus, toasts, tooltips */
+  nav, [role="tooltip"], [data-slot="tooltip-content"], [aria-live="polite"].fixed { display: none !important; }
   /* bars, dots and pills are data: print their fills */
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

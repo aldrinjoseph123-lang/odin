@@ -1,0 +1,192 @@
+{
+ "forbidden": {
+  "add_project_note": [],
+  "create_project": [
+   "External"
+  ],
+  "delete_document": [
+   "External"
+  ],
+  "delete_project": [
+   "External"
+  ],
+  "download_document": [],
+  "edit_project": [
+   "External"
+  ],
+  "edit_project_stage": [
+   "External"
+  ],
+  "manage_contacts": [
+   "External"
+  ],
+  "manage_integrations": [
+   "External"
+  ],
+  "manage_settings": [
+   "External"
+  ],
+  "manage_users": [
+   "External"
+  ],
+  "upload_document": [
+   "External"
+  ],
+  "view_board": [],
+  "view_project_detail": [],
+  "view_projects": [],
+  "view_reports": []
+ },
+ "locked": {
+  "add_project_note": [],
+  "create_project": [],
+  "delete_document": [],
+  "delete_project": [],
+  "download_document": [],
+  "edit_project": [],
+  "edit_project_stage": [],
+  "manage_contacts": [],
+  "manage_integrations": [],
+  "manage_settings": [
+   "Admin"
+  ],
+  "manage_users": [
+   "Admin"
+  ],
+  "upload_document": [],
+  "view_board": [
+   "Admin"
+  ],
+  "view_project_detail": [
+   "Admin"
+  ],
+  "view_projects": [
+   "Admin"
+  ],
+  "view_reports": [
+   "Admin"
+  ]
+ },
+ "matrix": {
+  "add_project_note": {
+   "Admin": true,
+   "Contributor": true,
+   "External": true,
+   "Member": true,
+   "Viewer": false
+  },
+  "create_project": {
+   "Admin": true,
+   "Contributor": true,
+   "External": false,
+   "Member": true,
+   "Viewer": false
+  },
+  "delete_document": {
+   "Admin": true,
+   "Contributor": false,
+   "External": false,
+   "Member": false,
+   "Viewer": false
+  },
+  "delete_project": {
+   "Admin": true,
+   "Contributor": false,
+   "External": false,
+   "Member": false,
+   "Viewer": false
+  },
+  "download_document": {
+   "Admin": true,
+   "Contributor": true,
+   "External": true,
+   "Member": true,
+   "Viewer": true
+  },
+  "edit_project": {
+   "Admin": true,
+   "Contributor": true,
+   "External": false,
+   "Member": true,
+   "Viewer": false
+  },
+  "edit_project_stage": {
+   "Admin": true,
+   "Contributor": false,
+   "External": false,
+   "Member": true,
+   "Viewer": false
+  },
+  "manage_contacts": {
+   "Admin": true,
+   "Contributor": false,
+   "External": false,
+   "Member": false,
+   "Viewer": false
+  },
+  "manage_integrations": {
+   "Admin": true,
+   "Contributor": false,
+   "External": false,
+   "Member": false,
+   "Viewer": false
+  },
+  "manage_settings": {
+   "Admin": true,
+   "Contributor": false,
+   "External": false,
+   "Member": false,
+   "Viewer": false
+  },
+  "manage_users": {
+   "Admin": true,
+   "Contributor": false,
+   "External": false,
+   "Member": false,
+   "Viewer": false
+  },
+  "upload_document": {
+   "Admin": true,
+   "Contributor": true,
+   "External": false,
+   "Member": true,
+   "Viewer": false
+  },
+  "view_board": {
+   "Admin": true,
+   "Contributor": true,
+   "External": true,
+   "Member": true,
+   "Viewer": true
+  },
+  "view_project_detail": {
+   "Admin": true,
+   "Contributor": true,
+   "External": true,
+   "Member": true,
+   "Viewer": true
+  },
+  "view_projects": {
+   "Admin": true,
+   "Contributor": true,
+   "External": true,
+   "Member": true,
+   "Viewer": true
+  },
+  "view_reports": {
+   "Admin": true,
+   "Contributor": true,
+   "External": true,
+   "Member": true,
+   "Viewer": true
+  }
+ },
+ "permissions": [
+  "view_board",
+  "view_projects"
+ ],
+ "roles": [
+  "Admin",
+  "Member"
+ ]
+}

@@ -1,0 +1,61 @@
+{
+ "can_add_risk": true,
+ "can_edit": true,
+ "lessons": [],
+ "similar": [
+  {
+   "client": "Initech",
+   "id": 23,
+   "lessons": [],
+   "name": "SIEM onboarding - Initech",
+   "risks": [
+    {
+     "impact": "high",
+     "kind": "issue",
+     "resolution": "Agreed in the weekly call",
+     "status": "closed",
+     "title": "Proxy blocks the agent's cloud endpoint"
+    },
+    {
+     "impact": "high",
+     "kind": "risk",
+     "resolution": null,
+     "status": "mitigating",
+     "title": "Customer change window may slip"
+    }
+   ],
+   "stage": "Sensor pilot",
+   "why": [
+    "same template",
+    "same vendor"
+   ]
+  },
+  {
+   "client": "Initech",
+   "id": 15,
+   "lessons": [],
+   "name": "Vulnerability mgmt - Initech",
+   "risks": [
+    {
+     "impact": "high",
+     "kind": "blocker",
+     "resolution": "Agreed in the weekly call",
+     "status": "closed",
+     "title": "Waiting on firewall change approval"
+    },
+    {
+     "impact": "high",
+     "kind": "issue",
+     "resolution": "Agreed in the weekly call",
+     "status": "closed",
+     "title": "Proxy blocks the agent's cloud endpoint"
+    }
+   ],
+   "stage": "Hypercare",
+   "why": [
+    "same template",
+    "same vendor"
+   ]
+  }
+ ]
+}

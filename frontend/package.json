@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint --max-warnings 44",
     "test": "vitest run",
     "preview": "vite preview",
     "test:ui": "vitest run --project ui",

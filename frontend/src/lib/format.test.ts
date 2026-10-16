@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, forecastTone, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday, isDay, isMonth } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -354,5 +354,28 @@ describe("short date labels", () => {
     expect(monthName("2026-12")).toBe("Dec")
     expect(weekday("2026-10-12")).toBe("Mon")
     expect(weekday("2026-10-11T23:30:00")).toBe("Sun")
+  })
+})
+
+describe("forecastTone", () => {
+  it("is quiet when the forecast meets the target or there is none", () => {
+    expect(forecastTone(null, null, "2026-10-15")).toBe("ok")
+    expect(forecastTone(0, "2026-11-01", "2026-10-15")).toBe("ok")
+    expect(forecastTone(-3, "2026-11-01", "2026-10-15")).toBe("ok")
+  })
+  it("is amber while the target is ahead and red once it has passed", () => {
+    expect(forecastTone(5, "2026-11-01", "2026-10-15")).toBe("warn")
+    expect(forecastTone(5, "2026-11-01", "2026-11-01")).toBe("warn")
+    expect(forecastTone(5, "2026-10-01", "2026-10-15")).toBe("bad")
+  })
+})
+
+describe("isDay / isMonth", () => {
+  it("accept real days and months only", () => {
+    expect(isDay("2026-10-15")).toBe(true)
+    expect(isDay("2028-02-29")).toBe(true)
+    for (const bad of [null, "", "2026-2-3", "2026-02-31", "2027-02-29", "2026-13-01", "2026-10-15x"]) expect(isDay(bad)).toBe(false)
+    expect(isMonth("2026-10")).toBe(true)
+    for (const bad of [null, "", "2026-13", "2026-00", "2026-1", "2026-10-15"]) expect(isMonth(bad)).toBe(false)
   })
 })

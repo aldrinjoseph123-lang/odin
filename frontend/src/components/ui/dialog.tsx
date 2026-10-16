@@ -135,7 +135,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "font-heading text-[17px] leading-tight font-semibold",   // a page title's size (six-size rule)
+        "pr-8 font-heading text-[17px] leading-tight font-semibold",   // a page title's size (six-size rule); pr-8 keeps it clear of the close button
         className
       )}
       {...props}

@@ -16,7 +16,7 @@ import requests
 import graph
 
 SERVICE_URL = "https://smba.trafficmanager.net/teams"   # Teams' global Bot Framework endpoint
-_token = {"value": None, "until": 0.0}
+_token = {"key": None, "value": None, "until": 0.0}   # key: the app it was minted for, so changed credentials never reuse it
 
 
 def configured():
@@ -25,7 +25,8 @@ def configured():
 
 
 def _bot_token():
-    if _token["value"] and time.time() < _token["until"] - 60:
+    key = (graph._tenant(), graph._client_id(), graph._client_secret())
+    if _token["value"] and _token["key"] == key and time.time() < _token["until"] - 60:
         return _token["value"], None
     resp = requests.post(f"{graph.AUTH_BASE}/{graph._tenant()}/oauth2/v2.0/token", timeout=15, data={
         "grant_type": "client_credentials", "client_id": graph._client_id(), "client_secret": graph._client_secret(),
@@ -33,7 +34,7 @@ def _bot_token():
     if resp.status_code >= 400:
         return None, f"Teams app sign-in failed: {resp.status_code} {resp.text[:200]}"
     body = resp.json()
-    _token.update(value=body["access_token"], until=time.time() + int(body.get("expires_in", 3600)))
+    _token.update(key=key, value=body["access_token"], until=time.time() + int(body.get("expires_in", 3600)))
     return _token["value"], None
 
 

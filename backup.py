@@ -15,7 +15,7 @@ Every run:
 
 A local copy is always written: a backup that only exists when a cloud
 integration happens to be configured is not a backup. Restore procedure:
-DEPLOY.md, "Restore".
+docs/RUNBOOK.md, "Restore a backup".
 
 Runs from the scheduler (scheduler.py, at the time set in Settings), from
 "Back up now", or by hand: python backup.py

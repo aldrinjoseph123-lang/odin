@@ -8,7 +8,7 @@ import { toast } from "@/lib/toast"
 // quietly, instead of swapping the page for an error; the error screen is only
 // for a first load that failed. A new `key` starts afresh (no last record shown
 // against a new id), or with `keep` holds the old rows until the new arrive (a
-// filter change).
+// filter change); if the new key fails, its error shows, not the old rows.
 type State<T> = { key: string; data: T | null; error: ApiError | null; stale: boolean }
 
 export function useLoad<T>(key: string, fn: () => Promise<T>, { keep = false } = {}) {
@@ -27,11 +27,12 @@ export function useLoad<T>(key: string, fn: () => Promise<T>, { keep = false } =
       if (n !== asked.current) return
       const error = e instanceof ApiError ? e : new ApiError(500, failureText(500))
       const was = shown.current
-      if (was.data === null || (was.key !== key && !keep)) return put({ key, data: null, error, stale: false })
+      // a new key that failed is the error, never the old key's rows passed off as its answer
+      if (was.data === null || was.key !== key) return put({ key, data: null, error, stale: false })
       if (!was.stale) toast(error.status === 401 ? error.message : "Could not refresh just now: showing what was loaded before.", { tone: "bad" })
       put({ ...was, stale: true })
     }
-  }, [key, keep, put])
+  }, [key, put])
   useEffect(() => { void reload() }, [reload])   // a new key asks again, and so drops the old key's late answer
   // for a change made in place (an optimistic edit); the next load replaces it
   const setData = useCallback((v: SetStateAction<T | null>) => {

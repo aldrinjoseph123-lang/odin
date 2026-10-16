@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
-import { chip, filterSelect } from "@/lib/ui"
+import { chip, filterSelect, th, td } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
-import { FolderOpen, ArrowDown, ArrowUp, ExternalLink, LayoutGrid, List, Search } from "lucide-react"
+import { ArrowDown, ArrowUp, ExternalLink, LayoutGrid, List, Search } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Stepper } from "@/components/Stepper"
@@ -9,7 +9,9 @@ import { StateChip } from "@/components/StateChip"
 import { TeamStack } from "@/components/TeamStack"
 import { ApiError, projects, type ProjectsData, type User } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { EmptyState } from "@/components/EmptyState"
+import { Segmented } from "@/components/Segmented"
+import { usePref } from "@/lib/usePref"
 import { Pager } from "@/components/Pager"
 import { activeProjectsView, fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
@@ -30,17 +32,14 @@ const COLUMNS: { key: string; label: string; className?: string }[] = [
   { key: "vendor", label: "Vendor", className: "hidden xl:table-cell" }, { key: "product", label: "Product", className: "hidden xl:table-cell" },
   { key: "updated", label: "Updated", className: "hidden md:table-cell" },
 ]
-// Table or cards: a per-browser convenience, so it lives in localStorage (which may be unavailable).
 type Layout = "table" | "cards"
-const readLayout = (): Layout => { try { return localStorage.getItem("odin.projects.layout") === "cards" ? "cards" : "table" } catch { return "table" } }
 
 export default function Projects({ user }: { user: User }) {
   useEffect(() => { document.title = "Rollouts · Odin" }, [])
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<ProjectsData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [layout, setLayout] = useState<Layout>(readLayout)
-  function pickLayout(l: Layout) { setLayout(l); try { localStorage.setItem("odin.projects.layout", l) } catch { /* private window: forgotten on reload, nothing lost */ } }
+  const [layout, pickLayout] = usePref<Layout>("projects.layout", "table")   // table or cards: remembered per person in this browser
   const query = params.toString()
   useEffect(() => {
     let live = true   // a slower answer to an older query must not replace the newer one
@@ -64,6 +63,8 @@ export default function Projects({ user }: { user: User }) {
   // the search field is uncontrolled: it remounts with the URL's value (key) and is read on submit
   function search(e: FormEvent<HTMLFormElement>) { e.preventDefault(); update({ q: String(new FormData(e.currentTarget).get("q") ?? "").trim() || null }) }
   const filtered = Boolean(params.get("q") || params.get("view") || params.get("stage") || params.get("delivery_mode"))
+  const noRows = filtered ? <>No rollouts match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
+    : <>No rollouts yet.{data?.can_create && user.role !== "Viewer" && <> <a href="/projects/new" className="text-primary-text hover:underline">Create the first one</a></>}</>
 
   if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
@@ -74,14 +75,8 @@ export default function Projects({ user }: { user: User }) {
         <h1 className="text-[17px] font-semibold tracking-tight">Rollouts</h1>
         <p className="text-[13px] text-muted-foreground">{data.total} {filtered ? "matching" : activeView === "closed" ? "in total" : "active"}</p>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <span className="flex h-7 overflow-hidden rounded-md border border-border" role="group" aria-label="Layout">
-            {([["table", List, "Table"], ["cards", LayoutGrid, "Cards"]] as const).map(([l, Icon, label]) => (
-              <button key={l} type="button" onClick={() => pickLayout(l)} aria-pressed={layout === l} aria-label={label} title={label}
-                className={cn("flex h-full w-8 items-center justify-center", layout === l ? "bg-foreground text-background" : "text-nav-fg hover:bg-muted")}>
-                <Icon className="h-3.5 w-3.5" />
-              </button>
-            ))}
-          </span>
+          <Segmented label="Layout" value={layout} onChange={pickLayout}
+            options={[{ value: "table", label: <span className="sr-only">Table</span>, icon: <List className="h-3.5 w-3.5" aria-hidden /> }, { value: "cards", label: <span className="sr-only">Cards</span>, icon: <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> }]} />
           <a href={`/projects/export.csv${query ? `?${query}` : ""}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
           <a href="/reports/all" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>Portfolio report <ExternalLink className="h-3.5 w-3.5" /></a>
         </div>
@@ -146,11 +141,7 @@ export default function Projects({ user }: { user: User }) {
               )
             })}
             {data.rows.length === 0 && (
-              <li className="col-span-full"><Empty className="rounded-lg bg-muted/40 py-12"><EmptyHeader><EmptyMedia variant="icon"><FolderOpen /></EmptyMedia><EmptyDescription>
-                {filtered ? <>No rollouts match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
-                  : <>No projects yet.{data.can_create && user.role !== "Viewer" && <> <a href="/projects/new" className="text-primary-text hover:underline">Create the first one</a></>}</>}
-              
-              </EmptyDescription></EmptyHeader></Empty></li>
+              <EmptyState as="li" className="col-span-full">{noRows}</EmptyState>
             )}
           </ul>
         </div>
@@ -158,9 +149,9 @@ export default function Projects({ user }: { user: User }) {
         <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
             <thead className="sticky top-0 bg-card">
-              <tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">
+              <tr className="border-b border-border">
                 {COLUMNS.map((c) => (
-                  <th key={c.key} className={cn("px-3 py-2 font-normal", c.className)} aria-sort={data.sort === c.key ? (data.dir === "asc" ? "ascending" : "descending") : undefined}>
+                  <th key={c.key} className={cn(th, c.className)} aria-sort={data.sort === c.key ? (data.dir === "asc" ? "ascending" : "descending") : undefined}>
                     <button type="button" onClick={() => sortBy(c.key)} className={cn("inline-flex items-center gap-1 hover:text-foreground", data.sort === c.key && "font-medium text-foreground")}>
                       {c.label}{data.sort === c.key && (data.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
                     </button>
@@ -171,34 +162,29 @@ export default function Projects({ user }: { user: User }) {
             <tbody>
               {data.rows.map((r) => (
                 <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted">
-                  <td className="px-3 py-2">
+                  <td className={td}>
                     {/* a long unbroken name wraps anywhere rather than widening the table */}
                     <a href={`/projects/${r.id}`} className="font-medium wrap-anywhere hover:underline">{r.name}</a>
                     <span className="block text-[12px] text-muted-foreground wrap-anywhere sm:hidden">{r.client}</span>
                   </td>
-                  <td className="hidden px-3 py-2 wrap-anywhere sm:table-cell">{r.client}</td>
-                  <td className="hidden px-3 py-2 text-muted-foreground lg:table-cell">{r.po_number ?? "—"}</td>
-                  <td className="px-3 py-2">
+                  <td className={cn(td, "hidden wrap-anywhere sm:table-cell")}>{r.client}</td>
+                  <td className={cn(td, "hidden whitespace-nowrap text-muted-foreground lg:table-cell")}>{r.po_number ?? "—"}</td>
+                  <td className={td}>
                     <a href={`/board?rollout=${r.id}`} className="flex items-center gap-3" title="Open on the flow">
                       <span className="w-24 shrink-0"><Stepper compact stages={r.stages} index={r.stage_index} state={r.state} selected={false} /></span>
                       <span className={cn("truncate text-[13px] font-medium", r.closed && "text-muted-foreground")}>{r.stage}</span>
                       <StateChip state={r.state} target={r.target_end_date} />
                     </a>
                   </td>
-                  <td className="hidden px-3 py-2 md:table-cell">{r.owner_name}</td>
-                  <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{r.delivery_mode}</td>
-                  <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{r.vendor_name ?? "—"}</td>
-                  <td className="hidden px-3 py-2 text-muted-foreground xl:table-cell">{r.product_name ?? "—"}</td>
-                  <td className="hidden whitespace-nowrap px-3 py-2 text-muted-foreground md:table-cell">{fmtWhen(r.updated_at)}</td>
+                  <td className={cn(td, "hidden md:table-cell")}>{r.owner_name}</td>
+                  <td className={cn(td, "hidden text-muted-foreground xl:table-cell")}>{r.delivery_mode}</td>
+                  <td className={cn(td, "hidden text-muted-foreground xl:table-cell")}>{r.vendor_name ?? "—"}</td>
+                  <td className={cn(td, "hidden text-muted-foreground xl:table-cell")}>{r.product_name ?? "—"}</td>
+                  <td className={cn(td, "hidden whitespace-nowrap text-muted-foreground md:table-cell")}>{fmtWhen(r.updated_at)}</td>
                 </tr>
               ))}
               {data.rows.length === 0 && (
-                <tr><td colSpan={COLUMNS.length}>
-                  <Empty className="py-12"><EmptyHeader><EmptyMedia variant="icon"><FolderOpen /></EmptyMedia><EmptyDescription>
-                  {filtered ? <>No rollouts match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
-                    : <>No projects yet.{data.can_create && user.role !== "Viewer" && <> <a href="/projects/new" className="text-primary-text hover:underline">Create the first one</a></>}</>}
-                  </EmptyDescription></EmptyHeader></Empty>
-                </td></tr>
+                <tr><td colSpan={COLUMNS.length} className="p-3"><EmptyState>{noRows}</EmptyState></td></tr>
               )}
             </tbody>
           </table>

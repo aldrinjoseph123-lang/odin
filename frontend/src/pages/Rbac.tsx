@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react"
 import { PageHeader } from "@/components/PageHeader"
 import { toast } from "@/lib/toast"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { checkbox, th } from "@/lib/ui"
+import { cn } from "@/lib/utils"
 import { ApiError, postForm, rbac, type RbacData, type User } from "@/lib/api"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
@@ -41,9 +43,9 @@ export default function Rbac(_props: { user: User }) {
         <div className="overflow-auto panel">
           <table className="w-full border-collapse text-[13px]">
             <thead className="bg-card">
-              <tr className="border-b border-border text-[12px] font-normal text-muted-foreground">
-                <th className="px-3 py-2 text-left font-normal">Permission</th>
-                {data.roles.map((r) => <th key={r} className="px-3 py-2 text-center font-normal">{r}</th>)}
+              <tr className="border-b border-border">
+                <th className={th}>Permission</th>
+                {data.roles.map((r) => <th key={r} className={cn(th, "text-center")}>{r}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -55,8 +57,8 @@ export default function Rbac(_props: { user: User }) {
                     const forbidden = !!data.forbidden?.[p]?.includes(r)   // the server never grants it to this role
                     return (
                       <td key={r} className="px-3 py-2 text-center" title={forbidden ? `${r} accounts can never have this` : undefined}>
-                        <input type="checkbox" checked={!forbidden && (locked || !!matrix[p]?.[r])} disabled={locked || forbidden || busy} aria-label={`${words(p)}, ${forbidden ? "never" : "allowed"} for ${r}`} className="h-3.5 w-3.5 accent-primary disabled:opacity-50"
-                          onChange={(e) => setMatrix({ ...matrix, [p]: { ...matrix[p], [r]: e.target.checked } })} />
+                        <input type="checkbox" checked={!forbidden && (locked || !!matrix[p]?.[r])} disabled={locked || forbidden} aria-disabled={busy || undefined} aria-label={`${words(p)}, ${forbidden ? "never" : "allowed"} for ${r}`} className={cn(checkbox, "disabled:opacity-50")}
+                          onChange={(e) => { if (!busy) setMatrix({ ...matrix, [p]: { ...matrix[p], [r]: e.target.checked } }) }} />
                       </td>
                     )
                   })}

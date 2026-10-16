@@ -1,0 +1,132 @@
+{
+ "audience": "internal",
+ "company": "Protect24x7",
+ "generated_at": "2026-10-15T19:13:43.724228",
+ "risks": [
+  {
+   "due_date": "2026-10-11",
+   "impact": "high",
+   "kind": "blocker",
+   "owner_name": "Admin",
+   "project": "EDR rollout - Acme Bank",
+   "project_id": 10,
+   "status": "open",
+   "title": "Waiting on firewall change approval"
+  },
+  {
+   "due_date": "2026-10-11",
+   "impact": "high",
+   "kind": "blocker",
+   "owner_name": "Lena Fischer",
+   "project": "Firewall refresh - Initech",
+   "project_id": 3,
+   "status": "open",
+   "title": "Waiting on firewall change approval"
+  }
+ ],
+ "rows": [
+  {
+   "baseline": "2026-10-25",
+   "client": "Wayne Retail",
+   "confidence": "high",
+   "delivery_mode": "Distribution/MSSP",
+   "forecast": "2026-10-15",
+   "has_plan": true,
+   "id": 11,
+   "name": "SIEM onboarding - Wayne Retail",
+   "open": {
+    "blocker": 1,
+    "issue": 1,
+    "risk": 1
+   },
+   "owner_name": "Admin",
+   "pct_complete": 100,
+   "planned": "2026-11-01",
+   "product_name": null,
+   "rag": "red",
+   "reasons": [
+    "Past its target date by 40 d.",
+    "1 open blocker."
+   ],
+   "report": null,
+   "stage": "Sign-off",
+   "stage_count": 9,
+   "stage_number": 8,
+   "start": "2026-08-14",
+   "target_end_date": "2026-09-05",
+   "vendor_name": "Palo Alto",
+   "vs_baseline_days": -10,
+   "vs_target_days": 40
+  },
+  {
+   "baseline": "2026-11-09",
+   "client": "Initech",
+   "confidence": "high",
+   "delivery_mode": "Distribution/MSSP",
+   "forecast": "2026-10-29",
+   "has_plan": true,
+   "id": 7,
+   "name": "MDR onboarding - Initech",
+   "open": {
+    "blocker": 1,
+    "issue": 0,
+    "risk": 2
+   },
+   "owner_name": "Admin",
+   "pct_complete": 78,
+   "planned": "2026-11-23",
+   "product_name": null,
+   "rag": "red",
+   "reasons": [
+    "Past its target date by 12 d.",
+    "1 open blocker."
+   ],
+   "report": null,
+   "stage": "Hypercare",
+   "stage_count": 9,
+   "stage_number": 6,
+   "start": "2026-09-05",
+   "target_end_date": "2026-10-03",
+   "vendor_name": "Fortinet",
+   "vs_baseline_days": -11,
+   "vs_target_days": 26
+  }
+ ],
+ "summary": {
+  "avg_slip": 14.4,
+  "behind_baseline": 14,
+  "blockers": 9,
+  "count": 22,
+  "finishing_30d": 8,
+  "health": {
+   "amber": 8,
+   "green": 2,
+   "red": 12
+  },
+  "late_vs_target": 12,
+  "no_plan": 0
+ },
+ "template": {
+  "accent": "blue",
+  "co_logo": null,
+  "company_line": "",
+  "footer": "",
+  "logo": null,
+  "sections": [
+   {
+    "key": "health",
+    "on": true
+   },
+   {
+    "key": "roadmap",
+    "on": true
+   }
+  ],
+  "texts": {
+   "closing": "",
+   "intro": ""
+  },
+  "title": "Portfolio report"
+ },
+ "today": "2026-10-15"
+}

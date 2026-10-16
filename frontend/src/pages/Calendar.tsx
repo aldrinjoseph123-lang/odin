@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
+import { Notice } from "@/components/Notice"
 import { EmptyState } from "@/components/EmptyState"
 import { pill } from "@/lib/ui"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
@@ -16,7 +17,7 @@ import { addDays } from "@/lib/plan"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { fmtDate, addMonths, localToday, laneSpans, monthGrid, monthTitle, shortDay, weekday } from "@/lib/format"
+import { fmtDate, addMonths, isDay, isMonth, localToday, laneSpans, monthGrid, monthTitle, shortDay, weekday } from "@/lib/format"
 
 // The Calendar view (rebuilt 13 Oct 2026 after ReUI's "event-calendar-2"): a
 // rail with the month at a glance, what is up next and the layers to show;
@@ -49,8 +50,6 @@ function items(d: CalendarData, show: Show, only: Set<number> | null): Map<strin
 let lastDrop = 0
 const mondayOf = (iso: string) => addDays(iso, -((new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7))
 // a hand-edited link must not break the page (?month=2026-13 did: P3-34)
-const isDay = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`))
-const isMonth = (v: string | null): v is string => !!v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v)
 
 const ICON = { task: CheckSquare, target: Target, move: ArrowRight, approval: ShieldCheck, span: GanttChart }
 const KIND = { task: "Task", target: "Target", move: "Moved", approval: "Approval", span: "Rollout" }
@@ -126,9 +125,12 @@ export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: 
   const byDay = useMemo(() => (d ? items(d, show, only) : new Map<string, Item[]>()), [d, show, only])
   const spans = useMemo(() => (d ? d.spans.filter((s) => !only || only.has(s.id)) : []), [d, only])
   // the agenda opens at today (or the first day after it with anything), not the 1st (P3-34)
+  // only when the month, the mode or the layout changes: the minute's poll must not pull it back while reading
   const agendaList = useRef<HTMLUListElement>(null)
+  const scrolledFor = useRef("")
   useEffect(() => {
-    if (!d) return
+    if (!d || scrolledFor.current === `${d.month}|${mode}|${wide}`) return
+    scrolledFor.current = `${d.month}|${mode}|${wide}`
     const first = [...(agendaList.current?.querySelectorAll<HTMLElement>("[data-day]") ?? [])].find((el) => el.dataset.day! >= d.today)
     first?.scrollIntoView?.({ block: "start" })
   }, [d, mode, wide])
@@ -175,7 +177,7 @@ export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: 
         </DialogHeader>
         {moving && <div className="grid grid-cols-1 gap-1 text-[13px] font-medium">New due date
           <DatePicker value={moving.to} onChange={(v) => setMoving({ ...moving, to: v, err: undefined })} label="New due date" clearable={false} className="w-full" /></div>}
-        {moving?.err && <p className="text-[12px] text-destructive" role="alert">{moving.err}</p>}
+        {moving?.err && <Notice bad>{moving.err}</Notice>}
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => setMoving(null)} disabled={moving?.busy}>Cancel</Button>
           <Button size="sm" onClick={() => void saveMove()} loading={moving?.busy} disabled={!moving || moving.to === moving.it.day}>Move task</Button>
@@ -264,12 +266,12 @@ export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: 
   ))
 
   let body: ReactNode
-  if (mode === "agenda") body = <div className="min-h-0 flex-1 overflow-auto">{agenda(weeks.flat().filter(inMonth))}</div>
+  if (mode === "agenda") body = <div className="relative min-h-0 min-w-0 flex-1 overflow-auto">{agenda(weeks.flat().filter(inMonth))}</div>
   else if (mode === "week") {
     const lanes = show.spans ? laneSpans(spans, weekDays, WEEK_LANES) : { segments: [], overflow: new Map<string, number>() }
     const laneCount = Math.min(WEEK_LANES, Math.max(0, ...lanes.segments.map((s) => s.lane + 1)))
     body = (
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-auto">
         <div className="grid grid-cols-7 border-y border-border text-center text-[12px]">
           {weekDays.map((day) => (
             <div key={day} className={cn("py-2", day === today ? "font-semibold text-foreground" : "text-muted-foreground")}>{weekday(day)} <span className={cn("ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full", day === today && "bg-primary text-primary-foreground")}>{Number(day.slice(8))}</span></div>
@@ -296,7 +298,7 @@ export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: 
         <div className="grid grid-cols-7 border-y border-border text-center text-[12px] text-muted-foreground">
           {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((w) => <div key={w} className="py-2">{w}</div>)}
         </div>
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-auto">
           {weeks.map((wk) => {
             const lanes = show.spans ? laneSpans(spans, wk, LANES) : { segments: [], overflow: new Map<string, number>() }
             const laneCount = Math.min(LANES, Math.max(0, ...lanes.segments.map((s) => s.lane + 1)))

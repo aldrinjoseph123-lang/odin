@@ -1,0 +1,163 @@
+{
+ "accents": [
+  "blue",
+  "indigo"
+ ],
+ "kinds": {
+  "portfolio": {
+   "default": {
+    "accent": "blue",
+    "co_logo": null,
+    "company_line": "",
+    "footer": "",
+    "logo": null,
+    "sections": [
+     {
+      "key": "health",
+      "on": true
+     },
+     {
+      "key": "roadmap",
+      "on": true
+     }
+    ],
+    "texts": {
+     "closing": "",
+     "intro": ""
+    },
+    "title": "Portfolio report"
+   },
+   "label": "Portfolio report",
+   "sections": [
+    {
+     "key": "health",
+     "label": "Health mix and key numbers"
+    },
+    {
+     "key": "roadmap",
+     "label": "Roadmap"
+    }
+   ],
+   "texts": [
+    {
+     "help": "Printed under the title.",
+     "key": "intro",
+     "label": "Opening text"
+    },
+    {
+     "help": "Printed at the end.",
+     "key": "closing",
+     "label": "Closing text"
+    }
+   ]
+  },
+  "rollout": {
+   "default": {
+    "accent": "blue",
+    "co_logo": null,
+    "company_line": "",
+    "footer": "",
+    "logo": null,
+    "sections": [
+     {
+      "key": "numbers",
+      "on": true
+     },
+     {
+      "key": "summary",
+      "on": true
+     }
+    ],
+    "texts": {
+     "closing": "",
+     "intro": ""
+    },
+    "title": "Rollout report"
+   },
+   "label": "Rollout report",
+   "sections": [
+    {
+     "key": "numbers",
+     "label": "Health and key numbers"
+    },
+    {
+     "key": "summary",
+     "label": "Summary, next steps, asks"
+    }
+   ],
+   "texts": [
+    {
+     "help": "Printed under the title.",
+     "key": "intro",
+     "label": "Opening text"
+    },
+    {
+     "help": "Printed at the end, e.g. contacts or a disclaimer.",
+     "key": "closing",
+     "label": "Closing text"
+    }
+   ]
+  },
+  "signoff": {
+   "default": {
+    "accent": "blue",
+    "co_logo": null,
+    "company_line": "",
+    "footer": "",
+    "logo": null,
+    "sections": [
+     {
+      "key": "facts",
+      "on": true
+     },
+     {
+      "key": "summary",
+      "on": true
+     }
+    ],
+    "texts": {
+     "closing": "",
+     "intro": "",
+     "statement": "",
+     "terms": ""
+    },
+    "title": "Rollout sign-off"
+   },
+   "label": "Sign-off",
+   "sections": [
+    {
+     "key": "facts",
+     "label": "Rollout facts"
+    },
+    {
+     "key": "summary",
+     "label": "Summary"
+    }
+   ],
+   "texts": [
+    {
+     "help": "Printed under the title.",
+     "key": "intro",
+     "label": "Opening text"
+    },
+    {
+     "help": "What the customer signs under. Blank: the workspace's (Settings \u203a Workflow).",
+     "key": "statement",
+     "label": "Acceptance statement"
+    }
+   ]
+  }
+ },
+ "placeholders": {
+  "client": "the customer",
+  "company": "your company",
+  "date": "today",
+  "forecast": "the forecast finish",
+  "pm": "the project manager",
+  "po": "the PO number",
+  "project": "the project's name",
+  "stage": "the current stage",
+  "target": "the target date"
+ },
+ "templates": []
+}

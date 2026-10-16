@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Crosshair } from "lucide-react"
+import { Notice } from "@/components/Notice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -11,6 +12,8 @@ import { ApiError, flowPlan, savePlan, type GanttData, type GanttRow, type Gantt
 import { addDays, changedStages, daysBetween, dragPlan, setDate, workDays } from "@/lib/plan"
 import { fmtDate, monthName, shortDay, weekday } from "@/lib/format"
 import { toast } from "@/lib/toast"
+import { usePref } from "@/lib/usePref"
+import { useLoad } from "@/lib/useLoad"
 import { cn } from "@/lib/utils"
 
 // The Flow as a Gantt (13 Oct 2026, the user's call, after ReUI's "gantt-1"):
@@ -25,9 +28,6 @@ import { cn } from "@/lib/utils"
 type Zoom = "week" | "month" | "quarter"
 const PX: Record<Zoom, number> = { week: 44, month: 18, quarter: 6 }
 const ROW = 36, LEFT = 440
-const ZOOM_KEY = "odin.gantt.zoom", OPEN_KEY = "odin.gantt.open"
-const read = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) as T : d } catch { return d } }
-const keep = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode */ } }
 const RAG_BAR = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-nav-fg/60", done: "bg-ok-line" } as const
 const RAG_WORD = { red: "Off track", amber: "At risk", green: "On track", done: "Complete" } as const
 
@@ -52,14 +52,13 @@ function stageWords(s: GanttStage) {
 }
 
 export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: number[]; stamp?: number; selectedId: number | null; onSelect: (id: number) => void }) {
-  const [data, setData] = useState<GanttData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const load = useCallback(() => flowPlan().then((d) => { setData(d); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load the plans")), [])
-  useEffect(() => { void load() }, [load, stamp])   // the Flow's every reload, so a new rollout or a move shows here too (P2-35)
-  const [zoom, setZoom] = useState<Zoom>(() => read<Zoom>(ZOOM_KEY, "month"))
-  const [open, setOpen] = useState<number[]>(() => read<number[]>(OPEN_KEY, []))
-  useEffect(() => keep(ZOOM_KEY, zoom), [zoom])
-  useEffect(() => keep(OPEN_KEY, open), [open])
+  // a failed refresh keeps the chart (useLoad, P2-29)
+  const { data, error: failed, reload: load } = useLoad("flow-plan", flowPlan)
+  // the Flow's every reload after this mounted, so a new rollout or a move shows here too (P2-35)
+  const stamped = useRef(stamp)
+  useEffect(() => { if (stamp !== stamped.current) { stamped.current = stamp; void load() } }, [load, stamp])
+  const [zoom, setZoom] = usePref<Zoom>("gantt.zoom", "month")
+  const [open, setOpen] = usePref<number[]>("gantt.open", [])
   const [drag, setDrag] = useState<{ row: number; index: number; mode: Edit["mode"]; x: number; days: number } | null>(null)
   const [edit, setEdit] = useState<Edit | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
@@ -84,7 +83,7 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: n
     if (scroller.current && data) scroller.current.scrollLeft = Math.max(0, x(data.today) - 6 * px * (zoom === "quarter" ? 5 : 1))
   }, [zoom, data?.today, t0])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (error) return <LoadError message={error} />
+  if (failed) return <LoadError message={failed.message} />
   if (!data) return <PageSkeleton />
   const cal = data.calendar
   const days = Array.from({ length: span }, (_, i) => addDays(t0, i))
@@ -148,7 +147,7 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: n
           {/* the time axis: months (or quarters' months) over days or Mondays */}
           <div className="sticky top-0 z-20 flex h-12 border-b border-border bg-card" role="row" aria-rowindex={1}>
             <div className="sticky left-0 z-10 grid shrink-0 grid-cols-[1fr_104px_24px_56px] items-end gap-2 border-r border-border bg-card px-3 pb-2 text-[12px] text-muted-foreground" style={{ width: LEFT }} role="columnheader">
-              <span>Rollout</span><span>Stage</span><span className="sr-only">Owner</span><span className="whitespace-nowrap text-right">Target</span>
+              <span>Rollout</span><span>Stage</span><span className="relative"><span className="sr-only">Owner</span></span><span className="whitespace-nowrap text-right">Target</span>
             </div>
             <div className="relative h-full" style={{ width: span * px }} role="columnheader">
               <span className="sr-only">Timeline</span>
@@ -305,7 +304,7 @@ function SavePlan({ edit, cal, onClose, onSaved }: { edit: Edit; cal: GanttData[
           <label className="grid gap-1 text-[12px] text-muted-foreground">{e.row.baselined ? "Why the dates move (required; goes in the plan's log)" : "Note for the plan's log (optional; the first plan saved becomes the baseline)"}
             <Input value={reason} onChange={(x) => setReason(x.target.value)} maxLength={300} className="h-8 text-[13px]" autoFocus />
           </label>
-          {err && <p className="text-[12px] text-destructive" role="alert">{err}</p>}
+          {err && <Notice bad>{err}</Notice>}
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>

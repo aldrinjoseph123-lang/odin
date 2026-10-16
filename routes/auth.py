@@ -225,7 +225,7 @@ def auth_link_request():
         elif _mail_off():
             flash("This workspace does not send email yet — ask your project manager for a sign-in link", "error")
         elif rate_limited(f"link:{email}", 3, 15) or mail_flooded(email):
-            flash("Too many requests for that address — wait a few minutes and try again", "error")
+            flash("Too many requests for that address — wait a while, or ask your project manager to send you a sign-in link", "error")
         else:
             from policies import email_domain_allowed
             user = get_db().execute(
@@ -392,12 +392,20 @@ def healthz():
     (a read-only or full volume, a damaged file). The scheduler's heartbeat
     and the free disk are reported, never a 503: the updater gates on the
     scheduler's own health check, and a release must not roll back because
-    the scheduler is still starting. No auth, no names, no data."""
+    the scheduler is still starting. No auth, no names, no data. The details
+    (database, scheduler, disk) only to this machine: Docker's health check
+    and CI call it on 127.0.0.1, the updater reads Docker's verdict; anyone
+    else, nginx's visitors included, reads "ok" or "down" alone."""
+    import ipaddress
     import shutil
     import sqlite3
     from db import DATA_DIR, DB_PATH
     from scheduler import HEARTBEAT
     headers = {"Content-Type": "text/plain", "Cache-Control": "no-store"}
+    try:
+        local = ipaddress.ip_address(request.remote_addr or "").is_loopback
+    except ValueError:
+        local = False
     lines = []
     try:
         beat = get_db().execute("SELECT value FROM settings WHERE key = ?", (HEARTBEAT,)).fetchone()
@@ -416,7 +424,9 @@ def healthz():
         finally:
             con.close()
     except sqlite3.Error:
-        return "down\ndatabase: cannot be read or written\n", 503, headers
+        return "down\n" + ("database: cannot be read or written\n" if local else ""), 503, headers
+    if not local:
+        return "ok\n", 200, headers
     age = (datetime.utcnow() - datetime.fromisoformat(beat[0])).total_seconds() if beat else None
     lines.append("scheduler: no heartbeat yet" if age is None else f"scheduler: last beat {age:.0f} s ago" + (" (stale)" if age > 180 else ""))
     disk = shutil.disk_usage(DATA_DIR)
@@ -697,7 +707,7 @@ def account_email_verify():
         flash("There is no address to confirm", "error")
     elif _mail_off():
         flash("This workspace does not send email yet — ask an admin", "error")
-    elif mail_flooded(me["email"]):
+    elif mail_flooded(me["email"], anonymous=False):
         audit_log("email_verification_refused", "user", me["id"], me["username"], "too many links to the address this hour")
         flash("Too many links to that address this hour — try again later", "error")
     elif send_verification(me["id"]):   # audited there

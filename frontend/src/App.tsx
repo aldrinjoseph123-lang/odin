@@ -37,18 +37,19 @@ import ForgotPassword from "@/pages/ForgotPassword"
 import { newerVersion, reportClientError, session, type User } from "@/lib/api"
 import { setDateFormat } from "@/lib/format"
 import { setPrefUser } from "@/lib/usePref"
-import { toast } from "@/lib/toast"
+import { currentToasts, toast } from "@/lib/toast"
 
 // errors no boundary sees (an event handler, a promise nobody awaited) reach the server's log too
 window.addEventListener("error", (e) => reportClientError("error", e.error ?? e.message))
 window.addEventListener("unhandledrejection", (e) => reportClientError("rejection", e.reason))
 
-// a release landed while this tab was open: its code is older than the server's (advice A20)
-let told = false
+// a release landed while this tab was open: its code is older than the server's (advice A20).
+// The toast stays until Reload or dismissed; pushed out by later toasts (or dismissed), the
+// next session check (any navigation) shows it again: this tab still runs the old code.
+let told = 0
 function updated() {
-  if (told) return
-  told = true
-  toast("Odin was updated.", { action: { label: "Reload", run: () => window.location.reload() }, ms: 600_000 })
+  if (currentToasts().some((t) => t.id === told)) return
+  told = toast("Odin was updated.", { action: { label: "Reload", run: () => window.location.reload() } })
 }
 
 // Strangler router: only ported pages are listed. Anything else is a Jinja

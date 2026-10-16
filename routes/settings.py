@@ -190,7 +190,7 @@ def settings_policies(area):
                     audit_log("end_sessions_for_two_step", "settings", None, area, f"{n} account(s) must set up two-step sign-in")
         if area == "ai" and any(c.split("=")[0] in ("ai_enabled", "ai_base_url", "ai_model") for c in changed):
             from services.ai import STATUS_SETTING, status
-            from services.ai.health import heartbeat, queue
+            from services.ai.health import queue
             db = get_db()
             db.execute("DELETE FROM settings WHERE key = ?", (STATUS_SETTING,))   # a new server starts unknown
             db.commit()

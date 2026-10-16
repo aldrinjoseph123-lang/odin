@@ -36,7 +36,7 @@ def api_login_code():
     key = f"mfa:{uid}"
     if user is None or login_is_blocked(user["username"]) or failed_attempts(key) >= policy("login_max_attempts"):
         session.clear()
-        return jsonify(error="Too many failed attempts. Sign in again later."), 429
+        return jsonify(error="Too many failed attempts. Sign in again later."), 429, {"Retry-After": str(60 * policy("login_window_minutes"))}
     how = mfa.check(user, _text(json_body().get("code")))
     if how is None:
         record_login_attempt(key, success=False)
@@ -69,7 +69,7 @@ def api_two_step_setup():
         abort(403)
     u, body = _me(), json_body()
     # someone holding only the session must not be able to bind their own authenticator
-    if wrong := _password_wrong(u, body):
+    if wrong := recheck_password(u, _text(body.get("password")), "Your password is not right"):
         return jsonify(error=wrong), 400
     # replacing a working authenticator takes it too (or a recovery code): the password alone is not two steps
     if mfa.enabled(u) and mfa.check(u, _text(body.get("code"))) is None:
@@ -102,14 +102,9 @@ def _text(value):
     return value if isinstance(value, str) else ""
 
 
-def _password_wrong(u, body):
-    """None when the posted password is the account's; counted per account (security.recheck_password)."""
-    return recheck_password(u, _text(body.get("password")), "Your password is not right")
-
-
 def _proof(u, body):
     """Password and a current code: what turning off or new codes need."""
-    if wrong := _password_wrong(u, body):
+    if wrong := recheck_password(u, _text(body.get("password")), "Your password is not right"):
         return wrong
     if mfa.check(u, _text(body.get("code"))) is None:
         return "That code is not right"

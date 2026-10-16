@@ -453,9 +453,10 @@ export const projectExtras = (id: number) => getJson<ProjectExtras>(`/api/projec
 // route is unchanged (same permission, audit row and validation); only the
 // answer differs because we ask for JSON.
 export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null; token?: string }
-export async function postForm(path: string, fields: Record<string, string> | FormData = {}): Promise<FormReply> {
+// `keepalive`: a save sent as the page goes (the header's theme), which must outlive it
+export async function postForm(path: string, fields: Record<string, string> | FormData = {}, keepalive = false): Promise<FormReply> {
   const body = fields instanceof FormData ? fields : new URLSearchParams(fields)
-  const res = await withToken(path, { method: "POST", body, headers: { Accept: "application/json" } })
+  const res = await withToken(path, { method: "POST", body, headers: { Accept: "application/json" }, keepalive })
   if (!res.ok) {
     // a refused form answers 400 {ok: false, error, messages}: its own words
     const d = (await res.json().catch(() => null)) as { error?: string; messages?: string[] } | null
@@ -540,7 +541,7 @@ export type AdminUser = {
 }
 export type UsersData = { users: AdminUser[]; roles: string[]; me: number; microsoft_only: boolean }
 export const users = () => getJson<UsersData>("/api/users")
-export type AuditRow = { id: number; timestamp: string; username: string; action: string; resource_type: string | null; resource_id: number | null; resource_name: string | null; details: string | null; ip_address: string | null }
+export type AuditRow = { id: number; timestamp: string; username: string; user_name?: string | null; action: string; resource_type: string | null; resource_id: number | null; resource_name: string | null; details: string | null; ip_address: string | null }
 export type AuditData = {
   rows: AuditRow[]; page: number; total: number; total_pages: number
   filters: { user: string; action: string; project_id: string; from: string; to: string }

@@ -2,7 +2,7 @@
 (sent as X-CSRF-Token), same decorators and audit trail as the HTML routes —
 the API is a second door into the same rooms, not a second house.
 """
-from flask import abort, g, jsonify, request, session, url_for
+from flask import abort, g, jsonify, request, session
 
 from policies import local_today, policy, policy_view
 
@@ -108,7 +108,9 @@ def api_login():
         return jsonify({"code_needed": True, "csrf": csrf_token()})
     if not ok:
         # attempt_login audits every outcome; 429 when it is the lockout talking.
-        return jsonify({"error": message}), (429 if message.startswith("Too many") else 401)
+        if message.startswith("Too many"):
+            return jsonify({"error": message}), 429, {"Retry-After": str(60 * policy("login_window_minutes"))}
+        return jsonify({"error": message}), 401
     # attempt_login cleared the session (fixation defence), so the token rotated.
     return jsonify({"user": _current_user(), "csrf": csrf_token()})
 
@@ -200,13 +202,12 @@ def _audit_archives():
 def _backups_view():
     """History, the next scheduled run and whether the scheduler is alive."""
     from datetime import timedelta
-    from zoneinfo import ZoneInfo
-    from policies import policy
+    from policies import local_now
     from scheduler import HEARTBEAT, next_run
     db = get_db()
     beat = get_setting(HEARTBEAT)
     alive = bool(beat) and datetime.fromisoformat(beat) > datetime.utcnow() - timedelta(minutes=5)
-    upcoming = next_run(datetime.now(ZoneInfo(policy("timezone"))), policy("backup_time"), policy("backup_days"))
+    upcoming = next_run(local_now(), policy("backup_time"), policy("backup_days"))
     return {
         "runs": [dict(r) | {"ok": bool(r["ok"]), "restore_ok": None if r["restore_ok"] is None else bool(r["restore_ok"])}
                  for r in db.execute("SELECT * FROM backup_runs ORDER BY id DESC LIMIT 20")],
@@ -302,7 +303,8 @@ def api_audit():
     total = db.execute(f"SELECT COUNT(*) AS c FROM audit_logs{where}", params).fetchone()["c"]
     total_pages = max(1, (total + limit - 1) // limit)
     page = min(page, total_pages)
-    rows = db.execute(f"SELECT * FROM audit_logs{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?", (*params, limit, (page - 1) * limit)).fetchall()
+    rows = db.execute(f"SELECT audit_logs.*, (SELECT u.name FROM users u WHERE u.id = audit_logs.user_id) AS user_name "
+                      f"FROM audit_logs{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?", (*params, limit, (page - 1) * limit)).fetchall()
     return jsonify(
         rows=[dict(r) for r in rows], page=page, total=total, total_pages=total_pages, filters=filters,
         # one entry per person: their name, whether the row was written with their name or their sign-in handle
@@ -453,7 +455,7 @@ def api_rollout_report_save(project_id):
 @app.route("/api/account")
 @login_required
 def api_account():
-    from constants import ADMIN_KINDS, NOTIFICATION_KINDS
+    from constants import ADMIN_KINDS, NOTIFICATION_KINDS, STAFF_KINDS
     from db import get_setting
     u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
@@ -461,7 +463,8 @@ def api_account():
                    has_password=bool(u["password_hash"] and "$" in u["password_hash"]),
                    theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u), home=u["home"],
                    email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
-                                if k not in ADMIN_KINDS or session.get("role") == "Admin"],   # access requests and AI health reach admins only
+                                if (k not in ADMIN_KINDS or session.get("role") == "Admin")   # access requests and AI health reach admins only
+                                and (k not in STAFF_KINDS or u["kind"] != "external")],
                    mail_enabled=get_setting("notify_email_enabled") == "1",
                    activity=activity_summary(session["user_id"]) if activity_enabled() else None,
                    activity_viewers=policy("activity_roles"))
@@ -530,7 +533,7 @@ def api_person_notify(user_id):
     if project_id and not get_db().execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
         return jsonify(error="That rollout does not exist"), 400   # test report FN-12: it was a 500
     if busy := nudge_limited(session["user_id"], user_id):   # review P3-3
-        return jsonify(error=busy), 429
+        return jsonify(error=busy), 429, {"Retry-After": "3600"}   # counted over the last hour
     notify_users([user_id], "nudge", project_id, f"{session.get('user_name')} sent you a note", f"<p>{_esc(message)}</p>", link=f"/board?rollout={project_id}" if project_id else "/my-work")
     audit_log("notify_person", "user", user_id, target["name"], message[:80])
     return jsonify(ok=True)

@@ -22,8 +22,8 @@ cat > "$S/bin/docker" <<'EOF'
 tag=$(git describe --tags --exact-match HEAD 2>/dev/null || echo none)
 case "$*" in
   *"ops-notices"*) cat >> "$CFG/notices";;
-  *"backup.py --local"*) [ ! -e "$CFG/backup_fail" ];;
-  *"up -d --build"*) ! grep -qx "$tag" "$CFG/build_fail" 2>/dev/null && rm -f "$CFG/app_down";;
+  *"backup.py --local"*) echo b >> "$CFG/backups"; [ ! -e "$CFG/backup_fail" ];;
+  *"up -d --build"*) echo b >> "$CFG/builds"; ! grep -qx "$tag" "$CFG/build_fail" 2>/dev/null && rm -f "$CFG/app_down";;
   *"ps -q app"*) [ -e "$CFG/app_down" ] || echo app;;
   *"ps -q scheduler"*) echo scheduler;;
   *"inspect"*) [ -e "$CFG/app_down" ] && exit 1   # the container's name is the last word: app, scheduler
@@ -46,7 +46,8 @@ release v1.1.0; run;                                                    on v1.1.
 release v1.2.0; echo v1.2.0 > "$CFG/build_fail"; run;                   on v1.1.0 "a failed build rolls back"
 release v1.3.0; echo v1.3.0 > "$CFG/unhealthy_app"; run;                    on v1.1.0 "an app that never turns healthy rolls back"
 release v1.3.1; touch "$CFG/backup_fail"; run;                          on v1.1.0 "no backup, no update"
-rm "$CFG/backup_fail"; run;                                             on v1.3.1 "the next run retries after the backup works"
+rm "$CFG/backup_fail"; run;                                             on v1.1.0 "a failed backup waits like a failed tag"
+ODIN_UPDATE_BACKOFF=0 run;                                              on v1.3.1 "the next run after the wait retries once the backup works"
 release v1.4.0; printf 'v1.4.0\nv1.3.1\n' > "$CFG/build_fail"; run
 touch "$CFG/app_down"; : > "$CFG/build_fail"
 release v1.4.1; run;                                                    on v1.4.1 "a fixed release recovers a server left down by a failed rollback"
@@ -70,3 +71,22 @@ rm "$S/state/hold"; run;                                                on v1.9.
 on v1.9.0 "a scheduler that never turns healthy rolls back"
 grep -q "update to Odin v1.10.0 failed and the server went back to v1.9.0" "$CFG/notices" || { echo "FAIL the admins get a notice"; cat "$S/log"; exit 1; }; echo "ok   a failed update leaves a notice for the admins"
 release v1.10.1; echo v1.10.1 > "$CFG/preflight_fail"; run;             on v1.9.0 "a failed preflight rolls back"
+
+# the deployed record, not git HEAD, says what runs; a failed backup is counted and told
+count() { if [ -f "$CFG/$1" ]; then wc -l < "$CFG/$1" | tr -d ' '; else echo 0; fi; }
+rm -f "$S/state/failed"; export ODIN_UPDATE_BACKOFF=0
+release v1.11.0; run;                                                   on v1.11.0 "a clean deploy"
+[ "$(cat "$S/state/deployed")" = v1.11.0 ] || { echo "FAIL the deployed tag is recorded"; exit 1; }; echo "ok   the deployed tag is recorded after a deploy"
+n=$(count builds); run
+[ "$(count builds)" = "$n" ] || { echo "FAIL nothing to do must not rebuild"; exit 1; }; echo "ok   a server on the newest deployed tag is left alone"
+rm "$S/state/deployed"; run
+[ "$(count builds)" = "$n" ] && [ "$(cat "$S/state/deployed")" = v1.11.0 ] || { echo "FAIL a healthy stack with no record is adopted, not rebuilt"; exit 1; }; echo "ok   a healthy stack with no record is adopted without a rebuild"
+release v1.12.0; ( cd "$S/app" && git fetch -q origin --tags && git checkout -q v1.12.0 )   # reboot between checkout and compose up
+n=$(count builds); run;                                                 on v1.12.0 "an interrupted deploy"
+[ "$(count builds)" -gt "$n" ] && [ "$(cat "$S/state/deployed")" = v1.12.0 ] || { echo "FAIL HEAD on the tag is not proof it was deployed"; cat "$S/log"; exit 1; }; echo "ok   a checkout whose deploy never finished is deployed again"
+export ODIN_UPDATE_BACKOFF=1800; : > "$CFG/notices"
+release v1.13.0; touch "$CFG/backup_fail"; run; run
+grep -q "^v1.13.0 1 " "$S/state/failed" || { echo "FAIL a failed backup is counted"; cat "$S/log"; exit 1; }; echo "ok   a failed backup is counted, not retried every run"
+b=$(count backups); run; [ "$(count backups)" = "$b" ] || { echo "FAIL the backup is retried inside the wait"; exit 1; }
+grep -q "update to Odin v1.13.0 was skipped because the backup before it failed" "$CFG/notices" || { echo "FAIL the admins hear of a failed backup"; cat "$CFG/notices"; exit 1; }; echo "ok   the admins get a notice when the backup fails"
+rm "$CFG/backup_fail"; export ODIN_UPDATE_BACKOFF=0; run;               on v1.13.0 "the update goes through once the backup works"

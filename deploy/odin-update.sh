@@ -18,8 +18,14 @@
 # (ODIN_UPDATE_TRIES, ODIN_UPDATE_BACKOFF seconds). The count is kept in
 # $STATE/failed ("tag tries when"); delete that file to try again now. A newer
 # tag is always tried. Touch $STATE/hold to pause updates; delete it to resume.
-# Each failure leaves a notice that the scheduler turns into a bell item for
-# the admins (DATA_DIR/ops-notices), whether or not the rollback worked.
+# A failed pre-update backup counts the same way (a full archive every five
+# minutes would fill the disk that probably made it fail). Each failure leaves
+# a notice that the scheduler turns into a bell item for the admins
+# (DATA_DIR/ops-notices), whether or not the rollback worked.
+#
+# "Already on the newest tag" is judged by $STATE/deployed, written only after
+# a deploy went through (build, health, preflight), never by git HEAD: a reboot
+# between the checkout and `compose up` leaves old images running on a new HEAD.
 #
 # The previous release runs on the newer database: it ignores what it does not
 # know, and (from v1.7.1, PRAGMA user_version) skips destructive boot steps on
@@ -42,12 +48,31 @@ flock -n 9 || exit 0                      # a run is still going
 log() { echo "$(date -u +%FT%TZ) $*"; }
 cd "$APP" || { log "no $APP"; exit 1; }
 
+# A bell notice for the admins, read by the scheduler's next pass. A one-off
+# container like the backup, so it works while the app is down.
+tell_admins() {
+  echo "$1" | docker compose run --rm --no-deps -T app sh -c 'cat >> "${ODIN_DATA_DIR:-/data}/ops-notices"' >/dev/null 2>&1 \
+    || log "could not leave a notice for the admins"
+}
+
+healthy() {   # Docker's own health checks: the app answers /healthz, the scheduler keeps its heartbeat
+  for service in app scheduler; do
+    [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q $service)" 2>/dev/null)" = healthy ] || return 1
+  done
+}
+
 git fetch --quiet --tags origin main 2>/dev/null || { log "fetch failed"; exit 1; }
 target=$(git describe --tags --abbrev=0 --match 'v[0-9]*' origin/main 2>/dev/null) || exit 0
 current=$(git describe --tags --exact-match HEAD 2>/dev/null || echo none)
 # off a tag (a checkout by hand): roll back to this exact commit if the update fails
 previous=$current; [ "$current" = none ] && previous=$(git rev-parse HEAD)
-[ "$target" = "$current" ] && exit 0
+deployed=$(cat "$STATE/deployed" 2>/dev/null || echo none)
+if [ "$target" = "$current" ]; then
+  [ "$deployed" = "$target" ] && exit 0
+  # no record yet (first run of this updater): trust a stack that is up and healthy, once
+  [ "$deployed" = none ] && healthy && { echo "$target" > "$STATE/deployed"; exit 0; }
+  # else HEAD is on the tag but the deploy never finished: go through it again
+fi
 # forward only: never "update" to an older release
 if [ "$current" != none ] && [ "$(printf '%s\n%s\n' "$current" "$target" | sort -V | tail -1)" != "$target" ]; then
   exit 0
@@ -59,11 +84,11 @@ if [ -f "$STATE/failed" ] && read -r ftag ftries fwhen < "$STATE/failed" && [ "$
   [ "$(date +%s)" -lt $(( ${fwhen:-0} + BACKOFF * tries )) ] && exit 0   # not yet: wait before the next try
 fi
 
-# A bell notice for the admins, read by the scheduler's next pass. A one-off
-# container like the backup, so it works while the app is down.
-tell_admins() {
-  echo "$1" | docker compose run --rm --no-deps -T app sh -c 'cat >> "${ODIN_DATA_DIR:-/data}/ops-notices"' >/dev/null 2>&1 \
-    || log "could not leave a notice for the admins"
+# the failed file's count and the wording of "again", for a failed backup and a failed deploy alike
+record_failure() {
+  tries=$((tries + 1))
+  echo "$target $tries $(date +%s)" > "$STATE/failed"
+  again=$([ "$tries" -lt "$TRIES" ] && echo "tried again in $((BACKOFF * tries / 60)) minutes" || echo "not tried again (try $tries of $TRIES)")
 }
 
 log "update $current -> $target"
@@ -71,15 +96,12 @@ log "update $current -> $target"
 # failed rollback), and local only: a network share is mounted in the
 # scheduler, not here.
 if ! docker compose run --rm --no-deps -T app python backup.py --local >/dev/null 2>&1; then
-  log "backup failed: update skipped"; exit 1
+  record_failure
+  log "backup failed: update to $target skipped; $again"
+  tell_admins "The update to Odin $target was skipped because the backup before it failed. It is $again. Check the free disk space (docs/RUNBOOK.md, \"Disk full\")."
+  exit 1
 fi
 log "backup done"
-
-healthy() {   # Docker's own health checks: the app answers /healthz, the scheduler keeps its heartbeat
-  for service in app scheduler; do
-    [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q $service)" 2>/dev/null)" = healthy ] || return 1
-  done
-}
 
 deploy() {
   git checkout --quiet "$1" && docker compose up -d --build --quiet-pull >/dev/null 2>&1 || return 1
@@ -95,6 +117,7 @@ deploy() {
 if deploy "$target"; then
   log "now on $target"
   rm -f "$STATE/failed"
+  echo "$target" > "$STATE/deployed"
   # refresh this script from the release, unless the new copy does not even parse
   cp deploy/odin-update.sh "$HOME/odin-update.sh.new" 2>/dev/null && sh -n "$HOME/odin-update.sh.new" && chmod +x "$HOME/odin-update.sh.new" && mv "$HOME/odin-update.sh.new" "$HOME/odin-update.sh"
   docker image prune -f >/dev/null 2>&1
@@ -102,12 +125,11 @@ if deploy "$target"; then
   exit 0
 fi
 
-tries=$((tries + 1))
-echo "$target $tries $(date +%s)" > "$STATE/failed"
-again=$([ "$tries" -lt "$TRIES" ] && echo "tried again in $((BACKOFF * tries / 60)) minutes" || echo "not tried again (try $tries of $TRIES)")
+record_failure
 log "$target failed (build, health or preflight); going back to $previous; $again"
 if deploy "$previous"; then
   log "back on $previous"
+  echo "$previous" > "$STATE/deployed"
   tell_admins "The update to Odin $target failed and the server went back to $previous. It is $again. Details: ~/odin-update.log on the server (docs/RUNBOOK.md)."
 else
   log "ROLLBACK FAILED: check the server by hand (docker compose ps, docker compose logs app)"

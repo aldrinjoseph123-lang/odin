@@ -1,5 +1,7 @@
 """v1.8.0: what the browser tells the server (routes/client.py): the release on
 /api/session and the crash reports. Run with: python -m unittest test_v18_client"""
+import os
+
 from test_app import app_module
 from test_fix_logic import FixBase
 
@@ -14,7 +16,8 @@ class ClientReportTestCase(FixBase):
         return client.post("/api/client-errors", data=body, content_type="application/json", **kw)
 
     def test_session_names_the_release(self):
-        version = open("VERSION").read().strip()
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")) as fh:
+            version = fh.read().strip()
         self.assertEqual(app_module.app.test_client().get("/api/session").get_json()["version"], version)
 
     def test_a_report_is_logged_without_a_token_or_a_sign_in_and_stored_nowhere(self):

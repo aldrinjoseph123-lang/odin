@@ -11,24 +11,34 @@ from db import get_db, get_setting
 from services import outbox
 
 
-def odin_link(user, path):
+def odin_link(user, path, label="Open in Odin"):
     """The line that lets the reader act on the mail. Staff get the page. An
     external account has no password, so it gets a fresh one-time sign-in
     link that lands on the page — the same bearer-by-email model the
-    invitation uses, with the same life (policy link_minutes) and single use."""
+    invitation uses, with the same life (policy link_minutes) and single use.
+    Needs a request context (the outbox mints it in one, at send time)."""
     from core import external_url, public_base
     from policies import policy
     from security import issue_login_link
     if user["kind"] == "external":
         href = external_url("auth_link_consume", token=issue_login_link(user["id"]), next=path)
-        return (f'<p><a href="{href}">Open in Odin</a> — this sign-in link works once and '
+        return (f'<p><a href="{href}">{label}</a> — this sign-in link works once and '
                 f"expires in {policy('link_minutes')} minutes; after that, request a new one from the sign-in page.</p>")
-    return f'<p><a href="{public_base()}{path}">Open in Odin</a></p>'
+    return f'<p><a href="{public_base()}{path}">{label}</a></p>'
 
 
-def project_link(project_id, user, target=None):
-    """odin_link for a rollout: its page, or `target` on it."""
-    return odin_link(user, target or url_for("project_detail", project_id=project_id)).replace("Open in Odin", "Open the rollout in Odin", 1)
+def queue_mail(user, subject, html, path=None, label="Open in Odin"):
+    """Queue one mail with its line into Odin. An external account's sign-in
+    link is only an intent here (who, which page): the outbox mints it when it
+    sends, so no live token ever sits in the outbox table or a backup of it."""
+    if path and user["kind"] == "external":
+        outbox.add("mail", to=user["email"], subject=subject, html=html, signin={"user_id": user["id"], "path": path, "label": label})
+    else:
+        outbox.add("mail", to=user["email"], subject=subject, html=html + (odin_link(user, path, label) if path else ""))
+
+
+def _rollout_path(project_id, target=None):
+    return target or url_for("project_detail", project_id=project_id)
 
 
 def _plain(html):
@@ -72,9 +82,10 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
     wanted = [r for r in rows if r["email"] and kind not in (r["email_off"] or "").split(",")]
     for r in wanted if email and get_setting("notify_email_enabled") == "1" else []:
         # every mail links into Odin: the rollout, or the page the bell links to (P2-21)
-        extra = (project_link(project_id, r, link if link and link.startswith("/projects/") else None) if project_id
-                 else odin_link(r, link) if link else "")
-        outbox.add("mail", to=r["email"], subject=title, html=message_html + extra)
+        if project_id:
+            queue_mail(r, title, message_html, _rollout_path(project_id, link if link and link.startswith("/projects/") else None), "Open the rollout in Odin")
+        else:
+            queue_mail(r, title, message_html, link)
     for r in [r for r in wanted if r["kind"] != "external"] if teams and get_setting("notify_teams_chat_enabled") == "1" else []:
         outbox.add("teams", to=r["email"], title=title, text=body, link=_odin_url(project_id, link))
 
@@ -171,7 +182,7 @@ def notify_event(project, subject, message_html, channels=None):
         from flask import has_request_context, session
         acting = session.get("user_id") if has_request_context() else None
         if owner and owner["email"] and owner["id"] != acting:   # never mail someone about their own action
-            outbox.add("mail", to=owner["email"], subject=_plain(subject), html=message_html + (project_link(project["id"], owner) if has_id else ""))
+            queue_mail(owner, _plain(subject), message_html, _rollout_path(project["id"]) if has_id else None, "Open the rollout in Odin")
 
     if channels.get("teams") and get_setting("notify_teams_enabled") == "1":
         href = external_url("project_detail", project_id=project["id"]) if has_id else None

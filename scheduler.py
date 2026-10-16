@@ -26,7 +26,9 @@ import os
 import signal
 import sqlite3
 import sys
+import tempfile
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import db as _db
@@ -38,6 +40,10 @@ def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 HEARTBEAT = "scheduler.heartbeat"
+BOOT = "scheduler.boot"   # which process left the heartbeat: the container health check accepts only its own
+BOOT_ID = uuid.uuid4().hex   # this process; written beside every beat and, by the service, to BOOT_FILE
+BOOT_FILE = os.path.join(tempfile.gettempdir(), "odin-scheduler.boot")   # inside the container, so `--healthcheck` (a second process) can read it
+STOP_BUDGET = 105   # seconds after SIGTERM the threads may take to finish; compose's stop_grace_period is 2m (120 s), the rest is the margin before SIGKILL
 BACKUP_REQUEST = "backup.requested"   # Back up now: who asked; the next pass runs it (routes/integrations.py)
 OPS_NOTICES = "ops-notices"           # in DATA_DIR: one line per notice, appended by deploy/odin-update.sh
 # ponytail: not a policy. It is a guard against a minute-by-minute retry storm, not a business rule; no admin has a reason to tune it, and the only jobs it still applies to (report, housekeeping) are idempotent.
@@ -54,10 +60,12 @@ JOB_LABELS = {
 }
 
 _stopping = False   # set by SIGTERM: finish the job in hand, run no more, exit
+_stop_at = None     # when SIGTERM came (monotonic): the join budget counts from here, not from the end of the job in hand
 
 
 def _on_term(*_):
-    global _stopping
+    global _stopping, _stop_at
+    _stop_at = time.monotonic()
     _stopping = True
 
 
@@ -104,6 +112,12 @@ def next_run(now_local, at, days):
 def _set(con, key, value):
     con.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
     con.commit()
+
+
+def _stamp(con):
+    """The heartbeat, with the process that left it."""
+    con.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (BOOT, BOOT_ID))
+    _set(con, HEARTBEAT, _utcnow().isoformat())
 
 
 def _run_job(job, report_on):
@@ -233,8 +247,7 @@ def check_backups_fresh(con):
 
 def run_due():
     """One pass: heartbeat, then every due job. Returns the jobs it ran."""
-    from zoneinfo import ZoneInfo
-    from policies import policy
+    from policies import local_now, policy
     import fcntl
     # one scheduler at a time decides what is due (test report OPS-8: a second
     # process on the same minute ran every job twice); the lock covers the
@@ -244,8 +257,8 @@ def run_due():
     con = sqlite3.connect(_db.DB_PATH)
     con.row_factory = sqlite3.Row
     try:
-        now_local = datetime.now(ZoneInfo(policy("timezone", con)))
-        _set(con, HEARTBEAT, _utcnow().isoformat())
+        now_local = local_now(con)
+        _stamp(con)
         settings = {r["key"]: r["value"] for r in con.execute("SELECT key, value FROM settings WHERE key LIKE 'job.%'")}
         last = {k.split(".")[1]: v for k, v in settings.items() if k.endswith(".last_run")}
         times = {k: policy(k, con) for _, k, _ in JOBS if k}
@@ -372,7 +385,7 @@ def beat():
     """The heartbeat (Settings › Backups and the container health check read it)."""
     con = sqlite3.connect(_db.DB_PATH, timeout=10)
     try:
-        _set(con, HEARTBEAT, _utcnow().isoformat())
+        _stamp(con)
     finally:
         con.close()
 
@@ -390,12 +403,18 @@ def heartbeat():
         _nap(60)
 
 
-def healthy(max_age_minutes=3):
-    """For the container health check: a heartbeat in the last few minutes."""
+def healthy(max_age_minutes=3, boot=None):
+    """For the container health check: a heartbeat in the last few minutes.
+    With `boot` (the container's own process, from BOOT_FILE) the beat must be
+    that process's: the database is shared, so the previous container's last
+    beat would otherwise make a hung new scheduler look alive for three minutes."""
     try:
         con = sqlite3.connect(_db.DB_PATH)
         row = con.execute("SELECT value FROM settings WHERE key = ?", (HEARTBEAT,)).fetchone()
+        who = con.execute("SELECT value FROM settings WHERE key = ?", (BOOT,)).fetchone()
         con.close()
+        if boot is not None and (not who or who[0] != boot):
+            return False
         return bool(row) and datetime.fromisoformat(row[0]) > _utcnow() - timedelta(minutes=max_age_minutes)
     except Exception:  # noqa: BLE001 — no database yet is simply "not healthy"
         return False
@@ -442,17 +461,24 @@ def ai_worker():
 
 
 def outbox_pass():
-    """Send the mail and Teams messages that are due (services/outbox.py)."""
+    """Send the mail and Teams messages that are due (services/outbox.py), one
+    row at a time so a SIGTERM waits for the send in hand (which commits its
+    result) and for no more, not for the whole batch."""
     from app import app
     from services.outbox import drain
+    sent = 0
     with app.app_context():
-        return drain()
+        while sent < 50 and not _stopping and drain(limit=1):
+            sent += 1
+    return sent
 
 
 def outbox_worker():
     """The outbox worker, a thread beside the clock like the AI worker: a long
-    backup must not hold up a stage-move mail. The only place Odin's mail and
-    Teams messages are sent from (never a web worker)."""
+    backup must not hold up a stage-move mail. The queued mail and Teams
+    messages (stage moves, digests, alerts) go out here, never from a web
+    worker; sign-in and reset links and the signed sign-off PDF are sent
+    inline, in the request that asks for them."""
     while not _stopping:
         try:
             busy = outbox_pass()
@@ -464,7 +490,12 @@ def outbox_worker():
 
 if __name__ == "__main__":
     if "--healthcheck" in sys.argv:
-        sys.exit(0 if healthy() else 1)
+        try:
+            with open(BOOT_FILE) as f:
+                boot = f.read().strip()
+        except OSError:   # the service has not started yet
+            sys.exit(1)
+        sys.exit(0 if healthy(boot=boot) else 1)
     import core  # noqa: F401 — configures logging (core.configure_logging), as in the web app
     if "--once" in sys.argv:   # cron mode: alerts too (test report OPS-15)
         log.info("ran: %s", ", ".join(run_due()) or "nothing due")
@@ -474,6 +505,11 @@ if __name__ == "__main__":
         sys.exit(0)
     import threading
     signal.signal(signal.SIGTERM, _on_term)   # docker stop: finish the job in hand, then leave
+    try:
+        with open(BOOT_FILE, "w") as f:
+            f.write(BOOT_ID)
+    except OSError as exc:
+        log.error("could not write %s (the health check will fail): %s", BOOT_FILE, exc)
     threading.Thread(target=heartbeat, name="heartbeat", daemon=True).start()
     worker = threading.Thread(target=ai_worker, name="ai-worker", daemon=True)
     worker.start()
@@ -495,6 +531,11 @@ if __name__ == "__main__":
             except Exception as exc:  # noqa: BLE001
                 log.error("alert sync failed: %s", exc)
         _nap(60 - _utcnow().second)   # wake on the minute
-    worker.join(timeout=90)   # an AI job in hand finishes inside the compose grace period
-    mailer.join(timeout=30)   # so does a message in hand
+    # one budget for both, counted from the SIGTERM (not from the end of the job in
+    # hand), so the joins never run past compose's stop_grace_period
+    deadline = (_stop_at or time.monotonic()) + STOP_BUDGET
+    for thread in (mailer, worker):   # the mailer first: a message in hand matters more than an AI draft
+        thread.join(timeout=max(1, deadline - time.monotonic()))
+        if thread.is_alive():
+            log.warning("%s did not finish in time; leaving it (its work is retried on the next start)", thread.name)
     log.info("stopped on SIGTERM")

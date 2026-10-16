@@ -1,9 +1,14 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
+  "plugins": ["react", "typescript", "oxc", "jsx-a11y"],
   "rules": {
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }],
-    "react/set-state-in-effect": "off"
+    "react/set-state-in-effect": "off",
+    // 15 Oct 2026 (advice A13): the accessibility rules are on, as warnings, so a new finding shows beside the old ones.
+    // Two are style, not defects, and stay off: dialogs focus their first field on purpose (autoFocus), and
+    // role="status" / "group" on a div is how the shared components name a live region (a native element is not always possible).
+    "jsx-a11y/no-autofocus": "off",
+    "jsx-a11y/prefer-tag-over-role": "off"
   }
 }

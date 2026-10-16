@@ -120,9 +120,11 @@ class MailLinksTestCase(NotifyBase):
         self.on("notify_email_enabled")
         sam, ext = self.user("sam"), self.user("ext", kind="external", role="External")
         self.notify([sam, ext], "due", None, "2 tasks need you today", "<ul><li>x</li></ul>", link="/my-work")
-        html = {json.loads(r["payload"])["to"]: json.loads(r["payload"])["html"] for r in self.outbox()}
+        with patch("graph.send_mail", return_value=(True, None)) as mail:
+            drain_outbox()
+        html = {c.args[0]: c.args[2] for c in mail.call_args_list}
         self.assertIn('<a href="http://localhost/my-work">Open in Odin</a>', html["sam@corp.example"])
-        self.assertIn("/auth/link/", html["ext@corp.example"]); self.assertIn("next=/my-work", html["ext@corp.example"])   # no password: a one-time link
+        self.assertIn("/auth/link/", html["ext@corp.example"]); self.assertIn("next=/my-work", html["ext@corp.example"])   # no password: a one-time link, minted at send time (FX1)
 
 
 class TeamsChatTestCase(NotifyBase):

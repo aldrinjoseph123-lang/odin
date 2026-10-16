@@ -12,13 +12,15 @@ test.skip(process.platform !== "linux", "goldens are rendered on Linux")
 // sign-off and activity — so its page would differ with the order tests ran in.
 // No calendar: the seed dates everything from today, so a month grid changes
 // every day (smoke.spec and the calendar journey in flows.spec cover it).
-const PAGES: [string, string][] = [
-  ["dashboard", "/dashboard"], ["flow", "/board"], ["flow-open", "/board?rollout=2"],
+// The dashboard's greeting follows the time of day and its headline numbers are counted from the seed's today:
+// both are masked (the third column) so the golden compares layout, not the clock.
+const PAGES: [string, string, string[]?][] = [
+  ["dashboard", "/dashboard", ["h1", "section[aria-label='Headline numbers']"]], ["flow", "/board"], ["flow-open", "/board?rollout=2"],
   ["projects", "/projects"], ["project", "/projects/2"], ["settings", "/settings/general"], ["login", "/login"],
 ]
 
 for (const theme of ["light", "dark"] as const) {
-  for (const [name, path] of PAGES) {
+  for (const [name, path, masked = []] of PAGES) {
     test(`@visual @phone ${name} ${theme}`, async ({ page }, info) => {
       const golden = info.snapshotPath(`${name}-${theme}-${info.project.name}.png`)
       // a bare --update-snapshots means "changed"; without either, a missing golden is skipped rather than failed
@@ -28,7 +30,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.locator("main, form").first().waitFor()
       await page.waitForTimeout(400)   // charts and fonts settle
       // relative times and the clock change every minute: mask them
-      const mask = [page.locator("time"), page.locator("text=/just now|\\d+ min ago|\\d+ h ago/")]
+      const mask = [page.locator("time"), page.locator("text=/just now|\\d+ min ago|\\d+ h ago/"), ...masked.map((sel) => page.locator(sel))]
       // the project page's plan, timeline and tasks are dated from the seed's today, so they reflow
       // daily: compare its first screen only (the plan is covered by flows.spec)
       await expect(page).toHaveScreenshot(`${name}-${theme}-${info.project.name}.png`, { fullPage: name !== "project", mask, maxDiffPixelRatio: 0.03 })

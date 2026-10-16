@@ -34,4 +34,16 @@ frontend/playwright-report
 .claude/
 .impeccable/
 .DS_Store
-test_app.py
+
+# tests and their fixtures: they run in CI, not in the image
+test_*.py
+tests/
+frontend/e2e/*-snapshots
+frontend/src/**/*.test.ts
+frontend/src/**/*.test.tsx
+frontend/src/lib/__contract__
+# (frontend/e2e/*.ts stays in the build context: `tsc -b` in the Node stage type-checks it)
+
+# docs: the app serves only the System Map (routes/settings.py, /settings/map/page)
+docs/*
+!docs/system-map.html

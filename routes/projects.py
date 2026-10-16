@@ -36,7 +36,7 @@ from constants import (
     DEFAULT_ALERT_TYPE_SETTINGS,
     DELIVERY_MODES,
 )
-from core import app, as_id, json_body, like_any, parse_date, sees_po, text_field, login_required, permission_required, project_allows, project_role_required, role_has_permission, offer_undo, undo_note, project_scope
+from core import app, as_bool, as_id, json_body, like_any, parse_date, sees_po, text_field, login_required, permission_required, project_allows, project_role_required, role_has_permission, offer_undo, undo_note, project_scope
 from security import content_matches_extension, upload_problem, valid_email, safe_csv_writer
 from policies import local_today, policy
 from spa import spa_index
@@ -468,9 +468,9 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None):
     names = get_stage_names(project_id)
     terminal = new_stage == names[-1]
     if project["stage"] == names[-1]:
-        # reopened: the sign-off that closed it no longer speaks for the work to come (P3-24);
-        # it stays on file as signed, and the finish waits for a new version
-        db.execute("UPDATE signoffs SET superseded_at = ? WHERE project_id = ? AND superseded_at IS NULL", (now, project_id))
+        # reopened: a signed sign-off no longer speaks for the work to come (P3-24); it stays on
+        # file as signed, and the finish waits for a new version. One still out for signature stays live.
+        db.execute("UPDATE signoffs SET superseded_at = ? WHERE project_id = ? AND superseded_at IS NULL AND status <> 'sent'", (now, project_id))
     cur = db.execute(
         "INSERT INTO status_notes (project_id, author, note, stage, created_at, guest_visible, author_id, prev_stage, prev_entered_at)"
         " VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
@@ -1240,7 +1240,7 @@ def _assignee(db, project_id, raw):
 def _done_state(form):
     """(done, done_at) for a task added back by an undo: the state it was deleted
     in, with its original finish time when that is a real timestamp (else now)."""
-    if form.get("done") not in (True, "1", "true"):
+    if not as_bool(form.get("done")):
         return 0, None
     at = form.get("done_at")
     try:
@@ -1308,8 +1308,8 @@ def task_toggle(project_id, task_id):
     wanted = (json_body() if request.is_json else request.form).get("done")
     if wanted is None:
         new_done = 0 if task["done"] else 1   # an old caller that sends nothing: the flip
-    elif wanted in (True, False, "1", "0"):
-        new_done = 1 if wanted in (True, "1") else 0
+    elif (done := as_bool(wanted)) is not None:
+        new_done = int(done)
     else:
         abort(400, description="Send done as true or false")
     if new_done == task["done"]:

@@ -1,19 +1,28 @@
-import { lazy, type ComponentType } from "react"
+import { createElement, lazy, type ComponentProps, type ComponentType } from "react"
 
 // A deploy replaces the chunk files, so a tab opened before it asks for a
-// file that is gone. Reload once to fetch the new build; the flag stops a loop
-// and is cleared once a chunk loads again.
+// file that is gone. Reload once to fetch the new build. The flag is the time
+// of that reload: a chunk that fails again soon after is a real failure (the
+// error screen, no loop), while one failing hours later reloads again.
+// A failed chunk is not remembered: at a new address (where the error
+// boundary clears too) it is asked for afresh.
 const flag = "odin.chunk-reload"
-const store = {
-  get: () => { try { return sessionStorage.getItem(flag) } catch { return "1" } },
-  set: (v: string | null) => { try { if (v) sessionStorage.setItem(flag, v); else sessionStorage.removeItem(flag) } catch { /* private mode */ } },
-}
+const SOON = 30_000
+const reloadedAt = () => { try { return Number(sessionStorage.getItem(flag) ?? 0) } catch { return Date.now() } }   // storage off: never reload
+const here = () => location.pathname + location.search
+const markReload = () => { try { sessionStorage.setItem(flag, String(Date.now())) } catch { /* private mode */ } }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function lazyPage<T extends ComponentType<any>>(load: () => Promise<{ default: T }>) {
-  return lazy(() => load().then((m) => { store.set(null); return m }, (e) => {
-    if (store.get()) throw e
-    store.set("1"); window.location.reload()
+  const make = () => lazy(() => load().catch((e: unknown) => {
+    if (Date.now() - reloadedAt() < SOON) { failedAt = here(); throw e }
+    markReload(); window.location.reload()
     return new Promise<{ default: T }>(() => {})
   }))
+  let Page = make()
+  let failedAt: string | null = null   // the address it failed at: React's own retry there still lands on the error
+  return (props: ComponentProps<T>) => {
+    if (failedAt !== null && failedAt !== here()) { failedAt = null; Page = make() }
+    return createElement(Page, props)
+  }
 }

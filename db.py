@@ -246,7 +246,7 @@ def _backfill_stage_entered_at(db):
 # PRAGMA user_version. Raise SCHEMA_VERSION in any release that adds a table,
 # column, permission or alert type. A database above it was written by a newer
 # release, so this code is a rollback: it boots, but deletes nothing.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Names retired from PERMISSIONS / ALERT_TYPES; their rows are deleted on boot.
 # Retire a name by adding it here. Never delete "whatever this code does not
@@ -292,11 +292,9 @@ def migrate_db(db):
         db.execute("UPDATE users SET password_login = 1 WHERE role = 'Admin' AND kind = 'internal'")
     # 15 Oct 2026 (review P2-3): when the address was proven by a link mailed to
     # it (Microsoft binds by email only to a proven one), and the UPN Microsoft
-    # gave at the binding. Addresses already on file count as proven, once, so
-    # nobody is locked out by the upgrade.
+    # gave at the binding. The backfill is with the v1.8.0 one-time steps below.
     if "email_verified_at" not in user_columns:
         db.execute("ALTER TABLE users ADD COLUMN email_verified_at TEXT")
-        db.execute("UPDATE users SET email_verified_at = ? WHERE email IS NOT NULL", (datetime.utcnow().isoformat(),))
     if "ms_upn" not in user_columns:
         db.execute("ALTER TABLE users ADD COLUMN ms_upn TEXT")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ms_oid ON users(ms_oid) WHERE ms_oid IS NOT NULL")
@@ -395,7 +393,8 @@ def migrate_db(db):
         if column not in plan_columns:
             db.execute(f"ALTER TABLE project_stages ADD COLUMN {column} TEXT")
     _migrate_participants(db)
-    _migrate_scope_repr(db)
+    if found < 2:
+        _upgrade_to_v180(db)
     # tasks.stage: which stage a task belongs to (name, like status_notes).
     # NULL = "whatever stage the project is in" — old tasks and quick adds.
     if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
@@ -855,11 +854,30 @@ def _migrate_signoff_stage(db):
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('migration.signoff_stage', '1')")
 
 
+def _upgrade_to_v180(db):
+    """Once, on the first boot of v1.8.0 (user_version below 2, a fresh database
+    too, where the tables are empty): steps that must never run again, or they
+    would rewrite what people saved after the upgrade (review FX1)."""
+    now = datetime.utcnow().isoformat()
+    # Addresses on file count as proven (Microsoft binds by email only to a proven
+    # one), so a Microsoft-only colleague's first sign-in still works. Not for a
+    # pending request, nor for an account with a working password and no Microsoft
+    # binding: nobody ever proved that address; they sign in and confirm it from Account.
+    enforced = db.execute("SELECT 1 FROM settings WHERE key = 'sso_enforced' AND value = '1'").fetchone() is not None
+    usable = "instr(COALESCE(password_hash, ''), '$') > 0" + (" AND password_login = 1" if enforced else "")
+    db.execute(f"UPDATE users SET email_verified_at = ? WHERE email IS NOT NULL AND email_verified_at IS NULL "
+               f"AND pending = 0 AND (ms_oid IS NOT NULL OR NOT ({usable}))", (now,))
+    # Guest links expire guest_link_days after they were minted: count from the upgrade, not from creation.
+    db.execute("UPDATE projects SET guest_tokens_at = ? WHERE guest_tokens_at IS NULL", (now,))
+    _migrate_scope_repr(db)
+
+
 def _migrate_scope_repr(db):
     """Scope text posted as a JSON list was stored as its Python spelling,
     "['a', 'b']" (review P2-27; the route now refuses it): spell it as the
     lines it meant. Only a value that reads back as a list of strings is
-    touched, and signed copies (signoffs.content) never: they are frozen."""
+    touched, and signed copies (signoffs.content) never: they are frozen.
+    Once (_upgrade_to_v180): text saved since may look like a list on purpose."""
     import ast
     if not db.execute("SELECT 1 FROM sqlite_master WHERE name = 'scope_items'").fetchone():
         return
@@ -869,7 +887,7 @@ def _migrate_scope_repr(db):
         for column, value in zip(("title", "detail", "note"), values):
             try:
                 parsed = ast.literal_eval(value or "")
-            except (ValueError, SyntaxError):
+            except Exception:   # any text at all: "[{[]: 1}]" raises TypeError, and a boot must never fail on it
                 continue
             if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
                 fixed.append((column, (", " if column == "title" else "\n").join(parsed)))

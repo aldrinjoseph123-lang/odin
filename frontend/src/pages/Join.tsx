@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useState, type ComponentProps, type FormEvent } from "react"
 import { useParams } from "react-router-dom"
 import { CheckCircle2 } from "lucide-react"
 import { AuthHeading, AuthLayout } from "@/components/Brand"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Notice } from "@/components/Notice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { ApiError, joinInfo, joinSubmit, session, type JoinInfo } from "@/lib/api"
 import { MIN_PASSWORD, passwordRule } from "@/lib/password"
 import { fmtDate } from "@/lib/format"
@@ -51,23 +52,25 @@ export default function Join() {
       <a href="/login" className="mt-6 inline-block text-[14px] text-primary-text hover:underline">Go to sign-in</a>
     </AuthLayout>
   )
-  const label = "grid gap-2 text-[13px] font-medium"
+  // the same field as the other sign-in pages: 14 px label, 44 px input
+  const row = (id: string, text: string, input: Partial<ComponentProps<typeof Input>>) => (
+    <div className="grid grid-cols-1 gap-2"><Label htmlFor={id} className="text-[14px]">{text}</Label><Input id={id} required className="h-11 text-base" {...input} /></div>
+  )
   return (
     <AuthLayout>
       <AuthHeading title={`Join ${info.company} on Odin`}>
         You are invited as <b className="text-foreground">{info.role}</b>{info.project ? <> on <b className="text-foreground">{info.project}</b> ({info.project_role})</> : null}. The link works until {fmtDate(info.expires_at)}.
       </AuthHeading>
       <form onSubmit={submit} className="grid grid-cols-1 gap-4">
-        <label className={label}>Full name<Input required autoComplete="name" value={f.name} onChange={set("name")} className="h-10" /></label>
-        <label className={label}>Work email<Input required type="email" autoComplete="email" value={f.email} onChange={set("email")} className="h-10"
-          placeholder={info.domains.length ? `you@${info.domains[0]}` : "you@company.com"} /></label>
-        <label className={label}>Username<Input required autoComplete="username" value={f.username} onChange={set("username")} className="h-10" placeholder="e.g. omar.haddad" /></label>
+        {row("name", "Full name", { autoComplete: "name", value: f.name, onChange: set("name") })}
+        {row("email", "Work email", { type: "email", autoComplete: "email", value: f.email, onChange: set("email"), placeholder: info.domains.length ? `you@${info.domains[0]}` : "you@company.com" })}
+        {row("username", "Username", { autoComplete: "username", value: f.username, onChange: set("username"), placeholder: "e.g. omar.haddad" })}
         <div className="grid grid-cols-2 gap-3">
-          <label className={label}>Password<Input required type="password" autoComplete="new-password" minLength={minLength} value={f.password} onChange={set("password")} className="h-10" /></label>
-          <label className={label}>Again<Input required type="password" autoComplete="new-password" value={f.confirm} onChange={set("confirm")} className="h-10" /></label>
+          {row("password", "Password", { type: "password", autoComplete: "new-password", minLength, value: f.password, onChange: set("password") })}
+          {row("confirm", "Again", { type: "password", autoComplete: "new-password", value: f.confirm, onChange: set("confirm") })}
         </div>
         <p className="-mt-2 text-[12px] text-muted-foreground">{passwordRule(minLength)}</p>
-        {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
+        {error && <Notice bad>{error}</Notice>}
         <Button type="submit" className="h-11 text-sm" loading={busy}>Ask to join</Button>
       </form>
     </AuthLayout>

@@ -8,8 +8,11 @@
 # on Alpine left rolldown (Vite's bundler) unable to load its native binary.
 # Base images are pinned by version and digest, so every build starts from the
 # same bytes (review P3-9). To take a newer one (security fixes in Debian),
-# bump the tag and its digest together, from Docker Hub:
-#   curl -s https://hub.docker.com/v2/repositories/library/node/tags/22.23.3-slim | grep -o '"digest":"[^"]*"' | head -1
+# bump the tag and its digest together, and pin the multi-arch index digest (the
+# one `docker buildx imagetools inspect` prints), not a single platform's image
+# digest (Docker Hub's tags API lists those: the amd64 one comes first):
+#   docker buildx imagetools inspect node:22.23.3-slim --format '{{.Manifest.Digest}}'
+#   docker buildx imagetools inspect python:3.12.15-slim --format '{{.Manifest.Digest}}'
 FROM node:22.23.3-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS frontend
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./

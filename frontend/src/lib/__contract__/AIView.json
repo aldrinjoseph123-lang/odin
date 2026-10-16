@@ -1,0 +1,53 @@
+{
+ "features": [
+  {
+   "checked_at": null,
+   "current": false,
+   "description": "Drafts the report's summary, next steps and asks from the rollout's week; the project manager edits and saves.",
+   "detail": null,
+   "forced": false,
+   "key": "weekly_words",
+   "label": "Weekly words, drafted",
+   "model": null,
+   "on": true,
+   "output": null,
+   "prompt": "weekly_words.v2.txt",
+   "prompt_hash": "069f8e90ba08",
+   "runs": "nightly",
+   "seconds": null,
+   "state": "pending"
+  },
+  {
+   "checked_at": null,
+   "current": false,
+   "description": "Reads the last two weeks of notes and proposes risks, issues, blockers and decisions nobody has logged, each with the note words that show it.",
+   "detail": null,
+   "forced": false,
+   "key": "raid_proposals",
+   "label": "Risks proposed",
+   "model": null,
+   "on": true,
+   "output": null,
+   "prompt": "raid_proposals.v1.txt",
+   "prompt_hash": "e01b5f7d4233",
+   "runs": "nightly",
+   "seconds": null,
+   "state": "pending"
+  }
+ ],
+ "has_key": false,
+ "jobs": [],
+ "run_checks": [],
+ "scheduler_alive": false,
+ "status": {
+  "state": "off"
+ },
+ "usage": {
+  "avg_s": null,
+  "calls": 0,
+  "failed": null,
+  "max_s": null,
+  "tokens_in": null,
+  "tokens_out": null
+ }
+}

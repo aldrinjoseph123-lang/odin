@@ -184,11 +184,11 @@ def settings_teams_app():
     if not teams_bot.configured() or not policy("public_url").startswith("https://"):
         flash("Save the Azure app (id, secret, tenant) and an https public address under Settings › General first", "error")
         return redirect(url_for("settings_section", section="integrations"))
+    from routes.client import app_version
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    version = open(os.path.join(here, "VERSION")).read().strip()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("manifest.json", teams_bot.manifest(version, policy("public_url")))
+        z.writestr("manifest.json", teams_bot.manifest(app_version(), policy("public_url")))
         for name in ("color.png", "outline.png"):
             z.write(os.path.join(here, "static", "teams", name), name)
     buf.seek(0)

@@ -107,7 +107,7 @@ def register(link, form):
     username = str(form.get("username") or "").strip()
     email = str(form.get("email") or "").strip().lower()[:200]
     password = str(form.get("password") or "")
-    channel = form.get("notify_via") or "email"
+    channel = "email"   # the Email/Teams choice went on 13 Oct (Teams follows the topic switches); the column stays for a rollback
     if not name:
         raise ValueError("Your full name")
     if not valid_username(username):   # ASCII, as on the Users page: no look-alike of an existing name (review P3-13)

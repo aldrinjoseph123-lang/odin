@@ -14,10 +14,21 @@ on:
         type: boolean
         default: false
 
+# Nothing here writes to the repository (the Release workflow does, on its own).
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request replaces the run in flight; a push to main never
+# cancels the run that may be about to tag a release.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   test:
     name: Unit tests (Python 3.12)
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,17 +37,31 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Python tests
-        shell: bash   # -o pipefail: without it the pipe into tail hides a failing test
-        # -u: print() output must not flush after the summary and push it out of the tail
-        run: python -u -m unittest test_app test_fix_security test_fix_logic test_release_safety test_scheduler_ops -v 2>&1 | grep -v "^Created default user" | tail -60
+        # the whole output, no pipe: a failure prints where it happened. -u: print() output stays in order.
+        # Every test_*.py module is named here (test_v18_meta checks the list against the files on disk).
+        run: python -u -m unittest test_app test_fix_security test_fix_logic test_release_safety test_scheduler_ops test_v18_identity test_v18_notify test_v18_projects test_v18_ops test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_meta
       - name: Server updater self-check
         run: sh deploy/test-odin-update.sh
       - name: Dependency advisories (pip-audit)
         run: pip install -q pip-audit && pip-audit -r requirements.txt
 
+  map:
+    name: System map matches the code (pull requests into main)
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}   # the branch as committed, not GitHub's merge with main
+          fetch-depth: 0                                    # the generator reads the history and the tags
+      - name: docs/system-map.html facts are current (VERSION is committed before the map is generated)
+        run: python3 scripts/build_system_map.py --check || { echo "::error::Run python3 scripts/build_system_map.py, commit docs/system-map.html and push (see docs/RELEASING.md)"; exit 1; }
+
   frontend:
     name: Frontend builds (React + shadcn)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -49,18 +74,21 @@ jobs:
       - name: Dependency advisories (npm audit, runtime deps, high+)
         run: npm audit --omit=dev --audit-level=high
         working-directory: frontend
-      - name: Lint (oxlint)
+      - name: Lint (oxlint with the accessibility rules; the warning baseline is the --max-warnings in frontend/package.json)
         run: npm run lint
         working-directory: frontend
-      - run: npm test
+      - name: "Tests (vitest: units, pages, the API contract)"
+        run: npm test
         working-directory: frontend
-      - run: npm run build
+      - name: "Types (tsc -b: the app, the build scripts and the e2e specs, strict) and build"
+        run: npm run build
         working-directory: frontend
 
   ui:
     name: "UI suite (Playwright: smoke, journeys, axe, keyboard, screenshots, Lighthouse)"
     runs-on: ubuntu-24.04
     needs: [frontend]
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -115,6 +143,7 @@ jobs:
     name: Docker image builds and boots
     runs-on: ubuntu-24.04
     needs: [test, frontend, ui]
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Build

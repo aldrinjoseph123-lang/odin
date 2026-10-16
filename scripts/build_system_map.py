@@ -318,9 +318,13 @@ def changelog():
     tag, named by VERSION. A commit that only regenerates this page is left
     out, so regenerating never changes the log it writes."""
     version = (HEAD.get("VERSION") or "").strip()
-    tags = [t for t in git("tag", "--sort=creatordate").splitlines() if t]
-    reachable = set(git("tag", "--merged", "HEAD").splitlines())
-    tags = [t for t in tags if t in reachable]
+    # A release tag sits on main's merge commit of a pull request from dev, which dev never
+    # contains: `git tag --merged HEAD` dropped every release after v1.5.0. A tag belongs to
+    # this line of history when the merge's dev side (its second parent) is in HEAD.
+    def on_this_line(tag):
+        merged = git("rev-parse", "--verify", "--quiet", f"{tag}^2").strip()
+        return subprocess.run(["git", "merge-base", "--is-ancestor", merged or f"{tag}^{{commit}}", "HEAD"], cwd=ROOT).returncode == 0
+    tags = [t for t in git("tag", "--sort=creatordate").splitlines() if t and on_this_line(t)]
     ranges, prev = [], None
     for t in tags:
         ranges.append((t, f"{prev}..{t}" if prev else t))

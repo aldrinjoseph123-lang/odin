@@ -292,8 +292,7 @@ def work_once(db):
 def tick(db, now_local=None):
     """One pass of the AI worker: heartbeat when due, the daily validation
     when due, then one waiting job."""
-    from zoneinfo import ZoneInfo
-    from policies import policy
+    from policies import local_now, policy
     if status(db)["state"] == "off":
         return None
     # a job left "running" by a worker that died is not running
@@ -304,7 +303,7 @@ def tick(db, now_local=None):
     last = st.get("checked_at")
     if not last or datetime.fromisoformat(last) <= datetime.utcnow() - timedelta(minutes=policy("ai_heartbeat_minutes", db)):
         heartbeat(db)
-    now_local = now_local or datetime.now(ZoneInfo(policy("timezone", db)))
+    now_local = now_local or local_now(db)
     today = now_local.date().isoformat()
     row = db.execute("SELECT value FROM settings WHERE key = 'ai.validate.last_date'").fetchone()
     if now_local.strftime("%H:%M") >= policy("ai_validate_time", db) and (row[0] if row else "") < today:

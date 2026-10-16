@@ -1,6 +1,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { PlanStage, Rag } from "@/lib/api"
 import { HEALTH } from "@/lib/state"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { dayOf, fmtDate, monthTicks } from "@/lib/format"
 import { useWidth } from "@/lib/useMeasure"
@@ -110,7 +111,7 @@ function mondays(t0: number, t1: number): number[] {
 // A status pill: a dot and the word, in the state's soft fill (one shape for the
 // plan's health and the sign-off's status alike), never colour alone.
 export function StatusPill({ tone, children, className }: { tone: string; children: React.ReactNode; className?: string }) {
-  return <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold", tone, className)}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{children}</span>
+  return <Badge variant="secondary" className={cn("gap-2", tone, className)}><span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />{children}</Badge>
 }
 
 // The health pill: the plan word in its state colour (lib/state.ts HEALTH).
