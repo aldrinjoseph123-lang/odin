@@ -7,7 +7,7 @@ const mod = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator
 const GROUPS: { title: string; rows: { keys: string[]; what: string }[] }[] = [
   { title: "Anywhere", rows: [
     { keys: [`${mod} K`], what: "Search and jump to a rollout, person, setting or page" },
-    { keys: ["/"], what: "The same search, when you are not typing (switch it off on your Account page)" },
+    { keys: ["/"], what: "The same search, when you are not typing" },
     { keys: ["?"], what: "This sheet" },
     { keys: ["Esc"], what: "Close the search, a dialog or the open rollout" },
     { keys: [`${mod} Enter`], what: "Send what you are writing: a note, a task, a RAID item, a message, a sign-off comment" },
@@ -26,7 +26,7 @@ export function ShortcutSheet({ open, onOpenChange }: { open: boolean; onOpenCha
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
-          <DialogDescription>Single keys work when you are not typing in a field.</DialogDescription>
+          <DialogDescription>Single keys work when you are not typing in a field. Switch /, ? and 1–4 off on your Account page (Single-key shortcuts).</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 gap-4 text-[13px]">
           {GROUPS.map((g) => (

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
-import { PendingIntake } from "./PendingIntake"
+import { IntakeBanner, PendingIntake } from "./PendingIntake"
 import * as api from "@/lib/api"
 
 const row: api.PendingIntakeRow = {
@@ -80,5 +80,22 @@ describe("Pending intake", () => {
     await user.click(await screen.findByRole("button", { name: "Confirm Branch SD-WAN" }))
     expect(await screen.findByText(/Your role cannot confirm/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Confirm and take ownership" })).toHaveAttribute("aria-disabled", "true")
+  })
+
+  it("on the rollout's own page: says it waits, confirms in place, and offers Discard only to who may delete", async () => {
+    const user = userEvent.setup()
+    const confirmed = vi.fn()
+    render(<MemoryRouter><IntakeBanner projectId={7} canDiscard={false} onConfirmed={confirmed} /></MemoryRouter>)
+    expect(await screen.findByText(/A deal from crm-prod \(CRM-9\), waiting for a project manager/)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Confirm…" }))
+    expect(screen.queryByRole("button", { name: "Discard" })).toBeNull()
+    submit()
+    await waitFor(() => expect(confirmed).toHaveBeenCalledWith(["confirmed"]))
+  })
+
+  it("draws nothing on a rollout that is not pending", async () => {
+    render(<MemoryRouter><IntakeBanner projectId={99} canDiscard onConfirmed={() => {}} /></MemoryRouter>)
+    await waitFor(() => expect(api.pendingIntake).toHaveBeenCalled())
+    expect(screen.queryByRole("status")).toBeNull()
   })
 })

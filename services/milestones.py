@@ -235,6 +235,9 @@ def spawn_next(db, task_id, today=None, actor=None):
         "VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)",
         (task["project_id"], task["title"], assignee, nxt.isoformat(), datetime.utcnow().isoformat(), "Odin (repeats)", task["stage"],
          task["estimate_hours"], task["recurrence"], until, task_id))
+    if cur.rowcount:   # the next one waits on what this one waited on (services/task_links.py); it has no successors, so no loop
+        db.execute("INSERT OR IGNORE INTO task_links (project_id, task_id, depends_on_task_id) "
+                   "SELECT project_id, ?, depends_on_task_id FROM task_links WHERE task_id = ?", (cur.lastrowid, task_id))
     db.commit()
     if cur.rowcount == 0:
         return None

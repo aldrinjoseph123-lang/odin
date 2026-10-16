@@ -38,7 +38,7 @@
    "category": "Client PO",
    "filename": "po.pdf",
    "id": 1,
-   "uploaded_at": "2026-10-16T18:40:27.656755",
+   "uploaded_at": "2026-10-16T19:20:30.220865",
    "uploaded_by": "Admin"
   }
  ],
@@ -47,17 +47,18 @@
   "Reseller"
  ],
  "guest_links": {
-  "customer": "http://localhost/guest/ZKJyI-f9njUI3kO9SjNMEA",
+  "customer": "http://localhost/guest/DxfcRvVRBR9WvVtKIBuQNg",
   "vendor": null
  },
  "guest_links_enabled": true,
- "guest_links_expire": "2027-03-18T18:40:28",
+ "guest_links_expire": "2027-03-18T19:20:30",
  "id": 1,
+ "intake_pending": false,
  "name": "EDR Rollout - Globex",
  "notes": [
   {
    "author": "Admin",
-   "created_at": "2026-10-16T16:40:28.282908",
+   "created_at": "2026-10-16T17:20:30.781154",
    "edited": false,
    "id": 75,
    "mine": false,
@@ -67,7 +68,7 @@
   },
   {
    "author": "Admin",
-   "created_at": "2026-10-01T02:40:28.282908",
+   "created_at": "2026-10-01T03:20:30.781154",
    "edited": false,
    "id": 2,
    "mine": true,

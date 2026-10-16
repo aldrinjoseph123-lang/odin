@@ -298,6 +298,9 @@ def render(data, words, tpl=None):
             rows.append(row)
             tones.append({4: (180, 35, 28)} if not customer and slip and slip > 0 else {})
         doc.table(cols, rows, widths, tones)
+        held = next((m["gate"] for m in data.get("milestones", []) if m.get("gate")), None)   # what holds the next move (internal only)
+        if held and not customer:
+            doc.para(f"Before the next stage: {held}", 9, (138, 83, 0))
         ms = data.get("project_milestones") or []   # the rollout's own milestones (the customer's copy: those marked for them)
         if ms:
             doc.heading("Milestones", f"{sum(1 for m in ms if m['done'])} of {len(ms)} reached")
@@ -359,13 +362,28 @@ def render(data, words, tpl=None):
                 doc.para(n["note"], 9)
                 doc.y += 2
 
+    def asks():
+        # what the outside parties were asked and answered, and their ratings at sign-off: internal only (the customer cut drops both)
+        if customer or not (data.get("asks") or data.get("csat")):
+            return
+        rated = data.get("csat") or []
+        doc.heading("Asked of the customer and partners", f"rated {rated[-1]['rating']} of 5 at sign-off" if rated else None)
+        if data.get("asks"):
+            doc.table(["Ask", "Who", "State", "What came back"],
+                      [[a["title"], f"{a['assignee'] or '-'} ({a['assignee_role'] or '-'})", "done" if a["done"] else f"open · due {_fmt(a['due_date'])}" if a.get("due_date") else "open",
+                        (a["file"]["filename"] if a.get("file") else "; ".join(f"{x['label']}: {x['value']}" for x in a.get("answers", []))) or "-"] for a in data["asks"]],
+                      [0.32, 0.22, 0.16, 0.3])
+        for r in rated:
+            if r.get("comment"):
+                doc.para(f"\"{r['comment']}\" - {r['by_name']}, version {r['signoff_version']} ({r['rating']} of 5)", 9)
+
     def team():
         if data.get("team"):
             doc.heading("Team")
             doc.para(" · ".join(f"{m['name']} ({m['role']})" for m in data["team"]), 9)
 
     sections = {"numbers": numbers, "summary": summary, "timeline": timeline, "raid": raid, "work": work,
-                "history": history, "plan_changes": plan_changes, "notes": notes, "team": team}
+                "history": history, "plan_changes": plan_changes, "notes": notes, "asks": asks, "team": team}
     for key in order(tpl):
         sections[key]()
     doc.block("closing", values)
@@ -479,7 +497,8 @@ def render_portfolio(data, tpl=None):
         _boxes(doc, [("Late against target", str(s["late_vs_target"]), f"of {s['count']} rollouts", s["late_vs_target"] > 0),
                      ("Behind baseline", str(s["behind_baseline"]), "no baseline data" if s["avg_slip"] is None else f"average {s['avg_slip']:+} d", False),
                      ("Open blockers", str(s["blockers"]), "across the portfolio", s["blockers"] > 0),
-                     ("Finishing in 30 days", str(s["finishing_30d"]), "by forecast", False)])
+                     ("Finishing in 30 days", str(s["finishing_30d"]), "by forecast", False)]
+                    + ([("Customer rating", f"{s['csat']} of 5", f"{s['csat_count']} rated at sign-off", False)] if s.get("csat") is not None else []))
 
     def roadmap():
         if rows:
@@ -505,11 +524,15 @@ def render_portfolio(data, tpl=None):
 
     def table():
         doc.heading("Every rollout")
-        doc.table(["Rollout", "Client", "Health", "Stage", "Done", "Forecast", "Target", "PM"],
+        def mark(m):   # the rollout's next milestone (services/milestones.summary_of), and how many it missed
+            m = m or {}
+            nxt = f"{m['next']['name']} {_fmt(m['next']['date'])}" if m.get("next") else "-"
+            return nxt + (f" ({m['missed']} missed)" if m.get("missed") else "")
+        doc.table(["Rollout", "Client", "Health", "Stage", "Done", "Forecast", "Target", "Next milestone", "PM"],
                   [[r["name"], r["client"] or "-", RAG[r["rag"]][2], f"{r['stage_number']}/{r['stage_count']} {r['stage']}", f"{r['pct_complete']}%",
-                    _fmt(r["forecast"]), _fmt(r["target_end_date"]) if r["target_end_date"] else "-", r["owner_name"]] for r in rows],
-                  [0.2, 0.13, 0.09, 0.18, 0.06, 0.11, 0.11, 0.12],
-                  [{2: RAG[r["rag"]][1]} for r in rows])
+                    _fmt(r["forecast"]), _fmt(r["target_end_date"]) if r["target_end_date"] else "-", mark(r.get("milestones")), r["owner_name"]] for r in rows],
+                  [0.16, 0.1, 0.08, 0.14, 0.05, 0.1, 0.1, 0.18, 0.09],
+                  [{2: RAG[r["rag"]][1], **({7: (180, 35, 28)} if (r.get("milestones") or {}).get("missed") else {})} for r in rows])
 
     sections = {"health": health, "roadmap": roadmap, "slippage": slippage, "risks": risks, "table": table}
     for key in order(tpl):

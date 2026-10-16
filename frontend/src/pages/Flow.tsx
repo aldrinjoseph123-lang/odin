@@ -204,8 +204,9 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
               {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[11px]" />}
               {d.can_edit && (
                 <button type="button" aria-disabled={busy || undefined} onClick={async () => {
-                  // a deleted task comes back with Undo: the same title, person, date and stage
-                  if (await run(() => deleteTask(d.id, t.id), undefined, i)) toast(`Deleted ${t.title}`, { action: { label: "Undo", run: () => void run(() => addTask(d.id, { title: t.title, stage: t.stage, assignee_id: t.assignee_id, due_date: t.due_date, done: t.done, done_at: t.done_at, waits_on: t.waits_on, estimate_hours: t.estimate_hours, recurrence: t.recurrence, recur_until: t.recur_until, kind: t.kind, ask_category: t.ask_category, questions: t.questions }), `${t.title} is back`) } })
+                  // a deleted task comes back with Undo: the same title, person, date and stage, and the tasks that waited on it wait again
+                  const blocks = d.tasks.filter((x) => x.waits_on?.includes(t.id)).map((x) => x.id)
+                  if (await run(() => deleteTask(d.id, t.id), undefined, i)) toast(`Deleted ${t.title}`, { action: { label: "Undo", run: () => void run(() => addTask(d.id, { title: t.title, stage: t.stage, assignee_id: t.assignee_id, due_date: t.due_date, done: t.done, done_at: t.done_at, waits_on: t.waits_on, blocks, estimate_hours: t.estimate_hours, recurrence: t.recurrence, recur_until: t.recur_until, kind: t.kind, ask_category: t.ask_category, questions: t.questions }), `${t.title} is back`) } })
                 }} aria-label={`Delete ${t.title}`}
                   className="relative hidden shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-destructive group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
               )}

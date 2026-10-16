@@ -24,6 +24,7 @@ import { AINotesTasks } from "@/components/AINotesTasks"
 import { LessonsPanel } from "@/components/LessonsPanel"
 import { FieldValues } from "@/components/FieldValues"
 import { AsksPanel } from "@/components/AsksPanel"
+import { IntakeBanner } from "@/components/PendingIntake"
 import { ApiError, flowDetail, plan, postForm, projectActivity, projectExtras, type FormReply, type PlanData, type ProjectExtras, type User } from "@/lib/api"
 import { useLoad } from "@/lib/useLoad"
 import { submitKey } from "@/lib/useSubmitShortcut"
@@ -145,6 +146,8 @@ export default function Project({ user }: { user: User }) {
         </div>
       )}
 
+      {/* a CRM intake not yet confirmed (services/intake.py): say so first, with Confirm / Discard */}
+      {staff && x.intake_pending && <IntakeBanner projectId={id} canDiscard={!!can.delete_project} onConfirmed={(m) => { setNotice({ text: m.join(" ") || "Rollout confirmed" }); return reload() }} />}
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
       {/* Detail reloads after a move itself: the notice is all this page adds (review P3-35: it reloaded twice) */}
       {/* a customer, reseller or contractor: what the rollout needs from them comes first (services/asks.py) */}

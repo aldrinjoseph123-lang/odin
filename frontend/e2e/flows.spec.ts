@@ -921,9 +921,12 @@ test("@flow account feedback: Save wakes on a change, Upload with no file says s
   await signIn(page, "member", "/account")
   const tell = page.locator("form", { hasText: "Tell me about" })
   await expect(tell.getByRole("button", { name: "Save" })).toBeDisabled()
-  await tell.getByRole("switch").first().click()
+  // each kind is At once / Daily summary / Off (v2.0.0): another choice wakes Save, the saved one puts it back to sleep
+  const first = tell.getByRole("radiogroup").first()
+  const was = (await first.getByRole("radio", { checked: true }).textContent())!.trim()
+  await first.getByRole("radio", { name: was === "Off" ? "At once" : "Off", exact: true }).click()
   await expect(tell.getByRole("button", { name: "Save" })).toBeEnabled()
-  await tell.getByRole("switch").first().click()
+  await first.getByRole("radio", { name: was, exact: true }).click()
   await expect(tell.getByRole("button", { name: "Save" })).toBeDisabled()
   await page.getByRole("button", { name: "Upload" }).click()
   await expect(page.getByRole("alert").filter({ hasText: "Choose a picture first" })).toBeVisible()
@@ -1250,7 +1253,11 @@ test("@flow crm intake: a deal posted with a create token waits pending, then a 
   const id = Number(page.url().split("/").pop())
   await page.goto("/board")
   await expect(page.getByRole("region", { name: "Pending intake" }).getByText(name)).toHaveCount(0)
-  await expect(page.getByRole("button", { name: new RegExp(`^${name}, `) })).toBeVisible()
+  // a new rollout is on track, and the list folds the on-track tail away (chunked lists)
+  const more = page.getByRole("button", { name: /^Show \d+ on-track rollouts?$/ }), row = page.getByRole("button", { name: new RegExp(`^${name}, `) })
+  await more.or(row).first().waitFor()
+  if (await more.isVisible()) await more.click()
+  await expect(row).toBeVisible()
   // tidy: delete the rollout and revoke the token
   await page.evaluate(async (rid) => {
     const s = await (await fetch("/api/session")).json()

@@ -53,7 +53,7 @@
  "data": {
   "activity": [
    {
-    "at": "2026-10-16T18:40:28.282908",
+    "at": "2026-10-16T19:20:30.781154",
     "kind": "note",
     "project": "EDR rollout - Globex",
     "project_id": 4,
@@ -61,7 +61,7 @@
     "who": "Priya Menon"
    },
    {
-    "at": "2026-10-16T18:40:27.751554",
+    "at": "2026-10-16T19:20:30.313647",
     "kind": "document",
     "project": "SIEM onboarding - Initech",
     "project_id": 23,
@@ -149,7 +149,7 @@
   },
   "alerts": [
    {
-    "created_at": "2026-10-16T14:40:28.282908",
+    "created_at": "2026-10-16T15:20:30.781154",
     "id": 13,
     "project": "Firewall refresh - Initech",
     "project_id": 3,
@@ -158,7 +158,7 @@
     "type": "blocker_open"
    },
    {
-    "created_at": "2026-10-16T11:40:28.282908",
+    "created_at": "2026-10-16T12:20:30.781154",
     "id": 1,
     "project": "EDR rollout - Globex",
     "project_id": 4,
@@ -217,11 +217,11 @@
    "lead_median": null,
    "measured_projects": 11,
    "slowest": {
-    "avg_days": 7.290310512625,
+    "avg_days": 7.293091181891205,
     "in_stage_now": 1,
     "max_days": 17.0,
     "median_days": 4.9375,
-    "oldest_now": 48.00000758068287,
+    "oldest_now": 48.00000725005787,
     "stage": "PO Received",
     "visits": 10
    },
@@ -474,7 +474,7 @@
    ]
   },
   "since": {
-   "from": "2026-10-15T18:40:28.938552",
+   "from": "2026-10-15T19:20:31.408184",
    "items": []
   },
   "stages": [

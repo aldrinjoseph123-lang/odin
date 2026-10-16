@@ -112,12 +112,12 @@ export default function Account({ user }: { user: User }) {
               <p className="text-[12px] text-muted-foreground">Where sign-in and the Odin logo land.</p>
             </>
           )}
-          {/* a single-key shortcut must be able to go (WCAG 2.1.4); kept in this browser */}
+          {/* single-key shortcuts must be able to go (WCAG 2.1.4): / search, ? the shortcuts sheet, 1-4 the flow's views; kept in this browser */}
           <label className="mt-1 flex items-center gap-2 text-[13px]">
-            <Switch aria-label="Press / to open search" checked={slash} onCheckedChange={(v) => { setSlash(v); toast(v ? "/ opens search" : "/ no longer opens search") }} />
-            Press / to open search
+            <Switch aria-label="Single-key shortcuts" checked={slash} onCheckedChange={(v) => { setSlash(v); toast(v ? "Single-key shortcuts on" : "Single-key shortcuts off") }} />
+            Single-key shortcuts
           </label>
-          <p className="text-[12px] text-muted-foreground">In this browser. {navigator.platform.includes("Mac") ? "⌘ K" : "Ctrl K"} always opens it.</p>
+          <p className="text-[12px] text-muted-foreground">/ opens search, ? lists the shortcuts, 1–4 switch the flow's views. In this browser. {navigator.platform.includes("Mac") ? "⌘ K" : "Ctrl K"} always opens search.</p>
         </section>
         <form onSubmit={(e: FormEvent<HTMLFormElement>) => {
           e.preventDefault()

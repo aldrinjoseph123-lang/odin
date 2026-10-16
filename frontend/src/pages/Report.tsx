@@ -313,7 +313,7 @@ export default function Report({ user }: { user: User }) {
 
         {/* what the outside parties were asked and answered, and their rating at sign-off (services/asks.py): internal only */}
         {!customer && (!!d.asks?.length || !!d.csat?.length) && (
-          <Section n title="Asked of the customer and partners" sub={d.csat?.length ? `rated ${d.csat[d.csat.length - 1].rating} of 5 at sign-off` : undefined} className={hide("work")}>
+          <Section n title="Asked of the customer and partners" sub={d.csat?.length ? `rated ${d.csat[d.csat.length - 1].rating} of 5 at sign-off` : undefined} className={hide("asks")}>
             <Table head={["Ask", "Who", "State", "What came back"]} rows={(d.asks ?? []).map((a) => [a.title, `${a.assignee} (${a.assignee_role})`, a.done ? "done" : a.due_date ? `open · due ${fmtDate(a.due_date)}` : "open",
               a.file ? a.file.filename : a.answers.map((x) => `${x.label}: ${x.value}`).join(" · ") || "—"])} />
             {d.csat?.filter((r) => r.comment).map((r) => <p key={r.signoff_version} className="mt-2 text-[13px]">“{r.comment}” <span className="text-muted-foreground">— {r.by_name}, version {r.signoff_version}</span></p>)}

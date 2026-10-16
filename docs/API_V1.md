@@ -1,13 +1,14 @@
 # Odin `/api/v1`: the read API and the CRM intake
 
 For scripts and reports (Power BI, a spreadsheet pull, a status board) that need
-Odin's rollouts without a person signing in. Three `GET` routes read; one `POST` route, `/api/v1/intake`,
+Odin's rollouts without a person signing in. Three `GET` routes read (rollouts with their custom fields,
+tasks and the links between them, milestones, asks and ratings, saved reports); one `POST` route, `/api/v1/intake`,
 lets the CRM hand over a won deal (below). Nothing else writes.
 Everything here is written from the code in `routes/tokens.py` (`token_required`,
 the three views), `routes/intake.py` and `services/intake.py` (the intake) and the data builders they call (`services/plan.py`,
 `services/report_data.py`); the tests are in `test_app.py`
 (`test_api_tokens_read_only_shown_once_revocable`) and `test_v18_projects.py`
-(`test_v1_report_carries_the_whole_report`); the intake's are in `test_v2_intake.py`.
+(`test_v1_report_carries_the_whole_report`); the intake's are in `test_v2_intake.py`, and the v2.0.0 additions (paging, task links, milestones, asks) in `test_v2_integrate.py`.
 
 ## Tokens
 
@@ -70,6 +71,13 @@ Every error is JSON `{"error": "<words>"}` with the status code.
 
 The active rollouts, oldest first (by `id`). `?all=1` also returns closed ones.
 
+**Paging (v2.0.0).** Without `limit` the answer is the whole set, as before. `?limit=N` (1 to 500) returns at
+most N rollouts and `?offset=M` (0 or more) skips the first M, in the same `id` order; both combine with
+`?all=1`. Every answer carries `total` (how many rollouts match, ignoring the page), `limit` (`null` when not
+asked for) and `offset`. A limit or offset that is not a whole number in range answers `400`
+(`limit: 1 to 500`, `offset: 0 or more`, `limit and offset are whole numbers`). To read everything in pages:
+start at `offset=0` and add `limit` until `offset >= total`.
+
 ```json
 {
   "projects": [
@@ -86,9 +94,13 @@ The active rollouts, oldest first (by `id`). `?all=1` also returns closed ones.
       "target_end_date": "2026-11-30",
       "created_at": "2026-09-01T07:10:44.120000",
       "updated_at": "2026-10-12T13:02:09.551000",
-      "owner": "Sam Rivera"
+      "owner": "Sam Rivera",
+      "fields": { "Region": "UAE", "Endpoints in scope": 220 }
     }
-  ]
+  ],
+  "total": 1,
+  "limit": null,
+  "offset": 0
 }
 ```
 
@@ -101,25 +113,48 @@ The active rollouts, oldest first (by `id`). `?all=1` also returns closed ones.
 | `vendor_name`, `product_name`, `po_number`, `start_date`, `target_end_date` | As entered; may be `null` |
 | `owner` | The project manager's display name |
 | `created_at`, `updated_at` | UTC timestamps |
+| `fields` | The rollout's custom fields (Settings → Rollouts & workflow → Custom fields) that have a value, by name: text, a number, a `YYYY-MM-DD` date, one of a choice field's choices, or `true`/`false`. Every field, not only those marked for the customer |
 
 "Active" means the current stage is not the last stage of the rollout's own list.
 
 ## `GET /api/v1/projects/<id>`
 
-One rollout with its stage list and tasks.
+One rollout with its stage list, tasks, milestones, and what was asked of the customer and partners.
 
 ```json
 {
   "project": { "...": "the fields above, plus", "stages": ["PO Received", "Scoping", "Kickoff", "Deployment", "Tuning/UAT", "Hypercare", "Sign-off", "Closed"] },
   "tasks": [
-    { "title": "Confirm rack space", "stage": "Kickoff", "done": true, "due_date": "2026-09-20", "assignee": "Priya Nair" }
-  ]
+    { "id": 41, "title": "Confirm rack space", "stage": "Kickoff", "done": true, "due_date": "2026-09-20", "assignee": "Priya Nair",
+      "kind": "task", "estimate_hours": 2, "recurrence": null, "waits_on": [] },
+    { "id": 42, "title": "Rack the firewalls", "stage": "Deployment", "done": false, "due_date": "2026-10-20", "assignee": "Priya Nair",
+      "kind": "task", "estimate_hours": 6, "recurrence": null, "waits_on": [41] }
+  ],
+  "milestones": [
+    { "id": 3, "name": "Cut-over weekend", "date": "2026-11-07", "stage": "Deployment", "customer_visible": true, "done": false, "done_at": null, "missed": false }
+  ],
+  "asks": [
+    { "id": 44, "title": "Upload the network diagram", "kind": "upload", "done": true, "done_at": "2026-10-02T08:11:00", "due_date": "2026-10-03",
+      "assignee": "Ann Lee", "assignee_role": "Customer", "category": "Design", "answers": [], "answered_by": "Ann Lee",
+      "answered_at": "2026-10-02T08:11:00", "file": "acme-network.pdf" }
+  ],
+  "csat": [ { "signoff_version": 1, "rating": 5, "comment": "Smooth cut-over", "by_name": "Ann Lee", "at": "2026-11-20T10:00:00" } ]
 }
 ```
 
 - `project.stages`: the rollout's stage names in order.
-- `tasks`: every task, oldest first. `stage` is the stage it belongs to, `done` a
-  boolean, `due_date` and `assignee` may be `null`. Tasks carry no id in this API.
+- `tasks`: every task, oldest first. `id` is the task's number (v2.0.0), `stage` the stage it belongs to, `done`
+  a boolean; `due_date`, `assignee`, `estimate_hours` (hours, for workload) and `recurrence` (`weekly`,
+  `fortnightly`, `monthly`) may be `null`. `kind` is `task`, or for a task asked of an outside party `upload`
+  or `form`. `waits_on` lists the ids of the tasks it waits on (finish-to-start, within the rollout); empty
+  when it waits on nothing.
+- `milestones`: the rollout's own dated commitments, open ones first by date, then those reached. `done_at` is
+  a UTC timestamp once reached; `missed` is true for an open one whose date has passed. `customer_visible`
+  says whether the customer sees it; the token sees them all.
+- `asks`: the tasks assigned to an outside account (customer or partner), with what came back: `answers` (a
+  form's `key`, `label`, `value`), who answered and when, and `file` (the uploaded document's name, while it is
+  not deleted).
+- `csat`: the customer's rating (1 to 5) and comment at each signed sign-off version, oldest first.
 - Closed rollouts can be read by id even though `/projects` hides them by default.
 
 ## `GET /api/v1/projects/<id>/report`
@@ -158,7 +193,10 @@ customer copy.
 | `pct_complete`, `elapsed_days`, `has_plan`, `baseline_at` | Progress by planned length, days since start, whether planned dates exist, when the baseline was frozen |
 | `finish` | `forecast`, `planned`, `baseline`, `target` (dates), `vs_target_days`, `vs_baseline_days`, `days_to_target` (calendar days; positive vs target means late) |
 | `stages` | Per stage: `id`, `name`, `position`, `sla_days`, `status` (`done`, `skipped`, `current` or `next`), `plan_start`, `plan_end`, `base_start`, `base_end`, `actual_start`, `actual_end`, `forecast_start`, `forecast_end`, `planned_days`, `actual_days`, `slip_days`, `suggested_start`, `suggested_end`. Lengths and `actual_days` count working days (calendar days when the workspace has switched working days off); `slip_days` is calendar days |
-| `milestones` | The current and next stages: `stage`, `start`, `end`, `planned_end` |
+| `milestones` | The current and next stages: `stage`, `start`, `end`, `planned_end`; on the current stage, `gate` names what holds the next move (open tasks, missing documents, required fields), when something does |
+| `project_milestones` | The rollout's own milestones, as in `GET /api/v1/projects/<id>` |
+| `fields` | The custom fields with a value: `name`, `kind`, `value`, `customer_visible` |
+| `asks`, `csat` | What was asked of the outside parties and their ratings at sign-off, as in `GET /api/v1/projects/<id>` (with the questions of a form) |
 | `raid` | The whole register, one object per item: `id`, `kind` (`risk`, `issue`, `decision`, `blocker`), `title`, `detail`, `impact`, `likelihood`, `status`, `owner_id`, `owner_name`, `due_date`, `stage`, `resolution`, `customer_visible`, `open`, and who and when it was raised |
 | `work` | `total`, `done`, `late`, `by_stage`, a weekly `burn` series, and the `open` tasks (up to 40) |
 | `team` | `name`, `role`, `active` per participant |
@@ -254,7 +292,7 @@ default, 1 to 100). The default project manager is told in the bell, and by emai
 ## What the API does not do
 
 No writes but the CRM intake, and no users, documents, notes, alerts, audit rows or settings,
-no portfolio report, no webhooks, no pagination (the list is the whole set), no
-filtering beyond `?all=1`. If a tool needs more, ask for a route; do not scrape the
+no portfolio report, no webhooks, no filtering beyond `?all=1`, and paging (`limit`, `offset`) only on
+`/api/v1/projects`. If a tool needs more, ask for a route; do not scrape the
 app's `/api/*` routes, which belong to the web pages, need a signed-in session and
 change with them.

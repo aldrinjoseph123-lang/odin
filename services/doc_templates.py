@@ -26,7 +26,8 @@ KINDS = {
         "label": "Rollout report", "title": "Rollout report",
         "sections": [("numbers", "Health and key numbers"), ("summary", "Summary, next steps, asks"), ("timeline", "Timeline and stage table"),
                      ("raid", "Risks, issues, decisions, blockers"), ("work", "Work, people and open tasks"), ("history", "Stage history and approvals"),
-                     ("plan_changes", "What moved in the plan (internal)"), ("notes", "Notes"), ("team", "Team")],
+                     ("plan_changes", "What moved in the plan (internal)"), ("notes", "Notes"),
+                     ("asks", "Asks of the customer and their rating (internal)"), ("team", "Team")],
         "texts": [("intro", "Opening text", "Printed under the title."), ("closing", "Closing text", "Printed at the end, e.g. contacts or a disclaimer.")],
     },
     "portfolio": {

@@ -104,7 +104,7 @@ type raises `db.SCHEMA_VERSION`; boot deletes only names listed in `RETIRED_PERM
 warns). Dev and UAT bind to 127.0.0.1 (set `HOST=0.0.0.0` to open them) and, without `SECRET_KEY`, keep
 a private key in `DATA_DIR/secret_key`. Python tests: `test_app test_fix_logic test_fix_security
 test_release_safety test_scheduler_ops test_v18_identity test_v18_notify test_v18_projects test_v18_ops
-test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_resend test_v2_fields test_v2_deps test_v2_small test_v2_gates test_v2_intake test_v2_workload test_v2_milestones test_v2_selfserve test_v2_tools test_v2_rules test_v2_notify test_v2_lead test_v18_meta` (every `test_*.py` is named in `ci.yml` and
+test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_resend test_v2_fields test_v2_deps test_v2_small test_v2_gates test_v2_intake test_v2_workload test_v2_milestones test_v2_selfserve test_v2_tools test_v2_rules test_v2_notify test_v2_lead test_v2_integrate test_v18_meta` (every `test_*.py` is named in `ci.yml` and
 `scripts/ci_local.sh` too; `test_v18_meta` fails if one is missing). `scripts/ci_local.sh` runs everything CI
 runs, for a release while GitHub Actions is unavailable. Two generated guards fail on drift:
 `tests/golden_routes.json` (every route x role) and `frontend/src/lib/__contract__/` (the API answers

@@ -1,0 +1,126 @@
+{
+ "actions": {
+  "add_raid": "Add a RAID item",
+  "add_task": "Add a task from a template task",
+  "notify": "Tell people (bell and email)",
+  "set_field": "Set a field",
+  "teams": "Post to Teams"
+ },
+ "conditions": {
+  "client": "Client is",
+  "delivery_mode": "Delivery mode is",
+  "field": "Field equals",
+  "stage": "Stage is"
+ },
+ "events": {
+  "ask_completed": "A customer or partner completes an ask",
+  "document_uploaded": "A document is uploaded",
+  "field_set": "A custom field is set",
+  "milestone_missed": "A milestone is missed",
+  "rollout_created": "A rollout is created",
+  "stage_declined": "The customer declines a stage",
+  "stage_entered": "A rollout enters a stage",
+  "stage_sla_breached": "A stage goes over its SLA",
+  "task_overdue": "A task becomes overdue"
+ },
+ "keep_days": 90,
+ "max": 50,
+ "options": {
+  "categories": [
+   "Client PO",
+   "Deliverable"
+  ],
+  "delivery_modes": [
+   "Distribution/MSSP",
+   "Outsourced"
+  ],
+  "fields": [
+   {
+    "choices": [
+     "UAE",
+     "KSA"
+    ],
+    "id": 1,
+    "kind": "choice",
+    "name": "Region"
+   },
+   {
+    "choices": [],
+    "id": 2,
+    "kind": "number",
+    "name": "Endpoints in scope"
+   }
+  ],
+  "raid_kinds": [
+   "risk",
+   "issue"
+  ],
+  "raid_levels": [
+   "low",
+   "medium"
+  ],
+  "roles": [
+   "Project manager",
+   "Sales"
+  ],
+  "stages": [
+   "Closed",
+   "Deployment"
+  ],
+  "template_tasks": [
+   {
+    "id": 1,
+    "label": "Generic \u203a PO Received \u203a Confirm the PO and the scope with the customer"
+   },
+   {
+    "id": 2,
+    "label": "Generic \u203a PO Received \u203a Send the kick-off pack"
+   }
+  ],
+  "users": [
+   {
+    "id": 1,
+    "name": "Admin"
+   },
+   {
+    "id": 6,
+    "name": "Lena Fischer"
+   }
+  ]
+ },
+ "rules": [
+  {
+   "actions": [
+    {
+     "email": false,
+     "kind": "notify",
+     "message": "Book the deployment window with the customer.",
+     "roles": [
+      "Project manager",
+      "Coordinator"
+     ],
+     "user_ids": []
+    }
+   ],
+   "conditions": [
+    {
+     "kind": "stage",
+     "value": "Deployment"
+    }
+   ],
+   "created_at": "2026-09-26T19:20:30.781154",
+   "created_by": "Admin",
+   "event": "stage_entered",
+   "event_config": {},
+   "id": 1,
+   "last_run": {
+    "at": "2026-10-10T19:20:30.781154",
+    "ok": true
+   },
+   "name": "Deployment starts: tell the team",
+   "paused": false,
+   "runs": 1,
+   "updated_at": "2026-09-26T19:20:30.781154"
+  }
+ ]
+}

@@ -37,14 +37,14 @@
    }
   ],
   "audience": "internal",
-  "baseline_at": "2026-09-20T18:40:28.282908",
+  "baseline_at": "2026-09-20T19:20:30.781154",
   "company": "Protect24x7",
   "csat": [],
   "documents": [
    {
     "category": "Client PO",
     "filename": "po.pdf",
-    "uploaded_at": "2026-10-16T18:40:27.656755",
+    "uploaded_at": "2026-10-16T19:20:30.220865",
     "uploaded_by": "Admin"
    }
   ],
@@ -72,7 +72,7 @@
    "vs_baseline_days": 7,
    "vs_target_days": -13
   },
-  "generated_at": "2026-10-16T18:40:28.916829",
+  "generated_at": "2026-10-16T19:20:31.388116",
   "has_plan": true,
   "health": {
    "confidence": "low",
@@ -107,13 +107,13 @@
    "notes": [
     {
      "author": "Admin",
-     "created_at": "2026-10-16T16:40:28.282908",
+     "created_at": "2026-10-16T17:20:30.781154",
      "note": "Customer asked to add the branch office; PO amendment requested.",
      "stage": "Sensor pilot"
     },
     {
      "author": "Omar Haddad",
-     "created_at": "2026-09-27T09:40:28.282908",
+     "created_at": "2026-09-27T10:20:30.781154",
      "note": "Pilot group live, no issues in 48 h.",
      "stage": "Sensor pilot"
     }
@@ -137,7 +137,7 @@
    "approval": null,
    "tasks": [
     {
-     "created_at": "2026-10-16T18:40:27.926452",
+     "created_at": "2026-10-16T19:20:30.447376",
      "done": false,
      "done_at": null,
      "due_date": null,
@@ -149,7 +149,7 @@
      "who_role": "Customer"
     },
     {
-     "created_at": "2026-10-16T18:40:27.931193",
+     "created_at": "2026-10-16T19:20:30.451033",
      "done": false,
      "done_at": null,
      "due_date": null,
@@ -182,7 +182,7 @@
   "plan_changes": [
    {
     "author": "Priya Menon",
-    "created_at": "2026-10-15T18:40:28.282908",
+    "created_at": "2026-10-15T19:20:30.781154",
     "field": "end",
     "new": "2026-12-02",
     "old": "2026-11-27",
@@ -191,7 +191,7 @@
    },
    {
     "author": "Priya Menon",
-    "created_at": "2026-10-13T18:40:28.282908",
+    "created_at": "2026-10-13T19:20:30.781154",
     "field": "end",
     "new": "2026-12-02",
     "old": "2026-11-27",
@@ -216,7 +216,7 @@
   },
   "project_milestones": [
    {
-    "created_at": "2026-10-16T18:40:28.282908",
+    "created_at": "2026-10-16T19:20:30.781154",
     "created_by": "Priya Menon",
     "customer_visible": false,
     "date": "2026-10-13",
@@ -229,7 +229,7 @@
     "stage": "Sensor pilot"
    },
    {
-    "created_at": "2026-10-16T18:40:28.282908",
+    "created_at": "2026-10-16T19:20:30.781154",
     "created_by": "Priya Menon",
     "customer_visible": true,
     "date": "2026-10-28",
@@ -244,8 +244,8 @@
   ],
   "raid": [
    {
-    "closed_at": "2026-10-01T18:40:28.282908",
-    "created_at": "2026-10-01T18:40:28.282908",
+    "closed_at": "2026-10-01T19:20:30.781154",
+    "created_at": "2026-10-01T19:20:30.781154",
     "created_by": "Priya Menon",
     "customer_visible": true,
     "detail": null,
@@ -262,7 +262,7 @@
     "stage": "Sensor pilot",
     "status": "closed",
     "title": "Waiting on firewall change approval",
-    "updated_at": "2026-10-01T18:40:28.282908"
+    "updated_at": "2026-10-01T19:20:30.781154"
    }
   ],
   "stages": [
@@ -375,7 +375,7 @@
    "late": 1,
    "open": [
     {
-     "created_at": "2026-10-16T18:40:27.761757",
+     "created_at": "2026-10-16T19:20:30.323738",
      "done": false,
      "done_at": null,
      "due_date": "2026-10-12",
@@ -387,7 +387,7 @@
      "who_role": "Coordinator"
     },
     {
-     "created_at": "2026-10-16T18:40:27.764951",
+     "created_at": "2026-10-16T19:20:30.326752",
      "done": false,
      "done_at": null,
      "due_date": "2026-10-19",

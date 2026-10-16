@@ -215,11 +215,12 @@ def projects_export_csv():
     )
 
 
-def _rollout_csv(project_id, what, header, rows):
+def _rollout_csv(project, what, header, rows):
     """One rollout's register as a download: audited like the other exports,
     and formula-safe through safe_csv_writer. Staff only: a partner's cut of the
-    RAID and tasks is on the page and in the customer report, not in a file."""
-    project = load_project(project_id)
+    RAID and tasks is on the page and in the customer report, not in a file.
+    The caller loads the project (load_project) before it reads any rows."""
+    project_id = project["id"]
     output = io.StringIO()
     writer = safe_csv_writer(output)
     writer.writerow(header)
@@ -236,9 +237,10 @@ def raid_export_csv(project_id):
     if session.get("kind") == "external":
         abort(403)
     from services import raid
+    project = load_project(project_id)   # visibility first, then the rows
     rows = [[r["kind"], r["title"], r["detail"], r["impact"], r["likelihood"], r["status"], r["owner_name"], r["due_date"], r["stage"],
              r["resolution"], "yes" if r["customer_visible"] else "", r["created_by"], r["created_at"], r["closed_at"]] for r in raid.items(project_id)]
-    return _rollout_csv(project_id, "raid", ["Kind", "Title", "Detail", "Impact", "Likelihood", "Status", "Owner", "Due date", "Stage",
+    return _rollout_csv(project, "raid", ["Kind", "Title", "Detail", "Impact", "Likelihood", "Status", "Owner", "Due date", "Stage",
                                              "Resolution", "Shown to the customer", "Created by", "Created at", "Closed at"], rows)
 
 
@@ -259,7 +261,7 @@ def tasks_export_csv(project_id):
     rows = [[t["title"], t["stage"] if t["stage"] in stages else project["stage"], t["assignee_name"], t["due_date"], "yes" if t["done"] else "", t["done_at"],
              t["estimate_hours"], t["recurrence"], "; ".join(title.get(i, "") for i in links.get(t["id"], [])), t["kind"] or "task", t["created_by"], t["created_at"]]
             for t in tasks]
-    return _rollout_csv(project_id, "tasks", ["Task", "Stage", "Assignee", "Due date", "Done", "Done at", "Estimate hours", "Repeats", "Waits on", "Kind", "Created by", "Created at"], rows)
+    return _rollout_csv(project, "tasks", ["Task", "Stage", "Assignee", "Due date", "Done", "Done at", "Estimate hours", "Repeats", "Waits on", "Kind", "Created by", "Created at"], rows)
 
 
 @app.route("/reports/all")
@@ -1440,6 +1442,14 @@ def task_add(project_id):
     if waits:
         from services import task_links
         task_links.replace(db, project_id, cur.lastrowid, waits)
+    if form.get("blocks"):   # the tasks that wait on this one (the undo of a delete gives their links back)
+        from services import task_links
+        try:
+            raw = form.get("blocks") if request.is_json else [x for x in form.getlist("blocks") if x]
+            task_links.add_successors(db, project_id, cur.lastrowid, task_links.clean_ids(raw))
+        except ValueError as exc:
+            db.rollback()
+            return _task_reply(project_id, str(exc).replace("waits_on", "blocks"))
     touch_project(db, project_id)
     db.commit()
     _notify_assignee(assignee_id, project_id, title)

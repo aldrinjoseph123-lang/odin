@@ -573,6 +573,7 @@ export type ProjectExtras = {
   details: Record<string, string | null>
   customer_approval: boolean
   guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean; guest_links_expire: string | null
+  intake_pending?: boolean   // a CRM intake waiting for a project manager (staff only)
   stage_rows: ({ id: number; name: string; sla_days: number | null } & StageGate)[]
   participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean; avatar_url: string | null }[]
   notes: { id: number; author: string; note: string; stage: string; created_at: string; mine: boolean; edited: boolean; stage_entry: boolean }[]
@@ -833,7 +834,8 @@ export type ProjectFormData = {
 export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/project-form${query ? `?${query}` : ""}`)
 
 // ---- tasks: the same Flask routes the project page posts as forms ----
-export type TaskLinks = { waits_on?: number[]; estimate_hours?: number | null; recurrence?: Recurrence | null; recur_until?: string | null }
+// blocks (add only): the tasks that wait on the new one, as the undo of a delete gives them back
+export type TaskLinks = { waits_on?: number[]; blocks?: number[]; estimate_hours?: number | null; recurrence?: Recurrence | null; recur_until?: string | null }
 export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null; done?: boolean; done_at?: string | null } & TaskLinks & TaskAsk) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)
 // done: the state wanted, never a blind flip (a tick from a stale tab must not reopen the task)

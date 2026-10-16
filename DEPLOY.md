@@ -184,6 +184,36 @@ The VM needs outbound HTTPS to `api.resend.com`. If Resend refuses a message
 (over the daily limit, a revoked key), Odin uses Microsoft 365 when it is
 connected and tells the admins in the bell once a day.
 
+### CRM intake (optional, v2.0.0)
+
+The CRM hands a won deal to Odin with `POST /api/v1/intake`; Odin makes a pending rollout that a project
+manager confirms. The contract (every key, every answer) is `docs/API_V1.md`.
+
+1. In Odin, **Settings → Integrations → Intake**: set the stage template and the default project manager a new
+   intake gets (blank: the first template and the first active Admin), and the rate limit (30 a minute per
+   token by default).
+2. Press **Create intake token**, name it after the CRM (the name is the *source* shown on every intake) and
+   copy the token: it is shown once and only its hash is kept. It has the `create` scope, which opens the
+   intake and nothing else; a read token cannot post and an intake token cannot read.
+3. To accept only named CRMs, list their token names under *allowed sources* (blank lets every `create`
+   token in).
+4. In the CRM, call `https://odin.yourdomain/api/v1/intake` with `Authorization: Bearer <token>` and the deal
+   as JSON. Use the CRM's deal id as `deal_id`: a retry after a timeout then answers with the same rollout.
+5. Check the last ten calls under the same settings card. To retire the CRM, revoke its token there.
+
+The request must reach Odin: from the LAN, the VM's address works; through the tunnel, `/api/v1` needs a
+Cloudflare Access bypass or service token if Access is ever put in front of Odin.
+
+### Personal calendar feeds (v2.0.0)
+
+Staff can subscribe to their own tasks, targets and milestones from Outlook or any calendar app (Account →
+Calendar feed). Nothing to install: the address is `https://odin.yourdomain/feeds/calendar/<token>.ics`, made,
+rotated and switched off by the person (each audited), stored only as a hash, dead the moment the account is
+deactivated, and limited to `ics_feed_per_hour` reads an hour (Settings → Notifications). Outlook on the web
+and phone calendars fetch it from their own servers on the internet, so the path must be reachable through the
+tunnel without a sign-in (it is, as long as no Cloudflare Access policy covers `/feeds/`). Partners and
+customers get no feed.
+
 ### Upgrades: the self-updater
 
 Production updates itself. `deploy/odin-update.sh`, installed outside the

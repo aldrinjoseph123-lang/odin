@@ -201,10 +201,10 @@ test("@smoke the sign-in page says what is missing and what is wrong", async ({ 
   await expect(page).toHaveURL(/\/dashboard/)
 })
 
-test("@smoke the / shortcut can be switched off on the Account page (WCAG 2.1.4)", async ({ page }) => {
+test("@smoke the single-key shortcuts (/, ?, 1-4) can be switched off on the Account page (WCAG 2.1.4)", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "member", "/account")
-  const slash = page.getByRole("switch", { name: "Press / to open search" })
+  const slash = page.getByRole("switch", { name: "Single-key shortcuts" })
   await slash.click()
   await expect(slash).toHaveAttribute("aria-checked", "false")
   await page.locator("main").click({ position: { x: 4, y: 4 } })
@@ -263,6 +263,11 @@ test("@smoke crm intake: the seeded deal waits in the flow and its own list view
   await page.goto("/projects")
   await page.getByRole("button", { name: /^Pending intake/ }).click()
   await expect(page.getByRole("region", { name: "Pending intake" }).getByRole("button", { name: "Confirm Branch SD-WAN refresh" })).toBeVisible()
+  // its own page says it waits, with Confirm
+  const pending = await (await page.request.get("/api/intake/pending")).json() as { rows: { id: number; name: string }[] }
+  await page.goto(`/projects/${pending.rows.find((r) => r.name === "Branch SD-WAN refresh")!.id}`)
+  await expect(page.getByRole("status").filter({ hasText: "waiting for a project manager" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Confirm…" })).toBeVisible()
   await page.goto("/settings/integrations")
   await expect(page.getByRole("region", { name: "CRM intake" })).toBeVisible()
   await expect(page.getByRole("table", { name: "Recent intake calls" }).getByText("201 Created").first()).toBeVisible()

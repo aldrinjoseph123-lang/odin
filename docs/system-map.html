@@ -336,7 +336,7 @@ details.change .also { margin: 6px 0 0 14px; display: flex; gap: 6px; flex-wrap:
 
   <!-- LIFECYCLE -->
   <section class="view" id="lifecycle" role="tabpanel" aria-labelledby="t-lifecycle" hidden>
-    <p class="lede">One rollout from creation to purge. Amber diamonds are gates that can stop it. The red dashed line is the old vendor guest link, a second way to move stages that skips the checks.</p>
+    <p class="lede">One rollout from creation to purge. Amber diamonds are gates that can stop it (the stage gates, the customer's approval, the sign-off). The red dashed line is the old vendor guest link, a second way to move stages that skips the checks.</p>
     <div class="grid2">
       <div class="diagram" id="life-diagram"></div>
       <aside class="panel detail" id="life-detail" aria-live="polite"></aside>
@@ -814,6 +814,26 @@ const LOOPS = [
     impact: "Production quietly stuck on an old release or a full disk.",
     fix: "deploy/odin-update.sh state and backoff; ops-notices read by the scheduler; disk check.",
     ref: "deploy/odin-update.sh; scheduler.py; docs/RUNBOOK.md", on: ["vm", "scheduler"] },
+  { id: 64, sev: "low", area: "Access", title: "The CRM intake takes rollouts from the internet with a bearer token",
+    what: "POST /api/v1/intake makes a pending rollout for anyone holding a token of the create scope; the token rides in a header from the CRM, through the tunnel, with no sign-in or Access in front.",
+    impact: "A leaked intake token can fill the Pending intake list (and the default project manager's bell) with made-up deals until it is revoked. It cannot read anything, confirm a rollout, start its stages, reach a customer or touch an existing rollout.",
+    fix: "Limits in place: the create scope opens this route only (a read token cannot post, an intake token cannot read); only the SHA-256 is stored; an allowed-sources list by token name; intake_rate_per_min per token (429 with Retry-After); every key typed and capped, unknown keys refused, contacts held to the partner domains; the deal id makes a retry return the same rollout; pending rollouts sit in no lane, count, alert or report until a project manager attaches the PO; every call logged (newest 200) and every rollout made audited under the token's name. Left: revoke and re-issue by hand if the CRM leaks it; there is no IP allow-list.",
+    ref: "routes/intake.py; services/intake.py; routes/tokens.py token_required; docs/API_V1.md", on: ["scripts", "app"] },
+  { id: 65, sev: "low", area: "Security", title: "Customers and partners upload files and answer forms",
+    what: "An ask of the upload kind lets an outside account put a file into the rollout's documents; a form ask stores their typed answers. Both come from accounts signed in by an emailed link.",
+    impact: "A file is checked for its type, size and that its contents match its extension, but not scanned for malware; a colleague who opens it trusts it. Answers are shown as text to staff.",
+    fix: "Limits in place: only the person the ask is on, only on their own ask, only into the category the ask names (the general upload stays with the project manager and Coordinators); upload_types and upload_max_mb apply; contents sniffed against the extension; writes rate-limited per account (guest_writes_per_minute); each answer checked against its question's kind (at most ask_form_max_questions); answers are escaped wherever they are drawn; every upload and finished ask audited and told to the project manager. Left: no antivirus (a clamd sidecar is the next layer).",
+    ref: "routes/projects.py document_upload; routes/asks.py; services/asks.py; security.py content_matches_extension", on: ["partners", "app"] },
+  { id: 66, sev: "low", area: "Access", title: "Calendar feeds are read by a secret address",
+    what: "A staff member's calendar feed (/feeds/calendar/<token>.ics) needs no sign-in: Outlook and phone calendars fetch it from their own servers, so the token in the address is the whole credential.",
+    impact: "A forwarded or leaked address shows that person's open task titles and the names, targets and milestones of their rollouts until they rotate or switch it off. It shows no notes, documents, customers' asks or anyone else's tasks.",
+    fix: "Limits in place: staff only (partners and customers get no feed); read only; only the SHA-256 is stored and the address is shown once; rotating or switching off kills the old address at once; a deactivated account's feed answers 404; ics_feed_per_hour reads an hour per feed; Cache-Control: no-store; making, rotating and switching off are audited. Left: no expiry of its own.",
+    ref: "routes/feeds.py; services/ics.py", on: ["anyone", "app"] },
+  { id: 67, fixed: "v2.0.0", done: "Rules reach staff and Teams only, never the customer, and never move a stage; only Admins (manage_rules) write them; a rule's own actions start no other rule (depth 1); conditions the alert pass finds fire once per rule and only for what arose after the rule was made or resumed; at most rules_max rules with ten conditions and ten actions each; every firing is a run-log row and an audit row; a failing action is caught and logged, never breaking the user's request.", sev: "medium", area: "Access", title: "Automations act on rollouts without a person",
+    what: "A rule fires on an event (a stage entered, an SLA breached, an ask completed, a document uploaded…) and tells people, adds tasks or RAID items, sets fields or posts to Teams on its own.",
+    impact: "Without limits a rule could mail a customer internal words, chain into a loop of rules, flood the bell with the past, or move a rollout with nobody accountable.",
+    fix: "services/rules.py: STAFF_ROLES for the people told, no stage action, the quiet context for depth 1, event_key and the made-or-resumed time for scanned triggers, the run log.",
+    ref: "services/rules.py; routes/rules.py", on: ["app"] },
 ];
 const SEV_ORDER = { high: 0, medium: 1, low: 2, decision: 3 };
 const byId = Object.fromEntries(LOOPS.map((l) => [l.id, l]));
@@ -989,16 +1009,18 @@ const ARCH = {
 
 // ---------- lifecycle ----------
 const LIFE = {
-  "lc-create": { kind: "Step 1", title: "Create the project", text: "Staff with 'create project' fill the form. The client PO is required and checked for type and content.", points: ["Stages copied from the chosen template (each project then owns its list)", "Two guest links minted (customer, vendor)", "The creator becomes project manager; someone who cannot move stages names one and joins as a Coordinator", "Owner told by email and Teams (not connected), audit row written"], refs: ["routes/projects.py:313-407"] },
+  "lc-create": { kind: "Step 1", title: "Create the project", text: "Staff with 'create project' fill the form. The client PO is required and checked for type and content.", points: ["Stages copied from the chosen template (each project then owns its list)", "Two guest links minted (customer, vendor)", "The creator becomes project manager; someone who cannot move stages names one and joins as a Coordinator", "Owner told by email and Teams (not connected), audit row written", "Custom fields filled in (a required one is refused when empty)", "Template tasks become real tasks: the role they land on, a due offset from the stage's start, an estimate, what they wait on"], refs: ["routes/projects.py:313-407", "services/fields.py", "services/template_tasks.py"] },
+  "lc-intake": { kind: "Side door", title: "CRM intake", text: "The in-house CRM posts a won deal to POST /api/v1/intake with a create-scope token. Odin makes a pending rollout: its stage list but no stage started, held by the default project manager.", points: ["Pending: in the Flow's holding lane, the Pending intake view and a banner on its own page; in no lane, count, alert, dashboard figure, report or /api/v1 read", "A project manager confirms it by attaching the client PO and taking ownership (or discards it); it then starts like any new rollout, template tasks included", "The deal id is the key: a retry answers with the same rollout", "Typed and capped body, partner-domain contacts, a rate limit per token, every call logged"], refs: ["routes/intake.py", "services/intake.py", "docs/API_V1.md"] },
+  "lc-stagegate": { kind: "Gate", title: "Stage gates", text: "A stage may ask that all its tasks are done and that documents of named categories are on file before the rollout leaves it. Every move path (the rail, the Kanban, the API, the vendor link) checks it next to the sign-off gate; only a move forward, and a jump answers for every stage it passes.", points: ["An Admin, or the project manager while gate_override allows it, moves past with a typed reason: audited, and a staff note in the stage history", "The vendor link never overrides and hears only that the move waits on the team; the customer never sees gate internals", "Staff see what holds the move on the flow row, the rollout and the internal report; a gate due to be left is a health reason"], refs: ["services/gates.py", "routes/projects.py change_stage"] },
   "lc-plan": { kind: "Step 2", title: "Plan and baseline", text: "Planned start and end per stage. The first save freezes the baseline; every later move is logged with its reason, and re-baselining needs one.", points: ["Forecast chains actual, current and remaining stages", "Lengths count working days minus holidays", "Health in plan words (On track / At risk / Off track) with reasons", "Edited in the project's Plan panel or by dragging bars on the Flow's Gantt (same PUT, same reason rule; /api/flow/plan reads every rollout's plan at once, staff only)"], refs: ["services/plan.py", "services/workdays.py", "frontend/src/pages/FlowGantt.tsx"] },
   "lc-stages": { kind: "Step 3 · repeats", title: "Move through the stages", text: "The project manager moves the project on. Each move writes a history note, notifies the team and Teams, and can be undone by its author inside the undo window.", points: ["Needs 'edit project stage' and the project manager role (Admins always)", "From the rollout's rail or by dragging its card on the Flow's Kanban — next stage only, the same confirm (MoveConfirm) and the same route", "Optional: the customer approves each move (recorded, the move is not blocked)", "SLA per stage, measured in working days; alerts sync every 15 minutes"], refs: ["routes/projects.py:567-616", "services/alerts.py", "frontend/src/pages/FlowKanban.tsx"] },
-  "lc-work": { kind: "Alongside", title: "Daily work", text: "Tasks, documents, risks and notes hang off the project while it moves.", points: ["Tasks and RAID: project manager and Coordinators; assignees tick their own", "Documents: project manager and Coordinators upload; everyone on it downloads", "Notes: anyone on it; @mentions notify; partners see only customer-visible notes"], refs: ["routes/projects.py:723-1390", "routes/api.py:1047-1110"] },
-  "lc-reports": { kind: "Alongside", title: "Reports", text: "The live report is built from the project; 'save as version' freezes data and words. Partners see saved versions only, cut on the server. The portfolio report and the weekly email read the same structure.", points: ["PDFs use the chosen document template", "Weekly email on the days and time set in Settings"], refs: ["services/report_data.py", "services/weekly_report.py"] },
-  "lc-signoff": { kind: "Step 4", title: "Sign-off", text: "The project manager sends a version; it is frozen (canonical JSON plus a SHA-256 fingerprint). The customer signs or rejects; staff countersign; the signed PDF is mailed.", points: ["A rejection opens an issue in RAID", "Fallbacks: upload a scanned signed copy, or an Admin waiver with a reason", "A sent version is never edited: withdraw and send again"], refs: ["routes/signoff.py", "services/signoff.py"] },
+  "lc-work": { kind: "Alongside", title: "Daily work", text: "Tasks, documents, risks and notes hang off the project while it moves.", points: ["Tasks and RAID: project manager and Coordinators; assignees tick their own", "Documents: project manager and Coordinators upload; everyone on it downloads", "Notes: anyone on it; @mentions notify; partners see only customer-visible notes", "Tasks wait on tasks (finish-to-start, one rollout, never a loop), carry estimates and repeat (the next one copies what it waits on)", "Asks: a task on a customer, reseller or contractor is theirs alone (a tick, an upload into a named category, or a short form); they see only their own", "Milestones: dated commitments, some shown to the customer; one passing undone is an alert", "Automations: a trigger and conditions, then tell staff, add a task or RAID item, set a field or post to Teams; never the customer, never a stage", "Workload: hours per person per week against capacity; a hand-over on deactivation moves open work"], refs: ["routes/projects.py:723-1390", "routes/api.py:1047-1110", "services/task_links.py", "services/asks.py", "services/milestones.py", "services/rules.py", "services/workload.py"] },
+  "lc-reports": { kind: "Alongside", title: "Reports", text: "The live report is built from the project; 'save as version' freezes data and words. Partners see saved versions only, cut on the server. The portfolio report and the weekly email read the same structure.", points: ["PDFs use the chosen document template", "Weekly email on the days and time set in Settings, with milestones missed or due and who is over capacity", "Both cuts carry custom fields and milestones (the customer's: theirs only); the internal cut adds the gate that holds the next move and the asks with their answers and ratings", "/api/v1 reads fields, task links, milestones, asks and ratings for scripts (staff view)"], refs: ["services/report_data.py", "services/report_pdf.py", "services/weekly_report.py", "routes/tokens.py"] },
+  "lc-signoff": { kind: "Step 4", title: "Sign-off", text: "The project manager sends a version; it is frozen (canonical JSON plus a SHA-256 fingerprint). The customer signs or rejects; staff countersign; the signed PDF is mailed.", points: ["A rejection opens an issue in RAID", "Fallbacks: upload a scanned signed copy, or an Admin waiver with a reason", "A sent version is never edited: withdraw and send again", "As they sign, the customer may rate the rollout 1 to 5 (once per version; internal only)", "A version waiting for its signature is chased after chase_after_days working days"], refs: ["routes/signoff.py", "services/signoff.py", "services/asks.py", "services/chasers.py"] },
   "lc-gate": { kind: "Gate", title: "Sign-off gate", text: "The final stage is refused until the sign-off is complete, while 'A signed sign-off closes a project' is on. Every stage-move path calls the gate.", refs: ["services/signoff.py:134 gate()"] },
   "lc-closed": { kind: "Step 5", title: "Closed", text: "The project leaves the active views, stays readable and reportable, and keeps its sign-off and history." },
   "lc-purge": { kind: "End", title: "Delete and purge", text: "Deleting is soft: the project can be undone inside the undo window. The nightly housekeeping then purges it, its children and its files.", refs: ["db.py:93-130 cleanup_soft_deletes"] },
-  "lc-guest": { kind: "Side door", title: "Vendor guest link", text: "A link with no sign-in. The vendor can add notes and move the project to its next stage (never the final one). Since v1.3.0 the move goes through the normal stage-change path.", points: ["Sign-off gate, history entry, customer approval when asked", "The team and Teams hear of it; only a staff mover can undo their own move"], refs: ["routes/guest.py", "routes/projects.py change_stage"] },
+  "lc-guest": { kind: "Side door", title: "Vendor guest link", text: "A link with no sign-in. The vendor can add notes and move the project to its next stage (never the final one). Since v1.3.0 the move goes through the normal stage-change path.", points: ["Sign-off gate, stage gates, history entry, customer approval when asked", "A stage gate holds it like any move; it never overrides and hears no internals", "The team and Teams hear of it; only a staff mover can undo their own move"], refs: ["routes/guest.py", "routes/projects.py change_stage"] },
   "lc-approval": { kind: "Gate", title: "Customer approval (optional)", text: "When the project asks for it, each move creates a pending approval for the Customer on the team. The decision is recorded, noted and audited; the stage has already moved.", refs: ["routes/projects.py:658-690"] },
 };
 (function life() {
@@ -1015,6 +1037,7 @@ const LIFE = {
     <path d="M580 60 C 600 20, 470 20, 490 58" class="edge accent" marker-end="url(#lf-aa)"/>
     <text x="496" y="30" class="t-small t-muted">repeats per stage</text>
     ${diamond("lc-approval", 519, 214, "approval")}
+    ${diamond("lc-stagegate", 606, 214, "gates")}
     ${box("lc-signoff", 646, 60, 176, 92, "4 · Sign-off", ["frozen + SHA-256", "customer signs", "staff countersign"])}
     ${diamond("lc-gate", 880, 106, "gate")}
     ${box("lc-closed", 940, 60, 110, 92, "5 · Closed", ["final stage"])}
@@ -1022,9 +1045,10 @@ const LIFE = {
     ${box("lc-work", 330, 300, 250, 110, "Daily work (alongside)", ["tasks · documents", "risks & issues (RAID)", "notes · @mentions"])}
     ${box("lc-reports", 620, 300, 250, 110, "Reports (alongside)", ["live · saved versions", "customer cut on server", "portfolio · weekly email"])}
     ${box("lc-guest", 20, 330, 220, 80, "Vendor guest link", ["no sign-in", "next stage only"])}
+    ${box("lc-intake", 20, 176, 124, 76, "CRM intake", ["pending until", "a PM confirms"])}
     ${e("M190 106 H220", "accent", "aa")} ${e("M392 106 H422", "accent", "aa")} ${e("M614 106 H644", "accent", "aa")}
     ${e("M822 106 H838", "accent", "aa")} ${e("M920 106 H938", "accent", "aa")} ${e("M1050 106 H1068", "dash")}
-    ${e("M519 152 V180", "dash")}
+    ${e("M519 152 V180", "dash")} ${e("M606 152 V180", "dash")} ${e("M82 176 V154", "dash")}
     ${e("M455 298 V154", "dash")} ${e("M745 298 V154", "dash")}
     <path d="M130 328 C 130 250, 380 220, 440 154" class="edge dash" marker-end="url(#lf-a)"/>
     <text x="150" y="252" class="t-small t-muted">same path since v1.3.0</text>
@@ -1059,9 +1083,9 @@ const NOTIF = [
   ["Sign-off", "Countersigned (complete)", "Everyone on the project; signed PDF to signer, countersigner, owner", "B", "E", "-", "PDF ignores email choices; the customer's copy has no signing record", 4],
   ["Sign-off", "Scanned copy uploaded", "Everyone on the project", "B", "E", "-", "", null],
   ["Sign-off", "Waived by an Admin", "The owner", "B", "E", "-", "", null],
-  ["Schedules", "New alert (overdue, due soon, over SLA, stale; approval waiting, blocker open, overdue task with no owner, customer task overdue)", "The owner and the staff on the project", "B", "E", "TW", "Email and Teams per alert type (off by default); carries the AI's reason and first move when one was written in the last 36 h", 12],
+  ["Schedules", "New alert (overdue, due soon, over SLA, stale; approval waiting, blocker open, overdue task with no owner, customer task overdue)", "The owner and the staff on the project", "B", "E", "TW", "Email and Teams per alert type (off by default); carries the AI's reason and first move when one was written in the last 36 h; also milestone missed (v2.0.0)", 12],
   ["Schedules", "Daily digest", "Admins (everything) and each project manager (their rollouts); Teams", "B", "E", "T", "Honours each person's email choices", 12],
-  ["Schedules", "Weekly report", "Chosen roles and extra addresses; Teams", "-", "E", "TW", "When switched on; ignores the email switch; PDFs to staff accounts only", 5],
+  ["Schedules", "Weekly report", "Chosen roles and extra addresses; Teams", "-", "E", "TW", "When switched on; ignores the email switch; PDFs to staff accounts only; carries milestones missed or due and who is over capacity", 5],
   ["Access", "Microsoft first sign-in (asks for access)", "All Admins", "B", "E", "-", "", null],
   ["Access", "Sign-up link used", "All Admins", "B", "E", "-", "", null],
   ["Access", "Emergency password sign-in", "All Admins", "B", "E", "-", "Only while Microsoft sign-in is required", null],
@@ -1075,6 +1099,15 @@ const NOTIF = [
   ["AI", "AI features fail validation", "All Admins", "B", "E", "-", "The features switch themselves off until they pass", null],
   ["AI", "Morning brief", "Each person with open rollouts, working days at the set time", "B", "E", "-", "Its own kind (brief); written by AI from Odin's figures", null],
   ["AI", "AI noticed things in the notes the register does not hold", "The project manager", "B", "-", "-", "Night shift only, never when asked for on the page; bell only", null],
+  ["Project", "CRM intake arrived (pending)", "The default project manager", "B", "E", "-", "Kind assigned; in no count until confirmed", 64],
+  ["Project", "CRM intake confirmed by someone else", "The project manager named", "B", "E", "-", "", null],
+  ["Project", "Event on a followed rollout (stage, activity, alert, milestone)", "Staff who follow it", "B", "E", "-", "A muted rollout: the bell only, marked muted", null],
+  ["Project", "Chaser: a stage approval still waits", "The Customer", "B", "E", "-", "After chase_after_days working days, then every as many, at most chase_max", null],
+  ["Sign-off", "Chaser: the sign-off still waits for its signature", "The signer", "B", "E", "-", "As above; the project manager sees the count", null],
+  ["Work", "Ask done (a tick, an upload, a form)", "The project manager", "B", "E", "-", "Fires the ask_completed trigger", 65],
+  ["Work", "Automation tells people", "Named staff or project roles on the rollout (staff only)", "B", "E", "TW", "Its own kind (automation); never the customer", 67],
+  ["Schedules", "Milestone missed (alert)", "The owner and the staff on the project", "B", "E", "TW", "Its own kind (milestone) and alert type; in the bell by default", null],
+  ["Schedules", "Daily summary", "Each person who chose 'in the daily summary' for a kind", "-", "E", "-", "At the digest time; the bell had each event at once", null],
 ];
 const SILENT = ["An access request declined (the account stays inactive, so there is no bell to reach)", "An alert clears (the Alerts page shows it)"];
 let notifGroup = "All";
@@ -1122,7 +1155,7 @@ function renderNotif() {
     ${box(660, 92, 200, 70, "Email", ["needs Microsoft 365; skipped", "for kinds the person muted"], "off")}
     ${box(660, 178, 200, 56, "Teams channel", ["needs Microsoft 365"], "off")}
     ${box(660, 246, 200, 48, "Teams webhook", ["works today"])}
-    ${box(920, 44, 180, 200, "Settings that gate it", ["Email on/off (Notifications)", "Teams on/off", "each person's email choices", "alert types: in-app, email,", "Teams per type", "digest time, working days,", "holidays, report schedule"])}
+    ${box(920, 44, 180, 200, "Settings that gate it", ["Email on/off (Notifications)", "Teams on/off", "each person's choice per kind:", "at once, daily summary, off", "mute / follow per rollout", "alert types: in-app, email, Teams", "digest time, working days,", "holidays, report schedule", "every mail: the reader's next step"])}
     ${e("M220 80 H298", "accent", "aa")} ${e("M220 110 C 260 110, 260 160, 298 160", "accent", "aa")} ${e("M220 130 C 250 200, 260 244, 298 244", "accent", "aa")}
     ${e("M560 60 H658")} ${e("M560 80 C 610 80, 610 120, 658 124", "")}
     ${e("M560 150 C 610 150, 610 124, 658 130", "")} ${e("M560 160 C 610 170, 610 200, 658 204", "")} ${e("M560 180 C 620 220, 620 262, 658 266", "")}
@@ -1144,7 +1177,8 @@ function renderNotif() {
     ["Manage contacts and partners", "A", ""],
     ["Manage integrations (Microsoft 365, backups, guest-link switch)", "A", ""],
     ["Manage settings (all of Settings, audit log, API tokens)", "A", "A"],
-    ["Manage users (roles, approvals, resets, two-step reset)", "A", "A"],
+    ["Manage users (roles, approvals, resets, two-step reset, capacity, access review, hand-over)", "A", "A"],
+    ["Write automations (Settings › Automations)", "A", ""],
   ];
   const code = { Admin: "A", Member: "M", Contributor: "C", Viewer: "V", External: "E" };
   $("#role-table").innerHTML = `<thead><tr><th>Permission</th>${R.map((r) => `<th class="c">${r}</th>`).join("")}</tr></thead><tbody>${P.map(([p, who, locked]) =>
@@ -1154,11 +1188,13 @@ function renderNotif() {
   const A = [
     ["Edit the project, its team, partner invitations, guest links, plan and baseline, scope; save report versions; send the sign-off", "Edit projects", "PM", null],
     ["Move stages; undo your own move", "Move stages", "PM", 10],
-    ["Tasks, risks and issues", "Edit projects", "PM CO", null],
+    ["Move past a stage gate with a typed reason (Admins always; the PM while gate_override allows it); edit the rollout's gates", "Move stages", "PM", null],
+    ["Tasks, risks and issues; milestones; asks of the customer and partners (a task assigned to them)", "Edit projects", "PM CO", null],
     ["Upload documents (delete also needs 'delete documents')", "Edit / upload", "PM CO", 3],
     ["Read, add notes, tick your own tasks", "—", "PM CO SA CT RS CU", null],
+    ["Answer your own asks: a tick, an upload into the asked category, a form", "—", "CT RS CU", 65],
     ["Approve or decline a stage move", "—", "CU", 14],
-    ["Sign or reject the sign-off", "—", "RS CU", null],
+    ["Sign or reject the sign-off (the customer may also rate the rollout)", "—", "RS CU", null],
   ];
   const pc = { "Project manager": "PM", Coordinator: "CO", Sales: "SA", Contractor: "CT", Reseller: "RS", Customer: "CU" };
   $("#proj-table").innerHTML = `<thead><tr><th>Action on a project</th><th>Also needs</th>${PR.map((r) => `<th class="c">${r}</th>`).join("")}</tr></thead><tbody>${A.map(([a, need, who, loop]) =>
@@ -1169,10 +1205,14 @@ function renderNotif() {
     ["Staff (any role)", `every project, whether on it or not ${mkBtn(27)}`],
     ["Partners and customers", "only the projects they are on; reports, plans, risks, contacts and documents cut for them (Client PO internal)"],
     ["Guest link holder", `one project: its stages and customer-visible notes ${mkBtn(1)}`],
-    ["API token", `what staff see, read-only ${mkBtn(24)}`],
+    ["API token", `what staff see, read-only ${mkBtn(24)}; an intake token (create scope) only makes pending rollouts ${mkBtn(64)}`],
+    ["Pending CRM intake", "staff only: the holding lane, the Pending intake view, its own page; confirmed by someone who may create projects"],
+    ["Calendar feed", `its owner's own tasks, targets and milestones; staff only ${mkBtn(66)}`],
+    ["Workload, People, following a rollout", "staff only; muting a rollout: anyone on it"],
+    ["Gates, ratings, automations, other parties' asks", "staff only; an outside account sees its own asks"],
     ["Time on Odin", "your own always; others' only for the roles chosen in Settings (Admins and Members)"],
   ].map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("");
-  $("#adminonly").innerHTML = ["Stage templates, document categories, alert settings", "Document templates", "Sign-up links", "Microsoft 365 connection", "Sign-off waiver", `Settings menu shown to the Admin role only ${mkBtn(23)}`].map((s) => `<li>${s}</li>`).join("");
+  $("#adminonly").innerHTML = ["Stage templates (with their gates and template tasks), document categories, alert settings", "Custom fields", "Intake defaults and intake tokens", "Document templates", "Sign-up links", "Microsoft 365 connection", "Sign-off waiver", `Settings menu shown to the Admin role only ${mkBtn(23)}`].map((s) => `<li>${s}</li>`).join("");
 
   const e = (d, cls = "", m = "a") => `<path d="${d}" class="edge ${cls}" marker-end="url(#pk-${m})"/>`;
   const box = (x, y, w, h, t, lines, cls = "box") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" class="${cls}"/><text x="${x + 12}" y="${y + 22}" class="t-title">${esc(t)}</text>${lines.map((l, i) => `<text x="${x + 12}" y="${y + 41 + i * 16}" class="t-small t-muted">${esc(l)}</text>`).join("")}`;

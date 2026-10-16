@@ -3,7 +3,8 @@
 An admin names a token and picks how long it lives; the token is shown once
 and only its SHA-256 is stored. A script sends it as
 `Authorization: Bearer <token>` to the /api/v1 endpoints below, which read
-projects, their stages and tasks, and saved reports — never write. A token
+projects (with their custom fields), their stages, tasks and task links,
+milestones, asks and ratings, and saved reports — never write. A token
 sees what internal staff see (every project). Behind Cloudflare Access,
 /api/v1 needs its own Access policy (a service token) to be reachable.
 """
@@ -102,29 +103,61 @@ def _project_json(p, fields):
                               "po_number", "start_date", "target_end_date", "created_at", "updated_at")} | {"owner": p["owner_name"], "fields": fields}
 
 
+PAGE_MAX = 500   # ponytail: a fixed cap, not a policy; a page larger than this is a scrape, not a report
+
+
+def _page_args():
+    """(limit, offset) from ?limit=&offset=; limit None (the whole set) when not asked for. ValueError says why."""
+    raw_limit, raw_offset = request.args.get("limit"), request.args.get("offset")
+    try:
+        limit = None if raw_limit in (None, "") else int(raw_limit)
+        offset = 0 if raw_offset in (None, "") else int(raw_offset)
+    except ValueError:
+        raise ValueError("limit and offset are whole numbers") from None
+    if limit is not None and not 1 <= limit <= PAGE_MAX:
+        raise ValueError(f"limit: 1 to {PAGE_MAX}")
+    if offset < 0:
+        raise ValueError("offset: 0 or more")
+    return limit, offset
+
+
 @app.route("/api/v1/projects")
 @token_required
 def api_v1_projects():
-    """Active projects (?all=1 includes closed ones)."""
+    """Active projects (?all=1 includes closed ones); ?limit=&offset= pages them (the whole set by default)."""
+    try:
+        limit, offset = _page_args()
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     where = "" if request.args.get("all") == "1" else f" AND {PROJECT_OPEN_SQL}"
-    rows = get_db().execute(
-        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL AND p.intake_pending = 0" + where + " ORDER BY p.id").fetchall()
+    base = "FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL AND p.intake_pending = 0" + where
+    db = get_db()
+    total = db.execute("SELECT COUNT(*) " + base).fetchone()[0]
+    page = "" if limit is None and not offset else f" LIMIT {limit if limit is not None else -1} OFFSET {offset}"   # ints, checked above
+    rows = db.execute("SELECT p.*, u.name AS owner_name " + base + " ORDER BY p.id" + page).fetchall()
     named = named_values([p["id"] for p in rows])
-    return jsonify(projects=[_project_json(p, named[p["id"]]) for p in rows])
+    return jsonify(projects=[_project_json(p, named[p["id"]]) for p in rows], total=total, limit=limit, offset=offset)
 
 
 @app.route("/api/v1/projects/<int:project_id>")
 @token_required
 def api_v1_project(project_id):
-    """One project with its stage list and tasks."""
+    """One project with its stage list, tasks (with what each waits on), milestones,
+    and the asks of the customer and partners with their sign-off ratings."""
+    from services import asks, milestones, task_links
     p = load_project(project_id)
     if p["intake_pending"]:   # an intake not yet confirmed is not a rollout to the readers
         abort(404)
     db = get_db()
-    tasks = db.execute("SELECT t.title, t.stage, t.done, t.due_date, u.name AS assignee FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
-                       "WHERE t.project_id = ? ORDER BY t.id", (project_id,)).fetchall()
+    tasks = db.execute("SELECT t.id, t.title, t.stage, t.done, t.due_date, t.kind, t.estimate_hours, t.recurrence, u.name AS assignee "
+                       "FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id WHERE t.project_id = ? ORDER BY t.id", (project_id,)).fetchall()
+    links = task_links.links_for(project_id, db)
+    marks = [{k: m[k] for k in ("id", "name", "date", "stage", "customer_visible", "done", "done_at", "missed")} for m in milestones.items(project_id)]
+    ask_rows = [{k: a[k] for k in ("id", "title", "kind", "done", "done_at", "due_date", "assignee", "assignee_role", "category", "answers", "answered_by", "answered_at")}
+                | {"file": a["file"]["filename"] if a["file"] else None} for a in asks.listing(project_id)]
     return jsonify(project=_project_json(p, named_values([project_id])[project_id]) | {"stages": get_stage_names(project_id)},
-                   tasks=[dict(t) | {"done": bool(t["done"])} for t in tasks])
+                   tasks=[dict(t) | {"done": bool(t["done"]), "kind": t["kind"] or "task", "waits_on": links.get(t["id"], [])} for t in tasks],
+                   milestones=marks, asks=ask_rows, csat=asks.ratings(project_id))
 
 
 @app.route("/api/v1/projects/<int:project_id>/report")

@@ -71,6 +71,22 @@ def replace(db, project_id, task_id, deps):
                    [(project_id, task_id, d) for d in deps])
 
 
+def add_successors(db, project_id, task_id, successors):
+    """Make each of `successors` (tasks of this rollout) wait on task_id too, keeping
+    what they already wait on: the undo of a deleted task gives back the links of
+    the tasks that waited on it. Raises ValueError (nothing written for that one)
+    on a task of another rollout or a loop. The caller commits, or rolls back."""
+    if not successors:
+        return
+    marks = ",".join("?" for _ in successors)
+    if db.execute(f"SELECT COUNT(*) FROM tasks WHERE project_id = ? AND id IN ({marks})", (project_id, *successors)).fetchone()[0] != len(successors):
+        raise ValueError("Only tasks of the same rollout can wait on this one")
+    for b in successors:
+        deps = list(dict.fromkeys(links_for(project_id, db).get(b, []) + [task_id]))
+        check(db, project_id, b, deps)
+        replace(db, project_id, b, deps)
+
+
 def forget(db, task_id):
     """A deleted task's links, both ways: what waited on it is free."""
     db.execute("DELETE FROM task_links WHERE task_id = ? OR depends_on_task_id = ?", (task_id, task_id))

@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Tag } from "@/components/ui/tag"
-import { ApiError, confirmIntake, pendingIntake, postForm, type PendingIntake as Meta, type PendingIntakeRow } from "@/lib/api"
+import { ApiError, confirmIntake, pendingIntake, postForm, type FormReply, type PendingIntake as Meta, type PendingIntakeRow } from "@/lib/api"
 import { askConfirm } from "@/lib/confirm"
 import { fmtDate } from "@/lib/format"
 import { danger, field as fieldLook } from "@/lib/ui"
@@ -38,6 +38,27 @@ export function PendingView() {
       {!data ? <p className="text-[13px] text-muted-foreground">Loading…</p>
         : data.rows.length === 0 ? <EmptyState>No intake is waiting. Deals the CRM sends appear here until a project manager confirms them.</EmptyState>
           : <Lane rows={data.rows} meta={data} onChanged={reload} bare />}
+    </div>
+  )
+}
+
+// The rollout's own page while it is a pending intake: one line saying so, with Confirm
+// (for those who may create a rollout) and Discard (for those who may delete it).
+export function IntakeBanner({ projectId, canDiscard, onConfirmed }: { projectId: number; canDiscard: boolean; onConfirmed: (messages: string[]) => unknown }) {
+  const navigate = useNavigate()
+  const { data } = useLoad(`intake-pending:${projectId}`, pendingIntake)
+  const [open, setOpen] = useState(false)
+  const row = data?.rows.find((r) => r.id === projectId)
+  if (!row) return null
+  return (
+    <div className="px-5 pt-3">
+      <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-muted/40 px-3 py-2 text-[13px]">
+          <span className="min-w-0 flex-1"><Inbox className="mr-1.5 inline size-3.5 align-[-2px]" aria-hidden />
+            A deal from {row.source ?? "the CRM"}{row.deal_id ? ` (${row.deal_id})` : ""}, waiting for a project manager. It counts in no flow, alert or report until it is confirmed.</span>
+          {(data?.can_confirm || canDiscard) && <Button size="sm" variant="outline" onClick={() => setOpen(true)}>{data?.can_confirm ? "Confirm…" : "Discard…"}</Button>}
+      </div>
+      {open && <ConfirmDialog row={row} meta={data} canDiscard={canDiscard} onClose={() => setOpen(false)}
+        onDiscarded={() => navigate("/projects?view=pending")} onConfirmed={(r) => { setOpen(false); void onConfirmed(r.messages) }} />}
     </div>
   )
 }
@@ -71,7 +92,9 @@ function Lane({ rows, meta, onChanged, bare }: { rows: PendingIntakeRow[]; meta:
   )
 }
 
-function ConfirmDialog({ row, meta, onClose, onDiscarded }: { row: PendingIntakeRow; meta: Meta | null; onClose: () => void; onDiscarded: () => void }) {
+function ConfirmDialog({ row, meta, onClose, onDiscarded, canDiscard = true, onConfirmed }: {
+  row: PendingIntakeRow; meta: Meta | null; onClose: () => void; onDiscarded: () => void; canDiscard?: boolean; onConfirmed?: (r: FormReply) => void
+}) {
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -82,7 +105,8 @@ function ConfirmDialog({ row, meta, onClose, onDiscarded }: { row: PendingIntake
     setBusy(true); setErr(null)
     try {
       const r = await confirmIntake(row.id, new FormData(e.currentTarget))
-      navigate(r.location ?? `/projects/${row.id}`)
+      if (onConfirmed) onConfirmed(r)   // already on the rollout's page: it reloads in place
+      else navigate(r.location ?? `/projects/${row.id}`)
     } catch (x) { setErr(x instanceof ApiError ? x.message : "Could not confirm that rollout"); setBusy(false) }
   }
   async function discard() {
@@ -121,7 +145,7 @@ function ConfirmDialog({ row, meta, onClose, onDiscarded }: { row: PendingIntake
           {!canConfirm && <Notice bad>Your role cannot confirm a rollout. Ask a project manager.</Notice>}
           {err && <Notice bad>{err}</Notice>}
           <DialogFooter>
-            <Button type="button" variant="ghost" className={danger} disabled={busy} onClick={() => void discard()}>Discard</Button>
+            {canDiscard && <Button type="button" variant="ghost" className={danger} disabled={busy} onClick={() => void discard()}>Discard</Button>}
             <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
             <Button type="submit" loading={busy} disabled={!canConfirm}>{needLead ? "Confirm" : "Confirm and take ownership"}</Button>
           </DialogFooter>

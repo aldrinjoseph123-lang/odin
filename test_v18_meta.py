@@ -676,6 +676,9 @@ class ApiContractTestCase(Meta):
         ("ProjectFormData", "/api/project-form", None), ("LessonsData", "/api/projects/1/lessons", None),
         ("TwoStep", "/api/account/two-step", None),
         ("IntakeSettingsData", "/api/settings/intake", None), ("PendingIntake", "/api/intake/pending", None),
+        # v2.0.0: asks and ratings, custom fields, automations, what's new, one week's load
+        ("AsksData", "/api/projects/1/asks", None), ("FieldsData", "/api/fields", None), ("RulesData", "/api/rules", None),
+        ("WhatsNew", "/api/whats-new", None), ("WorkloadWeek", "/api/workload/week?date={day}", None),
     ]
 
     @classmethod
@@ -724,7 +727,7 @@ class ApiContractTestCase(Meta):
             os.makedirs(self.DIR, exist_ok=True)
         drift = []
         for type_name, path, pick in self.ENDPOINTS:
-            r = c.get(path.format(month=month))
+            r = c.get(path.format(month=month, day=datetime.utcnow().strftime("%Y-%m-%d")))
             self.assertEqual(r.status_code, 200, f"{path} answered {r.status_code}")
             body = r.get_json()
             sample = self._trim(body[pick] if pick else body)

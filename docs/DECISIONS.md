@@ -12,6 +12,16 @@ is in the change log (Settings → System map & changes).
 
 ## October 2026
 
+- **16 Oct**: Moving past a stage gate is for an Admin and, while policy `gate_override` says so (the default), the rollout's project manager, always with a typed reason; it is audited and kept in the stage history as a staff note. The vendor link never overrides, and the customer never sees gate internals. Where: `services/gates.py`, PRODUCT.md "Stage gates".
+- **16 Oct**: Automations reach staff and Teams only, never the customer, and never move a stage; a rule's own actions start no other rule (depth 1); only Admins write them. Where: `services/rules.py`, PRODUCT.md "Automations".
+- **16 Oct**: Capacity is hours per week (policy default 30, a per-person override on the Users page), from task estimates plus an allowance per managed rollout. Hours and counts only, never money. Where: `services/workload.py`, PRODUCT.md "Workload".
+- **16 Oct**: Customer satisfaction is one rating (1 to 5, optional comment) given when the customer signs the sign-off, once per version; it is internal (People, the internal report, the portfolio), never in a customer cut. Where: `services/asks.py`, PRODUCT.md "Customer self-service".
+- **16 Oct**: The CRM intake contract: `POST /api/v1/intake` with a token of the `create` scope (which opens nothing else), the deal id as the idempotency key, every key typed and capped, contacts held to the partner domains, a rate limit per token; the result is a pending rollout a project manager confirms with the PO. No vendor connector. Where: `docs/API_V1.md`, `services/intake.py`.
+- **16 Oct**: Resend carries sign-in mail only (sign-in links, password resets, address confirmations, invitations), falling back to Microsoft 365 when it refuses; notifications, the digest and reports stay on Microsoft 365. Where: DEPLOY.md "Sign-in mail through Resend", `services/resend.py`.
+- **16 Oct**: The outsider task cut: a customer, reseller or contractor sees only the tasks assigned to them (their asks), on the rollout, the flow and in mail, never the team's tasks. Where: `services/asks.py`, `routes/api.py` (the flow detail), PRODUCT.md "Customer self-service".
+- **16 Oct**: Dependencies are finish-to-start between tasks of one rollout, never a loop; template tasks bring roles, due offsets and one link each. No full critical path. Where: `services/task_links.py`, `services/template_tasks.py`.
+- **16 Oct**: `/api/v1/projects` pages with `limit` (1 to 500) and `offset` when asked; without them it answers the whole set, as before, plus a `total`. Where: `docs/API_V1.md`.
+
 - **15 Oct**: A release that adds a table, column, permission or alert type raises `db.SCHEMA_VERSION`; older code on a newer database skips its destructive boot steps, so the updater's rollback is safe. Where: CLAUDE.md "Adding a table", `db.py`.
 - **15 Oct**: Dev and UAT listen on 127.0.0.1 only (set `HOST` to open them) and keep a private key in `DATA_DIR/secret_key` when no `SECRET_KEY` is set. Where: CLAUDE.md "Adding a table".
 - **13 Oct**: v1.7.0 (design round 2, the alias, the Odin PMS Teams app, then the Flow views) is held on `dev` until the owner says go; it was released on 14 Oct (tag `v1.7.0`, hand-tagged because CI could not start). Where: `git show v1.7.0`, `docs/review-2026-10-14.md`.

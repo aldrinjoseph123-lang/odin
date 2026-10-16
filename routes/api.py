@@ -870,6 +870,8 @@ def api_project(project_id):
     return jsonify({
         "id": project["id"], "name": project["name"], "owner_id": project["owner_id"],
         "guest_links_enabled": guest_on,
+        # a CRM intake waiting for a project manager (services/intake.py): the page says so and offers Confirm (staff only)
+        "intake_pending": bool(project["intake_pending"]) and not external,
         "details": {f: project[f] for f in fields},
         "customer_approval": bool(project["customer_approval"]),
         "guest_links": {
