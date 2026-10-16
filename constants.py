@@ -81,7 +81,7 @@ NOTIFICATION_KINDS = {
     "assigned": "Tasks assigned to me",
     "access": "Sign-in requests and emergency password sign-ins (admins)",
     "ai": "AI server down or back, and AI features that failed validation (admins)",
-    "ops": "Scheduled jobs that failed and backups that are overdue (admins)",
+    "ops": "Scheduled jobs that failed, backups that are overdue, and mail or Teams messages Odin could not send (admins)",
     "mention": "When someone mentions me in a note",
     "due": "A daily reminder of my tasks due today or overdue",
     "nudge": "A note a colleague sends me from the People page",
@@ -91,9 +91,12 @@ NOTIFICATION_KINDS = {
 
 # Kinds only admins receive, so only admins see them on the Account page.
 ADMIN_KINDS = ("access", "ai", "ops")
+# Kinds only staff receive (People page notes, the AI morning brief): partner and customer accounts never see them.
+STAFF_KINDS = ("nudge", "brief")
 
 THEMES = ("system", "light", "dark")
-# Pastel accents, red first and the default (9 Oct 2026); overdue stays the solid --bad state.
+# Pastel accents (9 Oct 2026); blue the default again since 10 Oct (policy default_accent), as red read
+# as overdue. Overdue stays the solid --bad state.
 ACCENTS = ("red", "blue", "indigo", "violet", "teal", "green", "sky", "plum", "ink")
 AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 AVATAR_MAX_BYTES = 2 * 1024 * 1024
@@ -182,6 +185,8 @@ NEW_PROJECT_COLUMNS = {
     "vendor_name": "TEXT",
     "product_name": "TEXT",
     "access_token": "TEXT",
+    # when the guest links were last minted (rotation); NULL = since created_at. They expire per guest_link_days
+    "guest_tokens_at": "TEXT",
     "deleted_at": "TEXT",
 }
 

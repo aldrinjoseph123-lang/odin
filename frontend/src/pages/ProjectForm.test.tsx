@@ -20,8 +20,8 @@ describe("ProjectForm", () => {
     const user = userEvent.setup()
     render(<MemoryRouter initialEntries={["/projects/7/edit"]}><Routes><Route path="/projects/:id/edit" element={<ProjectForm user={admin} />} /></Routes></MemoryRouter>)
     const save = await screen.findByRole("button", { name: "Save changes" })
-    await waitFor(() => expect(save).toBeDisabled())   // the snapshot is taken one render after load
+    await waitFor(() => expect(save).toHaveAttribute("aria-disabled", "true"))   // the snapshot is taken one render after load
     await user.click(screen.getByRole("checkbox", { name: /Ask the customer contact to approve/ }))
-    expect(save).toBeEnabled()
+    expect(save).toHaveAttribute("aria-disabled", "false")
   })
 })

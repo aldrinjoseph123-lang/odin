@@ -115,6 +115,14 @@ export function lateBy(due: string, today: string): number {
   return Number.isNaN(d) ? 0 : Math.max(0, d)
 }
 
+// How a late forecast reads (review P2-51): nothing when it meets the target
+// or there is no target, amber while the target date is still ahead, red only
+// once the target itself has passed. One rule for the Plan panel and both reports.
+export function forecastTone(vsTargetDays: number | null | undefined, target: string | null | undefined, today: string): "ok" | "warn" | "bad" {
+  if (vsTargetDays == null || vsTargetDays <= 0) return "ok"
+  return target && today > target ? "bad" : "warn"
+}
+
 // "Next up": the current stage's work first, then the earliest due date,
 // undated last; ties keep the list's own order.
 export function nextUp<T extends { stage: string; due_date: string | null }>(open: T[], stage: string): T | undefined {
@@ -394,3 +402,12 @@ export function timelineSummary(start: string, today: string, target?: string | 
   const when = late ? `${n(late)} late` : left ? `${n(left)} left` : "due today"
   return `${head} · target ${fmtDate(target)}, ${when}`
 }
+
+// A "YYYY-MM-DD" that is a real day (31 Feb is not) / a "YYYY-MM" month: the calendar's address bar
+// is the person's to edit, so what it carries is checked before it is used.
+export const isDay = (v: string | null): v is string => {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
+  const t = Date.parse(`${v}T00:00:00Z`)
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v
+}
+export const isMonth = (v: string | null): v is string => !!v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v)

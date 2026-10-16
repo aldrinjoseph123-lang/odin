@@ -7,7 +7,7 @@ from markupsafe import escape
 import os
 import secrets as _secrets
 
-from flask import abort, flash, redirect, render_template, request, send_from_directory, session, url_for
+from flask import abort, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from core import app, login_required
@@ -19,10 +19,15 @@ from security import (
     issue_login_link,
     login_account_paused,
     login_is_blocked,
+    mail_flooded,
     password_problem,
     rate_limited,
+    recheck_password,
     record_login_attempt,
+    take_link,
+    unknown_name,
     valid_email,
+    verify_link_row,
 )
 from services.audit import audit_log
 from spa import spa_index
@@ -43,9 +48,11 @@ def attempt_login(username, password):
     if not isinstance(username, str) or not isinstance(password, str) or "\x00" in username or len(username) > 200 or len(password) > 1000:
         return False, "Bad username or password"
     too_many = f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
-    if login_is_blocked(username):
-        return False, too_many
     user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    # a name no account has is counted and audited as a keyed hash, never as typed (review P3-4)
+    key = username if user else unknown_name(username)
+    if login_is_blocked(key):
+        return False, too_many
     # One password hash on every path, so the answer takes as long whether or not
     # the name exists, and an account's state shows only to its password (test report SEC-7).
     has_hash = bool(user) and "$" in user["password_hash"]
@@ -69,12 +76,12 @@ def attempt_login(username, password):
         return False, "Bad username or password"
     # A Microsoft-created account has no password hash at all ("microsoft:no-password").
     if not pw_ok:
-        record_login_attempt(username, success=False)
+        record_login_attempt(key, success=False)
         # Failed attempts are evidence too — login_attempts is purged after
         # a week, the audit trail is not.
-        audit_log("login_failure", "user", user["id"] if user else None, username, actor=username)
+        audit_log("login_failure", "user", user["id"] if user else None, key, None if user else "unknown username", actor=key)
         # guessed from many addresses: a wrong password hears "paused"; the right one still works
-        return False, too_many if login_account_paused(username) else "Bad username or password"
+        return False, too_many if login_account_paused(key) else "Bad username or password"
     from routes.sso import sso_enforced
     if sso_enforced() and not user["password_login"]:
         # Staff use Microsoft; only accounts an admin flagged keep a password.
@@ -130,12 +137,11 @@ def start_session(user):
     session["epoch"] = user["session_epoch"]
     session.permanent = True  # opt into the idle cap; the absolute cap is checked per request
     get_db().execute("UPDATE users SET last_login_at = ?, last_seen_at = ? WHERE id = ?", (session["login_at"], session["login_at"], user["id"]))
+    get_db().execute("DELETE FROM login_attempts WHERE username = ?", (f"reauth:{user['id']}",))   # a fresh sign-in: wrong current passwords start again
     get_db().commit()
 
 
-def send_login_link(user, raw_token, invited_by=None, project_name=None, project_id=None):
-    """Email the link; returns (ok, error). Never raises."""
-    import graph
+def _login_link_html(raw_token, invited_by=None, project_name=None, project_id=None):
     from core import external_url
     from policies import policy
     link = external_url("auth_link_consume", token=raw_token,
@@ -144,12 +150,58 @@ def send_login_link(user, raw_token, invited_by=None, project_name=None, project
     # is HTML going into a mail client.
     intro = (f"{escape(invited_by)} added you to the rollout <b>{escape(project_name)}</b> in Odin." if project_name
              else "Here is your Odin sign-in link.")
-    html = (f"<p>{intro}</p><p><a href=\"{link}\">Sign in to Odin</a></p>"
+    return (f"<p>{intro}</p><p><a href=\"{link}\">Sign in to Odin</a></p>"
             f"<p>The link works once and expires in {policy('link_minutes')} minutes. If it has expired, request a new one from the sign-in page.</p>")
+
+
+def send_login_link(user, raw_token, invited_by=None, project_name=None, project_id=None):
+    """Email the link; returns (ok, error). Never raises."""
+    import graph
     try:
-        return graph.send_mail(user["email"], "Your Odin sign-in link", html)
+        return graph.send_mail(user["email"], "Your Odin sign-in link", _login_link_html(raw_token, invited_by, project_name, project_id))
     except Exception as exc:  # network / token errors must not break the invite
         return False, str(exc)
+
+
+def mail_after_reply(to, subject, html):
+    """Send once the reply has gone, so a request for a known address answers
+    as fast as one for an unknown address (review P3-3: a timing oracle). The
+    link's token stays in memory, never in the outbox table. SEND_MAIL_INLINE
+    (the tests) sends at once."""
+    import graph
+    from flask import after_this_request, current_app
+    app_ = current_app._get_current_object()
+
+    def send():
+        with app_.app_context():
+            try:
+                graph.send_mail(to, subject, html)
+            except Exception as exc:  # noqa: BLE001 — delivery failure must not reveal anything
+                app.logger.warning("mail after a reply (%s) failed: %s", subject, exc)
+
+    if app_.config.get("SEND_MAIL_INLINE"):
+        return send()
+
+    @after_this_request
+    def later(response):
+        response.call_on_close(send)
+        return response
+
+
+def send_verification(user_id):
+    """Mail a one-time link that proves the account's address (review P2-3),
+    audited. False when mail is off or the account has no address."""
+    from core import external_url
+    from policies import policy
+    user = get_db().execute("SELECT id, username, email FROM users WHERE id = ?", (user_id,)).fetchone()
+    if user is None or not user["email"] or _mail_off():
+        return False
+    link = external_url("auth_link_consume", token=issue_login_link(user_id, purpose="verify"), verify=1)
+    mail_after_reply(user["email"], "Confirm your email address for Odin",
+                     f"<p>Confirm that <b>{escape(user['email'])}</b> is your address in Odin.</p><p><a href=\"{link}\">Confirm my address</a></p>"
+                     f"<p>The link works once and expires in {policy('link_minutes')} minutes. If you did not ask for this, ignore this mail: nothing changes.</p>")
+    audit_log("email_verification_sent", "user", user_id, user["username"], user["email"], actor=None if session.get("user_id") else user["username"])
+    return True
 
 
 def _mail_off():
@@ -172,15 +224,15 @@ def auth_link_request():
             flash("Enter the email address you were invited with", "error")
         elif _mail_off():
             flash("This workspace does not send email yet — ask your project manager for a sign-in link", "error")
-        elif rate_limited(f"link:{email}", 3, 15):
-            flash("Too many requests for that address — wait a few minutes and try again", "error")
+        elif rate_limited(f"link:{email}", 3, 15) or mail_flooded(email):
+            flash("Too many requests for that address — wait a while, or ask your project manager to send you a sign-in link", "error")
         else:
             from policies import email_domain_allowed
             user = get_db().execute(
                 "SELECT * FROM users WHERE lower(email) = ? AND kind = 'external' AND active = 1", (email,)
             ).fetchone()
             if user and email_domain_allowed(email):
-                send_login_link(user, issue_login_link(user["id"]))
+                mail_after_reply(user["email"], "Your Odin sign-in link", _login_link_html(issue_login_link(user["id"])))
             audit_log("login_link_requested", "user", user["id"] if user else None, email, actor=email)
             flash("If that address is on a rollout, a sign-in link is on its way")
         return redirect(url_for("auth_link_request"))
@@ -199,7 +251,7 @@ def auth_reset_request():
         flash("Enter the email address on your account", "error")
     elif _mail_off():
         flash("This workspace does not send email yet — ask an admin to reset your password", "error")
-    elif rate_limited(f"reset:{email}", 3, 15):
+    elif rate_limited(f"reset:{email}", 3, 15) or mail_flooded(email):
         flash("Too many requests for that address — wait a few minutes and try again", "error")
     else:
         from routes.sso import sso_enforced
@@ -211,18 +263,14 @@ def auth_reset_request():
             # Microsoft account must not mint itself a password outside its tenant's controls (P2-2)
             user = None
         if user:
-            import graph
             raw = issue_login_link(user["id"], purpose="reset")
             from core import external_url
             from policies import policy
             link = external_url("auth_reset_form", token=raw)
-            html = (f"<p>Someone asked to reset the password for <b>{escape(user['username'])}</b> in Odin.</p>"
-                    f'<p><a href="{link}">Choose a new password</a></p>'
-                    f"<p>The link works once and expires in {policy('link_minutes')} minutes. If this was not you, ignore this mail: nothing changes.</p>")
-            try:
-                graph.send_mail(user["email"], "Reset your Odin password", html)
-            except Exception as exc:   # delivery failure must not reveal anything
-                print(f"[auth_reset_request] mail failed: {exc}")
+            mail_after_reply(user["email"], "Reset your Odin password",
+                             f"<p>Someone asked to reset the password for <b>{escape(user['username'])}</b> in Odin.</p>"
+                             f'<p><a href="{link}">Choose a new password</a></p>'
+                             f"<p>The link works once and expires in {policy('link_minutes')} minutes. If this was not you, ignore this mail: nothing changes.</p>")
         audit_log("password_reset_requested", "user", user["id"] if user else None, email, actor=email)
         flash("If that address belongs to an account, a reset link is on its way")
     return redirect(url_for("auth_reset_request"))
@@ -249,12 +297,14 @@ def auth_reset_form(token):
         flash(problem, "error")
         return redirect(url_for("auth_reset_form", token=token))
     db = get_db()
-    now = datetime.utcnow().isoformat()
+    if not take_link(row):   # a second request with the same link, a moment later: only one wins (review P3-2)
+        audit_log("password_reset_rejected", details="link used by another request", actor="link")
+        flash("That reset link is invalid or has expired — request a new one", "error")
+        return redirect(url_for("auth_reset_request"))
     db.execute(
         "UPDATE users SET password_hash = ?, must_change_password = 0, session_epoch = session_epoch + 1 WHERE id = ?",
         (generate_password_hash(new_password, method="pbkdf2:sha256"), row["user_id"]),
     )
-    db.execute("UPDATE login_links SET used_at = ? WHERE id = ?", (now, row["id"]))
     db.commit()
     user = db.execute("SELECT username FROM users WHERE id = ?", (row["user_id"],)).fetchone()
     audit_log("password_reset_by_link", "user", row["user_id"], user["username"], actor=user["username"])
@@ -269,6 +319,8 @@ def auth_link_consume(token):
     person ever clicked it. The button's POST is what signs in."""
     if request.method == "GET":
         return spa_index()
+    if request.args.get("verify"):
+        return _confirm_email(token)
     user = consume_login_link(token)
     if user is None:
         audit_log("login_link_rejected", details="invalid, expired, used, or account inactive", actor="link")
@@ -278,6 +330,23 @@ def auth_link_consume(token):
     audit_log("login_success", "user", user["id"], user["username"], "sign-in link", actor=user["username"])
     # a link minted for a notification lands on the project it was about
     return redirect(safe_next_url() or home_url())
+
+
+def _confirm_email(token):
+    """The POST of an address-check link (?verify=1, the same Continue page):
+    the address the link was mailed to is proven. It signs nobody in."""
+    db = get_db()
+    row = verify_link_row(token)
+    back = url_for("account") if session.get("user_id") else url_for("login")
+    if row is None or not take_link(row):
+        audit_log("email_verify_rejected", details="invalid, expired or used link", actor="link")
+        flash("That confirmation link is invalid or has expired — send a new one from your Account page", "error")
+        return redirect(back)
+    db.execute("UPDATE users SET email_verified_at = ? WHERE id = ?", (datetime.utcnow().isoformat(), row["user_id"]))
+    db.commit()
+    audit_log("email_verified", "user", row["user_id"], row["username"], row["email"], actor=row["username"])
+    flash("Email address confirmed")
+    return redirect(back)
 
 
 def safe_next_url():
@@ -318,10 +387,51 @@ def login_password():
 
 @app.route("/healthz")
 def healthz():
-    """Liveness for Docker and the Cloudflare health monitor: proves the
-    process is up and the database answers. No auth, no data."""
-    get_db().execute("SELECT 1")
-    return "ok", 200, {"Content-Type": "text/plain", "Cache-Control": "no-store"}
+    """Health for Docker, the self-updater and an external uptime check
+    (docs/RUNBOOK.md): 503 only when the database cannot be read or written
+    (a read-only or full volume, a damaged file). The scheduler's heartbeat
+    and the free disk are reported, never a 503: the updater gates on the
+    scheduler's own health check, and a release must not roll back because
+    the scheduler is still starting. No auth, no names, no data. The details
+    (database, scheduler, disk) only to this machine: Docker's health check
+    and CI call it on 127.0.0.1, the updater reads Docker's verdict; anyone
+    else, nginx's visitors included, reads "ok" or "down" alone."""
+    import ipaddress
+    import shutil
+    import sqlite3
+    from db import DATA_DIR, DB_PATH
+    from scheduler import HEARTBEAT
+    headers = {"Content-Type": "text/plain", "Cache-Control": "no-store"}
+    try:
+        local = ipaddress.ip_address(request.remote_addr or "").is_loopback
+    except ValueError:
+        local = False
+    lines = []
+    try:
+        beat = get_db().execute("SELECT value FROM settings WHERE key = ?", (HEARTBEAT,)).fetchone()
+        con = sqlite3.connect(DB_PATH, timeout=2, isolation_level=None)   # its own connection: take the write lock, write nothing
+        try:
+            con.execute("BEGIN IMMEDIATE")
+            try:   # a real write, rolled back: fails on a read-only or damaged file, and a public probe leaves nothing behind
+                con.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('healthz.probe', '')")
+            finally:
+                con.execute("ROLLBACK")
+            lines.append("database: writable")
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc):
+                raise
+            lines.append("database: busy (another write held the lock)")   # writable, just not this second
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return "down\n" + ("database: cannot be read or written\n" if local else ""), 503, headers
+    if not local:
+        return "ok\n", 200, headers
+    age = (datetime.utcnow() - datetime.fromisoformat(beat[0])).total_seconds() if beat else None
+    lines.append("scheduler: no heartbeat yet" if age is None else f"scheduler: last beat {age:.0f} s ago" + (" (stale)" if age > 180 else ""))
+    disk = shutil.disk_usage(DATA_DIR)
+    lines.append(f"disk: {100 * disk.free / disk.total:.0f}% free")
+    return "ok\n" + "\n".join(lines) + "\n", 200, headers
 
 
 @app.route("/robots.txt")
@@ -385,8 +495,8 @@ def account():
         problem = password_problem(new_password)
         if user["kind"] == "external":
             flash("External accounts sign in by email link and have no password", "error")
-        elif not check_password_hash(user["password_hash"], current):
-            flash("Current password is wrong", "error")
+        elif wrong := recheck_password(user, current, "Current password is wrong"):
+            flash(wrong, "error")
         elif problem:
             flash(problem, "error")
         else:
@@ -557,22 +667,49 @@ def account_email():
     if session.get("kind") == "external":
         flash("Your email address is how you sign in; ask the project manager to change it", "error")
         return redirect(url_for("account"))
-    me = db.execute("SELECT password_hash, ms_oid FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    me = db.execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     if me["ms_oid"] or "$" not in (me["password_hash"] or ""):
         # nothing to re-check the person with, and a changed address could take a reset link (test round P2-2)
         flash("Your account signs in with Microsoft: ask an admin to change your email", "error")
         return redirect(url_for("account"))
-    if not check_password_hash(me["password_hash"], request.form.get("password", "")):
-        # reset links go to this address, so changing it is as sensitive as the password (test report SEC-5)
-        flash("Enter your current password to change your email", "error")
+    # reset links go to this address, so changing it is as sensitive as the password (test report SEC-5)
+    if wrong := recheck_password(me, request.form.get("password", ""), "Enter your current password to change your email"):
+        flash(wrong, "error")
         return redirect(url_for("account"))
     if email and db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND id != ?", (email.lower(), session["user_id"])).fetchone():
         flash("That address belongs to another account", "error")
         return redirect(url_for("account"))
-    # links sent to the old address die with the epoch; other sessions end, this one carries on
-    db.execute("UPDATE users SET email = ?, session_epoch = session_epoch + 1 WHERE id = ?", (email or None, session["user_id"]))
+    # links sent to the old address die with the epoch; other sessions end, this one carries on.
+    # The new address is unproven until its link is opened (review P2-3).
+    db.execute("UPDATE users SET email = ?, email_verified_at = NULL, session_epoch = session_epoch + 1 WHERE id = ?", (email or None, session["user_id"]))
     db.commit()
     session["epoch"] = db.execute("SELECT session_epoch FROM users WHERE id = ?", (session["user_id"],)).fetchone()[0]
     audit_log("change_own_email", "user", session["user_id"], session.get("user_name"))
-    flash("Email updated")
+    sent = send_verification(session["user_id"])
+    flash("Email updated" + (": open the link we sent to it to confirm it" if sent else ""))
+    return redirect(url_for("account"))
+
+
+@app.route("/api/account/email")
+@login_required
+def api_account_email():
+    """Whether the Account page shows "not confirmed · Send link"."""
+    me = get_db().execute("SELECT kind, email, email_verified_at FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    return jsonify(email=me["email"], verified=bool(me["email_verified_at"]), checkable=me["kind"] == "internal" and bool(me["email"]))
+
+
+@app.route("/account/email/verify", methods=["POST"])
+@login_required
+def account_email_verify():
+    """Send the address-check link again (Account page)."""
+    me = get_db().execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    if me["kind"] != "internal" or not me["email"] or me["email_verified_at"]:
+        flash("There is no address to confirm", "error")
+    elif _mail_off():
+        flash("This workspace does not send email yet — ask an admin", "error")
+    elif mail_flooded(me["email"], anonymous=False):
+        audit_log("email_verification_refused", "user", me["id"], me["username"], "too many links to the address this hour")
+        flash("Too many links to that address this hour — try again later", "error")
+    elif send_verification(me["id"]):   # audited there
+        flash("Link sent: open it from your mailbox to confirm the address")
     return redirect(url_for("account"))

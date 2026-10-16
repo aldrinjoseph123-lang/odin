@@ -13,6 +13,8 @@ from unittest.mock import MagicMock, patch
 
 from flask.testing import FlaskClient
 
+# the first admin's password (db.init_db makes a random one otherwise, review A22)
+os.environ.setdefault("ODIN_ADMIN_PASSWORD", "changeme")
 import app as app_module
 import db as db_module
 import security as app_module_security
@@ -65,6 +67,7 @@ class CSRFTestClient(FlaskClient):
 
 
 app_module.app.test_client_class = CSRFTestClient
+app_module.app.config["SEND_MAIL_INLINE"] = True   # routes.auth.mail_after_reply sends before the reply, so a test sees the mail
 
 
 
@@ -78,6 +81,15 @@ def flashed(client):
     """The flashes a route left for the next page: the React app reads them
     from /api/session, so a test does too."""
     return " ".join(client.get("/api/session").get_json()["messages"])
+
+
+def drain_outbox():
+    """Send the queued mail and Teams messages now, as the scheduler's outbox
+    worker does (services/outbox.py): a test that asserts a message went out
+    drains inside its patch of graph / teams_bot."""
+    from services.outbox import drain
+    with app_module.app.app_context():
+        drain()
 
 
 def settle_seed_admin():
@@ -350,12 +362,14 @@ class IntegrationNotificationTestCase(unittest.TestCase):
         self.client.post(
             "/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Loud Proj", "client": "C", "delivery_mode": "Distribution/MSSP"}
         )
+        drain_outbox()
         mock_mail.assert_not_called()      # the creator is the owner: never mailed about their own act (D12)
         mock_teams.assert_called_once()
 
         mock_mail.reset_mock()
         mock_teams.reset_mock()
         self.client.post("/api/projects/1/stage", json={"stage": "Kickoff"})
+        drain_outbox()
         mock_mail.assert_not_called()      # the owner moved it: nobody else is on the project, and no one is told of their own act
         mock_teams.assert_called_once()    # the channel still hears
 
@@ -803,14 +817,16 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         the commercial routes were deleted and left their permissions behind),
         so it gets a guard rather than a code review.
         """
+        import ast
         import pathlib
-        sources = "\n".join(
-            path.read_text() for path in pathlib.Path("routes").glob("*.py")
-        )
-        unenforced = [
-            perm for perm in app_module.PERMISSIONS
-            if f'permission_required("{perm}")' not in sources
-        ]
+        # parsed, not grepped: a permission named in a comment or a string is not enforced
+        enforced = set()
+        for path in (pathlib.Path(app_module.__file__).parent / "routes").glob("*.py"):
+            for node in ast.walk(ast.parse(path.read_text())):
+                if (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "permission_required"
+                        and node.args and isinstance(node.args[0], ast.Constant)):
+                    enforced.add(node.args[0].value)
+        unenforced = [perm for perm in app_module.PERMISSIONS if perm not in enforced]
         self.assertEqual(unenforced, [], f"permissions in the matrix that no route checks: {unenforced}")
 
     def test_task_cannot_be_assigned_to_a_deactivated_user(self):
@@ -832,39 +848,6 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         for bad in ["changeme1234", "MyPassword99", "Odin-Admin-01", "letmein12345"]:
             self.assertIsNotNone(password_problem(bad), f"{bad!r} should be rejected")
         self.assertIsNone(password_problem("Correct-Horse-9"))
-
-    def test_no_nested_forms_in_rendered_pages(self):
-        """Nested <form> is invalid HTML and browsers resolve it destructively:
-        the inner form is dropped and its buttons are reassigned to the outer
-        one. Bulk task actions shipped with exactly this bug — every route test
-        passed because they POST directly and never parse the markup — so the
-        structure gets its own guard.
-        """
-        import html.parser
-
-        class FormNesting(html.parser.HTMLParser):
-            def __init__(self):
-                super().__init__()
-                self.depth = 0
-                self.nested = False
-
-            def handle_starttag(self, tag, attrs):
-                if tag == "form":
-                    if self.depth:
-                        self.nested = True
-                    self.depth += 1
-
-            def handle_endtag(self, tag):
-                if tag == "form" and self.depth:
-                    self.depth -= 1
-
-        self.new_project(name="FormStructure", client="C")
-        self.client.post("/projects/1/tasks", data={"title": "t1"})
-        for path in ["/projects/1", "/projects/1/edit", "/projects/new", "/board",
-                     "/projects", "/my-work", "/settings", "/analytics", "/users"]:
-            parser = FormNesting()
-            parser.feed(self.client.get(path).data.decode())
-            self.assertFalse(parser.nested, f"nested <form> in {path}")
 
     # ---- scale: unbounded page growth ------------------------------------
 
@@ -900,64 +883,6 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(self.client.get("/api/alerts?type=bogus%27--").get_json()["alert_type"], "")
         for bad in ["?page=99999", "?page=-3", "?page=abc"]:
             self.assertEqual(self.client.get("/api/alerts" + bad).status_code, 200, bad)
-
-    # ---- accessibility regressions ---------------------------------------
-
-    def test_every_form_control_has_an_accessible_name(self):
-        """A control with no programmatic label is announced as an unnamed edit
-        field. The app wrote `<label>Text</label>` next to inputs without a for
-        or wrapper, so el.labels was empty on every form including login."""
-        import re as _re
-        from html.parser import HTMLParser
-
-        class Names(HTMLParser):
-            def __init__(self, for_ids):
-                super().__init__()
-                self.for_ids, self.in_label, self.unnamed = for_ids, False, []
-            def handle_starttag(self, tag, attrs):
-                d = dict(attrs)
-                if tag == "label":
-                    self.in_label = True
-                if tag in ("input", "select", "textarea"):
-                    if d.get("type") in ("hidden", "submit", "button"):
-                        return
-                    named = ("aria-label" in d or "aria-labelledby" in d or self.in_label
-                             or d.get("id") in self.for_ids)
-                    if not named:
-                        self.unnamed.append(f'{tag}[{d.get("name", "?")}]')
-            def handle_endtag(self, tag):
-                if tag == "label":
-                    self.in_label = False
-
-        self.new_project(name="A11y", client="C")
-        self.client.post("/projects/1/tasks", data={"title": "t"})
-        for path in ["/login", "/board", "/my-work", "/projects", "/projects/1",
-                     "/projects/1/edit", "/projects/new", "/analytics", "/alerts",
-                     "/settings", "/settings/rbac", "/settings/contacts",
-                     "/audit-logs", "/users", "/account"]:
-            body = self.client.get(path).data.decode()
-            parser = Names(set(_re.findall(r'<label[^>]*\bfor="([^"]+)"', body)))
-            parser.feed(body)
-            self.assertEqual(parser.unnamed, [], f"unnamed controls on {path}")
-
-    def test_heading_levels_never_skip(self):
-        """h1 -> h3 leaves a gap that screen-reader heading navigation exposes."""
-        import re as _re
-        self.new_project(name="A11y", client="C")
-        for path in ["/board", "/my-work", "/projects/1", "/analytics", "/settings",
-                     "/settings/contacts", "/users", "/account"]:
-            levels = [int(h) for h in _re.findall(r"<h([1-6])\b", self.client.get(path).data.decode())]
-            gaps = [(levels[i], levels[i + 1]) for i in range(len(levels) - 1)
-                    if levels[i + 1] - levels[i] > 1]
-            self.assertEqual(gaps, [], f"heading level skipped on {path}: {gaps}")
-
-    def test_no_navigation_depends_on_a_mouse_click(self):
-        """Row-level onclick is unreachable by keyboard; rows must carry a real
-        anchor instead."""
-        self.new_project(name="A11y", client="C")
-        for path in ["/board", "/projects", "/my-work"]:
-            html = self.client.get(path).data.decode()
-            self.assertNotIn("<tr onclick", html, f"onclick-only row on {path}")
 
     # ---- settings as JSON (React port) --------------------------------------
 
@@ -1228,9 +1153,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.client.post("/projects/1/participants/add", data={"user_id": pm1, "role": "Coordinator"})
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         self.client.post("/projects/1/tasks", data={"title": "Rack it", "assignee_id": pm1})
+        drain_outbox()
         mail.reset_mock()
         # the PM's own note is silent
         self.client.post("/projects/1/note", data={"note": "mine"})
+        drain_outbox()
         mail.assert_not_called()
         # the coordinator's note, finished task and upload each reach the PM once, and nobody else
         coord, csrf = self._api_client("pm1", STRONG_PASSWORD)
@@ -1239,6 +1166,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         coord.post("/projects/1/tasks/1/toggle", json={}, headers=h)
         coord.post("/projects/1/tasks/1/toggle", json={}, headers=h)       # reopening is silent
         coord.post("/projects/1/documents", data={"category": "Deliverable", "file": (io.BytesIO(b"%PDF-1.4 x"), "asbuilt.pdf")}, headers=h)
+        drain_outbox()
         subjects = [(c.args[0], c.args[1]) for c in mail.call_args_list]
         self.assertEqual(subjects, [("admin@odin.example", "New note on Loud"), ("admin@odin.example", "Task done on Loud"), ("admin@odin.example", "Document added to Loud")])
         self.assertIn("cabling done", mail.call_args_list[0].args[2]); self.assertIn("http://localhost/projects/1", mail.call_args_list[0].args[2])
@@ -1246,9 +1174,11 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
+        drain_outbox()
         mail.reset_mock()
         ann = self._external_client("ann@acme.example")
         ann.post("/api/projects/1/approvals/1", json={"decision": "approved", "comment": "Go"})
+        drain_outbox()
         to = sorted(c.args[0] for c in mail.call_args_list)
         self.assertEqual(to, ["admin@odin.example", "pm1@odin.example"])   # once each — the owner is a participant, not told twice
         self.assertTrue(all("approved" in c.args[1] for c in mail.call_args_list))
@@ -1353,11 +1283,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.client.post("/projects/1/tasks", data={"title": "Done late", "assignee_id": pm1, "due_date": yesterday.isoformat()})
         with self.raw_db() as db:
             db.execute("UPDATE tasks SET done = 1 WHERE title='Done late'"); db.execute("UPDATE users SET email_off='due' WHERE username='vw'"); db.commit()
+        drain_outbox()
         mail.reset_mock()
         send_daily_alerts.main()
+        drain_outbox()
         self.assertEqual([c.args[0] for c in mail.call_args_list], ["pm1@odin.example"])   # vw switched reminders off
         body = mail.call_args.args[2]
         self.assertIn("Due today", body); self.assertIn("Late", body); self.assertNotIn("Later", body); self.assertNotIn("Done late", body)
+        drain_outbox()
         self.assertEqual(mail.call_args.args[1], "2 tasks need you today")
         with self.raw_db() as db:
             rows = db.execute("SELECT u.username, n.kind, n.link FROM notifications n JOIN users u ON u.id = n.user_id WHERE n.kind='due' ORDER BY u.username").fetchall()
@@ -1365,6 +1298,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # a day off the working week sends nothing at all
         with self.raw_db() as db:
             db.execute("UPDATE settings SET value = ? WHERE key = 'policy.working_days'", ([d for d in WEEKDAYS if d != WEEKDAYS[base.weekday()]][0],)); db.commit()
+        drain_outbox()
         mail.reset_mock()
         send_daily_alerts.main()
         self.assertEqual(mail.call_count, 0)
@@ -1422,22 +1356,28 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on", "due": "on"}, headers=ph)
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
         self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False, "brief": False})
+        drain_outbox()
         mail.reset_mock()
         self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
+        drain_outbox()
         self.assertEqual([c.args[0] for c in mail.call_args_list], [])                     # pm1 opted out; admin is the actor
         bell = p.get("/api/notifications").get_json()
         # 2 unread: being added to the project, then the stage move
         self.assertEqual((bell["unread"], bell["rows"][0]["kind"], bell["rows"][0]["link"], bell["rows"][0]["actor"]), (2, "stage", "/board?rollout=1", "Admin"))
         self.assertEqual(p.get("/api/session").get_json()["user"]["nav"]["unread_notifications"], 2)
         # mentions: by full name, by unique first name, by username; an outsider is never reached
+        drain_outbox()
         mail.reset_mock()
         self.client.post("/projects/1/note", data={"note": "@Priya Menon can you check the rack? cc @sam"})
+        drain_outbox()
         self.assertEqual([c.args[0] for c in mail.call_args_list], ["pm1@odin.example"])   # sam is not on the project
         top = p.get("/api/notifications").get_json()["rows"][0]
         self.assertEqual((top["kind"], top["title"]), ("mention", "Admin mentioned you on Bell"))
         # the owner is told about a coordinator's note once, not also as a mention
+        drain_outbox()
         mail.reset_mock()
         p.post("/projects/1/note", data={"note": "done, @Admin"}, headers=ph)
+        drain_outbox()
         self.assertEqual([(c.args[0], c.args[1]) for c in mail.call_args_list], [("admin@odin.example", "Priya Menon mentioned you on Bell")])
         admin_rows = self.client.get("/api/notifications").get_json()["rows"]
         self.assertEqual([r["kind"] for r in admin_rows], ["mention"])
@@ -1550,6 +1490,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         fake = lambda e, t, x, link=None: (sent.append((e, t, x, link)), (True, None))[1]   # noqa: E731
         with app_module.app.test_request_context(), patch("services.teams_bot.send", side_effect=fake):
             notify_users([staff, partner], "stage", None, "Stage moved", "<p>Scoping to Deployment</p>", link="/board")
+            drain_outbox()
         self.assertEqual([(e, t, x) for e, t, x, _ in sent], [("tina@corp.example", "Stage moved", "Scoping to Deployment")])   # partners: email only
         # the person's topic choices cover Teams too
         with self.raw_db() as db:
@@ -1557,14 +1498,14 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         sent.clear()
         with app_module.app.test_request_context(), patch("services.teams_bot.send", side_effect=fake):
             notify_users([staff], "stage", None, "Stage moved", "<p>x</p>")
+            drain_outbox()
         self.assertEqual(sent, [])
 
     def test_odin_pms_opens_the_conversation_once_and_reopens_a_gone_one(self):
         from services import teams_bot
         def reply(code, body=None):
             return MagicMock(status_code=code, text="", json=MagicMock(return_value=body or {}))
-        teams_bot._token.update(value="bot-token", until=time.time() + 3600)
-        with patch("services.teams_bot.configured", return_value=True), patch("graph.user_id", return_value=("aad-tina", None)), \
+        with patch("services.teams_bot._bot_token", return_value=("bot-token", None)), patch("services.teams_bot.configured", return_value=True), patch("graph.user_id", return_value=("aad-tina", None)), \
              patch("graph._client_id", return_value="app-1"), patch("graph._tenant", return_value="tenant-1"), \
              patch("services.teams_bot.requests.post", side_effect=[reply(201, {"id": "conv-1"}), reply(201), reply(201), reply(404), reply(201, {"id": "conv-2"}), reply(201)]) as post:
             self.assertEqual(teams_bot.send("Tina@corp.example", "Stage moved", "x", "https://odin.example/board"), (True, None))
@@ -1691,7 +1632,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self._sso_setup()
         pm1 = self._make_user("pm1", "Member")
         with self.raw_db() as db:
-            db.execute("UPDATE users SET email='pm1@corp.example' WHERE id=?", (pm1,))
+            db.execute("UPDATE users SET email='pm1@corp.example', email_verified_at='2026-10-15' WHERE id=?", (pm1,))   # only a proven address binds (v1.8.0)
             db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sso_enforced', '1')"); db.commit()   # binding by email needs a password that cannot sign in (P2-3)
         # an existing colleague is linked by email once, then by oid
         c = app_module.app.test_client()
@@ -2032,13 +1973,16 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE users SET email='pm1@odin.example' WHERE id=?", (pm1,)); db.commit()
         self.client.post("/projects/1/participants/add", data={"user_id": pm1, "role": "Coordinator"})
         self._invite(1, "ann@acme.example", "Customer", "Ann")
+        drain_outbox()
         mail.reset_mock()
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
         self.client.post("/api/projects/1/stage", json={"stage": stages[1], "note": "kicked off"})
+        drain_outbox()
         to = sorted(c.args[0] for c in mail.call_args_list)
         # everyone on the project except the actor (admin, who is also the owner): no one hears about their own move
         self.assertEqual(to, ["ann@acme.example", "pm1@odin.example"])
+        drain_outbox()
         by = {c.args[0]: c.args[2] for c in mail.call_args_list}
         self.assertIn("kicked off", by["ann@acme.example"]); self.assertNotIn("approve", by["ann@acme.example"])   # approval switch is off
         # every mail carries a way in: staff get the project page, an external a one-time link that lands on it
@@ -2054,6 +1998,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:   # a week-old expired link is swept when the next one is minted
             db.execute("INSERT INTO login_links (user_id, token_hash, created_at, expires_at) VALUES (1, 'stale', '2020-01-01', '2020-01-01')"); db.commit()
         self.client.post("/api/projects/1/stage", json={"stage": stages[2]})
+        drain_outbox()   # the link is minted as the mail is sent (FX1)
         with self.raw_db() as db:
             self.assertIsNone(db.execute("SELECT 1 FROM login_links WHERE token_hash='stale'").fetchone())
 
@@ -3556,7 +3501,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(anon.get(f"/api/join/{token}").status_code, 404)                    # one use: spent
         with self.raw_db() as db:
             u = db.execute("SELECT * FROM users WHERE username = 'omar'").fetchone()
-            self.assertEqual((u["pending"], u["active"], u["role"], u["notify_via"]), (1, 0, "Contributor", "teams"))
+            self.assertEqual((u["pending"], u["active"], u["role"], u["notify_via"]), (1, 0, "Contributor", "email"))   # the Email/Teams choice is gone
             self.assertTrue(db.execute("SELECT 1 FROM notifications WHERE user_id = 1 AND kind = 'access'").fetchone())   # the admin hears
         # before approval: told to wait (only with the right password)
         o = app_module.app.test_client(); ocsrf = o.get("/api/session").get_json()["csrf"]
@@ -3905,6 +3850,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE settings SET value='1' WHERE key='notify_teams_enabled'"); db.commit()
         with patch("graph.send_teams_message", return_value=(True, None)), patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
             c.post("/api/projects/1/stage", json={"stage": "Scoping"}, headers={"X-CSRF-Token": csrf})
+            drain_outbox()
         self.assertIn("Stage changed", hook.call_args.args[1]); self.assertTrue(hook.call_args.args[3].endswith("/projects/1"))
 
     def test_retention_keeps_daily_weekly_and_monthly_copies(self):
@@ -3952,7 +3898,13 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
 
     def test_healthz_and_robots(self):
         anon = app_module.app.test_client()
-        self.assertEqual(anon.get("/healthz").data, b"ok")
+        health = anon.get("/healthz")   # ok plus a line each for the database, the scheduler's beat and the disk
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.headers["Cache-Control"], "no-store")
+        text = health.get_data(as_text=True)
+        self.assertTrue(text.startswith("ok\n"), text)
+        for field in ("database: ", "scheduler: ", "disk: "):
+            self.assertIn(field, text)
         self.assertIn(b"Disallow: /", anon.get("/robots.txt").data)
 
     def test_error_pages_are_branded(self):
@@ -4130,25 +4082,39 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertNotIn("login_success", body)
 
     def test_every_state_changing_route_writes_to_the_audit_trail(self):
-        """Meta-guard, like the RBAC one: a POST route with no audit_log call
-        is a gap an auditor will find before we do."""
+        """Meta-guard, like the RBAC one: a POST, PUT, PATCH or DELETE route
+        with no audit call is a gap an auditor will find before we do. The view
+        is parsed, so an audit_log( in a comment or a string does not count."""
+        import ast
         import inspect
+        import textwrap
         # The only exemptions, each with its reason. Keep this list short.
         not_audited = {
             "/api/notifications/read": "marks the caller's own inbox read: personal UI state, not an act on shared data",
             "/api/activity": "the active-minute ping is itself the record (user_activity); an audit row a minute would drown the trail",
             "/api/doc-templates/preview.pdf": "renders an unsaved template to look at; changes nothing",
-            "/api/teams/messages": "the Odin PMS Teams app's inbound address: Odin only sends, so it answers and reads nothing",
+            # the Teams app's inbound address (answers, reads nothing) and browser crash reports (one log line)
+            **dict.fromkeys(__import__("security").CSRF_EXEMPT, "CSRF-exempt: changes nothing (security.CSRF_EXEMPT)"),
         }
+        # attempt_login audits every outcome itself; both login doors use it. The others write the row for their callers.
+        auditors = {"audit_log", "attempt_login", "change_stage", "_stage_change", "_template_change", "decide_approval", "end_session"}
+
+        def called(view):
+            names = set()
+            for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(view)))):
+                if isinstance(node, ast.Call):
+                    names.add(node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None))
+            return names
+
         missing = []
         for rule in app_module.app.url_map.iter_rules():
-            if "POST" not in rule.methods or rule.endpoint == "static" or rule.rule in not_audited:
+            if not rule.methods & {"POST", "PUT", "PATCH", "DELETE"} or rule.endpoint == "static" or rule.rule in not_audited:
                 continue
-            src = inspect.getsource(app_module.app.view_functions[rule.endpoint])
-            # attempt_login audits every outcome itself; both login doors use it.
-            if not any(marker in src for marker in ("audit_log(", "attempt_login(", "change_stage(", "_stage_change(", "_template_change(", "decide_approval(", "end_session(")):
+            if not called(app_module.app.view_functions[rule.endpoint]) & auditors:
                 missing.append(rule.rule)
-        self.assertEqual(missing, [], f"POST routes without an audit entry: {missing}")
+        self.assertEqual(missing, [], f"state-changing routes without an audit entry: {missing}")
+        stale = [path for path in not_audited if path not in {r.rule for r in app_module.app.url_map.iter_rules()}]
+        self.assertEqual(stale, [], f"exemptions for routes that no longer exist: {stale}")
 
     def test_nginx_passes_cloudflares_client_ip_and_hides_server(self):
         conf = open(os.path.join(os.path.dirname(app_module.__file__), "deploy", "nginx.conf")).read()
@@ -5055,6 +5021,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE projects SET updated_at = ? WHERE name = 'Proj'", (old,))
             db.commit()
         __import__("scheduler").sync_alerts()   # the scheduler records alerts and sends their mail (B9)
+        drain_outbox()
         sent = [c for c in mock_send_mail.call_args_list if c.args[:2] == ("admin@example.com", "Rollout idle: Proj")]
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0].args[2].startswith("Rollout: Proj (C)"))
@@ -5574,7 +5541,7 @@ CHASE_GOOD = json.dumps({"subject": "SIEM onboarding: design approval and Site B
                                  "was due on 4 Oct 2026. Both are needed to keep the go-live of 20 Oct 2026. Could you approve the design, or let me "
                                  "know when you expect to? I am happy to walk through it on a call.\n\nBest regards,\nSam Rivera"})
 ANSWERS["You draft a short, polite follow-up"] = CHASE_GOOD
-BRIEF_GOOD = json.dumps({"brief": "Firewall refresh is red: past its target date by 8 d with 1 open blocker. SIEM onboarding is amber: Design is 3 d over its "
+BRIEF_GOOD = json.dumps({"brief": "Firewall refresh is off track: past its target date by 8 d with 1 open blocker. SIEM onboarding is at risk: Design is 3 d over its "
                                   "6 d SLA. Send the change window request today; the design document review is overdue.",
                          "first_move": "Review the SIEM design document."})
 ANSWERS["You write a project manager's morning brief"] = BRIEF_GOOD
@@ -5612,7 +5579,7 @@ class WeeklyWordsTestCase(AITestBase):
 
     def _project(self):
         self.client.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO bytes"), "po.pdf"), "name": "Rollout One", "client": "Northwind"})
-        self.client.post("/projects/1/note", data={"note": "Site B cabling blocked: no building access yet."})
+        self.client.post("/projects/1/note", data={"note": "Site B cabling blocked: no building access yet.", "share": "1"})   # the words are the customer's: shared notes only
 
     def _ready(self):
         """AI on, server up, weekly words validated on the current model."""
@@ -5628,6 +5595,7 @@ class WeeklyWordsTestCase(AITestBase):
     def test_gather_has_the_fixtures_shape(self):
         from services.ai.features.weekly_words import fixture, gather
         self._project()
+        self.client.post("/projects/1/note", data={"note": "Internal: the vendor's engineer was useless."})
         with self._ctx():
             facts = gather(project_id=1)
 
@@ -5639,6 +5607,8 @@ class WeeklyWordsTestCase(AITestBase):
         same_keys(facts, fixture())
         self.assertEqual(facts["rollout"]["name"], "Rollout One")
         self.assertIn("Site B", facts["this_week"]["notes"][0]["text"])
+        self.assertNotIn("useless", json.dumps(facts))                          # a note the customer cannot see stays out (P2-24)
+        self.assertIn(facts["rollout"]["health"], ("on track", "at risk", "off track", "complete"))   # the plan word, never the colour
 
     def test_graders_catch_what_a_reader_would_mind(self):
         from services.ai.features.weekly_words import FEATURE, fixture
@@ -5891,7 +5861,7 @@ class CustomerWordsTestCase(AITestBase):
     def test_graders_catch_names_and_blame_and_dropped_facts(self):
         from services.ai.features.customer_words import FEATURE, fixture
         good = json.loads(CUSTOMER_GOOD)
-        self.assertEqual([g(fixture(), good) for g in FEATURE.graders], [None, None, None])
+        self.assertEqual([g(fixture(), good) for g in FEATURE.graders], [None] * len(FEATURE.graders))
         self.assertTrue(FEATURE.graders[1](fixture(), {**good, "summary": good["summary"] + " Ravi was useless."}))
         self.assertTrue(FEATURE.graders[0](fixture(), {**good, "summary": "Design slipped."}))
 

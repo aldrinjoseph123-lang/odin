@@ -13,14 +13,16 @@ import { ConfirmHost } from "@/components/ConfirmHost"
 import { TitleTips } from "@/components/TitleTips"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { NotificationBell } from "@/components/NotificationBell"
-import { applyTheme, type Accent, type Theme } from "@/lib/theme"
+import { cycleTheme as cycle, flushAppearance, syncAppearance, useAppearance, type Accent } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 import { Kbd } from "@/components/ui/kbd"
 import { useActivityPing } from "@/lib/useActivityPing"
+import { readPref } from "@/lib/usePref"
+import { settingsHome } from "@/lib/settingsMenu"
 
 // White top bar, ink links, accent underline on the current section. Un-ported
 // pages are plain anchors (full navigation to Flask); React pages use <Link>.
-const REACT_PAGES = new Set(["/board", "/dashboard", "/people", "/projects", "/users", "/audit-logs", "/settings", "/account", "/my-work", "/alerts", "/analytics"])   // header links only
+const REACT_PAGES = new Set(["/board", "/dashboard", "/people", "/projects", "/users", "/audit-logs", "/settings", "/settings/general", "/settings/contacts", "/account", "/my-work", "/alerts", "/analytics"])   // header links only
 type Item = { href: string; label: string; count?: number; match: (path: string) => boolean }
 
 function NavLink({ item, current, onClick }: { item: Item; current: boolean; onClick?: () => void }) {
@@ -66,26 +68,26 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
     document.addEventListener("pointerdown", onDown)
     return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("pointerdown", onDown) }
   }, [open])
-  const [theme, setTheme] = useState<Theme>(user.theme)
+  const { theme } = useAppearance()   // one theme for the header and the Account page (review P2-33)
   const [account, setAccount] = useState(false)   // the avatar menu
   const [palette, setPalette] = useState(false)
-  // Ctrl/⌘ K anywhere; "/" when not typing in a field
+  // Ctrl/⌘ K anywhere; "/" when not typing in a field, unless the person turned it
+  // off on their Account page (WCAG 2.1.4: a single-key shortcut can be switched off)
+  const slash = readPref("shortcut.slash", true)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName))
       if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setPalette(true) }
-      else if (e.key === "/" && !typing) { e.preventDefault(); setPalette(true) }
+      else if (e.key === "/" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && readPref("shortcut.slash", true)) { e.preventDefault(); setPalette(true) }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [])
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
   // the saved choice wins over whatever this browser last painted
-  useEffect(() => { applyTheme(user.theme, user.accent as Accent) }, [user.theme, user.accent])
-  async function cycleTheme() {
-    const next: Theme = theme === "system" ? "light" : theme === "light" ? "dark" : "system"
-    setTheme(next); applyTheme(next, user.accent as Accent)
-    try { await postForm("/account/appearance", { theme: next, accent: user.accent }) } catch { /* stays local until the next save */ }
+  useEffect(() => { syncAppearance(user.theme, user.accent as Accent) }, [user.theme, user.accent])
+  function cycleTheme() {
+    cycle((t, a, keepalive) => postForm("/account/appearance", { theme: t, accent: a }, keepalive))
   }
   const all: Item[] = [
     { href: "/dashboard", label: "Dashboard", match: (p) => p === "/dashboard" },
@@ -95,11 +97,13 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
     { href: "/people", label: "People", match: (p) => p.startsWith("/people") },
     { href: "/analytics", label: "Cycle time", match: (p) => p === "/analytics" },
     { href: "/alerts", label: "Alerts", count: user.nav.active_alert_count, match: (p) => p === "/alerts" },
-    ...(user.permissions.includes("manage_settings") ? [{ href: "/settings", label: "Settings", match: (p: string) => p.startsWith("/settings") || p === "/audit-logs" || p === "/users" }] : []),
+    // any area of Settings this person may open (a delegated user manager lands on Users: P3-16)
+    ...(settingsHome(user) ? [{ href: settingsHome(user)!, label: "Settings", match: (p: string) => p.startsWith("/settings") || p === "/audit-logs" || p === "/users" }] : []),
   ]
   // External partners get their projects and the flow — nothing product-wide.
   const items = all.filter((item) => user.kind !== "external" || ["Flow", "Rollouts"].includes(item.label))
   async function signOut() {
+    await flushAppearance()   // a theme click still waiting to save
     await logout()
     window.location.assign("/login")
   }
@@ -117,7 +121,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
             {items.map((item) => <NavLink key={item.label} item={item} current={item.match(pathname)} onClick={() => setOpen(false)} />)}
           </span>
           <span className="xl:flex-1" />
-          <button type="button" onClick={() => { setOpen(false); setPalette(true) }} aria-label="Search rollouts and tasks" aria-keyshortcuts="Control+K Meta+K /"
+          <button type="button" onClick={() => { setOpen(false); setPalette(true) }} aria-label="Search rollouts and tasks" aria-keyshortcuts={slash ? "Control+K Meta+K /" : "Control+K Meta+K"}
             className="flex h-9 w-full items-center gap-2 rounded-full bg-card px-3 text-left text-[13px] text-muted-foreground shadow-card hover:text-foreground xl:w-9 xl:justify-center xl:px-0 2xl:w-56 2xl:justify-start 2xl:px-3">
             <Search className="h-3.5 w-3.5 shrink-0" /><span className="flex-1 truncate xl:hidden 2xl:inline">Search…</span>
             <Kbd className="xl:hidden 2xl:inline-flex">{isMac ? "Cmd K" : "Ctrl K"}</Kbd>
@@ -149,12 +153,15 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
           <button ref={menuButton} type="button" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-nav-fg hover:bg-muted xl:hidden"><Menu className="h-5 w-5" /></button>
         </div>
       </header>
-      {messages.length > 0 && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-full bg-card px-4 py-2 text-[13px] shadow-card print:hidden" role="status">
-          <span>{messages.join(" ")}</span>
-          <button type="button" className="font-medium" onClick={onDismiss} aria-label="Dismiss">×</button>
-        </div>
-      )}
+      {/* the live region is always there, so words put in it are announced (review P3-46) */}
+      <div role="status">
+        {messages.length > 0 && (
+          <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-full bg-card px-4 py-2 text-[13px] shadow-card print:hidden">
+            <span>{messages.join(" ")}</span>
+            <button type="button" className="font-medium" onClick={onDismiss} aria-label="Dismiss">×</button>
+          </div>
+        )}
+      </div>
       {/* a page's error stays under the nav and clears on any change of address (?view= too) */}
       <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none"><ErrorBoundary inShell resetKey={pathname + search}>{children}</ErrorBoundary></main>
       <Toaster />

@@ -184,6 +184,27 @@ def _purge_orphans(db):
     # Purged projects' files are removed with their rows in cleanup_soft_deletes.
 
 
+def trim_settled(db=None):
+    """Nightly: rows that would otherwise only grow. Resolved alerts past the
+    policy alerts_keep_days (open ones always stay), and the Teams chat ids
+    kept per address (teams_conv:<email>) of anyone who is no longer an active
+    user (a returning person's chat is opened again on their next message)."""
+    if db is None:
+        db = get_db()
+    from policies import policy
+    cutoff = (datetime.utcnow() - timedelta(days=policy("alerts_keep_days", db))).isoformat()
+    db.execute("DELETE FROM alerts WHERE resolved = 1 AND COALESCE(resolved_at, created_at) < ?", (cutoff,))
+    db.execute("DELETE FROM settings WHERE key LIKE 'teams_conv:%' AND substr(key, 12) NOT IN "
+               "(SELECT lower(email) FROM users WHERE active = 1 AND email IS NOT NULL)")
+    db.commit()
+
+
+def optimize(db=None):
+    """Nightly PRAGMA optimize: fresh statistics keep the query plans right as
+    the tables grow (advice A23). Cheap when nothing changed."""
+    (db or get_db()).execute("PRAGMA optimize")
+
+
 
 def _backfill_stage_entered_at(db):
     """One-time: derive each project's current-stage entry from its note history.
@@ -225,7 +246,7 @@ def _backfill_stage_entered_at(db):
 # PRAGMA user_version. Raise SCHEMA_VERSION in any release that adds a table,
 # column, permission or alert type. A database above it was written by a newer
 # release, so this code is a rollback: it boots, but deletes nothing.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Names retired from PERMISSIONS / ALERT_TYPES; their rows are deleted on boot.
 # Retire a name by adding it here. Never delete "whatever this code does not
@@ -269,6 +290,13 @@ def migrate_db(db):
         # Admins who exist before Microsoft sign-in keep their password, so
         # turning "Microsoft only" on can never lock everyone out.
         db.execute("UPDATE users SET password_login = 1 WHERE role = 'Admin' AND kind = 'internal'")
+    # 15 Oct 2026 (review P2-3): when the address was proven by a link mailed to
+    # it (Microsoft binds by email only to a proven one), and the UPN Microsoft
+    # gave at the binding. The backfill is with the v1.8.0 one-time steps below.
+    if "email_verified_at" not in user_columns:
+        db.execute("ALTER TABLE users ADD COLUMN email_verified_at TEXT")
+    if "ms_upn" not in user_columns:
+        db.execute("ALTER TABLE users ADD COLUMN ms_upn TEXT")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ms_oid ON users(ms_oid) WHERE ms_oid IS NOT NULL")
     # Rose and amber accents were retired: they read as the overdue/warning states.
     db.execute("UPDATE users SET accent = CASE accent WHEN 'rose' THEN 'plum' ELSE 'sky' END WHERE accent IN ('rose', 'amber')")
@@ -356,7 +384,7 @@ def migrate_db(db):
             db.execute(f"ALTER TABLE project_reports ADD COLUMN {column} {coltype}")
     # A sign-off version remembers who handed its signatory a sign-in link by hand (the signing record shows it).
     signoff_columns = {row[1] for row in db.execute("PRAGMA table_info(signoffs)")}
-    for column in ("link_issued_by", "link_issued_at"):
+    for column in ("link_issued_by", "link_issued_at", "superseded_at"):
         if signoff_columns and column not in signoff_columns:
             db.execute(f"ALTER TABLE signoffs ADD COLUMN {column} TEXT")
     # A rollout's plan: dates per stage and the baseline they are measured against (services/plan.py).
@@ -365,6 +393,8 @@ def migrate_db(db):
         if column not in plan_columns:
             db.execute(f"ALTER TABLE project_stages ADD COLUMN {column} TEXT")
     _migrate_participants(db)
+    if found < 2:
+        _upgrade_to_v180(db)
     # tasks.stage: which stage a task belongs to (name, like status_notes).
     # NULL = "whatever stage the project is in" — old tasks and quick adds.
     if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
@@ -414,6 +444,13 @@ def migrate_db(db):
         id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, feature TEXT, job_id INTEGER, project_id INTEGER, username TEXT,
         model TEXT, input_chars INTEGER, prompt_tokens INTEGER, completion_tokens INTEGER, seconds REAL, ok INTEGER NOT NULL, error TEXT)""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_ai_calls_at ON ai_calls (at)")
+    # Mail and Teams messages waiting for the scheduler's outbox worker
+    # (services/outbox.py): kind mail | teams, the message as JSON. A sent row
+    # (sent_at) and one given up on (next_try_at NULL) go nightly.
+    db.execute("""CREATE TABLE IF NOT EXISTS outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, payload TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0, next_try_at TEXT, last_error TEXT, sent_at TEXT, created_at TEXT NOT NULL)""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_outbox_due ON outbox (sent_at, next_try_at)")
     # The lessons library: what went wrong and what to repeat, saved by a
     # project manager from a rollout (services/lessons.py). It outlives the
     # rollout: when a project is purged its lessons keep their words and the
@@ -710,13 +747,21 @@ def init_db():
     except sqlite3.Error as e:   # housekeeping never stops a boot; the scheduler retries nightly
         db.rollback()
         print(f"boot purge skipped: {e}", file=sys.stderr)
+    from services.sealed import reseal
+    reseal(db)   # values sealed under an old SECRET_KEY move to the current one (review A11)
     if first_run:
+        # A random first password, printed once, never a published default
+        # (review A22). ODIN_ADMIN_PASSWORD sets it instead: the tests and the
+        # UAT seed, which sign in as admin straight away.
+        given = os.environ.get("ODIN_ADMIN_PASSWORD")
+        password = given or secrets.token_urlsafe(12)
         db.execute(
             "INSERT INTO users (username, password_hash, name, role, active, must_change_password, password_login) VALUES (?, ?, ?, ?, ?, ?, 1)",
-            ("admin", generate_password_hash("changeme", method="pbkdf2:sha256"), "Admin", "Admin", 1, 1),
+            ("admin", generate_password_hash(password, method="pbkdf2:sha256"), "Admin", "Admin", 1, 1),
         )
         db.commit()
-        print("Created default user: admin / changeme  (change this password!)")
+        print("Created the first admin: admin, password from ODIN_ADMIN_PASSWORD" if given else
+              f"Created the first admin: admin / {password}  (shown only now; you set your own at first sign-in)")
     db.close()
 
 
@@ -807,6 +852,47 @@ def _migrate_signoff_stage(db):
     if db.execute("SELECT 1 FROM doc_categories LIMIT 1").fetchone():   # a fresh database seeds it with the defaults
         db.execute("INSERT OR IGNORE INTO doc_categories (name) VALUES (?)", (SIGNOFF_DOC_CATEGORY,))
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('migration.signoff_stage', '1')")
+
+
+def _upgrade_to_v180(db):
+    """Once, on the first boot of v1.8.0 (user_version below 2, a fresh database
+    too, where the tables are empty): steps that must never run again, or they
+    would rewrite what people saved after the upgrade (review FX1)."""
+    now = datetime.utcnow().isoformat()
+    # Addresses on file count as proven (Microsoft binds by email only to a proven
+    # one), so a Microsoft-only colleague's first sign-in still works. Not for a
+    # pending request, nor for an account with a working password and no Microsoft
+    # binding: nobody ever proved that address; they sign in and confirm it from Account.
+    enforced = db.execute("SELECT 1 FROM settings WHERE key = 'sso_enforced' AND value = '1'").fetchone() is not None
+    usable = "instr(COALESCE(password_hash, ''), '$') > 0" + (" AND password_login = 1" if enforced else "")
+    db.execute(f"UPDATE users SET email_verified_at = ? WHERE email IS NOT NULL AND email_verified_at IS NULL "
+               f"AND pending = 0 AND (ms_oid IS NOT NULL OR NOT ({usable}))", (now,))
+    # Guest links expire guest_link_days after they were minted: count from the upgrade, not from creation.
+    db.execute("UPDATE projects SET guest_tokens_at = ? WHERE guest_tokens_at IS NULL", (now,))
+    _migrate_scope_repr(db)
+
+
+def _migrate_scope_repr(db):
+    """Scope text posted as a JSON list was stored as its Python spelling,
+    "['a', 'b']" (review P2-27; the route now refuses it): spell it as the
+    lines it meant. Only a value that reads back as a list of strings is
+    touched, and signed copies (signoffs.content) never: they are frozen.
+    Once (_upgrade_to_v180): text saved since may look like a list on purpose."""
+    import ast
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE name = 'scope_items'").fetchone():
+        return
+    for item_id, *values in db.execute("SELECT id, title, detail, note FROM scope_items "
+                                       "WHERE title LIKE '[%]' OR detail LIKE '[%]' OR note LIKE '[%]'").fetchall():
+        fixed = []
+        for column, value in zip(("title", "detail", "note"), values):
+            try:
+                parsed = ast.literal_eval(value or "")
+            except Exception:   # any text at all: "[{[]: 1}]" raises TypeError, and a boot must never fail on it
+                continue
+            if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
+                fixed.append((column, (", " if column == "title" else "\n").join(parsed)))
+        for column, value in fixed:   # column names from the tuple above, never input
+            db.execute(f"UPDATE scope_items SET {column} = ? WHERE id = ?", (value, item_id))
 
 
 def _migrate_participants(db):

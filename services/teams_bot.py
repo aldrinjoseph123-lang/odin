@@ -16,7 +16,7 @@ import requests
 import graph
 
 SERVICE_URL = "https://smba.trafficmanager.net/teams"   # Teams' global Bot Framework endpoint
-_token = {"value": None, "until": 0.0}
+_token = {"key": None, "value": None, "until": 0.0}   # key: the app it was minted for, so changed credentials never reuse it
 
 
 def configured():
@@ -25,7 +25,8 @@ def configured():
 
 
 def _bot_token():
-    if _token["value"] and time.time() < _token["until"] - 60:
+    key = (graph._tenant(), graph._client_id(), graph._client_secret())
+    if _token["value"] and _token["key"] == key and time.time() < _token["until"] - 60:
         return _token["value"], None
     resp = requests.post(f"{graph.AUTH_BASE}/{graph._tenant()}/oauth2/v2.0/token", timeout=15, data={
         "grant_type": "client_credentials", "client_id": graph._client_id(), "client_secret": graph._client_secret(),
@@ -33,15 +34,16 @@ def _bot_token():
     if resp.status_code >= 400:
         return None, f"Teams app sign-in failed: {resp.status_code} {resp.text[:200]}"
     body = resp.json()
-    _token.update(value=body["access_token"], until=time.time() + int(body.get("expires_in", 3600)))
+    _token.update(key=key, value=body["access_token"], until=time.time() + int(body.get("expires_in", 3600)))
     return _token["value"], None
 
 
 def card(title, text, link=None):
-    """The Adaptive Card every message wears: the title, the words, a way back into Odin."""
+    """The Adaptive Card every message wears: the title, the words, a way back
+    into Odin. The words may quote an outsider (a guest note): Markdown escaped."""
     return {"type": "AdaptiveCard", "$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "version": "1.4",
-            "body": [{"type": "TextBlock", "text": title, "weight": "Bolder", "wrap": True},
-                     *([{"type": "TextBlock", "text": text, "wrap": True, "spacing": "Small"}] if text else [])],
+            "body": [{"type": "TextBlock", "text": graph.md_escape(title), "weight": "Bolder", "wrap": True},
+                     *([{"type": "TextBlock", "text": graph.md_escape(text), "wrap": True, "spacing": "Small"}] if text else [])],
             **({"actions": [{"type": "Action.OpenUrl", "title": "Open in Odin", "url": link}]} if link else {})}
 
 
@@ -91,13 +93,15 @@ def _open(headers, email):
 
 
 def manifest(version, public_url):
-    """The Teams app manifest (v1.16): a personal, notification-only bot named Odin PMS."""
+    """The Teams app manifest (v1.16): a personal, notification-only bot named
+    Odin PMS. Privacy and terms: the public page about the app (static/teams/about.html)."""
     from urllib.parse import urlsplit
     app_id = graph._client_id()
+    about = f"{public_url}/static/teams/about.html"
     return json.dumps({
         "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
         "manifestVersion": "1.16", "version": version, "id": app_id,
-        "developer": {"name": "Protect24x7", "websiteUrl": public_url, "privacyUrl": public_url, "termsOfUseUrl": public_url},
+        "developer": {"name": "Protect24x7", "websiteUrl": public_url, "privacyUrl": f"{about}#privacy", "termsOfUseUrl": f"{about}#terms"},
         "name": {"short": "Odin PMS", "full": "Odin by Protect24x7"},
         "description": {"short": "Rollout notifications from Odin", "full": "Odin's notifications and alerts for the rollouts you work on: stage moves, approvals, tasks, mentions and alerts, each with a link back into Odin."},
         "icons": {"color": "color.png", "outline": "outline.png"}, "accentColor": "#0A0A0A",

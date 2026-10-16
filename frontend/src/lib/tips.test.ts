@@ -13,6 +13,14 @@ describe("tipText", () => {
     expect(tipText(span)).toBe("A very long project name")
     expect(span.hasAttribute("aria-label")).toBe(false)               // it has visible text
   })
+  it("keeps a title that says more than the name for assistive technology (P3-46)", () => {
+    document.body.innerHTML = `<a title="Late: Task 1 — Globex · drag to another day">Task 1</a><span title="Same">Same</span>`
+    const [a, span] = [document.querySelector("a")!, document.querySelector("span")!]
+    expect(tipText(a)).toBe("Late: Task 1 — Globex · drag to another day")
+    expect(a.getAttribute("aria-description")).toBe("Late: Task 1 — Globex · drag to another day")
+    tipText(span)
+    expect(span.hasAttribute("aria-description")).toBe(false)         // nothing more to say
+  })
   it("shows an icon-only control's aria-label, and nothing for a labelled text button", () => {
     document.body.innerHTML = `<button aria-label="Notifications"><svg></svg><span>27</span></button><button aria-label="Manage Omar">Manage</button>`
     const [icon, text] = document.querySelectorAll("button")

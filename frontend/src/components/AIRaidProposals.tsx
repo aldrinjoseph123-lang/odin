@@ -6,13 +6,14 @@ import { ApiError, cancelAIJob, decideAIProposal, requestProjectAI, type RaidPro
 import { fmtWhen } from "@/lib/format"
 import { RAID_KIND } from "@/components/RaidPanel"
 import { useProjectAI } from "@/lib/usePoll"
+import { Notice } from "@/components/Notice"
 
 // Risks proposed: what the notes imply but nobody logged. Each proposal shows
 // the note words behind it; Add opens the register's own dialog filled in, so
 // the item is saved (and audited) exactly like one typed by hand. Shown only
 // when the AI can run here or proposals are waiting.
 export function AIRaidProposals({ projectId, refresh, onAdd }: { projectId: number; refresh: number; onAdd: (p: RaidProposal, suggestion: number, index: number) => void }) {
-  const { s, load, working: looking } = useProjectAI<RaidProposals>(projectId, "raid_proposals", { refresh })
+  const { s, load, working: looking, poll } = useProjectAI<RaidProposals>(projectId, "raid_proposals", { refresh })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   if (!s || (!s.available && !s.suggestion)) return null
@@ -32,19 +33,19 @@ export function AIRaidProposals({ projectId, refresh, onAdd }: { projectId: numb
   return (
     <div className="mt-2 rounded-lg bg-muted/60 px-3 py-2 text-[13px]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
-        <span className="min-w-0 flex-1 basis-56" aria-live="polite">
+        <Sparkles className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="min-w-0 flex-1 basis-56" aria-live="polite">
           {looking ? "Reading the last two weeks of notes for anything not yet logged…"
             : sug && open.length ? <>AI found {open.length} thing{open.length === 1 ? "" : "s"} the notes mention that the register does not ({fmtWhen(sug.created_at)}{sug.model ? ` · ${sug.model}` : ""}).</>
               : sug ? "Nothing new in the notes that the register does not already hold."
                 : "Look through the last two weeks of notes with AI for risks, issues and decisions nobody has logged."}
-          {lastJob?.status === "failed" && <span className="block text-destructive">The last look did not finish: {lastJob.error}</span>}
-          {error && <span className="block text-destructive">{error}</span>}
-        </span>
-        {s.available && !looking && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void look()}>{sug ? "Look again" : "Look with AI"}</Button>}
-        {looking && s.job && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
+          {lastJob?.status === "failed" && <Notice bad>The last look did not finish: {lastJob.error}</Notice>}
+          {error && <Notice bad>{error}</Notice>}
+        </div>
+        {s.available && !looking && <Button size="sm" variant="outline" loading={busy} onClick={() => void look()}>{sug ? "Look again" : "Look with AI"}</Button>}
+        {looking && s.job && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void cancelAIJob(projectId, s.job!.id).then(load).catch((e: unknown) => setError(e instanceof ApiError ? e.message : "That did not work"))}>Cancel</Button>}
       </div>
-      {looking && s.job && <AIProgress job={s.job} />}
+      {looking && s.job && <AIProgress job={s.job} poll={poll} />}
       {sug && open.length > 0 && !looking && (
         <ul className="mt-2 divide-y divide-border border-t border-border">
           {open.map(([p, i]) => {
@@ -58,8 +59,8 @@ export function AIRaidProposals({ projectId, refresh, onAdd }: { projectId: numb
                   <q className="mt-1 block text-[12px] italic text-muted-foreground">{p.evidence}</q>
                 </span>
                 <span className="flex shrink-0 gap-1">
-                  <Button size="sm" className="h-7" disabled={busy} onClick={() => onAdd(p, sug.id, i)}>Add</Button>
-                  <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => void dismiss(i)} aria-label={`Dismiss ${p.title}`}>Dismiss</Button>
+                  <Button size="sm" disabled={busy} onClick={() => onAdd(p, sug.id, i)}>Add</Button>
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => void dismiss(i)} aria-label={`Dismiss ${p.title}`}>Dismiss</Button>
                 </span>
               </li>
             )

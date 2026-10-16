@@ -116,10 +116,13 @@ def api_v1_project(project_id):
 @app.route("/api/v1/projects/<int:project_id>/report")
 @token_required
 def api_v1_report(project_id):
-    """The latest saved report version, as plain text."""
+    """The latest saved report version: the PM's words (summary, next steps,
+    asks) and the frozen report data (stages, plan, health, RAID…) as the
+    internal report shows them (P2-28). An old plain-text version has body only."""
+    import json
     load_project(project_id)
-    row = get_db().execute("SELECT version, body, created_by, created_at FROM project_reports WHERE project_id = ? ORDER BY version DESC LIMIT 1",
-                           (project_id,)).fetchone()
+    row = get_db().execute("SELECT version, kind, body, summary, next_steps, asks, data, created_by, created_at FROM project_reports "
+                           "WHERE project_id = ? ORDER BY version DESC LIMIT 1", (project_id,)).fetchone()
     if row is None:
         return jsonify(error="No saved report for this rollout"), 404
-    return jsonify(dict(row))
+    return jsonify(dict(row) | {"data": json.loads(row["data"]) if row["data"] else None})

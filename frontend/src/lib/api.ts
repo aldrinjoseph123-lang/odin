@@ -15,12 +15,12 @@ export type User = {
   accent: string
   avatar_url: string | null
   home: "dashboard" | "board"
-  prefs?: { date_format: DateFormat; undo_minutes: number; activity_idle_minutes?: number }
+  prefs?: { date_format: DateFormat; undo_minutes: number; password_min_length?: number; activity_idle_minutes?: number }
   external_role?: string | null   // an external's project role ("Customer", "Vendor", …) when the server names it
 }
 
-export type SignIn = { microsoft: boolean; microsoft_only: boolean; link_minutes?: number }
-type SessionResponse = { csrf: string; user: User | null; messages?: string[]; signin?: SignIn }
+export type SignIn = { microsoft: boolean; microsoft_only: boolean; link_minutes?: number; password_min_length?: number }
+type SessionResponse = { csrf: string; user: User | null; messages?: string[]; signin?: SignIn; version?: string }
 
 let csrfToken: string | null = null
 
@@ -42,6 +42,7 @@ export function failureText(status: number): string {
   if (status === 401) return SIGNED_OUT
   if (status === 403) return "You do not have access to this."
   if (status === 404) return "Not found. It may have been deleted, or you are not on it."
+  if (status === 409) return "Someone changed this at the same moment. Reload and try again."
   if (status === 413) return "That file is too large."
   if (status === 429) return "Too many attempts. Wait a minute and try again."
   if (status >= 500) return "Odin could not do that just now. Try again in a moment."
@@ -66,6 +67,26 @@ export async function session(): Promise<SessionResponse> {
   if (!data) throw new ApiError(res.ok ? 500 : res.status, failureText(res.ok ? 500 : res.status))
   csrfToken = data.csrf
   return data
+}
+
+// The release this page was loaded with is the first /api/session answer's; a
+// different one later means Odin was updated while the tab stayed open (advice A20).
+let pageVersion: string | null = null
+export function newerVersion(v?: string): boolean {
+  if (!v) return false
+  pageVersion ??= v
+  return v !== pageVersion
+}
+
+// A crash the person saw reaches the server's log (never the audit log), as a
+// beacon so it survives the page going away (advice A6). The server's own
+// refusals (ApiError) are already in its log; a render loop sends a handful.
+let reported = 0
+export function reportClientError(kind: "render" | "error" | "rejection", e: unknown) {
+  if (e instanceof ApiError || ++reported > 5) return
+  const err = e instanceof Error ? e : new Error(String(e))
+  const body = JSON.stringify({ kind, message: err.message.slice(0, 500), stack: (err.stack ?? "").slice(0, 3000), path: location.pathname, version: pageVersion })
+  try { navigator.sendBeacon?.("/api/client-errors", new Blob([body], { type: "application/json" })) } catch { /* reporting never throws */ }
 }
 
 // A mutation with the CSRF token. A stale token (the session was renewed in
@@ -133,6 +154,7 @@ export function loginCode(code: string) {
 export type TwoStep = { enabled: boolean; enabled_at: string | null; required: boolean; recovery_left: number; password: boolean }
 export const twoStep = () => getJson<TwoStep>("/api/account/two-step")
 export const accountMicrosoft = () => getJson<{ available: boolean; linked: boolean }>("/api/account/microsoft")
+export const accountEmail = () => getJson<{ email: string | null; verified: boolean; checkable: boolean }>("/api/account/email")
 // re-enrolling while two-step is on also needs a current code (or a recovery code)
 export const twoStepSetup = (password: string, code?: string) => post<{ secret: string; uri: string; qr_svg: string }>("/api/account/two-step/setup", code ? { password, code } : { password })
 export const twoStepConfirm = (code: string) => post<{ ok: true; recovery_codes: string[] }>("/api/account/two-step/confirm", { code })
@@ -145,8 +167,9 @@ export function logout() {
 
 export type Nav = { active_alert_count: number; my_open_task_count: number; unread_notifications: number; projects_nav_url: string }
 
-export function changeStage(projectId: number, stage: string, note = "") {
-  return post<{ ok: true; undo: string }>(`/api/projects/${projectId}/stage`, { stage, note })
+// from_stage: the stage the page showed; the server answers 409 when the rollout has moved on since
+export function changeStage(projectId: number, stage: string, note = "", fromStage?: string) {
+  return post<{ ok: true; undo: string }>(`/api/projects/${projectId}/stage`, { stage, note, from_stage: fromStage })
 }
 
 // ---- Flow: first screen ----
@@ -165,7 +188,7 @@ export type FlowRow = {
 }
 export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState | "late_tasks", number>; can_move: boolean; today: string }
 export type FlowStage = { name: string; status: "done" | "current" | "next"; sla_days: number | null; entered_at: string | null; days: number | null }
-export type FlowTask = { id: number; title: string; done: boolean; due_date: string | null; assignee: string | null; assignee_id: number | null; assignee_avatar_url: string | null; stage: string }
+export type FlowTask = { id: number; title: string; done: boolean; done_at?: string | null; due_date: string | null; assignee: string | null; assignee_id: number | null; assignee_avatar_url: string | null; stage: string }
 export type FlowDetail = {
   id: number; name: string; client: string; vendor_name: string | null; product_name: string | null; delivery_mode: string
   outsourcer_name: string | null; owner_name: string; stage: string; stage_index: number; next_stage: string | null
@@ -182,7 +205,8 @@ export const decideApproval = (projectId: number, approvalId: number, decision: 
   post<{ ok: true }>(`/api/projects/${projectId}/approvals/${approvalId}`, { decision, comment })
 async function getJson<T>(path: string): Promise<T> {
   const res = await call(path)
-  if (!res.ok) throw await failure(res)
+  // the server's own words when it gave some (review P3-30); a proxy's HTML error page gives none
+  if (!res.ok) throw await failure(res, ((await res.json().catch(() => null)) as { error?: string } | null)?.error)
   if (notJson(res)) throw new ApiError(401, SIGNED_OUT)
   return res.json()
 }
@@ -321,6 +345,7 @@ export type SignoffVersion = {
   reject_comment: string | null; rejected_at: string | null; document_id: number | null; waiver_reason: string | null; waived_by: string | null; completed_at: string | null
   signed_ip?: string | null; signed_agent?: string | null; counter_ip?: string | null; counter_agent?: string | null
   link_issued_by?: string | null; link_issued_at?: string | null
+  superseded_at?: string | null   // set when the rollout was reopened after this version was signed: it stays on record but closes nothing
 }
 export type SignoffDraft = { summary: string; delivered: string[]; outstanding: string[]; terms: string[]; scope: ScopeItem[]; statement: string }
 export type SignoffData = {
@@ -414,7 +439,7 @@ export type ProjectExtras = {
   id: number; name: string; owner_id: number
   details: Record<string, string | null>
   customer_approval: boolean
-  guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean
+  guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean; guest_links_expire: string | null
   stage_rows: { id: number; name: string; sla_days: number | null }[]
   participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean; avatar_url: string | null }[]
   notes: { id: number; author: string; note: string; stage: string; created_at: string; mine: boolean; edited: boolean; stage_entry: boolean }[]
@@ -428,13 +453,15 @@ export const projectExtras = (id: number) => getJson<ProjectExtras>(`/api/projec
 // route is unchanged (same permission, audit row and validation); only the
 // answer differs because we ask for JSON.
 export type FormReply = { ok: true; messages: string[]; undo: string | null; location: string | null; token?: string }
-export async function postForm(path: string, fields: Record<string, string> | FormData = {}): Promise<FormReply> {
+// `keepalive`: a save sent as the page goes (the header's theme), which must outlive it
+export async function postForm(path: string, fields: Record<string, string> | FormData = {}, keepalive = false): Promise<FormReply> {
   const body = fields instanceof FormData ? fields : new URLSearchParams(fields)
-  const res = await withToken(path, { method: "POST", body, headers: { Accept: "application/json" } })
+  const res = await withToken(path, { method: "POST", body, headers: { Accept: "application/json" }, keepalive })
   if (!res.ok) {
     // a refused form answers 400 {ok: false, error, messages}: its own words
     const d = (await res.json().catch(() => null)) as { error?: string; messages?: string[] } | null
-    throw await failure(res, res.status === 403 ? "You cannot do that on this rollout" : d?.messages?.join(" ") || d?.error || undefined)
+    // the server's words first: a 403 may be "set up two-step sign-in", not a rollout right (review P3-30)
+    throw await failure(res, d?.messages?.join(" ") || d?.error || (res.status === 403 ? "You cannot do that on this rollout" : undefined))
   }
   const data = notJson(res) ? null : (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
   if (!data) throw new ApiError(401, SIGNED_OUT)
@@ -514,7 +541,7 @@ export type AdminUser = {
 }
 export type UsersData = { users: AdminUser[]; roles: string[]; me: number; microsoft_only: boolean }
 export const users = () => getJson<UsersData>("/api/users")
-export type AuditRow = { id: number; timestamp: string; username: string; action: string; resource_type: string | null; resource_id: number | null; resource_name: string | null; details: string | null; ip_address: string | null }
+export type AuditRow = { id: number; timestamp: string; username: string; user_name?: string | null; action: string; resource_type: string | null; resource_id: number | null; resource_name: string | null; details: string | null; ip_address: string | null }
 export type AuditData = {
   rows: AuditRow[]; page: number; total: number; total_pages: number
   filters: { user: string; action: string; project_id: string; from: string; to: string }
@@ -583,7 +610,7 @@ export async function previewDocTemplate(kind: DocKind, config: DocConfig): Prom
   return (await raw("/api/doc-templates/preview.pdf", JSON.stringify({ kind, config }), true)).blob()
 }
 export const pingActivity = () => post<{ ok: true; counted: boolean }>("/api/activity")
-export type WorkTask = { id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
+export type WorkTask = { can_edit?: boolean; id: number; project_id: number; title: string; due_date: string | null; stage: string; done: number; done_at: string | null; project: string; client: string; project_stage: string }
 export type WorkProject = { id: number; name: string; client: string; stage: string; state: FlowState; stage_index: number; stages: string[]; target_end_date: string | null; role: string; owner_name: string
   days_in_stage?: number | null; over_by?: number | null }
 export type MyWorkData = {
@@ -650,12 +677,13 @@ export type ProjectFormData = {
 export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/project-form${query ? `?${query}` : ""}`)
 
 // ---- tasks: the same Flask routes the project page posts as forms ----
-export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null }) =>
+export const addTask = (projectId: number, task: { title: string; stage: string; assignee_id?: number | null; due_date?: string | null; done?: boolean; done_at?: string | null }) =>
   post<{ ok: true; id: number }>(`/projects/${projectId}/tasks`, task)
-export const toggleTask = (projectId: number, taskId: number) => post<{ ok: true; done: boolean }>(`/projects/${projectId}/tasks/${taskId}/toggle`, {})
+// done: the state wanted, never a blind flip (a tick from a stale tab must not reopen the task)
+export const toggleTask = (projectId: number, taskId: number, done: boolean) => post<{ ok: true; done: boolean }>(`/projects/${projectId}/tasks/${taskId}/toggle`, { done })
 // a task corrected in place: the route takes the whole task (title, assignee, due date)
 export const editTask = (projectId: number, taskId: number, task: { title: string; assignee_id: number | null; due_date: string | null }) =>
   post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, task)
-// only the due date changes (the calendar's drag); task_edit lets the assignee do this much
+// only the due date changes (the calendar's drag): whoever manages the rollout's tasks
 export const moveTaskDue = (projectId: number, taskId: number, due_date: string) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/edit`, { due_date })
 export const deleteTask = (projectId: number, taskId: number) => post<{ ok: true }>(`/projects/${projectId}/tasks/${taskId}/delete`, {})

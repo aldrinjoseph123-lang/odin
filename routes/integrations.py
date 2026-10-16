@@ -8,7 +8,7 @@ import secrets
 from flask import flash, redirect, request, session, url_for
 
 import graph
-from core import app, permission_required
+from core import app, external_url, permission_required
 from db import get_db, set_setting
 from services.audit import audit_log
 
@@ -54,7 +54,7 @@ def integrations_connect():
         return redirect(url_for("settings"))
     state = secrets.token_urlsafe(24)
     session["ms_oauth_state"] = state
-    redirect_uri = url_for("integrations_callback", _external=True)
+    redirect_uri = external_url("integrations_callback")   # never the Host header (P3-1)
     return redirect(graph.build_authorize_url(redirect_uri, state))
 
 
@@ -73,7 +73,7 @@ def integrations_callback():
     if not code:
         flash("Microsoft did not return an authorization code", "error")
         return redirect(url_for("settings"))
-    redirect_uri = url_for("integrations_callback", _external=True)
+    redirect_uri = external_url("integrations_callback")
     ok, result = graph.complete_connection(code, redirect_uri)
     if ok:
         audit_log("connect_microsoft365", details=f"as {result}")
@@ -184,11 +184,11 @@ def settings_teams_app():
     if not teams_bot.configured() or not policy("public_url").startswith("https://"):
         flash("Save the Azure app (id, secret, tenant) and an https public address under Settings › General first", "error")
         return redirect(url_for("settings_section", section="integrations"))
+    from routes.client import app_version
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    version = open(os.path.join(here, "VERSION")).read().strip()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("manifest.json", teams_bot.manifest(version, policy("public_url")))
+        z.writestr("manifest.json", teams_bot.manifest(app_version(), policy("public_url")))
         for name in ("color.png", "outline.png"):
             z.write(os.path.join(here, "static", "teams", name), name)
     buf.seek(0)
@@ -198,19 +198,15 @@ def settings_teams_app():
 @app.route("/settings/integrations/backup-now", methods=["POST"])
 @permission_required("manage_integrations")
 def settings_backup_now():
-    """Start a full backup (make, restore-test, copy, prune) now. It runs in
-    the background so a large archive can't time the request out; the run
-    appears in the history on the Backups page when it finishes."""
-    import threading
-    import backup as backup_module
+    """Ask for a full backup (make, restore-test, copy, prune) now. The
+    scheduler runs it on its next pass, within a minute, never a web worker
+    (a large archive ties up a thread and dies with a worker restart, review
+    P3-29); the run appears in the history on the Backups page when it ends."""
+    from scheduler import BACKUP_REQUEST, healthy
     audit_log("backup_now")
-    actor = session.get("user_name")
-    if app.testing:   # tests want the result, not a thread
-        ok, message = backup_module.run_backup(trigger="manual", actor=actor)
-        flash(("Backup done: " if ok else "Backup finished with problems: ") + message)
-    else:
-        threading.Thread(target=backup_module.run_backup, kwargs={"trigger": "manual", "actor": actor}, daemon=True).start()
-        flash("Backup started — it appears in the history below when it finishes")
+    set_setting(BACKUP_REQUEST, session.get("user_name") or "an admin")
+    flash("Backup queued: it starts within a minute and appears in the history below when it finishes" if healthy() else
+          "Backup queued, but the scheduler is not running: it starts when the scheduler does (see Status above)")
     return redirect(url_for("settings_section", section="backups"))
 
 
@@ -232,7 +228,6 @@ def settings_report_send_test():
 @app.route("/settings/notifications/test-webhook", methods=["POST"])
 @permission_required("manage_settings")
 def settings_test_webhook():
-    from core import external_url
     from policies import policy
     url = policy("teams_webhook_url")
     audit_log("test_teams_webhook", details="set" if url else "(none)")

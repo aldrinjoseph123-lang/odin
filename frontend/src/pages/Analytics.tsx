@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { PanelTitle } from "@/components/PanelTitle"
 import { EmptyState } from "@/components/EmptyState"
-import { chip } from "@/lib/ui"
+import { chip, th, td } from "@/lib/ui"
 import { useSearchParams } from "react-router-dom"
-import { analytics, ApiError, type AnalyticsData, type User } from "@/lib/api"
+import { analytics, type User } from "@/lib/api"
+import { useLoad } from "@/lib/useLoad"
 import { cn } from "@/lib/utils"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { StatTile } from "@/components/StatTile"
@@ -12,16 +13,11 @@ const d1 = (n: number | null | undefined) => (n == null ? "—" : n > 0 && n < 0
 
 export default function Analytics(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
-  const [d, setD] = useState<AnalyticsData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const tid = Number(params.get("template")) || null
-  useEffect(() => {
-    document.title = "Cycle time · Odin"
-    let live = true   // only the latest template's answer is shown
-    analytics(tid).then((x) => { if (live) setD(x) }).catch((e) => { if (live) setError(e instanceof ApiError ? e.message : "Could not load") })
-    return () => { live = false }
-  }, [tid])
-  if (error) return <LoadError message={error} />
+  // only the latest template's answer is shown; the last one stays until it lands (review P2-29)
+  const { data: d, error } = useLoad(`analytics:${tid}`, () => analytics(tid), { keep: true })
+  useEffect(() => { document.title = "Cycle time · Odin" }, [])
+  if (error) return <LoadError message={error.message} />
   if (!d) return <PageSkeleton />
   const s = d.stats
   const scale = s ? Math.max(0, ...s.stages.map((r) => r.avg_days ?? 0)) : 0
@@ -39,47 +35,50 @@ export default function Analytics(_props: { user: User }) {
       </div>
       {!s ? <EmptyState className="mt-4">No stage template yet — create one in Settings.</EmptyState> : (
         <>
-          <p className="mt-3 max-w-3xl text-[13px] text-muted-foreground">Timings compare only rollouts that share a stage list, so this is <span className="font-medium text-foreground">{tname}</span> across {s.measured_projects} project{s.measured_projects === 1 ? "" : "s"}. Averages count stages a project has already left; the stage it sits in now is under Aging.</p>
+          <p className="mt-3 max-w-3xl text-[13px] text-muted-foreground">Timings compare only rollouts that share a stage list, so this is <span className="font-medium text-foreground">{tname}</span> across {s.measured_projects} rollout{s.measured_projects === 1 ? "" : "s"}. Averages count stages a rollout has already left; the stage it sits in now is under Aging.</p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatTile label="Slowest stage" value={s.slowest?.stage ?? "—"} sub={s.slowest ? `${d1(s.slowest.avg_days)} days avg` : undefined} tone="warn" />
+            <StatTile label="Slowest stage" value={s.slowest?.stage ?? "—"} sub={s.slowest ? `${d1(s.slowest.avg_days)} days avg` : undefined} />
             <StatTile label="Lead time (avg)" value={d1(s.lead_avg)} sub={`${s.completed_count} completed rollout${s.completed_count === 1 ? "" : "s"}`} />
             <StatTile label="Lead time (median)" value={d1(s.lead_median)} sub="days, start to closed" />
-            <StatTile label="Oldest open stage" value={s.aging[0] ? String(Math.round(s.aging[0].days)) : "—"} sub={s.aging[0]?.project_name ?? "nothing ageing"} tone="bad" />
+            <StatTile label="Oldest open stage" value={s.aging[0] ? String(Math.round(s.aging[0].days)) : "—"} sub={s.aging[0]?.project_name ?? "nothing ageing"} />
           </div>
           <div className="mt-4 overflow-auto panel" tabIndex={0} role="region" aria-label="Time per stage">
             <table className="w-full border-collapse text-[13px]">
-              <thead><tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">{["Stage", "SLA", "Completed visits", "Avg days", "Median", "Longest", "In stage now"].map((h) => <th key={h} className="px-3 py-2 font-normal">{h}</th>)}</tr></thead>
+              <thead><tr className="border-b border-border">{["Stage", "SLA", "Completed visits", "Avg days", "Median", "Longest", "In stage now"].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
               <tbody>
                 {s.stages.map((r) => {
                   const target = d.slas[r.stage]
                   return (
                     <tr key={r.stage} className="border-b border-border last:border-0">
-                      <td className="px-3 py-2 font-medium">{r.stage}</td>
-                      <td className="px-3 py-2">{target ? <span className={cn("whitespace-nowrap", r.avg_days != null && r.avg_days > target && "rounded-md bg-bad-soft px-2 py-1 font-medium text-bad")}>{target} d{r.avg_days != null && r.avg_days > target && " · over"}</span> : "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.visits || "—"}</td>
-                      <td className="px-3 py-2">{r.avg_days == null ? "—" : (
+                      <td className={cn(td, "font-medium")}>{r.stage}</td>
+                      <td className={td}>{target ? <span className={cn("whitespace-nowrap", r.avg_days != null && r.avg_days > target && "rounded-md bg-warn-soft px-2 py-1 font-medium text-warn")}>{target} d{r.avg_days != null && r.avg_days > target && " · over"}</span> : "—"}</td>
+                      <td className={cn(td, "text-muted-foreground")}>{r.visits || "—"}</td>
+                      <td className={td}>{r.avg_days == null ? "—" : (
                         <span className="flex items-center gap-2"><span className="h-1.5 w-32 rounded-full bg-muted"><span className="block h-1.5 rounded-full bg-foreground" style={{ width: `${scale ? (r.avg_days / scale) * 100 : 0}%` }} /></span>{d1(r.avg_days)}</span>
                       )}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{d1(r.median_days)}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{d1(r.max_days)}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.in_stage_now || "—"}</td>
+                      <td className={cn(td, "text-muted-foreground")}>{d1(r.median_days)}</td>
+                      <td className={cn(td, "text-muted-foreground")}>{d1(r.max_days)}</td>
+                      <td className={cn(td, "text-muted-foreground")}>{r.in_stage_now || "—"}</td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
             <section className="panel p-4">
               <PanelTitle n={false} className="mb-2" hint="days in current stage">Aging</PanelTitle>
               <ul className="divide-y divide-border text-[13px]">
-                {s.aging.map((a) => (
+                {s.aging.map((a) => {
+                  const sla = d.slas[a.stage], over = !!sla && a.days > sla   // past the stage's own SLA: the one ageing line the admin sets
+                  return (
                   <li key={`${a.project_id}-${a.stage}`} className="flex items-center gap-3 py-2">
                     <a href={`/board?rollout=${a.project_id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{a.project_name}</a>
                     <span className="truncate text-[13px] text-muted-foreground">{a.stage}</span>
-                    <span className={cn("whitespace-nowrap text-right tabular-nums", a.days >= 30 ? "font-medium text-bad" : a.days >= 14 ? "font-medium text-warn" : "")}>{Math.round(a.days)} d{a.days >= 30 ? " · over 30" : a.days >= 14 ? " · over 14" : ""}</span>
+                    <span className={cn("whitespace-nowrap text-right tabular-nums", over && "font-medium text-warn")}>{Math.round(a.days)} d{over ? " · over SLA" : ""}</span>
                   </li>
-                ))}
+                  )
+                })}
                 {s.aging.length === 0 && <li className="py-2 text-muted-foreground">Nothing in progress.</li>}
               </ul>
             </section>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, SIGNED_OUT, csrfRejected, failureText, markRead, postForm, session } from "./api"
+import { ApiError, SIGNED_OUT, csrfRejected, failureText, markRead, myWork, newerVersion, postForm, session } from "./api"
 
 describe("failureText", () => {
   it("says what went wrong and what to do, never a bare status (test report UX-6)", () => {
@@ -59,6 +59,25 @@ describe("the CSRF token and the session check", () => {
     await expect(markRead({ all: true })).rejects.toThrow(SIGNED_OUT)
     const { login } = await import("./api")
     await expect(login("x", "y")).rejects.toThrow("Bad username or password")
+  })
+
+  it("a read says the server's own words; a refused form keeps a two-step refusal's words (review P3-30)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path === "/api/session"
+      ? reply(200, { csrf: "t", user: { id: 1 } })
+      : path === "/api/my-work" ? reply(403, { error: "Set up two-step sign-in before continuing" })
+      : path === "/x" ? reply(403, { error: "Set up two-step sign-in before continuing" })
+      : reply(403, "<html>forbidden</html>")))
+    await expect(myWork()).rejects.toThrow("Set up two-step sign-in before continuing")
+    await expect(postForm("/x")).rejects.toThrow("Set up two-step sign-in before continuing")
+    await expect(postForm("/y")).rejects.toThrow("You cannot do that on this rollout")
+    expect(failureText(409)).toMatch(/at the same moment/)
+  })
+
+  it("notices a release that landed while the tab was open (advice A20)", () => {
+    expect(newerVersion(undefined)).toBe(false)
+    expect(newerVersion("1.8.0")).toBe(false)
+    expect(newerVersion("1.8.0")).toBe(false)
+    expect(newerVersion("1.8.1")).toBe(true)
   })
 
   it("a 502 page from /api/session is an ApiError, not a crash (FE3)", async () => {

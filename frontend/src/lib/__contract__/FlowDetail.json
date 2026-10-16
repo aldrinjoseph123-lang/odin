@@ -1,0 +1,115 @@
+{
+ "approval": null,
+ "assignable": [
+  {
+   "id": 1,
+   "name": "Admin"
+  },
+  {
+   "id": 9,
+   "name": "Ann Reyes"
+  }
+ ],
+ "can_approve": false,
+ "can_edit": true,
+ "can_move": true,
+ "client": "Globex",
+ "customer_approval": true,
+ "days_left": 62,
+ "delivery_mode": "Distribution/MSSP",
+ "documents": 1,
+ "id": 1,
+ "me": 1,
+ "name": "EDR Rollout - Globex",
+ "next_stage": "Deployment",
+ "outsourcer_name": null,
+ "over_by": 6.7,
+ "owner_name": "Admin",
+ "participants": [
+  {
+   "avatar_url": null,
+   "id": 1,
+   "name": "Admin",
+   "role": "Project manager",
+   "user_id": 1
+  },
+  {
+   "avatar_url": null,
+   "id": 26,
+   "name": "Ann Reyes",
+   "role": "Customer",
+   "user_id": 9
+  }
+ ],
+ "product_name": "Falcon Complete",
+ "recent_notes": [
+  {
+   "author": "Admin",
+   "created_at": "2026-10-15T17:13:43.261641",
+   "note": "Customer asked to add the branch office; PO amendment requested.",
+   "stage": "Sensor pilot"
+  },
+  {
+   "author": "Admin",
+   "created_at": "2026-09-30T03:13:43.261641",
+   "note": "Pilot group of 50 endpoints",
+   "stage": "Sensor pilot"
+  }
+ ],
+ "signoff": {
+  "awaiting_me": false,
+  "complete": false,
+  "in_stage": false,
+  "needed": false,
+  "required": true,
+  "status": null,
+  "version": null
+ },
+ "stage": "Sensor pilot",
+ "stage_index": 2,
+ "stages": [
+  {
+   "days": 3.7,
+   "entered_at": "2026-09-18T19:13:43.261641",
+   "name": "PO Received",
+   "sla_days": null,
+   "status": "done"
+  },
+  {
+   "days": 1.4,
+   "entered_at": "2026-09-24T11:13:43.261641",
+   "name": "Scoping",
+   "sla_days": null,
+   "status": "done"
+  }
+ ],
+ "start_date": "2026-09-18",
+ "state": "over_sla",
+ "target_end_date": "2026-12-16",
+ "tasks": [
+  {
+   "assignee": "Sara Lind",
+   "assignee_avatar_url": null,
+   "assignee_id": 4,
+   "done": false,
+   "done_at": null,
+   "due_date": "2026-10-11",
+   "id": 1,
+   "stage": "Sensor pilot",
+   "title": "Collect asset inventory"
+  },
+  {
+   "assignee": null,
+   "assignee_avatar_url": null,
+   "assignee_id": null,
+   "done": false,
+   "done_at": null,
+   "due_date": "2026-10-18",
+   "id": 2,
+   "stage": "Sensor pilot",
+   "title": "Deploy sensors to pilot group"
+  }
+ ],
+ "today": "2026-10-15",
+ "vendor_name": "CrowdStrike"
+}

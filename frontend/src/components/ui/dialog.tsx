@@ -12,12 +12,15 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
 // Odin opens most dialogs from state, not a Trigger, so Base UI has nothing to
 // give focus back to (test report UX-10). The last element focused outside any
 // dialog is the one that opened it: DialogContent returns focus there.
+// Safari and Firefox on a Mac do not focus a clicked button, so the control under
+// the pointer counts too, or the focus went back to a stale one (review P3-48).
 let lastOutside: HTMLElement | null = null
 if (typeof document !== "undefined") {
-  document.addEventListener("focusin", (e) => {
-    const t = e.target
+  const note = (t: EventTarget | null) => {
     if (t instanceof HTMLElement && !t.closest('[role="dialog"], [role="alertdialog"]')) lastOutside = t
-  }, true)
+  }
+  document.addEventListener("focusin", (e) => note(e.target), true)
+  document.addEventListener("pointerdown", (e) => note(e.target instanceof Element ? e.target.closest("button, a[href], input, select, textarea, [tabindex]") : null), true)
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
@@ -132,7 +135,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "font-heading text-[17px] leading-tight font-semibold",   // a page title's size (six-size rule)
+        "pr-8 font-heading text-[17px] leading-tight font-semibold",   // a page title's size (six-size rule); pr-8 keeps it clear of the close button
         className
       )}
       {...props}

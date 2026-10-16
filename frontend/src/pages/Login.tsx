@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
 import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
+import { Notice } from "@/components/Notice"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { AuthHeading, AuthLayout } from "@/components/Brand"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -27,7 +27,7 @@ export default function Login() {
   const [caps, setCaps] = useState(false)
   const [error, setError] = useState<{ field: "username" | "password" | "form"; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null)
   const [signin, setSignin] = useState<SignIn | null>(null)
   // two-step sign-in: after the right password, the code (or a recovery code)
   const [codeStep, setCodeStep] = useState(false)
@@ -41,8 +41,8 @@ export default function Login() {
   useEffect(() => {
     document.title = emergency ? "Emergency sign-in · Odin" : "Sign in · Odin"
     // e.g. "Your session has ended — please sign in again", queued before the redirect here
-    session().then((s) => { setSignin(s.signin ?? { microsoft: false, microsoft_only: false }); if (s.messages?.length) setNotice(s.messages.join(" ")) })
-      .catch(() => { setSignin({ microsoft: false, microsoft_only: false }); setNotice("Odin is not answering just now (it may be restarting). Reload in a moment if signing in fails.") })
+    session().then((s) => { setSignin(s.signin ?? { microsoft: false, microsoft_only: false }); if (s.messages?.length) setNotice({ text: s.messages.join(" ") }) })
+      .catch(() => { setSignin({ microsoft: false, microsoft_only: false }); setNotice({ text: "Odin is not answering just now (it may be restarting). Reload in a moment if signing in fails.", bad: true }) })
   }, [emergency])
   const showPassword = emergency || (signin !== null && !signin.microsoft_only)
   const microsoft = !emergency && !codeStep && !!signin?.microsoft
@@ -87,11 +87,11 @@ export default function Login() {
           : microsoft ? "Staff sign in with their work account." : "Use the username and password your admin gave you."}
       </AuthHeading>
 
-      {notice && <Alert className="mb-5" role="status"><AlertDescription>{notice}</AlertDescription></Alert>}
+      {notice && <Notice bad={notice.bad} className="mb-5">{notice.text}</Notice>}
 
       {microsoft && (
         <a href={`/auth/microsoft${next ? `?next=${encodeURIComponent(next)}` : ""}`}
-          className="flex h-11 w-full items-center justify-center gap-3 rounded-lg border border-input bg-background text-sm font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50">
+          className={buttonVariants({ variant: "outline", className: "h-11 w-full gap-3 text-sm" })}>
           {/* the four-square Microsoft logo, in Microsoft's colours per their sign-in button rules */}
           <svg viewBox="0 0 21 21" className="h-[18px] w-[18px]" aria-hidden><path fill="#F25022" d="M1 1h9v9H1z" /><path fill="#7FBA00" d="M11 1h9v9h-9z" /><path fill="#00A4EF" d="M1 11h9v9H1z" /><path fill="#FFB900" d="M11 11h9v9h-9z" /></svg>
           Sign in with Microsoft
@@ -102,11 +102,11 @@ export default function Login() {
       {codeStep && (
         <form onSubmit={submitCode} className="grid grid-cols-1 gap-4" noValidate aria-busy={busy} aria-label="Two-step sign-in">
           <p className="text-[14px] text-muted-foreground">{recovery ? "Enter one of the recovery codes you saved when you set up two-step sign-in. Each works once." : "Open your authenticator app and enter the 6-digit code for Odin."}</p>
-          {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
+          {error?.field === "form" && <Notice bad>{error.text}</Notice>}
           <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="code" className="text-[14px]">{recovery ? "Recovery code" : "Code"}</Label>
             <Input id="code" name="code" autoFocus autoComplete="one-time-code" inputMode={recovery ? "text" : "numeric"} spellCheck={false} autoCapitalize="none"
-              maxLength={recovery ? 12 : 7} value={code} onChange={(e) => { setCode(e.target.value); if (error) setError(null) }} className={`${field} tracking-[0.2em] tabular-nums`} />
+              maxLength={recovery ? 24 : 7} value={code} onChange={(e) => { setCode(e.target.value); if (error) setError(null) }} className={`${field} tracking-[0.2em] tabular-nums`} />
           </div>
           <Button type="submit" loading={busy} className="mt-1 h-11 text-sm">
             {busy ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Checking…</> : "Continue"}
@@ -121,13 +121,13 @@ export default function Login() {
 
       {showPassword && !codeStep && (
         <form onSubmit={submit} className="grid grid-cols-1 gap-4" noValidate aria-busy={busy}>
-          {error?.field === "form" && <Alert variant="destructive" role="alert"><AlertDescription>{error.text}</AlertDescription></Alert>}
+          {error?.field === "form" && <Notice bad>{error.text}</Notice>}
           <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="username" className="text-[14px]">Username</Label>
             <Input id="username" ref={userRef} name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus={!microsoft}
               value={username} onChange={(e) => { setUsername(e.target.value); if (error?.field === "username") setError(null) }}
               aria-invalid={error?.field === "username" || undefined} aria-describedby={error?.field === "username" ? "username-error" : undefined} className={field} />
-            {error?.field === "username" && <p id="username-error" role="alert" className="text-[13px] text-destructive">{error.text}</p>}
+            {error?.field === "username" && <Notice bad id="username-error">{error.text}</Notice>}
           </div>
           <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="password" className="text-[14px]">Password</Label>
@@ -143,7 +143,7 @@ export default function Login() {
               </button>
             </div>
             {caps && <p id="caps-warning" className="text-[13px] text-warn">Caps Lock is on</p>}
-            {error?.field === "password" && <p id="password-error" role="alert" className="text-[13px] text-destructive">{error.text}</p>}
+            {error?.field === "password" && <Notice bad id="password-error">{error.text}</Notice>}
           </div>
           <Button type="submit" loading={busy} className="mt-1 h-11 text-sm">Sign in</Button>
           {/* after the button, so Tab goes username → password → Sign in */}

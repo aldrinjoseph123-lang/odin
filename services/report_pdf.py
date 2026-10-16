@@ -148,6 +148,15 @@ class _Doc:
         self.y += 4
 
 
+def _opening_month(t0, t1):
+    """t0 when the month the chart opens in would go unnamed (the first month tick sits
+    over 12% in, as on screen: review P2-50), else None."""
+    first = date(t0.year, t0.month, 1)
+    if first < t0:
+        first = date(t0.year + (t0.month == 12), t0.month % 12 + 1, 1)
+    return t0 if (first - t0).days / max(1, (t1 - t0).days) > 0.12 else None
+
+
 def _gantt(doc, stages, today, target, customer=False):
     """Plan (outline), actual (solid), forecast (pale), baseline (thin grey), today and target lines."""
     c = doc.c
@@ -161,7 +170,9 @@ def _gantt(doc, stages, today, target, customer=False):
     track_x, track_w = LEFT + label_w, WIDTH - label_w
     x = lambda d: track_x + track_w * ((d - t0).days / max(1, (t1 - t0).days)) if d else track_x   # noqa: E731   (an unreadable date sits at the left edge)
     doc.room(22 + row_h * min(len(stages), 6))
-    # month ticks
+    # month ticks, the opening month named at the left edge
+    if _opening_month(t0, t1):
+        c.text(x(t0) + 2, doc.y, t0.strftime("%b '%y"), 7, False, MUTED)
     m = date(t0.year, t0.month, 1)
     while m <= t1:
         if m >= t0:
@@ -374,6 +385,8 @@ def _roadmap(doc, rows, today):
     x = lambda d: track_x + track_w * ((d - t0).days / max(1, (t1 - t0).days)) if d else track_x   # noqa: E731
 
     def ticks():
+        if _opening_month(t0, t1):
+            c.text(x(t0) + 2, doc.y, t0.strftime("%b '%y"), 7, False, MUTED)
         m = date(t0.year, t0.month, 1)
         while m <= t1:
             if m >= t0 and x(m) < RIGHT - 20:

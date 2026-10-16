@@ -5,6 +5,7 @@ import { AIProgress } from "@/components/AIProgress"
 import { Ago } from "@/components/Ago"
 import { ApiError, requestProjectAI } from "@/lib/api"
 import { useProjectAI } from "@/lib/usePoll"
+import { Notice } from "@/components/Notice"
 
 type Why = { why: string; first_move: string }
 
@@ -14,7 +15,7 @@ type Why = { why: string; first_move: string }
 // to show; the reasons list above it is always the source of truth.
 export function AIHealthWhy({ projectId, rag }: { projectId: number; rag: string }) {
   const show = rag === "amber" || rag === "red"
-  const { s, load, working } = useProjectAI<Why>(projectId, "health_explained", { enabled: show })
+  const { s, load, working, poll } = useProjectAI<Why>(projectId, "health_explained", { enabled: show })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   if (!show || !s || (!s.available && !s.suggestion)) return null
@@ -25,18 +26,18 @@ export function AIHealthWhy({ projectId, rag }: { projectId: number; rag: string
   }
   return (
     <div className="mt-2 flex flex-wrap items-start gap-x-3 gap-y-1 rounded-lg bg-muted/50 px-3 py-2 text-[13px]">
-      <Sparkles className="mt-1 h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
+      <Sparkles className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
       <div className="min-w-0 flex-1 basis-56" aria-live="polite">
-        {working && s.job ? <AIProgress job={s.job} doing="Explaining" />
+        {working && s.job ? <AIProgress job={s.job} poll={poll} doing="Explaining" />
           : sug ? <>
               <p>{sug.payload.why}</p>
               <p className="mt-1"><span className="font-medium">First move:</span> {sug.payload.first_move}</p>
               <p className="mt-1 text-[12px] text-muted-foreground">AI, <Ago iso={sug.created_at} />{sug.model ? ` · ${sug.model}` : ""}. The reasons above are Odin's own count.</p>
             </>
             : <span className="text-muted-foreground">Have the AI explain this in plain words, with a first move.</span>}
-        {error && <p className="mt-1 text-destructive" role="alert">{error}</p>}
+        {error && <Notice bad className="mt-1">{error}</Notice>}
       </div>
-      {s.available && !working && <Button size="sm" variant="outline" className="h-7" loading={busy} onClick={() => void explain()}>{sug ? "Explain again" : "Explain"}</Button>}
+      {s.available && !working && <Button size="sm" variant="outline" loading={busy} onClick={() => void explain()}>{sug ? "Explain again" : "Explain"}</Button>}
     </div>
   )
 }

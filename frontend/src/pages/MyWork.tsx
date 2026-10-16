@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { EmptyState } from "@/components/EmptyState"
 import { StatTile } from "@/components/StatTile"
 import { pill, filterSelect } from "@/lib/ui"
@@ -7,7 +7,9 @@ import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide
 import { Stepper } from "@/components/Stepper"
 import { StateChip } from "@/components/StateChip"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
-import { ApiError, editTask, myWork, toggleTask, type MyWorkData, type User, type WorkTask } from "@/lib/api"
+import { ApiError, editTask, myWork, toggleTask, type User, type WorkTask } from "@/lib/api"
+import { useLoad } from "@/lib/useLoad"
+import { usePref } from "@/lib/usePref"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
@@ -40,52 +42,59 @@ function groupTasks(tasks: WorkTask[], today: string): Group[] {
 }
 
 // The due date as a button; a click turns it into a date field that saves on change.
-function DueButton({ t, late, busy, onChange }: { t: WorkTask; late: number; busy: boolean; onChange: (v: string) => void }) {
+function DueButton({ t, late, onChange }: { t: WorkTask; late: number; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false)
+  const label = t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "Set a date"
+  // the person a task is on ticks it but may not re-date it (task_edit says no): the date is only read
+  if (!t.can_edit) return t.due_date ? (
+    <span className={cn("h-7 shrink-0 whitespace-nowrap rounded-md px-2 text-[12px] leading-7", late > 0 ? "bg-bad-soft font-medium text-bad" : "text-muted-foreground")}>{label}</span>
+  ) : null
   if (open) return (
-    <DatePicker autoOpen value={t.due_date ?? ""} label={`Due date for ${t.title}`} disabled={busy} onClose={() => setOpen(false)}
+    <DatePicker autoOpen value={t.due_date ?? ""} label={`Due date for ${t.title}`} onClose={() => setOpen(false)}
       onChange={(v) => { setOpen(false); if (v !== (t.due_date ?? "")) onChange(v) }} className="h-7 shrink-0 px-2 text-[12px]" />
   )
   return (
     <button type="button" onClick={() => setOpen(true)} aria-label={`${t.due_date ? `Due ${fmtDate(t.due_date)}` : "No date"}. Change the due date of ${t.title}`}
-      className={cn("h-7 shrink-0 whitespace-nowrap rounded-md px-2 text-[12px] hover:bg-muted", late > 0 ? "bg-bad-soft font-medium text-bad hover:bg-bad-soft" : "text-muted-foreground")}>
-      {t.due_date ? (late > 0 ? `${late} d late` : fmtDate(t.due_date)) : "Set a date"}
+      className={cn("h-7 shrink-0 whitespace-nowrap rounded-md px-2 text-[12px] hover:bg-muted", late > 0 ? "bg-bad-soft font-medium text-bad hover:bg-bad-soft/70" : "text-muted-foreground")}>
+      {label}
     </button>
   )
 }
 
 export default function MyWork({ user }: { user: User }) {
-  const [d, setD] = useState<MyWorkData | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: d, error, reload: load } = useLoad("my-work", myWork)
   const [busy, setBusy] = useState<number | null>(null)
-  const [project, setProject] = useState<number | null>(null)
-  const load = useCallback(() => myWork().then((x) => { setD(x); setError(null) }).catch((e) => setError(e instanceof ApiError ? e.message : "Could not load")), [])
-  useEffect(() => { document.title = "My work · Odin"; void load() }, [load])
+  // the rollout filter is remembered (advice B1); one the person has left falls back to every rollout
+  const [kept, setProject] = usePref<number | null>("mywork.project", null)
+  const project = kept && d?.projects.some((p) => p.id === kept) ? kept : null
+  useEffect(() => { document.title = "My work · Odin" }, [])
   const groups = useMemo(() => (d ? groupTasks(project ? d.tasks.filter((t) => t.project_id === project) : d.tasks, d.today) : []), [d, project])
-  if (error) return <LoadError message={error} />
+  if (error) return <LoadError message={error.message} />
   if (!d) return <PageSkeleton />
   const c = d.counts
   const peak = Math.max(1, ...d.done_by_day.map((x) => x.count))
   // a tick leaves the list; the toast's Undo brings the task back
   async function tick(t: WorkTask) {
+    if (busy === t.id) return   // the box stays focusable while it saves (review P2-41), so a second press lands here
     setBusy(t.id)
     try {
-      await toggleTask(t.project_id, t.id)
-      toast(`Done: ${t.title}`, { action: { label: "Undo", run: () => void toggleTask(t.project_id, t.id).then(load).catch(() => toast("Could not reopen it", { tone: "bad" })) } })
+      await toggleTask(t.project_id, t.id, true)
+      toast(`Done: ${t.title}`, { action: { label: "Undo", run: () => void toggleTask(t.project_id, t.id, false).then(load).catch(() => toast("Could not reopen it", { tone: "bad" })) } })
       await load()
     } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(null) }
   }
   // set or move a task's date (the task is the person's own, so it stays assigned to them)
   async function redate(t: WorkTask, due: string) {
+    if (busy === t.id) return
     setBusy(t.id)
     try { await editTask(t.project_id, t.id, { title: t.title, assignee_id: user.id, due_date: due || null }); toast(due ? `${t.title}: due ${fmtDate(due)}` : `${t.title}: no date`); await load() }
     catch (e) { toast(e instanceof ApiError && e.status === 403 ? "Only someone who manages this rollout's tasks can move its date." : e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(null) }
   }
-  const tiles: { label: string; value: number; sub: string; icon: typeof Layers; tone?: "bad" | "warn" }[] = [
+  const tiles: { label: string; value: number; sub: ReactNode; icon: typeof Layers; tone?: "bad" | "warn" }[] = [
     { label: "Open tasks", value: c.open, sub: `${c.due_week} due this week`, icon: CheckSquare },
     { label: "Overdue", value: c.overdue, sub: c.overdue ? "need a date or a tick" : "nothing late", icon: AlertTriangle, tone: c.overdue ? "bad" : undefined },
     { label: "Done this week", value: c.done_week, sub: "tasks ticked in 7 days", icon: Check },
-    { label: "My rollouts", value: c.rollouts, sub: c.stuck ? `${c.stuck} need attention` : "all on track", icon: Layers, tone: c.stuck ? "warn" : undefined },
+    { label: "My rollouts", value: c.rollouts, sub: c.stuck ? <span className="text-warn">{c.stuck} need attention</span> : "all on track", icon: Layers },
   ]
   return (
     <div className="px-5 pb-8 pt-4">
@@ -100,7 +109,7 @@ export default function MyWork({ user }: { user: User }) {
         ))}
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <div className="mt-4 grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <section className="panel p-4" aria-label="My tasks">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h2 className="text-[14px] font-semibold">Tasks <span className="font-normal text-muted-foreground">{d.tasks.length} open, most urgent first</span></h2>
@@ -120,15 +129,15 @@ export default function MyWork({ user }: { user: User }) {
                   const late = t.due_date ? lateBy(t.due_date, d.today) : 0
                   return (
                     <li key={t.id} className="flex items-center gap-3 py-2">
-                      <button type="button" disabled={busy === t.id} onClick={() => tick(t)} aria-label={`Complete ${t.title}`}
-                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-input bg-background hover:border-foreground disabled:opacity-50">
+                      <button type="button" aria-disabled={busy === t.id || undefined} onClick={() => tick(t)} aria-label={`Complete ${t.title}`}
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-control bg-background hover:border-foreground aria-disabled:opacity-50">
                         {busy === t.id && <Check className="h-3 w-3 text-muted-foreground" />}
                       </button>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium" title={t.title}>{t.title}</span>
                         <Link to={`/board?rollout=${t.project_id}`} title={t.project} className="block truncate text-[12px] text-muted-foreground hover:underline">{t.project} · {t.stage || t.project_stage}</Link>
                       </span>
-                      <DueButton t={t} late={late} busy={busy === t.id} onChange={(v) => void redate(t, v)} />
+                      <DueButton t={t} late={late} onChange={(v) => void redate(t, v)} />
                     </li>
                   )
                 })}
@@ -140,7 +149,7 @@ export default function MyWork({ user }: { user: User }) {
         <div className="grid grid-cols-1 content-start gap-4">
           <section className="panel p-4" aria-label="Done, the last 14 days">
             <h2 className="mb-2 text-[14px] font-semibold">Done <span className="font-normal text-muted-foreground">the last 14 days</span></h2>
-            <ul className="flex h-20 items-end gap-1" aria-label="Tasks done per day">
+            {d.done_by_day.every((x) => !x.count) ? <EmptyState className="py-6">No task ticked off in the last 14 days.</EmptyState> : <ul className="flex h-20 items-end gap-1" aria-label="Tasks done per day">
               {d.done_by_day.map((x) => (
                 <li key={x.day} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-[11px] text-muted-foreground" title={`${fmtDate(x.day)}: ${x.count}`}>
                   <span className={cn("block w-full rounded-t-[3px]", x.count ? "bg-nav-fg/60" : "bg-muted")} style={{ height: `${Math.max(x.count ? 8 : 3, (x.count / peak) * 100)}%` }} aria-hidden />
@@ -148,7 +157,7 @@ export default function MyWork({ user }: { user: User }) {
                   <span className="sr-only">{fmtDate(x.day)}: {x.count}</span>
                 </li>
               ))}
-            </ul>
+            </ul>}
           </section>
 
           <section className="panel p-4" aria-label="My rollouts">

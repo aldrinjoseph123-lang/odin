@@ -41,6 +41,9 @@
     --color-chart-1: var(--chart-1);
     --color-ring: var(--ring);
     --color-input: var(--input);
+    --color-control: var(--control);
+    --color-toast-ok: var(--toast-ok);
+    --color-toast-bad: var(--toast-bad);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
     --color-accent-foreground: var(--accent-foreground);
@@ -88,10 +91,13 @@
     --muted-foreground: #5B6270;    /* 4.9:1 on the darkest tinted ground and every soft fill (#6B7280 fell to 3.9 there) */
     --accent: #EEF2FF;
     --accent-foreground: #2F47D6;
-    --destructive: #D6372F;
+    --destructive: #BE2E27;         /* error text: 4.6:1 on every tinted ground and on its own 10% wash (#D6372F was 3.7) */
     --border: #E9EAF0;
     --input: #D0D3DA;
-    --ring: #7090FF;
+    --control: #898B91;             /* a tick box's or radio's edge: 3:1 on the card and every ground (WCAG 1.4.11; --input is 1.5) */
+    --ring: #6483F8;                /* the focus ring, drawn solid: 3:1 on card, ground, muted and the accent wash */
+    --toast-ok: var(--ok-line);     /* a toast's tone glyph on its ink surface */
+    --toast-bad: var(--bad-line);
     --elevation-card: 0 1px 2px rgb(16 17 20 / 0.04), 0 10px 28px -14px rgb(16 17 20 / 0.14);
     --elevation-pop: 0 2px 6px rgb(16 17 20 / 0.06), 0 16px 40px -12px rgb(16 17 20 / 0.22);
     --chart-1: #3D5AFE;
@@ -147,6 +153,9 @@
     --destructive: #F27C75;
     --border: #262B34;
     --input: #363C48;
+    --control: #686C76;
+    --toast-ok: #177A42;            /* the toast is light in dark: the light theme's state ink (4.4 and 5.4:1) */
+    --toast-bad: #B4231C;
     /* Depth in dark is tone, not shadow: ground #0E1014 → card #171A21 →
        popover #1D2129 (hover #252A34), each with a faint light edge. A drop shadow vanishes
        on ink and only muddies the ground. */
@@ -180,17 +189,17 @@
 /* Pastel accents (9 Oct 2026, the user's call): a soft fill with deep text,
    red first and the default; each person picks theirs on the Account page.
    The fill carries --primary-foreground (deep), never white. */
-:root[data-accent="red"]   { --primary: #FFD3DA; --primary-foreground: #8E1230; --primary-text: #B4143C; --accent: #FFF0F2; --accent-foreground: #B4143C; --ring: #F2667F; }
-:root[data-accent="blue"]  { --primary: #CCDAFF; --primary-foreground: #1C3A8C; --primary-text: #2F47D6; --accent: #EEF2FF; --accent-foreground: #2F47D6; --ring: #7090FF; }
-:root[data-accent="indigo"] { --primary: #D6D8FF; --primary-foreground: #302C80; --primary-text: #4338CA; --accent: #F0F0FF; --accent-foreground: #4338CA; --ring: #8B8CF6; }
-:root[data-accent="violet"] { --primary: #E2D5FF; --primary-foreground: #4A1D93; --primary-text: #6D28D9; --accent: #F6F1FF; --accent-foreground: #6D28D9; --ring: #A98BF5; }
-:root[data-accent="teal"]  { --primary: #C4EEE6; --primary-foreground: #12504A; --primary-text: #0F766E; --accent: #EEFAF7; --accent-foreground: #0F766E; --ring: #3CC7B0; }
+:root[data-accent="red"]   { --primary: #FFD3DA; --primary-foreground: #8E1230; --primary-text: #B4143C; --accent: #FFF0F2; --accent-foreground: #B4143C; --ring: #E85974; }
+:root[data-accent="blue"]  { --primary: #CCDAFF; --primary-foreground: #1C3A8C; --primary-text: #2F47D6; --accent: #EEF2FF; --accent-foreground: #2F47D6; --ring: #6483F8; }
+:root[data-accent="indigo"] { --primary: #D6D8FF; --primary-foreground: #302C80; --primary-text: #4338CA; --accent: #F0F0FF; --accent-foreground: #4338CA; --ring: #7F7EEF; }
+:root[data-accent="violet"] { --primary: #E2D5FF; --primary-foreground: #4A1D93; --primary-text: #6D28D9; --accent: #F6F1FF; --accent-foreground: #6D28D9; --ring: #9B74EF; }
+:root[data-accent="teal"]  { --primary: #C4EEE6; --primary-foreground: #12504A; --primary-text: #0F766E; --accent: #EEFAF7; --accent-foreground: #0F766E; --ring: #239A8C; }
 :root[data-accent="green"] { --primary: #CFF0D9; --primary-foreground: #14532D; --primary-text: #15803D; --accent: #F0FAF3; --accent-foreground: #15803D; --ring: #4CC77A; }
-:root[data-accent="sky"]   { --primary: #C9E8FB; --primary-foreground: #0B4A6E; --primary-text: #0369A1; --accent: #EEF7FD; --accent-foreground: #0369A1; --ring: #45B3EE; }
-:root[data-accent="plum"]  { --primary: #F4D5F8; --primary-foreground: #6B1A70; --primary-text: #A21CAF; --accent: #FCF0FD; --accent-foreground: #A21CAF; --ring: #D97CE6; }
+:root[data-accent="sky"]   { --primary: #C9E8FB; --primary-foreground: #0B4A6E; --primary-text: #0369A1; --accent: #EEF7FD; --accent-foreground: #0369A1; --ring: #2892CC; }
+:root[data-accent="plum"]  { --primary: #F4D5F8; --primary-foreground: #6B1A70; --primary-text: #A21CAF; --accent: #FCF0FD; --accent-foreground: #A21CAF; --ring: #C960D6; }
 :root[data-accent="ink"]   { --primary: #E3E5EA; --primary-foreground: #101114; --primary-text: #101114; --accent: #F2F3F5; --accent-foreground: #101114; --ring: #6B7280; }
 
-:root[data-theme="dark"][data-accent="red"] { --accent: #3A1520; --accent-foreground: #FDA4B4; --primary-text: #FDA4B4; }
+:root[data-theme="dark"][data-accent="red"] { --primary-foreground: #7A0F29; --accent: #3A1520; --accent-foreground: #FDA4B4; --primary-text: #FDA4B4; }
 :root[data-theme="dark"][data-accent="blue"] { --accent: #1C2340; --accent-foreground: #9DB0FF; --primary-text: #9DB0FF; }
 :root[data-theme="dark"][data-accent="indigo"] { --accent: #1E1F45; --accent-foreground: #A5B4FC; --primary-text: #A5B4FC; }
 :root[data-theme="dark"][data-accent="violet"] { --accent: #2A1B4A; --accent-foreground: #C4B5FD; --primary-text: #C4B5FD; }
@@ -206,7 +215,7 @@
    per-accent blocks so it wins in both themes. */
 :root[data-accent="red"], :root[data-accent="green"] { --primary-text: #101114; --accent: #F2F3F5; --accent-foreground: #101114; --ring: #6B7280; }
 :root[data-theme="dark"][data-accent="red"], :root[data-theme="dark"][data-accent="green"] { --primary-text: #E7E8EC; --accent: #252A34; --accent-foreground: #E7E8EC; --ring: #9AA0AB; }
-:root[data-theme="dark"][data-accent="ink"] { --accent: #262B34; --accent-foreground: #E7E8EC; --primary-text: #E7E8EC; }
+:root[data-theme="dark"][data-accent="ink"] { --accent: #262B34; --accent-foreground: #E7E8EC; --primary-text: #E7E8EC; --ring: #9AA0AB; }
 
 
 /* A card: the one surface content sits on. White (or the dark step) on the
@@ -250,6 +259,11 @@
   background-color: color-mix(in srgb, var(--foreground) 3%, var(--card));
 }
 
+/* Focus rings are solid (WCAG 1.4.11: 3:1 against what they sit on; review
+   P2-46). The shadcn parts and older pages ask for `ring-ring/50`, which mixed
+   the ring to ~1.6:1 on the card; unlayered, this wins over every such utility. */
+[class*="ring-ring/50"]:is(:focus-visible, :has(:focus-visible)) { --tw-ring-color: var(--ring); }
+
 /* Every native <select> wears shadcn's Native Select look (9 Oct 2026): no
    browser chrome, our chevron and room for it. Outside the base layer so a
    select's own px-* utility cannot take the room away ("Warning" and
@@ -265,7 +279,7 @@ select:not([multiple]) {
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
     }
   body {
     @apply bg-background text-foreground;
@@ -301,7 +315,7 @@ select:not([multiple]) {
     }
   select:not([multiple]):focus-visible {
     border-color: var(--ring);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
+    box-shadow: 0 0 0 3px var(--ring);
     outline: none;
     }
   /* on a touch screen every button is at least 24 x 24 px to hit (WCAG 2.5.8,
@@ -348,8 +362,40 @@ main { counter-reset: panel; }
    instead of being clipped at the page edge. */
 @page { size: A4; margin: 12mm; }
 @media print {
+  /* Paper is always light (review P2-48): a dark-theme user printed near-black
+     cards and white-on-white titles. These are the light values of the dark
+     block above, re-declared after it (same specificity, later wins), and the
+     accent text and wash go neutral so no accent prints pale on white. The
+     .dark class (shadcn dark: variants) stays; those few utilities are not tokens. */
+  :root, :root[data-theme="dark"], :root[data-theme][data-accent] {
+    --background: #FFFFFF; --foreground: #101114; --card: #FFFFFF; --card-foreground: #101114;
+    --popover: #FFFFFF; --popover-foreground: #101114; --secondary: #F7F7F8; --secondary-foreground: #101114;
+    --muted: #F3F4F6; --muted-foreground: #5B6270; --destructive: #BE2E27; --border: #E9EAF0; --input: #D0D3DA; --control: #898B91;
+    --accent: #F2F3F5; --accent-foreground: #101114; --primary-text: #101114;
+    --toast-ok: var(--ok-line); --toast-bad: var(--bad-line);
+    --elevation-card: none; --elevation-pop: none;
+    --chart-2: #101114; --chart-3: #6B7280; --chart-4: #D0D3DA; --chart-5: #E4E6EB;
+    --ok: #177A42; --ok-soft: #E6F6EC; --ok-line: #1F9D55; --warn: #8A5300; --warn-soft: #FFF4E0; --warn-line: #E39B1D;
+    --bad: #B4231C; --bad-soft: #FDECEB; --bad-line: #E0463D; --nav-fg: #4B4F58;
+    --sidebar: #F7F7F8; --sidebar-foreground: #101114; --sidebar-border: #E4E6EB; --brand-edge: transparent;
+    color-scheme: light;
+  }
+  html, body { background: #FFFFFF; }
+  /* a screen-height shell would stretch the last page; no ground tint */
+  .min-h-svh { min-height: 0; }
   .overflow-x-auto, .overflow-x-clip { overflow: visible !important; }
   table .whitespace-nowrap:not(.rounded-full) { white-space: normal; }
+  /* a name wraps on paper (it has no tooltip); a two-line row grows, its bar stays centred */
+  .truncate { overflow: visible; text-overflow: clip; white-space: normal; }
+  a.h-9, [role="img"].h-9 { height: auto; min-height: 2.25rem; }
+  /* long cards split between rows instead of leaving a blank page; a row, a
+     list item and a short card never split, and a title stays with what follows */
+  .panel { break-inside: avoid; }
+  .panel.break-inside-avoid { break-inside: auto; }
+  tr, li { break-inside: avoid; }
+  h1, h2, h3 { break-after: avoid; }
+  /* screen chrome: menus, toasts, tooltips */
+  nav, [role="tooltip"], [data-slot="tooltip-content"], [aria-live="polite"].fixed { display: none !important; }
   /* bars, dots and pills are data: print their fills */
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

@@ -22,7 +22,7 @@ export default defineConfig({
   expect: { timeout: 7_000, toHaveScreenshot: { maxDiffPixelRatio: 0.03, animations: "disabled" } },
   fullyParallel: false,          // one seeded database; journeys write to it
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,                    // a journey edits the shared database: a retry would run on mutated data and hide the first failure
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
   use: {
@@ -42,7 +42,7 @@ export default defineConfig({
     command: `"${python}" -c "from app import app; app.run(host='127.0.0.1', port=${port})"`,
     cwd: root,
     port,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI,   // locally only: CI always starts its own, on the freshly seeded directory
     timeout: 60_000,
     env: { PYTHONUNBUFFERED: "1", ODIN_DATA_DIR: dataDir, SECRET_KEY: "e2e-not-secret", PORT: String(port) },
   },

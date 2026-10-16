@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { CalendarDays } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { fmtDate, localToday } from "@/lib/format"
@@ -19,9 +20,9 @@ export function DatePicker({ value, onChange, label, placeholder = "Pick a date"
   const selected = value ? parse(value) : undefined
   const pick = (v: string) => { onChange(v); setOpen(false); onClose?.() }
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) onClose?.() }}>
-      <PopoverTrigger render={<button type="button" />} disabled={disabled} aria-label={`${label}: ${value ? fmtDate(value) : "not set"}`} data-value={value}
-        className={cn("inline-flex h-8 min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-[13px] outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-40", className)}>
+    <Popover open={open && !disabled} onOpenChange={(o) => { if (disabled) return; setOpen(o); if (!o) onClose?.() }}>
+      <PopoverTrigger render={<Button type="button" variant="outline" disabled={disabled} />} aria-label={`${label}: ${value ? fmtDate(value) : "not set"}`} data-value={value}
+        className={cn("min-w-0 justify-start gap-2 text-left text-[13px] font-normal", className)}>
         <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className={cn("truncate", !value && "text-muted-foreground")}>{value ? fmtDate(value) : placeholder}</span>
       </PopoverTrigger>

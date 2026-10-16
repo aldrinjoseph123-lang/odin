@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { PanelTitle } from "@/components/PanelTitle"
 import { StatusPill } from "@/components/PlanGantt"
 import { toast } from "@/lib/toast"
-import { field, pill, fieldArea } from "@/lib/ui"
+import { field, filterSelect, pill, fieldArea, checkbox } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { AIDraftBar } from "@/components/AIDraftBar"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { CheckCircle2, ChevronLeft, Copy, Download, FileSignature, Link2, Printer, ShieldCheck, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Field } from "@/components/ui/field"
+import { Notice } from "@/components/Notice"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PrintBrand } from "@/components/Brand"
 import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
@@ -19,6 +22,8 @@ import {
   type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User, type SignoffLink,
 } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
+import { copyWithToast } from "@/lib/copy"
+import { useLoad } from "@/lib/useLoad"
 import { TemplatePicker } from "@/components/TemplatePicker"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
@@ -110,7 +115,7 @@ function Document({ v }: { v: SignoffVersion }) {
           {v.signed_at && v.status !== "uploaded" && <><dt className="text-muted-foreground">Customer</dt><dd>{v.signer_name}{v.signer_email && ` (${v.signer_email})`} signed {fmtWhen(v.signed_at, true)} in Odin, after a one-time sign-in link sent to that address{v.signed_ip ? `; from ${v.signed_ip}` : ""}</dd></>}
           {v.link_issued_by && <><dt className="text-muted-foreground">Sign-in link</dt><dd>Issued by {v.link_issued_by}, {fmtWhen(v.link_issued_at, true)}, and passed on by hand</dd></>}
           {v.counter_signed_at && <><dt className="text-muted-foreground">Countersigned</dt><dd>{v.counter_name}, {fmtWhen(v.counter_signed_at, true)}{v.counter_ip ? `; from ${v.counter_ip}` : ""}</dd></>}
-          {v.status === "uploaded" && <><dt className="text-muted-foreground">Paper copy</dt><dd>Signed by {v.signer_name} on {fmtDate(v.signed_at)}; the scan is in the project's documents</dd></>}
+          {v.status === "uploaded" && <><dt className="text-muted-foreground">Paper copy</dt><dd>Signed by {v.signer_name} on {fmtDate(v.signed_at)}; the scan is in the rollout's documents</dd></>}
           {v.status === "rejected" && <><dt className="text-muted-foreground">Not accepted</dt><dd>{fmtWhen(v.rejected_at, true)}: {v.reject_comment}</dd></>}
           {v.status === "waived" && <><dt className="text-muted-foreground">Waived</dt><dd>by {v.waived_by}: {v.waiver_reason}</dd></>}
         </dl>
@@ -129,6 +134,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
   const [rejecting, setRejecting] = useState(false)
   const [comment, setComment] = useState("")
   const [err, setErr] = useState<string | null>(null)
+  const missing = [!name.trim() && "enter your full name", !sig && "draw or type your signature", !accept && "tick the box to accept"].filter(Boolean) as string[]
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!sig) { setErr("Sign by drawing or typing your name"); return }
@@ -143,26 +149,29 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
   }
   if (rejecting) return (
     <div className="grid grid-cols-1 gap-2">
-      <label htmlFor="reject-comment" className="text-[13px] font-medium">What needs to change before you can sign?</label>
-      <textarea id="reject-comment" rows={4} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} className={area} autoFocus />
-      {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
+      <Field label="What needs to change before you can sign?">
+        <textarea rows={4} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} className={area} autoFocus />
+      </Field>
+      {err && <Notice bad>{err}</Notice>}
       <div className="flex gap-2"><Button size="sm" variant="ghost" onClick={() => setRejecting(false)} disabled={busy}>Back</Button>
-        <Button size="sm" variant="outline" className="ml-auto" onClick={reject} disabled={busy || !comment.trim()}>Send back</Button></div>
+        <Button size="sm" variant="outline" className="ml-auto" onClick={reject} loading={busy} disabled={!comment.trim()}>Send back</Button></div>
     </div>
   )
   return (
     <form onSubmit={submit} className="grid grid-cols-1 gap-3">
       <div className="grid grid-cols-2 gap-2">
-        <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Full name<input className={field} required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>
-        <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Title<input className={field} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" placeholder="e.g. IT Director" /></label>
+        <Field label="Full name"><Input required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></Field>
+        <Field label="Title"><Input maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" placeholder="e.g. IT Director" /></Field>
       </div>
       <SignaturePad value={sig} onChange={setSig} typedDefault={name} />
       <label className="flex items-start gap-2 text-[13px] leading-snug">
-        <input type="checkbox" className="mt-1 accent-primary" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
+        <input type="checkbox" className={cn(checkbox, "mt-1")} checked={accept} onChange={(e) => setAccept(e.target.checked)} />
         <span>{counter ? "I confirm the work above is complete and countersign on our behalf." : `I have read this document and accept it on behalf of ${client}.`}</span>
       </label>
-      {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
-      <Button type="submit" loading={busy} disabled={!accept || !sig || !name.trim()}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
+      {err && <Notice bad>{err}</Notice>}
+      {/* a disabled button says what it waits for (WCAG 3.3.1), and the reason is tied to it */}
+      {missing.length > 0 && <p id="sign-missing" className="text-[12px] text-muted-foreground">To {counter ? "countersign" : "sign"}: {missing.join(", ")}.</p>}
+      <Button type="submit" loading={busy} disabled={missing.length > 0} aria-describedby={missing.length ? "sign-missing" : undefined}><FileSignature className="h-4 w-4" /> {counter ? "Countersign" : "Sign"}</Button>
       {canReject && <button type="button" onClick={() => setRejecting(true)} className="text-[13px] text-muted-foreground hover:text-foreground hover:underline">I can't sign this yet</button>}
     </form>
   )
@@ -178,7 +187,7 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
     try { setLink(await signoffLink(id, version)) } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not make a link") }
   }
   async function copy() {
-    try { await navigator.clipboard.writeText(link!.link ?? ""); setCopied(true) } catch { setErr("Select the link and copy it") }
+    setCopied(await copyWithToast(link!.link ?? "", "link"))
   }
   return (
     <section className="panel grid grid-cols-1 gap-2 p-4">
@@ -193,7 +202,7 @@ function SignerLink({ id, version, name }: { id: number; version: number; name: 
           <p className="text-[12px] text-muted-foreground">For {link.email} only. It works once and expires in {link.minutes} minutes; make a new one if it lapses.</p>
         </>
       ) : <Button size="sm" variant="outline" onClick={get}><Link2 className="h-3.5 w-3.5" /> Get a sign-in link</Button>}
-      {err && <p className="text-[12px] text-destructive" role="alert">{err}</p>}
+      {err && <Notice bad>{err}</Notice>}
     </section>
   )
 }
@@ -250,27 +259,28 @@ function Composer({ d, id, onSent, template, onTemplate }: { d: SignoffData; id:
         <Section n title="Handover and support" sub="one per line">
           <textarea aria-label="Handover and support" rows={3} maxLength={20000} value={terms} onChange={(e) => setTerms(e.target.value)} className={area} />
         </Section>
-        <Section n title="Acceptance" sub="set by an admin in Settings › Workflow"><p className="rounded-lg bg-muted/60 p-3 text-[14px] leading-relaxed">{draft.statement}</p></Section>
+        <Section n title="Acceptance" sub="set by an admin in Settings › Rollouts &amp; workflow"><p className="rounded-lg bg-muted/60 p-3 text-[14px] leading-relaxed">{draft.statement}</p></Section>
       </div>
       <aside className="grid grid-cols-1 content-start gap-3 lg:sticky lg:top-4 print:hidden">
         <section className="panel grid grid-cols-1 gap-3 p-4">
           <PanelTitle n={false} className="mb-0">Send for signature</PanelTitle>
-          <TemplatePicker kind="signoff" value={template} onChange={onTemplate} />
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Customer's signatory
+          {/* another template brings its own terms: typing is not dropped without asking (review P2-30) */}
+          <TemplatePicker kind="signoff" value={template} onChange={async (t) => { if (!dirty || await askConfirm("Switch the template? Its own terms replace the words on this page, and what you typed is lost.")) onTemplate(t) }} />
+          <Field label="Customer's signatory">
             <select className={field} value={signer} onChange={(e) => setSigner(e.target.value ? Number(e.target.value) : "")}>
               {cand.signers.length === 0 && <option value="">Nobody yet</option>}
               {cand.signers.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
-          </label>
+          </Field>
           {cand.signers.length === 0 && <p className="text-[12px] text-muted-foreground">Invite the customer's contact on the <Link to={`/projects/${id}`} className="underline">rollout page</Link> (Team › Invite, role Customer). They sign with a one-time link: by email when mail is set up, or one you pass on.</p>}
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Countersigns for us
+          <Field label="Countersigns for us">
             <select className={field} value={counter} onChange={(e) => setCounter(e.target.value ? Number(e.target.value) : "")}>
               {cand.countersigners.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.role}</option>)}
             </select>
-          </label>
+          </Field>
           {d.not_yet && <p className="rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn" role="note">{d.not_yet}. You can prepare the document now and send it then.</p>}
           <p className="text-[12px] text-muted-foreground">Sending freezes this version and its fingerprint. To change it later, withdraw it and send a new one.</p>
-          {err && <p className="text-[13px] text-destructive" role="alert">{err}</p>}
+          {err && <Notice bad>{err}</Notice>}
           {confirming ? (
             <div className="grid grid-cols-1 gap-2" role="group" aria-label="Confirm sending">
               <Button onClick={send} loading={busy} autoFocus>{`Send to ${who?.name ?? "the customer"} now`}</Button>
@@ -290,21 +300,19 @@ export default function Signoff(_props: { user: User }) {
   const [params, setParams] = useSearchParams()
   const v = Number(params.get("v")) || null
   const template = Number(params.get("template")) || null
-  const [d, setD] = useState<SignoffData | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [dialog, setDialog] = useState<"upload" | "waive" | null>(null)
   const [reason, setReason] = useState("")
   const [dialogErr, setDialogErr] = useState<string | null>(null)
-  const load = useCallback(async () => {
-    try { const x = await signoff(id, v, template); setD(x); document.title = `Sign-off · ${x.project.name} · Odin` }
-    catch (e) { setError(e instanceof ApiError && e.status === 404 ? "This rollout or version does not exist, or you are not on it." : e instanceof ApiError ? e.message : "Could not load the sign-off") }
-  }, [id, v, template])
-  useEffect(() => { void load() }, [load])
+  // a failed refresh keeps the page; an error clears on the next success (review P2-29)
+  const { data: d, error: failed, reload: load } = useLoad(`signoff:${id}:${v}:${template}`, () => signoff(id, v, template))
+  useEffect(() => { if (d) document.title = `Sign-off · ${d.project.name} · Odin` }, [d])
+  const error = failed ? (failed.status === 404 ? "This rollout or version does not exist, or you are not on it." : failed.message) : null
   if (error) return <LoadError message={error} back={error.startsWith("This rollout or version does not exist") ? { href: "/projects", label: "All rollouts" } : undefined} />
   if (!d) return <PageSkeleton />
   const cur = d.current
-  const composing = d.can.manage && !!d.draft && (!cur || cur.status === "rejected" || cur.status === "withdrawn") && !v
+  // a version set aside when the rollout was reopened closes nothing: the manager sends a new one
+  const composing = d.can.manage && !!d.draft && (!cur || cur.status === "rejected" || cur.status === "withdrawn" || !!cur.superseded_at) && !v
   const done = (m: string) => { toast(m); setParams({}, { replace: true }); void load() }
   async function act(fn: () => Promise<unknown>, message: string) {
     setBusy(true)
@@ -329,7 +337,7 @@ export default function Signoff(_props: { user: User }) {
         <Link to={`/projects/${id}`} className="inline-flex min-w-0 max-w-full items-start gap-1 text-[13px] text-muted-foreground wrap-anywhere hover:text-foreground"><ChevronLeft className="mt-1 h-3.5 w-3.5 shrink-0" />{d.project.name}</Link>
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {d.versions.length > 0 && (
-            <select value={v ?? ""} onChange={(e) => setParams(e.target.value ? { v: e.target.value } : {}, { replace: true })} aria-label="Version" className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
+            <select value={v ?? ""} onChange={(e) => setParams(e.target.value ? { v: e.target.value } : {}, { replace: true })} aria-label="Version" className={filterSelect}>
               <option value="">Latest</option>
               {d.versions.map((x) => <option key={x.version} value={x.version}>v{x.version} · {signoffText(x.status).split(";")[0].split(",")[0]} · {fmtDate(x.created_at)}</option>)}
             </select>
@@ -353,6 +361,12 @@ export default function Signoff(_props: { user: User }) {
           <span>Signed off. {d.project.stage === "Sign-off" ? "The rollout can move to its last stage." : ""}</span>
           <Link to={`/projects/${id}`} className="ml-auto font-medium underline">Back to the rollout</Link>
         </div>
+      )}
+      {cur?.superseded_at && (
+        <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn" role="note">
+          <b>Superseded {fmtDate(cur.superseded_at)}.</b> The rollout was reopened after version {cur.version} was signed, so it is kept on record but no longer closes the rollout.
+          {composing ? " Send a new version below." : d.can.manage ? " A new version is needed to close it again." : " The project manager has to send a new version to close it again."}
+        </p>
       )}
       {composing && cur?.status === "rejected" && (
         <p className="mt-3 rounded-lg bg-bad-soft px-3 py-2 text-[13px] text-bad">Version {cur.version} was not accepted: {cur.reject_comment}</p>
@@ -395,13 +409,13 @@ export default function Signoff(_props: { user: User }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Upload the signed copy</DialogTitle><DialogDescription>For version {cur?.version}. It completes the sign-off and is filed under the rollout's documents.</DialogDescription></DialogHeader>
           <form onSubmit={upload} className="grid grid-cols-1 gap-3">
-            <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed copy (PDF or image)<input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg" /></label>
+            <Field label="Signed copy (PDF or image)"><Input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg" className="h-auto py-1" /></Field>
             <div className="grid grid-cols-2 gap-2">
-              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed by<input name="signer_name" required maxLength={120} defaultValue={cur?.content.signer?.name ?? ""} className={field} /></label>
-              <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Title<input name="signer_title" maxLength={120} className={field} /></label>
+              <Field label="Signed by"><Input name="signer_name" required maxLength={120} defaultValue={cur?.content.signer?.name ?? ""} /></Field>
+              <Field label="Title"><Input name="signer_title" maxLength={120} /></Field>
             </div>
-            <div className="grid grid-cols-1 gap-1 text-[13px] font-medium">Signed on<SignedOn /></div>
-            {dialogErr && <p className="text-[13px] text-destructive" role="alert">{dialogErr}</p>}
+            <Field label="Signed on"><SignedOn /></Field>
+            {dialogErr && <Notice bad>{dialogErr}</Notice>}
             <div className="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button type="submit" size="sm" loading={busy}>Upload</Button></div>
           </form>
         </DialogContent>
@@ -409,10 +423,11 @@ export default function Signoff(_props: { user: User }) {
       <Dialog open={dialog === "waive"} onOpenChange={(o) => { if (!o) setDialog(null) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Close without signatures</DialogTitle><DialogDescription>An admin's exception: the rollout can close without the customer's signature. The reason is kept on the record and in the audit log.</DialogDescription></DialogHeader>
-          <label htmlFor="waive-reason" className="text-[13px] font-medium">Why</label>
-          <textarea id="waive-reason" rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} className={area} placeholder="Customer confirmed acceptance by email on 3 Oct; reference attached to the rollout." />
-          {dialogErr && <p className="text-[13px] text-destructive" role="alert">{dialogErr}</p>}
-          <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button size="sm" disabled={busy || reason.trim().length < 10} onClick={waive}>Waive the sign-off</Button></div>
+          <Field label="Why">
+            <textarea rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} className={area} placeholder="Customer confirmed acceptance by email on 3 Oct; reference attached to the rollout." />
+          </Field>
+          {dialogErr && <Notice bad>{dialogErr}</Notice>}
+          <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button size="sm" loading={busy} disabled={reason.trim().length < 10} onClick={waive}>Waive the sign-off</Button></div>
         </DialogContent>
       </Dialog>
     </div>

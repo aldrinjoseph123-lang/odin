@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { fieldAuto } from "@/lib/ui"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { checkbox, td, th } from "@/lib/ui"
+import { Input } from "@/components/ui/input"
+import { Field } from "@/components/ui/field"
 import { CalendarRange, History, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PlanGantt } from "@/components/PlanGantt"
 import { Ago } from "@/components/Ago"
 import { AIHealthWhy } from "@/components/AIHealthWhy"
-import { ApiError, plan as loadPlan, rebaseline, savePlan, type PlanData } from "@/lib/api"
+import { ApiError, plan as loadPlan, rebaseline, savePlan } from "@/lib/api"
 import { fillSuggested, setDate, workDays, type PlanRow } from "@/lib/plan"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
-import { fmtDate } from "@/lib/format"
+import { fmtDate, forecastTone } from "@/lib/format"
+import { Notice } from "@/components/Notice"
+import { LoadFailed } from "@/components/LoadFailed"
+import { useLoad } from "@/lib/useLoad"
 
 // The rollout's plan on its project page: health up top, the Gantt, then the
 // dates per stage (editable for the project manager), the baseline controls
@@ -19,7 +24,7 @@ const slipText = (n: number | null) => (n == null ? "—" : n === 0 ? "on plan" 
 
 // `refresh` changes when something else on the page moves the health (a RAID item).
 export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: number; onSaved?: () => void; refresh?: number }) {
-  const [d, setD] = useState<PlanData | null>(null)
+  const { data: d, error: failed, reload } = useLoad(`plan:${projectId}`, () => loadPlan(projectId))
   const [rows, setRows] = useState<(PlanRow & { name: string })[]>([])
   const [cascade, setCascade] = useState(true)
   const [reason, setReason] = useState("")
@@ -27,25 +32,38 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null)
   const [rebase, setRebase] = useState<string | null>(null)
   const [log, setLog] = useState(false)
-  const [failed, setFailed] = useState(false)
   const [editing, setEditing] = useState(false)   // dates are read until someone asks to edit them (critique 10 Oct)
-  const load = useCallback(async () => {
-    const x = await loadPlan(projectId)
-    setD(x)
-    setRows(x.stages.map((s) => ({ id: s.id, name: s.name, plan_start: s.plan_start, plan_end: s.plan_end, suggested_start: s.suggested_start, suggested_end: s.suggested_end })))
-  }, [projectId])
-  useEffect(() => { setFailed(false); load().catch(() => setFailed(true)) }, [load, refresh])
-  const dirty = useMemo(() => !!d && rows.some((r, i) => r.plan_start !== d.stages[i].plan_start || r.plan_end !== d.stages[i].plan_end), [d, rows])
-  if (!d) return failed
-    ? <p className="flex items-center gap-2 text-[13px] text-muted-foreground" role="alert">Could not load the plan. <Button size="sm" variant="outline" onClick={() => { setFailed(false); load().catch(() => setFailed(true)) }}>Try again</Button></p>
-    : <p className="text-[13px] text-muted-foreground">Loading the plan…</p>
+  const typing = useRef(false)   // dates changed and not saved yet
+  // `fresh` after a save; a refresh from elsewhere (a RAID item, a stage move)
+  // keeps the dates being typed, on the same stages (review P3-38)
+  const fresh = useRef(false)
+  useEffect(() => {
+    if (!d) return
+    const next = d.stages.map((s) => ({ id: s.id, name: s.name, plan_start: s.plan_start, plan_end: s.plan_end, suggested_start: s.suggested_start, suggested_end: s.suggested_end }))
+    setRows((cur) => !fresh.current && typing.current && cur.length === next.length && cur.every((r, i) => r.id === next[i].id)
+      ? next.map((r, i) => ({ ...r, plan_start: cur[i].plan_start, plan_end: cur[i].plan_end })) : next)
+    fresh.current = false
+  }, [d])
+  useEffect(() => { if (refresh) void reload() }, [refresh, reload])
+  const dirty = useMemo(() => !!d && rows.some((r, i) => r.plan_start !== d.stages[i]?.plan_start || r.plan_end !== d.stages[i]?.plan_end), [d, rows])
+  useEffect(() => { typing.current = dirty }, [dirty])
+  if (!d) return failed ? <LoadFailed what="the plan" onRetry={() => void reload()} /> : <p className="text-[13px] text-muted-foreground">Loading the plan…</p>
   // a closed rollout's plan is history: shown, not edited
   const editable = d.can_edit && !d.closed
   const open = editable && (editing || !d.has_plan)   // with no plan yet, the table opens ready to fill
 
   async function run(fn: () => Promise<string>) {
     setBusy(true); setNotice(null)
-    try { const text = await fn(); await load(); setNotice({ text }); setEditing(false); onSaved?.() } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
+    try { const text = await fn(); fresh.current = true; await reload(); setNotice({ text }); setEditing(false); onSaved?.() } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
+  }
+  // a click that finds nothing to do says so (review P3-40)
+  function suggest() {
+    const next = fillSuggested(rows)
+    if (next.every((r, i) => r.plan_start === rows[i].plan_start && r.plan_end === rows[i].plan_end)) {
+      setNotice({ text: rows.every((r) => r.plan_start && r.plan_end) ? "Every stage already has dates. Change one to move it." : "There is nothing to suggest yet: give the stages SLA days first." })
+      return
+    }
+    setNotice(null); setRows(next)
   }
   const save = () => run(async () => {
     const r = await savePlan(projectId, rows.map(({ id, plan_start, plan_end }) => ({ id, plan_start, plan_end })), reason.trim())
@@ -55,7 +73,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
   })
   const f = d.finish
   const tiles: { label: string; value: string; sub?: string; tone?: "bad" | "warn" | "ok" }[] = [
-    { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: f.vs_target_days != null && f.vs_target_days > 0 ? (f.target && d.today > f.target ? "bad" : "warn") : "ok" },
+    { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: forecastTone(f.vs_target_days, f.target, d.today) },
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
     { label: "Against baseline", value: f.vs_baseline_days == null ? "—" : slipText(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", tone: f.vs_baseline_days && f.vs_baseline_days > 0 ? "warn" : undefined },
     { label: "Complete", value: `${d.pct_complete}%`, sub: `confidence ${d.health.confidence}` },
@@ -80,31 +98,31 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
       <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Dates per stage">
         <table className="w-full min-w-[720px] border-collapse text-[13px]">
           <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">
-            {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", "SLA", "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className="px-2 py-2 font-normal">{h}</th>)}
+            {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", "SLA", "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className={th}>{h}</th>)}
           </tr></thead>
           <tbody>
             {d.stages.map((s, i) => {
-              const r = rows[i]
+              const r = rows[i] ?? s   // the rows catch up with a fresh plan one render later
               const days = r.plan_start && r.plan_end ? workDays(r.plan_start, r.plan_end, d.calendar) : null
               return (
                 <tr key={s.id} className={cn("border-b border-border last:border-0", s.status === "current" && "bg-accent/40")}>
-                  <td className="px-2 py-2 font-medium">{s.name}{s.status === "current" && <span className="ml-2 text-[12px] font-semibold text-foreground">now</span>}</td>
+                  <td className={cn(td, "font-medium")}>{s.name}{s.status === "current" && <span className="ml-2 text-[12px] font-semibold text-foreground">now</span>}</td>
                   {open ? <>
-                    <td className="px-2 py-1"><DatePicker label={`${s.name} planned start`} disabled={busy} value={r.plan_start ?? ""} placeholder={s.suggested_start ? fmtDate(s.suggested_start) : "—"} clearable={false}
-                      onChange={(v) => v && setRows(setDate(rows, i, "plan_start", v, cascade))} className="h-8 w-[9.5rem]" /></td>
-                    <td className="px-2 py-1"><DatePicker label={`${s.name} planned end`} disabled={busy} value={r.plan_end ?? ""} placeholder="—" clearable={false} min={r.plan_start ?? undefined}
-                      onChange={(v) => v && setRows(setDate(rows, i, "plan_end", v, cascade))} className="h-8 w-[9.5rem]" /></td>
+                    <td className="px-3 py-1"><DatePicker label={`${s.name} planned start`} disabled={busy} value={r.plan_start ?? ""} placeholder={s.suggested_start ? fmtDate(s.suggested_start) : "—"} clearable={false}
+                      onChange={(v) => v && setRows(setDate(rows, i, "plan_start", v, cascade))} className="h-8 w-40" /></td>
+                    <td className="px-3 py-1"><DatePicker label={`${s.name} planned end`} disabled={busy} value={r.plan_end ?? ""} placeholder="—" clearable={false} min={r.plan_start ?? undefined}
+                      onChange={(v) => v && setRows(setDate(rows, i, "plan_end", v, cascade))} className="h-8 w-40" /></td>
                   </> : <>
-                    <td className="px-2 py-2 tabular-nums">{r.plan_start ? fmtDate(r.plan_start) : "—"}</td>
-                    <td className="px-2 py-2 tabular-nums">{r.plan_end ? fmtDate(r.plan_end) : "—"}</td>
+                    <td className={cn(td, "tabular-nums")}>{r.plan_start ? fmtDate(r.plan_start) : "—"}</td>
+                    <td className={cn(td, "tabular-nums")}>{r.plan_end ? fmtDate(r.plan_end) : "—"}</td>
                   </>}
-                  <td className="px-2 py-2 tabular-nums text-muted-foreground">{days ?? "—"}</td>
-                  <td className="px-2 py-2 tabular-nums text-muted-foreground">{s.sla_days ? `${s.sla_days} d` : "—"}</td>
-                  <td className="px-2 py-2 text-muted-foreground">{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` – ${fmtDate(s.actual_end)}` : " – now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
-                  <td className="px-2 py-2">{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
+                  <td className={cn(td, "tabular-nums text-muted-foreground")}>{days ?? "—"}</td>
+                  <td className={cn(td, "tabular-nums text-muted-foreground")}>{s.sla_days ? `${s.sla_days} d` : "—"}</td>
+                  <td className={cn(td, "text-muted-foreground")}>{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` – ${fmtDate(s.actual_end)}` : " – now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
+                  <td className={td}>{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
                   {/* a finished stage's slip is history (muted); a running or coming stage that slips is amber;
                       red only once the target date itself has passed: red means overdue (critique 10 Oct) */}
-                  <td className={cn("px-2 py-2 whitespace-nowrap", s.slip_days && s.slip_days > 0 && s.status !== "done" ? (f.target && d.today > f.target ? "font-medium text-bad" : "text-warn") : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
+                  <td className={cn(td, "whitespace-nowrap", s.slip_days && s.slip_days > 0 && s.status !== "done" ? (forecastTone(s.slip_days, f.target, d.today) === "bad" ? "font-medium text-bad" : "text-warn") : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
                 </tr>
               )
             })}
@@ -115,18 +133,18 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
       {editable && !open && <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditing(true)}><CalendarRange className="h-3.5 w-3.5" /> Edit dates</Button>}
       {open && (
         <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void save() }}>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setRows(fillSuggested(rows))}><Wand2 className="h-3.5 w-3.5" /> Suggest dates from the SLAs</Button>
-          <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className="accent-primary" /> Move later stages with it</label>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={suggest}><Wand2 className="h-3.5 w-3.5" /> Suggest dates from the SLAs</Button>
+          <label className="flex items-center gap-2 text-[13px] text-muted-foreground"><input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} className={checkbox} /> Move later stages with it</label>
           {/* once there is a baseline, every move says why (the log and the customer read it) */}
-          {d.baseline_at && dirty && <input value={reason} onChange={(e) => setReason(e.target.value)} required placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className={cn(fieldAuto, "min-w-0 flex-1 basis-60")} />}
+          {d.baseline_at && dirty && <Input value={reason} onChange={(e) => setReason(e.target.value)} required placeholder="Why the dates move (goes in the log)" aria-label="Why the dates move" maxLength={300} className="min-w-0 flex-1 basis-60" />}
           <span className="ml-auto flex gap-2">
-            {(dirty || editing) && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { void load(); setEditing(false) }}>{dirty ? "Discard" : "Done"}</Button>}
+            {(dirty || editing) && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { fresh.current = true; void reload(); setEditing(false) }}>{dirty ? "Discard" : "Done"}</Button>}
             <Button type="submit" size="sm" loading={busy} disabled={!dirty}><CalendarRange className="h-3.5 w-3.5" /> {d.baseline_at ? "Save plan" : "Save plan and set baseline"}</Button>
             {d.baseline_at && <Button type="button" size="sm" variant="outline" disabled={busy || dirty} onClick={() => setRebase("")}>Re-baseline</Button>}
           </span>
         </form>
       )}
-      {notice && <p className={cn("mt-2 text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <Notice bad={notice.bad} className="mt-2">{notice.text}</Notice>}
 
       {d.changes.length > 0 && (
         <div className="mt-3">
@@ -148,8 +166,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
       <Dialog open={rebase !== null} onOpenChange={(o) => { if (!o) setRebase(null) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Re-baseline the plan</DialogTitle><DialogDescription>The current plan becomes what the rollout is measured against from now on. The old baseline stays in the log.</DialogDescription></DialogHeader>
-          <label htmlFor="rebase-reason" className="text-[13px] font-medium">Why</label>
-          <input id="rebase-reason" autoFocus value={rebase ?? ""} onChange={(e) => setRebase(e.target.value)} maxLength={300} placeholder="Scope change agreed with the customer on 3 Oct" className={fieldAuto} />
+          <Field label="Why"><Input autoFocus value={rebase ?? ""} onChange={(e) => setRebase(e.target.value)} maxLength={300} placeholder="Scope change agreed with the customer on 3 Oct" /></Field>
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setRebase(null)}>Cancel</Button>
             <Button size="sm" loading={busy} disabled={!rebase?.trim()} onClick={() => { const why = rebase!.trim(); void run(async () => { await rebaseline(projectId, why); setRebase(null); return "The current plan is the new baseline." }) }}>Re-baseline</Button>

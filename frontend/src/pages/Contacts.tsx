@@ -1,20 +1,23 @@
-import { Fragment, useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { PageHeader } from "@/components/PageHeader"
 import { PanelTitle } from "@/components/PanelTitle"
-import { fieldAuto } from "@/lib/ui"
+import { fieldAuto, th, td } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Link } from "react-router-dom"
 import { ChevronRight, MoreHorizontal, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Field } from "@/components/ui/field"
+import { Notice } from "@/components/Notice"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ApiError, contacts, postForm, type ContactItem, type ContactsData, type ProjectRef, type User } from "@/lib/api"
+import { ApiError, contacts, postForm, type ContactItem, type ProjectRef, type User } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
+import { useLoad } from "@/lib/useLoad"
 
 // Contacts & partners (9 Oct 2026, the user's call): one tab per pick-list,
 // one table per tab, each row saying where it is used. A rename carries over
@@ -31,9 +34,6 @@ const TABS: { key: TabKey; label: string; noun: string; help: string; example: s
 // onError: show a refusal by the field (the edit dialog) instead of as a toast
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string, onError?: (m: string) => void) => Promise<boolean>
 type Editing = { title: string; path: string; name: string; email?: string | null; vendor?: number | null; withEmail: boolean; withVendor: boolean; saveLabel: string }
-
-const th = "px-3 py-2 text-left text-[12px] font-medium text-muted-foreground"
-const td = "px-3 py-2 align-middle"
 
 function tabFromUrl(): TabKey {
   const t = new URLSearchParams(window.location.search).get("tab")
@@ -61,8 +61,8 @@ function UsedIn({ used, name }: { used: ProjectRef[]; name: string }) {
 function RowMenu({ name, onEdit, onDelete, busy }: { name: string; onEdit: () => void; onDelete: () => void; busy: boolean }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<button type="button" />} disabled={busy} aria-label={`Actions for ${name}`}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
+      <DropdownMenuTrigger render={<button type="button" />} aria-disabled={busy || undefined} aria-label={`Actions for ${name}`}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground aria-disabled:opacity-40">
         <MoreHorizontal className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
@@ -101,24 +101,23 @@ function EditDialog({ editing, vendors, busy, send, onClose }: { editing: Editin
           {editing?.name && <DialogDescription>A new name or email also changes it on every rollout that uses it.</DialogDescription>}
         </DialogHeader>
         <form onSubmit={submit} className="grid grid-cols-1 gap-4">
-          <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Name
+          <Field label="Name">
             <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} autoFocus className="h-8 text-[13px]" />
-          </label>
+          </Field>
           {editing?.withEmail && (
-            <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Email <span className="font-normal text-muted-foreground">optional</span>
+            <Field label={<>Email <span className="font-normal text-muted-foreground">optional</span></>}>
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} placeholder="name@company.com" className="h-8 text-[13px]" />
-            </label>
+            </Field>
           )}
           {editing?.withVendor && (
-            <label className="grid grid-cols-1 gap-1 text-[12px] font-medium">Vendor
+            <Field label="Vendor" hint="The project form offers this product only with this vendor.">
               <select value={vendor} onChange={(e) => setVendor(e.target.value)} className={fieldAuto}>
                 <option value="">Any vendor</option>
                 {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
-              <span className="font-normal text-muted-foreground">The project form offers this product only with this vendor.</span>
-            </label>
+            </Field>
           )}
-          {problem && <p className="field-error" role="alert">{problem}</p>}
+          {problem && <Notice bad>{problem}</Notice>}
           <DialogFooter>
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
             <Button type="submit" size="sm" loading={busy} disabled={!name.trim()}>{editing?.saveLabel}</Button>
@@ -130,19 +129,16 @@ function EditDialog({ editing, vendors, busy, send, onClose }: { editing: Editin
 }
 
 export default function Contacts(_props: { user: User }) {
-  const [data, setData] = useState<ContactsData | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error: failed, reload: load } = useLoad("contacts", contacts)
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState<TabKey>(tabFromUrl)
   const [editing, setEditing] = useState<Editing | null>(null)
   const [open, setOpen] = useState<Record<number, boolean>>({})
-  const load = useCallback(async () => {
-    try { setData(await contacts()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load contacts") }
-  }, [])
-  useEffect(() => { document.title = "Contacts & partners · Settings · Odin"; void load() }, [load])
+  useEffect(() => { document.title = "Contacts & partners · Settings · Odin" }, [])
   const pick = (t: TabKey) => { setTab(t); const u = new URL(window.location.href); u.searchParams.set("tab", t); window.history.replaceState(window.history.state, "", u) }
 
   const send: Send = async (path, fields = {}, confirmText, onError) => {
+    if (busy) return false   // buttons stay focusable while a save runs (review P2-41), so a click lands here
     if (confirmText && !(await askConfirm(confirmText))) return false
     setBusy(true)
     try {
@@ -155,7 +151,7 @@ export default function Contacts(_props: { user: User }) {
       return false
     } finally { setBusy(false) }
   }
-  if (error) return <LoadError message={error} />
+  if (failed) return <LoadError message={failed.message} />
   if (!data) return <PageSkeleton />
 
   const list = (key: string) => data.lists.find((l) => l.key === key)!
@@ -218,8 +214,8 @@ export default function Contacts(_props: { user: User }) {
               <tr className="border-t border-border bg-muted/60">
                 <th scope="rowgroup" colSpan={2} className="px-3 py-1.5 text-left text-[12px] font-semibold">{g.name} <span className="font-normal text-muted-foreground">· {g.items.length || "no products yet"}</span></th>
                 <td className="px-3 py-1 text-right">
-                  <button type="button" disabled={busy} className="whitespace-nowrap rounded-sm text-[12px] font-medium text-primary-text hover:underline" aria-label={`Add a product under ${g.name}`}
-                    onClick={() => setEditing(addFor("products", { title: g.id ? `Add a ${g.name} product` : "Add product", vendor: g.id || null }))}>+ Add</button>
+                  <button type="button" aria-disabled={busy || undefined} className="whitespace-nowrap rounded-sm text-[12px] font-medium text-primary-text hover:underline aria-disabled:opacity-40" aria-label={`Add a product under ${g.name}`}
+                    onClick={() => { if (!busy) setEditing(addFor("products", { title: g.id ? `Add a ${g.name} product` : "Add product", vendor: g.id || null })) }}>+ Add</button>
                 </td>
               </tr>
               {simpleRows("products", g.items, false)}
@@ -268,8 +264,8 @@ export default function Contacts(_props: { user: User }) {
                         ))}
                         {p.managers.length === 0 && <li className="py-1 text-muted-foreground">No account managers yet.</li>}
                       </ul>
-                      <button type="button" disabled={busy} className="ml-5 mt-2 rounded-sm text-[12px] font-medium text-primary-text hover:underline"
-                        onClick={() => setEditing({ title: `Add an account manager at ${p.name}`, path: `/settings/contacts/partners/${p.id}/managers/add`, name: "", withEmail: true, withVendor: false, saveLabel: "Add" })}>
+                      <button type="button" aria-disabled={busy || undefined} className="ml-5 mt-2 rounded-sm text-[12px] font-medium text-primary-text hover:underline aria-disabled:opacity-40"
+                        onClick={() => { if (!busy) setEditing({ title: `Add an account manager at ${p.name}`, path: `/settings/contacts/partners/${p.id}/managers/add`, name: "", withEmail: true, withVendor: false, saveLabel: "Add" }) }}>
                         + Add account manager
                       </button>
                     </td>

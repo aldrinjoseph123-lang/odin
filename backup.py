@@ -15,7 +15,7 @@ Every run:
 
 A local copy is always written: a backup that only exists when a cloud
 integration happens to be configured is not a backup. Restore procedure:
-DEPLOY.md, "Restore".
+docs/RUNBOOK.md, "Restore a backup".
 
 Runs from the scheduler (scheduler.py, at the time set in Settings), from
 "Back up now", or by hand: python backup.py
@@ -36,8 +36,10 @@ NAME_PREFIX, NAME_SUFFIX = "odin-backup-", ".zip"
 
 
 def _backup_dir():
+    """DATA_DIR/backups, owner only: an archive holds the whole database."""
     path = os.path.join(_db.DATA_DIR, "backups")
-    os.makedirs(path, exist_ok=True)
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    os.chmod(path, 0o700)   # a folder made before this rule, too
     return path
 
 
@@ -212,7 +214,9 @@ def _run_backup(trigger, actor, local_only):
         with tempfile.TemporaryDirectory() as tmp:
             snapshot = _snapshot(tmp)
             manifest = _manifest(snapshot)
-            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            # created 0600 (never world-readable, whatever the umask): it carries guest tokens and every document
+            with os.fdopen(os.open(zip_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as out, \
+                    zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.write(snapshot, arcname="odin.db")
                 zf.writestr("manifest.json", json.dumps(manifest, indent=1))
                 from services.retention import ARCHIVE_DIR_NAME

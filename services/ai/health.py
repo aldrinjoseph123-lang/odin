@@ -15,6 +15,7 @@ ten-minute validation never delays a backup or the digest).
   request ever waits on the model.
 """
 import json
+import logging
 from datetime import datetime, timedelta
 
 from services.ai import FEATURES, STALE_KEYS, STATUS_SETTING, prompt_of, run, status
@@ -160,7 +161,7 @@ def queue(db, kind, feature=None, project_id=None, payload=None, actor=None):
         row = db.execute("SELECT id FROM ai_jobs WHERE kind = 'validate' AND status IN ('queued', 'running')").fetchone()
         if row:
             return row[0]
-    if kind == "feature" and not (payload or {}).get("user_id"):
+    if kind == "feature" and not (payload or {}).get("user_id") and "input" not in (payload or {}):   # someone's own words are never merged
         row = db.execute("SELECT id FROM ai_jobs WHERE kind = 'feature' AND feature = ? AND project_id IS ? AND status IN ('queued', 'running')",
                          (feature, project_id)).fetchone()
         if row:
@@ -213,7 +214,7 @@ def run_feature_job(db, job):
         try:
             feature.on_new(db, job["project_id"], out)
         except Exception as exc:  # noqa: BLE001 — a notice that fails never loses the answer
-            print(f"[ai] {feature.key} notice failed: {exc}")
+            logging.getLogger("odin.ai").warning("%s notice failed: %s", feature.key, exc)
     return {"suggestion": cur.lastrowid, "seconds": meta["seconds"], "model": meta["model"]}
 
 
@@ -291,8 +292,7 @@ def work_once(db):
 def tick(db, now_local=None):
     """One pass of the AI worker: heartbeat when due, the daily validation
     when due, then one waiting job."""
-    from zoneinfo import ZoneInfo
-    from policies import policy
+    from policies import local_now, policy
     if status(db)["state"] == "off":
         return None
     # a job left "running" by a worker that died is not running
@@ -303,7 +303,7 @@ def tick(db, now_local=None):
     last = st.get("checked_at")
     if not last or datetime.fromisoformat(last) <= datetime.utcnow() - timedelta(minutes=policy("ai_heartbeat_minutes", db)):
         heartbeat(db)
-    now_local = now_local or datetime.now(ZoneInfo(policy("timezone", db)))
+    now_local = now_local or local_now(db)
     today = now_local.date().isoformat()
     row = db.execute("SELECT value FROM settings WHERE key = 'ai.validate.last_date'").fetchone()
     if now_local.strftime("%H:%M") >= policy("ai_validate_time", db) and (row[0] if row else "") < today:
@@ -358,13 +358,16 @@ def night_shift(db):
 
 
 def trim(db=None):
-    """Checks older than 180 days and finished jobs older than 30. Nightly."""
+    """Checks, finished jobs, suggestions (decided or left "new" by nobody)
+    and the request log older than the policy ai_keep_days. Nightly."""
     from db import get_db
+    from policies import policy
     db = db or get_db()
-    db.execute("DELETE FROM ai_checks WHERE created_at < ?", ((datetime.utcnow() - timedelta(days=180)).isoformat(),))
-    db.execute("DELETE FROM ai_jobs WHERE status IN ('done', 'failed', 'cancelled') AND created_at < ?", ((datetime.utcnow() - timedelta(days=30)).isoformat(),))
-    db.execute("DELETE FROM ai_suggestions WHERE status != 'new' AND created_at < ?", ((datetime.utcnow() - timedelta(days=90)).isoformat(),))
-    db.execute("DELETE FROM ai_calls WHERE at < ?", ((datetime.utcnow() - timedelta(days=90)).isoformat(),))
+    cutoff = (datetime.utcnow() - timedelta(days=policy("ai_keep_days", db))).isoformat()
+    db.execute("DELETE FROM ai_checks WHERE created_at < ?", (cutoff,))
+    db.execute("DELETE FROM ai_jobs WHERE status IN ('done', 'failed', 'cancelled') AND created_at < ?", (cutoff,))
+    db.execute("DELETE FROM ai_suggestions WHERE created_at < ?", (cutoff,))
+    db.execute("DELETE FROM ai_calls WHERE at < ?", (cutoff,))
     db.commit()
 
 

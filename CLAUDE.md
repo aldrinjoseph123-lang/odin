@@ -4,11 +4,11 @@ All work goes on the **`dev`** branch; never commit to `main` directly. When the
 user has tested dev (UAT on port 5051) and approves, open a pull request
 **dev → main** that raises `VERSION`; the user merges it (or tells you to).
 CI then runs on main and the **Release** workflow (`.github/workflows/release.yml`)
-tags that commit `v<VERSION>`. The production server's cron job
-(`deploy/odin-update.sh`, installed as `~/odin-update.sh`, log `~/odin-update.log`)
-fetches main every 5 minutes and moves to the newest tag: backup, checkout,
-rebuild, preflight, and back to the previous tag if any step fails. Merging the
-pull request is the go-ahead for production; nothing else deploys. GitHub's free
+tags that commit `v<VERSION>`; the production server's cron job
+(`deploy/odin-update.sh`) moves to the newest tag. Merging the pull request is
+the go-ahead for production; nothing else deploys. The steps live in one place
+each: **releasing** `docs/RELEASING.md`, **install and the self-updater**
+`DEPLOY.md`, **restore and incidents** `docs/RUNBOOK.md`. GitHub's free
 plan has no branch protection on this private repository, so the rule is kept by
 process. Use merge commits (not squash) so the change log keeps each commit.
 
@@ -59,11 +59,15 @@ note to a colleague is `POST /api/people/<id>/notify` (kind `nudge`, audited).
 The home page is `/dashboard` (`home_url()` in `routes/auth.py`: sign-in, `/`
 and the logo land there; a user may pick the flow on their Account page,
 `users.home`; partners always get the flow). Settings is one side-menu page (`components/SettingsLayout.tsx`), one address
-per area: `/settings/general|security|workflow|notifications|integrations|reports|backups|api|audit`
-plus Users, Role permissions, Contacts and the Audit log in the same menu.
-Recurring work (digest, backups, weekly report, audit retention) runs only in
-`scheduler.py` (its own service), at policy times in the workspace time
-zone — never in a web worker.
+per area: `/settings/general|security|rbac|people|workflow|contacts|documents|notifications|integrations|ai|reports|backups|api|audit|map`
+(the menu is `frontend/src/lib/settingsMenu.ts`) plus Users (`/users`) and the Audit log (`/audit-logs`) in the same menu.
+Recurring work runs only in `scheduler.py` (its own service), never in a web
+worker: the digest, backups, weekly report and nightly housekeeping (audit
+retention, purges, partner expiry) at policy times in the workspace time zone;
+beside the clock, threads for the heartbeat, the AI worker and the **outbox**
+(queued mail and Teams messages; sign-in links and the signed sign-off PDF go
+out inline instead); each pass also checks backup freshness and free disk and
+turns the updater's `ops-notices` file into bell items for the admins.
 **The dashboard layout is the one admin-set value that is not a policy:**
 it is a JSON list of widgets, edited on the dashboard itself (`PUT
 /api/dashboard/layout/default`, audited) and kept in the settings table under
@@ -97,9 +101,14 @@ anything that only grows (`login_links` is trimmed as links are minted).
 **Schema number (15 Oct 2026):** a release that adds a table, column, permission or alert
 type raises `db.SCHEMA_VERSION`; boot deletes only names listed in `RETIRED_PERMISSIONS` /
 `RETIRED_ALERT_TYPES`, and older code on a newer database skips destructive steps (preflight
-warns). Dev and UAT bind to 127.0.0.1 (set `HOST` to open them) and, without `SECRET_KEY`, keep
+warns). Dev and UAT bind to 127.0.0.1 (set `HOST=0.0.0.0` to open them) and, without `SECRET_KEY`, keep
 a private key in `DATA_DIR/secret_key`. Python tests: `test_app test_fix_logic test_fix_security
-test_release_safety test_scheduler_ops`.
+test_release_safety test_scheduler_ops test_v18_identity test_v18_notify test_v18_projects test_v18_ops
+test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_meta` (every `test_*.py` is named in `ci.yml` and
+`scripts/ci_local.sh` too; `test_v18_meta` fails if one is missing). `scripts/ci_local.sh` runs everything CI
+runs, for a release while GitHub Actions is unavailable. Two generated guards fail on drift:
+`tests/golden_routes.json` (every route x role) and `frontend/src/lib/__contract__/` (the API answers
+`lib/api.ts` reads, checked against its types); `docs/RELEASING.md` says how to regenerate them.
 `plan_changes` and `raid_items` (30 Sep 2026) are wired this way; plan dates live
 on `project_stages` (`plan_*`, `base_*`). Reports read one structure
 (`services/report_data.py` per rollout, `services/portfolio.py` for all) that
@@ -191,6 +200,9 @@ Rules:
   main-bundle ceiling). CI's `ui` job runs all of it and blocks the merge.
   A new page or control needs a line in `smoke.spec.ts` and, if it is a
   journey, a test in `flows.spec.ts`.
+- Lint: `npm --prefix frontend run lint` is oxlint with the accessibility rules and fails above
+  the warning baseline (`--max-warnings` in `frontend/package.json`): add none, and lower the
+  number when warnings are fixed.
 - Dev: `npm --prefix frontend run dev` (5173, proxies un-ported paths to Flask
   on 5050) or build once and let Flask serve it (`npm --prefix frontend run build`).
 - shadcn CLI: `npx shadcn@latest add <component>` from `frontend/`.
@@ -213,10 +225,8 @@ Admins see the same page inside Odin (Settings → System map & changes,
 `/settings/map`, framed from `/settings/map/page`), so each release carries the
 map and change log of its own code. The change log is generated from git: each
 tag is a release, and commits after the last tag appear under the version in
-`VERSION`. **Releasing:** set `VERSION` to the new number and **commit it first**, then
-regenerate the map and commit (the generator reads the last commit and refuses
-an uncommitted VERSION; v1.5.0 shipped a map that still said v1.4.1), let CI
-pass, then tag `v<VERSION>` on that commit.
+`VERSION`. **Releasing:** `VERSION` is committed first, then the map is regenerated
+(the generator refuses an uncommitted VERSION): `docs/RELEASING.md`, step 4.
 The Stop hook `scripts/system_map_stale.sh` (`.claude/settings.json`) blocks
 the end of a turn while the generated facts do not match HEAD or a code commit
 is newer than the map's last commit.

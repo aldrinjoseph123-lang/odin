@@ -1,0 +1,83 @@
+{
+ "approvals": [],
+ "from": "2026-09-21",
+ "month": "2026-10",
+ "moves": [
+  {
+   "day": "2026-09-21",
+   "prev_stage": "Scoping",
+   "project": "SIEM onboarding - Umbrella Health",
+   "project_id": 5,
+   "stage": "Sensor pilot",
+   "who": "Admin"
+  },
+  {
+   "day": "2026-09-21",
+   "prev_stage": "Kickoff",
+   "project": "Email security - Globex",
+   "project_id": 20,
+   "stage": "Deployment",
+   "who": "Admin"
+  }
+ ],
+ "spans": [
+  {
+   "client": "Globex",
+   "id": 1,
+   "name": "EDR Rollout - Globex",
+   "stage": "Sensor pilot",
+   "start_date": "2026-09-18",
+   "state": "over_sla",
+   "target_end_date": "2026-12-16"
+  },
+  {
+   "client": "Acme Bank",
+   "id": 10,
+   "name": "EDR rollout - Acme Bank",
+   "stage": "Scoping",
+   "start_date": "2026-09-06",
+   "state": "on_track",
+   "target_end_date": "2026-11-29"
+  }
+ ],
+ "targets": [
+  {
+   "client": "Globex",
+   "day": "2026-10-03",
+   "id": 4,
+   "name": "EDR rollout - Globex",
+   "state": "overdue"
+  },
+  {
+   "client": "Globex",
+   "day": "2026-10-20",
+   "id": 20,
+   "name": "Email security - Globex",
+   "state": "due_soon"
+  }
+ ],
+ "tasks": [
+  {
+   "can_edit": true,
+   "day": "2026-09-21",
+   "done": 0,
+   "id": 22,
+   "project": "EDR rollout - Globex",
+   "project_id": 4,
+   "title": "Train the SOC on the new source",
+   "who": "Omar Haddad"
+  },
+  {
+   "can_edit": true,
+   "day": "2026-09-21",
+   "done": 0,
+   "id": 57,
+   "project": "Firewall refresh - Globex",
+   "project_id": 12,
+   "title": "Validate backups",
+   "who": "Omar Haddad"
+  }
+ ],
+ "to": "2026-11-16",
+ "today": "2026-10-15"
+}

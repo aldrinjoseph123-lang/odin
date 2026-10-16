@@ -1,0 +1,86 @@
+{
+ "can_create": true,
+ "delivery_modes": [
+  "Distribution/MSSP",
+  "Outsourced"
+ ],
+ "dir": "desc",
+ "page": 1,
+ "rows": [
+  {
+   "client": "Hooli",
+   "closed": false,
+   "delivery_mode": "Distribution/MSSP",
+   "id": 14,
+   "name": "Email security - Hooli",
+   "open_tasks": 0,
+   "owner_name": "Admin",
+   "po_number": "PO-HOO-1010",
+   "product_name": null,
+   "stage": "Sign-off",
+   "stage_index": 8,
+   "stages": [
+    "PO Received",
+    "Scoping"
+   ],
+   "state": "on_track",
+   "target_end_date": "2027-02-12",
+   "team": [
+    {
+     "avatar_url": null,
+     "id": 1,
+     "name": "Admin"
+    },
+    {
+     "avatar_url": null,
+     "id": 12,
+     "name": "Eva Novak"
+    }
+   ],
+   "total_tasks": 5,
+   "updated_at": "2026-10-15T19:13:43.259674",
+   "vendor_name": "Palo Alto"
+  },
+  {
+   "client": "Wayne Retail",
+   "closed": false,
+   "delivery_mode": "Distribution/MSSP",
+   "id": 11,
+   "name": "SIEM onboarding - Wayne Retail",
+   "open_tasks": 0,
+   "owner_name": "Admin",
+   "po_number": "PO-WAY-1007",
+   "product_name": null,
+   "stage": "Sign-off",
+   "stage_index": 7,
+   "stages": [
+    "PO Received",
+    "Scoping"
+   ],
+   "state": "overdue",
+   "target_end_date": "2026-09-05",
+   "team": [
+    {
+     "avatar_url": null,
+     "id": 1,
+     "name": "Admin"
+    },
+    {
+     "avatar_url": null,
+     "id": 6,
+     "name": "Lena Fischer"
+    }
+   ],
+   "total_tasks": 3,
+   "updated_at": "2026-10-15T19:13:43.227693",
+   "vendor_name": "Palo Alto"
+  }
+ ],
+ "sort": "updated",
+ "stages": [
+  "Closed",
+  "Deployment"
+ ],
+ "total": 22,
+ "total_pages": 1
+}

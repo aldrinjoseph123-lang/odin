@@ -4,13 +4,12 @@ someone who lost their phone and their recovery codes."""
 from datetime import datetime, timedelta
 
 from flask import abort, flash, jsonify, redirect, session, url_for
-from werkzeug.security import check_password_hash
 
 from core import app, json_body, login_required, permission_required
 from db import get_db
 from policies import policy
 from routes.auth import finish_login
-from security import csrf_token, failed_attempts, login_is_blocked, record_login_attempt
+from security import csrf_token, failed_attempts, login_is_blocked, recheck_password, record_login_attempt
 from services import mfa
 from services.audit import audit_log
 
@@ -37,7 +36,7 @@ def api_login_code():
     key = f"mfa:{uid}"
     if user is None or login_is_blocked(user["username"]) or failed_attempts(key) >= policy("login_max_attempts"):
         session.clear()
-        return jsonify(error="Too many failed attempts. Sign in again later."), 429
+        return jsonify(error="Too many failed attempts. Sign in again later."), 429, {"Retry-After": str(60 * policy("login_window_minutes"))}
     how = mfa.check(user, _text(json_body().get("code")))
     if how is None:
         record_login_attempt(key, success=False)
@@ -70,8 +69,8 @@ def api_two_step_setup():
         abort(403)
     u, body = _me(), json_body()
     # someone holding only the session must not be able to bind their own authenticator
-    if not _password_ok(u, body):
-        return jsonify(error="Your password is not right"), 400
+    if wrong := recheck_password(u, _text(body.get("password")), "Your password is not right"):
+        return jsonify(error=wrong), 400
     # replacing a working authenticator takes it too (or a recovery code): the password alone is not two steps
     if mfa.enabled(u) and mfa.check(u, _text(body.get("code"))) is None:
         audit_log("mfa_setup_refused", "user", u["id"], u["username"], "replacing the authenticator without a current code")
@@ -103,14 +102,10 @@ def _text(value):
     return value if isinstance(value, str) else ""
 
 
-def _password_ok(u, body):
-    return bool(u["password_hash"] and "$" in u["password_hash"] and check_password_hash(u["password_hash"], _text(body.get("password"))))
-
-
 def _proof(u, body):
     """Password and a current code: what turning off or new codes need."""
-    if not _password_ok(u, body):
-        return "Your password is not right"
+    if wrong := recheck_password(u, _text(body.get("password")), "Your password is not right"):
+        return wrong
     if mfa.check(u, _text(body.get("code"))) is None:
         return "That code is not right"
     return None

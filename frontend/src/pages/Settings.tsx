@@ -1,25 +1,29 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from "react"
 import { PageHeader } from "@/components/PageHeader"
 import { EmptyState } from "@/components/EmptyState"
 import { toast } from "@/lib/toast"
 import { Panel } from "@/components/PanelTitle"
-import { fieldAuto, danger, fieldArea } from "@/lib/ui"
+import { fieldAuto, danger, fieldArea, th, td } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Navigate, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
+import { Field } from "@/components/ui/field"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type FormReply, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
 import { Ago } from "@/components/Ago"
 import { fmtDate } from "@/lib/format"
+import { copyWithToast } from "@/lib/copy"
+import { Notice } from "@/components/Notice"
 import { cn } from "@/lib/utils"
 import { isDark } from "@/lib/theme"
 import { DocTemplates } from "@/components/DocTemplates"
 import { AISettings } from "@/components/AISettings"
 import { SlaCheck } from "@/components/SlaCheck"
+import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<FormReply | null>
@@ -50,12 +54,14 @@ export default function Settings(_props: { user: User }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [teamId, setTeamId] = useState("")
-  const load = useCallback(async (team = teamId) => {
-    try { setData(await settingsData(section, team)); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load settings") }
+  // a new team re-runs this through its dependency: once, not twice (review P3-35)
+  const load = useCallback(async () => {
+    try { setData(await settingsData(section, teamId)); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load settings") }
   }, [teamId, section])
   useEffect(() => { if (TITLES[section]) { document.title = `${TITLES[section].title} · Settings · Odin`; void load() } }, [load, section])
 
   const send: Send = async (path, fields = {}, confirmText) => {
+    if (busy) return null   // buttons stay focusable while a save runs (review P2-41), so a click lands here
     if (confirmText && !(await askConfirm(confirmText))) return null
     setBusy(true)
     try {
@@ -69,6 +75,8 @@ export default function Settings(_props: { user: User }) {
   if (!TITLES[section]) return <Navigate to="/settings/general" replace />
   if (error) return <LoadError message={error} />
   if (!data) return <PageSkeleton />
+  // the tests that send through Microsoft 365 wait for it, and say why
+  const notConnected = data.m365.connected ? undefined : "Connect Microsoft 365 under Integrations first."
   // one small titled card per topic, each with its own Save (9 Oct 2026, the user's call)
   const policyForm = (area: Policy["area"]) => {
     const mine = data.policies.filter((p) => p.area === area)
@@ -97,7 +105,7 @@ export default function Settings(_props: { user: User }) {
           <>
             <Sso key={JSON.stringify(data.sso)} sso={data.sso} busy={busy} send={send} />
             {policyForm("security")}
-            <Toggles data={data} busy={busy} send={send} title="Outside access" keys={[
+            <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="Outside access" keys={[
               { key: "guest_links_enabled", label: "Keep the legacy anonymous guest links working (turn off once invited partner and customer accounts have replaced them; every old link then stops)" },
             ]} />
           </>
@@ -119,9 +127,9 @@ export default function Settings(_props: { user: User }) {
                   <li key={c.id} className="flex items-center gap-2">
                     <span className="flex-1">{c.name}</span>
                     <label className="flex items-center gap-2 text-[12px] text-muted-foreground" title="Partners and customers on the rollout can see and download these">
-                      <Switch size="sm" checked={c.partners} disabled={busy} onCheckedChange={(on) => send(`/settings/doc-categories/${c.id}/partners`, on ? { partners: "on" } : {})}
-                        aria-label={`Partners see ${c.name}`} className="h-3.5 w-3.5 accent-primary" />partners</label>
-                    <button type="button" disabled={busy} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <Switch size="sm" checked={c.partners} aria-disabled={busy || undefined} onCheckedChange={(on) => send(`/settings/doc-categories/${c.id}/partners`, on ? { partners: "on" } : {})}
+                        aria-label={`Partners see ${c.name}`} />partners</label>
+                    <button type="button" aria-disabled={busy || undefined} onClick={() => send(`/settings/doc-categories/${c.id}/delete`, {}, `Delete category ${c.name}?`)} aria-label={`Delete ${c.name}`} className="text-muted-foreground hover:text-destructive aria-disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
                   </li>
                 ))}
               </ul>
@@ -132,34 +140,35 @@ export default function Settings(_props: { user: User }) {
         )}
         {section === "notifications" && policyForm("notifications")}
         {section === "notifications" && (
-          <div><Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/notifications/test-webhook")}>Send a test to the Teams webhook</Button></div>
+          <div><TestButton path="/settings/notifications/test-webhook" label="Send a test to the Teams webhook" busy={busy} blocked={data.policies.find((p) => p.key === "teams_webhook_url")?.saved ? undefined : "Save a webhook address above first."} /></div>
         )}
         {section === "notifications" && (
-          <Toggles data={data} busy={busy} send={send} title="Channels" keys={[
+          <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="Channels" keys={[
             { key: "notify_email_enabled", label: "Email notifications on rollout events (stage changes, approvals, assignments, mentions, due tasks)" },
             { key: "notify_teams_chat_enabled", label: "Teams messages to each person: every notification also as a card from the Odin PMS app (staff only; set it up under Integrations)" },
             { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
           ]} extra={<>
             {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings › Integrations), so email and Teams messages cannot be delivered. The bell and the Teams webhook still work.</p>}
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-email")}>Send test email</Button>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send test Teams message</Button>
+            <TestButton path="/settings/integrations/test-email" label="Send test email" busy={busy} blocked={notConnected} />
+            <TestButton path="/settings/integrations/test-teams" label="Send test Teams message" busy={busy} blocked={notConnected} />
           </>} />
         )}
         {section === "integrations" && (
           <>
-            <Microsoft key={`${data.m365.azure_app.client_id ?? ""}|${data.m365.azure_app.tenant_id ?? ""}|${data.m365.oauth_client_configured}`} data={data} busy={busy} send={send} teamId={teamId} onTeam={(id) => { setTeamId(id); void load(id) }} />
+            <Microsoft key={`${data.m365.azure_app.client_id ?? ""}|${data.m365.azure_app.tenant_id ?? ""}|${data.m365.oauth_client_configured}`} data={data} busy={busy} send={send} teamId={teamId} onTeam={setTeamId} />
             <Panel title="Odin PMS in Teams" hint="each notification as a card in the person's own chat with Odin">
               <ol className="grid max-w-prose list-decimal gap-1 pl-5 text-[13px]">
                 <li>In the Azure portal, create an <b>Azure Bot</b> (single tenant) that uses this app registration, set its messaging endpoint to <code className="font-mono text-[12px]">{"{public address}"}/api/teams/messages</code> and turn on its Microsoft Teams channel.</li>
                 <li>Download the app package below and upload it in the Teams admin centre (Manage apps › Upload new app).</li>
                 <li>Install it for everyone with a setup policy (Teams apps › Setup policies › Installed apps), then switch on <b>Teams messages to each person</b> under Settings › Notifications.</li>
+                <li>Connected Microsoft 365 before 13 Oct 2026? Disconnect and Connect again above, so Odin may look people up (User.ReadBasic.All).</li>
               </ol>
               <div className="mt-3 flex flex-wrap gap-2">
                 <a href="/settings/teams-app.zip" className={buttonVariants({ size: "sm", variant: "outline" })}>Download the Odin PMS app package</a>
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/integrations/test-teams")}>Send me a test in Teams</Button>
+                <TestButton path="/settings/integrations/test-teams" label="Send me a test in Teams" busy={busy} blocked={notConnected} />
               </div>
             </Panel>
-            <Toggles data={data} busy={busy} send={send} title="OneDrive" keys={[
+            <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="OneDrive" keys={[
               { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
             ]} />
           </>
@@ -174,7 +183,7 @@ export default function Settings(_props: { user: User }) {
           <>
             {!data.public_url_set && <p className="rounded-md bg-warn-soft px-3 py-2 text-[13px] text-warn">Set the public web address under General, so the links in scheduled mail point at Odin and not at the server's own name.</p>}
             {policyForm("reports")}
-            <div><Button size="sm" variant="outline" disabled={busy} onClick={() => send("/settings/reports/send-test")}>Send this week's report to me now</Button></div>
+            <div><TestButton path="/settings/reports/send-test" label="Send this week's report to me now" busy={busy} blocked={notConnected} /></div>
           </>
         )}
         {section === "api" && <ApiTokens tokens={data.api_tokens} busy={busy} send={send} />}
@@ -192,7 +201,7 @@ export default function Settings(_props: { user: User }) {
         )}
         {section === "backups" && data.backups && (
           <>
-            <Scheduler view={data.backups} busy={busy} send={send} />
+            <Scheduler view={data.backups} busy={busy} send={send} shareSet={!!data.policies.find((p) => p.key === "share_path")?.value} />
             {policyForm("backups")}
             <BackupHistory runs={data.backups.runs} />
           </>
@@ -235,6 +244,7 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
 }) {
   const [v, setV] = useState<Record<string, Policy["value"]>>(() => Object.fromEntries(policies.map((p) => [p.key, p.value])))
   const dirty = policies.some((p) => JSON.stringify(p.value) !== JSON.stringify(v[p.key]))
+  useUnsavedGuard(dirty)   // the settings menu is a link: leaving the section asks (review P2-30)
   function submit(e: FormEvent) {
     e.preventDefault()
     const fields: Record<string, string> = {}
@@ -336,40 +346,40 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
     <>
       <Panel title="New token">
         <form onSubmit={(e) => { e.preventDefault(); void send("/settings/api-tokens", { name, days }).then((r) => { if (r) { setName(""); setMade(r.token ?? null); setCopied(false) } }) }} className="flex flex-wrap items-end gap-2">
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">What uses it<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Valid for
+          <Field label="What uses it"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Power BI refresh" maxLength={80} required className="h-8 w-64 text-[13px]" /></Field>
+          <Field label="Valid for">
             <select value={days} onChange={(e) => setDays(e.target.value)} className={fieldAuto}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
-          </label>
+          </Field>
           <Button type="submit" size="sm" loading={busy} disabled={!name.trim()}>Create token</Button>
         </form>
         {made && (
           <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
             <input id="new-api-token" readOnly value={made} aria-label="New API token" onFocus={(e) => e.currentTarget.select()} className={cn(fieldAuto, "w-full font-mono text-[12px]")} />
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(made).then(() => setCopied(true)).catch(() => document.getElementById("new-api-token")?.focus())}>{copied ? "Copied" : "Copy the token"}</Button>
+              <Button size="sm" variant="outline" onClick={() => void copyWithToast(made, "token").then((ok) => { setCopied(ok); if (!ok) document.getElementById("new-api-token")?.focus() })}>{copied ? "Copied" : "Copy the token"}</Button>
               <Button size="sm" variant="ghost" onClick={() => setMade(null)}>I have saved it</Button>
               <span className="text-[12px] text-muted-foreground">Shown once: Odin keeps only a fingerprint of it.</span>
             </div>
           </div>
         )}
         <p className="mt-3 text-[12px] text-muted-foreground">
-          Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code> to <code className="font-mono">/api/v1/projects</code>, <code className="font-mono">/api/v1/projects/&lt;id&gt;</code> and <code className="font-mono">/api/v1/projects/&lt;id&gt;/report</code>. It can read every rollout and change nothing. Behind Cloudflare Access, /api/v1 needs its own Access policy (a service token).
+          Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code> to <code className="font-mono">/api/v1/projects</code>, <code className="font-mono">/api/v1/projects/&lt;id&gt;</code> and <code className="font-mono">/api/v1/projects/&lt;id&gt;/report</code>. It can read every rollout and change nothing; the fields and errors are listed in <code className="font-mono">docs/API_V1.md</code> in Odin's source. Behind Cloudflare Access, /api/v1 needs its own Access policy (a service token).
         </p>
       </Panel>
       <Panel title="Tokens">
         {tokens.length === 0 ? <EmptyState>No tokens yet.</EmptyState> : (
           <div className="overflow-x-auto"><table className="w-full text-[13px]">
-            <thead><tr className="text-left text-[12px] text-muted-foreground">{["Name", "Made", "Last used", "Expires", ""].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
+            <thead><tr>{["Name", "Made", "Last used", "Expires", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
             <tbody>
               {tokens.map((t) => {
                 const dead = !!t.revoked_at || t.expires_at < now
                 return (
                   <tr key={t.id} className={cn("border-t border-border", dead && "text-muted-foreground")}>
-                    <td className="py-2 pr-3 font-medium">{t.name}</td>
-                    <td className="whitespace-nowrap py-2 pr-3"><Ago iso={t.created_at} /> · {t.created_by}</td>
-                    <td className="whitespace-nowrap py-2 pr-3">{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3">{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDate(t.expires_at)}</td>
-                    <td className="py-2 text-right">{!dead && <Button size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
+                    <td className={cn(td, "font-medium")}>{t.name}</td>
+                    <td className={cn(td, "whitespace-nowrap")}><Ago iso={t.created_at} /> · {t.created_by}</td>
+                    <td className={cn(td, "whitespace-nowrap")}>{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
+                    <td className={cn(td, "whitespace-nowrap")}>{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDate(t.expires_at)}</td>
+                    <td className={cn(td, "text-right")}>{!dead && <Button size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
                   </tr>
                 )
               })}
@@ -383,7 +393,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
 
 // Whether the schedule is really being kept: the scheduler process leaves a
 // heartbeat every minute; without it, nothing runs on its own.
-function Scheduler({ view, busy, send }: { view: BackupsView; busy: boolean; send: Send }) {
+function Scheduler({ view, busy, send, shareSet }: { view: BackupsView; busy: boolean; send: Send; shareSet: boolean }) {
   return (
     <Panel title="Status">
       {view.scheduler_alive
@@ -394,7 +404,7 @@ function Scheduler({ view, busy, send }: { view: BackupsView; busy: boolean; sen
           </p>}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button size="sm" variant="outline" disabled={busy} onClick={() => send("/settings/integrations/backup-now")}>Back up now</Button>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => send("/settings/backups/test-share")}>Test the network share</Button>
+        <TestButton path="/settings/backups/test-share" label="Test the network share" busy={busy} blocked={shareSet ? undefined : "Set the share folder path and save first."} />
       </div>
     </Panel>
   )
@@ -406,16 +416,16 @@ function BackupHistory({ runs }: { runs: BackupRun[] }) {
     <Panel title="History" hint="the last 20 runs">
       {runs.length === 0 ? <EmptyState>No backups yet. Back up now to make the first one.</EmptyState> : (
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
-          <thead><tr className="text-left text-[12px] text-muted-foreground">{["When", "Result", "Restore test", "Copies", "Size"].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
+          <thead><tr>{["When", "Result", "Restore test", "Copies", "Size"].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
           <tbody>
             {runs.map((r) => (
-              <tr key={r.id} className="border-t border-border align-top">
-                <td className="whitespace-nowrap py-2 pr-3"><Ago iso={r.started_at} /><span className="block text-[12px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
-                <td className="py-2 pr-3">{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-destructive">Problem</span>}</td>
-                <td className="py-2 pr-3">{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-destructive">Failed</span>}
+              <tr key={r.id} className="border-t border-border [&>td]:align-top">
+                <td className={cn(td, "whitespace-nowrap")}><Ago iso={r.started_at} /><span className="block text-[12px] text-muted-foreground">{r.trigger}{r.actor ? ` · ${r.actor}` : ""}</span></td>
+                <td className={td}>{r.ok ? <span className="text-ok">Done</span> : <span className="font-medium text-destructive">Problem</span>}</td>
+                <td className={td}>{r.restore_ok == null ? <span className="text-muted-foreground">off</span> : r.restore_ok ? <span className="text-ok">Passed</span> : <span className="font-medium text-destructive">Failed</span>}
                   {r.restore_detail && <span className="block text-[12px] text-muted-foreground">{r.restore_detail}</span>}</td>
-                <td className="py-2 pr-3 text-[13px]">{r.destinations}</td>
-                <td className="whitespace-nowrap py-2 pr-3 text-muted-foreground">{bytes(r.size_bytes)}</td>
+                <td className={td}>{r.destinations}</td>
+                <td className={cn(td, "whitespace-nowrap text-muted-foreground")}>{bytes(r.size_bytes)}</td>
               </tr>
             ))}
           </tbody>
@@ -432,6 +442,7 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
   const [f, setF] = useState({ client_id: sso.client_id ?? "", tenant_id: sso.tenant_id ?? "", client_secret: "" })
   const [enforced, setEnforced] = useState(sso.enforced)
   const ssoDirty = f.client_id !== (sso.client_id ?? "") || f.tenant_id !== (sso.tenant_id ?? "") || f.client_secret !== "" || enforced !== sso.enforced
+  useUnsavedGuard(ssoDirty)
   const status = !sso.configured ? "Not set up: staff sign in with a password." : sso.enforced ? "Required: staff sign in with Microsoft only." : "Set up: staff can use Microsoft or a password."
   return (
     <Panel title="Microsoft sign-in" hint="staff; partners keep their email link">
@@ -443,9 +454,9 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
           <span className="text-muted-foreground">In Entra ID: a separate app registration, single tenant, ID tokens only; a client secret under Certificates &amp; secrets.</span>
         </div>
         <div className="grid grid-cols-1 max-w-md gap-2">
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Application (client) ID<Input value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="h-8 font-mono text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Directory (tenant) ID<Input value={f.tenant_id} onChange={(e) => setF({ ...f, tenant_id: e.target.value })} className="h-8 font-mono text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Client secret<Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[13px]" /></label>
+          <Field label="Application (client) ID"><Input value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="h-8 font-mono text-[13px]" /></Field>
+          <Field label="Directory (tenant) ID"><Input value={f.tenant_id} onChange={(e) => setF({ ...f, tenant_id: e.target.value })} className="h-8 font-mono text-[13px]" /></Field>
+          <Field label="Client secret"><Input type="password" value={f.client_secret} onChange={(e) => setF({ ...f, client_secret: e.target.value })} placeholder={sso.has_secret ? "leave blank to keep the saved secret" : "paste the secret value"} className="h-8 text-[13px]" /></Field>
         </div>
         <label className="flex items-start gap-2 text-[13px]">
           <Switch checked={enforced} onCheckedChange={setEnforced} disabled={!sso.configured} className="mt-1" />
@@ -466,9 +477,10 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
 // once, so each area posts its own boxes plus everyone else's saved values.
 type ToggleKey = keyof SettingsData["toggles"]
 function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData; busy: boolean; send: Send; title: string; keys: { key: ToggleKey; label: string }[]; extra?: ReactNode }) {
+  // keyed on the saved values by the caller: a reload after another button (Send test email) keeps an unsaved switch (review P2-30)
   const [t, setT] = useState(data.toggles)
-  useEffect(() => { setT(data.toggles) }, [data.toggles])
   const dirty = keys.some((k) => t[k.key] !== data.toggles[k.key])
+  useUnsavedGuard(dirty)
   function submit(e: FormEvent) {
     e.preventDefault()
     void send("/settings/integrations", Object.fromEntries((Object.keys(t) as ToggleKey[]).filter((k) => t[k]).map((k) => [k, "on"])))
@@ -510,12 +522,12 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
           {name !== t.name && <Button type="submit" size="sm" variant="outline" loading={busy}>Rename</Button>}
         </form>
         <span className="whitespace-nowrap text-[12px] text-muted-foreground">{t.projects} project{t.projects === 1 ? "" : "s"}</span>
-        <button type="button" disabled={busy || onlyOne} onClick={() => send(`${base}/delete`, {}, `Delete template ${t.name}? Rollouts keep their own copies.`)} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-destructive disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
+        <button type="button" aria-disabled={busy || onlyOne || undefined} onClick={() => { if (!onlyOne) void send(`${base}/delete`, {}, `Delete template ${t.name}? Rollouts keep their own copies.`) }} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-destructive aria-disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
       </div>
       <StageListEditor key={stageRowsKey(t.stages)} rows={t.stages} busy={busy} send={send} label={t.name}
         paths={{ add: `${base}/stages/add`, rename: (s) => `${base}/stages/${s}/rename`, move: (s) => `${base}/stages/${s}/move`, remove: (s) => `${base}/stages/${s}/delete`, sla: `${base}/sla` }} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => send(`${base}/sla/from-measured`, {}, "Overwrite this template's SLAs with measured averages?")}>Set SLAs from measured averages</Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => send(`${base}/sla/from-measured`, {}, "Overwrite this template's SLAs with measured averages?")}>Set SLAs from measured averages</Button>
         <span className="text-[12px] text-muted-foreground">From rollouts created with this template. Applies to new rollouts; existing ones keep their own.</span>
       </div>
     </div>
@@ -539,22 +551,22 @@ function AlertTypes({ data, busy, send }: { data: SettingsData; busy: boolean; s
   }
   const set = (key: string, patch: Partial<SettingsData["alerts"][number]>) => setRows(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
   return (
-    <Panel title="Alert types" hint="In-app is the master switch; email and Teams also need their toggle under Integrations">
+    <Panel title="Alert types" hint="In-app is the master switch; email and Teams (the channel post) also need their toggle under Settings › Notifications. Teams messages to each person follow the in-app column">
       <form onSubmit={submit}>
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
-          <thead><tr className="text-left text-[12px] font-normal text-muted-foreground">{["Alert", "Threshold (days)", "Severity", "Email", "Teams", "In-app"].map((h) => <th key={h} className="pb-2 pr-2 font-normal">{h}</th>)}</tr></thead>
+          <thead><tr>{["Alert", "Threshold (days)", "Severity", "Email", "Teams", "In-app"].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
           <tbody>
             {rows.map((a) => (
               <tr key={a.key} className="border-t border-border">
-                <td className="py-2 pr-2">{a.title}</td>
-                <td className="py-2 pr-2">{a.threshold_days != null ? <Input type="number" min={0} value={a.threshold_days} onChange={(e) => set(a.key, { threshold_days: Number(e.target.value) })} aria-label={`Threshold days for ${a.title}`} className="h-7 w-16 text-[13px]" /> : <span className="text-muted-foreground">—</span>}</td>
-                <td className="py-2 pr-2">
+                <td className={td}>{a.title}</td>
+                <td className={td}>{a.threshold_days != null ? <Input type="number" min={0} value={a.threshold_days} onChange={(e) => set(a.key, { threshold_days: Number(e.target.value) })} aria-label={`Threshold days for ${a.title}`} className="h-7 w-16 text-[13px]" /> : <span className="text-muted-foreground">—</span>}</td>
+                <td className={td}>
                   <select value={a.severity} onChange={(e) => set(a.key, { severity: e.target.value as typeof a.severity })} aria-label={`Severity for ${a.title}`} className={cn(fieldAuto, "h-7 text-[13px]")}>
                     <option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option>
                   </select>
                 </td>
                 {(["notify_email", "notify_teams", "notify_inapp"] as const).map((k) => (
-                  <td key={k} className="py-2 pr-2"><Switch size="sm" checked={a[k]} onCheckedChange={(on) => set(a.key, { [k]: on })} aria-label={`${k.replace("notify_", "")} notification for ${a.title}`} className="h-3.5 w-3.5 accent-primary" /></td>
+                  <td key={k} className={td}><Switch size="sm" checked={a[k]} onCheckedChange={(on) => set(a.key, { [k]: on })} aria-label={`${k.replace("notify_", "")} notification for ${a.title}`} /></td>
                 ))}
               </tr>
             ))}
@@ -580,9 +592,9 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
       {editing && (
         <form onSubmit={(e) => { e.preventDefault(); void send("/settings/azure-app", app).then((r) => { if (r) setApp({ ...app, client_secret: "" }) }) }} className="mb-3 grid grid-cols-1 max-w-md gap-2">
           {!m.oauth_client_configured && <p className="text-[13px] text-muted-foreground">Enter the details of the app registration made once in the Azure portal (Microsoft Entra ID › App registrations): its tenant ID, client ID and a client secret.</p>}
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Application (client) ID<Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required aria-label="Application (client) ID" className="h-8 font-mono text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Directory (tenant) ID<Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required aria-label="Directory (tenant) ID" className="h-8 font-mono text-[13px]" /></label>
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Client secret<Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} aria-label="Client secret" placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[13px]" /></label>
+          <Field label="Application (client) ID"><Input value={app.client_id} onChange={(e) => setApp({ ...app, client_id: e.target.value })} required className="h-8 font-mono text-[13px]" /></Field>
+          <Field label="Directory (tenant) ID"><Input value={app.tenant_id} onChange={(e) => setApp({ ...app, tenant_id: e.target.value })} required className="h-8 font-mono text-[13px]" /></Field>
+          <Field label="Client secret"><Input type="password" value={app.client_secret} onChange={(e) => setApp({ ...app, client_secret: e.target.value })} required={!m.azure_app.has_secret} placeholder={m.azure_app.has_secret ? "leave blank to keep the saved secret" : "paste the secret value, not its ID"} className="h-8 text-[13px]" /></Field>
           <div className="flex gap-2">
             <Button type="submit" size="sm" loading={busy} disabled={!app.client_id || !app.tenant_id || (app.client_id === (m.azure_app.client_id ?? "") && app.tenant_id === (m.azure_app.tenant_id ?? "") && !app.client_secret)}>Save</Button>
             {m.oauth_client_configured && <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>}
@@ -599,7 +611,7 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
       {m.connected && (
         <div className="mt-2 grid grid-cols-1 gap-2 text-[13px]">
           <p>Connected as <span className="font-medium">{m.connected_email ?? "—"}</span> · Teams channel <span className="font-medium">{m.channel_id ? `${m.team_name} / ${m.channel_name}` : "not selected yet"}</span>
-            <button type="button" disabled={busy} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-destructive hover:underline">Disconnect</button></p>
+            <button type="button" aria-disabled={busy || undefined} onClick={() => send("/integrations/disconnect", {}, "Disconnect Microsoft 365? Notifications, mirroring and backup stop until you reconnect.")} className="ml-2 text-[12px] text-destructive hover:underline aria-disabled:opacity-40">Disconnect</button></p>
           {m.teams_error && <p className="text-[13px] text-destructive">Could not load teams: {m.teams_error}</p>}
           <div className="flex flex-wrap items-center gap-2">
             <select value={teamId} onChange={(e) => onTeam(e.target.value)} aria-label="Microsoft Teams team" className={fieldAuto}>
@@ -614,8 +626,31 @@ function Microsoft({ data, busy, send, teamId, onTeam }: { data: SettingsData; b
               </>
             )}
           </div>
+          {/* the connection can be tried where it is made (review P3-40) */}
+          <div><TestButton path="/settings/integrations/test-email" label="Send me a test email" busy={busy} /></div>
         </div>
       )}
     </Panel>
+  )
+}
+
+// A test sends something and says what happened right beside its button: the
+// result has to be read (a refusal names the cause), so it stays here and not
+// in a toast that leaves (review P2-36).
+function TestButton({ path, label, busy, blocked }: { path: string; label: string; busy: boolean; blocked?: string }) {
+  const why = useId()
+  const [result, setResult] = useState<{ text: string; bad?: boolean } | null>(null)
+  const [running, setRunning] = useState(false)
+  async function run() {
+    setRunning(true); setResult(null)
+    try { const r = await postForm(path); setResult({ text: r.messages.join(" ") || "Done" }) }
+    catch (e) { setResult({ text: e instanceof ApiError ? e.message : "The test did not run", bad: true }) } finally { setRunning(false) }
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <Button size="sm" variant="outline" disabled={busy || !!blocked} loading={running} aria-describedby={blocked ? why : undefined} onClick={() => void run()}>{label}</Button>
+      {blocked && <span id={why} className="text-[12px] text-muted-foreground">{blocked}</span>}
+      {result && <Notice bad={result.bad}>{result.text}</Notice>}
+    </span>
   )
 }

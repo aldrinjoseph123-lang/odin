@@ -11,12 +11,13 @@ with the client secret, so per OpenID Connect Core 3.1.3.7 the ID token's
 issuer is established by that TLS connection; we still check issuer, tenant,
 audience, nonce and expiry before trusting a single claim. Accounts are bound
 by the immutable object id (oid), never by a changeable email; the email only
-links an existing Odin user on their first Microsoft sign-in.
+links an existing Odin user on their first Microsoft sign-in, and only when
+that user proved the address by opening a link mailed to it (review P2-3).
+The UPN Microsoft gave is kept beside the oid (users.ms_upn).
 
 A colleague whose account already has a password links Microsoft from their
-Account page (signed in with that password, then through Microsoft): Odin
-never verified the address on an account, so a first Microsoft sign-in never
-takes over one that has a working password.
+Account page (signed in with that password, then through Microsoft), so a
+first Microsoft sign-in never takes over one that has a working password.
 
 This uses its own app registration (Settings › Sign-in & security), separate
 from the Microsoft 365 mail/Teams connection, so signing in can never touch
@@ -38,6 +39,7 @@ from markupsafe import escape
 from core import app, external_url, login_required, permission_required
 from db import get_db, get_setting, set_setting
 from routes.auth import safe_next_url, start_session
+from security import clean_text
 from services.audit import audit_log
 from services.sealed import seal, unseal
 
@@ -119,16 +121,28 @@ def _authorize(next_url, link=None):
 
 
 def _refuse(reason, details):
-    audit_log("login_failure", details=f"microsoft: {details}", actor="microsoft")
+    audit_log("login_failure", details=clean_text(f"microsoft: {details}"), actor="microsoft")
     flash(reason)
     return redirect(url_for("login"))
+
+
+# Fixed words for Microsoft's error codes: the callback's query string is
+# anyone's to write, so its error_description never reaches the page (review P3-4).
+OAUTH_ERRORS = {
+    "access_denied": "Microsoft sign-in was cancelled, or your organisation did not allow it",
+    "consent_required": "Your organisation has not approved Odin's Microsoft sign-in yet: ask an admin",
+    "interaction_required": "Microsoft needs you to sign in again: try once more",
+    "login_required": "Microsoft needs you to sign in again: try once more",
+    "temporarily_unavailable": "Microsoft is not answering at the moment: try again in a few minutes",
+}
 
 
 @app.route("/auth/microsoft/callback")
 def sso_callback():
     pending = session.pop("sso", None)
     if request.args.get("error"):
-        return _refuse("Microsoft did not sign you in: " + request.args.get("error_description", request.args["error"])[:200], request.args["error"])
+        code = clean_text(request.args["error"], 60)
+        return _refuse(OAUTH_ERRORS.get(code, "Microsoft did not sign you in — try again"), f"error {code}")
     if not pending or not secrets.compare_digest(request.args.get("state", ""), pending["state"]):
         return _refuse("That sign-in attempt expired — try again", "state mismatch")
     client_id, tenant, secret = sso_config()
@@ -141,35 +155,37 @@ def sso_callback():
         token = resp.json()
         claims = _claims(token["id_token"])
     except Exception as exc:  # noqa: BLE001 — network, bad JSON, no id_token
-        return _refuse("Microsoft sign-in failed — try again", f"token exchange: {str(exc)[:120]}")
+        return _refuse("Microsoft sign-in failed — try again", f"token exchange: {clean_text(exc, 120)}")
     # Trust nothing until it is ours: this tenant, this app, this attempt, still valid.
     if (claims.get("tid") != tenant or claims.get("iss") != f"{LOGIN_BASE}/{tenant}/v2.0" or claims.get("aud") != client_id
             or claims.get("nonce") != pending["nonce"] or int(claims.get("exp", 0)) < time.time() or not claims.get("oid")):
-        return _refuse("That Microsoft account can't sign in here", f"claims rejected (tid={claims.get('tid')})")
+        return _refuse("That Microsoft account can't sign in here", f"claims rejected (tid={clean_text(claims.get('tid'), 40)})")
 
     db = get_db()
     oid = claims["oid"]
-    email = (claims.get("email") or claims.get("preferred_username") or "").strip().lower()
-    name = (claims.get("name") or email or "New colleague").strip()[:120]
+    upn = clean_text(claims.get("preferred_username"), 254).strip().lower() or None   # the home-tenant UPN, kept with the binding
+    email = clean_text(claims.get("email") or claims.get("preferred_username"), 254).strip().lower()
+    name = clean_text(claims.get("name") or email or "New colleague", 120).strip() or "New colleague"
     if pending.get("link"):
-        return _link(pending["link"], oid, email)
+        return _link(pending["link"], oid, email, upn)
     user = db.execute("SELECT * FROM users WHERE ms_oid = ?", (oid,)).fetchone()
     if user is None and email:
-        # First Microsoft sign-in of someone Odin already knows: bind by email, once.
+        # First Microsoft sign-in of someone Odin already knows: bind by email, once,
+        # and only to an address its owner proved (review P2-3).
         user = db.execute("SELECT * FROM users WHERE lower(email) = ? AND ms_oid IS NULL", (email,)).fetchone()
-        if user and user["kind"] == "internal" and _password_usable(user):
+        if user and user["kind"] == "internal" and (_password_usable(user) or not user["email_verified_at"]):
             return _clash(user, email, name)
         if user and user["kind"] == "internal":
             # the password, if any, could not sign in anyway: retire it with the binding, end old sessions
-            db.execute("UPDATE users SET ms_oid = ?, password_hash = 'microsoft:no-password', session_epoch = session_epoch + 1 WHERE id = ?",
-                       (oid, user["id"]))
+            db.execute("UPDATE users SET ms_oid = ?, ms_upn = ?, password_hash = 'microsoft:no-password', session_epoch = session_epoch + 1 WHERE id = ?",
+                       (oid, upn, user["id"]))
             db.commit()
-            audit_log("link_microsoft_account", "user", user["id"], user["username"], email, actor=user["username"])
+            audit_log("link_microsoft_account", "user", user["id"], user["username"], f"{email} (UPN {upn})", actor=user["username"])
             user = db.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
     if user is not None and user["kind"] == "external":
         return _refuse("Partner and customer accounts sign in with an email link", f"external account {email}")
     if user is None:
-        return _request_access(oid, email, name)
+        return _request_access(oid, email, name, upn)
     if user["pending"]:
         flash("Your access request is waiting for an admin — you'll be able to sign in once it's approved")
         return redirect(url_for("login"))
@@ -185,7 +201,7 @@ def _password_usable(user):
     return "$" in (user["password_hash"] or "") and not (sso_enforced() and not user["password_login"])
 
 
-def _link(user_id, oid, email):
+def _link(user_id, oid, email, upn):
     """The end of Link Microsoft: still the same live session, and an oid no account holds."""
     from core import _session_still_valid
     db = get_db()
@@ -196,34 +212,43 @@ def _link(user_id, oid, email):
         audit_log("link_microsoft_refused", "user", user_id, username, f"microsoft {email}: already linked to another account")
         flash("That Microsoft account is already linked to another Odin account", "error")
         return redirect(url_for("account"))
-    db.execute("UPDATE users SET ms_oid = ? WHERE id = ? AND ms_oid IS NULL", (oid, user_id))
+    db.execute("UPDATE users SET ms_oid = ?, ms_upn = ? WHERE id = ? AND ms_oid IS NULL", (oid, upn, user_id))
     db.commit()
-    audit_log("link_microsoft_account", "user", user_id, username, f"microsoft {email}, from the Account page")
+    audit_log("link_microsoft_account", "user", user_id, username, f"microsoft {email} (UPN {upn}), from the Account page")
     flash("Microsoft linked: you can sign in with it from now on")
     return redirect(url_for("account"))
 
 
 def _clash(user, email, name):
     """A first Microsoft sign-in whose address is on an account with a working
-    password (test round P2-3). Odin never verified that address, so whoever
-    set the password may not be this person: nothing is linked and no account
-    is created. The person signs in with the password and links Microsoft on
-    their Account page; the admins are told in case it is someone else."""
+    password (test round P2-3), or on one whose owner never proved the address
+    (review P2-3): whoever set it may not be this person, so nothing is linked
+    and no account is created. With a password, the person signs in with it
+    and links Microsoft on their Account page; an unproven address is
+    confirmed from the link mailed to it first. The admins are told in case it
+    is someone else."""
     from services.notifications import notify_users
+    proven = bool(user["email_verified_at"])
     audit_log("link_microsoft_refused", "user", user["id"], user["username"],
-              f"microsoft {email}: the account has a password; link it from the Account page", actor="microsoft")
+              f"microsoft {email}: " + ("the account has a password; link it from the Account page" if proven else "the address on the account is not confirmed"),
+              actor="microsoft")
     admins = [r["id"] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+    why = "which signs in with a password" if proven else "whose owner has not confirmed that address"
     notify_users(admins, "access", None, f"{escape(name)} tried to sign in with Microsoft",
                  f"{escape(name)} ({escape(email)}) signed in with Microsoft for the first time, but {escape(email)} is the address of"
-                 f" {escape(user['name'])}'s account, which signs in with a password, so Odin linked nothing. If it is the same person,"
-                 " they sign in with the password and use Link Microsoft on their Account page. If not, check who set that address.",
+                 f" {escape(user['name'])}'s account, {why}, so Odin linked nothing. If it is the same person,"
+                 + (" they sign in with the password and use Link Microsoft on their Account page." if proven else
+                    " they confirm the address from the link Odin mails to it (saving the address on the Users page sends one).")
+                 + " If not, check who set that address.",
                  link="/users")
     flash("An Odin account with your address signs in with a password, so Microsoft was not linked to it."
-          " Sign in with that password, then use Link Microsoft on your Account page")
+          " Sign in with that password, then use Link Microsoft on your Account page" if proven else
+          "An Odin account has your address but it is not confirmed yet, so Microsoft was not linked to it."
+          " Open the confirmation link Odin mailed to that address, or ask an admin")
     return redirect(url_for("login"))
 
 
-def _request_access(oid, email, name):
+def _request_access(oid, email, name, upn):
     """An unknown colleague: an inactive, pending Viewer the admins approve.
     An address another account already has stays off the request (one
     account per address)."""
@@ -234,10 +259,13 @@ def _request_access(oid, email, name):
     if db.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
         username = f"{username}-{oid[:6]}"
     taken = bool(email) and db.execute("SELECT 1 FROM users WHERE lower(email) = ?", (email,)).fetchone()
+    now = datetime.utcnow().isoformat()
+    # the address counts as proven when it is the UPN: a name in a domain this tenant verified
     cur = db.execute(
-        "INSERT INTO users (username, password_hash, name, role, active, email, created_at, kind, ms_oid, pending, theme, accent)"
-        " VALUES (?, 'microsoft:no-password', ?, 'Viewer', 0, ?, ?, 'internal', ?, 1, ?, ?)",
-        (username, name, None if taken else email or None, datetime.utcnow().isoformat(), oid, policy("default_theme"), policy("default_accent")))
+        "INSERT INTO users (username, password_hash, name, role, active, email, created_at, kind, ms_oid, ms_upn, pending, theme, accent, email_verified_at)"
+        " VALUES (?, 'microsoft:no-password', ?, 'Viewer', 0, ?, ?, 'internal', ?, ?, 1, ?, ?, ?)",
+        (username, name, None if taken else email or None, now, oid, upn, policy("default_theme"), policy("default_accent"),
+         now if email and not taken and email == upn else None))
     db.commit()
     audit_log("access_requested", "user", cur.lastrowid, username, f"microsoft {email}", actor=username)
     admins = [r["id"] for r in db.execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]

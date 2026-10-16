@@ -1,0 +1,126 @@
+{
+ "can": {
+  "create": true,
+  "delete_doc": true,
+  "delete_project": true,
+  "docs": true,
+  "download": true,
+  "manage": true,
+  "move": true,
+  "note": true,
+  "tasks": true
+ },
+ "customer_approval": true,
+ "details": {
+  "account_manager_email": null,
+  "account_manager_name": null,
+  "client": "Globex",
+  "delivery_mode": "Distribution/MSSP",
+  "outsourcer_email": null,
+  "outsourcer_name": null,
+  "partner_account_manager_email": null,
+  "partner_account_manager_name": null,
+  "partner_name": null,
+  "po_date": null,
+  "po_number": "PO-GLX-0091",
+  "product_name": "Falcon Complete",
+  "start_date": "2026-09-18",
+  "target_end_date": "2026-12-16",
+  "vendor_name": "CrowdStrike",
+  "via": null
+ },
+ "doc_categories": [
+  "Client PO",
+  "Deliverable"
+ ],
+ "documents": [
+  {
+   "category": "Client PO",
+   "filename": "po.pdf",
+   "id": 1,
+   "uploaded_at": "2026-10-15T19:13:42.783734",
+   "uploaded_by": "Admin"
+  }
+ ],
+ "external_roles": [
+  "Contractor",
+  "Reseller"
+ ],
+ "guest_links": {
+  "customer": "http://localhost/guest/iPQXp3mNyERkBzb5piDvKg",
+  "vendor": null
+ },
+ "guest_links_enabled": true,
+ "guest_links_expire": "2027-03-17T19:13:43",
+ "id": 1,
+ "name": "EDR Rollout - Globex",
+ "notes": [
+  {
+   "author": "Admin",
+   "created_at": "2026-10-15T17:13:43.261641",
+   "edited": false,
+   "id": 75,
+   "mine": false,
+   "note": "Customer asked to add the branch office; PO amendment requested.",
+   "stage": "Sensor pilot",
+   "stage_entry": false
+  },
+  {
+   "author": "Admin",
+   "created_at": "2026-09-30T03:13:43.261641",
+   "edited": false,
+   "id": 2,
+   "mine": true,
+   "note": "Pilot group of 50 endpoints",
+   "stage": "Sensor pilot",
+   "stage_entry": false
+  }
+ ],
+ "owner_id": 1,
+ "participants": [
+  {
+   "active": true,
+   "avatar_url": null,
+   "email": null,
+   "id": 1,
+   "name": "Admin",
+   "role": "Project manager",
+   "user_id": 1
+  },
+  {
+   "active": true,
+   "avatar_url": null,
+   "email": "ann@globex.example",
+   "id": 26,
+   "name": "Ann Reyes",
+   "role": "Customer",
+   "user_id": 9
+  }
+ ],
+ "roles": [
+  "Sales",
+  "Coordinator"
+ ],
+ "stage_rows": [
+  {
+   "id": 1,
+   "name": "PO Received",
+   "sla_days": null
+  },
+  {
+   "id": 2,
+   "name": "Scoping",
+   "sla_days": null
+  }
+ ],
+ "users": [
+  {
+   "id": 1,
+   "name": "Admin"
+  },
+  {
+   "id": 6,
+   "name": "Lena Fischer"
+  }
+ ]
+}

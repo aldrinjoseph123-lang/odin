@@ -4,6 +4,13 @@
 
 Exits non-zero if anything would make this deployment unsafe. Each check
 reports what to do about it rather than just failing.
+
+    python preflight.py --update
+
+is the self-updater's gate after a release is built (deploy/odin-update.sh):
+the same checks, but a setting an admin owns (the seed password, the public
+address) only warns there. A release cannot break those, and failing on them
+would roll back a good release and leave it marked failed.
 """
 import os
 import sqlite3
@@ -15,9 +22,11 @@ CHECKS = []
 PASS, WARN, FAIL = "PASS", "WARN", "FAIL"   # what a check returns first; WARN is reported, never a failure
 
 
-def check(name):
+def check(name, setting=False):
+    """`setting`: the check is about a value an admin sets in Odin, not about
+    the build or the environment (a WARN under --update)."""
     def register(fn):
-        CHECKS.append((name, fn))
+        CHECKS.append((name, fn, setting))
         return fn
     return register
 
@@ -49,7 +58,7 @@ def _proxy():
     return PASS, "ok"
 
 
-@check("Default admin password changed")
+@check("Default admin password changed", setting=True)
 def _admin_password():
     from db import DB_PATH
     if not os.path.exists(DB_PATH):
@@ -127,7 +136,7 @@ def _oauth():
                   "exactly (scheme/host/port/path) or sign-in fails with AADSTS50011")
 
 
-@check("Public web address is set (Settings › General)")
+@check("Public web address is set (Settings › General)", setting=True)
 def _public_url():
     from db import DB_PATH
     if not os.path.exists(DB_PATH):
@@ -140,14 +149,16 @@ def _public_url():
     return PASS, row[0]
 
 
-def main():
+def main(update=False):
     print("Odin pre-flight\n" + "-" * 60)
     failures = warnings = 0
-    for name, fn in CHECKS:
+    for name, fn, setting in CHECKS:
         try:
             status, detail = fn()
         except Exception as exc:  # a broken check shouldn't mask the others
             status, detail = FAIL, f"check errored: {exc}"
+        if update and setting and status == FAIL:
+            status = WARN
         print(f"[{status}] {name}\n       {detail}")
         failures += status == FAIL
         warnings += status == WARN
@@ -160,4 +171,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(update="--update" in sys.argv))

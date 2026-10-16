@@ -16,8 +16,14 @@ services:
       - ./static:/srv/odin-static:ro
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    # pinned, never :latest (every pull could be different code); bump the tag and digest together
+    image: cloudflare/cloudflared:2026.9.3@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
     restart: unless-stopped
+    logging:   # rotated like the other services (json-file grows without a limit otherwise)
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}

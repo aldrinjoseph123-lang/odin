@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { danger } from "@/lib/ui"
+import { useState, type FormEvent, type ReactNode } from "react"
+import { danger, th } from "@/lib/ui"
+import { Field } from "@/components/ui/field"
+import { Badge } from "@/components/ui/badge"
 import { Panel } from "@/components/PanelTitle"
 import { CheckCircle2, CircleDashed, Clock, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -9,6 +11,8 @@ import { Ago } from "@/components/Ago"
 import { aiSettings, ApiError, postForm, type AICheck, type AIFeatureView, type AIView, type Policy } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { usePoll } from "@/lib/usePoll"
+import { useLoad } from "@/lib/useLoad"
+import { LoadFailed } from "@/components/LoadFailed"
 import { aiStale } from "@/lib/format"
 
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
@@ -16,10 +20,10 @@ type Send = (path: string, fields?: Record<string, string>, confirmText?: string
 
 // A state is a word and an icon, never colour alone.
 const TONE = {
-  ok: "text-ok", warn: "bg-warn-soft text-warn", bad: "bg-destructive/10 text-destructive", none: "text-muted-foreground",   // the normal state is quiet; only exceptions get a fill
+  ok: "bg-transparent text-ok", warn: "bg-warn-soft text-warn", bad: "bg-destructive/10 text-destructive", none: "bg-transparent text-muted-foreground",   // the normal state is quiet; only exceptions get a fill
 } as const
 function Pill({ tone, icon, children }: { tone: keyof typeof TONE; icon: ReactNode; children: ReactNode }) {
-  return <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[12px] font-medium", TONE[tone])}>{icon}{children}</span>
+  return <Badge variant="secondary" className={TONE[tone]}>{icon}{children}</Badge>
 }
 const ICON = "h-3.5 w-3.5"
 const FEATURE_STATE: Record<AIFeatureView["state"], [keyof typeof TONE, ReactNode, string]> = {
@@ -32,12 +36,7 @@ const FEATURE_STATE: Record<AIFeatureView["state"], [keyof typeof TONE, ReactNod
 // Settings → AI. The server form checks before it saves; status and the
 // feature table refresh on their own while a validation runs.
 export function AISettings({ policies, busy, send, schedule }: { policies: Policy[]; busy: boolean; send: Send; schedule: ReactNode }) {
-  const [view, setView] = useState<AIView | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const load = useCallback(async () => {
-    try { setView(await aiSettings()); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load the AI status") }
-  }, [])
-  useEffect(() => { void load() }, [load])
+  const { data: view, error, reload: load } = useLoad("ai-settings", aiSettings)
   // refresh while a validation runs or the first heartbeat is due; never when
   // nothing can answer (AI off, no scheduler), and not in a hidden tab
   const working = !!view && view.status.state !== "off" && view.scheduler_alive
@@ -48,7 +47,7 @@ export function AISettings({ policies, busy, send, schedule }: { policies: Polic
   return (
     <>
       <Server policies={policies} busy={busy} send={act} hasKey={!!view?.has_key} />
-      {error && <p className="text-[13px] text-destructive" role="alert">{error}</p>}
+      {error && <LoadFailed what="the AI status" onRetry={() => void load()} />}
       {view && <Status view={view} busy={busy} send={act} />}
       {view && <Features features={view.features} busy={busy} send={act} />}
       {schedule}
@@ -82,20 +81,16 @@ function Server({ policies, busy, send, hasKey }: { policies: Policy[]; busy: bo
           <span>{label("ai_enabled")?.label}<span className="block text-[12px] font-normal text-muted-foreground">{label("ai_enabled")?.help}</span></span>
         </label>
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
+          <Field label={label("ai_base_url")?.label} hint={label("ai_base_url")?.help} className="content-start">
+            <Input type="url" maxLength={200} placeholder="http://ai.p24.lan:11434/v1" value={f.ai_base_url} onChange={(e) => { setF({ ...f, ai_base_url: e.target.value }); setCheck(null) }} className="max-w-md font-mono" />
+          </Field>
+          <Field label={label("ai_model")?.label} hint={label("ai_model")?.help} className="content-start">
+            <Input required maxLength={120} value={f.ai_model} onChange={(e) => { setF({ ...f, ai_model: e.target.value }); setCheck(null) }} className="max-w-xs font-mono" />
+          </Field>
           <div className="grid content-start gap-1">
-            <label htmlFor="ai-url" className="text-[13px] font-medium">{label("ai_base_url")?.label}</label>
-            <Input id="ai-url" type="url" maxLength={200} placeholder="http://ai.p24.lan:11434/v1" value={f.ai_base_url} onChange={(e) => { setF({ ...f, ai_base_url: e.target.value }); setCheck(null) }} className="h-8 max-w-md font-mono text-[13px]" />
-            <p className="text-[12px] text-muted-foreground">{label("ai_base_url")?.help}</p>
-          </div>
-          <div className="grid content-start gap-1">
-            <label htmlFor="ai-model" className="text-[13px] font-medium">{label("ai_model")?.label}</label>
-            <Input id="ai-model" required maxLength={120} value={f.ai_model} onChange={(e) => { setF({ ...f, ai_model: e.target.value }); setCheck(null) }} className="h-8 max-w-xs font-mono text-[13px]" />
-            <p className="text-[12px] text-muted-foreground">{label("ai_model")?.help}</p>
-          </div>
-          <div className="grid content-start gap-1">
-            <label htmlFor="ai-key" className="text-[13px] font-medium">API key</label>
+            <label htmlFor="ai-key" className="text-[12px] font-medium text-nav-fg">API key</label>
             <div className="flex flex-wrap items-center gap-2">
-              <Input id="ai-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "saved; type to replace" : "none (a local server needs none)"} className="h-8 max-w-xs text-[13px]" />
+              <Input id="ai-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={hasKey ? "saved; type to replace" : "none (a local server needs none)"} className="max-w-xs" />
               <Button type="button" size="sm" variant="outline" disabled={busy || !key} onClick={() => void send("/settings/ai/key", { api_key: key }).then((r) => { if (r) setKey("") })}>Save key</Button>
               {hasKey && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => void send("/settings/ai/key", { clear: "1" }, "Remove the saved API key?")}>Remove</Button>}
             </div>
@@ -177,7 +172,7 @@ function Features({ features, busy, send }: { features: AIFeatureView[]; busy: b
         <p className="text-[13px] text-muted-foreground">No AI features yet. Each one arrives with its own test rollout and appears here, validated against the server before it runs.</p>
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-[13px]">
-          <thead><tr className="text-left text-[12px] text-muted-foreground">{["Feature", "On the current model", "Last tested", "Answer time", "On", "Forced", ""].map((h) => <th key={h} className="pb-2 pr-3 font-normal">{h}</th>)}</tr></thead>
+          <thead><tr>{["Feature", "On the current model", "Last tested", "Answer time", "On", "Forced", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
           <tbody>
             {features.map((f) => {
               const [tone, icon, word] = FEATURE_STATE[f.state]
@@ -185,13 +180,13 @@ function Features({ features, busy, send }: { features: AIFeatureView[]; busy: b
                 force && !f.forced ? `Force ${f.label} on? It will run even though it has not passed its test on this model.` : undefined)
               return [
                 <tr key={f.key} className="border-t border-border align-top">
-                  <td className="py-2 pr-3"><span className="font-medium">{f.label}</span><span className="block text-[12px] text-muted-foreground">{f.description}</span></td>
-                  <td className="py-2 pr-3"><Pill tone={tone} icon={icon}>{word}</Pill>{f.detail && <span className="mt-1 block text-[12px] text-muted-foreground">{f.detail}</span>}</td>
-                  <td className="whitespace-nowrap py-2 pr-3">{f.checked_at ? <><Ago iso={f.checked_at} /><span className="block font-mono text-[12px] text-muted-foreground">{f.model}</span></> : <span className="text-muted-foreground">never</span>}</td>
-                  <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{f.seconds != null ? `${f.seconds} s` : "—"}</td>
-                  <td className="py-2 pr-3"><Switch size="sm" checked={f.on} disabled={busy} onCheckedChange={(c) => void post(c, f.forced)} aria-label={`${f.label} on`} className="h-3.5 w-3.5 accent-primary" /></td>
-                  <td className="py-2 pr-3"><Switch size="sm" checked={f.forced} disabled={busy || !f.on} onCheckedChange={(c) => void post(f.on, c)} aria-label={`Force ${f.label} on without a passed test`} className="h-3.5 w-3.5 accent-primary" /></td>
-                  <td className="py-2 text-right">{f.output != null && <Button size="sm" variant="ghost" className="h-7" onClick={() => setOpen(open === f.key ? null : f.key)} aria-expanded={open === f.key}>{open === f.key ? "Hide answer" : "Test answer"}</Button>}</td>
+                  <td className="px-3 py-2"><span className="font-medium">{f.label}</span><span className="block text-[12px] text-muted-foreground">{f.description}</span></td>
+                  <td className="px-3 py-2"><Pill tone={tone} icon={icon}>{word}</Pill>{f.detail && <span className="mt-1 block text-[12px] text-muted-foreground">{f.detail}</span>}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{f.checked_at ? <><Ago iso={f.checked_at} /><span className="block font-mono text-[12px] text-muted-foreground">{f.model}</span></> : <span className="text-muted-foreground">never</span>}</td>
+                  <td className="whitespace-nowrap px-3 py-2 tabular-nums">{f.seconds != null ? `${f.seconds} s` : "—"}</td>
+                  <td className="px-3 py-2"><Switch size="sm" checked={f.on} aria-disabled={busy || undefined} onCheckedChange={(c) => { if (!busy) void post(c, f.forced) }} aria-label={`${f.label} on`} className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50" /></td>
+                  <td className="px-3 py-2"><Switch size="sm" checked={f.forced} disabled={!f.on} aria-disabled={busy || undefined} onCheckedChange={(c) => { if (!busy) void post(f.on, c) }} aria-label={`Force ${f.label} on without a passed test`} className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50" /></td>
+                  <td className="px-3 py-2 text-right">{f.output != null && <Button size="sm" variant="outline" onClick={() => setOpen(open === f.key ? null : f.key)} aria-expanded={open === f.key}>{open === f.key ? "Hide answer" : "Test answer"}</Button>}</td>
                 </tr>,
                 open === f.key && (
                   <tr key={`${f.key}:out`}><td colSpan={7} className="pb-3">

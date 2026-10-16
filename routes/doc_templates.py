@@ -22,7 +22,10 @@ def api_doc_templates():
 @app.route("/api/doc-templates/choices")
 @login_required
 def api_doc_template_choices():
-    """What a writer may pick for a document of this kind (names only)."""
+    """What a writer may pick for a document of this kind (names only). Staff
+    write documents; partners and customers only read them (P3-14)."""
+    if session.get("kind") == "external":
+        abort(403)
     kind = request.args.get("kind", "")
     if kind not in dt.KINDS:
         abort(404)

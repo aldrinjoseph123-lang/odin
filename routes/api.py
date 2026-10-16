@@ -2,7 +2,7 @@
 (sent as X-CSRF-Token), same decorators and audit trail as the HTML routes —
 the API is a second door into the same rooms, not a second house.
 """
-from flask import abort, g, jsonify, request, session, url_for
+from flask import abort, g, jsonify, request, session
 
 from policies import local_today, policy, policy_view
 
@@ -14,8 +14,8 @@ from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_c
 from db import PROJECT_OPEN_SQL, current_approval, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import alerts_page_data
-from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, change_stage, decide_approval, filtered_projects_query, load_project, stage_entry_note_ids
-from security import csrf_token, file_stem, safe_csv_writer
+from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, StageConflict, change_stage, decide_approval, filtered_projects_query, load_project, stage_entry_note_ids
+from security import csrf_token, file_stem, nudge_limited, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, clock, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline, working_days
 from services.audit import audit_log
@@ -64,6 +64,7 @@ def _current_user():
         "nav": nav_counts(),
         # workspace-wide display choices from Settings › General
         "prefs": {"date_format": policy("date_format"), "undo_minutes": policy("undo_minutes"),
+                  "password_min_length": policy("password_min_length"),
                   "activity_idle_minutes": policy("activity_idle_minutes") if policy("activity_tracking") else 0},
     }
 
@@ -90,8 +91,10 @@ def api_session():
     from routes.sso import sso_configured, sso_enforced
     # what the sign-in page offers: Microsoft for staff, and whether the
     # password form is hidden (then only at /login/password, for flagged accounts)
-    signin = {"microsoft": sso_configured(), "microsoft_only": sso_enforced(), "link_minutes": policy("link_minutes")}
-    return jsonify({"csrf": csrf_token(), "user": user, "messages": messages, "signin": signin})
+    signin = {"microsoft": sso_configured(), "microsoft_only": sso_enforced(), "link_minutes": policy("link_minutes"),
+              "password_min_length": policy("password_min_length")}
+    from routes.client import app_version   # the page compares it with the one it loaded with (advice A20)
+    return jsonify({"csrf": csrf_token(), "user": user, "messages": messages, "signin": signin, "version": app_version()})
 
 
 @app.route("/api/login", methods=["POST"])
@@ -105,7 +108,9 @@ def api_login():
         return jsonify({"code_needed": True, "csrf": csrf_token()})
     if not ok:
         # attempt_login audits every outcome; 429 when it is the lockout talking.
-        return jsonify({"error": message}), (429 if message.startswith("Too many") else 401)
+        if message.startswith("Too many"):
+            return jsonify({"error": message}), 429, {"Retry-After": str(60 * policy("login_window_minutes"))}
+        return jsonify({"error": message}), 401
     # attempt_login cleared the session (fixation defence), so the token rotated.
     return jsonify({"user": _current_user(), "csrf": csrf_token()})
 
@@ -197,13 +202,12 @@ def _audit_archives():
 def _backups_view():
     """History, the next scheduled run and whether the scheduler is alive."""
     from datetime import timedelta
-    from zoneinfo import ZoneInfo
-    from policies import policy
+    from policies import local_now
     from scheduler import HEARTBEAT, next_run
     db = get_db()
     beat = get_setting(HEARTBEAT)
     alive = bool(beat) and datetime.fromisoformat(beat) > datetime.utcnow() - timedelta(minutes=5)
-    upcoming = next_run(datetime.now(ZoneInfo(policy("timezone"))), policy("backup_time"), policy("backup_days"))
+    upcoming = next_run(local_now(), policy("backup_time"), policy("backup_days"))
     return {
         "runs": [dict(r) | {"ok": bool(r["ok"]), "restore_ok": None if r["restore_ok"] is None else bool(r["restore_ok"])}
                  for r in db.execute("SELECT * FROM backup_runs ORDER BY id DESC LIMIT 20")],
@@ -299,7 +303,8 @@ def api_audit():
     total = db.execute(f"SELECT COUNT(*) AS c FROM audit_logs{where}", params).fetchone()["c"]
     total_pages = max(1, (total + limit - 1) // limit)
     page = min(page, total_pages)
-    rows = db.execute(f"SELECT * FROM audit_logs{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?", (*params, limit, (page - 1) * limit)).fetchall()
+    rows = db.execute(f"SELECT audit_logs.*, (SELECT u.name FROM users u WHERE u.id = audit_logs.user_id) AS user_name "
+                      f"FROM audit_logs{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?", (*params, limit, (page - 1) * limit)).fetchall()
     return jsonify(
         rows=[dict(r) for r in rows], page=page, total=total, total_pages=total_pages, filters=filters,
         # one entry per person: their name, whether the row was written with their name or their sign-in handle
@@ -337,6 +342,7 @@ def portfolio_pdf():
         abort(404)            # the PDF is the internal cut
     from services.doc_templates import resolve
     data = _portfolio()
+    audit_log("download_portfolio_report", "report", None, "portfolio", f"{len(data.get('rows') or [])} rollouts")   # an export like the others (P3-17)
     return Response(render_portfolio(data, resolve("portfolio", request.args.get("template", type=as_id))), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="portfolio-report-{data["today"]}.pdf"'})
 
@@ -409,6 +415,7 @@ def rollout_report_pdf(project_id):
     safe = file_stem(project["name"])
     tag = f"-v{row['version']}" if row else ""
     name = f"{safe}-report{tag}{'-customer' if audience == 'customer' else ''}.pdf"
+    audit_log("download_report", "project", project_id, project["name"], f"{'v' + str(row['version']) if row else 'live'} {audience}")   # P3-17
     return Response(render(data, words), mimetype="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
 
 
@@ -448,7 +455,7 @@ def api_rollout_report_save(project_id):
 @app.route("/api/account")
 @login_required
 def api_account():
-    from constants import ADMIN_KINDS, NOTIFICATION_KINDS
+    from constants import ADMIN_KINDS, NOTIFICATION_KINDS, STAFF_KINDS
     from db import get_setting
     u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
@@ -456,7 +463,8 @@ def api_account():
                    has_password=bool(u["password_hash"] and "$" in u["password_hash"]),
                    theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u), home=u["home"],
                    email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
-                                if k not in ADMIN_KINDS or session.get("role") == "Admin"],   # access requests and AI health reach admins only
+                                if (k not in ADMIN_KINDS or session.get("role") == "Admin")   # access requests and AI health reach admins only
+                                and (k not in STAFF_KINDS or u["kind"] != "external")],
                    mail_enabled=get_setting("notify_email_enabled") == "1",
                    activity=activity_summary(session["user_id"]) if activity_enabled() else None,
                    activity_viewers=policy("activity_roles"))
@@ -512,15 +520,20 @@ def api_person_notify(user_id):
     if session.get("kind") == "external" or session.get("role") not in ("Admin", "Member", "Contributor") or user_id == session["user_id"]:
         abort(403)
     body = json_body()
-    message = body.get("message").strip()[:1000] if isinstance(body.get("message"), str) else ""
+    try:
+        message = text_field(body.get("message"), 1000, "Message", multiline=True)   # too long is said, never cut (P2-27)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     if not message:
-        abort(400)
+        return jsonify(error="Write a message first"), 400
     target = get_db().execute("SELECT id, name FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (user_id,)).fetchone()
     if not target:
         abort(404)
     project_id = as_id(body.get("project_id"))
     if project_id and not get_db().execute("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone():
         return jsonify(error="That rollout does not exist"), 400   # test report FN-12: it was a 500
+    if busy := nudge_limited(session["user_id"], user_id):   # review P3-3
+        return jsonify(error=busy), 429, {"Retry-After": "3600"}   # counted over the last hour
     notify_users([user_id], "nudge", project_id, f"{session.get('user_name')} sent you a note", f"<p>{_esc(message)}</p>", link=f"/board?rollout={project_id}" if project_id else "/my-work")
     audit_log("notify_person", "user", user_id, target["name"], message[:80])
     return jsonify(ok=True)
@@ -544,11 +557,12 @@ def api_calendar():
     if not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", month):   # the window parse_date keeps; year 1 overflowed the grid's arithmetic
         month = ""   # the current month
     d = calendar.build(month, project_scope())
-    # who may drag a task to another day: whoever manages the rollout's tasks, or the person it is on (task_edit decides again)
+    # who may drag a task to another day: whoever manages the rollout's tasks, done or not, exactly
+    # as task_edit decides (P2-10: the person a task is on ticks it, never re-dates it; P3-18)
     manages = {pid: project_allows(pid, "manage_tasks") for pid in {t["project_id"] for t in d["tasks"]}}
     for t in d["tasks"]:
-        mine = t.pop("assignee_id") == session["user_id"]
-        t["can_edit"] = bool(manages[t["project_id"]] or mine) and not t["done"]
+        t.pop("assignee_id")
+        t["can_edit"] = manages[t["project_id"]]
     return jsonify(d)
 
 
@@ -556,6 +570,8 @@ def api_calendar():
 @permission_required("view_board")
 def api_dashboard_version():
     """Cheap: the page asks every few seconds whether anything changed."""
+    if session.get("kind") == "external":   # the dashboard is staff only, and so is its heartbeat (P3-14)
+        abort(403)
     from services import dashboard
     return jsonify(version=dashboard.version())
 
@@ -711,7 +727,7 @@ def api_projects():
     closed, q = args.get("closed") == "1", args.get("q", "").strip()
     page = max(1, args.get("page", type=as_id) or 1)
     # the nav's Projects link returns to this filter (page deliberately not kept)
-    session["projects_query"] = {k: v for k, v in args.items() if k in ("view", "stage", "delivery_mode", "closed", "q", "sort", "dir") and v}
+    session["projects_query"] = {k: v[:100] for k, v in args.items() if k in ("view", "stage", "delivery_mode", "closed", "q", "sort", "dir") and v}   # capped: a crafted link must not outgrow the cookie (review P3-12)
     db = get_db()
     query, params = filtered_projects_query(view, stage, closed, mode, q, sort, direction)
     total = db.execute(f"SELECT COUNT(*) AS c FROM ({query})", params).fetchone()["c"]
@@ -775,6 +791,8 @@ def api_project(project_id):
             fields += ["po_number", "po_date"]
     hidden_docs = partner_hidden_categories(db) if external else set()
     from db import get_setting
+    from routes.guest import links_expire
+    from core import external_url   # the public address, never the Host a PM happened to use (P3-1)
     guest_on = get_setting("guest_links_enabled", "1") == "1"
     return jsonify({
         "id": project["id"], "name": project["name"], "owner_id": project["owner_id"],
@@ -782,10 +800,12 @@ def api_project(project_id):
         "details": {f: project[f] for f in fields},
         "customer_approval": bool(project["customer_approval"]),
         "guest_links": {
-            "customer": url_for("guest_view", token=project["customer_token"], _external=True) if project["customer_token"] else None,
-            "vendor": url_for("guest_view", token=project["access_token"], _external=True)
+            "customer": external_url("guest_view", token=project["customer_token"]) if project["customer_token"] else None,
+            "vendor": external_url("guest_view", token=project["access_token"])
             if project["delivery_mode"] == "Outsourced" and project["access_token"] else None,
         } if guest_on and can_manage else {"customer": None, "vendor": None},
+        # when those links stop working (None: never); rotating renews them (P2-6)
+        "guest_links_expire": links_expire(project) if guest_on and can_manage else None,
         "stage_rows": [{"id": r["id"], "name": r["name"], "sla_days": r["sla_days"]} for r in stage_rows(project_id)],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
                           "email": r["email"] if not external or r["user_id"] == session["user_id"] else None, "active": bool(r["active"]),
@@ -830,6 +850,7 @@ ACTIVITY_LABELS = {
     "signoff_send": "sent the sign-off", "signoff_sign": "signed the sign-off", "signoff_countersign": "countersigned the sign-off",
     "signoff_reject": "did not accept the sign-off", "signoff_withdraw": "withdrew the sign-off", "signoff_upload": "uploaded the signed sign-off",
     "signoff_waive": "waived the sign-off", "signoff_link": "made a sign-in link for the signatory",
+    "download_report": "downloaded the report PDF", "download_signoff": "downloaded the sign-off PDF",
 }
 
 
@@ -898,12 +919,14 @@ def api_project_stage(project_id):
     data = json_body()
     try:
         stage, note = text_field(data.get("stage"), 200, "Stage"), text_field(data.get("note"), 5000, "Note", multiline=True)
+        # the stage the page showed: a move from a stale view is a 409, never a step backwards (P2-26)
+        seen = text_field(data.get("from_stage"), 200, "From stage") if data.get("from_stage") is not None else None
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     # change_stage audits and notifies; this is the same door the form uses.
-    error = change_stage(project_id, stage, note)
+    error = change_stage(project_id, stage, note, from_stage=seen)
     if error:
-        return jsonify({"error": error}), 400
+        return jsonify({"error": error}), 409 if isinstance(error, StageConflict) else 400
     return jsonify({"ok": True, "undo": g.stage_undo_url})
 
 
@@ -958,17 +981,19 @@ def api_flow():
     ).fetchall()
     stage_lists = stages_for_projects([p["id"] for p in projects])
     mine = my_project_ids(session["user_id"])
+    # the rows below for the rollouts on this page only, never every rollout ever made (review P3-25)
+    shown = f"SELECT p.id FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{project_scope()[0]}"
     # latest approval per project, only meaningful for the current stage
     approvals = {}
     for r in db.execute(
         "SELECT a.project_id, a.stage, a.status FROM stage_approvals a "
-        "WHERE a.id = (SELECT MAX(id) FROM stage_approvals WHERE project_id = a.project_id)"
+        f"WHERE a.project_id IN ({shown}) AND a.id = (SELECT MAX(id) FROM stage_approvals WHERE project_id = a.project_id)", project_scope()[1]
     ):
         approvals[r["project_id"]] = r
     team = {}   # project_id -> participant names, PM first (avatars on the row)
     for r in db.execute(
         "SELECT pp.project_id, u.id, u.name, u.avatar FROM project_participants pp JOIN users u ON u.id = pp.user_id "
-        "WHERE u.active = 1 ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name"
+        f"WHERE u.active = 1 AND pp.project_id IN ({shown}) ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name", project_scope()[1]
     ):
         team.setdefault(r["project_id"], []).append({"id": r["id"], "name": r["name"], "avatar_url": avatar_url(r)})
     # The next actionable item, as the detail pane's "Next up" picks it: the
@@ -979,8 +1004,8 @@ def api_flow():
     next_task = {}
     for t in db.execute(
         "SELECT t.project_id, t.stage, t.title, t.due_date, u.name AS assignee_name FROM tasks t "
-        "LEFT JOIN users u ON u.id = t.assignee_id WHERE t.done = 0 "
-        "ORDER BY t.due_date IS NULL, t.due_date, t.id"
+        f"LEFT JOIN users u ON u.id = t.assignee_id WHERE t.done = 0 AND t.project_id IN ({shown}) "
+        "ORDER BY t.due_date IS NULL, t.due_date, t.id", project_scope()[1]
     ):
         here = t["stage"] == stage_of.get(t["project_id"]) or t["stage"] not in names_of.get(t["project_id"], ())
         if t["project_id"] not in next_task or (here and not next_task[t["project_id"]]["here"]):
@@ -1106,8 +1131,8 @@ def api_plan_save(project_id):
     from services import plan
     project = load_project(project_id)
     body = json_body()
-    reason = str(body.get("reason") or "").strip()[:300]
     try:
+        reason = text_field(body.get("reason"), 300, "Reason")   # a list is refused, too long is said (P2-27)
         changed, baselined, warning = plan.save(project, body.get("stages"), reason, session["user_name"])
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
@@ -1124,10 +1149,10 @@ def api_plan_rebaseline(project_id):
     """Freeze the current plan as the new baseline; a reason is required."""
     from services import plan
     project = load_project(project_id)
-    reason = str(json_body().get("reason") or "").strip()[:300]
-    if not reason:
-        return jsonify(error="Say why the baseline moves"), 400
     try:
+        reason = text_field(json_body().get("reason"), 300, "Reason")
+        if not reason:
+            return jsonify(error="Say why the baseline moves"), 400
         plan.rebaseline(project, reason, session["user_name"])
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
@@ -1255,7 +1280,7 @@ def api_project_flow(project_id):
         "today": local_today().isoformat(),
         "stages": stage_rows,
         # a task without a stage belongs to whatever stage the project is in
-        "tasks": [{"id": t["id"], "title": t["title"], "done": bool(t["done"]), "due_date": t["due_date"],
+        "tasks": [{"id": t["id"], "title": t["title"], "done": bool(t["done"]), "done_at": t["done_at"], "due_date": t["due_date"],
                    "assignee": t["assignee_name"], "assignee_id": t["assignee_id"],
                    "assignee_avatar_url": f"/users/{t['assignee_id']}/avatar/{t['assignee_avatar']}" if t["assignee_avatar"] else None,
                    "stage": t["stage"] if t["stage"] in stages else project["stage"]} for t in tasks],
@@ -1280,14 +1305,19 @@ def api_project_flow(project_id):
 @app.route("/api/notifications")
 @login_required
 def api_notifications():
+    """The bell: the newest 40 (?limit= up to 100), and older ones a page at a
+    time with ?before_id=<the last id shown>; `more` says whether there are."""
     from services.notifications import visible_clause
     where, params = visible_clause(session["user_id"], session.get("kind"))
+    before, limit = as_id(request.args.get("before_id")), min(as_id(request.args.get("limit")) or 40, 100)
     rows = get_db().execute(
         "SELECT n.*, p.name AS project_name FROM notifications n LEFT JOIN projects p ON p.id = n.project_id "
-        f"WHERE n.user_id = ?{where} ORDER BY n.id DESC LIMIT 40", (session["user_id"], *params),
+        f"WHERE n.user_id = ?{where}{' AND n.id < ?' if before else ''} ORDER BY n.id DESC LIMIT ?",
+        (session["user_id"], *params, *([before] if before else []), limit + 1),
     ).fetchall()
+    more, rows = len(rows) > limit, rows[:limit]
     unread = get_db().execute(f"SELECT COUNT(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL{where}", (session["user_id"], *params)).fetchone()[0]
-    return jsonify(unread=unread, rows=[{
+    return jsonify(unread=unread, more=more, rows=[{
         "id": r["id"], "kind": r["kind"], "title": r["title"], "body": r["body"], "link": r["link"], "actor": r["actor"],
         "project_name": r["project_name"], "created_at": r["created_at"], "read": r["read_at"] is not None,
     } for r in rows])

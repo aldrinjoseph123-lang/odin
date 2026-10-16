@@ -1,0 +1,131 @@
+{
+ "alerts": [
+  {
+   "key": "project_overdue",
+   "notify_email": false,
+   "notify_inapp": true,
+   "notify_teams": false,
+   "severity": "critical",
+   "threshold_days": null,
+   "title": "Rollout overdue"
+  },
+  {
+   "key": "project_due_soon",
+   "notify_email": false,
+   "notify_inapp": true,
+   "notify_teams": false,
+   "severity": "warning",
+   "threshold_days": 7,
+   "title": "Rollout due soon"
+  }
+ ],
+ "api_tokens": [],
+ "audit_archives": [],
+ "backups": null,
+ "doc_categories": [
+  {
+   "id": 1,
+   "name": "Client PO",
+   "partners": false
+  },
+  {
+   "id": 2,
+   "name": "Deliverable",
+   "partners": true
+  }
+ ],
+ "m365": {
+  "azure_app": {
+   "client_id": "",
+   "has_secret": false,
+   "source": null,
+   "tenant_id": ""
+  },
+  "channel_id": null,
+  "channel_name": null,
+  "channels": [],
+  "connected": false,
+  "connected_email": null,
+  "oauth_client_configured": false,
+  "team_id": "",
+  "team_name": null,
+  "teams": [],
+  "teams_error": null
+ },
+ "policies": [
+  {
+   "area": "general",
+   "group": "Your workspace",
+   "help": "Shown in email footers and on the PDFs attached to the weekly report.",
+   "key": "company_name",
+   "kind": "text",
+   "label": "Company name",
+   "max": 80,
+   "value": "Protect24x7"
+  },
+  {
+   "area": "general",
+   "group": "Your workspace",
+   "help": "e.g. https://odin.example.com. Sign-in and emailed links are built from it, never from the request. Blank: links point at this server's own address (http://localhost and its port), which works only on the server itself: set it before anyone else uses Odin.",
+   "hint": "The address people use to reach Odin, e.g. https://odin.example.com.",
+   "key": "public_url",
+   "kind": "url",
+   "label": "Public web address",
+   "max": 200,
+   "value": ""
+  }
+ ],
+ "public_url_set": false,
+ "sso": {
+  "client_id": null,
+  "configured": false,
+  "enforced": false,
+  "has_secret": false,
+  "password_admins": 1,
+  "redirect_uri": "http://localhost/auth/microsoft/callback",
+  "tenant_id": null
+ },
+ "templates": [
+  {
+   "id": 1,
+   "name": "Generic",
+   "projects": 1,
+   "stages": [
+    {
+     "id": 1,
+     "name": "PO Received",
+     "sla_days": null
+    },
+    {
+     "id": 2,
+     "name": "Scoping",
+     "sla_days": null
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "name": "EDR rollout",
+   "projects": 11,
+   "stages": [
+    {
+     "id": 9,
+     "name": "PO Received",
+     "sla_days": null
+    },
+    {
+     "id": 10,
+     "name": "Scoping",
+     "sla_days": null
+    }
+   ]
+  }
+ ],
+ "toggles": {
+  "guest_links_enabled": true,
+  "notify_email_enabled": false,
+  "notify_teams_chat_enabled": false,
+  "notify_teams_enabled": false,
+  "onedrive_mirror_uploads_enabled": false
+ }
+}

@@ -12,7 +12,8 @@ The secret is stored encrypted with a key derived from SECRET_KEY, so a
 leaked database or backup does not leak it; rotating SECRET_KEY therefore
 means everyone sets two-step sign-in up again (an admin resets it on the
 Users page). A code is accepted once: the last used time step is kept.
-Recovery codes are stored as SHA-256 hashes (they are random, 40 bits).
+Recovery codes are random, 80 bits, stored as salted SHA-256 (review P3-5);
+codes made before that (40 bits, unsalted) keep working until new ones are made.
 """
 import base64
 import hashlib
@@ -77,13 +78,28 @@ def qr_svg(text):
     return segno.make(text, error="m").svg_inline(scale=4, border=2, dark="#000", light="#fff")
 
 
-def _hash(code):
-    return hashlib.sha256(code.replace("-", "").strip().lower().encode()).hexdigest()
+def _hash(code, salt=""):
+    return hashlib.sha256((salt + "".join(code.split()).replace("-", "").lower()).encode()).hexdigest()
+
+
+def _salted(code):
+    salt = secrets.token_hex(8)
+    return f"v2:{salt}:{_hash(code, salt)}"
+
+
+def _matches(stored, code):
+    """A stored recovery code against a typed one: v2:<salt>:<hash>, or an older bare hash."""
+    if stored.startswith("v2:"):
+        _, salt, digest = stored.split(":")
+        return hmac.compare_digest(digest, _hash(code, salt))
+    return hmac.compare_digest(stored, _hash(code))
 
 
 def new_recovery_codes():
-    codes = [f"{secrets.token_hex(2)}-{secrets.token_hex(3)}" for _ in range(RECOVERY_CODES)]
-    return codes, json.dumps([_hash(c) for c in codes])
+    """Ten codes of 80 bits as xxxx-xxxx-xxxx-xxxx (base32: no 0/1/8/9 to misread)."""
+    raw = [base64.b32encode(secrets.token_bytes(10)).decode().lower() for _ in range(RECOVERY_CODES)]
+    codes = ["-".join(r[i:i + 4] for i in range(0, 16, 4)) for r in raw]
+    return codes, json.dumps([_salted(c) for c in codes])
 
 
 def enabled(user):
@@ -109,9 +125,9 @@ def check(user, code):
         db.commit()
         return "code" if n else None
     hashes = json.loads(user["recovery_codes"] or "[]")
-    h = _hash(str(code or ""))
-    if h in hashes:
-        hashes.remove(h)
+    hit = next((h for h in hashes if _matches(h, str(code or ""))), None)
+    if hit:
+        hashes.remove(hit)
         n = db.execute("UPDATE users SET recovery_codes = ? WHERE id = ? AND recovery_codes = ?", (json.dumps(hashes), user["id"], user["recovery_codes"])).rowcount
         db.commit()
         return "recovery" if n else None
@@ -164,4 +180,7 @@ if __name__ == "__main__":
     assert matching_step(rfc, "287082", after=1, now=59) is None      # already used
     assert matching_step(rfc, "287 082", now=59 + STEP) == 1           # a step of drift, spaces ignored
     assert matching_step(rfc, "287082", now=59 + 3 * STEP) is None
+    codes, stored = new_recovery_codes()
+    assert len(codes[0]) == 19 and _matches(json.loads(stored)[0], codes[0].upper().replace("-", " "))
+    assert _matches(_hash("abcd-ef0123"), "ABCD-EF0123") and not _matches(json.loads(stored)[1], codes[0])   # old codes still work
     print("ok")

@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 from db import PROJECT_OPEN_SQL, avatar_url, get_db, stages_for_projects
-from policies import local_date, local_today, policy
+from policies import local_date, local_now, local_today, policy
 from services.alerts import project_states as _states
 from services.analytics import days_in_stage, sla_by_stage, stage_sla_state
 
@@ -16,9 +16,8 @@ from services.analytics import days_in_stage, sla_by_stage, stage_sla_state
 def _since(day):
     """The UTC timestamp of the workspace's midnight starting `day`, to compare
     with stored UTC timestamps (done_at, created_at)."""
-    from zoneinfo import ZoneInfo
     from datetime import timezone
-    start = datetime.combine(day, datetime.min.time()).replace(tzinfo=ZoneInfo(policy("timezone")))
+    start = datetime.combine(day, datetime.min.time()).replace(tzinfo=local_now().tzinfo)
     return start.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
 
 
@@ -64,6 +63,11 @@ def my_work(uid, scope):
     today = local_today()
     scope_sql, scope_params = scope
     tasks = _task_rows(db, f"t.assignee_id = ? AND t.done = 0{scope_sql}", (uid, *scope_params))
+    # who may re-date a task: whoever task_edit lets (the person it is on ticks it, never re-dates it; P2-10)
+    from core import project_allows
+    manages = {pid: project_allows(pid, "manage_tasks") for pid in {t["project_id"] for t in tasks}}
+    for t in tasks:
+        t["can_edit"] = manages[t["project_id"]]
     since = _since(today - timedelta(days=13))
     done = Counter(local_date(r[0]).isoformat() for r in db.execute(
         "SELECT t.done_at FROM tasks t JOIN projects p ON p.id = t.project_id "

@@ -1,0 +1,72 @@
+{
+ "lists": [
+  {
+   "has_email": true,
+   "items": [],
+   "key": "account-managers",
+   "label": "Internal Account Managers"
+  },
+  {
+   "has_email": false,
+   "items": [
+    {
+     "email": null,
+     "id": 1,
+     "name": "CrowdStrike",
+     "used": [
+      {
+       "id": 1,
+       "name": "EDR Rollout - Globex"
+      },
+      {
+       "id": 10,
+       "name": "EDR rollout - Acme Bank"
+      }
+     ]
+    },
+    {
+     "email": null,
+     "id": 4,
+     "name": "Fortinet",
+     "used": [
+      {
+       "id": 18,
+       "name": "Firewall refresh - Acme Bank"
+      },
+      {
+       "id": 6,
+       "name": "Firewall refresh - Hooli"
+      }
+     ]
+    }
+   ],
+   "key": "vendors",
+   "label": "Vendors"
+  }
+ ],
+ "partners": [
+  {
+   "id": 1,
+   "managers": [
+    {
+     "email": "meera@redington.example",
+     "id": 1,
+     "name": "Meera",
+     "used": [
+      {
+       "id": 3,
+       "name": "Firewall refresh - Initech"
+      }
+     ]
+    }
+   ],
+   "name": "Redington",
+   "used": [
+    {
+     "id": 3,
+     "name": "Firewall refresh - Initech"
+    }
+   ]
+  }
+ ]
+}

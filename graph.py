@@ -18,7 +18,7 @@ import base64
 import os
 import sqlite3
 import time
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import requests
 from markupsafe import escape
@@ -310,12 +310,13 @@ EMAIL_SHELL = (
 )
 
 
-def send_mail(to_email, subject, html_body, attachments=None):
+def send_mail(to_email, subject, html_body, attachments=None, report=True):
     """attachments: [(filename, bytes, content_type)] — small files only
     (Graph's sendMail takes the whole message in one ~4 MB request). A failure
-    while email is switched on is reported to the admins' bell, at most daily."""
+    while email is switched on is reported to the admins' bell, at most daily
+    (`report=False`: the outbox reports only when it gives up)."""
     ok, error = _send_mail(to_email, subject, html_body, attachments)
-    if not ok:
+    if not ok and report:
         try:
             from services.notifications import report_mail_failure
             report_mail_failure(error)
@@ -352,8 +353,9 @@ def _send_mail(to_email, subject, html_body, attachments=None):
         payload["message"]["from"] = {"emailAddress": {"address": alias, "name": "Odin by Protect24x7"}}
     try:
         resp = requests.post(f"{GRAPH_BASE}/me/sendMail", headers=headers, json=payload, timeout=15)
-        if resp.status_code >= 400 and alias:
-            # the tenant refused the alias: deliver from the mailbox itself, and tell the admins once a day
+        if alias and resp.status_code >= 400 and "SendAsDenied" in resp.text:
+            # the tenant refused the alias (ErrorSendAsDenied; a 429 or 503 is not that, and the
+            # outbox tries it again later): deliver from the mailbox itself, and tell the admins once a day
             refused = f"{alias}: {resp.status_code} {resp.text[:200]}"
             del payload["message"]["from"]
             resp = requests.post(f"{GRAPH_BASE}/me/sendMail", headers=headers, json=payload, timeout=15)
@@ -370,13 +372,23 @@ def _send_mail(to_email, subject, html_body, attachments=None):
         return False, f"sendMail failed: {exc}"
 
 
+def md_escape(text):
+    """Text for an Adaptive Card TextBlock, which reads Markdown: Odin's own
+    words never use it, and outsider text (a guest note) must not plant a
+    link or styling in an Odin-branded card (P3-6)."""
+    import re
+    text = re.sub(r"([\\`*_\[\]~])", r"\\\1", text or "")             # emphasis, code and [links](…)
+    text = re.sub(r"(?m)^(\s*)([-+>])", r"\1\\\2", text)               # a list or quote at a line's start…
+    return re.sub(r"(?m)^(\s*\d+)\.", r"\1\\.", text)                    # …or a numbered one
+
+
 def post_teams_webhook(url, title, lines, link=None):
     """Post an Adaptive Card to a Teams Workflows webhook ("Post to a channel
     when a webhook request is received"). The old Office 365 connector
     webhooks were retired in 2026; Workflows accepts this message shape.
     Returns (ok, error); never raises."""
-    body = [{"type": "TextBlock", "text": title, "weight": "Bolder", "size": "Medium", "wrap": True}]
-    body += [{"type": "TextBlock", "text": line, "wrap": True, "spacing": "Small"} for line in lines]
+    body = [{"type": "TextBlock", "text": md_escape(title), "weight": "Bolder", "size": "Medium", "wrap": True}]
+    body += [{"type": "TextBlock", "text": md_escape(line), "wrap": True, "spacing": "Small"} for line in lines]
     card = {"type": "AdaptiveCard", "$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "version": "1.4", "body": body,
             **({"actions": [{"type": "Action.OpenUrl", "title": "Open in Odin", "url": link}]} if link else {})}
     try:
@@ -384,6 +396,11 @@ def post_teams_webhook(url, title, lines, link=None):
         return (resp.status_code < 400), (None if resp.status_code < 400 else f"webhook answered {resp.status_code}")
     except Exception as exc:  # noqa: BLE001
         return False, f"webhook failed: {exc}"
+
+
+# Microsoft refuses the lookup when the connection predates the User.ReadBasic.All scope (added 13 Oct 2026)
+CONSENT_MISSING = ("Microsoft 365 refused to look people up: the connection lacks the User.ReadBasic.All permission. "
+                   "Disconnect and Connect again under Settings › Integrations to grant it")
 
 
 def user_id(email):
@@ -396,11 +413,16 @@ def user_id(email):
     if error:
         return None, error
     try:
-        who = requests.get(f"{GRAPH_BASE}/users/{requests.utils.quote(email)}?$select=id", headers=headers, timeout=15)
+        # quoted whole: a "/" in a staff-set address must not walk the path (/users/x/../me, P3-8)
+        who = requests.get(f"{GRAPH_BASE}/users/{quote(email, safe='')}?$select=id", headers=headers, timeout=15)
+        if who.status_code == 403:
+            return None, CONSENT_MISSING
         uid = who.json().get("id") if who.status_code < 400 else None
         if not uid:
             found = requests.get(f"{GRAPH_BASE}/users", headers=headers, timeout=15,
                                  params={"$filter": f"mail eq '{email.replace(chr(39), chr(39) * 2)}'", "$select": "id"})
+            if found.status_code == 403:
+                return None, CONSENT_MISSING
             hits = found.json().get("value", []) if found.status_code < 400 else []
             uid = hits[0]["id"] if hits else None
         return (uid, None) if uid else (None, f"No one in Microsoft 365 has the address {email}")

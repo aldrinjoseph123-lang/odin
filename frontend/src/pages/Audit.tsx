@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react"
 import { PageHeader } from "@/components/PageHeader"
-import { filterSelect } from "@/lib/ui"
+import { filterSelect, th, td } from "@/lib/ui"
+import { EmptyState } from "@/components/EmptyState"
 import { useSearchParams } from "react-router-dom"
 import { buttonVariants } from "@/components/ui/button"
 import { ApiError, audit, type AuditData, type User } from "@/lib/api"
@@ -57,8 +58,8 @@ export default function Audit(_props: { user: User }) {
       <div className="mt-3 min-h-0 flex-1 overflow-auto panel">
         <table className="w-full border-collapse text-[13px]">
           <thead className="sticky top-0 bg-card">
-            <tr className="border-b border-border text-left text-[12px] font-normal text-muted-foreground">
-              {["When", "User", "Action", "Resource", "Details", "IP"].map((h, i) => <th key={h} className={cn("px-3 py-2 font-normal", i === 5 && "hidden lg:table-cell")}>{h}</th>)}
+            <tr className="border-b border-border">
+              {["When", "User", "Action", "Resource", "Details", "IP"].map((h, i) => <th key={h} className={cn(th, i === 5 && "hidden lg:table-cell")}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -68,21 +69,21 @@ export default function Audit(_props: { user: User }) {
               return (<Fragment key={r.id}>
               {head && <tr className="bg-muted/50"><th scope="rowgroup" colSpan={6} className="px-3 py-1 text-left text-[12px] font-semibold text-nav-fg">{day}</th></tr>}
               <tr className="border-b border-border align-top last:border-0 hover:bg-muted">
-                <td className="whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground">{fmtWhen(r.timestamp, true)}</td>
-                <td className="px-3 py-2"><span className="inline-flex items-center gap-2 whitespace-nowrap"><UserAvatar name={r.username || "?"} className="h-5 w-5 shrink-0" />{r.username}</span></td>
-                <td className="px-3 py-2" title={r.action}>{actionText(r.action)}</td>
-                <td className="px-3 py-2">
+                <td className={cn(td, "whitespace-nowrap text-[12px] text-muted-foreground")}>{fmtWhen(r.timestamp, true)}</td>
+                <td className={td}><span className="inline-flex items-center gap-2 whitespace-nowrap"><UserAvatar name={r.user_name || r.username || "?"} className="h-5 w-5 shrink-0" />{r.user_name || r.username}</span></td>
+                <td className={td} title={r.action}>{actionText(r.action)}</td>
+                <td className={td}>
                   {/* the name when there is one; "Rollout 40" only when the record has none */}
                   {r.resource_type && !r.resource_name && <span className="text-muted-foreground">{actionText(r.resource_type)} </span>}
-                  {r.resource_type === "project" && r.resource_id ? <a href={`/projects/${r.resource_id}`} className="font-medium wrap-anywhere hover:underline">{r.resource_name ?? r.resource_id}</a>
+                  {r.resource_type === "project" && r.resource_id ? <a href={`/projects/${r.resource_id}`} className="font-medium wrap-anywhere hover:underline">{r.resource_name ?? `Rollout #${r.resource_id}`}</a>
                     : r.resource_name ? <span className="wrap-anywhere">{r.resource_name}</span> : r.resource_id ? <span className="text-muted-foreground">{r.resource_id}</span> : null}
                 </td>
-                <td className="max-w-md px-3 py-2 text-[13px] wrap-anywhere">{r.details}</td>
-                <td className="hidden whitespace-nowrap px-3 py-2 text-[12px] text-muted-foreground lg:table-cell">{r.ip_address}</td>
+                <td className={cn(td, "max-w-md wrap-anywhere")}>{r.details}</td>
+                <td className={cn(td, "hidden whitespace-nowrap text-[12px] text-muted-foreground lg:table-cell")}>{r.ip_address}</td>
               </tr>
               </Fragment>)
             })}
-            {data.rows.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-[13px] text-muted-foreground">Nothing matches this filter.</td></tr>}
+            {data.rows.length === 0 && <tr><td colSpan={6} className="p-3"><EmptyState>Nothing matches this filter.</EmptyState></td></tr>}
           </tbody>
         </table>
       </div>

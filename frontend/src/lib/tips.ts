@@ -4,15 +4,19 @@ const isCut = (el: HTMLElement) => el.matches(CUT) && (el.scrollWidth > el.clien
 // What a tooltip should say for an element, or null for none.
 // A `title` moves to data-tip the first time (so the browser's own tooltip
 // never doubles ours); if the element had no other accessible name, the title
-// becomes its aria-label. An icon-only control (no visible text) shows its
-// aria-label; a control with visible text needs no tooltip.
+// becomes its aria-label, and if it said more than the name it stays readable
+// to assistive technology as aria-description (review P3-46). An icon-only
+// control (no visible text) shows its aria-label; a control with visible text
+// needs no tooltip.
 export function tipText(el: HTMLElement): string | null {
   const title = el.getAttribute("title")
   if (title !== null) {
     el.removeAttribute("title")
     if (title) {
       el.dataset.tip = title
-      if (!el.getAttribute("aria-label") && !el.textContent?.trim()) el.setAttribute("aria-label", title)
+      const name = el.getAttribute("aria-label") ?? el.textContent?.trim() ?? ""
+      if (!name) el.setAttribute("aria-label", title)
+      else if (title !== name && !el.hasAttribute("aria-description")) el.setAttribute("aria-description", title)
     }
   }
   if (el.dataset.tip) return el.dataset.tip

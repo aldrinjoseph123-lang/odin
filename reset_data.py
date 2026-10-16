@@ -1,6 +1,7 @@
 """Wipe demo/seed project data, keeping configuration and users.
 
-Run before handing Odin to real users:
+Run before handing Odin to real users, with the app and the scheduler
+stopped (docker compose stop app scheduler) so nothing writes meanwhile:
 
     python reset_data.py --dry-run     # show what would go
     python reset_data.py               # asks for confirmation
@@ -33,8 +34,9 @@ from db import DB_PATH, UPLOAD_DIR
 # a survivor would show the wiped projects' history (or, after a restore that
 # reset the id counter, attach itself to the next project created; see the
 # "new table" checklist in CLAUDE.md). The dashboard's daily counts describe
-# the wiped projects too, so they go first.
-WIPE_TABLES = ["portfolio_snapshots", "lessons", "doc_text", "ai_calls", "ai_suggestions", "ai_jobs", "signoffs", "scope_items", "plan_changes", "raid_items", "notifications", "status_notes", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
+# the wiped projects too, so they go first, and so does mail still queued
+# about them (the outbox: its sign-in links would lead nowhere).
+WIPE_TABLES = ["outbox", "portfolio_snapshots", "lessons", "doc_text", "ai_calls", "ai_suggestions", "ai_jobs", "signoffs", "scope_items", "plan_changes", "raid_items", "notifications", "status_notes", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
                "project_participants", "project_stages", "login_links", "signup_links", "projects"]
 
 
@@ -79,8 +81,14 @@ def main():
             db.close()
             return 1
 
+    # SQLite's online backup API, never a file copy: committed rows still in
+    # the WAL are not in odin.db yet, and a copy of the file alone loses them.
+    # Stop the app and the scheduler first, so nothing writes during the reset.
     backup = f"{DB_PATH}.pre-reset.bak"
-    shutil.copy2(DB_PATH, backup)
+    copy = sqlite3.connect(backup)
+    with copy:
+        db.backup(copy)
+    copy.close()
 
     # Children first: foreign keys point at projects, and PRAGMA foreign_keys
     # is on for app connections even though it is off by default here.

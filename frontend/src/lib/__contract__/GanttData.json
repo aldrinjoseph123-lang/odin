@@ -1,0 +1,115 @@
+{
+ "calendar": {
+  "off": [],
+  "week": [
+   0,
+   1
+  ],
+  "working": true
+ },
+ "rows": [
+  {
+   "baselined": true,
+   "can_edit": true,
+   "client": "Stark Logistics",
+   "forecast": "2026-11-09",
+   "has_plan": true,
+   "id": 16,
+   "name": "EDR rollout - Stark Logistics",
+   "owner_name": "Admin",
+   "pct_complete": 69,
+   "rag": "amber",
+   "stage": "Hypercare",
+   "stages": [
+    {
+     "actual_end": "2026-08-20",
+     "actual_start": "2026-08-10",
+     "base_end": "2026-08-18",
+     "base_start": "2026-08-10",
+     "forecast_end": "2026-08-20",
+     "forecast_start": "2026-08-10",
+     "id": 142,
+     "name": "PO Received",
+     "plan_end": "2026-08-18",
+     "plan_start": "2026-08-10",
+     "sla_days": null,
+     "slip_days": 2,
+     "status": "done",
+     "suggested_end": "2026-08-19",
+     "suggested_start": "2026-08-10"
+    },
+    {
+     "actual_end": "2026-08-30",
+     "actual_start": "2026-08-20",
+     "base_end": "2026-08-26",
+     "base_start": "2026-08-18",
+     "forecast_end": "2026-08-30",
+     "forecast_start": "2026-08-20",
+     "id": 143,
+     "name": "Scoping",
+     "plan_end": "2026-08-26",
+     "plan_start": "2026-08-18",
+     "sla_days": null,
+     "slip_days": 4,
+     "status": "done",
+     "suggested_end": "2026-08-28",
+     "suggested_start": "2026-08-19"
+    }
+   ],
+   "start_date": "2026-08-10",
+   "target_end_date": "2027-02-12"
+  },
+  {
+   "baselined": true,
+   "can_edit": true,
+   "client": "Vandelay Industries",
+   "forecast": "2026-12-04",
+   "has_plan": true,
+   "id": 9,
+   "name": "Vulnerability mgmt - Vandelay Industries",
+   "owner_name": "Admin",
+   "pct_complete": 12,
+   "rag": "amber",
+   "stage": "PO Received",
+   "stages": [
+    {
+     "actual_end": null,
+     "actual_start": "2026-08-10",
+     "base_end": "2026-08-17",
+     "base_start": "2026-08-10",
+     "forecast_end": "2026-10-15",
+     "forecast_start": "2026-08-10",
+     "id": 76,
+     "name": "PO Received",
+     "plan_end": "2026-08-17",
+     "plan_start": "2026-08-10",
+     "sla_days": 7,
+     "slip_days": 59,
+     "status": "current",
+     "suggested_end": "2026-08-19",
+     "suggested_start": "2026-08-10"
+    },
+    {
+     "actual_end": null,
+     "actual_start": null,
+     "base_end": "2026-08-23",
+     "base_start": "2026-08-17",
+     "forecast_end": "2026-10-21",
+     "forecast_start": "2026-10-15",
+     "id": 77,
+     "name": "Scoping",
+     "plan_end": "2026-08-23",
+     "plan_start": "2026-08-17",
+     "sla_days": null,
+     "slip_days": 59,
+     "status": "next",
+     "suggested_end": "2026-08-28",
+     "suggested_start": "2026-08-19"
+    }
+   ],
+   "start_date": "2026-08-10",
+   "target_end_date": "2027-02-12"
+  }
+ ],
+ "today": "2026-10-15"
+}

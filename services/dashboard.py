@@ -92,9 +92,9 @@ def _setting(schema, raw):
         if kind == "multi":
             picked = [x for x in raw if x in schema["choices"]] if isinstance(raw, list) else None
             return picked if picked else list(default)
-        if kind == "text":
-            return str(raw).strip()[:schema["max"]] or default
-    except (TypeError, ValueError):
+        if kind == "text":   # text is text: a list is not stored as its Python spelling (P2-27)
+            return raw.strip()[:schema["max"]] or default if isinstance(raw, str) else default
+    except (TypeError, ValueError, OverflowError):
         pass
     return default
 
@@ -107,7 +107,7 @@ def normalize_layout(raw):
     out, seen = [], set()
     for item in raw:
         wid = item.get("id") if isinstance(item, dict) else None
-        if wid not in WIDGETS:
+        if not isinstance(wid, str) or wid not in WIDGETS:   # a list id was a 500 (P2-27)
             continue
         # a repeatable widget is told apart by its handle; anything else appears once
         uid = str(item.get("uid") or "") if WIDGETS[wid].get("multiple") else ""
@@ -118,7 +118,7 @@ def normalize_layout(raw):
         seen.add((wid, uid))
         try:
             w = max(1, min(3, int(item.get("w", WIDGETS[wid]["w"]))))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             w = WIDGETS[wid]["w"]
         given = item.get("settings") if isinstance(item.get("settings"), dict) else {}
         settings = {k: _setting(s, given.get(k, s["default"])) for k, s in WIDGETS[wid]["settings"].items()}
@@ -242,7 +242,10 @@ def _cycle(db, scope):
         return None
     projects = db.execute(f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{scope_sql}", (template["id"], *scope_params)).fetchall()
     notes = {}
-    for n in db.execute("SELECT project_id, stage, created_at FROM status_notes ORDER BY created_at"):
+    # those projects' notes only, in index order (review P3-25: this read every note of every rollout)
+    for n in db.execute("SELECT project_id, stage, created_at FROM status_notes WHERE project_id IN "
+                        f"(SELECT p.id FROM projects p WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{scope_sql}) "
+                        "ORDER BY project_id, created_at", (template["id"], *scope_params)):
         notes.setdefault(n["project_id"], []).append(n)
     names = [r["name"] for r in db.execute("SELECT name FROM stage_template_stages WHERE template_id = ? ORDER BY position", (template["id"],))]
     if not names:
@@ -297,17 +300,19 @@ def build(scope, user_id):
 
     # what stands behind each headline number: the rollouts, one line each (the tile's pop-up)
     now = datetime.utcnow()
-    row = lambda p, text: {"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "text": text}   # noqa: E731
+    # `n` orders a kind's rows (days late, over, left, idle…): sorting never reads a number out of the words (P3-21)
+    row = lambda p, text, n=0: {"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"], "text": text, "n": n}   # noqa: E731
     def over_by(p):
         own = stage_lists.get(p["id"]) or []
         s = stage_sla_state(p, sla_by_stage(own), own[-1]["name"] if own else None, now)
         return round(s["over_by"]) if s else 0
     detail = {
         "active": [row(p, STATE_LABEL[state(p)]) for p in projects],
-        "overdue": [row(p, f"{(today - date.fromisoformat(p['target_end_date'])).days} d late") for p in alerts["project_overdue"]],
-        "over_sla": [row(p, f"{over_by(p)} d over SLA in {p['stage']}") for p in alerts["stage_sla_breach"] if state(p) == "over_sla"],
-        "due_soon": [row(p, f"due in {(date.fromisoformat(p['target_end_date']) - today).days} d") for p in alerts["project_due_soon"] if state(p) == "due_soon"],
-        "idle": [row(p, f"idle {int((now - (_parse(p['updated_at']) or now)).total_seconds() // 86400)} d") for p in alerts["stale"]],
+        "overdue": [row(p, f"{n} d late", n) for p in alerts["project_overdue"] for n in [(today - date.fromisoformat(p['target_end_date'])).days]],
+        "over_sla": [row(p, f"{n} d over SLA in {p['stage']}", n) for p in alerts["stage_sla_breach"] if state(p) == "over_sla" for n in [over_by(p)]],
+        "due_soon": [row(p, f"due in {n} d", n) for p in alerts["project_due_soon"] if state(p) == "due_soon"
+                     for n in [(date.fromisoformat(p['target_end_date']) - today).days]],
+        "idle": [row(p, f"idle {n} d", n) for p in alerts["stale"] for n in [int((now - (_parse(p['updated_at']) or now)).total_seconds() // 86400)]],
     }
     total_steps = done_steps + current_steps + pending_steps
     progress = {"done": done_steps, "current": current_steps, "pending": pending_steps,
@@ -325,12 +330,12 @@ def build(scope, user_id):
         f"WHERE n.prev_stage IS NOT NULL AND n.created_at >= ? AND p.deleted_at IS NULL{scope_sql}",
         (week_ago.isoformat(), *scope_params)).fetchone()[0]
 
-    # ponytail: done_at is stored in UTC and bucketed by its UTC date; a tick late in the evening east of Greenwich lands on the next bar
     days = [(today - timedelta(days=55 - i)).isoformat() for i in range(56)]   # 28 shown at most, plus the 28 before for the comparison
-    ticked = dict(db.execute(
-        "SELECT substr(t.done_at, 1, 10) AS d, COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id "
-        f"WHERE t.done = 1 AND t.done_at >= ? AND p.deleted_at IS NULL{scope_sql} GROUP BY d",
-        (days[0], *scope_params)).fetchall())
+    # done_at is stored in UTC: each tick counts on its day in the workspace time zone (from a day early, for zones west of UTC)
+    ticked = Counter(d.isoformat() for r in db.execute(
+        "SELECT t.done_at FROM tasks t JOIN projects p ON p.id = t.project_id "
+        f"WHERE t.done = 1 AND t.done_at >= ? AND p.deleted_at IS NULL{scope_sql}",
+        ((today - timedelta(days=56)).isoformat(), *scope_params)) if (d := local_date(r[0])))
     completion = [{"day": d, "count": ticked.get(d, 0)} for d in days]
 
     due = [{"id": t["id"], "project_id": t["project_id"], "title": t["title"], "due_date": t["due_date"], "project": t["project"], "stage": t["stage"],
@@ -365,26 +370,25 @@ def build(scope, user_id):
         f"WHERE t.assignee_id = ? AND t.done = 0 AND {open_sql} ORDER BY t.due_date IS NULL, t.due_date, t.id LIMIT 12", (user_id, *scope_params))],
             "owned": db.execute(f"SELECT COUNT(*) FROM projects p WHERE p.owner_id = ? AND {open_sql}", (user_id, *scope_params)).fetchone()[0]}
 
-    detail["awaiting"] = [{"id": a["project_id"], "name": a["project"], "client": "", "stage": a["stage"], "text": f"asked {a['requested_at'][:10]}"} for a in approvals]
+    detail["awaiting"] = [{"id": a["project_id"], "name": a["project"], "client": "", "stage": a["stage"], "text": f"asked {a['requested_at'][:10]}",
+                           "n": (today - (local_date(a["requested_at"]) or today)).days} for a in approvals]
 
     # Needs attention: the tiles' rows folded per rollout, worst reason first (one answer to "what is stuck");
     # a rollout on track whose tasks run late counts too (its state stays On track)
     late = {r[0]: (r[1], r[2]) for r in db.execute(
         "SELECT t.project_id, COUNT(*), MIN(t.due_date) FROM tasks t WHERE t.done = 0 AND t.due_date < ? GROUP BY t.project_id", (today.isoformat(),))}
-    detail["late_task"] = [row(p, f"{late[p['id']][0]} task{'s' if late[p['id']][0] != 1 else ''} late, oldest {(today - date.fromisoformat(late[p['id']][1])).days} d")
-                           for p in projects if p["id"] in late]
+    detail["late_task"] = [row(p, f"{late[p['id']][0]} task{'s' if late[p['id']][0] != 1 else ''} late, oldest {n} d", n)
+                           for p in projects if p["id"] in late for n in [(today - date.fromisoformat(late[p['id']][1])).days]]
     worst = ("overdue", "over_sla", "due_soon", "late_task", "awaiting", "idle")
     reason = {"awaiting": lambda r: f"waiting on the customer, {r['text']}"}
     by_id = {}
     for kind in worst:
         for r in detail[kind]:
-            entry = by_id.setdefault(r["id"], {"id": r["id"], "name": r["name"], "client": r["client"], "stage": r["stage"], "worst": kind, "reasons": []})
+            entry = by_id.setdefault(r["id"], {"id": r["id"], "name": r["name"], "client": r["client"], "stage": r["stage"], "worst": kind, "n": r["n"], "reasons": []})
             entry["reasons"].append({"kind": kind, "text": reason.get(kind, lambda r: r["text"])(r)})
             entry["client"] = entry["client"] or r["client"]
-    def urgency(e):   # within a kind: most late first; "due in n d" soonest first; late tasks by the oldest
-        nums = [int(n) for n in re.findall(r"\d+", e["reasons"][0]["text"])] or [0]
-        n = nums[-1] if e["worst"] == "late_task" else nums[0]
-        return n if e["worst"] == "due_soon" else -n
+    def urgency(e):   # within a kind: most late first; "due in n d" soonest first; late tasks by the oldest; the longest wait first
+        return e["n"] if e["worst"] == "due_soon" else -e["n"]
     attention = sorted(by_id.values(), key=lambda e: (worst.index(e["worst"]), urgency(e), e["name"]))
 
     # what a custom widget may count

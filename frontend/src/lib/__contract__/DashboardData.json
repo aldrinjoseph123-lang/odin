@@ -1,0 +1,584 @@
+{
+ "catalogue": [
+  {
+   "blurb": "Every rollout in trouble, worst first, each with its reasons in words: late, over SLA, due soon, waiting on the customer, idle.",
+   "id": "attention",
+   "multiple": false,
+   "settings": [
+    {
+     "default": 8,
+     "key": "limit",
+     "kind": "int",
+     "label": "Rows",
+     "max": 30,
+     "min": 3
+    }
+   ],
+   "title": "Needs attention",
+   "w": 1
+  },
+  {
+   "blurb": "Active, overdue, over SLA, due soon, waiting on customer and idle, with the week's change and a 14-day trend.",
+   "id": "kpis",
+   "multiple": false,
+   "settings": [
+    {
+     "choices": [
+      "active",
+      "overdue"
+     ],
+     "default": [
+      "active",
+      "overdue"
+     ],
+     "key": "tiles",
+     "kind": "multi",
+     "label": "Tiles"
+    },
+    {
+     "choices": [
+      "area",
+      "bars"
+     ],
+     "default": "area",
+     "key": "trend",
+     "kind": "choice",
+     "label": "Trend"
+    }
+   ],
+   "title": "Headline numbers",
+   "w": 3
+  }
+ ],
+ "data": {
+  "activity": [
+   {
+    "at": "2026-10-15T19:13:43.261641",
+    "kind": "note",
+    "project": "EDR rollout - Globex",
+    "project_id": 4,
+    "text": "Pilot group live, no issues in 48 h.",
+    "who": "Priya Menon"
+   },
+   {
+    "at": "2026-10-15T19:13:42.873999",
+    "kind": "document",
+    "project": "SIEM onboarding - Initech",
+    "project_id": 23,
+    "text": "po.pdf",
+    "who": "Admin"
+   }
+  ],
+  "aggregates": {
+   "done_tasks_by_person": [
+    {
+     "count": 12,
+     "key": "Lena Fischer"
+    },
+    {
+     "count": 12,
+     "key": "Priya Menon"
+    }
+   ],
+   "open_tasks_by_person": [
+    {
+     "count": 7,
+     "key": "Sara Lind"
+    },
+    {
+     "count": 5,
+     "key": "Admin"
+    }
+   ],
+   "rollouts_by_client": [
+    {
+     "count": 4,
+     "key": "Globex"
+    },
+    {
+     "count": 4,
+     "key": "Initech"
+    }
+   ],
+   "rollouts_by_mode": [
+    {
+     "count": 21,
+     "key": "Distribution/MSSP"
+    },
+    {
+     "count": 1,
+     "key": "Outsourced"
+    }
+   ],
+   "rollouts_by_owner": [
+    {
+     "count": 22,
+     "key": "Admin"
+    }
+   ],
+   "rollouts_by_stage": [
+    {
+     "count": 3,
+     "key": "PO Received"
+    },
+    {
+     "count": 6,
+     "key": "Scoping"
+    }
+   ],
+   "rollouts_by_state": [
+    {
+     "count": 12,
+     "key": "On track"
+    },
+    {
+     "count": 6,
+     "key": "Off track"
+    }
+   ],
+   "tasks_done_per_day": [
+    {
+     "count": 3,
+     "key": "2026-10-02"
+    },
+    {
+     "count": 3,
+     "key": "2026-10-03"
+    }
+   ]
+  },
+  "alerts": [
+   {
+    "created_at": "2026-10-15T12:13:43.261641",
+    "id": 14,
+    "project": "EDR rollout - Globex",
+    "project_id": 4,
+    "severity": "critical",
+    "title": "Blocker still open",
+    "type": "blocker_open"
+   },
+   {
+    "created_at": "2026-10-15T04:13:43.261641",
+    "id": 6,
+    "project": "Firewall refresh - Globex",
+    "project_id": 12,
+    "severity": "critical",
+    "title": "Rollout overdue",
+    "type": "project_overdue"
+   }
+  ],
+  "attention": [
+   {
+    "client": "Umbrella Health",
+    "id": 5,
+    "n": 40,
+    "name": "SIEM onboarding - Umbrella Health",
+    "reasons": [
+     {
+      "kind": "overdue",
+      "text": "40 d late"
+     },
+     {
+      "kind": "late_task",
+      "text": "1 task late, oldest 15 d"
+     }
+    ],
+    "stage": "Deployment",
+    "worst": "overdue"
+   },
+   {
+    "client": "Wayne Retail",
+    "id": 11,
+    "n": 40,
+    "name": "SIEM onboarding - Wayne Retail",
+    "reasons": [
+     {
+      "kind": "overdue",
+      "text": "40 d late"
+     }
+    ],
+    "stage": "Sign-off",
+    "worst": "overdue"
+   }
+  ],
+  "completion": [
+   {
+    "count": 0,
+    "day": "2026-08-21"
+   },
+   {
+    "count": 0,
+    "day": "2026-08-22"
+   }
+  ],
+  "cycle": {
+   "completed_count": 0,
+   "lead_avg": null,
+   "lead_median": null,
+   "measured_projects": 11,
+   "slowest": {
+    "avg_days": 7.205119818613426,
+    "in_stage_now": 1,
+    "max_days": 17.0,
+    "median_days": 4.983930912274305,
+    "oldest_now": 48.00000403972222,
+    "stage": "PO Received",
+    "visits": 10
+   },
+   "template": "EDR rollout",
+   "throughput": []
+  },
+  "kpis": {
+   "before": {
+    "active": 20,
+    "awaiting": 2,
+    "due_soon": 1,
+    "idle": 2,
+    "over_sla": 1,
+    "overdue": 5
+   },
+   "counts": {
+    "active": 22,
+    "awaiting": 0,
+    "due_soon": 2,
+    "idle": 2,
+    "over_sla": 2,
+    "overdue": 6
+   },
+   "detail": {
+    "active": [
+     {
+      "client": "Globex",
+      "id": 1,
+      "n": 0,
+      "name": "EDR Rollout - Globex",
+      "stage": "Sensor pilot",
+      "text": "At risk"
+     },
+     {
+      "client": "Acme Bank",
+      "id": 10,
+      "n": 0,
+      "name": "EDR rollout - Acme Bank",
+      "stage": "Scoping",
+      "text": "On track"
+     }
+    ],
+    "awaiting": [],
+    "due_soon": [
+     {
+      "client": "Globex",
+      "id": 20,
+      "n": 5,
+      "name": "Email security - Globex",
+      "stage": "Hypercare",
+      "text": "due in 5 d"
+     },
+     {
+      "client": "Wayne Retail",
+      "id": 19,
+      "n": 5,
+      "name": "MDR onboarding - Wayne Retail",
+      "stage": "Sign-off",
+      "text": "due in 5 d"
+     }
+    ],
+    "idle": [
+     {
+      "client": "Globex",
+      "id": 12,
+      "n": 41,
+      "name": "Firewall refresh - Globex",
+      "stage": "Deployment",
+      "text": "idle 41 d"
+     },
+     {
+      "client": "Initech",
+      "id": 7,
+      "n": 41,
+      "name": "MDR onboarding - Initech",
+      "stage": "Hypercare",
+      "text": "idle 41 d"
+     }
+    ],
+    "late_task": [
+     {
+      "client": "Globex",
+      "id": 1,
+      "n": 4,
+      "name": "EDR Rollout - Globex",
+      "stage": "Sensor pilot",
+      "text": "1 task late, oldest 4 d"
+     },
+     {
+      "client": "Acme Bank",
+      "id": 10,
+      "n": 11,
+      "name": "EDR rollout - Acme Bank",
+      "stage": "Scoping",
+      "text": "2 tasks late, oldest 11 d"
+     }
+    ],
+    "over_sla": [
+     {
+      "client": "Globex",
+      "id": 1,
+      "n": 7,
+      "name": "EDR Rollout - Globex",
+      "stage": "Sensor pilot",
+      "text": "7 d over SLA in Sensor pilot"
+     },
+     {
+      "client": "Vandelay Industries",
+      "id": 9,
+      "n": 41,
+      "name": "Vulnerability mgmt - Vandelay Industries",
+      "stage": "PO Received",
+      "text": "41 d over SLA in PO Received"
+     }
+    ],
+    "overdue": [
+     {
+      "client": "Globex",
+      "id": 4,
+      "n": 12,
+      "name": "EDR rollout - Globex",
+      "stage": "Scoping",
+      "text": "12 d late"
+     },
+     {
+      "client": "Globex",
+      "id": 12,
+      "n": 3,
+      "name": "Firewall refresh - Globex",
+      "stage": "Deployment",
+      "text": "3 d late"
+     }
+    ]
+   },
+   "moved_this_week": 0,
+   "series": {
+    "active": [
+     {
+      "day": "2026-10-02",
+      "v": 18
+     },
+     {
+      "day": "2026-10-03",
+      "v": 18
+     }
+    ],
+    "awaiting": [
+     {
+      "day": "2026-10-02",
+      "v": 1
+     },
+     {
+      "day": "2026-10-03",
+      "v": 3
+     }
+    ],
+    "due_soon": [
+     {
+      "day": "2026-10-02",
+      "v": 1
+     },
+     {
+      "day": "2026-10-03",
+      "v": 1
+     }
+    ],
+    "idle": [
+     {
+      "day": "2026-10-02",
+      "v": 1
+     },
+     {
+      "day": "2026-10-03",
+      "v": 2
+     }
+    ],
+    "over_sla": [
+     {
+      "day": "2026-10-02",
+      "v": 2
+     },
+     {
+      "day": "2026-10-03",
+      "v": 1
+     }
+    ],
+    "overdue": [
+     {
+      "day": "2026-10-02",
+      "v": 6
+     },
+     {
+      "day": "2026-10-03",
+      "v": 6
+     }
+    ]
+   },
+   "since": "2026-10-08"
+  },
+  "mywork": {
+   "owned": 22,
+   "tasks": [
+    {
+     "due_date": "2026-10-02",
+     "id": 13,
+     "project": "Firewall refresh - Initech",
+     "project_id": 3,
+     "stage": "PO Received",
+     "title": "Validate backups"
+    },
+    {
+     "due_date": "2026-10-05",
+     "id": 46,
+     "project": "Vulnerability mgmt - Vandelay Industries",
+     "project_id": 9,
+     "stage": "PO Received",
+     "title": "Review detection coverage"
+    }
+   ]
+  },
+  "progress": {
+   "current": 22,
+   "done": 67,
+   "pct": 32,
+   "pending": 118
+  },
+  "schedule": {
+   "approvals": [],
+   "due": [
+    {
+     "avatar_url": null,
+     "due_date": "2026-09-17",
+     "id": 64,
+     "project": "MDR onboarding - Umbrella Health",
+     "project_id": 13,
+     "stage": "Deployment",
+     "title": "Onboard firewall logs",
+     "who": "Priya Menon"
+    },
+    {
+     "avatar_url": null,
+     "due_date": "2026-09-18",
+     "id": 16,
+     "project": "Firewall refresh - Initech",
+     "project_id": 3,
+     "stage": "PO Received",
+     "title": "Onboard firewall logs",
+     "who": null
+    }
+   ]
+  },
+  "stages": [
+   {
+    "count": 3,
+    "late": 0,
+    "stage": "PO Received",
+    "warn": 1
+   },
+   {
+    "count": 6,
+    "late": 1,
+    "stage": "Scoping",
+    "warn": 0
+   }
+  ],
+  "team": {
+   "people": [
+    {
+     "avatar_url": null,
+     "id": 4,
+     "late": 6,
+     "name": "Sara Lind",
+     "open": 7,
+     "projects": 12,
+     "role": "Contributor"
+    },
+    {
+     "avatar_url": null,
+     "id": 1,
+     "late": 4,
+     "name": "Admin",
+     "open": 5,
+     "projects": 22,
+     "role": "Admin"
+    }
+   ],
+   "unassigned": 4
+  },
+  "timeline": [
+   {
+    "client": "Umbrella Health",
+    "id": 5,
+    "name": "SIEM onboarding - Umbrella Health",
+    "progress": 0.375,
+    "stage": "Deployment",
+    "start_date": "2026-08-30",
+    "state": "overdue",
+    "target_end_date": "2026-09-05",
+    "team": [
+     {
+      "avatar_url": null,
+      "id": 1,
+      "name": "Admin"
+     },
+     {
+      "avatar_url": null,
+      "id": 6,
+      "name": "Lena Fischer"
+     }
+    ]
+   },
+   {
+    "client": "Wayne Retail",
+    "id": 11,
+    "name": "SIEM onboarding - Wayne Retail",
+    "progress": 0.875,
+    "stage": "Sign-off",
+    "start_date": "2026-08-14",
+    "state": "overdue",
+    "target_end_date": "2026-09-05",
+    "team": [
+     {
+      "avatar_url": null,
+      "id": 1,
+      "name": "Admin"
+     },
+     {
+      "avatar_url": null,
+      "id": 6,
+      "name": "Lena Fischer"
+     }
+    ]
+   }
+  ]
+ },
+ "is_custom": false,
+ "layout": [
+  {
+   "id": "kpis",
+   "settings": {
+    "tiles": [
+     "active",
+     "overdue"
+    ],
+    "trend": "area"
+   },
+   "w": 3
+  },
+  {
+   "id": "attention",
+   "settings": {
+    "limit": 8
+   },
+   "w": 1
+  }
+ ],
+ "scope_full": true,
+ "today": "2026-10-15",
+ "version": 164
+}

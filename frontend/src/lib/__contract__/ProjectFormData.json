@@ -1,0 +1,82 @@
+{
+ "account_managers": [],
+ "can_lead": true,
+ "defaults": {
+  "customer_approval": false,
+  "stage_template_id": 1
+ },
+ "delivery_modes": [
+  "Distribution/MSSP",
+  "Outsourced"
+ ],
+ "id": null,
+ "leads": [
+  {
+   "id": 1,
+   "name": "Admin"
+  },
+  {
+   "id": 2,
+   "name": "Priya Menon"
+  }
+ ],
+ "me": 1,
+ "mode": "new",
+ "outsourcers": [
+  {
+   "email": "ops@vendorco.example",
+   "name": "VendorCo"
+  }
+ ],
+ "partners": [
+  {
+   "id": 1,
+   "managers": [
+    {
+     "email": "meera@redington.example",
+     "name": "Meera"
+    }
+   ],
+   "name": "Redington"
+  }
+ ],
+ "products": [
+  {
+   "name": "Defender XDR",
+   "vendor": "Microsoft"
+  },
+  {
+   "name": "Falcon Complete",
+   "vendor": "CrowdStrike"
+  }
+ ],
+ "project": {},
+ "templates": [
+  {
+   "id": 2,
+   "name": "EDR rollout"
+  },
+  {
+   "id": 1,
+   "name": "Generic"
+  }
+ ],
+ "users": [
+  {
+   "id": 1,
+   "name": "Admin"
+  },
+  {
+   "id": 6,
+   "name": "Lena Fischer"
+  }
+ ],
+ "vendors": [
+  "CrowdStrike",
+  "Fortinet"
+ ],
+ "via_options": [
+  "Direct",
+  "Partner"
+ ]
+}

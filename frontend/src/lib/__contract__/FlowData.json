@@ -1,0 +1,113 @@
+{
+ "can_move": true,
+ "counts": {
+  "due_soon": 2,
+  "late_tasks": 10,
+  "on_track": 12,
+  "over_sla": 2,
+  "overdue": 6
+ },
+ "rows": [
+  {
+   "approval": null,
+   "can_move": true,
+   "client": "Umbrella Health",
+   "days_in_stage": 9.8,
+   "delivery_mode": "Distribution/MSSP",
+   "id": 5,
+   "idle_days": 0.0,
+   "late_since": "2026-09-30",
+   "late_tasks": 1,
+   "mine": true,
+   "name": "SIEM onboarding - Umbrella Health",
+   "next_stage": "Tuning/UAT",
+   "next_task": {
+    "assignee": "Tom Keller",
+    "due_date": "2026-09-30",
+    "title": "Deploy agents to pilot group"
+   },
+   "open_tasks": 2,
+   "over_by": null,
+   "owner_name": "Admin",
+   "signoff_needed": false,
+   "sla_days": null,
+   "stage": "Deployment",
+   "stage_index": 3,
+   "stages": [
+    "PO Received",
+    "Scoping"
+   ],
+   "stale": false,
+   "start_date": "2026-08-30",
+   "state": "overdue",
+   "target_end_date": "2026-09-05",
+   "team": [
+    {
+     "avatar_url": null,
+     "id": 1,
+     "name": "Admin"
+    },
+    {
+     "avatar_url": null,
+     "id": 6,
+     "name": "Lena Fischer"
+    }
+   ],
+   "total_tasks": 5,
+   "updated_at": "2026-10-15T19:13:42.923689"
+  },
+  {
+   "approval": null,
+   "can_move": true,
+   "client": "Globex",
+   "days_in_stage": 14.5,
+   "delivery_mode": "Distribution/MSSP",
+   "id": 4,
+   "idle_days": 0.0,
+   "late_since": "2026-09-21",
+   "late_tasks": 1,
+   "mine": true,
+   "name": "EDR rollout - Globex",
+   "next_stage": "Kickoff",
+   "next_task": {
+    "assignee": "Omar Haddad",
+    "due_date": "2026-09-21",
+    "title": "Train the SOC on the new source"
+   },
+   "open_tasks": 1,
+   "over_by": null,
+   "owner_name": "Admin",
+   "signoff_needed": false,
+   "sla_days": null,
+   "stage": "Scoping",
+   "stage_index": 1,
+   "stages": [
+    "PO Received",
+    "Scoping"
+   ],
+   "stale": false,
+   "start_date": "2026-09-08",
+   "state": "overdue",
+   "target_end_date": "2026-10-03",
+   "team": [
+    {
+     "avatar_url": null,
+     "id": 1,
+     "name": "Admin"
+    },
+    {
+     "avatar_url": null,
+     "id": 6,
+     "name": "Lena Fischer"
+    }
+   ],
+   "total_tasks": 6,
+   "updated_at": "2026-10-15T19:13:42.914362"
+  }
+ ],
+ "stages": [
+  "PO Received",
+  "Scoping"
+ ],
+ "today": "2026-10-15"
+}

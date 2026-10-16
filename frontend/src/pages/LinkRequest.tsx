@@ -15,26 +15,26 @@ export default function LinkRequest() {
   const [email, setEmail] = useState("")
   const [busy, setBusy] = useState(false)
   const [minutes, setMinutes] = useState(30)
-  const [message, setMessage] = useState<string | null>(params.get("expired") ? "That sign-in link is invalid or has expired — request a new one." : null)
+  const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(params.get("expired") ? { text: "That sign-in link is invalid or has expired. Request a new one.", bad: true } : null)
   useEffect(() => {
     document.title = "Sign in by email · Odin"
     // the expired-link flash arrives here; ?expired already covers the wording
-    session().then((s) => { if (s.signin?.link_minutes) setMinutes(s.signin.link_minutes); if (s.messages?.length && !params.get("expired")) setMessage(s.messages.join(" ")) }).catch(() => {})
+    session().then((s) => { if (s.signin?.link_minutes) setMinutes(s.signin.link_minutes); if (s.messages?.length && !params.get("expired")) setMessage({ text: s.messages.join(" ") }) }).catch(() => {})
   }, [params])
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     try {
       const r = await postForm("/auth/link", { email: email.trim() })
-      setMessage(r.messages.join(" ") || "If that address is on a rollout, a sign-in link is on its way")
-    } catch (err) { setMessage(err instanceof ApiError ? err.message : "Could not send the request") } finally { setBusy(false) }
+      setMessage({ text: r.messages.join(" ") || "If that address is on a rollout, a sign-in link is on its way" })
+    } catch (err) { setMessage({ text: err instanceof ApiError ? err.message : "Could not send the request", bad: true }) } finally { setBusy(false) }
   }
   return (
     <AuthLayout>
       <AuthHeading title="Sign in by email">
         Partners and customers get a link at the address they were invited with. It works once, for {minutes} minutes.
       </AuthHeading>
-      {message && <Alert className="mb-5" role="status"><AlertDescription>{message}</AlertDescription></Alert>}
+      {message && <Alert className="mb-5" role={message.bad ? "alert" : "status"} variant={message.bad ? "destructive" : "default"}><AlertDescription>{message.text}</AlertDescription></Alert>}
       <form onSubmit={submit} className="grid grid-cols-1 gap-4" aria-busy={busy}>
         <div className="grid grid-cols-1 gap-2">
           <Label htmlFor="email" className="text-[14px]">Email</Label>

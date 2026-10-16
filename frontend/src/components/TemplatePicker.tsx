@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { filterSelect } from "@/lib/ui"
 import { docTemplateChoices, type DocKind } from "@/lib/api"
 
 // Which document template a report or sign-off is drawn with (Settings →
@@ -10,7 +11,7 @@ export function TemplatePicker({ kind, value, onChange }: { kind: DocKind; value
   const def = choices.find((c) => c.is_default)
   return (
     <select value={value ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)} aria-label="Document template"
-      className="h-8 rounded-full border border-input bg-card px-3 text-[13px]">
+      className={filterSelect}>
       <option value="">{def ? `${def.name} (default)` : "Built-in layout"}</option>
       {choices.filter((c) => !c.is_default).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
     </select>

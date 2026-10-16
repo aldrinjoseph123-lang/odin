@@ -1,0 +1,75 @@
+{
+ "custom_count": 0,
+ "slas": {
+  "Closed": null,
+  "Deployment": null,
+  "Fleet rollout": null,
+  "Hypercare": null,
+  "PO Received": null,
+  "Scoping": null,
+  "Sensor pilot": null,
+  "Sign-off": null,
+  "Tuning/UAT": null
+ },
+ "stats": {
+  "aging": [
+   {
+    "days": 48.00000550993055,
+    "project_id": 9,
+    "project_name": "Vulnerability mgmt - Vandelay Industries",
+    "stage": "PO Received"
+   },
+   {
+    "days": 25.000005509930556,
+    "project_id": 17,
+    "project_name": "SIEM onboarding - Vandelay Industries",
+    "stage": "Scoping"
+   }
+  ],
+  "completed_count": 0,
+  "lead_avg": null,
+  "lead_median": null,
+  "measured_projects": 11,
+  "slowest": {
+   "avg_days": 7.205119818613426,
+   "in_stage_now": 1,
+   "max_days": 17.0,
+   "median_days": 4.983930912274305,
+   "oldest_now": 48.00000550993055,
+   "stage": "PO Received",
+   "visits": 10
+  },
+  "stages": [
+   {
+    "avg_days": 7.205119818613426,
+    "in_stage_now": 1,
+    "max_days": 17.0,
+    "median_days": 4.983930912274305,
+    "oldest_now": 48.00000550993055,
+    "stage": "PO Received",
+    "visits": 10
+   },
+   {
+    "avg_days": 4.118600605264756,
+    "in_stage_now": 2,
+    "max_days": 6.75,
+    "median_days": 4.182735754392361,
+    "oldest_now": 25.000005509930556,
+    "stage": "Scoping",
+    "visits": 8
+   }
+  ],
+  "throughput": []
+ },
+ "template_id": 2,
+ "templates": [
+  {
+   "id": 1,
+   "name": "Generic"
+  },
+  {
+   "id": 2,
+   "name": "EDR rollout"
+  }
+ ]
+}

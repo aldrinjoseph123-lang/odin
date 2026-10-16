@@ -56,3 +56,58 @@ export async function pickDate(page: Page, trigger: Locator, iso: string) {
   await pop.getByRole("button", { name: new RegExp(`${month} ${d}(st|nd|rd|th)?, ${y}`) }).click()
   await expect(pop).toBeHidden()
 }
+
+// A JSON call from inside the page, in its own session and with the CSRF token,
+// as the app's fetch does. For setting up and putting back what a journey changed.
+export async function api<T = unknown>(page: Page, method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<{ status: number; body: T }> {
+  return page.evaluate(async ({ method, path, body }) => {
+    const s = await (await fetch("/api/session")).json()
+    const r = await fetch(path, {
+      method, headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": s.csrf },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+    return { status: r.status, body: (await r.json().catch(() => null)) as never }
+  }, { method, path, body })
+}
+
+// Invite an outside party to a rollout as the admin who is signed in on this page, and
+// return the one-time sign-in link the server hands back when no mail is configured.
+// A fresh address each time: the link is only shown for a brand-new account.
+export async function inviteExternal(page: Page, projectId: number, role: "Customer" | "Contractor" | "Reseller"): Promise<{ email: string; link: string }> {
+  const email = `e2e-${role.toLowerCase()}-${Date.now()}@partner.example`
+  const messages = await page.evaluate(async ({ projectId, role, email }) => {
+    const s = await (await fetch("/api/session")).json()
+    const r = await fetch(`/projects/${projectId}/participants/invite`, {
+      method: "POST", headers: { Accept: "application/json", "X-CSRF-Token": s.csrf, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ email, name: `E2E ${role}`, role }).toString(),
+    })
+    return ((await r.json()) as { messages: string[] }).messages
+  }, { projectId, role, email })
+  const found = messages.join(" ").match(/https?:\/\/[^\s]+(\/auth\/link\/[^\s]+)/)
+  if (!found) throw new Error(`no sign-in link in: ${messages.join(" | ")}`)
+  return { email, link: found[1] }
+}
+
+// What an invited person does: open the emailed link and press Continue (the page
+// only shows the button on GET, so a mail scanner opening it cannot spend the link).
+export async function signInWithLink(page: Page, link: string) {
+  await page.context().clearCookies()
+  await page.goto(link)
+  await page.getByRole("button", { name: "Continue to Odin" }).click()
+  await expect(page).not.toHaveURL(/\/auth\/link/)
+}
+
+// A card dragged to a target (a Kanban column, a calendar day): press on the card, move off it a
+// little so the drag starts, wait for the page to draw the drag, then let go inside the target.
+// dnd-kit needs the in-between moves; two animation frames stand in for the old fixed waits.
+export async function dragCard(page: Page, from: Locator, to: Locator) {
+  await from.scrollIntoViewIfNeeded()
+  const a = (await from.boundingBox())!
+  const b = (await to.boundingBox())!
+  const frames = () => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))))
+  await page.mouse.move(a.x + 6, a.y + 6)
+  await page.mouse.down()
+  await page.mouse.move(a.x + 30, a.y + 30, { steps: 4 }); await frames()
+  await page.mouse.move(b.x + b.width / 2, b.y + Math.min(80, b.height / 2), { steps: 12 }); await frames()
+  await page.mouse.up()
+}

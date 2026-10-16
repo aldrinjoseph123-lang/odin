@@ -11,6 +11,7 @@ validator, so the form, the API and the code can never disagree on a limit.
 """
 
 import re
+from functools import lru_cache
 from zoneinfo import available_timezones
 
 from flask import g, has_request_context
@@ -29,7 +30,7 @@ POLICIES = {
     "company_name": dict(area="general", kind="text", default="Protect24x7", max=80,
                          label="Company name", help="Shown in email footers and on the PDFs attached to the weekly report."),
     "public_url": dict(area="general", kind="url", default="", max=200,
-                       label="Public web address", help="e.g. https://odin.example.com. Sign-in and emailed links are built from it, never from the request. Blank: the address the browser used."),
+                       label="Public web address", help="e.g. https://odin.example.com. Sign-in and emailed links are built from it, never from the request. Blank: links point at this server's own address (http://localhost and its port), which works only on the server itself: set it before anyone else uses Odin."),
     "timezone": dict(area="general", kind="choice", default="Asia/Dubai", choices="timezones",
                      label="Time zone", help="Decides \"today\" for due dates and when scheduled jobs run."),
     "date_format": dict(area="general", kind="choice", default="d MMM yyyy", choices=tuple(DATE_FORMATS),
@@ -57,6 +58,10 @@ POLICIES = {
                               label="Failed sign-ins per account before a pause", help="From all addresses together: stops a password being guessed from many machines. The account pauses for the same length."),
     "login_window_minutes": dict(area="security", kind="int", default=15, min=5, max=120,
                                  label="Pause length (minutes)", help="Failures older than this stop counting."),
+    "login_ip_max": dict(area="security", kind="int", default=50, min=10, max=1000,
+                         label="Accounts failing from one network address before a pause", help="How many different usernames may fail from one address inside the pause length: stops one password being tried on many accounts. Each username counts once however often it fails, so an office behind one address is not paused by its own typos (those are limited per person above). That address pauses for the same length; Microsoft sign-in is not affected."),
+    "mail_link_max": dict(area="security", kind="int", default=5, min=3, max=50,
+                          label="Emailed links per address per hour", help="Sign-in, password-reset and address-check links to one email address, however many machines ask: stops anyone filling a colleague's inbox."),
     "upload_max_mb": dict(area="security", kind="int", default=25, min=1, max=100,
                           label="Largest upload (MB)", help="Per file. The server never accepts more than 100 MB."),
     "upload_types": dict(area="security", kind="multi", default=",".join(UPLOAD_TYPES), choices=UPLOAD_TYPES, nonempty=True,
@@ -65,9 +70,17 @@ POLICIES = {
                          label="Email link lifetime (minutes)", help="Partner sign-in links and password-reset links work once, for this long."),
     "external_domains": dict(area="security", kind="domains", default="", max=500,
                              label="Partner email domains", help="e.g. partner.com, vendor.ae. Only these can be invited or sent a sign-in link. Blank: any domain."),
+    "guest_link_days": dict(area="security", kind="int", default=180, min=0, max=3650,
+                            label="Guest links last (days)", help="A rollout's vendor and customer links stop working this long after they were made or last rotated; rotating renews them. 0: they never expire."),
+    "external_access_days_after_close": dict(area="security", kind="int", default=0, min=0, max=3650,
+                                             label="Partner accounts end after (days)", help="A partner or customer account is deactivated, overnight, once every rollout it is on has been closed this long. 0: never; an admin deactivates them on the Users page."),
+    "guest_writes_per_minute": dict(area="security", kind="int", default=10, min=1, max=120,
+                                    label="Guest link writes per minute", help="Comments and stage moves through one anonymous guest link; more than this in a minute is refused for a minute."),
     "undo_minutes": dict(area="security", kind="int", default=5, min=1, max=60,
                          label="Undo window (minutes)", help="How long deletes and stage moves can be undone."),
     # ---- Sign-up links and time on Odin (Settings › Sign-up & activity)
+    "join_attempts": dict(area="people", kind="int", default=5, min=1, max=50,
+                          label="Sign-up attempts per network address (15 minutes)", help="Joining through a sign-up link, from one address; more are refused for 15 minutes."),
     "signup_enabled": dict(area="people", kind="bool", default=True,
                            label="Sign-up links work", help="Off: no new links can be made and every open link stops working until this is on again (links past their date stay expired)."),
     "signup_domains": dict(area="people", kind="domains", default="", max=500, optional=True,
@@ -80,6 +93,10 @@ POLICIES = {
                            label="Who sees other people's time", help="Everyone always sees their own on the Account page. Untick every role to keep each person's time to themselves."),
     "activity_idle_minutes": dict(area="people", kind="int", default=5, min=1, max=30,
                                   label="Idle after (minutes)", help="No mouse, key or touch for this long stops the count until the person is back."),
+    "nudge_max": dict(area="people", kind="int", default=20, min=1, max=200,
+                      label="Notes a person may send per hour", help="To all their colleagues together (People › Send a note)."),
+    "nudge_pair_max": dict(area="people", kind="int", default=5, min=1, max=200,
+                           label="Notes to one colleague per hour", help="From one person to one colleague. Counted per pair, so one person's notes never use up what others may send."),
     # ---- Notifications
     "digest_time": dict(area="notifications", kind="time", default="08:00",
                         label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
@@ -89,6 +106,10 @@ POLICIES = {
     # back to the page and audited only as set or cleared, like the AI key (test round P2-9)
     "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500, query=True, secret=True,
                               label="Teams Workflows webhook", help="From a Teams channel: Workflows › \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
+    "outbox_attempts": dict(area="notifications", kind="int", default=8, min=1, max=20,
+                            label="Tries before Odin gives up on a message", help="Mail and Teams messages go out from the scheduler; one that fails is tried again after 1, 2, 4, 8 … minutes (8 tries: about two hours). After the last try the admins are told in the bell, once a day."),
+    "outbox_max_age_hours": dict(area="notifications", kind="int", default=24, min=1, max=168,
+                                 label="Give up on a message after (hours)", help="A message that could not go out within this long is dropped and the admins are told: a sign-in link or a reminder a day late does more harm than good."),
     # ---- Reports
     "report_enabled": dict(area="reports", kind="bool", default=False,
                            label="Send the weekly report", help="Stuck and overdue rollouts first, stages moved this week, due next week, counts per stage."),
@@ -111,6 +132,10 @@ POLICIES = {
                                     label="Keep read notifications for (days)", help="Bell items someone has read are removed after this; unread ones stay until they are read."),
     "activity_keep_days": dict(area="audit", kind="int", default=400, min=30, max=1825,
                                label="Keep time on Odin for (days)", help="Per-person active minutes older than this are removed nightly. The panels show the last 30 days."),
+    "alerts_keep_days": dict(area="audit", kind="int", default=180, min=30, max=1825,
+                             label="Keep resolved alerts for (days)", help="Alerts that cleared (a task done, a date moved) are removed nightly after this. Open alerts always stay."),
+    "ai_keep_days": dict(area="audit", kind="int", default=90, min=14, max=730,
+                         label="Keep AI history for (days)", help="The log of AI requests, the daily validation results, finished AI jobs and suggestions, including ones nobody accepted or dismissed, are removed nightly after this."),
     # ---- Backups
     "backup_time": dict(area="backups", kind="time", default="02:00",
                         label="Back up at", help="Workspace time zone."),
@@ -122,6 +147,8 @@ POLICIES = {
                         label="Keep weekly copies", help="The newest of each of the last N weeks."),
     "keep_monthly": dict(area="backups", kind="int", default=12, min=0, max=60,
                          label="Keep monthly copies", help="The newest of each of the last N months. Applied here and at every destination."),
+    "disk_free_min_pct": dict(area="backups", kind="int", default=10, min=1, max=50,
+                              label="Warn when free disk space falls below (%)", help="Of the disk holding the database, the uploads and the local backups. The admins hear in the bell, once a day; a full disk stops every save and every backup."),
     "restore_test": dict(area="backups", kind="bool", default=True,
                          label="Test each backup by restoring it", help="Opens the copy, checks the database is intact and every document is inside; the result is kept below."),
     "dest_onedrive": dict(area="backups", kind="bool", default=False,
@@ -194,10 +221,18 @@ POLICIES = {
 }
 
 
+@lru_cache(maxsize=1)
+def _timezones():
+    """Every zone name, read once per process: available_timezones() walks the
+    tz database on disk, and policy("timezone") parses it per call, thousands
+    of times on the Flow's Gantt when a zone is saved (review P3-25)."""
+    return frozenset(available_timezones())
+
+
 def _choices(entry):
     c = entry.get("choices")
     if c == "timezones":
-        return sorted(available_timezones())
+        return sorted(_timezones())
     if c == "templates":
         return [str(r["id"]) for r in get_db().execute("SELECT id FROM stage_templates ORDER BY id")]
     return list(c or ())
@@ -266,7 +301,8 @@ def _parse(entry, raw):
             raise ValueError(f"up to {entry['max']} characters" if entry.get("optional") else f"1 to {entry['max']} characters")
         return v
     if kind == "choice":
-        if v not in _choices(entry) and not (entry["choices"] == "templates" and v == ""):   # "" = the first template
+        allowed = _timezones() if entry["choices"] == "timezones" else _choices(entry)
+        if v not in allowed and not (entry["choices"] == "templates" and v == ""):   # "" = the first template
             raise ValueError("pick from the list")
         return v
     raise ValueError("unknown kind")
@@ -312,20 +348,24 @@ _GROUPS = {
     "Look for new people": ("default_theme", "default_accent"),
     "Sessions": ("session_idle_minutes", "session_max_hours"),
     "Passwords and two-step": ("password_min_length", "mfa_required"),
-    "Wrong passwords": ("login_max_attempts", "login_account_max", "login_window_minutes"),
+    "Wrong passwords": ("login_max_attempts", "login_account_max", "login_ip_max", "login_window_minutes"),
+    "Emailed links": ("mail_link_max",),
     "Uploads": ("upload_max_mb", "upload_types"),
-    "Partner access": ("external_domains", "link_minutes"),
+    "Partner access": ("external_domains", "link_minutes", "guest_link_days", "external_access_days_after_close", "guest_writes_per_minute"),
     "Undo": ("undo_minutes",),
-    "Sign-up links": ("signup_enabled", "signup_domains", "signup_days"),
+    "Sign-up links": ("signup_enabled", "signup_domains", "signup_days", "join_attempts"),
     "Time on Odin": ("activity_tracking", "activity_roles", "activity_idle_minutes"),
+    "Notes to colleagues": ("nudge_max", "nudge_pair_max"),
     "Daily digest": ("digest_time",),
     "Sender": ("mail_from",),
     "Teams webhook": ("teams_webhook_url",),
+    "Delivery": ("outbox_attempts", "outbox_max_age_hours"),
     "When it goes out": ("report_enabled", "report_days", "report_time"),
     "Who gets it": ("report_roles", "report_emails"),
     "What it carries": ("report_attach", "report_teams"),
-    "Retention": ("audit_keep", "notifications_keep_days", "activity_keep_days"),
+    "Retention": ("audit_keep", "notifications_keep_days", "activity_keep_days", "alerts_keep_days", "ai_keep_days"),
     "When to back up": ("backup_time", "backup_days", "restore_test"),
+    "Disk space": ("disk_free_min_pct",),
     "Copies kept": ("keep_daily", "keep_weekly", "keep_monthly"),
     "Where copies go": ("dest_onedrive", "dest_sharepoint", "sharepoint_site", "sharepoint_folder", "dest_share", "share_path"),
     "AI server": ("ai_enabled", "ai_base_url", "ai_model", "ai_identity", "ai_allow_external"),
@@ -344,11 +384,17 @@ _HINTS = {
     "mfa_required": "Ask for a code from a phone app after the password, e.g. required for admins.",
     "login_max_attempts": "Pause sign-in after this many wrong passwords from one computer, e.g. 5.",
     "login_account_max": "Pause an account after this many wrong passwords from anywhere, e.g. 20.",
+    "login_ip_max": "Pause one network address after wrong passwords for this many different accounts, e.g. 50.",
     "login_window_minutes": "How long the pause lasts, e.g. 15 minutes.",
+    "mail_link_max": "Most sign-in, reset or address-check links one email address gets in an hour, e.g. 5.",
+    "nudge_max": "Most notes one person sends in an hour, e.g. 20.",
+    "nudge_pair_max": "Most notes one person sends one colleague in an hour, e.g. 5.",
     "upload_types": "The kinds of file people may attach, e.g. PDF and Word.",
     "external_domains": "Partners can be invited only from these email domains, e.g. partner.com. Blank: any.",
     "link_minutes": "How long a sign-in or password-reset email link works, e.g. 30 minutes.",
     "undo_minutes": "How long the Undo button stays after a delete or a stage move, e.g. 5 minutes.",
+    "guest_link_days": "How long a rollout's guest links work before they must be rotated, e.g. 180 days. 0: for ever.",
+    "external_access_days_after_close": "Deactivate a partner account once all its rollouts have been closed this long, e.g. 90 days. 0: never.",
     "signup_enabled": "Lets new staff join with a link made on the Users page. Off: every open link stops working.",
     "signup_domains": "Only these email domains may join by link, e.g. protect24x7.com. Blank: any.",
     "signup_days": "How long a new sign-up link works, e.g. 7 days.",
@@ -464,12 +510,17 @@ def local_date(value, db=None):
         return None
 
 
+def local_now(db=None):
+    """Now, aware, in the workspace time zone (Settings › General)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo(policy("timezone", db)))
+
+
 def local_today(db=None):
     """Today's date in the workspace time zone (Settings › General). Due
     dates, "days left" and reminders use this, not the server's clock."""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    return datetime.now(ZoneInfo(policy("timezone", db))).date()
+    return local_now(db).date()
 
 
 def is_working_day(day=None, db=None):

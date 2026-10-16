@@ -1,0 +1,133 @@
+{
+ "activity": {
+  "days": [
+   {
+    "day": "2026-09-16",
+    "minutes": 18
+   },
+   {
+    "day": "2026-09-17",
+    "minutes": 118
+   }
+  ],
+  "last_login_at": null,
+  "last_seen_at": "2026-10-14T19:58:43.261641",
+  "month": 1564,
+  "today": 189,
+  "week": 466
+ },
+ "can_notify": true,
+ "contribution": {
+  "moves_30d": 0,
+  "notes_30d": 0,
+  "weeks": [
+   {
+    "done": 0,
+    "week": "2026-08-24"
+   },
+   {
+    "done": 0,
+    "week": "2026-08-31"
+   }
+  ]
+ },
+ "kpis": {
+  "done_30d": 12,
+  "late": 3,
+  "on_time_pct": 75,
+  "open": 4,
+  "rollouts": 10,
+  "stuck": 4
+ },
+ "pending": [
+  {
+   "client": "Umbrella Health",
+   "done": 0,
+   "done_at": null,
+   "due_date": "2026-09-17",
+   "id": 64,
+   "project": "MDR onboarding - Umbrella Health",
+   "project_id": 13,
+   "project_stage": "Deployment",
+   "stage": "Deployment",
+   "title": "Onboard firewall logs"
+  },
+  {
+   "client": "Globex",
+   "done": 0,
+   "done_at": null,
+   "due_date": "2026-09-30",
+   "id": 91,
+   "project": "Email security - Globex",
+   "project_id": 20,
+   "project_stage": "Hypercare",
+   "stage": "Hypercare",
+   "title": "Tune noisy rules"
+  }
+ ],
+ "projects": [
+  {
+   "client": "Globex",
+   "days_in_stage": 11.7,
+   "id": 1,
+   "name": "EDR Rollout - Globex",
+   "over_by": 6.7,
+   "owner_name": "Admin",
+   "role": "Coordinator",
+   "sla_days": 5,
+   "stage": "Sensor pilot",
+   "stage_index": 2,
+   "stages": [
+    "PO Received",
+    "Scoping"
+   ],
+   "state": "over_sla",
+   "target_end_date": "2026-12-16"
+  },
+  {
+   "client": "Acme Bank",
+   "days_in_stage": 19.0,
+   "id": 10,
+   "name": "EDR rollout - Acme Bank",
+   "over_by": null,
+   "owner_name": "Admin",
+   "role": "Sales",
+   "sla_days": null,
+   "stage": "Scoping",
+   "stage_index": 1,
+   "stages": [
+    "PO Received",
+    "Scoping"
+   ],
+   "state": "on_track",
+   "target_end_date": "2026-11-29"
+  }
+ ],
+ "recent": [
+  {
+   "at": "2026-10-15T19:13:43.261641",
+   "kind": "note",
+   "project": "EDR rollout - Globex",
+   "project_id": 4,
+   "text": "Pilot group live, no issues in 48 h."
+  },
+  {
+   "at": "2026-10-15T02:13:43.261641",
+   "kind": "task",
+   "project": "Email security - Stark Logistics",
+   "project_id": 8,
+   "text": "Set up SSO for console"
+  }
+ ],
+ "today": "2026-10-15",
+ "upcoming": [],
+ "user": {
+  "avatar_url": null,
+  "email": null,
+  "id": 2,
+  "last_login_at": null,
+  "name": "Priya Menon",
+  "role": "Member",
+  "since": "2026-10-15T19:13:41.454707"
+ }
+}

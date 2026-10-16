@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react"
 import { PanelTitle } from "@/components/PanelTitle"
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { MoveArrows } from "@/components/MoveArrows"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
@@ -10,8 +11,10 @@ import { cn } from "@/lib/utils"
 // (last stage is closed, the current stage cannot go) are the same.
 export type StageRow = { id: number; name: string; sla_days: number | null }
 export type StagePaths = { add: string; rename: (id: number) => string; move: (id: number) => string; remove: (id: number) => string; sla: string }
-// The key a parent should give the editor: any change to the rows remounts it.
-export const stageRowsKey = (rows: StageRow[]) => rows.map((s) => `${s.id}:${s.name}:${s.sla_days ?? ""}`).join("|")
+// The key a parent should give the editor: a rename, an SLA or an added or
+// removed stage remounts it. Order is left out, so a reorder keeps the rows and
+// the keyboard focus on the arrow that was pressed (review P2-41).
+export const stageRowsKey = (rows: StageRow[]) => [...rows].sort((a, b) => a.id - b.id).map((s) => `${s.id}:${s.name}:${s.sla_days ?? ""}`).join("|")
 type Send = (path: string, fields?: Record<string, string>, confirmText?: string) => Promise<unknown>
 
 export function StageListEditor({ rows, current, busy, send, paths, label = "this rollout" }: { rows: StageRow[]; current?: string; busy: boolean; send: Send; paths: StagePaths; label?: string }) {
@@ -29,14 +32,14 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
     <div className="grid grid-cols-1 gap-2 text-[13px]">
       {rows.map((s, i) => (
         <div key={s.id} className="flex flex-wrap items-center gap-2">
-          <button type="button" disabled={busy || i === 0} onClick={() => send(paths.move(s.id), { direction: "up" })} aria-label={`Move ${s.name} up`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-7 w-7 px-0")}><ArrowUp className="h-3.5 w-3.5" /></button>
-          <button type="button" disabled={busy || i === rows.length - 1} onClick={() => send(paths.move(s.id), { direction: "down" })} aria-label={`Move ${s.name} down`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-7 w-7 px-0")}><ArrowDown className="h-3.5 w-3.5" /></button>
+          <MoveArrows name={s.name} first={i === 0} last={i === rows.length - 1} busy={busy} onMove={(direction) => send(paths.move(s.id), { direction })} />
           <form onSubmit={(e) => { e.preventDefault(); if ((names[s.id] ?? "").trim() && names[s.id] !== s.name) void send(paths.rename(s.id), { name: names[s.id] }) }} className="flex min-w-0 flex-1 items-center gap-2">
             <Input value={names[s.id] ?? ""} onChange={(e) => setNames({ ...names, [s.id]: e.target.value })} aria-label={`Rename stage ${s.name}`} maxLength={80} className={cn("h-7 min-w-32 flex-1 text-[13px]", s.name === current && "font-medium")} />
             {names[s.id] !== undefined && names[s.id] !== s.name && <Button type="submit" size="sm" variant="outline" className="h-7" loading={busy}>Rename</Button>}
           </form>
           <span className="w-16 text-right text-[12px] text-muted-foreground">{s.name === current ? "current" : i === rows.length - 1 ? "closed" : ""}</span>
-          <button type="button" disabled={busy || s.name === current || rows.length <= 1} onClick={() => send(paths.remove(s.id), {}, `Delete stage ${s.name} from ${label}?`)} aria-label={`Delete ${s.name}`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "ml-1 h-7 w-7 px-0 text-muted-foreground hover:text-destructive")}><Trash2 className="h-3.5 w-3.5" /></button>
+          <Button type="button" variant="ghost" size="icon-sm" className="ml-1 text-muted-foreground hover:text-destructive" disabled={busy || s.name === current || rows.length <= 1} aria-label={`Delete ${s.name}`}
+            onClick={() => send(paths.remove(s.id), {}, `Delete stage ${s.name} from ${label}? ${current !== undefined ? "Its tasks move to the current stage, and its planned dates and baseline are removed." : "Rollouts already started keep their own copy."}`)}><Trash2 className="size-3.5" /></Button>
         </div>
       ))}
       <form onSubmit={(e) => { e.preventDefault(); if (newName.trim()) void send(paths.add, { name: newName.trim() }).then((r) => { if (r) setNewName("") }) }} className="mt-1 flex flex-wrap items-center gap-2 border-t border-border pt-3">

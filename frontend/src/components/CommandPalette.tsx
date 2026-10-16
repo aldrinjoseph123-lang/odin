@@ -60,7 +60,7 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
       <div className="flex items-center gap-2 border-b border-border px-3">
         <Search className="h-4 w-4 text-muted-foreground" />
         <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setActive(0) }} onKeyDown={onKey}
-          placeholder="Search rollouts, tasks, notes and documents, or jump to a page" aria-label="Search" role="combobox" aria-expanded aria-controls="palette-list"
+          placeholder="Search rollouts, tasks, notes and documents, or jump to a page" aria-label="Search" role="combobox" aria-expanded={items.length > 0} aria-controls="palette-list"
           aria-activedescendant={items[active] ? `palette-${active}` : undefined}
           className="h-11 w-full bg-transparent text-[14px] outline-none placeholder:text-muted-foreground" />
         <Kbd>Esc</Kbd>
@@ -80,8 +80,9 @@ export function CommandPalette({ pages, open, onClose }: { pages: { label: strin
             </li>
           )
         })}
-        {items.length === 0 && <li className="px-3 py-6 text-center text-[13px] text-muted-foreground">Nothing matches “{q}”.</li>}
       </ul>
+      {/* outside the listbox: a listbox holds only options (review P3-48) */}
+      <p role="status" className={items.length ? "sr-only" : "px-3 pb-6 pt-4 text-center text-[13px] text-muted-foreground"}>{items.length ? "" : `Nothing matches “${q}”.`}</p>
     </dialog>
   )
 }

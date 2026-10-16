@@ -27,14 +27,14 @@ services:
       PMS_TRUST_PROXY: "1"  # honour X-Forwarded-* from nginx (see security.init_security)
     volumes:
       - odin-data:/data
-      # A backup share (see the scheduler below) goes here too: Back up now runs in this container.
+      # A backup share (see the scheduler below) goes here too: "Test the network share" runs in this container.
       # - /mnt/nas/odin:/mnt/backup-share
     expose:
       - "8000"
 
   nginx:
     logging: *logging
-    image: nginx:1.27-alpine
+    image: nginx:1.27.5-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10   # pinned (Dockerfile explains how to bump)
     restart: unless-stopped
     depends_on:
       - app
@@ -64,8 +64,9 @@ services:
       PYTHONUNBUFFERED: "1"   # job lines reach `docker compose logs scheduler` as they happen
     volumes:
       - odin-data:/data
-      # A NAS / file-server share for backups: mount it here and in the app
-      # above, and set Settings → Backups → Share folder path to /mnt/backup-share.
+      # A NAS / file-server share for backups: mount it here (every backup,
+      # Back up now included, runs in this container) and in the app above,
+      # and set Settings → Backups → Share folder path to /mnt/backup-share.
       # - /mnt/nas/odin:/mnt/backup-share
     # The app creates and migrates the database on start; wait for it.
     depends_on:
@@ -74,7 +75,9 @@ services:
     # Same entrypoint as the app (SECRET_KEY and data-dir checks), its own command.
     command: ["python", "scheduler.py"]
     # The image's check calls the web port, which this container doesn't
-    # serve; healthy here means a heartbeat in the last 3 minutes.
+    # serve; healthy here means a heartbeat in the last 3 minutes (a thread
+    # of its own, so a long backup does not count as dead). The self-updater
+    # waits for this one too before it calls an update good.
     healthcheck:
       test: ["CMD", "python", "scheduler.py", "--healthcheck"]
       interval: 60s

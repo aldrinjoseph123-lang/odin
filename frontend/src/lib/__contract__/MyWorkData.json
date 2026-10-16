@@ -1,0 +1,87 @@
+{
+ "counts": {
+  "done_week": 5,
+  "due_week": 1,
+  "open": 5,
+  "overdue": 4,
+  "rollouts": 22,
+  "stuck": 10
+ },
+ "done_by_day": [
+  {
+   "count": 0,
+   "day": "2026-10-02"
+  },
+  {
+   "count": 0,
+   "day": "2026-10-03"
+  }
+ ],
+ "projects": [
+  {
+   "client": "Globex",
+   "days_in_stage": 11.7,
+   "id": 1,
+   "name": "EDR Rollout - Globex",
+   "over_by": 6.7,
+   "owner_name": "Admin",
+   "role": "Project manager",
+   "sla_days": 5,
+   "stage": "Sensor pilot",
+   "stage_index": 2,
+   "stages": [
+    "PO Received",
+    "Scoping"
+   ],
+   "state": "over_sla",
+   "target_end_date": "2026-12-16"
+  },
+  {
+   "client": "Acme Bank",
+   "days_in_stage": 19.0,
+   "id": 10,
+   "name": "EDR rollout - Acme Bank",
+   "over_by": null,
+   "owner_name": "Admin",
+   "role": "Project manager",
+   "sla_days": null,
+   "stage": "Scoping",
+   "stage_index": 1,
+   "stages": [
+    "PO Received",
+    "Scoping"
+   ],
+   "state": "on_track",
+   "target_end_date": "2026-11-29"
+  }
+ ],
+ "tasks": [
+  {
+   "can_edit": true,
+   "client": "Initech",
+   "done": 0,
+   "done_at": null,
+   "due_date": "2026-10-02",
+   "id": 13,
+   "project": "Firewall refresh - Initech",
+   "project_id": 3,
+   "project_stage": "PO Received",
+   "stage": "PO Received",
+   "title": "Validate backups"
+  },
+  {
+   "can_edit": true,
+   "client": "Vandelay Industries",
+   "done": 0,
+   "done_at": null,
+   "due_date": "2026-10-05",
+   "id": 46,
+   "project": "Vulnerability mgmt - Vandelay Industries",
+   "project_id": 9,
+   "project_stage": "PO Received",
+   "stage": "PO Received",
+   "title": "Review detection coverage"
+  }
+ ],
+ "today": "2026-10-15"
+}

@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { PanelTitle } from "@/components/PanelTitle"
 import { EmptyState } from "@/components/EmptyState"
-import { field, danger, fieldArea } from "@/lib/ui"
+import { checkbox, field, danger, fieldArea, pill } from "@/lib/ui"
+import { Field } from "@/components/ui/field"
+import { Badge } from "@/components/ui/badge"
+import { MoveArrows } from "@/components/MoveArrows"
 import { askConfirm } from "@/lib/confirm"
-import { ArrowDown, ArrowUp, Copy, Eye, FileText, ImageUp, Plus, Star, Trash2, X } from "lucide-react"
+import { Copy, Eye, FileText, ImageUp, Plus, Star, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   ApiError, defaultDocTemplate, deleteDocTemplate, docTemplates, previewDocTemplate, saveDocTemplate, uploadDocLogo,
@@ -11,6 +14,9 @@ import {
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { fmtWhen } from "@/lib/format"
+import { Notice } from "@/components/Notice"
+import { LoadFailed } from "@/components/LoadFailed"
+import { useLoad } from "@/lib/useLoad"
 
 // Settings → Documents: templates for the rollout report, the portfolio report
 // and the sign-off. Brand (our logo, an optional customer logo, accent,
@@ -22,15 +28,14 @@ const KINDS: DocKind[] = ["rollout", "signoff", "portfolio"]
 type Editing = { id?: number; kind: DocKind; name: string; config: DocConfig }
 
 export function DocTemplates() {
-  const [d, setD] = useState<DocTemplatesData | null>(null)
+  const { data: d, error: failed, reload: load } = useLoad("doc-templates", docTemplates)
   const [edit, setEdit] = useState<Editing | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
-  const load = useCallback(() => docTemplates().then(setD).catch(() => setNotice({ text: "Could not load the templates", bad: true })), [])
-  useEffect(() => { void load() }, [load])
+  const [saved, setSaved] = useState("")   // an existing template as opened: Save wakes when it differs (review P3-41)
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
-  if (!d) return null
+  if (!d) return failed ? <LoadFailed what="the templates" onRetry={() => void load()} /> : null
 
   async function run(fn: () => Promise<unknown>, text: string) {
     setBusy(true); setNotice(null)
@@ -42,10 +47,11 @@ export function DocTemplates() {
     try { const blob = await previewDocTemplate(edit.kind, edit.config); if (preview) URL.revokeObjectURL(preview); setPreview(URL.createObjectURL(blob)) }
     catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "No preview", bad: true }) } finally { setBusy(false) }
   }
-  const startNew = (kind: DocKind) => { setPreview(null); setEdit({ kind, name: "", config: structuredClone(d.kinds[kind].default) }) }
+  const begin = (e: Editing) => { setPreview(null); setSaved(e.id ? JSON.stringify({ name: e.name, config: e.config }) : ""); setEdit(e) }
+  const startNew = (kind: DocKind) => begin({ kind, name: "", config: structuredClone(d.kinds[kind].default) })
 
   if (edit) return (
-    <Editor d={d} edit={edit} setEdit={setEdit} busy={busy} notice={notice} preview={preview} onPreview={showPreview}
+    <Editor d={d} edit={edit} setEdit={setEdit} busy={busy} notice={notice} preview={preview} onPreview={showPreview} changed={!edit.id || JSON.stringify({ name: edit.name, config: edit.config }) !== saved}
       onCancel={() => { setEdit(null); setPreview(null) }}
       onSave={() => run(async () => { await saveDocTemplate(edit.kind, edit.name, edit.config, edit.id); setEdit(null); setPreview(null) }, "Template saved.")}
       onLogo={async (key, file) => {
@@ -57,20 +63,20 @@ export function DocTemplates() {
 
   return (
     <div className="grid grid-cols-1 gap-4">
-      {notice && <p className={cn("text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
+      {notice && <Notice bad={notice.bad}>{notice.text}</Notice>}
       {KINDS.map((kind) => {
         const list = d.templates.filter((t) => t.kind === kind)
         return (
           <section key={kind} className="panel p-4" aria-label={d.kinds[kind].label}>
             <div className="mb-2 flex items-center gap-2">
               <PanelTitle className="mb-0">{d.kinds[kind].label}</PanelTitle>
-              <Button size="sm" variant="outline" className="ml-auto h-7" onClick={() => startNew(kind)}><Plus className="h-3.5 w-3.5" /> New template</Button>
+              <Button size="sm" variant="outline" className="ml-auto" onClick={() => startNew(kind)}><Plus className="h-3.5 w-3.5" /> New template</Button>
             </div>
             {list.length === 0 && <EmptyState>No templates yet: documents use the built-in layout.</EmptyState>}
             <ul className="divide-y divide-border text-[13px]">
               {list.map((t) => <Row key={t.id} t={t} busy={busy}
-                onEdit={() => { setPreview(null); setEdit({ id: t.id, kind: t.kind, name: t.name, config: structuredClone(t.config) }) }}
-                onCopy={() => { setPreview(null); setEdit({ kind: t.kind, name: `${t.name} (copy)`, config: structuredClone(t.config) }) }}
+                onEdit={() => begin({ id: t.id, kind: t.kind, name: t.name, config: structuredClone(t.config) })}
+                onCopy={() => begin({ kind: t.kind, name: `${t.name} (copy)`, config: structuredClone(t.config) })}
                 onDefault={() => run(() => defaultDocTemplate(t.id), `${t.name} is now the default.`)}
                 onDelete={async () => { if (await askConfirm(`Delete the template ${t.name}? Documents already issued keep their look.`)) void run(() => deleteDocTemplate(t.id), "Template deleted.") }} />)}
             </ul>
@@ -86,17 +92,17 @@ function Row({ t, busy, onEdit, onCopy, onDefault, onDelete }: { t: DocTemplate;
     <li className="flex flex-wrap items-center gap-2 py-2">
       <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: SWATCH[t.config.accent] }} aria-hidden />
       <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left"><span className="font-medium hover:underline">{t.name}</span>
-        {t.is_default && <span className="ml-2 rounded-full bg-accent px-2 py-1 text-[11px] font-medium text-primary-text">Default</span>}
+        {t.is_default && <Badge variant="secondary" className="ml-2">Default</Badge>}
         <span className="block text-[12px] text-muted-foreground">{t.config.title} · edited by {t.updated_by}, {fmtWhen(t.updated_at)}</span></button>
-      {!t.is_default && <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={onDefault}><Star className="h-3.5 w-3.5" /> Make default</Button>}
-      <Button size="sm" variant="ghost" className="h-7" onClick={onCopy} aria-label={`Duplicate ${t.name}`}><Copy className="h-3.5 w-3.5" /></Button>
+      {!t.is_default && <Button size="sm" variant="ghost" disabled={busy} onClick={onDefault}><Star className="h-3.5 w-3.5" /> Make default</Button>}
+      <Button size="sm" variant="ghost" onClick={onCopy} aria-label={`Duplicate ${t.name}`}><Copy className="h-3.5 w-3.5" /></Button>
       <Button size="sm" variant="ghost" className={danger} disabled={busy} onClick={onDelete} aria-label={`Delete ${t.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
     </li>
   )
 }
 
-function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, onSave, onLogo }: {
-  d: DocTemplatesData; edit: Editing; setEdit: (e: Editing) => void; busy: boolean; notice: { text: string; bad?: boolean } | null; preview: string | null
+function Editor({ d, edit, setEdit, busy, notice, preview, changed, onPreview, onCancel, onSave, onLogo }: {
+  d: DocTemplatesData; edit: Editing; setEdit: (e: Editing) => void; busy: boolean; changed: boolean; notice: { text: string; bad?: boolean } | null; preview: string | null
   onPreview: () => void; onCancel: () => void; onSave: () => void; onLogo: (key: "logo" | "co_logo", f: File) => void
 }) {
   const k = d.kinds[edit.kind]
@@ -110,8 +116,8 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Template">
           <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" aria-hidden />
             <h2 className="text-[14px] font-semibold">{edit.id ? "Edit template" : "New template"} · {k.label}</h2></div>
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Template name<input className={field} required maxLength={80} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="e.g. Globex customer copy" autoFocus /></label>
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Document title<input className={field} maxLength={80} value={c.title} onChange={(e) => set({ title: e.target.value })} /></label>
+          <Field label="Template name"><input className={field} required maxLength={80} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="e.g. Globex customer copy" autoFocus /></Field>
+          <Field label="Document title"><input className={field} maxLength={80} value={c.title} onChange={(e) => set({ title: e.target.value })} /></Field>
         </section>
 
         <section className="panel grid grid-cols-1 gap-3 p-4" aria-label="Brand">
@@ -127,17 +133,17 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
               <span className="font-medium">{key === "logo" ? "Our logo" : "Customer's logo (co-brand)"} <span className="font-normal text-muted-foreground">{key === "logo" ? "replaces the Odin wordmark in the header" : "beside ours, on the right"}</span></span>
               <div className="flex items-center gap-2">
                 {c[key] ? <img src={`/api/doc-templates/logo/${c[key]}`} alt="" className="h-9 max-w-40 rounded border border-border bg-white object-contain p-1" /> : <span className="text-muted-foreground">none</span>}
-                <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border border-border px-3 hover:bg-muted"><ImageUp className="h-3.5 w-3.5" /> Upload
+                <label className={cn(pill, "cursor-pointer has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50")}><ImageUp className="h-3.5 w-3.5" /> Upload
                   <input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) onLogo(key, f); e.target.value = "" }} /></label>
-                {c[key] && <button type="button" onClick={() => set({ [key]: null })} className="text-muted-foreground hover:text-foreground" aria-label={`Remove ${key === "logo" ? "our logo" : "the customer's logo"}`}><X className="h-4 w-4" /></button>}
+                {c[key] && <Button type="button" variant="ghost" size="icon-sm" onClick={() => set({ [key]: null })} className="text-muted-foreground" aria-label={`Remove ${key === "logo" ? "our logo" : "the customer's logo"}`}><X className="size-4" /></Button>}
               </div>
             </div>
           ))}
           <p className="-mt-1 text-[12px] text-muted-foreground">PNG or JPEG, up to 1 MB. A wide logo on a transparent or dark background reads best on the black header.</p>
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Company line <span className="font-normal text-muted-foreground">under the title, e.g. address and registration</span>
-            <input className={field} maxLength={160} value={c.company_line} onChange={(e) => set({ company_line: e.target.value })} /></label>
-          <label className="grid grid-cols-1 gap-1 text-[13px] font-medium">Footer <span className="font-normal text-muted-foreground">on every page, e.g. "Confidential"</span>
-            <input className={field} maxLength={200} value={c.footer} onChange={(e) => set({ footer: e.target.value })} /></label>
+          <Field label="Company line" hint="under the title, e.g. address and registration">
+            <input className={field} maxLength={160} value={c.company_line} onChange={(e) => set({ company_line: e.target.value })} /></Field>
+          <Field label="Footer" hint={'on every page, e.g. "Confidential"'}>
+            <input className={field} maxLength={200} value={c.footer} onChange={(e) => set({ footer: e.target.value })} /></Field>
         </section>
 
         <section className="panel p-4" aria-label="Sections">
@@ -145,10 +151,9 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
           <ol className="grid grid-cols-1 gap-1 text-[13px]">
             {c.sections.map((s, i) => (
               <li key={s.key} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted/50">
-                <input type="checkbox" className="accent-primary" checked={s.on} aria-label={`Show ${label(s.key)}`} onChange={(e) => set({ sections: c.sections.map((x) => (x.key === s.key ? { ...x, on: e.target.checked } : x)) })} />
+                <input type="checkbox" className={checkbox} checked={s.on} aria-label={`Show ${label(s.key)}`} onChange={(e) => set({ sections: c.sections.map((x) => (x.key === s.key ? { ...x, on: e.target.checked } : x)) })} />
                 <span className={cn("flex-1", !s.on && "text-muted-foreground line-through")}>{label(s.key)}</span>
-                <button type="button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${label(s.key)} up`} className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
-                <button type="button" disabled={i === c.sections.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${label(s.key)} down`} className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
+                <MoveArrows name={label(s.key)} first={i === 0} last={i === c.sections.length - 1} onMove={(dir) => move(i, dir === "up" ? -1 : 1)} />
               </li>
             ))}
           </ol>
@@ -159,15 +164,15 @@ function Editor({ d, edit, setEdit, busy, notice, preview, onPreview, onCancel, 
           <PanelTitle className="mb-0">Wording</PanelTitle>
           <p className="-mt-1 text-[12px] text-muted-foreground">Placeholders: {Object.entries(d.placeholders).map(([p, what]) => <code key={p} title={what} className="mr-2 rounded bg-muted px-1">{`{${p}}`}</code>)}</p>
           {k.texts.map((t) => (
-            <label key={t.key} className="grid grid-cols-1 gap-1 text-[13px] font-medium">{t.label} <span className="font-normal text-muted-foreground">{t.help}</span>
+            <Field key={t.key} label={t.label} hint={t.help}>
               <textarea rows={t.key === "terms" ? 3 : 2} maxLength={3000} value={c.texts[t.key] ?? ""} onChange={(e) => set({ texts: { ...c.texts, [t.key]: e.target.value } })}
-                className={fieldArea} /></label>
+                className={fieldArea} /></Field>
           ))}
         </section>
 
-        {notice && <p className={cn("text-[13px]", notice.bad ? "text-destructive" : "text-muted-foreground")} role="status">{notice.text}</p>}
+        {notice && <Notice bad={notice.bad}>{notice.text}</Notice>}
         <div className="flex flex-wrap gap-2">
-          <Button loading={busy} disabled={!edit.name.trim()} onClick={onSave}>Save template</Button>
+          <Button loading={busy} disabled={!edit.name.trim() || !changed} onClick={onSave}>Save template</Button>
           <Button variant="outline" disabled={busy} onClick={onPreview}><Eye className="h-4 w-4" /> Preview</Button>
           <Button variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
         </div>

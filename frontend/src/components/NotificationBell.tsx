@@ -6,7 +6,8 @@ import { markRead, notifications, type Notification } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 // The bell: what happened that concerns you, whether or not mail is on.
-// The count comes with the session; it refreshes every minute and on focus.
+// The count comes with the session; it refreshes every minute while the tab
+// is in view, and when it comes back (a hidden tab does not ask: review P3-38).
 export function NotificationBell({ initialUnread }: { initialUnread: number }) {
   const [unread, setUnread] = useState(initialUnread)
   const [open, setOpen] = useState(false)
@@ -19,9 +20,11 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
     try { const d = await notifications(); setUnread(d.unread); setRows(d.rows) } catch { /* offline: keep what we have */ }
   }, [])
   useEffect(() => {
-    const timer = window.setInterval(refresh, 60_000)
-    window.addEventListener("focus", refresh)
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh) }
+    const tick = () => { if (!document.hidden) void refresh() }
+    const timer = window.setInterval(tick, 60_000)
+    window.addEventListener("focus", tick)
+    document.addEventListener("visibilitychange", tick)
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", tick); document.removeEventListener("visibilitychange", tick) }
   }, [refresh])
   useEffect(() => {
     if (!open) return
@@ -52,7 +55,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
         {unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[11px] font-semibold leading-4 text-primary-foreground">{unread > 99 ? "99+" : unread}</span>}
       </button>
       {open && (
-        <div role="dialog" aria-label="Notifications" className="fixed inset-x-4 top-14 z-50 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-pop sm:absolute sm:inset-x-auto sm:right-0 sm:top-10 sm:w-[380px]">
+        <div role="dialog" aria-label="Notifications" className="fixed inset-x-4 top-14 z-50 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-pop sm:absolute sm:inset-x-auto sm:right-0 sm:top-10 sm:w-96">
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-[12px] font-semibold text-nav-fg">Notifications</span>
             {unread > 0 && <button type="button" onClick={readAll} className="text-[12px] text-primary-text hover:underline">Mark all read</button>}
