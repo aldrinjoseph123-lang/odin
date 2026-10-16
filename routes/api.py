@@ -625,6 +625,8 @@ def api_calendar():
     d["milestones"] = milestones.between(d["from"], d["to"], project_scope(), customer=session.get("kind") == "external")
     # who may drag a task to another day: whoever manages the rollout's tasks, done or not, exactly
     # as task_edit decides (P2-10: the person a task is on ticks it, never re-dates it; P3-18)
+    if session.get("kind") == "external":   # a partner sees their own tasks, never the team's (as on the rollout page)
+        d["tasks"] = [t for t in d["tasks"] if t["assignee_id"] == session["user_id"]]
     manages = {pid: project_allows(pid, "manage_tasks") for pid in {t["project_id"] for t in d["tasks"]}}
     for t in d["tasks"]:
         t.pop("assignee_id")
@@ -1079,10 +1081,13 @@ def api_flow():
     stage_of = {p["id"]: p["stage"] for p in projects}
     names_of = {pid: {r["name"] for r in rows} for pid, rows in stage_lists.items()}
     next_task = {}
+    # a task still waiting on open work is not the next step; a partner hears only of their own tasks
+    own, own_params = (" AND t.assignee_id = ?", [session["user_id"]]) if session.get("kind") == "external" else ("", [])
     for t in db.execute(
         "SELECT t.project_id, t.stage, t.title, t.due_date, u.name AS assignee_name FROM tasks t "
-        f"LEFT JOIN users u ON u.id = t.assignee_id WHERE t.done = 0 AND t.project_id IN ({shown}) "
-        "ORDER BY t.due_date IS NULL, t.due_date, t.id", project_scope()[1]
+        f"LEFT JOIN users u ON u.id = t.assignee_id WHERE t.done = 0 AND t.project_id IN ({shown}){own} "
+        "AND NOT EXISTS (SELECT 1 FROM task_links l JOIN tasks w ON w.id = l.depends_on_task_id WHERE l.task_id = t.id AND w.done = 0) "
+        "ORDER BY t.due_date IS NULL, t.due_date, t.id", [*project_scope()[1], *own_params]
     ):
         here = t["stage"] == stage_of.get(t["project_id"]) or t["stage"] not in names_of.get(t["project_id"], ())
         if t["project_id"] not in next_task or (here and not next_task[t["project_id"]]["here"]):

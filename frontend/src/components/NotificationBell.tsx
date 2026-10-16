@@ -71,7 +71,7 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
                   <span className="min-w-0 flex-1">
                     <span className={cn("block text-[13px]", !n.read && "font-medium")}>{n.title}</span>
                     {n.body && <span className="mt-1 line-clamp-2 block text-[12px] text-muted-foreground">{n.body}</span>}
-                    <span className="mt-1 block text-[12px] text-muted-foreground"><Ago iso={n.created_at} />{n.actor ? ` · ${n.actor}` : ""}</span>
+                    <span className="mt-1 block text-[12px] text-muted-foreground"><Ago iso={n.created_at} />{n.actor ? ` · ${n.actor}` : ""}{n.muted ? " · muted rollout" : ""}</span>
                   </span>
                 </button>
               </li>

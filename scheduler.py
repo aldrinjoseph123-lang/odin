@@ -130,9 +130,9 @@ def _run_job(job, report_on):
         from services.notifications import send_summaries
         failed = []
         # the reminders and alert digest, each person's daily summary (B2) and the customer chasers (B9): one failing does not skip the rest
-        for step in (send_daily_alerts.main, send_summaries, chasers.run):
+        for name, step in (("digest", send_daily_alerts.main), ("daily summaries", send_summaries), ("chasers", chasers.run)):
             try:
-                if step is send_daily_alerts.main:
+                if name == "digest":
                     step()
                 else:
                     with app.test_request_context():   # mail links need one
@@ -140,8 +140,8 @@ def _run_job(job, report_on):
                         if is_working_day():   # a holiday holds them, as it holds the digest
                             step()
             except Exception as exc:  # noqa: BLE001
-                failed.append(f"{getattr(step, '__module__', '')}.{step.__name__}: {exc}")
-                log.error("digest %s failed: %s", step.__name__, exc)
+                failed.append(f"{exc}" if name == "digest" else f"{name}: {exc}")
+                log.error("%s failed: %s", name, exc)
         if failed:
             raise RuntimeError("; ".join(failed))
     elif job == "backup":

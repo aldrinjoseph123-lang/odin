@@ -1360,7 +1360,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # pm1 switches stage emails off; the bell still gets it
         p.post("/account/notifications", data={"approval": "on", "activity": "on", "assigned": "on", "mention": "on", "due": "on"}, headers=ph)
         kinds = {k["key"]: k["on"] for k in p.get("/api/account").get_json()["email_kinds"]}
-        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False, "milestone": False, "brief": False})
+        self.assertEqual(kinds, {"stage": False, "approval": True, "activity": True, "assigned": True, "mention": True, "due": True, "nudge": False, "alert": False, "milestone": False, "brief": False, "report": False, "automation": False})
         drain_outbox()
         mail.reset_mock()
         self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
@@ -1603,7 +1603,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         # every setting sits on a titled card
         everything = c.get("/api/settings").get_json()["policies"]
         self.assertEqual([p["key"] for p in everything if not p["group"]], [])
-        self.assertEqual({p["group"] for p in everything if p["area"] == "workflow"}, {"Defaults", "Stage timing", "Plan health", "Sign-off", "Customer approval", "Custom field limit", "Stage gates", "Customer forms"})
+        self.assertEqual({p["group"] for p in everything if p["area"] == "workflow"}, {"Defaults", "Stage timing", "Plan health", "Sign-off", "Customer approval", "Custom field limit", "Stage gates", "Customer forms", "Automations"})
         # only admins, and only known areas
         self.assertEqual(c.post("/settings/policies/nope", data={}, headers=h).status_code, 404)
 
@@ -2689,7 +2689,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertGreater(c.get("/api/dashboard/version").get_json()["version"], v)
         # the layout: the workspace default until this user saves their own
         self.assertEqual([w["id"] for w in r["layout"]], [w["id"] for w in DEFAULT_LAYOUT]); self.assertFalse(r["is_custom"])
-        self.assertEqual({w["id"] for w in r["catalogue"]}, {w["id"] for w in DEFAULT_LAYOUT} | {"custom", "workload"})   # custom and workload are offered, never on by default
+        self.assertEqual({w["id"] for w in r["catalogue"]}, {w["id"] for w in DEFAULT_LAYOUT} | {"custom", "workload", "since"})   # custom, workload and since are offered, never on by default
         self.assertTrue(next(w for w in r["catalogue"] if w["id"] == "custom")["multiple"])
         h = {"X-CSRF-Token": csrf}
         mine = [{"id": "alerts", "w": 9, "settings": {"limit": 999}}, {"id": "bogus"}, {"id": "alerts"}, {"id": "completion", "settings": {"days": "99"}}]

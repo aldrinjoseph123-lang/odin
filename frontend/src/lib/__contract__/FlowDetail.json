@@ -54,13 +54,13 @@
  "recent_notes": [
   {
    "author": "Admin",
-   "created_at": "2026-10-16T13:40:34.999622",
+   "created_at": "2026-10-16T16:40:28.282908",
    "note": "Customer asked to add the branch office; PO amendment requested.",
    "stage": "Sensor pilot"
   },
   {
    "author": "Admin",
-   "created_at": "2026-09-30T23:40:34.999622",
+   "created_at": "2026-10-01T02:40:28.282908",
    "note": "Pilot group of 50 endpoints",
    "stage": "Sensor pilot"
   }
@@ -79,15 +79,15 @@
  "stage_index": 2,
  "stages": [
   {
-   "days": 4.5,
-   "entered_at": "2026-09-19T15:40:34.999622",
+   "days": 4.6,
+   "entered_at": "2026-09-19T18:40:28.282908",
    "name": "PO Received",
    "sla_days": null,
    "status": "done"
   },
   {
-   "days": 0.5,
-   "entered_at": "2026-09-25T07:40:34.999622",
+   "days": 0.4,
+   "entered_at": "2026-09-25T10:40:28.282908",
    "name": "Scoping",
    "sla_days": null,
    "status": "done"

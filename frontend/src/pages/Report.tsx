@@ -46,6 +46,7 @@ export default function Report({ user }: { user: User }) {
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const [aiDraft, setAiDraft] = useState<number | null>(null)   // the AI draft the words came from, recorded with the save
+  const [share, setShare] = useState(false)   // Save and share: the rollout's Customer contacts get a mail with a link to their copy
   // the words belong to a version, not to the audience or the template: switching
   // those keeps what is typed (review P2-30); a new version, or a save, brings its own
   const wordsOf = useRef<number | null | undefined>(undefined)
@@ -71,9 +72,13 @@ export default function Report({ user }: { user: User }) {
   const set = (k: string, val: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (val) n.set(k, val); else n.delete(k); return n }, { replace: true })
   async function save() {
     // the words are shared: say so before they go out, not after (sim roles-3)
-    if (!(await askConfirm("Save this version? Partners and customers on the rollout will read these words in their copy of the report."))) return
+    if (!(await askConfirm(`Save this version? Partners and customers on the rollout will read these words in their copy of the report.${share ? " Its Customer contacts are emailed a link to it now." : ""}`))) return
     setBusy(true); setNotice(null)
-    try { const x = await saveRolloutReport(id, words, template, aiDraft); setAiDraft(null); setNotice({ text: `Version ${x.version} saved. Partners and customers now see it.` }); fresh.current = true; await reload() } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
+    try {
+      const x = await saveRolloutReport(id, words, template, aiDraft, share); setAiDraft(null)
+      setNotice({ text: `Version ${x.version} saved. Partners and customers now see it.${share ? x.shared ? ` ${x.shared} customer contact${x.shared === 1 ? " was" : "s were"} sent a link.` : " Nobody is in the Customer role on this rollout, so nobody was emailed." : ""}` })
+      setShare(false); fresh.current = true; await reload()
+    } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }) } finally { setBusy(false) }
   }
   const pdf = `/projects/${id}/report.pdf?audience=${r.audience}${r.version ? `&v=${r.version.version}` : template ? `&template=${template}` : ""}`
   const toolbar = (
@@ -93,7 +98,8 @@ export default function Report({ user }: { user: User }) {
         {r.is_live && r.can_edit && <TemplatePicker kind="rollout" value={template} onChange={(t) => set("template", t ? String(t) : null)} />}
         {r.data && <a href={pdf} target="_blank" rel="noreferrer" className={pill}><Download className="h-3.5 w-3.5" /> PDF</a>}
         <button type="button" onClick={() => window.print()} className={pill}><Printer className="h-3.5 w-3.5" /> Print</button>
-        {editable && <Button size="sm" loading={busy} disabled={!words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> Save as version</Button>}
+        {editable && <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} className="h-3.5 w-3.5 accent-primary" />Share with the customer</label>}
+        {editable && <Button size="sm" loading={busy} disabled={!words.summary.trim()} onClick={save}><Save className="h-3.5 w-3.5" /> {share ? "Save and share" : "Save as version"}</Button>}
       </span>
     </div>
   )

@@ -22,7 +22,7 @@
    },
    "id": 1,
    "kind": "internal",
-   "last_login_at": "2026-10-16T15:40:35.673978",
+   "last_login_at": "2026-10-16T18:40:28.885282",
    "microsoft": false,
    "name": "Admin",
    "password_login": true,
@@ -39,7 +39,7 @@
    "active": true,
    "avatar_url": null,
    "capacity_hours": null,
-   "created_at": "2026-10-16T15:40:34.609468",
+   "created_at": "2026-10-16T18:40:27.922120",
    "declined_reason": null,
    "email": "ann@globex.example",
    "holds": {

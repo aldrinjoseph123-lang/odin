@@ -54,6 +54,7 @@ export const dashboard: DashboardData = {
     schedule: { due: [], approvals: [] }, team: { people: [], unassigned: 0 }, activity: [], alerts: [{ id: 1, project_id: 1, project: "EDR Rollout - Globex", type: "project_overdue", title: "Rollout overdue", severity: "critical", created_at: "2026-09-29T08:00:00" }],
     mywork: { tasks: [], owned: 2 }, cycle: null,
     workload: { today: "2026-09-29", weeks: ["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19"], capacity_default: 30, warn_pct: 90, over: 0, heavy: 0, people: [] },
+    since: { from: "2026-09-28T08:00:00", items: [{ kind: "raid_blocker", at: "2026-09-29T07:00:00", who: "Priya", project_id: 1, project: "Alpha", text: "No VPN" }] },
   },
 }
 

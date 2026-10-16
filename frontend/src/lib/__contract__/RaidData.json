@@ -2,8 +2,8 @@
  "can_edit": true,
  "items": [
   {
-   "closed_at": "2026-10-01T15:40:34.999622",
-   "created_at": "2026-10-01T15:40:34.999622",
+   "closed_at": "2026-10-01T18:40:28.282908",
+   "created_at": "2026-10-01T18:40:28.282908",
    "created_by": "Priya Menon",
    "customer_visible": true,
    "detail": null,
@@ -20,7 +20,7 @@
    "stage": "Sensor pilot",
    "status": "closed",
    "title": "Waiting on firewall change approval",
-   "updated_at": "2026-10-01T15:40:34.999622"
+   "updated_at": "2026-10-01T18:40:28.282908"
   }
  ],
  "owners": [

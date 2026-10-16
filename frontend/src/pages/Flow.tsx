@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { WatchButton } from "@/components/WatchButton"
 import { Notice } from "@/components/Notice"
 import { Segmented } from "@/components/Segmented"
 import { MoveConfirm } from "@/components/MoveConfirm"
@@ -592,6 +593,10 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {d.approval && d.approval.stage === d.stage && <ApprovalChip status={d.approval.status} className="px-2 py-1 text-[12px]" />}
+            {/* the customer reminders Odin sent (services/chasers.py), for staff */}
+            {(() => { const n = (d.approval?.status === "pending" && d.approval.stage === d.stage ? d.approval.chases ?? 0 : 0) + (d.signoff?.status === "sent" ? d.signoff_chases ?? 0 : 0)
+              return n > 0 ? <span className="text-[12px] text-muted-foreground">Customer reminded {n}×</span> : null })()}
+            {d.watch && <WatchButton key={d.id} projectId={d.id} watch={d.watch} />}
             {closed && <span className="rounded-md bg-ok-soft px-2 py-1 text-[12px] font-medium text-ok">Closed{closedOn ? ` on ${fmtDate(closedOn)}` : ""}</span>}
             {/* the project page shows the plan's verdict in its title row instead (one health, not two) */}
             {!closed && !standalone && <StateChip state={d.state} text={stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })} />}

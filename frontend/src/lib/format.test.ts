@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, forecastTone, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday, isDay, isMonth } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, forecastTone, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday, isDay, isMonth, sinceLine } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -377,5 +377,15 @@ describe("isDay / isMonth", () => {
     for (const bad of [null, "", "2026-2-3", "2026-02-31", "2027-02-29", "2026-13-01", "2026-10-15x"]) expect(isDay(bad)).toBe(false)
     expect(isMonth("2026-10")).toBe(true)
     for (const bad of [null, "", "2026-13", "2026-00", "2026-1", "2026-10-15"]) expect(isMonth(bad)).toBe(false)
+  })
+})
+
+describe("sinceLine", () => {
+  it("says each change in words", () => {
+    expect(sinceLine({ kind: "move", who: "Ann", text: "Kickoff to Deploy" })).toBe("Moved Kickoff to Deploy by Ann")
+    expect(sinceLine({ kind: "raid_blocker", who: "Ann", text: "No VPN" })).toBe("New blocker: No VPN")
+    expect(sinceLine({ kind: "decided", who: null, text: "Use SSO" })).toBe("Decided: Use SSO")
+    expect(sinceLine({ kind: "approval", who: "Cus", text: "Deploy declined" })).toBe("Customer declined Deploy (Cus)")
+    expect(sinceLine({ kind: "ask", who: null, text: "Upload the PO" })).toBe("The customer finished: Upload the PO")
   })
 })

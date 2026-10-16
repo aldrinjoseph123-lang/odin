@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
 import { WorkloadRows } from "@/components/WorkloadWidget"
+import { SinceRows } from "@/components/SinceLastLooked"
 import { hrs, weekLabel } from "@/lib/workload"
 import { Ago } from "@/components/Ago"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
@@ -21,7 +22,7 @@ import { cn } from "@/lib/utils"
 import { toast } from "@/lib/toast"
 import { askConfirm } from "@/lib/confirm"
 import { STATE } from "@/lib/state"
-import { dayOf, deltaText, fmtDate, lateBy, monthName, monthTicks, shortDay, timelineDomain, weekday } from "@/lib/format"
+import { dayOf, deltaText, fmtDate, sinceLine, lateBy, monthName, monthTicks, shortDay, timelineDomain, weekday } from "@/lib/format"
 import { addDays } from "@/lib/plan"
 import { configure, GRID_CLASS, keyOf, move, newUid, pack, pctChange, remove, reorder, resize, SPAN_CLASS, splitWindow, type LayoutItem, type Width } from "@/lib/dashboard"
 import { useMedia, useWidth } from "@/lib/useMeasure"
@@ -414,6 +415,15 @@ function Workload({ w, s, onExpand, large }: { w: D["workload"]; s: S; onExpand?
   )
 }
 
+// ---- since you last looked ---------------------------------------------------
+function Since({ d, s, onExpand, large }: { d: D["since"]; s: S; onExpand?: () => void; large?: boolean }) {
+  return (
+    <Widget title="Since you last looked" sub={<>on your rollouts, since <Ago iso={d.from} /></>} onExpand={onExpand}>
+      <SinceRows since={d} limit={large ? 100 : Number(s.limit ?? 10)} />
+    </Widget>
+  )
+}
+
 // ---- rollouts per stage -----------------------------------------------------
 // The pipeline in the Flow's own language: stages top to bottom on a connector,
 // each with its count and how many are off track or at risk (in words).
@@ -624,6 +634,7 @@ function tableFor(item: LayoutItem, d: D): Table | null {
     case "workload": return { columns: ["Person", "Capacity", ...d.workload.weeks.map((w, i) => weekLabel(w, i))], rows: d.workload.people.map((p) => [p.name, hrs(p.capacity), ...p.weeks.map((c) => `${hrs(c.hours)} (${c.pct} %)`)]) }
     case "stages": return { columns: ["Stage", "Rollouts", "Off track", "At risk"], rows: d.stages.map((s) => [s.stage, s.count, s.late, s.warn]) }
     case "activity": return { columns: ["When", "Who", "Rollout", "What"], rows: d.activity.map((a) => [a.at.slice(0, 16).replace("T", " "), a.who ?? "—", a.project, a.text]) }
+    case "since": return { columns: ["When", "Rollout", "What"], rows: (d.since?.items ?? []).map((a) => [a.at.slice(0, 16).replace("T", " "), a.project, sinceLine(a)]) }
     case "alerts": return { columns: ["Severity", "Alert", "Rollout", "Raised"], rows: d.alerts.map((a) => [a.severity, a.title, a.project, a.created_at.slice(0, 10)]) }
     case "mywork": return { columns: ["Due", "Task", "Rollout", "Stage"], rows: d.mywork.tasks.map((t) => [t.due_date ? fmtDate(t.due_date) : "—", t.title, t.project, t.stage ?? "—"]) }
     case "cycle": return d.cycle ? { columns: ["Month", "Closed"], rows: d.cycle.throughput.map(([m, n]) => [m, n]) } : null
@@ -643,6 +654,7 @@ function renderWidget(item: LayoutItem, d: D, today: string, on: { tile: (k: Das
     case "completion": return <Completion series={d.completion} s={s} onExpand={on.expand} large={large} />
     case "team": return <Team t={d.team} s={s} onExpand={on.expand} large={large} />
     case "workload": return <Workload w={d.workload} s={s} onExpand={on.expand} large={large} />
+    case "since": return d.since ? <Since d={d.since} s={s} onExpand={on.expand} large={large} /> : null
     case "stages": return <Stages rows={d.stages} s={s} onExpand={on.expand} large={large} />
     case "activity": return <ActivityFeed rows={d.activity} s={s} onExpand={on.expand} large={large} />
     case "alerts": return <Alerts rows={d.alerts} s={s} onExpand={on.expand} large={large} />

@@ -11,14 +11,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
-import { account, accountEmail, accountMicrosoft, ApiError, postForm, type User } from "@/lib/api"
+import { account, accountEmail, accountMicrosoft, ApiError, calendarFeedOff, makeCalendarFeed, postForm, type Delivery, type User } from "@/lib/api"
 import { UserAvatar } from "@/components/UserAvatar"
 import { ACCENTS, THEMES, applyTheme, useAppearance } from "@/lib/theme"
 import { MIN_PASSWORD, passwordRule } from "@/lib/password"
 import { Notice } from "@/components/Notice"
 import { cn } from "@/lib/utils"
 import { ActivityPanel } from "@/components/ActivityPanel"
-import { viewersText } from "@/lib/format"
+import { fmtWhen, viewersText } from "@/lib/format"
 import { TwoStepPanel } from "@/components/TwoStepPanel"
 import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
 
@@ -173,7 +173,8 @@ export default function Account({ user }: { user: User }) {
         ) : (
           <p className="panel p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
         )}
-        <NotifyForm key={me.email_kinds.map((k) => `${k.key}:${k.on}`).join("|")} me={me} busy={busy} onSave={(on) => send("/account/notifications", Object.fromEntries(on.map((k) => [k, "on"])))} />
+        <NotifyForm key={me.email_kinds.map((k) => `${k.key}:${k.mode}`).join("|")} me={me} busy={busy} onSave={(modes) => send("/account/notifications", modes)} />
+        {me.calendar && <CalendarFeed createdAt={me.calendar.created_at} onChange={load} />}
         {me.kind !== "external" && <TwoStepPanel />}
         {microsoft?.available && !microsoft.linked && (
           <section className="grid grid-cols-1 content-start gap-2 panel p-4">
@@ -193,22 +194,62 @@ export default function Account({ user }: { user: User }) {
   )
 }
 
-// "Tell me about": Save wakes only once a switch differs from what is saved (review P3-41).
-// The parent keys it on the saved values, so a save remounts it clean.
-function NotifyForm({ me, busy, onSave }: { me: { kind: string; email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean }; busy: boolean; onSave: (on: string[]) => void }) {
-  const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries(me.email_kinds.map((k) => [k.key, k.on])))
-  const dirty = me.email_kinds.some((k) => on[k.key] !== k.on)
+// "Tell me about": per kind at once, in the daily summary, or off (email and Teams alike; the bell
+// always at once). Save wakes only once a choice differs from what is saved (review P3-41). The
+// parent keys it on the saved values, so a save remounts it clean.
+const MODES: { value: Delivery; label: string }[] = [{ value: "instant", label: "At once" }, { value: "summary", label: "Daily summary" }, { value: "off", label: "Off" }]
+function NotifyForm({ me, busy, onSave }: { me: { kind: string; email_kinds: { key: string; label: string; mode: Delivery }[]; mail_enabled: boolean }; busy: boolean; onSave: (modes: Record<string, Delivery>) => void }) {
+  const [mode, setMode] = useState<Record<string, Delivery>>(() => Object.fromEntries(me.email_kinds.map((k) => [k.key, k.mode])))
+  const dirty = me.email_kinds.some((k) => mode[k.key] !== k.mode)
   return (
-    <form onSubmit={(e: FormEvent) => { e.preventDefault(); onSave(me.email_kinds.filter((k) => on[k.key]).map((k) => k.key)) }} className="grid grid-cols-1 content-start gap-2 panel p-4">
-      <PanelTitle className="mb-0" hint={me.kind === "internal" ? "by email and in Teams; the bell shows everything either way" : "by email; the bell shows everything either way"}>Tell me about</PanelTitle>
+    <form onSubmit={(e: FormEvent) => { e.preventDefault(); onSave(mode) }} className="grid grid-cols-1 content-start gap-2 panel p-4">
+      <PanelTitle className="mb-0" hint={me.kind === "internal" ? "by email and in Teams; the bell shows everything at once either way" : "by email; the bell shows everything at once either way"}>Tell me about</PanelTitle>
       {me.email_kinds.map((k) => (
-        <label key={k.key} className="flex items-start gap-2 text-[13px]">
-          <Switch checked={on[k.key]} onCheckedChange={(v) => setOn({ ...on, [k.key]: v })} className="mt-1" />
-          <span>{k.label}</span>
-        </label>
+        <div key={k.key} className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+          <span className="min-w-0 flex-1">{k.label}</span>
+          <Segmented label={k.label} value={mode[k.key]} onChange={(v) => setMode({ ...mode, [k.key]: v })} options={MODES} />
+        </div>
       ))}
+      <p className="text-[12px] text-muted-foreground">The daily summary is one mail at the digest time on working days, grouped by rollout, with your next step on each.</p>
       {!me.mail_enabled && <p className="text-[12px] text-muted-foreground">Email is not connected on this installation yet, so for now only the bell is used.</p>}
       <div><Button type="submit" size="sm" loading={busy} disabled={!dirty}>Save</Button></div>
     </form>
+  )
+}
+
+// The personal calendar feed: an address Outlook subscribes to (Add calendar › From the internet).
+// It holds a secret, so it is shown once, when made or rotated; rotating kills the old one.
+function CalendarFeed({ createdAt, onChange }: { createdAt: string | null; onChange: () => Promise<void> }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  async function make() {
+    if (createdAt && !(await askConfirm("Make a new address? The one Outlook uses now stops working; subscribe again with the new one.", "Make a new address"))) return
+    setBusy(true)
+    try { setUrl((await makeCalendarFeed()).url); await onChange() } catch (e) { toast(e instanceof ApiError ? e.message : "Could not make the feed", { tone: "bad" }) } finally { setBusy(false) }
+  }
+  async function off() {
+    if (!(await askConfirm("Turn the calendar feed off? Calendars subscribed to it stop updating.", "Turn off"))) return
+    setBusy(true)
+    try { await calendarFeedOff(); setUrl(null); await onChange(); toast("Calendar feed turned off") } catch (e) { toast(e instanceof ApiError ? e.message : "That did not save", { tone: "bad" }) } finally { setBusy(false) }
+  }
+  return (
+    <section className="grid grid-cols-1 content-start gap-2 panel p-4">
+      <PanelTitle className="mb-0" hint="for Outlook or any calendar">Calendar feed</PanelTitle>
+      <p className="text-[13px] text-muted-foreground">Your tasks with a due date, and the target dates and milestones of your rollouts, in your own calendar. Read only; it refreshes when your calendar checks it.</p>
+      {url && (
+        <div className="grid grid-cols-1 gap-2">
+          <Input readOnly value={url} aria-label="Calendar feed address" onFocus={(e) => e.currentTarget.select()} className="h-8 text-[12px]" />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => { void navigator.clipboard?.writeText(url).then(() => toast("Address copied")) }}>Copy address</Button>
+            <span className="text-[12px] text-muted-foreground">Shown once: anyone with it can read your calendar.</span>
+          </div>
+        </div>
+      )}
+      {!url && createdAt && <p className="text-[12px] text-muted-foreground">On since {fmtWhen(createdAt)}.</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant={createdAt ? "outline" : "default"} loading={busy} onClick={() => void make()}>{createdAt ? "Make a new address" : "Make a feed"}</Button>
+        {createdAt && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => void off()}>Turn off</Button>}
+      </div>
+    </section>
   )
 }

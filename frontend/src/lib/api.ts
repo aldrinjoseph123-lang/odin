@@ -229,11 +229,16 @@ export type FlowDetail = {
   participants: { id: number; user_id: number; name: string; role: string; avatar_url: string | null }[]
   assignable: { id: number; name: string }[]; can_edit: boolean; me: number; can_override?: boolean; doc_categories?: string[]
   customer_approval: boolean; can_approve: boolean
-  approval: { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null } | null
+  approval: { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null; chases?: number } | null
   signoff?: SignoffState
+  // reminders Odin sent the signatory (services/chasers.py), staff only; mute or follow (services/notifications.py)
+  signoff_chases?: number
+  watch?: Watch
   // what holds the next move (services/gates.py); null for partners and customers
   gate?: { blocked: GateReason[]; can_override: boolean } | null
 }
+export type Watch = { can: "mute" | "follow" | null; on: boolean }
+export const setWatch = (projectId: number, on: boolean) => post<Watch>(`/api/projects/${projectId}/watch`, { on })
 export type GateReason = { stage: string; kind: "tasks" | "document"; count?: number; category?: string; text: string }
 // what a stage asks before a rollout leaves it
 export type StageGate = { gate_tasks: boolean; required_docs: string[] }
@@ -308,8 +313,8 @@ export type RolloutReport = {
 }
 export const rolloutReport = (id: number, audience: string, v?: number | null, template?: number | null) =>
   getJson<RolloutReport>(`/api/projects/${id}/rollout-report?${new URLSearchParams({ audience, ...(v ? { v: String(v) } : {}), ...(template ? { template: String(template) } : {}) })}`)
-export const saveRolloutReport = (id: number, words: { summary: string; next_steps: string; asks: string }, template_id?: number | null, ai_suggestion?: number | null) =>
-  post<{ ok: true; version: number }>(`/api/projects/${id}/rollout-report`, { ...words, template_id: template_id ?? null, ai_suggestion: ai_suggestion ?? null })
+export const saveRolloutReport = (id: number, words: { summary: string; next_steps: string; asks: string }, template_id?: number | null, ai_suggestion?: number | null, share = false) =>
+  post<{ ok: true; version: number; shared: number }>(`/api/projects/${id}/rollout-report`, { ...words, template_id: template_id ?? null, ai_suggestion: ai_suggestion ?? null, share })
 // An AI feature on one rollout (routes/ai.py): can it run, its latest unused
 // draft, and the job writing a new one. Drafts are used or dismissed by a person.
 export type AISuggestion<T> = { id: number; payload: T; model: string | null; seconds: number | null; created_at: string; status: string }
@@ -467,9 +472,12 @@ export type DashboardData = {
     alerts: { id: number; project_id: number; project: string; type: string; title: string; severity: string; created_at: string }[]
     mywork: { tasks: { id: number; title: string; project_id: number; project: string; due_date: string | null; stage: string | null }[]; owned: number }
     workload: WorkloadData
+    since: SinceData
     cycle: { template: string; lead_avg: number | null; lead_median: number | null; completed_count: number; throughput: [string, number][]; slowest: { stage: string; avg_days: number } | null; measured_projects: number } | null
   }
 }
+export type SinceItem = { kind: string; at: string; who: string | null; project_id: number; project: string; text: string }
+export type SinceData = { from: string; items: SinceItem[] }
 export const dashboard = () => getJson<DashboardData>("/api/dashboard")
 export const dashboardVersion = () => getJson<{ version: number }>("/api/dashboard/version")
 export const saveLayout = (layout: DashboardData["layout"], scope: "mine" | "default" = "mine") =>
@@ -694,8 +702,17 @@ export type ReportAllData = {
 export const reportAll = (template?: number | null) => getJson<ReportAllData>(`/api/reports/all${template ? `?template=${template}` : ""}`)
 
 // ---- account, my work, alerts, analytics ----
+// how a person takes a kind of notification by email and Teams (Account page)
+export type Delivery = "instant" | "summary" | "off"
+// the personal calendar feed (routes/feeds.py): the address is shown once, when made or rotated
+export const makeCalendarFeed = () => post<{ ok: true; url: string }>("/account/calendar")
+export const calendarFeedOff = () => post<{ ok: true }>("/account/calendar/off")
+// what's new in this release (services/whats_new.py), once per person
+export type WhatsNew = { show: boolean; version: string; title: string; items: string[] }
+export const whatsNew = () => getJson<WhatsNew>("/api/whats-new")
+export const whatsNewSeen = () => post<{ ok: true }>("/api/whats-new/seen")
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; has_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
-  email_kinds: { key: string; label: string; on: boolean }[]; mail_enabled: boolean; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[] }>("/api/account")
+  email_kinds: { key: string; label: string; on: boolean; mode: Delivery }[]; mail_enabled: boolean; calendar: { created_at: string | null } | null; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[] }>("/api/account")
 // active minutes (services/activity.py): today, 7 and 30 days, one row per day
 export type Activity = { today: number; week: number; month: number; days: { day: string; minutes: number }[]; last_seen_at: string | null; last_login_at: string | null }
 // sign-up links (services/signup.py): admins make them; a new colleague fills /join/<token>
@@ -795,7 +812,7 @@ export type SearchResults = { projects: { id: number; name: string; client: stri
 export const search = (q: string) => getJson<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`)
 
 // ---- notifications ----
-export type Notification = { id: number; kind: string; title: string; body: string | null; link: string | null; actor: string | null; project_name: string | null; created_at: string; read: boolean }
+export type Notification = { id: number; kind: string; title: string; body: string | null; link: string | null; actor: string | null; project_name: string | null; created_at: string; read: boolean; muted?: boolean }
 export const notifications = () => getJson<{ unread: number; rows: Notification[] }>("/api/notifications")
 export const markRead = (which: { id: number } | { all: true }) => post<{ ok: true; unread: number }>("/api/notifications/read", which)
 

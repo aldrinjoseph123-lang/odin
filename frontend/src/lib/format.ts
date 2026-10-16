@@ -432,3 +432,14 @@ export function fieldInput(kind: FieldKind, value: FieldValue): string {
   if (kind === "yesno") return value ? "yes" : "no"
   return String(value)
 }
+
+// One line of "Since you last looked" (services/dashboard._since): what happened, in words.
+const RAID_WORD: Record<string, string> = { blocker: "New blocker", risk: "New risk", issue: "New issue", decision: "Decision proposed" }
+export function sinceLine(a: { kind: string; who: string | null; text: string }): string {
+  if (a.kind === "move") return `Moved ${a.text}${a.who ? ` by ${a.who}` : ""}`
+  if (a.kind.startsWith("raid_")) return `${RAID_WORD[a.kind.slice(5)] ?? "New RAID item"}: ${a.text}`
+  if (a.kind === "decided") return `Decided: ${a.text}`
+  if (a.kind === "approval") return `Customer ${a.text.endsWith(" declined") ? "declined" : "approved"} ${a.text.replace(/ (approved|declined)$/, "")}${a.who ? ` (${a.who})` : ""}`
+  if (a.kind === "ask") return `${a.who ?? "The customer"} finished: ${a.text}`
+  return a.text
+}

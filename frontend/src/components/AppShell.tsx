@@ -20,6 +20,7 @@ import { Kbd } from "@/components/ui/kbd"
 import { useActivityPing } from "@/lib/useActivityPing"
 import { readPref } from "@/lib/usePref"
 import { settingsHome } from "@/lib/settingsMenu"
+import { WhatsNew } from "@/components/WhatsNew"
 
 // White top bar, ink links, accent underline on the current section. Un-ported
 // pages are plain anchors (full navigation to Flask); React pages use <Link>.
@@ -172,6 +173,7 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
       <Toaster />
       <ConfirmHost />
       <TitleTips />
+      <WhatsNew staff={user.kind !== "external"} />
       <CommandPalette user={user} open={palette} onClose={() => setPalette(false)} onShortcuts={() => setSheet(true)}
         pages={[...items.map((i) => ({ label: i.label, href: i.href })), { label: "Account", href: "/account" }]} />
       <ShortcutSheet open={sheet} onOpenChange={setSheet} />

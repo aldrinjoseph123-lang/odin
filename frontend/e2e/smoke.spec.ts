@@ -86,6 +86,16 @@ test("@smoke the rollout page lists its milestones, with the missed one in words
   expectClean(errors)
 })
 
+test("@smoke the account page offers each kind at once, daily or off, and a calendar feed; a rollout offers mute or follow", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "member", "/account")
+  await expect(page.getByRole("radiogroup", { name: "Tasks assigned to me" }).getByRole("radio", { name: "Daily summary" })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^(Make a feed|Make a new address)$/ })).toBeVisible()
+  await page.goto("/board?rollout=1")
+  await expect(page.getByRole("button", { name: /^(Mute|Unmute|Follow|Unfollow)$/ })).toBeVisible()
+  expectClean(errors)
+})
+
 test("@smoke the header: every link lands, every button does something", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin")

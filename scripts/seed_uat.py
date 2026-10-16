@@ -382,6 +382,22 @@ con.execute("INSERT INTO rule_runs (rule_id, project_id, event, at, ok, detail) 
 con.commit()
 con.close()
 
+# mute and follow (services/notifications.py): one participant of the second rollout muted it, and one
+# member of staff not on it follows it; no random draw
+con = sqlite3.connect(DB_PATH)
+on2 = [r[0] for r in con.execute("SELECT pp.user_id FROM project_participants pp JOIN users u ON u.id = pp.user_id "
+                                 "WHERE pp.project_id = 2 AND u.kind = 'internal' AND pp.role <> 'Project manager' ORDER BY pp.user_id")]
+off2 = [r[0] for r in con.execute("SELECT id FROM users WHERE kind = 'internal' AND active = 1 AND role <> 'Admin' "
+                                  "AND id NOT IN (SELECT user_id FROM project_participants WHERE project_id = 2) ORDER BY id")]
+for uid, mode in ((on2[:1] or [None])[0], "mute"), ((off2[:1] or [None])[0], "follow"):
+    if uid:
+        con.execute("INSERT OR IGNORE INTO rollout_watch (user_id, project_id, mode, created_at) VALUES (?, 2, ?, ?)", (uid, mode, (now - timedelta(days=4)).isoformat()))
+# everyone has read this release's "What's new" (services/whats_new.py): the corner card would sit over every page and golden screenshot
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")) as f:
+    con.execute("UPDATE users SET whats_new_seen = ?", (f.read().strip(),))
+con.commit()
+con.close()
+
 con = sqlite3.connect(DB_PATH)
 for row in con.execute("SELECT id, name, stage FROM projects ORDER BY id LIMIT 3"):
     print(f"   {row[1]} | {row[2]}")

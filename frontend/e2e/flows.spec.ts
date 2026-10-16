@@ -231,6 +231,52 @@ test("@flow account: the home page is a choice", async ({ page }) => {
   await expect(page).toHaveURL(/\/dashboard$/)
 })
 
+test("@flow account: a kind goes to the daily summary, and the calendar feed is made, read and turned off", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "member", "/account")
+  const kind = page.getByRole("radiogroup", { name: "Stage changes on rollouts I am on" })
+  const form = page.locator("form").filter({ hasText: "Tell me about" })
+  await kind.getByRole("radio", { name: "Daily summary" }).click()
+  await form.getByRole("button", { name: "Save" }).click()
+  await expect(page.getByText("Notification settings saved")).toBeVisible()
+  await page.reload()
+  await expect(kind.getByRole("radio", { name: "Daily summary" })).toHaveAttribute("aria-checked", "true")
+  await kind.getByRole("radio", { name: "At once" }).click()
+  await form.getByRole("button", { name: "Save" }).click()
+  await expect(page.getByText("Notification settings saved")).toBeVisible()
+  // the feed: its address once, readable without a session, dead once turned off
+  const make = page.getByRole("button", { name: /^(Make a feed|Make a new address)$/ })
+  if ((await make.textContent()) === "Make a new address") { await make.click(); await page.getByRole("button", { name: "Make a new address" }).last().click() } else await make.click()
+  const url = await page.getByLabel("Calendar feed address").inputValue()
+  const path = new URL(url).pathname
+  const feed = await page.request.get(path, { headers: { cookie: "" } })
+  expect(feed.status()).toBe(200)
+  expect(feed.headers()["content-type"]).toContain("text/calendar")
+  expect(await feed.text()).toContain("BEGIN:VCALENDAR")
+  await page.getByRole("button", { name: "Turn off" }).click()
+  await page.getByRole("button", { name: "Turn off" }).last().click()
+  await expect(page.getByText("Calendar feed turned off")).toBeVisible()
+  expect((await page.request.get(path)).status()).toBe(404)
+  expectClean(errors)
+})
+
+test("@flow rollout: mute or follow it, and the choice stays", async ({ page }) => {
+  const errors = watch(page)
+  for (const who of ["member", "viewer"] as const) {
+    await signIn(page, who, "/board?rollout=1")
+    const off = page.getByRole("button", { name: /^(Mute|Follow)$/ })
+    await expect(off).toBeVisible()
+    const verb = (await off.textContent())!.trim()
+    await off.click()
+    const on = page.getByRole("button", { name: verb === "Mute" ? "Unmute" : "Unfollow" })
+    await expect(on).toBeVisible()
+    await page.reload()
+    await on.click()
+    await expect(page.getByRole("button", { name: verb })).toBeVisible()
+  }
+  expectClean(errors)
+})
+
 test("@flow plan, RAID and the rollout report: move a date, log a risk, save a version, both PDFs", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/projects/1")

@@ -30,6 +30,17 @@ describe("Dashboard", () => {
     expect(screen.getByText("−1")).toBeInTheDocument()                             // overdue: 1 vs 2
   })
 
+  it("Since you last looked lists what changed on my rollouts, in words", async () => {
+    const { dashboard: load } = await import("@/lib/api")
+    vi.mocked(load).mockResolvedValue({ ...dashboard, layout: [{ id: "since", w: 1, settings: { limit: 10 } }],
+      catalogue: [...dashboard.catalogue, { id: "since", title: "Since you last looked", blurb: "", w: 1, multiple: false, settings: [{ key: "limit", label: "Items", kind: "int", default: 10, min: 5, max: 30 }] }] })
+    mount()
+    const widget = await screen.findByRole("region", { name: "Since you last looked" })
+    expect(within(widget).getByText("New blocker: No VPN")).toBeInTheDocument()
+    expect(within(widget).getByRole("link", { name: "Alpha" })).toHaveAttribute("href", "/board?rollout=1")
+    vi.mocked(load).mockResolvedValue(dashboard)
+  })
+
   it("the timeline draws each milestone as a diamond on its day, its state in words", async () => {
     mount()
     expect(await screen.findByRole("img", { name: "Milestone, ahead: Pilot go-live, 15 Oct" })).toBeInTheDocument()
