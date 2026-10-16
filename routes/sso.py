@@ -258,7 +258,8 @@ def _request_access(oid, email, name, upn):
     username = (email.split("@")[0] if email else f"ms-{oid[:8]}")[:40]
     if db.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
         username = f"{username}-{oid[:6]}"
-    taken = bool(email) and db.execute("SELECT 1 FROM users WHERE lower(email) = ?", (email,)).fetchone()
+    from security import identity_taken
+    taken = bool(email) and identity_taken(db, email)
     now = datetime.utcnow().isoformat()
     # the address counts as proven when it is the UPN: a name in a domain this tenant verified
     cur = db.execute(

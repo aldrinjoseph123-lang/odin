@@ -1002,7 +1002,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         r = c.post("/users", data={"name": "Sam", "username": "sam", "password": STRONG_PASSWORD, "role": "Viewer"}, headers=h).get_json()
         self.assertEqual(r["messages"], ["User Sam created"])
         r = c.post("/users", data={"name": "Sam", "username": "sam", "password": STRONG_PASSWORD, "role": "Viewer"}, headers=h).get_json()
-        self.assertEqual(r["messages"], ["Username already exists"])
+        self.assertEqual(r["messages"], ["That username is taken, or is another account's email"])
         r = c.post("/users/1/role", data={"role": "Viewer"}, headers=h).get_json()
         self.assertEqual(r["messages"], ["You cannot remove your own Admin role"])
         a = c.get("/api/audit?action=create_user").get_json()
@@ -3183,7 +3183,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         r = c.post(f"/users/{col}/email", data={"email": "ANN@initech.example"}, headers=h).get_json()
         self.assertEqual(r["messages"], ["That address belongs to another account"])
         r = c.post("/users", data={"username": "COL", "name": "Twin", "password": STRONG_PASSWORD}, headers=h).get_json()
-        self.assertEqual(r["messages"], ["Username already exists"])
+        self.assertEqual(r["messages"], ["That username is taken, or is another account's email"])
         r = c.post("/users", data={"username": " ", "name": "Blank", "password": STRONG_PASSWORD}, headers=h).get_json()
         self.assertEqual(r["messages"], ["Username and name are required"])
         for url in ("/users/9999/active", "/users/9999/reset-password", "/users/9999/email", "/users/9999/role"):

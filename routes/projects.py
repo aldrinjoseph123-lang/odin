@@ -882,6 +882,8 @@ def participant_invite(project_id):
         flash(f"Partners can only be invited from: {', '.join(policy('external_domains'))} (Settings › Sign-in & security)", "error")
     elif role not in EXTERNAL_PROJECT_ROLES:
         flash("Pick a role", "error")
+    elif db.execute("SELECT 1 FROM users WHERE lower(username) = ? AND lower(COALESCE(email, '')) != ?", (email, email)).fetchone():
+        flash("That address is another account's username; ask an admin to change it", "error")   # sign-in takes either
     else:
         user = db.execute("SELECT * FROM users WHERE lower(email) = ?", (email,)).fetchone()
         now = datetime.utcnow().isoformat()

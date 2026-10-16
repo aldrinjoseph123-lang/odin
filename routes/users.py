@@ -11,13 +11,13 @@ from policies import policy
 from core import app, permission_required
 from spa import spa_index
 from db import get_db
-from security import password_problem, valid_email, valid_username, safe_csv_writer
+from security import identity_taken, password_problem, valid_email, valid_username, safe_csv_writer
 from services.audit import audit_log
 
 
 def _email_taken(db, email, user_id=None):
     """Email lookups (invites, sign-in links, password resets) need one account per address (test report FN-6)."""
-    return db.execute("SELECT 1 FROM users WHERE lower(email) = lower(?) AND id != ?", (email, user_id or 0)).fetchone() is not None
+    return identity_taken(db, email, user_id)   # nor anyone's username: sign-in takes either
 
 
 def admin_only(*roles):
@@ -45,7 +45,7 @@ def users():
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "")
     role = request.form.get("role") or "Member"
-    existing = db.execute("SELECT id FROM users WHERE lower(username) = lower(?)", (username,)).fetchone()   # "Pm1" is "pm1"
+    existing = identity_taken(db, username)   # "Pm1" is "pm1", and no one's address either
     problem = password_problem(password)
     if not username or not name:
         flash("Username and name are required", "error")
@@ -58,7 +58,7 @@ def users():
     elif admin_only(role):
         flash("Only an admin can create an admin", "error")
     elif existing:
-        flash("Username already exists", "error")
+        flash("That username is taken, or is another account's email", "error")
     elif email and not valid_email(email):
         flash("Enter a valid email address", "error")
     elif email and _email_taken(db, email):

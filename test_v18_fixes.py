@@ -265,3 +265,27 @@ class SignInByEmailTestCase(Base):
         self.login("aj@example.com", "wrong-password-1")
         with self.raw_db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM login_attempts WHERE username = 'ajoseph'").fetchone()[0], 1)
+
+    def test_no_username_may_be_another_accounts_email_and_back(self):
+        """The access test of 16 Oct: a username equal to a colleague's email broke that
+        colleague's sign-in by email, and a sign-up link could be used to do it."""
+        uid = self._make_user("ajoseph", "Member")
+        self.sql("UPDATE users SET email = 'aj@corp.example' WHERE id = ?", uid)
+        # the Users page: no username that is someone's address, no address that is someone's username
+        self.client.post("/users", data={"username": "AJ@corp.example", "name": "Squat", "password": STRONG_PASSWORD, "role": "Member"})
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM users WHERE lower(username) = 'aj@corp.example'")[0][0], 0)
+        self._make_user("boss@corp.example", "Member")   # a username that looks like an address
+        other = self._make_user("other", "Member")
+        self.client.post(f"/users/{other}/email", data={"email": "BOSS@corp.example"})
+        self.assertIsNone(self.sql("SELECT email FROM users WHERE id = ?", other)[0][0])
+        # a sign-up link: the same two refusals
+        self.ctx()
+        from services import signup
+        raw = signup.create("Staff", "Member", None, None, 7, 5, "admin")
+        anon = app_module.app.test_client()
+        form = {"name": "Sam", "username": "aj@corp.example", "email": "sam@corp.example", "password": STRONG_PASSWORD}
+        self.assertEqual(anon.post(f"/api/join/{raw}", json=form).status_code, 400)
+        self.assertEqual(anon.post(f"/api/join/{raw}", json={**form, "username": "sam", "email": "boss@corp.example"}).status_code, 400)
+        self.assertEqual(anon.post(f"/api/join/{raw}", json={**form, "username": "sam"}).status_code, 200)
+        # and the real owner still signs in by email
+        self.assertEqual(self._signed_in(self.login("aj@corp.example")), "ajoseph")

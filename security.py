@@ -252,6 +252,14 @@ def unknown_name(typed):
 _USERNAME_RE = re.compile(r"[A-Za-z0-9._@-]{1,64}")
 
 
+def identity_taken(db, value, user_id=0):
+    """Is this text already someone's username or email, ignoring case? Sign-in takes
+    either (routes/auth._account_for), so a username may not be another account's
+    address, nor an address another account's username (16 Oct 2026)."""
+    return db.execute("SELECT 1 FROM users WHERE (lower(username) = lower(?) OR lower(email) = lower(?)) AND id != ?",
+                      (value, value, user_id or 0)).fetchone() is not None
+
+
 def valid_username(name):
     return isinstance(name, str) and bool(_USERNAME_RE.fullmatch(name))
 

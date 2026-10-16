@@ -15,6 +15,7 @@ from constants import ACCENTS, ADMIN_KINDS, AVATAR_EXTENSIONS, AVATAR_MAX_BYTES,
 from db import AVATAR_DIR, get_db
 from security import (
     consume_login_link,
+    identity_taken,
     reset_link_row,
     issue_login_link,
     login_account_paused,
@@ -691,7 +692,7 @@ def account_email():
     if wrong := recheck_password(me, request.form.get("password", ""), "Enter your current password to change your email"):
         flash(wrong, "error")
         return redirect(url_for("account"))
-    if email and db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND id != ?", (email.lower(), session["user_id"])).fetchone():
+    if email and identity_taken(db, email, session["user_id"]):
         flash("That address belongs to another account", "error")
         return redirect(url_for("account"))
     # links sent to the old address die with the epoch; other sessions end, this one carries on.
