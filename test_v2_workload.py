@@ -28,7 +28,7 @@ class WorkloadBase(FixBase):
     def staff(self, username, role="Member"):
         return self._make_user(username, role)
 
-    def task(self, who, due, hours=None, done=0, pid=1, title="T"):
+    def due_task(self, who, due, hours=None, done=0, pid=1, title="T"):
         self.sql("INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, done, estimate_hours) "
                  "VALUES (?, ?, ?, ?, '2026-11-01T00:00:00', 'test', ?, ?)", pid, title, who, due, done, hours)
 
@@ -44,14 +44,14 @@ class WeeklySumTestCase(WorkloadBase):
     def test_the_week_adds_estimates_defaults_and_the_manager_allowance(self):
         priya = self.staff("priya")
         self.sql("UPDATE projects SET owner_id = ? WHERE id = 1", priya)   # she manages one active rollout: 4 h a week
-        self.task(priya, "2026-11-04", hours=5)        # this week, estimated
-        self.task(priya, "2026-11-06")                 # this week, no estimate: the 2 h default
-        self.task(priya, "2026-11-09", hours=3)        # next week (Monday)
-        self.task(priya, "2026-11-22", hours=1.5)      # Sunday of week 2
-        self.task(priya, "2026-12-30", hours=40)       # beyond the four weeks
-        self.task(priya, "2026-11-05", hours=9, done=1)   # finished: not load
-        self.task(priya, None, hours=9)                # no date: no week
-        self.task(None, "2026-11-05", hours=9)         # nobody's
+        self.due_task(priya, "2026-11-04", hours=5)        # this week, estimated
+        self.due_task(priya, "2026-11-06")                 # this week, no estimate: the 2 h default
+        self.due_task(priya, "2026-11-09", hours=3)        # next week (Monday)
+        self.due_task(priya, "2026-11-22", hours=1.5)      # Sunday of week 2
+        self.due_task(priya, "2026-12-30", hours=40)       # beyond the four weeks
+        self.due_task(priya, "2026-11-05", hours=9, done=1)   # finished: not load
+        self.due_task(priya, None, hours=9)                # no date: no week
+        self.due_task(None, "2026-11-05", hours=9)         # nobody's
         p = self.person(priya)
         self.assertEqual([c["week"] for c in p["weeks"]], [W0, W1, W2, W3])
         self.assertEqual(self.hours(priya), [11, 7, 5.5, 4])
@@ -62,14 +62,14 @@ class WeeklySumTestCase(WorkloadBase):
     def test_policies_move_the_numbers(self):
         priya = self.staff("priya")
         self.sql("UPDATE projects SET owner_id = ? WHERE id = 1", priya)
-        self.task(priya, "2026-11-04")
+        self.due_task(priya, "2026-11-04")
         self._set_policy(default_task_hours="3", pm_hours_per_rollout="6", capacity_hours_per_week="20")
         self.assertEqual(self.hours(priya)[0], 9)
         self.assertEqual(self.person(priya)["capacity"], 20)
 
     def test_late_work_counts_now_and_only_in_the_current_week(self):
         priya = self.staff("priya")
-        self.task(priya, "2026-10-20", hours=4)
+        self.due_task(priya, "2026-10-20", hours=4)
         self.assertEqual(self.hours(priya), [4, 0, 0, 0])
         picker = self.client.get(f"/api/workload/week?date={W1}").get_json()["people"][str(priya)]
         self.assertEqual(picker["hours"], 0)   # next week's window does not take it
@@ -80,18 +80,18 @@ class WeeklySumTestCase(WorkloadBase):
         self.sql("UPDATE projects SET stage = ? WHERE id = 2", self.stages(2)[-1])
         self.sql("UPDATE projects SET deleted_at = '2026-11-01T00:00:00' WHERE id = 3")
         for pid in (1, 2, 3):
-            self.task(priya, "2026-11-04", hours=2, pid=pid)
+            self.due_task(priya, "2026-11-04", hours=2, pid=pid)
         self.assertEqual(self.hours(priya)[0], 2)
         gone = self.staff("gone")
-        self.task(gone, "2026-11-04", hours=2)
+        self.due_task(gone, "2026-11-04", hours=2)
         self.sql("UPDATE users SET active = 0 WHERE id = ?", gone)
         self.assertIsNone(self.person(gone))
 
     def test_people_are_listed_busiest_first_with_counts(self):
         a, b = self.staff("alice"), self.staff("bob")
         self.sql("UPDATE users SET capacity_hours = 10 WHERE id = ?", b)
-        self.task(a, "2026-11-04", hours=20)
-        self.task(b, "2026-11-04", hours=11)
+        self.due_task(a, "2026-11-04", hours=20)
+        self.due_task(b, "2026-11-04", hours=11)
         d = self.client.get("/api/workload").get_json()
         names = [p["name"] for p in d["people"]]
         self.assertLess(names.index("bob"), names.index("alice"))   # 110 % before 67 %
@@ -123,26 +123,26 @@ class CapacityTestCase(WorkloadBase):
 
     def test_thresholds_amber_over_90_red_over_100(self):
         priya = self.staff("priya")
-        self.task(priya, "2026-11-04", hours=27)
+        self.due_task(priya, "2026-11-04", hours=27)
         level = lambda: self.person(priya)["weeks"][0]["level"]   # noqa: E731
         self.assertEqual(level(), "ok")             # 90 % exactly is still fine
-        self.task(priya, "2026-11-04", hours=1)
+        self.due_task(priya, "2026-11-04", hours=1)
         self.assertEqual(level(), "warn")           # 28 of 30
-        self.task(priya, "2026-11-04", hours=2)
+        self.due_task(priya, "2026-11-04", hours=2)
         self.assertEqual(level(), "warn")           # 30 of 30: full, not over
-        self.task(priya, "2026-11-04", hours=1)
+        self.due_task(priya, "2026-11-04", hours=1)
         self.assertEqual(level(), "over")
         self._set_policy(workload_warn_pct="50")
         self.sql("DELETE FROM tasks")
-        self.task(priya, "2026-11-04", hours=16)
+        self.due_task(priya, "2026-11-04", hours=16)
         self.assertEqual(level(), "warn")           # the 90 % is a policy
 
 
 class PickerAndWidgetTestCase(WorkloadBase):
     def test_the_picker_hint_is_the_hours_in_the_week_of_the_due_date(self):
         priya = self.staff("priya")
-        self.task(priya, "2026-11-10", hours=6)
-        self.task(priya, "2026-11-12", hours=28)
+        self.due_task(priya, "2026-11-10", hours=6)
+        self.due_task(priya, "2026-11-12", hours=28)
         d = self.client.get("/api/workload/week?date=2026-11-15").get_json()   # a Sunday: still the week of Mon 9 Nov
         self.assertEqual(d["week"], W1)
         self.assertEqual(d["people"][str(priya)], {"hours": 34, "capacity": 30, "level": "over"})
@@ -167,7 +167,7 @@ class PickerAndWidgetTestCase(WorkloadBase):
 
     def test_the_widget_is_in_the_catalogue_validated_and_carries_the_numbers(self):
         priya = self.staff("priya")
-        self.task(priya, "2026-11-04", hours=3)
+        self.due_task(priya, "2026-11-04", hours=3)
         d = self.client.get("/api/dashboard").get_json()
         self.assertIn("workload", [w["id"] for w in d["catalogue"]])
         w = d["data"]["workload"]
@@ -192,10 +192,10 @@ class HandOverTestCase(WorkloadBase):
         self.sql("DELETE FROM project_participants WHERE project_id IN (1, 3)")   # the PM row follows the owner, as the edit page keeps it
         for pid in (1, 3):
             self.sql("INSERT INTO project_participants (project_id, user_id, role, added_at) VALUES (?, ?, 'Project manager', 'n')", pid, self.leaver)
-        self.task(self.leaver, "2026-11-05", title="One")
-        self.task(self.leaver, None, title="Two", pid=2)
-        self.task(self.leaver, "2026-11-05", title="Finished", done=1)
-        self.task(self.leaver, "2026-11-05", title="On closed", pid=3)
+        self.due_task(self.leaver, "2026-11-05", title="One")
+        self.due_task(self.leaver, None, title="Two", pid=2)
+        self.due_task(self.leaver, "2026-11-05", title="Finished", done=1)
+        self.due_task(self.leaver, "2026-11-05", title="On closed", pid=3)
         for kind, status, pid in (("risk", "open", 1), ("issue", "closed", 1), ("decision", "decided", 2), ("blocker", "open", 2)):
             self.sql("INSERT INTO raid_items (project_id, kind, title, status, owner_id, created_by, created_at, updated_at) VALUES (?, ?, 'R', ?, ?, 't', 'n', 'n')",
                      pid, kind, status, self.leaver)

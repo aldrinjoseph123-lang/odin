@@ -28,6 +28,7 @@ from policies import local_today, policy
 from security import file_stem
 from services.alerts import build_alerts, project_states
 from services.dashboard import tasks_due_by
+from services.fmt import plural
 from services import portfolio
 from services.pdf import report_pdf
 from services.report_pdf import render, render_portfolio
@@ -75,7 +76,7 @@ def build():
         ("Due in the next 7 days", [due_row(t) for t in due_tasks], "Nothing falls due."),
         ("Milestones", [f"<li>{escape(m['date'])} · <b>{escape(m['name'])}</b> — {escape(name_of[pid])}{' ' + late if m['date'] < today.isoformat() else ''}</li>" for m, pid in marks],
          "No milestone is missed or due in the next 7 days."),
-        ("Over capacity", [f"<li><b>{escape(u['name'])}</b>: {c['hours']:g} h of {u['capacity']:g} h in the week of {escape(c['week'])} ({c['tasks']} task{'s' if c['tasks'] != 1 else ''}, {u['rollouts']} rollout{'s' if u['rollouts'] != 1 else ''} managed)</li>" for u, c in over],
+        ("Over capacity", [f"<li><b>{escape(u['name'])}</b>: {c['hours']:g} h of {u['capacity']:g} h in the week of {escape(c['week'])} ({c['tasks']} {plural(c['tasks'], 'task')}, {u['rollouts']} {plural(u['rollouts'], 'rollout')} managed)</li>" for u, c in over],
          "Nobody is over capacity this week or next."),
         ("Rollouts per stage", [f"<li>{escape(stage)}: {n}</li>" for stage, n in per_stage.most_common()], "No active rollouts."),
     ]
@@ -99,7 +100,7 @@ def build():
     summary = [f"{len(projects)} active · {state['overdue']} overdue · {state['over_sla']} over SLA · {state['due_soon']} due soon",
                f"{len(moves)} stage move{'s' if len(moves) != 1 else ''} this week, {len(due_tasks)} task{'s' if len(due_tasks) != 1 else ''} due in the next 7 days", health]
     if marks or over:
-        summary.append(f"{len(marks)} milestone{'s' if len(marks) != 1 else ''} missed or due this week, {len(over)} {'people' if len(over) != 1 else 'person'} over capacity")
+        summary.append(f"{len(marks)} milestone{'s' if len(marks) != 1 else ''} missed or due this week, {len(over)} {plural(len(over), 'person', 'people')} over capacity")
 
     attachments = []
     if policy("report_attach"):

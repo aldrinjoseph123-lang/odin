@@ -40,8 +40,21 @@ _NO_ACCOUNT_HASH = generate_password_hash("no account has this password", method
 def _account_for(typed):
     """The account a sign-in names: its exact username, else the one account whose
     username or email matches ignoring case. People who joined through a sign-up
-    link chose a username but remember their email (16 Oct 2026)."""
+    link chose a username but remember their email (16 Oct 2026).
+
+    Typed text that looks like an email and is exactly one account's address
+    names that account, even when another account has it as its username. New
+    usernames may not be another account's email (security.py), so only older
+    rows collide; the address wins because it is the one the owner proves
+    (sign-in links and resets go to it), while a username equal to someone
+    else's address would let that account take the owner's sign-ins and lock
+    them out with its failed attempts. The other account signs in by its own
+    email or an admin renames it."""
     db = get_db()
+    if "@" in typed:
+        owners = db.execute("SELECT * FROM users WHERE lower(email) = lower(?) LIMIT 2", (typed.strip(),)).fetchall()
+        if len(owners) == 1:
+            return owners[0]
     exact = db.execute("SELECT * FROM users WHERE username = ?", (typed,)).fetchone()
     if exact:
         return exact

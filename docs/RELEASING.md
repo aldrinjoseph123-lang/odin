@@ -52,7 +52,7 @@ sha256 of every file the production image installs (Python 3.12, Linux x86_64, g
 After **any** change to `requirements.txt`, regenerate and commit both together:
 
     python3 scripts/make_lock.py            # needs network and pip >= 23 (any OS: it downloads Linux wheels)
-    python3 scripts/make_lock.py --check    # exit 1 = the lock is stale (test_v2_small also fails)
+    python3 scripts/make_lock.py --check    # exit 1 = the lock is stale (test_v2_lock also fails)
 
 The script runs `pip download --no-deps --only-binary=:all: --python-version 3.12 --implementation cp --abi cp312
 --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 --platform manylinux_2_28_x86_64` on the pins for

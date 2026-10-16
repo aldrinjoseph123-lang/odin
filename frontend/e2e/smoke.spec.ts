@@ -92,7 +92,7 @@ test("@smoke the account page offers each kind at once, daily or off, and a cale
   await expect(page.getByRole("radiogroup", { name: "Tasks assigned to me" }).getByRole("radio", { name: "Daily summary" })).toBeVisible()
   await expect(page.getByRole("button", { name: /^(Make a feed|Make a new address)$/ })).toBeVisible()
   await page.goto("/board?rollout=1")
-  await expect(page.getByRole("button", { name: /^(Mute|Unmute|Follow|Unfollow)$/ })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^(Mute updates|Unmute updates|Follow|Unfollow)$/ })).toBeVisible()
   expectClean(errors)
 })
 

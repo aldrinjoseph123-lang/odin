@@ -85,9 +85,9 @@ export function StageListEditor({ rows, current, busy, send, paths, label = "thi
               <fieldset key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <legend className="sr-only">Before leaving {s.name}</legend>
                 <span className="w-32 truncate text-muted-foreground" title={s.name} aria-hidden>{s.name}</span>
-                <label className="flex items-center gap-2"><input type="checkbox" className={checkbox} checked={gates[s.id].tasks} onChange={(e) => setGates({ ...gates, [s.id]: { ...gates[s.id], tasks: e.target.checked } })} aria-label={`All tasks done before leaving ${s.name}`} />All tasks done</label>
+                <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className={checkbox} checked={gates[s.id].tasks} onChange={(e) => setGates({ ...gates, [s.id]: { ...gates[s.id], tasks: e.target.checked } })} aria-label={`All tasks done before leaving ${s.name}`} />All tasks done</label>
                 {categories.map((c) => (
-                  <label key={c} className="flex items-center gap-2"><input type="checkbox" className={checkbox} checked={gates[s.id].docs.includes(c)} onChange={() => toggleDoc(s.id, c)} aria-label={`${c} on file before leaving ${s.name}`} />{c}</label>
+                  <label key={c} className="flex items-center gap-2 text-[13px]"><input type="checkbox" className={checkbox} checked={gates[s.id].docs.includes(c)} onChange={() => toggleDoc(s.id, c)} aria-label={`${c} on file before leaving ${s.name}`} />{c}</label>
                 ))}
               </fieldset>
             ))}

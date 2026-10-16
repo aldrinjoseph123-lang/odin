@@ -3,7 +3,7 @@ import { Panel } from "@/components/PanelTitle"
 import { toastAfterLoad } from "@/lib/toast"
 import { fieldAuto, fieldArea, checkbox } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
-import { Copy, MoreHorizontal, Trash2 } from "lucide-react"
+import { Copy, Download, MoreHorizontal, Trash2 } from "lucide-react"
 import { askConfirm } from "@/lib/confirm"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { RagPill } from "@/components/PlanGantt"
@@ -152,7 +152,8 @@ export default function Project({ user }: { user: User }) {
       {/* Detail reloads after a move itself: the notice is all this page adds (review P3-35: it reloaded twice) */}
       {/* a customer, reseller or contractor: what the rollout needs from them comes first (services/asks.py) */}
       {!staff && <div className="px-5 pt-4 empty:hidden"><AsksPanel projectId={id} staff={false} today={d.today} onChanged={reload} /></div>}
-      <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
+      {/* an unconfirmed intake cannot move: no Move control, and no "tells 0 people" line, until it is confirmed */}
+      <Detail d={x.intake_pending ? { ...d, can_move: false } : d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
 
       <div className="grid grid-cols-1 gap-4 px-5 pb-4 [&>*]:min-w-0">
         <div className="empty:hidden"><AICatchUp projectId={id} /></div>
@@ -176,8 +177,8 @@ export default function Project({ user }: { user: User }) {
         {/* staff only: a partner's cut of the RAID and tasks is the page and the customer report, not a file */}
         {staff && <div className="-mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground" role="group" aria-label="Download this rollout's registers">
           Download
-          <a href={`/projects/${id}/raid.csv`} className={buttonVariants({ variant: "outline", size: "sm" })}>RAID (CSV)</a>
-          <a href={`/projects/${id}/tasks.csv`} className={buttonVariants({ variant: "outline", size: "sm" })}>Tasks (CSV)</a>
+          <a href={`/projects/${id}/raid.csv`} className={buttonVariants({ variant: "outline", size: "sm" })}><Download className="h-3.5 w-3.5" aria-hidden />RAID (CSV)</a>
+          <a href={`/projects/${id}/tasks.csv`} className={buttonVariants({ variant: "outline", size: "sm" })}><Download className="h-3.5 w-3.5" aria-hidden />Tasks (CSV)</a>
         </div>}
         <div><Panel title="Milestones" hint="dated commitments, reached or missed" id="milestones"><MilestonesPanel projectId={id} /></Panel></div>
         {staff && <div className="empty:hidden"><LessonsPanel projectId={id} /></div>}
@@ -211,8 +212,8 @@ export default function Project({ user }: { user: User }) {
               <li key={m.id} className="group flex items-center gap-2 text-[13px]">
                 <UserAvatar name={m.name} url={m.avatar_url} />
                 <span className="min-w-0 flex-1 truncate font-medium" title={m.name}>{m.name}{!m.active && <span className="ml-1 font-normal text-muted-foreground">(deactivated)</span>}</span>
-                <span className="text-muted-foreground">{m.role}</span>
-                {m.email && <span className="hidden text-[12px] text-muted-foreground sm:inline">{m.email}</span>}
+                <span className="w-28 shrink-0 text-muted-foreground">{m.role}</span>
+                <span className="hidden w-48 shrink-0 truncate text-[12px] text-muted-foreground sm:inline" title={m.email ?? undefined}>{m.email}</span>
                 {can.manage && m.user_id !== x.owner_id && (
                   <button type="button" aria-disabled={busy || undefined} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`, {}, `Remove ${m.name} from this rollout? They lose access to it and stop hearing about it; their notes and tasks stay.`)} aria-label={`Remove ${m.name}`} className={cn(hit, "opacity-0 focus:opacity-100 group-hover:opacity-100")}><Trash2 className="h-3.5 w-3.5" /></button>
                 )}

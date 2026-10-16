@@ -238,7 +238,7 @@ def _activity(db, scope, limit=30):
             for r in db.execute(sql, (*scope_params * 5, limit))]
 
 
-# ponytail: a visit ends after an hour without a dashboard load (the page polls every 15 s while open);
+# A visit ends after an hour without a dashboard load (the page polls every 15 s while open);
 # not a policy: nobody has a reason to tune it. Upgrade: read the activity pings' gaps instead.
 VISIT_GAP = timedelta(hours=1)
 

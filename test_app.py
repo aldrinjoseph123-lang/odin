@@ -4098,6 +4098,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             "/api/notifications/read": "marks the caller's own inbox read: personal UI state, not an act on shared data",
             "/api/activity": "the active-minute ping is itself the record (user_activity); an audit row a minute would drown the trail",
             "/api/doc-templates/preview.pdf": "renders an unsaved template to look at; changes nothing",
+            "/api/rules/dry-run": "tries an unsaved rule on the last 30 days; sends nothing, changes nothing (a POST only for its body)",
             # the Teams app's inbound address (answers, reads nothing) and browser crash reports (one log line)
             **dict.fromkeys(__import__("security").CSRF_EXEMPT, "CSRF-exempt: changes nothing (security.CSRF_EXEMPT)"),
         }

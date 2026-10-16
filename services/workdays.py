@@ -16,6 +16,11 @@ MAX_SPAN = 31
 MAX_ADD = 40000   # working days: more than a century; a bigger count is a bad row, not a plan
 
 
+def week_start(day):
+    """The Monday of the week holding `day` (weeks run Monday to Sunday)."""
+    return day - timedelta(days=day.weekday())
+
+
 def parse_holidays(text):
     """[(first, last, name)] from the policy text, or raise ValueError naming the line."""
     out = []

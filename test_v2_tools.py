@@ -123,7 +123,7 @@ class QuickAddTestCase(FixBase):
         r = c.post("/projects/1/tasks", json={"title": "Book the crane", "stage": stage, "assignee_id": pm, "due_date": "2026-12-01"},
                    headers={"X-CSRF-Token": csrf, "Accept": "application/json"})
         self.assertEqual(r.status_code, 200)
-        self.assertEqual([tuple(x) for x in self.sql("SELECT title, stage, assignee_id, due_date FROM tasks")], [("Book the crane", stage, pm, "2026-12-01")])
+        self.assertEqual(self.tuples("SELECT title, stage, assignee_id, due_date FROM tasks"), [("Book the crane", stage, pm, "2026-12-01")])
         self.assertEqual(self.audits("add_task"), 1)
         mine = c.get("/api/my-work").get_json()
         self.assertEqual([t["title"] for t in mine["tasks"]], ["Book the crane"])

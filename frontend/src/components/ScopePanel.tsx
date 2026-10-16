@@ -18,6 +18,7 @@ import { AISowPlan } from "@/components/AISowPlan"
 import { Notice } from "@/components/Notice"
 import { EmptyState } from "@/components/EmptyState"
 import { LoadFailed } from "@/components/LoadFailed"
+import { PanelLoading } from "@/components/PanelLoading"
 import { useLoad } from "@/lib/useLoad"
 import { useAction } from "@/lib/useAction"
 
@@ -33,7 +34,7 @@ export function ScopePanel({ projectId, signoff }: { projectId: number; signoff?
   const [opened, setOpened] = useState("")   // an existing item as opened: Save wakes when it differs (review P3-41)
   const { busy, note, setNote, act } = useAction(load)
   const error = note?.text
-  if (!d) return failed ? <LoadFailed what="the scope" onRetry={() => void load()} /> : <p className="text-[13px] text-muted-foreground">Loading…</p>
+  if (!d) return failed ? <LoadFailed what="the scope" onRetry={() => void load()} /> : <PanelLoading />
   const count = (s: ScopeStatus) => d.items.filter((i) => i.status === s).length
   const set = (patch: Partial<Draft>) => setEdit((x) => (x ? { ...x, ...patch } : x))
   const open = (x: Draft) => { setOpened(x.id ? JSON.stringify(x) : ""); setEdit(x) }

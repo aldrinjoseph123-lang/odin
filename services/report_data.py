@@ -25,16 +25,14 @@ from services import fields as fields_service
 from services import milestones as milestones_service
 from services import plan as plan_service
 from services import raid as raid_service
+from services.fmt import fmt_date
+from services.workdays import week_start
+
 
 def _day(stamp):
     """A stored UTC timestamp's workspace-local date, as 'YYYY-MM-DD' ('' when empty)."""
     d = local_date(stamp)
     return d.isoformat() if d else ""
-
-
-def _fmt(iso):
-    d = date.fromisoformat(iso[:10]) if iso else None
-    return d.strftime("%-d %b %Y") if d else "—"
 
 
 def draft_words(project, p, raid_items, audience="internal"):
@@ -46,11 +44,11 @@ def draft_words(project, p, raid_items, audience="internal"):
     parts = [f"{project['name']} is in {project['stage']} (stage {cur + 1} of {len(stages)}), {p['pct_complete']}% complete."]
     if f["forecast"]:
         if f["vs_target_days"] is None:
-            parts.append(f"Forecast to finish {_fmt(f['forecast'])}.")
+            parts.append(f"Forecast to finish {fmt_date(f['forecast'], '—')}.")
         elif f["vs_target_days"] > 0:
-            parts.append(f"Forecast to finish {_fmt(f['forecast'])}, {f['vs_target_days']} days after the {_fmt(f['target'])} target.")
+            parts.append(f"Forecast to finish {fmt_date(f['forecast'], '—')}, {f['vs_target_days']} days after the {fmt_date(f['target'], '—')} target.")
         else:
-            parts.append(f"Forecast to finish {_fmt(f['forecast'])}, {-f['vs_target_days']} days ahead of the {_fmt(f['target'])} target.")
+            parts.append(f"Forecast to finish {fmt_date(f['forecast'], '—')}, {-f['vs_target_days']} days ahead of the {fmt_date(f['target'], '—')} target.")
     if f["vs_baseline_days"] and audience == "internal":   # the baseline is an internal yardstick
         # slip carries down the chain, so blame the stage where it grew most, not the last one
         grew, prev = [], 0
@@ -67,11 +65,11 @@ def draft_words(project, p, raid_items, audience="internal"):
     ahead = [s for s in stages if s["status"] == "next"][:2]
     def line(st):   # the finish line is a day, not a span ("Closed: 19 Oct to 19 Oct" read as noise)
         if stages and st is stages[-1]:
-            return f"Close by {_fmt(st['forecast_end'])}."
+            return f"Close by {fmt_date(st['forecast_end'], '—')}."
         if st["forecast_start"] == st["forecast_end"]:
-            return f"{st['name']}: {_fmt(st['forecast_start'])}."
-        return f"{st['name']}: {_fmt(st['forecast_start'])} to {_fmt(st['forecast_end'])}."
-    nxt = ([f"Finish {stages[cur]['name']} by {_fmt(stages[cur]['forecast_end'])}."] if stages else []) + [line(st) for st in ahead]
+            return f"{st['name']}: {fmt_date(st['forecast_start'], '—')}."
+        return f"{st['name']}: {fmt_date(st['forecast_start'], '—')} to {fmt_date(st['forecast_end'], '—')}."
+    nxt = ([f"Finish {stages[cur]['name']} by {fmt_date(stages[cur]['forecast_end'], '—')}."] if stages else []) + [line(st) for st in ahead]
     return {"summary": " ".join(parts), "next_steps": "\n".join(nxt), "asks": ""}
 
 
@@ -105,7 +103,7 @@ def build(project, audience="internal"):
             x["done" if t["done"] else "open"] += 1
             x["late"] += t["late"]
     start = plan_service._d(project["start_date"]) or plan_service._d(project["created_at"]) or today
-    weeks, w = [], start - timedelta(days=start.weekday())
+    weeks, w = [], week_start(start)
     while w <= today:
         end = (w + timedelta(days=7)).isoformat()
         weeks.append({"week": w.isoformat(), "total": sum(1 for t in tasks if _day(t["created_at"]) < end),
@@ -173,6 +171,7 @@ def build(project, audience="internal"):
         data["baseline_at"] = None
         for s in data["stages"]:
             s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
+            s["forecast_reason"] = None   # it names the internal task that holds the stage
         data["finish"] = {k: v for k, v in p["finish"].items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
         data["work"].pop("open")
         data["documents"] = [{"category": c, "count": n} for c, n in Counter(d["category"] for d in documents).most_common()]
@@ -243,6 +242,7 @@ def customer_view(snapshot):
     d["baseline_at"] = None   # the baseline is an internal yardstick
     for s in d.get("stages", []):
         s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
+        s["forecast_reason"] = None   # it names the internal task that holds the stage
     d["finish"] = {k: v for k, v in d.get("finish", {}).items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
     d["raid"] = [r for r in d.get("raid", []) if r.get("customer_visible")]
     d["project_milestones"] = [m for m in d.get("project_milestones", []) if m.get("customer_visible")]

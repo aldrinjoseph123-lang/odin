@@ -74,15 +74,15 @@ function RuleRow({ r, summary, busy, logOpen, onEdit, onLog, onPause, onDelete }
     <div className="grid gap-1">
       <div className="flex flex-wrap items-center gap-2">
         <span className={cn("font-medium", r.paused && "text-muted-foreground")}>{r.name}</span>
-        {r.paused && <Tag kind="role">paused</Tag>}
+        {r.paused ? <Tag kind="warn">Paused</Tag> : <Tag kind="role">Active</Tag>}
         <span className="text-[12px] text-muted-foreground">
           {r.last_run ? <>ran {r.runs} {r.runs === 1 ? "time" : "times"}, last <Ago iso={r.last_run.at} />{!r.last_run.ok && " (an action failed)"}</> : "not run yet"}
         </span>
-        <span className="ml-auto flex items-center gap-1">
-          <Button size="sm" variant="ghost" aria-pressed={logOpen} onClick={onLog}>Run log</Button>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={onPause}>{r.paused ? "Resume" : "Pause"}</Button>
-          <Button size="sm" variant="ghost" aria-label={`Edit ${r.name}`} onClick={onEdit}>Edit</Button>
-          <Button size="sm" variant="ghost" className={danger} disabled={busy} aria-label={`Delete ${r.name}`} onClick={onDelete}>Delete</Button>
+        <span className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="outline" aria-pressed={logOpen} onClick={onLog}>Run log</Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={onPause}>{r.paused ? "Resume" : "Pause"}</Button>
+          <Button size="sm" variant="outline" aria-label={`Edit ${r.name}`} onClick={onEdit}>Edit</Button>
+          <Button size="sm" variant="outline" className={danger} disabled={busy} aria-label={`Delete ${r.name}`} onClick={onDelete}>Delete</Button>
         </span>
       </div>
       <p className="text-muted-foreground">{summary}</p>

@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
 import { Tag } from "@/components/ui/tag"
+import { LoadFailed } from "@/components/LoadFailed"
 import { Notice } from "@/components/Notice"
+import { SubmitForm } from "@/components/SubmitForm"
 import { FieldInput } from "@/components/FieldValues"
 import { answerAsk, asks as loadAsks, toggleTask, uploadAsk, type Ask, type AskQuestion } from "@/lib/api"
 import { useLoad } from "@/lib/useLoad"
@@ -38,7 +40,7 @@ function AskForm({ ask, busy, onSubmit }: { ask: Ask; busy: boolean; onSubmit: (
   const [v, setV] = useState<Record<string, string>>(() => Object.fromEntries(ask.answers.map((a) => [a.key, a.value])))
   const missing = ask.questions.filter((q) => q.required !== false && !(v[q.key!] ?? "").trim()).map((q) => q.label)
   return (
-    <form className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); onSubmit(v) }}>
+    <SubmitForm className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); if (!busy && missing.length === 0) onSubmit(v) }}>
       {ask.questions.map((q) => (
         <Field key={q.key} label={`${q.label}${q.required === false ? " (optional)" : ""}`}>
           <FieldInput field={{ name: q.label, kind: q.kind, choices: q.choices ?? [] }} value={v[q.key!] ?? ""} onChange={(x) => setV({ ...v, [q.key!]: x })} />
@@ -48,7 +50,7 @@ function AskForm({ ask, busy, onSubmit }: { ask: Ask; busy: boolean; onSubmit: (
         <Button type="submit" size="sm" loading={busy} disabled={missing.length > 0} aria-describedby={missing.length ? `ask-${ask.id}-missing` : undefined}>Send answers</Button>
         {missing.length > 0 && <span id={`ask-${ask.id}-missing`} className="text-[12px] text-muted-foreground">Still to answer: {missing.join(", ")}</span>}
       </div>
-    </form>
+    </SubmitForm>
   )
 }
 
@@ -77,10 +79,11 @@ function Given({ ask, projectId }: { ask: Ask; projectId: number }) {
 }
 
 export function AsksPanel({ projectId, staff, today, onChanged }: { projectId: number; staff: boolean; today: string; onChanged?: () => unknown }) {
-  const { data, reload } = useLoad(`asks:${projectId}`, () => loadAsks(projectId))
+  const { data, error, reload } = useLoad(`asks:${projectId}`, () => loadAsks(projectId))
   const { busy, note, act } = useAction(async () => { await reload(); await onChanged?.() })
   const [working, setWorking] = useState<number | null>(null)
   const [showDone, setShowDone] = useState(false)
+  if (!data && error) return <LoadFailed what="the requests" onRetry={() => void reload()} />
   if (!data || (data.asks.length === 0 && data.ratings.length === 0)) return null
   const open = data.asks.filter((a) => !a.done), done = data.asks.filter((a) => a.done)
   const run = (id: number, fn: () => Promise<unknown>, said: string) => { setWorking(id); void act(fn, said).finally(() => setWorking(null)) }

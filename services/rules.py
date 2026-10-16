@@ -31,6 +31,7 @@ from markupsafe import escape
 
 from db import get_db
 from policies import local_today, policy
+from services.fmt import plural
 
 EVENTS = {
     "rollout_created": "A rollout is created",
@@ -50,7 +51,7 @@ STAFF_ROLES = ("Project manager", "Sales", "Coordinator")   # a rule never reach
 SCANNED = ("stage_sla_breached", "task_overdue", "milestone_missed")
 MAX_CONDITIONS = 10
 MAX_ACTIONS = 10
-SCAN_MAX = 200     # ponytail: firings per scanned trigger per alert pass; a backlog drains over the next passes
+SCAN_MAX = 200     # firings per scanned trigger per alert pass; a backlog drains over the next passes
 RUNS_SHOWN = 100
 REPLAY_DAYS = 30
 
@@ -291,10 +292,24 @@ def fire(event, project_id, context=None, key=None):
 
 
 def flush():
-    """Run what the request queued (routes/rules.py, after the request). Never raises."""
+    """Run what the request queued (routes/rules.py, after the request). Never raises.
+    What the request wrote and did not commit is dropped first: a firing commits
+    its own writes and nothing else."""
     queue = g.pop("rules_later", None) if has_app_context() else None
+    if queue:
+        discard_uncommitted()
     for event, project_id, context, key in queue or ():
         _run(event, project_id, context, key)
+
+
+def discard_uncommitted():
+    """Roll back the request's open transaction, if it left one. Never raises."""
+    db = g.get("db") if has_app_context() else None
+    try:
+        if db is not None and db.in_transaction:
+            db.rollback()
+    except Exception:  # noqa: BLE001 — the connection is closed at teardown either way
+        pass
 
 
 def describe(event, ctx, db=None):
@@ -437,20 +452,17 @@ def _act(db, rule, project, a, what):
         if not told:
             return "nobody to tell (the roles are empty, or only the person who did it)"
         notify_users(told, "automation", project["id"], subject, body, exclude_user_id=actor, link=f"/projects/{project['id']}", email=bool(a.get("email", True)))
-        return f"told {len(told)} {'person' if len(told) == 1 else 'people'}"
+        return f"told {len(told)} {plural(len(told), 'person', 'people')}"
     if kind == "add_task":
         from db import get_stage_names
-        from services import template_tasks, workdays
+        from services import template_tasks
         tt = db.execute("SELECT tt.*, s.name AS stage_name FROM template_tasks tt JOIN stage_template_stages s ON s.id = tt.stage_id WHERE tt.id = ?",
                         (a.get("template_task_id"),)).fetchone()
         if tt is None:
             raise ActionFailed("that template task no longer exists: edit the rule")
         stage = tt["stage_name"] if tt["stage_name"] in get_stage_names(project["id"]) else None
-        due = workdays.add(local_today(db), tt["offset_days"], workdays.calendar(db)).isoformat()
         # a rule never reaches the customer: a template task meant for the customer is left unassigned
-        who = None if tt["role"] == "Customer" else template_tasks._who(db, project["id"], project["owner_id"], tt["role"])
-        db.execute("INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage, estimate_hours) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                   (project["id"], tt["title"], who, due, _now().isoformat(), f"Automation: {rule['name'][:60]}", stage, tt["estimate_hours"]))
+        _, due = template_tasks.make_task(db, project, tt, stage, local_today(db), f"Automation: {rule['name'][:60]}", customer=False, created_at=_now().isoformat())
         touch_project(db, project["id"])
         db.commit()
         return f"added the task {tt['title']} (due {due})"

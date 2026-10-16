@@ -120,6 +120,20 @@ def blocked_by(tasks, links, today=None):
     return out
 
 
+# An outsider (partner or customer) sees only their own tasks: what else holds one
+# of theirs is said without its title, so an internal task's name never reaches them.
+HIDDEN_WAIT = "work the team has not finished yet"
+
+
+def outsider_cut(waits, visible):
+    """`waits` (a blocked_by list) as an outsider reads it: the predecessors in
+    `visible` (their own task ids) by name, every other one as one nameless line."""
+    shown = [w for w in waits if w["id"] in visible]
+    if len(shown) < len(waits):
+        shown.append({"id": 0, "title": HIDDEN_WAIT, "late_by": 0})
+    return shown
+
+
 def chained_finish(tasks, links, today=None):
     """{open task id: (earliest finish, the late task at the root of its chain
     or None)}. A late task finishes today at the earliest; a task finishes no

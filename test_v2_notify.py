@@ -3,7 +3,7 @@ daily summaries, mute and follow, sharing a report, chasers, "since you last
 looked", the calendar feed, what's new, and each mail's next step.
 Run with: python -m unittest test_v2_notify"""
 import json
-from datetime import date, datetime, timedelta
+from datetime import date
 from unittest.mock import patch
 
 from test_app import STRONG_PASSWORD, app_module, drain_outbox
@@ -157,7 +157,7 @@ class ShareReportTestCase(Base):
         r = self.client.post("/api/projects/1/rollout-report", json={"summary": "All good", "next_steps": "", "asks": "", "share": True}, headers={"X-CSRF-Token": csrf})
         self.assertEqual(r.get_json()["shared"], 1)
         cus = self.sql("SELECT id FROM users WHERE email = 'cus@client.example'")[0][0]
-        self.assertEqual([tuple(x) for x in self.sql("SELECT user_id, kind, link FROM notifications")], [(cus, "report", "/projects/1/report?v=1")])
+        self.assertEqual(self.tuples("SELECT user_id, kind, link FROM notifications"), [(cus, "report", "/projects/1/report?v=1")])
         mail = self.outbox("mail")[0]["payload"]
         self.assertEqual(mail["signin"]["path"], "/projects/1/report?v=1")   # the link is minted as it is sent
         self.assertIn("shared with 1 customer contact", self.sql("SELECT details FROM audit_logs WHERE action = 'save_report'")[0][0])
@@ -211,10 +211,11 @@ class SinceTestCase(Base):
     def test_the_window_starts_at_the_previous_visit(self):
         pat = self._make_user("pat", "Member"); self.join(pat)
         c, h = self.client_for("pat")
-        long_ago = (datetime.utcnow() - timedelta(hours=5)).isoformat()
+        self.freeze_clock("services.dashboard")
+        long_ago = self.now(hours=-5).isoformat()
         self.sql("UPDATE users SET since_from = ?, since_seen_at = ? WHERE id = ?", long_ago, long_ago, pat)
         self.sql("INSERT INTO raid_items (project_id, kind, title, created_by, created_at, updated_at) VALUES (1, 'blocker', 'No VPN', 'Admin', ?, ?)",
-                 datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+                 self.now().isoformat(), self.now().isoformat())
         since = c.get("/api/dashboard").get_json()["data"]["since"]
         self.assertEqual(since["from"], long_ago)
         self.assertEqual([(i["kind"], i["text"]) for i in since["items"]], [("raid_blocker", "No VPN")])
@@ -225,8 +226,9 @@ class SinceTestCase(Base):
     def test_my_own_acts_and_other_rollouts_are_left_out(self):
         pat = self._make_user("pat", "Member")
         c, h = self.client_for("pat")
+        self.freeze_clock("services.dashboard")
         self.sql("INSERT INTO raid_items (project_id, kind, title, created_by, created_at, updated_at) VALUES (1, 'risk', 'Not mine', 'Admin', ?, ?)",
-                 datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+                 self.now().isoformat(), self.now().isoformat())
         self.assertEqual(c.get("/api/dashboard").get_json()["data"]["since"]["items"], [])
 
 

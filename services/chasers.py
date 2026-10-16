@@ -15,7 +15,7 @@ from datetime import datetime
 
 from markupsafe import escape
 
-from db import PROJECT_OPEN_SQL, get_db
+from db import PROJECT_OPEN_SQL, customer_ids, get_db
 from policies import local_date, local_today, policy
 from services import workdays
 
@@ -60,7 +60,7 @@ def run(db=None, today=None):
             f"AND a.chase_count < ? AND {live}", (cap,)).fetchall():
         if not _due(a["chased_at"] or a["requested_at"], today, every, cal):
             continue
-        customers = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Customer'", (a["project_id"],))]
+        customers = customer_ids(a["project_id"], db)
         if not customers:
             continue
         db.execute("UPDATE stage_approvals SET chase_count = chase_count + 1, chased_at = ? WHERE id = ?", (now, a["id"]))

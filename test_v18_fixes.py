@@ -252,11 +252,12 @@ class SignInByEmailTestCase(Base):
                 self.assertEqual(self._signed_in(self.login(typed)), "ajoseph")
         self.assertIsNone(self._signed_in(self.login("ajoseph@example.com", "wrong-password-1")))
 
-    def test_an_address_two_accounts_could_mean_signs_in_neither(self):
+    def test_an_address_names_its_owner_over_a_username_equal_to_it(self):
         a = self._make_user("one", "Member")
-        self._make_user("ONE@example.com", "Member")   # a username that is someone else's address
+        self._make_user("ONE@example.com", "Member")   # a username that is someone else's address (older data)
         self.sql("UPDATE users SET email = 'one@example.com' WHERE id = ?", a)
-        self.assertIsNone(self._signed_in(self.login("one@EXAMPLE.com")))
+        # the address is the owner's (v2.0.0 check round; routes/auth._account_for says why)
+        self.assertEqual(self._signed_in(self.login("one@EXAMPLE.com")), "one")
         self.assertEqual(self._signed_in(self.login("one")), "one")   # the exact name still works
 
     def test_a_failure_by_email_counts_against_the_real_account(self):

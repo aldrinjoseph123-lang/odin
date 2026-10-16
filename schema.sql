@@ -354,6 +354,27 @@ CREATE TABLE IF NOT EXISTS task_links (
     depends_on_task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     UNIQUE (task_id, depends_on_task_id)
 );
+CREATE INDEX IF NOT EXISTS idx_task_links_project ON task_links (project_id);
+
+-- The tasks a template's stages bring to a new rollout (services/template_tasks.py):
+-- the project role each lands on, a due offset from the stage's start, and at most one
+-- other template task it waits on. Not project-keyed: editing one never touches
+-- rollouts already made; they go with their stage.
+CREATE TABLE IF NOT EXISTS template_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stage_id INTEGER NOT NULL REFERENCES stage_template_stages(id) ON DELETE CASCADE,
+    title TEXT NOT NULL, role TEXT, offset_days INTEGER NOT NULL DEFAULT 0, estimate_hours REAL,
+    waits_on_id INTEGER REFERENCES template_tasks(id) ON DELETE SET NULL,
+    position INTEGER NOT NULL DEFAULT 0
+);
+
+-- The calls to the CRM intake endpoint (services/intake.py): who, when, what became of it.
+-- A trimmed log, newest 200 kept, not history: project_id is set to NULL when the rollout is purged.
+CREATE TABLE IF NOT EXISTS intake_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_name TEXT NOT NULL, at TEXT NOT NULL, status INTEGER NOT NULL, result TEXT NOT NULL,
+    deal_id TEXT, project_id INTEGER, detail TEXT
+);
 
 -- Customer self-service (services/asks.py): a task's kind (tasks.kind: task |
 -- upload | form, with tasks.ask_category or tasks.ask_form) and the answers

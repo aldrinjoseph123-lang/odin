@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type FormReply, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
 import { Ago } from "@/components/Ago"
-import { fmtDate } from "@/lib/format"
+import { fmtDateY } from "@/lib/format"
 import { copyWithToast } from "@/lib/copy"
 import { Notice } from "@/components/Notice"
 import { cn } from "@/lib/utils"
@@ -113,7 +113,7 @@ export default function Settings(_props: { user: User }) {
 
       {/* min-w-0 on every grid item: a wide table scrolls inside its panel
           instead of stretching the page on a phone */}
-      <div className={cn("mt-4 grid gap-4 [&>*]:min-w-0", section !== "map" && "max-w-5xl")}>
+      <div className={cn("mt-4 grid gap-4 [&>*]:min-w-0", section !== "map" && "max-w-7xl")}>
         {section === "general" && policyForm("general")}
         {section === "people" && policyForm("people")}
         {section === "security" && (
@@ -270,7 +270,8 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
     p.key === "default_template" ? templates.find((t) => String(t.id) === c)?.name ?? c
       : p.key === "date_format" ? DATE_EXAMPLES[c] ?? c
         : p.key === "default_theme" ? (c === "system" ? "Follow the device" : cap(c)) : p.key === "default_accent" ? cap(c)
-          : p.key === "mfa_required" ? ({ off: "Optional (each person decides)", admins: "Required for admins", everyone: "Required for everyone" }[c] ?? c) : c
+          : p.key === "mfa_required" ? ({ off: "Optional (each person decides)", admins: "Required for admins", everyone: "Required for everyone" }[c] ?? c)
+            : p.key === "gate_override" ? ({ admin: "Admins only", admin_and_pm: "Admins and the project manager" }[c] ?? c) : c
   return (
     <Panel title={title} hint={hint}>
       <form onSubmit={submit} className="grid grid-cols-1 gap-4">
@@ -296,10 +297,11 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               )}
               {p.secret && p.saved && (
                 <Button type="button" size="sm" variant="ghost" className={cn("self-start", danger)} loading={busy} aria-label={`Remove the saved ${p.label}`}
-                  onClick={() => void send(`/settings/policies/${area}`, { [p.key]: "", clear: p.key }, "Remove the saved address? Odin stops posting there.")}>Remove</Button>
+                  onClick={() => void send(`/settings/policies/${area}`, { [p.key]: "", clear: p.key }, `Remove the saved ${p.label}? Odin stops using it.`)}>Remove</Button>
               )}
               {p.kind === "text" && !p.multiline && (
-                <Input id={`pol-${p.key}`} required maxLength={p.max} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-sm text-[13px]" />
+                <Input id={`pol-${p.key}`} required={!p.secret} maxLength={p.max} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-sm text-[13px]"
+                  {...(p.secret ? { type: "password", autoComplete: "off", placeholder: p.saved ? "Saved and hidden: paste a new one to replace it" : "Paste the key" } : {})} />
               )}
               {p.kind === "text" && p.multiline && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })}
@@ -389,7 +391,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
                     <td className={cn(td, "font-medium")}>{t.name}</td>
                     <td className={cn(td, "whitespace-nowrap")}><Ago iso={t.created_at} /> · {t.created_by}</td>
                     <td className={cn(td, "whitespace-nowrap")}>{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
-                    <td className={cn(td, "whitespace-nowrap")}>{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDate(t.expires_at)}</td>
+                    <td className={cn(td, "whitespace-nowrap")}>{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDateY(t.expires_at)}</td>
                     <td className={cn(td, "text-right")}>{!dead && <Button size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
                   </tr>
                 )

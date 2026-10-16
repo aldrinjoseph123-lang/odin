@@ -5,8 +5,7 @@ import { Notice } from "@/components/Notice"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { fieldAuto } from "@/lib/ui"
 import type { AdminUser } from "@/lib/api"
-
-const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
+import { plural } from "@/lib/format"
 
 // Deactivating someone who holds open work: offer to move it to a colleague in
 // the same step (their open tasks, the rollouts they manage, the RAID items they
@@ -29,7 +28,7 @@ export function HandOverDialog({ u, colleagues, busy, send, onClose }: {
         <form onSubmit={submit} className="grid grid-cols-1 gap-4">
           <DialogHeader>
             <DialogTitle>Deactivate {u.name}?</DialogTitle>
-            <DialogDescription>Their open sessions end now. They hold {[n(tasks, "open task"), n(rollouts, "rollout they manage", "rollouts they manage"), n(raid, "RAID item")].join(", ")}.</DialogDescription>
+            <DialogDescription>Their open sessions end now. They hold {[plural(tasks, "open task"), plural(rollouts, "rollout they manage", "rollouts they manage"), plural(raid, "RAID item")].join(", ")}.</DialogDescription>
           </DialogHeader>
           <Field label="Hand it over to" hint="The new owner is told. Finished work stays under their name. Leave it unset to move nothing.">
             <select value={to} onChange={(e) => setTo(e.target.value)} aria-label="Hand over to" className={fieldAuto}>

@@ -5,8 +5,9 @@ alert, dashboard figure or report has it; staff see it in the Flow's holding lan
 rollouts list's "Pending intake" view until a project manager confirms it by attaching
 the PO and taking ownership (routes/intake.py).
 
-The deal id is the key: a repeat call answers 200 with the rollout it made before, never a
-second one. Every call is audited under the token's name and kept in intake_calls (the
+The deal id is the key, per source (the token's name): a repeat call answers 200 with the
+rollout it made before, never a second one; the same deal id from another source is a 409
+that names nothing of the first. Every call is audited under the token's name and kept in intake_calls (the
 newest LOG_KEEP rows; the last SHOWN are on the settings page).
 """
 import json
@@ -21,6 +22,7 @@ from db import copy_template_stages, get_db, set_project_manager
 from policies import email_domain_allowed, policy
 from security import valid_email
 from services import fields as custom_fields
+from services.fmt import plural
 
 # The request body: each key typed and length-capped. Anything else is refused.
 LIMITS = {"client": 200, "name": 200, "product": 120, "vendor": 120, "po_number": 60, "deal_id": 80}
@@ -58,7 +60,9 @@ def recent_calls(db, n=SHOWN):
 
 def over_rate(db, token):
     """True when this token has already made its quota of calls in the last minute
-    (the refused ones do not count, or a flood would never end)."""
+    (the refused ones do not count, or a flood would never end). It counts intake_calls,
+    the log every call already lands in, rather than security.rate_limited: that would
+    write a second row per call into login_attempts, and the `_now` seam lets a test move the minute."""
     since = (_now() - timedelta(seconds=60)).isoformat()
     n = db.execute("SELECT COUNT(*) FROM intake_calls WHERE token_name = ? AND at > ? AND result != 'rate_limited'", (token, since)).fetchone()[0]
     return n >= policy("intake_rate_per_min", db)
@@ -77,7 +81,7 @@ def clean(body):
         raise Refused(400, "Send a JSON object")
     unknown = sorted(set(body) - KEYS)
     if unknown:
-        raise Refused(400, f"Unknown {'field' if len(unknown) == 1 else 'fields'}: {', '.join(str(k)[:40] for k in unknown)}")
+        raise Refused(400, f"Unknown {plural(len(unknown), 'field')}: {', '.join(str(k)[:40] for k in unknown)}")
     problems, out, warnings = [], {}, []
     for key, limit in LIMITS.items():
         try:
@@ -138,7 +142,7 @@ def _fields(raw, problems):
         else:
             unknown.append(str(key)[:40])
     if unknown:
-        problems.append(f"fields: unknown custom {'field' if len(unknown) == 1 else 'fields'} {', '.join(unknown)}")
+        problems.append(f"fields: unknown custom {plural(len(unknown), 'field')} {', '.join(unknown)}")
         return {}
     try:
         return custom_fields.clean_values(items, creating=True)
@@ -190,6 +194,9 @@ def create(db, c, source):
     try:
         if (old := find(db, c["deal_id"])) is not None:
             db.rollback()
+            if (old["intake_source"] or "").lower() != source.lower():
+                # a deal id is the key only within one source: another CRM's rollout is not this caller's to read
+                raise Refused(409, "That deal id is already taken by another source; send it with the token that created it")
             return old, False, None
         now = _now().isoformat()
         pid = db.execute(

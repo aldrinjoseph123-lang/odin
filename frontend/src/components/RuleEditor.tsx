@@ -3,12 +3,15 @@ import { Trash2 } from "lucide-react"
 import { EmptyState } from "@/components/EmptyState"
 import { Notice } from "@/components/Notice"
 import { PanelTitle } from "@/components/PanelTitle"
+import { SubmitForm } from "@/components/SubmitForm"
 import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { ApiError, dryRunRule, type DryRun, type RuleAction, type RuleActionKind, type RuleCondition, type RuleConditionKind, type RuleDraft, type RuleOptions, type RulesData } from "@/lib/api"
+import { dryRunRule, type DryRun, type RuleAction, type RuleActionKind, type RuleCondition, type RuleConditionKind, type RuleDraft, type RuleOptions, type RulesData } from "@/lib/api"
+import { plural } from "@/lib/format"
 import { blankAction, blankCondition, firstValue } from "@/lib/rules"
 import { checkbox, field as fieldLook, fieldArea } from "@/lib/ui"
+import { useAction } from "@/lib/useAction"
 
 // Settings › Automations: one rule in three columns — When (the trigger), If (the
 // conditions, all of which must hold) and Then (the actions). Dry run asks the
@@ -60,26 +63,24 @@ export function RuleEditor({ data, start, busy, onSave, onCancel }: {
   const o = data.options
   const [r, setR] = useState<RuleDraft>(() => structuredClone(start))
   const [dry, setDry] = useState<DryRun | null>(null)
-  const [dryNote, setDryNote] = useState<string | null>(null)
-  const [trying, setTrying] = useState(false)
+  const { busy: trying, note: dryNote, act } = useAction()
   const fieldOf = (id?: number) => o.fields.find((f) => f.id === id)
   const setCond = (i: number, c: RuleCondition) => setR({ ...r, conditions: r.conditions.map((x, j) => j === i ? c : x) })
   const setAct = (i: number, a: RuleAction) => setR({ ...r, actions: r.actions.map((x, j) => j === i ? a : x) })
 
   function submit(e: FormEvent) { e.preventDefault(); void onSave(r) }
   async function tryIt() {
-    setTrying(true); setDryNote(null)
-    try { setDry(await dryRunRule(r)) } catch (e) { setDry(null); setDryNote(e instanceof ApiError ? e.message : "The dry run did not work") } finally { setTrying(false) }
+    if (!(await act(async () => setDry(await dryRunRule(r))))) setDry(null)
   }
 
   const condKinds = (Object.keys(data.conditions) as RuleConditionKind[]).filter((k) => k !== "field" || o.fields.length > 0)
   const actKinds = (Object.keys(data.actions) as RuleActionKind[]).filter((k) => (k !== "set_field" || o.fields.length > 0) && (k !== "add_task" || o.template_tasks.length > 0))
   return (
-    <form onSubmit={submit} aria-label="Rule" className="grid grid-cols-1 gap-3">
+    <SubmitForm onSubmit={submit} aria-label="Rule" className="grid grid-cols-1 gap-3">
       <Field label="Name" className="max-w-md">
         <Input value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} required maxLength={100} placeholder="e.g. Deployment starts: tell the team" className="h-8 text-[13px]" />
       </Field>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-3">
         <Column title="When" hint="what starts it">
           <Field label="Trigger">
             <select value={r.event} onChange={(e) => { const event = e.target.value as RuleDraft["event"]; setR({ ...r, event, event_config: event === "field_set" ? { field_id: o.fields[0]?.id, value: null } : {} }) }} className={fieldLook}>
@@ -155,9 +156,9 @@ export function RuleEditor({ data, start, busy, onSave, onCancel }: {
         <Button type="button" size="sm" variant="outline" loading={trying} disabled={busy} onClick={() => void tryIt()}>Dry run</Button>
         <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
       </div>
-      {dryNote && <Notice bad>{dryNote}</Notice>}
+      {dryNote?.bad && <Notice bad>{dryNote.text}</Notice>}
       {dry && <DryRunResult d={dry} />}
-    </form>
+    </SubmitForm>
   )
 }
 
@@ -183,11 +184,14 @@ function ActionFields({ a, i, o, fieldOf, onChange }: { a: RuleAction; i: number
               <label key={role} className="flex items-center gap-2"><input type="checkbox" className={checkbox} checked={a.roles.includes(role)} onChange={(e) => onChange({ ...a, roles: flip(a.roles, role, e.target.checked) })} />{role}</label>
             ))}
           </fieldset>
-          <Field label="And these people">
-            <select multiple value={a.user_ids.map(String)} onChange={(e) => onChange({ ...a, user_ids: Array.from(e.target.selectedOptions, (x) => Number(x.value)) })} className={`${fieldArea} h-20`}>
-              {o.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-          </Field>
+          <fieldset className="grid gap-1 text-[13px]">
+            <legend className="mb-1 text-[12px] text-muted-foreground">And these people</legend>
+            <div className="grid max-h-40 gap-1 overflow-y-auto">
+              {o.users.map((u) => (
+                <label key={u.id} className="flex items-center gap-2"><input type="checkbox" className={checkbox} checked={a.user_ids.includes(u.id)} onChange={(e) => onChange({ ...a, user_ids: flip(a.user_ids, u.id, e.target.checked) })} />{u.name}</label>
+              ))}
+            </div>
+          </fieldset>
           <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className={checkbox} checked={a.email} onChange={(e) => onChange({ ...a, email: e.target.checked })} />Email too (the bell always)</label>
           <Field label="Message" hint="optional"><textarea aria-label={`${n} message`} rows={2} maxLength={500} value={a.message} onChange={(e) => onChange({ ...a, message: e.target.value })} className={fieldArea} /></Field>
         </>
@@ -228,13 +232,13 @@ function ActionFields({ a, i, o, fieldOf, onChange }: { a: RuleAction; i: number
 function DryRunResult({ d }: { d: DryRun }) {
   return (
     <section aria-label="Dry run" className="grid gap-2 rounded-lg bg-muted/50 p-3 text-[13px]">
-      <PanelTitle n={false} hint={`${d.total} ${d.total === 1 ? "rollout" : "rollouts"} in the last 30 days`} className="mb-0">Dry run</PanelTitle>
+      <PanelTitle n={false} hint={`${plural(d.total, "rollout")} in the last 30 days`} className="mb-0">Dry run</PanelTitle>
       {d.matches.length === 0 ? <EmptyState className="py-4">No rollout would have matched.</EmptyState> : (
         <ul className="grid gap-1">
           {d.matches.map((m) => (
             <li key={m.project_id} className="flex flex-wrap gap-x-2">
               <a href={`/projects/${m.project_id}`} className="font-medium hover:underline">{m.name}</a>
-              <span className="text-muted-foreground">{m.client} · {m.times} {m.times === 1 ? "time" : "times"} · latest: {m.last}</span>
+              <span className="text-muted-foreground">{m.client} · {plural(m.times, "time")} · latest: {m.last}</span>
             </li>
           ))}
         </ul>

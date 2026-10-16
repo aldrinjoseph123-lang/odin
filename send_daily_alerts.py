@@ -14,6 +14,7 @@ from app import app  # only for the Flask app context that get_db() needs
 from db import PROJECT_OPEN_SQL, get_db
 from policies import policy
 from services.alerts import build_alerts, project_states
+from services.fmt import plural
 
 import graph
 
@@ -71,7 +72,7 @@ def send_due_reminders(db):
         # the mail carries a fresh one-time sign-in link, minted by the outbox as it sends
         one = {t["project_id"] for t in tasks}
         pid = one.pop() if tasks[0]["kind"] == "external" and len(one) == 1 else None
-        notify_users([uid], "due", pid, f"{n} task{'s' if n != 1 else ''} need{'' if n != 1 else 's'} you today", f"<ul>{items}</ul>",
+        notify_users([uid], "due", pid, f"{n} {plural(n, 'task')} need{'' if n != 1 else 's'} you today", f"<ul>{items}</ul>",
                      link=f"/projects/{pid}" if pid else "/my-work")
     return len(by_person)
 

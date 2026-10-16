@@ -85,7 +85,7 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect, portfolioP
     return [addDays(all[0], -7), addDays(all[all.length - 1], 21)]
   }, [rows, data])
   const span = daysBetween(t0, t1) + 1
-  // ponytail: a range over ~700 days runs past the page edge at 1 px a day; zoom out or filter the rollouts first
+  // A range over ~700 days runs past the page edge at 1 px a day; zoom out or filter the rollouts first
   const px = printing ? Math.max(1, (PRINT_W - LEFT) / span) : PX[zoom]
   const dense = zoom === "quarter" || printing   // Mondays over the axis, no shading of days off
   const x = (iso: string) => daysBetween(t0, iso) * px
@@ -215,7 +215,7 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect, portfolioP
                       </button>
                     )}
                     {r.target_end_date && <span className={cn("absolute inset-y-1 w-0 border-l border-dashed", r.forecast && r.forecast > r.target_end_date ? "border-bad-line" : "border-foreground/60")} style={{ left: x(r.target_end_date) + px }} title={`Target ${fmtDate(r.target_end_date)}`} />}
-                    {from && to && <BarLabel at={x(from) + w(from, to) + 4}>{r.pct_complete}% · {RAG_WORD[r.rag]}{r.forecast && ` · ends ${shortDay(r.forecast)}`}</BarLabel>}
+                    {from && to && <BarLabel at={x(from) + w(from, to) + 4}>{r.pct_complete > 0 ? `${r.pct_complete}%` : "Not started"} · {RAG_WORD[r.rag]}{r.forecast && ` · ends ${shortDay(r.forecast)}`}</BarLabel>}
                   </div>
                 </div>
               )

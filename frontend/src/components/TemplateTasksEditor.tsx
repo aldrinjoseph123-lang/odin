@@ -5,6 +5,7 @@ import { Notice } from "@/components/Notice"
 import { LoadFailed } from "@/components/LoadFailed"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { plural } from "@/lib/format"
 import { ApiError, saveTemplateTasks, templateTasks, type TemplateTask, type TemplateTaskInput } from "@/lib/api"
 import { fieldAuto } from "@/lib/ui"
 import { toast } from "@/lib/toast"
@@ -44,7 +45,7 @@ export function TemplateTasksEditor({ templateId, stages, label }: { templateId:
       const r = await saveTemplateTasks(templateId, rows.map(toInput))
       setRows(r.tasks.map(toRow))
       await reload()
-      toast(`Saved ${r.tasks.length} task${r.tasks.length === 1 ? "" : "s"} for ${label}`)
+      toast(`Saved ${plural(r.tasks.length, "task")} for ${label}`)
     } catch (e) { setProblem(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
   return (

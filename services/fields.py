@@ -14,6 +14,7 @@ import math
 from core import as_bool, parse_date, text_field
 from db import get_db
 from policies import policy
+from services.fmt import fmt_date
 
 KINDS = {"text": "Text", "number": "Number", "date": "Date", "choice": "Choice", "yesno": "Yes / no"}
 NAME_MAX = 60
@@ -96,19 +97,13 @@ def shown(kind, value):
     if kind == "yesno":
         return "Yes" if value in ("1", True) else "No"
     if kind == "date":
-        from services.report_pdf import _fmt
-        return _fmt(value)
+        return fmt_date(value)
     return str(value)
 
 
-def _stored(project_id):
-    return {r["field_id"]: r["value"] for r in get_db().execute(
+def _stored(project_id, db=None):
+    return {r["field_id"]: r["value"] for r in (db or get_db()).execute(
         "SELECT field_id, value FROM project_field_values WHERE project_id = ?", (project_id,))}
-
-
-def csv_cell(value):
-    """A typed value as an export cell."""
-    return "" if value is None else ("Yes" if value else "No") if isinstance(value, bool) else value
 
 
 def for_project(project_id, customer=False):
@@ -137,16 +132,6 @@ def named_values(project_ids):
     """{project id: {field name: value or None}}: every field, as staff see them (the read-only API)."""
     defs, have = definitions(), values_for(project_ids)
     return {pid: {f["name"]: have[pid].get(f["id"]) for f in defs} for pid in project_ids}
-
-
-def list_view(project_ids, customer=False):
-    """The rollouts list: its extra columns (fields shown in the list), a
-    filter per choice field, and each row's values in column order."""
-    defs = definitions(customer)
-    columns = [{"id": f["id"], "name": f["name"], "kind": f["kind"]} for f in defs if f["show_in_list"]]
-    filters = [{"id": f["id"], "name": f["name"], "choices": f["choices"]} for f in defs if f["kind"] == "choice"]
-    have = values_for(project_ids, customer, list_only=True)
-    return columns, filters, {pid: [have[pid].get(c["id"]) for c in columns] for pid in project_ids}
 
 
 def clean_values(items, creating=False):
@@ -178,7 +163,7 @@ def save(db, project_id, values):
     """Write the values; returns the changes as "Name: old → new" for the audit
     row (nothing when nothing changed). The caller commits."""
     defs = {f["id"]: f for f in definitions(db=db)}
-    old = {r["field_id"]: r["value"] for r in db.execute("SELECT field_id, value FROM project_field_values WHERE project_id = ?", (project_id,))}
+    old = _stored(project_id, db)
     changes = []
     for fid, value in values.items():
         if old.get(fid) == value:

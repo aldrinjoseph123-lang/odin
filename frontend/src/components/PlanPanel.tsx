@@ -12,7 +12,7 @@ import { ApiError, plan as loadPlan, rebaseline, savePlan } from "@/lib/api"
 import { fillSuggested, setDate, workDays, type PlanRow } from "@/lib/plan"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
-import { fmtDate, forecastTone } from "@/lib/format"
+import { fmtDate, forecastTone, plural } from "@/lib/format"
 import { Notice } from "@/components/Notice"
 import { LoadFailed } from "@/components/LoadFailed"
 import { useLoad } from "@/lib/useLoad"
@@ -68,7 +68,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
   const save = () => run(async () => {
     const r = await savePlan(projectId, rows.map(({ id, plan_start, plan_end }) => ({ id, plan_start, plan_end })), reason.trim())
     setReason("")
-    const said = r.baselined ? "Plan saved and frozen as the baseline." : `Plan saved: ${r.changed} date${r.changed === 1 ? "" : "s"} moved.`
+    const said = r.baselined ? "Plan saved and frozen as the baseline." : `Plan saved: ${plural(r.changed, "date")} moved.`
     return r.warning ? `${said} ${r.warning}` : said
   })
   const f = d.finish

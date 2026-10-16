@@ -60,12 +60,13 @@ const KIND = { task: "Task", target: "Target", move: "Moved", approval: "Approva
 function Chip({ it, full, href, still, onMove, scope = "" }: { it: Item; full?: boolean; href: (id: number) => string; still?: boolean; onMove?: (it: Item) => void; scope?: string }) {
   // late is a glyph and a word, not red alone (WCAG 1.4.1, test report UX-19); so is a target at risk
   const late = it.tone === "bad" && !it.done && (it.kind === "task" || it.kind === "target")
-  const atRisk = it.kind === "target" && it.tone === "warn"
+  const warnTarget = it.kind === "target" && it.tone === "warn"
+  const atRisk = warnTarget && it.state !== "due_soon"   // the hourglass and its amber are for a rollout over its SLA; due soon is only a date coming up
   const missed = it.kind === "milestone" && it.tone === "warn"
   const Icon = late ? AlarmClock : atRisk ? Hourglass : ICON[it.kind]
-  const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
+  const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" && (it.kind !== "target" || atRisk) ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
   // what colour and the glyph say, in words for the screen reader (P2-44): "Task, late: …", "Target, due soon: …"
-  const said = `${KIND[it.kind]}${late ? ", late" : atRisk && it.state ? `, ${STATE[it.state].label.toLowerCase()}` : missed ? ", missed" : it.done ? (it.kind === "milestone" ? ", reached" : ", done") : ""}:`
+  const said = `${KIND[it.kind]}${late ? ", late" : warnTarget && it.state ? `, ${STATE[it.state].label.toLowerCase()}` : missed ? ", missed" : it.done ? (it.kind === "milestone" ? ", reached" : ", done") : ""}:`
   const movable = !!it.task && !still
   const { setNodeRef, listeners, transform, isDragging } = useDraggable({ id: still ? `still-${it.key}` : `${scope}${it.key}`, data: it, disabled: !movable })
   const navigate = useNavigate()
@@ -315,7 +316,7 @@ export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: 
                       <button type="button" onClick={() => setOpenDay(openDay === day ? null : day)} aria-label={`${fmtDate(day)}, ${list.length} item${list.length === 1 ? "" : "s"}`}
                         className={cn("mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] hover:bg-muted", day === today && "bg-primary font-semibold text-primary-foreground hover:bg-primary", openDay === day && day !== today && "ring-2 ring-primary/40")}>{Number(day.slice(8, 10))}</button>
                       <div style={{ height: laneCount * 18 }} aria-hidden />
-                      {extra > 0 && <button type="button" onClick={() => setOpenDay(day)} className="block px-2 text-[11px] text-muted-foreground hover:text-foreground">+{extra} rollout{extra === 1 ? "" : "s"}</button>}
+                      {extra > 0 && <button type="button" onClick={() => setOpenDay(day)} className="block px-2 text-[11px] text-muted-foreground hover:text-foreground" title={`${extra} more rollout${extra === 1 ? " is" : "s are"} running this week; open the day for the list`}>+{extra} more running</button>}
                       {list.slice(0, 3).map((it) => <Chip key={it.key} it={it} href={href} onMove={ask} />)}
                       {list.length > 3 && <button type="button" onClick={() => setOpenDay(day)} className="px-2 text-[11px] text-muted-foreground hover:text-foreground">+{list.length - 3} more</button>}
                     </Day>

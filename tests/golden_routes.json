@@ -9,7 +9,7 @@
     "POST /account/avatar": "302 302 302 302 302 302 302 302",
     "POST /account/avatar/remove": "302 302 302 302 302 302 302 302",
     "POST /account/calendar": "302 200 200 200 200 403 403 403",
-    "POST /account/calendar/off": "302 200 200 200 200 200 200 200",
+    "POST /account/calendar/off": "302 200 200 200 200 403 403 403",
     "POST /account/email": "302 302 302 302 302 302 302 302",
     "POST /account/email/verify": "302 302 302 302 302 302 302 302",
     "POST /account/home": "302 302 302 302 302 302 302 302",

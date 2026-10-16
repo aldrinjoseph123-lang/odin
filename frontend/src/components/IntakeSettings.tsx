@@ -11,7 +11,7 @@ import { Tag } from "@/components/ui/tag"
 import { intakeSettings, postForm, type IntakeCall, type IntakeSettingsData } from "@/lib/api"
 import { askConfirm } from "@/lib/confirm"
 import { copyWithToast } from "@/lib/copy"
-import { fmtDate } from "@/lib/format"
+import { fmtDateY } from "@/lib/format"
 import { toast } from "@/lib/toast"
 import { danger, field as fieldLook, fieldAuto, td, th } from "@/lib/ui"
 import { useAction } from "@/lib/useAction"
@@ -89,7 +89,7 @@ function Tokens({ d, busy, act }: { d: IntakeSettingsData; busy: boolean; act: A
                     <td className={cn(td, "font-medium")}>{t.name}</td>
                     <td className={cn(td, "whitespace-nowrap")}><Ago iso={t.created_at} /> · {t.created_by}</td>
                     <td className={cn(td, "whitespace-nowrap")}>{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
-                    <td className={cn(td, "whitespace-nowrap")}>{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDate(t.expires_at)}</td>
+                    <td className={cn(td, "whitespace-nowrap")}>{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDateY(t.expires_at)}</td>
                     <td className={cn(td, "text-right")}>{!dead && (
                       <Button size="sm" variant="ghost" className={danger} disabled={busy} aria-label={`Revoke ${t.name}`}
                         onClick={async () => { if (await askConfirm(`Revoke ${t.name}? The CRM stops being able to send intakes with it now.`, "Revoke")) void act(() => postForm(`/settings/api-tokens/${t.id}/revoke`), `Revoked ${t.name}.`) }}>Revoke</Button>

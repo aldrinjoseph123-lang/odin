@@ -10,6 +10,7 @@ from flask import url_for
 from db import get_db, get_setting
 from policies import policy
 from services import outbox
+from services.fmt import plural
 
 
 def odin_link(user, path, label="Open in Odin"):
@@ -188,7 +189,7 @@ def send_summaries(db=None):
                 lines = "".join(f"<li><b>{escape(it['title'])}</b>{' — ' + escape(it['text']) if it['text'] else ''}</li>" for it in group)
                 parts.append(f"<h3>{head}</h3><ul>{lines}</ul>" + (next_step(user, pid) if pid else ""))
             n = len(items)
-            subject = f"Odin daily summary: {n} update{'s' if n != 1 else ''} on {len(groups)} rollout{'s' if len(groups) != 1 else ''}"
+            subject = f"Odin daily summary: {n} {plural(n, 'update')} on {len(groups)} {plural(len(groups), 'rollout')}"
             if policy("notify_email_enabled", db) and any(it.get("mail", True) for it in items):
                 queue_mail(user, subject, "".join(parts), "/board" if user["kind"] == "external" else "/dashboard", "Open Odin")
             if user["kind"] != "external" and policy("notify_teams_chat_enabled", db) and any(it.get("teams", True) for it in items):
@@ -207,42 +208,50 @@ def _odin_url(project_id, link):
     return f"{public_base()}{path}" if path else None
 
 
-def report_mail_failure(error, alias=False, teams=False):
+def admin_ids(db=None):
+    """The active Admins' user ids: who hears of a failure."""
+    return [r[0] for r in (db or get_db()).execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
+
+
+# what report_mail_failure can say, each its own daily notice (so one never hides another):
+# kind -> (setting that holds the last time, title, words, link, how much of the error to quote)
+_FAILURES = {
+    "mail": ("mail_failure_reported_at", "Odin could not send email",
+             "Email is switched on but a message failed ({}). Everything still reaches the bell. "
+             "Connect Microsoft 365 under Settings › Integrations, or switch email off under Settings › Notifications.", "/settings/integrations", 300),
+    "alias": ("mail_alias_reported_at", "Odin's email went out from the mailbox, not its alias",
+              "Microsoft refused the address under Settings › Notifications › Send email as ({}). "
+              "Mail still goes out, from the connected mailbox's own address. Allow sending from aliases in Exchange "
+              "(Set-OrganizationConfig -SendFromAliasEnabled $true) or clear the setting.", "/settings/notifications", 200),
+    "teams": ("teams_failure_reported_at", "Odin could not send a Teams message",
+              "A Teams message failed ({}). Everything still reaches the bell and email. "
+              "Check that the Odin PMS app is installed in Teams for everyone and Microsoft 365 is connected "
+              "(Settings › Integrations; if it was connected before 13 Oct 2026, Disconnect and Connect again so Odin may look people up), "
+              "or switch Teams messages off under Settings › Notifications.", "/settings/integrations", 300),
+    "resend": ("resend_failure_reported_at", "Odin could not send a sign-in email through Resend",
+               "{}. Check the key and the sending domain in Resend, and Settings › Notifications › Sign-in mail.", "/settings/notifications", None),
+}
+
+
+def report_mail_failure(error, kind="mail"):
     """A message failed (sent directly, or given up on by the outbox): tell
     the admins in the bell, at most once a day, instead of failing silently
-    (system map #2). `alias`: the mail went out, but from the mailbox,
-    because Microsoft refused the "Send email as" alias; `teams`: a Teams
-    message failed (each its own daily notice, so one never hides another).
+    (system map #2). `kind`: mail (Microsoft refused or could not send), alias
+    (the mail went out, but from the mailbox, because Microsoft refused the
+    "Send email as" alias), teams (a Teams message failed) or resend (a
+    sign-in email through Resend failed); each its own daily notice.
     Bell only: a notice about failing mail or Teams must not queue more."""
     from datetime import datetime, timedelta
     from markupsafe import escape
     from db import set_setting
-    if not teams and not policy("notify_email_enabled"):
+    if kind in ("mail", "alias") and not policy("notify_email_enabled"):
         return
-    key = "teams_failure_reported_at" if teams else "mail_alias_reported_at" if alias else "mail_failure_reported_at"
+    key, title, words, link, cap = _FAILURES[kind]
     last, now = get_setting(key), datetime.utcnow()
     if last and datetime.fromisoformat(last) > now - timedelta(hours=24):
         return
     set_setting(key, now.isoformat())
-    admins = [r[0] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
-    if teams:
-        notify_users(admins, "ops", None, "Odin could not send a Teams message",
-                     f"A Teams message failed ({escape(str(error)[:300])}). Everything still reaches the bell and email. "
-                     "Check that the Odin PMS app is installed in Teams for everyone and Microsoft 365 is connected "
-                     "(Settings › Integrations; if it was connected before 13 Oct 2026, Disconnect and Connect again so Odin may look people up), "
-                     "or switch Teams messages off under Settings › Notifications.", link="/settings/integrations", email=False, teams=False)
-        return
-    if alias:
-        notify_users(admins, "ops", None, "Odin's email went out from the mailbox, not its alias",
-                     f"Microsoft refused the address under Settings › Notifications › Send email as ({escape(str(error)[:200])}). "
-                     "Mail still goes out, from the connected mailbox's own address. Allow sending from aliases in Exchange "
-                     "(Set-OrganizationConfig -SendFromAliasEnabled $true) or clear the setting.",
-                     link="/settings/notifications", email=False, teams=False)
-        return
-    notify_users(admins, "ops", None, "Odin could not send email",
-                 f"Email is switched on but a message failed ({escape(str(error)[:300])}). Everything still reaches the bell. "
-                 "Connect Microsoft 365 under Settings › Integrations, or switch email off under Settings › Notifications.",
-                 link="/settings/integrations", email=False, teams=False)
+    notify_users(admin_ids(), "ops", None, title, words.format(escape(str(error)[:cap])), link=link, email=False, teams=False)
 
 
 def trim(db=None):

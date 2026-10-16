@@ -8,15 +8,15 @@ month of the day it runs."""
 import io
 import json
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 from unittest.mock import patch
 
 import scheduler
 from test_app import STRONG_PASSWORD, app_module
 from test_fix_logic import FixBase
 
-TODAY = date(2026, 10, 14)
-NOW = datetime(2026, 10, 14, 9, 0, 0)
+NOW = FixBase.NOW
+TODAY = NOW.date()
 J = {"Accept": "application/json"}
 
 
@@ -95,8 +95,7 @@ class TriggersTestCase(RulesBase):
         self.assertEqual([(x["what"], x["ok"], x["project"]) for x in run], [(f"Entered {stages[2]}", True, "Globex EDR")])
         self.assertEqual(run[0]["actions"], [{"kind": "notify", "ok": True, "said": "told 1 person"}])
         self.assertEqual((self.told(), self.audits("rule_fired")), (1, 1))
-        title = self.sql("SELECT title, link FROM notifications WHERE kind = 'automation'")[0]
-        self.assertEqual(tuple(title), ("Tell the team: Globex EDR", "/projects/1"))
+        self.assertEqual(self.tuples("SELECT title, link FROM notifications WHERE kind = 'automation'")[0], ("Tell the team: Globex EDR", "/projects/1"))
 
     def test_a_document_uploaded_in_its_category(self):
         rid = self.rule("document_uploaded", event_config={"category": "Deliverable"})
@@ -153,7 +152,7 @@ class TriggersTestCase(RulesBase):
         for name, day in (("Pilot live", iso(-1)), ("Design signed", iso(-6))):
             self.assertEqual(self.client.post("/api/projects/1/milestones", json={"name": name, "date": day}).status_code, 200)
         self.sql("UPDATE project_stages SET sla_days = 1 WHERE project_id = 1")
-        self.sql("UPDATE projects SET stage_entered_at = ?", (datetime.utcnow() - timedelta(days=10)).isoformat())
+        self.sql("UPDATE projects SET stage_entered_at = ?", self.now(days=-10).isoformat())
         scheduler.sync_alerts()
         scheduler.sync_alerts()   # the next quarter hour: nothing again
         self.assertEqual([x["what"] for x in self.runs(tasks)], [f"Task overdue: Yesterday's (due {iso(-1)})"])
@@ -205,14 +204,14 @@ class ActionsTestCase(RulesBase):
         a, b = [r[0] for r in self.sql("SELECT id FROM template_tasks ORDER BY id")]
         self.rule(actions=[{"kind": "add_task", "template_task_id": a}, {"kind": "add_task", "template_task_id": b}])
         self.move(self.stages()[1])
-        rows = self.sql("SELECT title, assignee_id, due_date, estimate_hours, created_by FROM tasks WHERE created_by LIKE 'Automation:%' ORDER BY id")
-        self.assertEqual([tuple(r) for r in rows], [("Book the change window", self.co, iso(2), 3.0, "Automation: Tell the team"),
-                                                    ("Customer sends the export", None, iso(0), None, "Automation: Tell the team")])   # never the customer's
+        rows = self.tuples("SELECT title, assignee_id, due_date, estimate_hours, created_by FROM tasks WHERE created_by LIKE 'Automation:%' ORDER BY id")
+        self.assertEqual(rows, [("Book the change window", self.co, iso(2), 3.0, "Automation: Tell the team"),
+                                ("Customer sends the export", None, iso(0), None, "Automation: Tell the team")])   # never the customer's
 
     def test_add_a_raid_item(self):
         self.rule(actions=[{"kind": "add_raid", "raid_kind": "risk", "title": "Change freeze ahead", "impact": "high"}])
         self.move(self.stages()[1])
-        self.assertEqual([tuple(r) for r in self.sql("SELECT kind, title, impact, status, customer_visible, created_by FROM raid_items")],
+        self.assertEqual(self.tuples("SELECT kind, title, impact, status, customer_visible, created_by FROM raid_items"),
                          [("risk", "Change freeze ahead", "high", "open", 0, "Automation: Tell the team")])
 
     def test_set_a_field_and_the_loop_guard(self):
@@ -340,7 +339,7 @@ class DryRunTestCase(RulesBase):
                                                             "actions": [{"kind": "teams"}]}).get_json()
         self.assertEqual(none["total"], 0)
         self.assertEqual((self.runs(), self.sql("SELECT COUNT(*) FROM notifications")[0][0]), before)
-        self.assertEqual(self.audits("dry_run_rule"), 3)
+        self.assertEqual(self.audits("dry_run_rule"), 0)   # a read: nothing to audit
 
     def test_a_field_change_is_replayed_from_the_audit_trail(self):
         fid = self.field()

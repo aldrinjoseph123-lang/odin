@@ -1,42 +1,25 @@
 """Odin 2.0, workstream 3: task dependencies (finish-to-start, one rollout)
 and the tasks a template's stages bring. Run with: python -m unittest test_v2_deps
 
-Dates are relative to the workspace's today, in UTC, with stage lengths in
+Dates are relative to the frozen clock's today (FixBase.NOW), with stage lengths in
 calendar days: nothing here depends on the weekday or the month."""
 from datetime import datetime, timedelta
 
-from test_app import STRONG_PASSWORD, app_module
 from test_fix_logic import FixBase
-
-J = {"Accept": "application/json"}
 
 
 class DepsBase(FixBase):
     def setUp(self):
         super().setUp()
         self._set_policy(timezone="UTC", count_working_days="0")
-        self.today = datetime.utcnow().date()
-
-    def day(self, n):
-        return (self.today + timedelta(days=n)).isoformat()
-
-    def task(self, title, pid=1, **fields):
-        r = self.client.post(f"/projects/{pid}/tasks", json={"title": title, **fields})
-        self.assertEqual(r.status_code, 200, r.get_json())
-        return r.get_json()["id"]
+        self.freeze_clock()
+        self.today = self.NOW.date()
 
     def edit(self, tid, pid=1, **fields):
         return self.client.post(f"/projects/{pid}/tasks/{tid}/edit", json=fields)
 
     def flow_task(self, tid, client=None):
         return next(t for t in (client or self.client).get("/api/projects/1/flow").get_json()["tasks"] if t["id"] == tid)
-
-    def member(self):
-        """A Member coordinating rollout 1: manages its tasks, is not an Admin."""
-        uid = self._make_user("mo", "Member")
-        self.sql("INSERT INTO project_participants (project_id, user_id, role, added_at) VALUES (1, ?, 'Coordinator', datetime('now'))", uid)
-        c, csrf = self._api_client("mo", STRONG_PASSWORD)
-        return uid, c, {"X-CSRF-Token": csrf, **J}
 
 
 class LinkRulesTestCase(DepsBase):
@@ -72,7 +55,7 @@ class LinkRulesTestCase(DepsBase):
 
     def test_a_blocked_task_waits_and_only_an_admin_overrides_on_the_record(self):
         self.new_project()
-        uid, c, h = self.member()
+        uid, c, h = self.member(pid=1)
         first = self.task("Order sensors", due_date=self.day(-3))
         second = self.task("Install sensors", assignee_id=uid, waits_on=[first], estimate_hours=4)
         t = self.flow_task(second, c)
@@ -95,7 +78,7 @@ class LinkRulesTestCase(DepsBase):
 
     def test_deleting_the_predecessor_unblocks(self):
         self.new_project()
-        uid, c, h = self.member()
+        uid, c, h = self.member(pid=1)
         first = self.task("Order sensors")
         second = self.task("Install sensors", waits_on=[first])
         self.assertTrue(self.flow_task(second)["blocked_by"])
@@ -117,7 +100,7 @@ class LinkRulesTestCase(DepsBase):
 
     def test_my_work_sets_blocked_tasks_apart(self):
         self.new_project()
-        uid, c, h = self.member()
+        uid, c, h = self.member(pid=1)
         first = self.task("Order sensors", due_date=self.day(-2))
         self.task("Install sensors", assignee_id=uid, waits_on=[first])
         self.task("Free task", assignee_id=uid)
@@ -213,10 +196,9 @@ class TemplateTasksTestCase(DepsBase):
         self.assertEqual([(r[0], r[1]) for r in self.sql("SELECT title, waits_on_id FROM template_tasks")], [("Stays", None)])
 
     def test_only_settings_managers_edit_them(self):
-        self._make_user("mo", "Member")
-        c, csrf = self._api_client("mo", STRONG_PASSWORD)
+        _, c, h = self.member()
         self.assertEqual(c.get("/api/settings/templates/1/tasks").status_code, 403)
-        self.assertEqual(c.put("/api/settings/templates/1/tasks", json={"tasks": []}, headers={"X-CSRF-Token": csrf}).status_code, 403)
+        self.assertEqual(c.put("/api/settings/templates/1/tasks", json={"tasks": []}, headers=h).status_code, 403)
 
 
 if __name__ == "__main__":

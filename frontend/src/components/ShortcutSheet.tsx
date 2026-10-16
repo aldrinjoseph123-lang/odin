@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Kbd } from "@/components/ui/kbd"
 
 // The "?" sheet (advice B6): every keyboard shortcut in one place. Keep it true to
-// AppShell (⌘K, /, ?), Flow (j/k/l/→, Esc, 1–4) and useSubmitShortcut (Ctrl/⌘+Enter).
+// AppShell (⌘K, /, ?), Flow (j/k/l/→, Esc, 1–4) and submitKey (Ctrl/⌘+Enter).
 const mod = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"
 const GROUPS: { title: string; rows: { keys: string[]; what: string }[] }[] = [
   { title: "Anywhere", rows: [

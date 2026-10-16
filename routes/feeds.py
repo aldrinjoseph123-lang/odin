@@ -8,31 +8,34 @@ each is audited, and the address is shown once.
 """
 from flask import Response, abort, jsonify, session
 
-from core import app, login_required, public_base
+from core import app, login_required, public_base, staff_required
 from db import get_db
 from policies import policy
-from security import rate_limited, token_hash
+from security import rate_limited
 from services import ics
 from services.audit import audit_log
 
 
 @app.route("/feeds/calendar/<token>.ics")
 def calendar_feed(token):
-    if rate_limited(f"ics:{token_hash(token)[:24]}", policy("ics_feed_per_hour"), 60, any_ip=True):
-        return Response("Too many reads of this feed this hour.\n", status=429, mimetype="text/plain", headers={"Retry-After": "3600"})
+    # the token first: an unknown one is throttled per address (ics_feed_per_hour wrong guesses an hour),
+    # so a stream of made-up tokens writes at most that many rows, never one per request
     user = ics.owner_of(token)
     if user is None:
+        if rate_limited("ics-miss", policy("ics_feed_per_hour"), 60):
+            return Response("Too many reads of this feed this hour.\n", status=429, mimetype="text/plain", headers={"Retry-After": "3600"})
         abort(404)
+    if rate_limited(f"ics:{user['id']}", policy("ics_feed_per_hour"), 60, any_ip=True):
+        return Response("Too many reads of this feed this hour.\n", status=429, mimetype="text/plain", headers={"Retry-After": "3600"})
     return Response(ics.build(user["id"], public_base()), mimetype="text/calendar",
                     headers={"Content-Disposition": 'inline; filename="odin.ics"', "Cache-Control": "private, no-store"})
 
 
 @app.route("/account/calendar", methods=["POST"])
 @login_required
+@staff_required
 def account_calendar():
     """Make the feed, or rotate it (the old address stops working at once). Staff only."""
-    if session.get("kind") == "external":
-        abort(403)
     db = get_db()
     had = db.execute("SELECT ics_token_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()[0]
     raw = ics.mint(session["user_id"])
@@ -43,6 +46,7 @@ def account_calendar():
 
 @app.route("/account/calendar/off", methods=["POST"])
 @login_required
+@staff_required   # as the feed itself: nothing to turn off, nothing to audit
 def account_calendar_off():
     ics.revoke(session["user_id"])
     get_db().commit()

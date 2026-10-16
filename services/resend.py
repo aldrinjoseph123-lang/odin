@@ -57,26 +57,12 @@ def send_account_mail(to, subject, html_body):
     """Sign-in mail: Resend first when it is on, else (or if it refuses)
     Microsoft 365 when connected. A Resend failure is told to the admins once a day."""
     import graph
+    from services.notifications import report_mail_failure
     if configured():
         ok, error = send(to, subject, html_body)
         if ok:
             return True, None
-        _tell_admins(error)
+        report_mail_failure(error, "resend")
         if not graph.is_connected():
             return False, error
     return graph.send_mail(to, subject, html_body)
-
-
-def _tell_admins(error):
-    from datetime import datetime, timedelta
-    from markupsafe import escape
-    from db import get_db, get_setting, set_setting
-    from services.notifications import notify_users
-    last, now = get_setting("resend_failure_reported_at"), datetime.utcnow()
-    if last and datetime.fromisoformat(last) > now - timedelta(hours=24):
-        return
-    set_setting("resend_failure_reported_at", now.isoformat())
-    admins = [r[0] for r in get_db().execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
-    notify_users(admins, "ops", None, "Odin could not send a sign-in email through Resend",
-                 f"{escape(error)}. Check the key and the sending domain in Resend, and Settings › Notifications › Sign-in mail.",
-                 link="/settings/notifications", email=False, teams=False)

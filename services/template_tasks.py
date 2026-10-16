@@ -11,7 +11,7 @@ editing the template later never touches rollouts already created.
 """
 from datetime import date
 
-from db import get_db
+from db import get_db, insert_task, role_holders
 from policies import local_date, local_today
 from services import task_links, workdays
 
@@ -111,38 +111,36 @@ def save(template_id, items):
     return len(rows)
 
 
-def _who(db, project_id, owner_id, role):
+def make_task(db, project, tt, stage, start, created_by, customer=True, created_at=None):
+    """One real task from a template task: due `offset_days` after `start` (working days when the
+    workspace counts them), on whoever holds its role. `customer=False` leaves a task meant for the
+    customer unassigned (a rule never reaches the customer). The caller commits. Returns (task id, due date)."""
+    role = tt["role"]
     if role == "Project manager":
-        return owner_id
-    if role in ("Coordinator", "Customer"):
-        row = db.execute("SELECT pp.user_id FROM project_participants pp JOIN users u ON u.id = pp.user_id "
-                         "WHERE pp.project_id = ? AND pp.role = ? AND u.active = 1 ORDER BY pp.added_at, pp.id LIMIT 1", (project_id, role)).fetchone()
-        return row[0] if row else None
-    return None
+        who = project["owner_id"]
+    elif role == "Coordinator" or (role == "Customer" and customer):
+        who = next(iter(role_holders(project["id"], role, db, active=True)), None)
+    else:
+        who = None
+    due = workdays.add(start, tt["offset_days"], workdays.calendar(db)).isoformat()
+    return insert_task(db, project["id"], tt["title"], created_by, created_at, assignee_id=who, due_date=due, stage=stage, estimate_hours=tt["estimate_hours"]), due
 
 
 def instantiate(db, template_id, project_id, created_by):
     """Give a new rollout the template's tasks and links. Due dates run from
     each stage's planned start, else the rollout's start (else today), plus
     the offset. The caller commits. Returns the number of tasks made."""
-    project = db.execute("SELECT owner_id, start_date, created_at FROM projects WHERE id = ?", (project_id,)).fetchone()
+    project = db.execute("SELECT id, owner_id, start_date, created_at FROM projects WHERE id = ?", (project_id,)).fetchone()
     tasks = for_template(template_id, db)
     if not project or not tasks:
         return 0
     names = {r[0]: r[1] for r in db.execute("SELECT id, name FROM stage_template_stages WHERE template_id = ?", (template_id,))}
     starts = {r[0]: r[1] for r in db.execute("SELECT name, plan_start FROM project_stages WHERE project_id = ?", (project_id,))}
     begin = local_date(project["start_date"]) or local_date(project["created_at"]) or local_today()
-    cal = workdays.calendar(db)
-    from datetime import datetime
-    now = datetime.utcnow().isoformat()
     made = {}
     for t in tasks:
         stage = names[t["stage_id"]]
-        start = date.fromisoformat(starts[stage]) if starts.get(stage) else begin
-        made[t["id"]] = db.execute(
-            "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage, estimate_hours) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (project_id, t["title"], _who(db, project_id, project["owner_id"], t["role"]), workdays.add(start, t["offset_days"], cal).isoformat(),
-             now, created_by, stage, t["estimate_hours"])).lastrowid
+        made[t["id"]] = make_task(db, project, t, stage, date.fromisoformat(starts[stage]) if starts.get(stage) else begin, created_by)[0]
     for t in tasks:
         if t["waits_on_id"] in made:
             task_links.replace(db, project_id, made[t["id"]], [made[t["waits_on_id"]]])

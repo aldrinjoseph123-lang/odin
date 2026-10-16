@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
-import { WorkloadRows } from "@/components/WorkloadWidget"
+import { WorkloadRows } from "@/components/WorkloadRows"
 import { SinceRows } from "@/components/SinceLastLooked"
 import { hrs, weekLabel } from "@/lib/workload"
 import { Ago } from "@/components/Ago"

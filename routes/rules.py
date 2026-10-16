@@ -19,6 +19,10 @@ def _rules_queue():
 
 @app.after_request
 def _rules_run(response):
+    if response.status_code >= 500:   # the request failed part-way: its firings go, and so do its uncommitted writes
+        g.pop("rules_later", None)
+        rules.discard_uncommitted()
+        return response
     rules.flush()   # never raises: a rule's failure is in its run log, not in the user's answer
     return response
 
@@ -107,6 +111,4 @@ def api_rule_dry_run():
         d = rules.clean(json_body())
     except ValueError as e:
         return jsonify(error=str(e)), 400
-    out = rules.dry_run(d)
-    audit_log("dry_run_rule", "rule", None, d["name"], f"{_said(d)}: {out['total']} rollouts")
-    return jsonify(out)
+    return jsonify(rules.dry_run(d))   # a read: unaudited (test_app's meta-test lists it as read-only)

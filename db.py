@@ -134,6 +134,7 @@ def cleanup_soft_deletes(db=None):
             # a sign-up link that named the project keeps working, without the project
             db.execute(f"UPDATE signup_links SET project_id = NULL, project_role = NULL WHERE project_id IN ({marks})", doomed)
             db.execute(f"UPDATE lessons SET project_id = NULL WHERE project_id IN ({marks})", doomed)   # the lesson stays in the library
+            db.execute(f"UPDATE intake_calls SET project_id = NULL WHERE project_id IN ({marks})", doomed)   # the log of the call stays, trimmed with the log
             for table in ("doc_text", "ai_calls", "signoffs", "scope_items", "project_field_values", "status_notes", "csat", "task_answers", "task_links", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "milestones", "rule_runs", "ai_jobs", "ai_suggestions", "rollout_watch"):
                 db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
@@ -176,6 +177,7 @@ def _purge_orphans(db):
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
             f"AND {column} NOT IN (SELECT id FROM projects)"
         )
+    db.execute("UPDATE intake_calls SET project_id = NULL WHERE project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects)")
     # an account that signed up through a project's link keeps no pointer to a project that is gone
     db.execute("UPDATE users SET signup_project_id = NULL WHERE signup_project_id IS NOT NULL AND signup_project_id NOT IN (SELECT id FROM projects)")
     # Files are never swept here. A folder "not in the database" is also what
@@ -400,8 +402,8 @@ def migrate_db(db):
     if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
         db.execute("ALTER TABLE tasks ADD COLUMN stage TEXT")
     # Odin 2.0 (W3): a task's estimate in hours (workload reads it), what it
-    # waits on (services/task_links.py), and the tasks a template's stages
-    # bring to a new rollout (services/template_tasks.py).
+    # waits on (task_links) and the tasks a template's stages bring to a new
+    # rollout (template_tasks): both tables are in schema.sql.
     if "estimate_hours" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
         db.execute("ALTER TABLE tasks ADD COLUMN estimate_hours REAL")
     # Odin 2.0 (W4): what a task asks for (services/asks.py): a tick, a document
@@ -410,14 +412,7 @@ def migrate_db(db):
     for column, coltype in (("kind", "TEXT NOT NULL DEFAULT 'task'"), ("ask_category", "TEXT"), ("ask_form", "TEXT")):
         if column not in task_columns:
             db.execute(f"ALTER TABLE tasks ADD COLUMN {column} {coltype}")
-    db.execute("""CREATE TABLE IF NOT EXISTS task_links (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id INTEGER NOT NULL REFERENCES projects(id),
-        task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-        depends_on_task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-        UNIQUE (task_id, depends_on_task_id))""")
-    db.execute("CREATE INDEX IF NOT EXISTS idx_task_links_project ON task_links (project_id)")
-    # Odin 2.0 (W5): a repeating task (services/milestones.py). recurrence: weekly / fortnightly /
+    # Odin 2.0 (W5): a repeating task (services/recurrence.py). recurrence: weekly / fortnightly /
     # monthly; recur_until: a date, or 'stage' (until the task's stage is done); recur_spawned: its
     # next occurrence was made (once, ever); recur_from: the task this one is the next occurrence of.
     task_columns = {row[1] for row in db.execute("PRAGMA table_info(tasks)")}
@@ -425,12 +420,6 @@ def migrate_db(db):
         if column not in task_columns:
             db.execute(f"ALTER TABLE tasks ADD COLUMN {column} {coltype}")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_recur_from ON tasks (recur_from) WHERE recur_from IS NOT NULL")
-    db.execute("""CREATE TABLE IF NOT EXISTS template_tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        stage_id INTEGER NOT NULL REFERENCES stage_template_stages(id) ON DELETE CASCADE,
-        title TEXT NOT NULL, role TEXT, offset_days INTEGER NOT NULL DEFAULT 0, estimate_hours REAL,
-        waits_on_id INTEGER REFERENCES template_tasks(id) ON DELETE SET NULL,
-        position INTEGER NOT NULL DEFAULT 0)""")
     # Read-only API tokens (routes/tokens.py): only a hash is stored; the
     # token itself is shown once. Revoked/expired ones are trimmed after 90 days.
     db.execute("""CREATE TABLE IF NOT EXISTS api_tokens (
@@ -439,13 +428,9 @@ def migrate_db(db):
         created_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
         last_used_at TEXT, revoked_at TEXT)""")
     # CRM intake (services/intake.py): a token's scope is 'read' (the /api/v1 reads) or
-    # 'create' (POST /api/v1/intake only); the last calls to the intake endpoint, newest 200 kept.
+    # 'create' (POST /api/v1/intake only); the calls themselves are intake_calls (schema.sql).
     if "scope" not in {row[1] for row in db.execute("PRAGMA table_info(api_tokens)")}:
         db.execute("ALTER TABLE api_tokens ADD COLUMN scope TEXT NOT NULL DEFAULT 'read'")
-    db.execute("""CREATE TABLE IF NOT EXISTS intake_calls (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        token_name TEXT NOT NULL, at TEXT NOT NULL, status INTEGER NOT NULL, result TEXT NOT NULL,
-        deal_id TEXT, project_id INTEGER, detail TEXT)""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_projects_intake_deal ON projects (intake_deal_id)")
     # One row per backup run (backup.py): what was made, where it went, and
     # whether its restore test passed. Trimmed to the newest 200 by each run.
@@ -1011,6 +996,25 @@ def participants_for(project_id):
         "WHERE pp.project_id = ? ORDER BY CASE pp.role WHEN 'Project manager' THEN 0 ELSE 1 END, u.name",
         (project_id,),
     ).fetchall()
+
+
+def role_holders(project_id, role, db=None, active=False):
+    """User ids holding `role` on a rollout, in the order they joined (`active`: only accounts that are on)."""
+    return [r[0] for r in (db or get_db()).execute(
+        "SELECT pp.user_id FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.project_id = ? AND pp.role = ?"
+        + (" AND u.active = 1" if active else "") + " ORDER BY pp.added_at, pp.id", (project_id, role))]
+
+
+def customer_ids(project_id, db=None, active=False):
+    """A rollout's Customer participants (their user ids): who approvals, chasers and shared reports reach."""
+    return role_holders(project_id, "Customer", db, active)
+
+
+def insert_task(db, project_id, title, created_by, created_at=None, **columns):
+    """Add a task row (the caller commits): the given columns, created now unless `created_at` says when.
+    Returns its id. The column names are the code's own, never a request's."""
+    row = {"project_id": project_id, "title": title, "created_at": created_at or datetime.utcnow().isoformat(), "created_by": created_by, **columns}
+    return db.execute(f"INSERT INTO tasks ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", tuple(row.values())).lastrowid
 
 
 def current_approval(project_id):

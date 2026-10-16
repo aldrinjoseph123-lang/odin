@@ -6,17 +6,17 @@ everything else is the signed-in app's. One confirm route, one permission, one a
 import json
 from datetime import datetime
 
-from flask import abort, flash, g, jsonify, redirect, request, session, url_for
+from flask import flash, g, jsonify, redirect, request, session, url_for
 from markupsafe import escape
 
 from constants import CLIENT_PO_DOC_CATEGORY
-from core import app, permission_required, role_has_permission, text_field
+from core import app, permission_required, role_has_permission, staff_required, text_field
 from db import get_db, set_project_manager
 from policies import policy_view
-from routes.projects import load_project, save_document
+from routes.projects import leads, load_project, pick_lead, save_document
 from routes.tokens import token_required
 from security import content_matches_extension, upload_problem
-from services import intake
+from services import intake, template_tasks
 from services.audit import audit_log
 from services.notifications import notify_users
 
@@ -35,11 +35,6 @@ def api_v1_intake():
     return response
 
 
-def _leads(db):
-    return [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name, role FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")
-            if role_has_permission(u["role"], "edit_project_stage")]
-
-
 @app.route("/api/settings/intake")
 @permission_required("manage_settings")
 def api_settings_intake():
@@ -51,18 +46,17 @@ def api_settings_intake():
                                             "WHERE scope = 'create' ORDER BY id DESC LIMIT 50")],
         calls=intake.recent_calls(db), policies=policy_view("intake"), keep=intake.LOG_KEEP,
         templates=[{"id": t["id"], "name": t["name"]} for t in db.execute("SELECT id, name FROM stage_templates ORDER BY id")],
-        owners=_leads(db), endpoint="/api/v1/intake")
+        owners=leads(db), endpoint="/api/v1/intake")
 
 
 @app.route("/api/intake/pending")
 @permission_required("view_projects")
+@staff_required
 def api_intake_pending():
     """The intakes waiting for a project manager (staff only), and who may confirm them."""
-    if session.get("kind") == "external":
-        abort(403)
     db = get_db()
     return jsonify(rows=intake.pending_rows(db), can_confirm=role_has_permission(session.get("role"), "create_project"),
-                   can_lead=role_has_permission(session.get("role"), "edit_project_stage"), leads=_leads(db), po_category=CLIENT_PO_DOC_CATEGORY)
+                   can_lead=role_has_permission(session.get("role"), "edit_project_stage"), leads=leads(db), po_category=CLIENT_PO_DOC_CATEGORY)
 
 
 @app.route("/projects/<int:project_id>/intake/confirm", methods=["POST"])
@@ -91,22 +85,17 @@ def intake_confirm(project_id):
     except ValueError as e:
         flash(str(e), "error")
         return redirect(back)
-    # the project manager must be able to move stages: someone who cannot names one (as a new rollout asks)
-    lead_id = session["user_id"]
-    if not role_has_permission(session.get("role"), "edit_project_stage"):
-        raw = request.form.get("owner_id", "")
-        lead = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone() if raw.isdigit() else None
-        if lead is None or not role_has_permission(lead["role"], "edit_project_stage"):
-            flash("Choose a project manager who can move stages (an Admin or Member)", "error")
-            return redirect(back)
-        lead_id = lead["id"]
+    lead_id, problem = pick_lead(db, request.form.get("owner_id", ""))   # someone who cannot move stages names one, as a new rollout asks
+    if problem:
+        flash(problem, "error")
+        return redirect(back)
     now = datetime.utcnow().isoformat()
     if not db.execute("UPDATE projects SET intake_pending = 0, owner_id = ?, po_number = ?, stage_entered_at = ?, updated_at = ? "
                       "WHERE id = ? AND intake_pending = 1", (lead_id, po_number, now, now, project_id)).rowcount:
         flash("That rollout was confirmed a moment ago", "error")   # two people at once
         return redirect(url_for("project_detail", project_id=project_id))
     set_project_manager(db, project_id, lead_id, session["user_id"])
-    from services import template_tasks   # the template's tasks, now the team that takes them is known
+    # the template's tasks, now the team that takes them is known
     template_tasks.instantiate(db, project["stage_template_id"], project_id, session["user_name"])
     contacts = json.loads(project["intake_contacts"] or "[]")
     if contacts:   # the CRM's customer contacts stay on the rollout as a staff note; the PM invites them from the team panel

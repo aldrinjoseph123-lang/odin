@@ -27,13 +27,8 @@ class IntegrationTestCase(FixBase):
         with app_module.app.test_request_context():
             return local_today()
 
-    def task(self, pid=1, **body):
-        r = self.client.post(f"/projects/{pid}/tasks", json={"stage": self.stages(pid)[0], **body})
-        self.assertEqual(r.status_code, 200, r.data)
-        return r.get_json()["id"]
-
     def links(self, pid=1):
-        return sorted(tuple(r) for r in self.sql("SELECT task_id, depends_on_task_id FROM task_links WHERE project_id = ?", pid))
+        return sorted(self.tuples("SELECT task_id, depends_on_task_id FROM task_links WHERE project_id = ?", pid))
 
     def token(self, scope="read"):
         from security import token_hash

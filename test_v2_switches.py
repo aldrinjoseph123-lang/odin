@@ -1,9 +1,7 @@
-"""v2.0.0 small items: the admin switches that are policies now, the hashed Python
-lock, and the reason for declining a sign-up. Run with: python -m unittest test_v2_small"""
+"""v2.0.0 small items: the admin switches that are policies now, and the reason for
+declining a sign-up. Run with: python -m unittest test_v2_switches"""
 import pathlib
 import re
-import subprocess
-import sys
 from unittest.mock import patch
 
 import db as db_module
@@ -77,7 +75,7 @@ class DeclineReasonTestCase(FixBase):
         uid = self.pending()
         r = self.client.post(f"/users/{uid}/decline", data={"reason": "  not on the\nrollout team  "}, headers=J)
         self.assertEqual(r.get_json()["messages"], ["Declined Stan"])
-        self.assertEqual([tuple(x) for x in self.sql("SELECT active, pending, declined_reason FROM users WHERE id = ?", uid)], [(0, 0, "not on the rollout team")])
+        self.assertEqual(self.tuples("SELECT active, pending, declined_reason FROM users WHERE id = ?", uid), [(0, 0, "not on the rollout team")])
         self.assertEqual(self.sql("SELECT details FROM audit_logs WHERE action = 'decline_access'")[0][0], "reason: not on the rollout team")
         shown = next(u for u in self.client.get("/api/users").get_json()["users"] if u["id"] == uid)
         self.assertEqual(shown["declined_reason"], "not on the rollout team")
@@ -93,30 +91,3 @@ class DeclineReasonTestCase(FixBase):
         self.assertEqual(self.sql("SELECT pending FROM users WHERE id = ?", long)[0][0], 1, "refused, still waiting")
         self.assertIn("300", str(r.get_json()))
         self.assertEqual(self.client.post(f"/users/{long}/decline", data={"reason": "x" * 300}, headers=J).status_code, 200)
-
-
-class LockTestCase(FixBase):
-    def test_the_lock_holds_every_pin_with_a_hash(self):
-        sys.path.insert(0, str(ROOT / "scripts"))
-        try:
-            import make_lock
-        finally:
-            sys.path.pop(0)
-        locked = {}
-        for line in (ROOT / "requirements.lock").read_text().splitlines():
-            if m := re.match(r"([A-Za-z0-9_.-]+)==(\S+) \\$", line):
-                locked[m[1].lower()] = [m[2], 0]
-                last = locked[m[1].lower()]
-            elif re.fullmatch(r"\s+--hash=sha256:[0-9a-f]{64}( \\)?", line):
-                last[1] += 1
-        pins = make_lock.pins()
-        self.assertEqual(set(locked), set(pins), "requirements.lock is stale: python3 scripts/make_lock.py")
-        for name, version in pins.items():
-            self.assertEqual(locked[name][0], version, name)
-            self.assertGreaterEqual(locked[name][1], 1, name)
-
-    def test_the_image_installs_from_the_lock_with_hashes_required(self):
-        docker = (ROOT / "Dockerfile").read_text()
-        self.assertIn("pip install --no-cache-dir --require-hashes -r requirements.lock", docker)
-        self.assertIn("COPY requirements.lock", docker)
-        self.assertIn("make_lock.py", (ROOT / "docs" / "RELEASING.md").read_text())

@@ -8,11 +8,9 @@ it with a typed reason, audited and kept in the stage history.
 import io
 import re
 import unittest
-from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import app as app_module
-from test_app import STRONG_PASSWORD
 from test_fix_logic import FixBase
 
 
@@ -43,12 +41,6 @@ class StageGatesTestCase(FixBase):
 
     def where(self, pid=1):
         return self.sql("SELECT stage FROM projects WHERE id = ?", pid)[0][0]
-
-    def member(self, username):
-        uid = self._make_user(username, "Member")
-        c = app_module.app.test_client()
-        c.post("/login", data={"username": username, "password": STRONG_PASSWORD})
-        return uid, c
 
     # ---- refusals -----------------------------------------------------------
 
@@ -104,7 +96,7 @@ class StageGatesTestCase(FixBase):
     # ---- override -----------------------------------------------------------
 
     def test_the_project_manager_moves_past_the_gate_with_a_reason(self):
-        pm, c = self.member("pm")
+        pm, c, _ = self.member("pm")
         c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 x"), "po.pdf"), "name": "P", "client": "C"})
         s = self.stages()
         self.set_gate(s[0], client=c)
@@ -122,7 +114,7 @@ class StageGatesTestCase(FixBase):
         self.assertIn("Moved past the gate", [n["note"][:19] for n in c.get("/api/projects/1").get_json()["notes"]])
 
     def test_an_admin_overrides_and_the_policy_can_take_it_from_the_pm(self):
-        pm, c = self.member("pm")
+        pm, c, _ = self.member("pm")
         c.post("/projects/new", data={"po_document": (io.BytesIO(b"%PDF-1.4 x"), "po.pdf"), "name": "P", "client": "C"})
         s = self.stages()
         self.set_gate(s[0])
@@ -140,7 +132,7 @@ class StageGatesTestCase(FixBase):
         s = self.stages()
         self.set_gate(s[0])
         self.add_task()
-        uid, c = self.member("coord")
+        uid, c, _ = self.member("coord")
         self.client.post("/projects/1/participants/add", data={"user_id": str(uid), "role": "Coordinator"})
         self.assertEqual(self.move(s[1], c, override="please").status_code, 403)   # a Coordinator never moves a stage
         self.assertEqual(self.where(), s[0])
@@ -185,7 +177,7 @@ class StageGatesTestCase(FixBase):
 
     def test_only_the_project_manager_edits_a_rollouts_gates(self):
         self.new_project()
-        uid, c = self.member("coord")
+        uid, c, _ = self.member("coord")
         self.client.post("/projects/1/participants/add", data={"user_id": str(uid), "role": "Coordinator"})
         self.assertEqual(self.set_gate(self.stages()[0], client=c).status_code, 403)
 
@@ -213,11 +205,12 @@ class StageGatesTestCase(FixBase):
         self.add_task()
         from services import plan, report_data
         self.ctx()
-        long_ago = (datetime.utcnow() - timedelta(days=40)).isoformat()
+        self.freeze_clock("services.plan", "services.analytics", "services.report_data")
+        long_ago = self.now(days=-40).isoformat()
         self.sql("UPDATE project_stages SET sla_days = 5 WHERE project_id = 1 AND name = ?", s[0])
         project = lambda: self.sql("SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.id = 1")[0]   # noqa: E731
         # not due yet: the gate is work in progress, not a health reason
-        self.sql("UPDATE projects SET stage_entered_at = ? WHERE id = 1", datetime.utcnow().isoformat())
+        self.sql("UPDATE projects SET stage_entered_at = ? WHERE id = 1", self.now().isoformat())
         self.assertFalse(any("gate" in r for r in plan.build(project())["health"]["reasons"]))
         self.sql("UPDATE projects SET stage_entered_at = ? WHERE id = 1", long_ago)
         h = plan.build(project())["health"]

@@ -1,8 +1,9 @@
 """Access review (Users page): why an account deserves a second look.
 
 {user_id: [reason, ...]} for active, approved accounts: no sign-in for
-`access_review_days`, a partner whose rollouts have all closed. Odin has no
-per-user rights beyond the role's defaults, so that third check does not exist.
+`access_review_days`, and a partner or customer whose rollouts have all closed
+(or who is on none). Odin has no per-user rights beyond the role's defaults, so
+there is no check of rights granted one by one.
 """
 from datetime import datetime, timedelta
 

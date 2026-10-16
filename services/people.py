@@ -10,7 +10,9 @@ from db import PROJECT_OPEN_SQL, avatar_url, get_db, stages_for_projects
 from policies import local_date, local_now, local_today, policy
 from services.alerts import project_states as _states
 from services.analytics import days_in_stage, sla_by_stage, stage_sla_state
+from services import task_links
 from services.task_links import parse_day
+from services.workdays import week_start
 from services.asks import averages
 
 
@@ -72,14 +74,19 @@ def my_work(uid, scope):
     held = {}
     if tasks:
         marks = ",".join("?" for _ in tasks)
-        for r in db.execute("SELECT l.task_id, t.id, t.title, t.due_date FROM task_links l JOIN tasks t ON t.id = l.depends_on_task_id "
+        for r in db.execute("SELECT l.task_id, t.id, t.title, t.due_date, t.assignee_id FROM task_links l JOIN tasks t ON t.id = l.depends_on_task_id "
                             f"WHERE t.done = 0 AND l.task_id IN ({marks}) ORDER BY t.id", [t["id"] for t in tasks]):
             due = parse_day(r["due_date"])
             late = (today - due).days if due else 0
-            held.setdefault(r["task_id"], []).append({"id": r["id"], "title": r["title"], "late_by": max(0, late)})
+            held.setdefault(r["task_id"], []).append({"id": r["id"], "title": r["title"], "late_by": max(0, late), "mine": r["assignee_id"] == uid})
+    # a partner or customer reads only their own tasks by name: the team's are one nameless line (task_links.outsider_cut)
+    outsider = (db.execute("SELECT kind FROM users WHERE id = ?", (uid,)).fetchone() or {"kind": None})["kind"] == "external"
     for t in tasks:
         t["can_edit"] = manages[t["project_id"]]
-        t["blocked_by"] = held.get(t["id"], [])
+        waits = held.get(t["id"], [])
+        if outsider:
+            waits = task_links.outsider_cut(waits, {w["id"] for w in waits if w["mine"]})
+        t["blocked_by"] = [{k: w[k] for k in ("id", "title", "late_by")} for w in waits]
     since = _since(today - timedelta(days=13))
     done = Counter(local_date(r[0]).isoformat() for r in db.execute(
         "SELECT t.done_at FROM tasks t JOIN projects p ON p.id = t.project_id "
@@ -144,7 +151,7 @@ def person(uid, scope):
     # contribution by week, the last eight
     weeks = []
     for i in range(7, -1, -1):
-        start = today - timedelta(days=today.weekday() + 7 * i)
+        start = week_start(today) - timedelta(days=7 * i)
         end = start + timedelta(days=7)
         weeks.append({"week": start.isoformat(), "done": sum(1 for t in done if start <= local_date(t["done_at"]) < end)})
     notes = db.execute(f"SELECT COUNT(*) FROM status_notes n JOIN projects p ON p.id = n.project_id WHERE n.author_id = ? AND n.prev_stage IS NULL AND n.created_at >= ? AND p.deleted_at IS NULL{scope_sql}",

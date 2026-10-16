@@ -128,19 +128,22 @@ def _run_job(job, report_on):
         from app import app
         from services import chasers
         from services.notifications import send_summaries
+        from policies import is_working_day
+
+        def on_working_days(step):   # a holiday holds the summaries and chasers, as it holds the digest
+            def run():
+                with app.test_request_context():   # mail links need one
+                    if is_working_day():
+                        step()
+            return run
+
         failed = []
         # the reminders and alert digest, each person's daily summary (B2) and the customer chasers (B9): one failing does not skip the rest
-        for name, step in (("digest", send_daily_alerts.main), ("daily summaries", send_summaries), ("chasers", chasers.run)):
+        for name, step in (("digest", send_daily_alerts.main), ("daily summaries", on_working_days(send_summaries)), ("chasers", on_working_days(chasers.run))):
             try:
-                if name == "digest":
-                    step()
-                else:
-                    with app.test_request_context():   # mail links need one
-                        from policies import is_working_day
-                        if is_working_day():   # a holiday holds them, as it holds the digest
-                            step()
+                step()
             except Exception as exc:  # noqa: BLE001
-                failed.append(f"{exc}" if name == "digest" else f"{name}: {exc}")
+                failed.append(f"{name}: {exc}")
                 log.error("%s failed: %s", name, exc)
         if failed:
             raise RuntimeError("; ".join(failed))
@@ -175,7 +178,7 @@ def _run_job(job, report_on):
         from services.ai.health import trim as trim_ai
         from services.outbox import trim as trim_outbox
         from services.rules import trim as trim_rule_runs
-        from services.milestones import run_recurring
+        from services.recurrence import run_recurring
         from services.doctext import extract_pending as read_documents
         failed = []
         with app.app_context():

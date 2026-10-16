@@ -18,6 +18,8 @@ import json
 import math
 from datetime import datetime
 
+from flask import session
+
 from db import get_db
 from policies import policy
 
@@ -147,7 +149,7 @@ def clean_answers(qs, raw):
             if v not in q.get("choices", []):
                 raise ValueError(f"{label}: pick one of the choices")
         elif kind == "yesno":
-            v = {True: "yes", False: "no", "yes": "yes", "no": "no"}.get(v)
+            v = {True: "yes", False: "no", "yes": "yes", "no": "no"}.get(v) if isinstance(v, (bool, str)) else None   # a list or object is no key
             if v is None:
                 raise ValueError(f"{label}: yes or no")
         out[q["key"]] = v
@@ -164,6 +166,14 @@ def save_answers(db, task, answers, user_id, user_name):
     db.execute("UPDATE tasks SET done = 1, done_at = ? WHERE id = ?", (now, task["id"]))
     from services import rules   # automations: in a request it waits for the request's end, after the caller's commit
     rules.fire("ask_completed", task["project_id"], {"task": task["title"], "kind": task["kind"] or "task"})
+
+
+def reset(db, task_id):
+    """Clear an ask's answers and reopen it (its assignee changed). True when
+    anything changed. The caller commits and audits."""
+    gone = db.execute("DELETE FROM task_answers WHERE task_id = ?", (task_id,)).rowcount
+    reopened = db.execute("UPDATE tasks SET done = 0, done_at = NULL WHERE id = ? AND done = 1", (task_id,)).rowcount
+    return bool(gone or reopened)
 
 
 def record_upload(db, task, document_id, user_id, user_name):
@@ -195,7 +205,9 @@ def listing(project_id, user_id=None):
     answers = {}
     if rows:
         marks = ",".join("?" for _ in rows)
-        for a in db.execute(f"SELECT * FROM task_answers WHERE task_id IN ({marks}) ORDER BY id", [r["id"] for r in rows]):
+        # only what the person the ask is on now gave (an answer kept from before a reassignment is not theirs)
+        for a in db.execute(f"SELECT a.* FROM task_answers a JOIN tasks t ON t.id = a.task_id WHERE a.task_id IN ({marks}) AND a.by_id = t.assignee_id ORDER BY a.id",
+                            [r["id"] for r in rows]):
             answers.setdefault(a["task_id"], []).append(a)
     out = []
     for t in rows:
@@ -217,9 +229,10 @@ def listing(project_id, user_id=None):
 
 def limited(user_id):
     """An external account's writes to its asks (a tick, an upload, answers):
-    at most policy guest_writes_per_minute a minute, from any address."""
+    at most policy guest_writes_per_minute a minute, from any address.
+    False for staff, who are not limited. Call it from a request."""
     from security import rate_limited
-    return rate_limited(f"ask:{user_id}", policy("guest_writes_per_minute"), 1, any_ip=True)
+    return session.get("kind") == "external" and rate_limited(f"ask:{user_id}", policy("guest_writes_per_minute"), 1, any_ip=True)
 
 
 def is_external(db, user_id):

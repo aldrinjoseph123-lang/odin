@@ -1,11 +1,11 @@
 """Business-logic fixes (time in stage, plan, counts, sign-off, lifecycle,
 data integrity). Run with: python -m unittest test_fix_logic"""
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import test_app
-from test_app import app_module
-
+from test_app import STRONG_PASSWORD, app_module
 
 
 class FixBase(unittest.TestCase):
@@ -37,8 +37,60 @@ class FixBase(unittest.TestCase):
     def audits(self, action):
         return self.sql("SELECT COUNT(*) FROM audit_logs WHERE action = ?", action)[0][0]
 
+    def tuples(self, query, *args):
+        """The rows as tuples, which compare with the tuples a test writes (a sqlite Row does not)."""
+        return [tuple(r) for r in self.sql(query, *args)]
+
     def stages(self, pid=1):
         return [r[0] for r in self.sql("SELECT name FROM project_stages WHERE project_id = ? ORDER BY position", pid)]
+
+    # ---- the clock: a test writes its dates against NOW, never the real day -------
+
+    NOW = datetime(2026, 10, 14, 9, 0, 0)   # a Wednesday, mid-month
+
+    def now(self, **delta):
+        """The test clock plus an offset: self.now(days=-40)."""
+        return self.NOW + timedelta(**delta)
+
+    def day(self, n=0):
+        """The ISO date n days from the test clock's today."""
+        return (self.NOW + timedelta(days=n)).date().isoformat()
+
+    def freeze_clock(self, *modules):
+        """Stand the app's clock at NOW for this test: today and the time in the workspace zone
+        everywhere (policies.local_now), and datetime.utcnow() in each named module that reads it."""
+        import policies
+        from zoneinfo import ZoneInfo
+        at = self.NOW
+
+        class Clock(datetime):
+            @classmethod
+            def utcnow(cls):
+                return at
+
+        def local_now(db=None):
+            return at.replace(tzinfo=timezone.utc).astimezone(ZoneInfo(policies.policy("timezone", db)))
+
+        for target, value in [("policies.local_now", local_now)] + [(f"{m}.datetime", Clock) for m in modules]:
+            patcher = patch(target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    # ---- people and tasks ----------------------------------------------------------
+
+    def task(self, title="A task", pid=1, **fields):
+        """Add a task through its route; returns the id."""
+        r = self.client.post(f"/projects/{pid}/tasks", json={"title": title, **fields})
+        self.assertEqual(r.status_code, 200, r.get_json())
+        return r.get_json()["id"]
+
+    def member(self, username="mo", pid=None):
+        """A Member signed in (a Coordinator on rollout `pid` when given): (user id, client, headers)."""
+        uid = self._make_user(username, "Member")
+        if pid:
+            self.sql("INSERT INTO project_participants (project_id, user_id, role, added_at) VALUES (?, ?, 'Coordinator', datetime('now'))", pid, uid)
+        client, csrf = self._api_client(username, STRONG_PASSWORD)
+        return uid, client, {"X-CSRF-Token": csrf, "Accept": "application/json"}
 
 
 class TimeInStageTestCase(FixBase):

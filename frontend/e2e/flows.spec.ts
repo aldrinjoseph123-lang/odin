@@ -264,11 +264,11 @@ test("@flow rollout: mute or follow it, and the choice stays", async ({ page }) 
   const errors = watch(page)
   for (const who of ["member", "viewer"] as const) {
     await signIn(page, who, "/board?rollout=1")
-    const off = page.getByRole("button", { name: /^(Mute|Follow)$/ })
+    const off = page.getByRole("button", { name: /^(Mute updates|Follow)$/ })
     await expect(off).toBeVisible()
     const verb = (await off.textContent())!.trim()
     await off.click()
-    const on = page.getByRole("button", { name: verb === "Mute" ? "Unmute" : "Unfollow" })
+    const on = page.getByRole("button", { name: verb === "Mute updates" ? "Unmute updates" : "Unfollow" })
     await expect(on).toBeVisible()
     await page.reload()
     await on.click()
@@ -990,11 +990,11 @@ test("@flow custom fields: define one, set it on a rollout, see it in the list, 
   await page.goto("/projects/1/report?audience=customer")
   await expect(page.locator("main")).toContainText("E2E Site: North")
 
-  // deleting takes the typed name, and the values with it
+  // deleting asks first, says the values go with it, and takes them
   await page.goto("/settings/workflow")
   await panel.getByRole("button", { name: "Delete E2E Site" }).click()
-  await panel.getByRole("textbox", { name: /Type E2E Site to delete/ }).fill("E2E Site")
-  await panel.getByRole("button", { name: "Delete field" }).click()
+  await expect(page.getByRole("alertdialog")).toContainText(/value is deleted with it/)
+  await page.locator("[data-confirm-yes]").click()
   await expect(panel.getByText("Deleted E2E Site.")).toBeVisible()
   expectClean(errors)
 })

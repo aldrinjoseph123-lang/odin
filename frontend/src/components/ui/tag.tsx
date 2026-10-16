@@ -3,7 +3,7 @@ import { useRender } from "@base-ui/react/use-render"
 import { cva } from "class-variance-authority"
 import { cn } from "cn"
 
-// The small label next to a name: one component for seven kinds, so the same
+// The small label next to a name: one component for nine kinds, so the same
 // word reads the same everywhere (DESIGN.md: colour is a state, never
 // decoration). Only a scope status and an impact carry colour, by `level`;
 // the rest are neutral. A rollout's own state keeps StateChip.
@@ -16,6 +16,8 @@ const tagVariants = cva(
         role: "bg-muted text-muted-foreground",
         kind: "w-16 justify-center bg-secondary text-secondary-foreground",
         default: "bg-accent text-accent-foreground",
+        bad: "bg-bad-soft text-bad",   // an open blocker: the one red here besides overdue (DESIGN.md)
+        warn: "bg-warn-soft text-warn",   // a count that needs a look: amber, never red
         source: "border border-border text-foreground [a]:hover:bg-muted",
         scope: "",
         impact: "",
@@ -32,7 +34,7 @@ const LEVEL_TONE = {
 } as const
 
 type TagProps = useRender.ComponentProps<"span"> & (
-  | { kind?: "plain" | "role" | "kind" | "default" | "source"; level?: undefined }
+  | { kind?: "plain" | "role" | "kind" | "default" | "source" | "warn" | "bad"; level?: undefined }
   | { kind: "scope" | "impact"; level: string }
 )
 

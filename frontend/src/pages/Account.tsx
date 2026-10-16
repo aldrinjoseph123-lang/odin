@@ -87,7 +87,8 @@ export default function Account({ user }: { user: User }) {
     <div className="px-5 pb-6 pt-4">
       <PageHeader title="Account" lede={`${me.name} · ${me.username}${me.kind === "external" ? ` · ${user.external_role === "Customer" ? "customer" : "partner"} access` : ""}`} />
       {me.must_change_password && <Alert className="mt-3"><AlertDescription>Set a new password before continuing. The one you were given is a shared secret.</AlertDescription></Alert>}
-      <div className="mt-3 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      {/* two columns that fill top to bottom (a grid left a hole under the short panels); the panels keep their order and numbers */}
+      <div className="mt-3 grid grid-cols-1 gap-4 lg:block lg:columns-2 lg:[&>*]:mb-4 lg:[&>*]:break-inside-avoid">
         <section className="grid grid-cols-1 content-start gap-3 panel p-4">
           <PanelTitle className="mb-0" hint="yours, on every device you sign in on">Appearance</PanelTitle>
           {/* busy keeps the focus where it is: the handler ignores a press, nothing is disabled (P2-41) */}

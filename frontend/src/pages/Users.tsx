@@ -113,7 +113,7 @@ function Pending({ people, roles, busy, send }: { people: AdminUser[]; roles: st
       <ul className="grid grid-cols-1 gap-2">
         {people.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-2 text-[13px]">
-            <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.username} · {u.email} · asked {fmtWhen(u.created_at, true)}
+            <span className="min-w-0 flex-1"><span className="font-medium">{u.name}</span> <span className="text-muted-foreground">{u.email && u.email.toLowerCase() === u.username.toLowerCase() ? u.email : `${u.username} · ${u.email}`} · asked {fmtWhen(u.created_at, true)}
               {u.signup_label ? ` · via sign-up link "${u.signup_label}"` : u.microsoft ? " · via Microsoft sign-in" : ""}{u.signup_project ? ` · joins ${u.signup_project} as ${u.signup_project_role}` : ""}
               </span></span>
             <select value={role[u.id] ?? (u.signup_label ? u.role : "Viewer")} onChange={(e) => setRole({ ...role, [u.id]: e.target.value })} aria-label={`Role for ${u.name}`} className={fieldAuto}>
@@ -229,7 +229,9 @@ function Manage({ u, self, microsoftOnly, minPassword, capacityDefault, colleagu
   const canReset = u.kind !== "external" && (!microsoftOnly || u.password_login)
   const section = "grid grid-cols-1 gap-2 border-t border-border pt-4"
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+    <>
+    {/* the hand-over replaces Manage while it is open (no dialog on a dialog); Cancel returns to it with what was typed */}
+    <Dialog open={open && !handing} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{u.name}</DialogTitle>
@@ -290,9 +292,10 @@ function Manage({ u, self, microsoftOnly, minPassword, capacityDefault, colleagu
               onClick={() => { if (u.active && holds > 0 && u.kind === "internal") setHanding(true); else void act(`/users/${u.id}/active`, { active: u.active ? "0" : "1" }, u.active ? `Deactivate ${u.name}? Their open sessions end now.` : undefined).then((ok) => { if (ok) onClose() }) }}>{u.active ? "Deactivate" : "Reactivate"}</Button>
           </div>
         )}
-        {handing && <HandOverDialog u={u} colleagues={colleagues} busy={busy} send={send} onClose={(done) => { setHanding(false); if (done) onClose() }} />}
       </DialogContent>
     </Dialog>
+    {open && handing && <HandOverDialog u={u} colleagues={colleagues} busy={busy} send={send} onClose={(done) => { setHanding(false); if (done) onClose() }} />}
+    </>
   )
 }
 

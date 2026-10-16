@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Notice } from "@/components/Notice"
-import { gateText } from "@/lib/format"
+import { gateText, plural } from "@/lib/format"
 import { ApiError, changeStage, type FlowDetail } from "@/lib/api"
 
 // The one way a rollout moves to its next stage, from the detail's rail or a
@@ -38,7 +38,7 @@ export function MoveConfirm({ d, from = d.stage, onMoved, onStale, quiet, confir
   const advanceRef = useRef<HTMLButtonElement>(null)
   if (!d.next_stage) return null
   const next = d.next_stage
-  const openHere = d.tasks.filter((t) => !t.done && t.stage === d.stage).length
+  const openHere = d.tasks.filter((t) => !t.done && t.stage === d.stage && !t.recurrence).length   // as the gate counts (services/gates.py)
   const approvalPending = d.approval?.stage === d.stage && d.approval.status === "pending"
   const declined = d.approval?.status === "declined" && d.approval.stage === d.stage
   const told = d.participants.filter((p) => p.user_id !== d.me).length
@@ -66,10 +66,10 @@ export function MoveConfirm({ d, from = d.stage, onMoved, onStale, quiet, confir
       {!bare && <H id={`move-h-${d.id}`} className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ArrowRight className="h-3.5 w-3.5" /> Move to {next}</H>}
       <ul className="mb-2 grid grid-cols-1 gap-1 text-[13px] text-muted-foreground">
         {held.length > 0 && <li className="font-medium text-warn">Before leaving {d.stage}: {gateText(held)}</li>}
-        {openHere > 0 && !held.some((g) => g.kind === "tasks" && g.stage === d.stage) && <li className="font-medium text-warn">{openHere} open task{openHere === 1 ? "" : "s"} still in {d.stage}</li>}
+        {openHere > 0 && !held.some((g) => g.kind === "tasks" && g.stage === d.stage) && <li className="font-medium text-warn">{plural(openHere, "open task")} still in {d.stage}</li>}
         {approvalPending && <li className="font-medium text-warn">The customer has not approved {d.stage} yet</li>}
         {declined && <li className="font-medium text-bad">The customer declined {d.stage}{d.approval?.comment ? `: “${d.approval.comment}”` : ""}</li>}
-        <li>Tells {told} {told === 1 ? "person" : "people"} on the team</li>
+        <li>Tells {plural(told, "person", "people")} on the team</li>
       </ul>
       <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Stage change note, shared with the customer and partners" aria-describedby={`move-note-${d.id}`} maxLength={5000} className="h-8 text-[13px]" />
       <p id={`move-note-${d.id}`} className="mt-1 text-[12px] text-muted-foreground">Shared with the customer and partners.</p>
@@ -84,7 +84,7 @@ export function MoveConfirm({ d, from = d.stage, onMoved, onStale, quiet, confir
           {/* Cancel first, the move after it, as in every other dialog */}
           <Button size="sm" variant={risky ? "outline" : "ghost"} onClick={cancel} disabled={busy} autoFocus={risky}>Cancel</Button>
           <Button size="sm" onClick={() => { if (Date.now() - confirmAt.current > 400) void advance() }} loading={busy} disabled={shut} autoFocus={!risky}>
-            {held.length ? "Move past the gate" : openHere > 0 ? `Move with ${openHere} open task${openHere === 1 ? "" : "s"}` : approvalPending ? "Move without the customer's approval" : `Move to ${next} now`}</Button>
+            {held.length ? "Move past the gate" : openHere > 0 ? `Move with ${plural(openHere, "open task")}` : approvalPending ? "Move without the customer's approval" : `Move to ${next} now`}</Button>
         </div>
       ) : (
         <Button ref={advanceRef} className="mt-2 w-full" size="sm" variant={quiet ? "outline" : "default"} onClick={() => { confirmAt.current = Date.now(); setConfirming(true) }} disabled={busy || shut}>Move to {next} <ArrowRight className="h-3.5 w-3.5" /></Button>

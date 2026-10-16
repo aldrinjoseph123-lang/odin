@@ -103,7 +103,7 @@ def _project_json(p, fields):
                               "po_number", "start_date", "target_end_date", "created_at", "updated_at")} | {"owner": p["owner_name"], "fields": fields}
 
 
-PAGE_MAX = 500   # ponytail: a fixed cap, not a policy; a page larger than this is a scrape, not a report
+PAGE_MAX = 500   # a fixed cap, not a policy; a page larger than this is a scrape, not a report
 
 
 def _page_args():

@@ -9,7 +9,7 @@ from markupsafe import escape
 
 import graph
 from constants import SIGNOFF_DOC_CATEGORY
-from core import admin_required, app, as_id, json_body, external_url, login_required, permission_required, project_allows, project_role_required, sees_po
+from core import admin_required, app, as_id, json_body, external_url, is_staff, login_required, permission_required, project_allows, project_role_required, sees_po
 from db import get_db
 from routes.projects import load_project, save_document
 from policies import policy
@@ -18,10 +18,6 @@ from services import signoff
 from services.audit import audit_log
 from services.notifications import notify_users
 from spa import spa_index
-
-
-def _staff():
-    return session.get("kind") != "external"
 
 
 def _partner_cut(project_id, row):
@@ -70,11 +66,11 @@ def api_signoff(project_id):
         # why it cannot be sent from this stage yet (None: it can), shown before anyone fills the form in (sim roles-8)
         "not_yet": signoff.sendable(project) if manage and not st["complete"] else None,
         "versions": [{"version": r["version"], "status": r["status"], "created_at": r["created_at"], "created_by": r["created_by"]} for r in rows],
-        "current": signoff.view(row, _staff(), _partner_cut(project_id, row)) if row else None,
+        "current": signoff.view(row, is_staff(), _partner_cut(project_id, row)) if row else None,
         "can": {
             "manage": manage and not st["complete"],
             "sign": bool(row) and row["status"] == "sent" and row["signer_id"] == me,
-            "countersign": bool(row) and row["status"] == "signed" and _staff() and (row["counter_id"] == me or session.get("role") == "Admin"),
+            "countersign": bool(row) and row["status"] == "signed" and is_staff() and (row["counter_id"] == me or session.get("role") == "Admin"),
             "upload": manage and bool(row) and row["status"] in signoff.OPEN,
             "withdraw": manage and bool(row) and row["status"] in signoff.OPEN,
             "waive": session.get("role") == "Admin" and not st["complete"],
@@ -240,7 +236,7 @@ def api_signoff_sign(project_id, version):
 def api_signoff_countersign(project_id, version):
     project = load_project(project_id)
     row = _version(project_id, version)
-    if not _staff() or (row["counter_id"] != session["user_id"] and session.get("role") != "Admin"):
+    if not is_staff() or (row["counter_id"] != session["user_id"] and session.get("role") != "Admin"):
         abort(403)
     try:
         signoff.countersign(row, _body(), request.remote_addr, request.headers.get("User-Agent"))
@@ -388,5 +384,5 @@ def signoff_pdf(project_id):
         abort(404)
     safe = file_stem(project["name"])
     audit_log("download_signoff", "project", project_id, project["name"], f"v{row['version']}")   # an export like the others (P3-17)
-    return Response(render(signoff.view(row, _staff(), _partner_cut(project_id, row))), mimetype="application/pdf",
+    return Response(render(signoff.view(row, is_staff(), _partner_cut(project_id, row))), mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{safe}-signoff-v{row["version"]}.pdf"'})

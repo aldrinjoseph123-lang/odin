@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
 import { DatePicker } from "@/components/DatePicker"
+import { LoadFailed } from "@/components/LoadFailed"
 import { Notice } from "@/components/Notice"
 import { field as fieldLook } from "@/lib/ui"
 import { fieldInput, fieldText } from "@/lib/format"
@@ -31,11 +32,12 @@ export function FieldInput({ field, value, onChange, name }: { field: Pick<Custo
 }
 
 export function FieldValues({ projectId }: { projectId: number }) {
-  const { data: d, reload } = useLoad(`fields:${projectId}`, () => projectFields(projectId))
+  const { data: d, error, reload } = useLoad(`fields:${projectId}`, () => projectFields(projectId))
   const { busy, note, act } = useAction(reload)
   const [draft, setDraft] = useState<Record<string, string> | null>(null)
   const edit = useCallback(() => d && setDraft(Object.fromEntries(d.fields.map((f) => [f.id, fieldInput(f.kind, f.value)]))), [d])
-  if (!d || d.fields.length === 0) return null
+  if (!d) return error ? <div className="mt-3 border-t border-border pt-3"><LoadFailed what="the custom fields" onRetry={() => void reload()} /></div> : null
+  if (d.fields.length === 0) return null
   const shown = d.fields.filter((f) => f.value !== null)
 
   async function save() {

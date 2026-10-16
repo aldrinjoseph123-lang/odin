@@ -4,7 +4,7 @@ import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import Workload from "./Workload"
-import { WorkloadRows } from "@/components/WorkloadWidget"
+import { WorkloadRows } from "@/components/WorkloadRows"
 import { admin } from "./fixtures"
 import type { WorkloadCell, WorkloadData, WorkloadPerson } from "@/lib/api"
 

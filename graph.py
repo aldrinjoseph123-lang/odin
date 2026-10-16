@@ -371,7 +371,7 @@ def _send_mail(to_email, subject, html_body, attachments=None):
             if resp.status_code < 400:
                 try:
                     from services.notifications import report_mail_failure
-                    report_mail_failure(refused, alias=True)
+                    report_mail_failure(refused, "alias")
                 except Exception:  # noqa: BLE001
                     pass
         if resp.status_code >= 400:

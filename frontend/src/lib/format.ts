@@ -40,6 +40,12 @@ export function fmtDate(iso: string | null | undefined): string {
 }
 // "27 Sep" whatever the workspace format: for tiles too narrow for a numeric date.
 export const shortDay = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`
+// A date for something that lives longer than a season (a token's expiry): the year too when it is not this one,
+// so "16 Oct" is never read as the coming October. The numeric formats always carry it.
+export function fmtDateY(iso: string | null | undefined): string {
+  const day = fmtDate(iso)
+  return iso && dateFormat === "d MMM yyyy" && iso.slice(0, 4) !== localToday().slice(0, 4) ? `${day} ${iso.slice(0, 4)}` : day
+}
 // "Sep" from "2026-09" or "2026-09-27"
 export const monthName = (iso: string) => MONTHS[Number(iso.slice(5, 7)) - 1]
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -389,12 +395,15 @@ export function productsFor(products: { name: string; vendor: string }[], vendor
   return current && !names.includes(current) ? [current, ...names] : names
 }
 
+// "1 task", "3 tasks": the count and its noun (pass `many` for an irregular one)
+export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
+
 // The project timeline's one line in words: "Started 9 Oct · day 1 · no target
 // date" / "… · target 30 Oct, 21 days left" / "… · target 2 Oct, 7 days late".
 // A start still ahead reads "Starts 1 Nov, in 22 days"; a closed rollout has
 // no days left to count (sim L-13). Calendar days (gaps between dates stay calendar days).
 export function timelineSummary(start: string, today: string, target?: string | null, closed = false): string {
-  const n = (k: number) => `${k} day${k === 1 ? "" : "s"}`
+  const n = (k: number) => plural(k, "day")
   const ahead = lateBy(today, start)
   const head = ahead ? `Starts ${fmtDate(start)}, in ${n(ahead)}` : `Started ${start === today ? "today" : fmtDate(start)} · day ${lateBy(start, today) + 1}`
   if (closed) return `${head.replace(/ · day \d+$/, "")} · closed`

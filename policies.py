@@ -247,7 +247,7 @@ POLICIES = {
                          help="…and off track past this many days, or when it is already past its target, or has an open blocker."),
     "gate_override": dict(area="workflow", kind="choice", default="admin_and_pm", choices=("admin", "admin_and_pm"),
                           label="Who may move past a stage gate",
-                          help="A stage can ask for all its tasks done and some documents on file before the rollout leaves it. admin: only an Admin may move past it; admin_and_pm: the rollout's project manager too. Always with a written reason, kept in the stage history and the audit log."),
+                          help="A stage can ask for all its tasks done and some documents on file before the rollout leaves it. Choose whether only an Admin may move past it, or the rollout's project manager too. Always with a written reason, kept in the stage history and the audit log."),
     "ask_form_max_questions": dict(area="workflow", kind="int", default=12, min=1, max=30,
                                    label="Questions on a customer form (most)",
                                    help="A task can ask a customer, reseller or contractor to answer a short form; this caps its questions."),

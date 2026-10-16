@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { expect, test } from "@playwright/test"
-import { api, expectClean, inviteExternal, signIn, watch } from "./helpers"
+import { api, expectClean, inviteExternal, settled, signIn, watch } from "./helpers"
 
 // @flow: the quality-of-life tools (advice B11, B16, B17, B19, B20) on the seeded portfolio.
 // Each journey leaves the data as it found it.
@@ -15,7 +15,7 @@ test("@flow stages: a stage dragged down one place saves through the move route,
   expect(await handles.count()).toBeGreaterThan(3)
   // the second stage onto the third: the grip is the pointer's way, the arrows stay the keyboard's
   await handles.nth(1).scrollIntoViewIfNeeded()
-  await page.waitForTimeout(300)   // the editor has opened and the page has settled
+  await settled(handles.nth(1)); await settled(handles.nth(2))   // the editor has opened and the page has settled
   const a = (await handles.nth(1).boundingBox())!, b = (await handles.nth(2).boundingBox())!
   const frames = () => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))))
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2)

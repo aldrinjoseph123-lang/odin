@@ -1,21 +1,23 @@
-import { useCallback, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { Pencil, Trash2 } from "lucide-react"
 import { Panel } from "@/components/PanelTitle"
 import { MoveArrows } from "@/components/MoveArrows"
+import { LoadFailed } from "@/components/LoadFailed"
 import { Notice } from "@/components/Notice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
 import { Tag } from "@/components/ui/tag"
-import { checkbox, danger, field as fieldLook, fieldArea } from "@/lib/ui"
+import { askConfirm } from "@/lib/confirm"
+import { checkbox, field as fieldLook, fieldArea } from "@/lib/ui"
 import { createField, customFields, deleteField, moveField, updateField, type CustomField, type FieldDraft, type FieldKind } from "@/lib/api"
 import { useLoad } from "@/lib/useLoad"
 import { useAction } from "@/lib/useAction"
 
 // Settings › Rollouts & workflow › Custom fields: the extra fields every
-// rollout carries. Renaming keeps the values; deleting takes them, so the
-// admin types the field's name (the server checks it and keeps the values
-// in the audit row).
+// rollout carries. Renaming keeps the values; deleting takes them, so it asks
+// first and says so (the server wants the field's name with the request and
+// keeps the first few values in the audit row).
 const BLANK: FieldDraft = { name: "", kind: "text", choices: [], required: false, customer_visible: false, show_in_list: false }
 const FLAGS: [keyof Pick<FieldDraft, "required" | "customer_visible" | "show_in_list">, string, string][] = [
   ["required", "Required when a rollout is created", "required"],
@@ -24,14 +26,17 @@ const FLAGS: [keyof Pick<FieldDraft, "required" | "customer_visible" | "show_in_
 ]
 
 export function FieldsEditor() {
-  const { data: d, reload } = useLoad("custom-fields", customFields)
+  const { data: d, error, reload } = useLoad("custom-fields", customFields)
   const { busy, note, act } = useAction(reload)
   const [editing, setEditing] = useState<number | "new" | null>(null)
-  const [deleting, setDeleting] = useState<number | null>(null)
-  const [typed, setTyped] = useState("")
-  const done = useCallback(() => { setEditing(null); setDeleting(null); setTyped("") }, [])
-  if (!d) return null
+  const done = () => setEditing(null)
+  if (!d) return error ? <LoadFailed what="the custom fields" onRetry={() => void reload()} /> : null
   const full = d.fields.length >= d.max
+  async function remove(f: CustomField) {
+    if (!(await askConfirm(`Delete ${f.name}? Every rollout's ${f.name} value is deleted with it and cannot be brought back; the audit log keeps only the first few.`, "Delete field"))) return
+    done()
+    void act(() => deleteField(f.id, f.name), `Deleted ${f.name}.`)   // the server wants the name with the request
+  }
 
   return (
     <Panel title="Custom fields" hint={`${d.fields.length} of ${d.max}: extra details every rollout carries`} id="fields">
@@ -49,18 +54,9 @@ export function FieldsEditor() {
                 <span className="ml-auto flex items-center gap-1">
                   <MoveArrows name={f.name} first={i === 0} last={i === d.fields.length - 1} busy={busy} onMove={(dir) => act(() => moveField(f.id, dir === "up" ? -1 : 1))} />
                   <Button type="button" variant="ghost" size="icon-sm" aria-label={`Edit ${f.name}`} onClick={() => { done(); setEditing(f.id) }}><Pencil className="size-3.5" /></Button>
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`Delete ${f.name}`} className="text-muted-foreground hover:text-destructive" onClick={() => { done(); setDeleting(f.id) }}><Trash2 className="size-3.5" /></Button>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`Delete ${f.name}`} className="text-muted-foreground hover:text-destructive" onClick={() => void remove(f)}><Trash2 className="size-3.5" /></Button>
                 </span>
               </div>
-            )}
-            {deleting === f.id && (
-              <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void act(() => deleteField(f.id, typed), `Deleted ${f.name}.`).then((ok) => { if (ok) done() }) }}>
-                <Field label={`Type ${f.name} to delete it and every rollout's value`} className="min-w-0 flex-1">
-                  <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus className="h-8 text-[13px]" />
-                </Field>
-                <Button type="submit" size="sm" variant="ghost" className={danger} loading={busy} disabled={typed !== f.name}>Delete field</Button>
-                <Button type="button" size="sm" variant="ghost" onClick={done}>Cancel</Button>
-              </form>
             )}
           </li>
         ))}
@@ -105,7 +101,7 @@ function FieldForm({ start, kinds, busy, onSave, onCancel }: {
       )}
       <div className="grid grid-cols-1 gap-1 sm:col-span-2">
         {FLAGS.map(([k, label]) => (
-          <label key={k} className="flex items-center gap-2"><input type="checkbox" className={checkbox} checked={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.checked })} />{label}</label>
+          <label key={k} className="flex items-center gap-2 text-[13px]"><input type="checkbox" className={checkbox} checked={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.checked })} />{label}</label>
         ))}
       </div>
       <div className="flex items-center gap-2 sm:col-span-2">

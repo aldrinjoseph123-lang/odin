@@ -32,7 +32,7 @@ def api_ask_answers(project_id, task_id):
     task = asks.own_ask(project_id, task_id, session["user_id"])
     if task is None or task["kind"] != "form":
         abort(404)
-    if session.get("kind") == "external" and asks.limited(session["user_id"]):
+    if asks.limited(session["user_id"]):
         return jsonify(error="Too many changes in a minute; wait a moment"), 429
     body = json_body() or {}
     try:

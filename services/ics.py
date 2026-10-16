@@ -37,8 +37,8 @@ def owner_of(raw):
 
 
 def _text(value):
-    """RFC 5545 TEXT: backslash, semicolon, comma and line breaks escaped."""
-    return (value or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\r\n", "\\n").replace("\n", "\\n")
+    """RFC 5545 TEXT: backslash, semicolon, comma and line breaks (a lone CR too) escaped."""
+    return (value or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
 
 
 def _fold(line):

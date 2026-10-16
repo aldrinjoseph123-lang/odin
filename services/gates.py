@@ -21,6 +21,7 @@ from flask import session
 
 from db import get_db
 from policies import policy
+from services.fmt import plural
 
 GUEST_MESSAGE = "This stage is not finished yet. The project manager will move the rollout on once its work is done."
 
@@ -50,13 +51,13 @@ def blocked(project, new_stage, rows=None):
     gated = {r["name"] for r in passed if r["gate_tasks"]}
     if gated:
         # a task with no stage, or a stage since removed, belongs to the current stage (as the Flow shows it)
-        # a repeating task (services/milestones.py) never holds a gate: its next occurrence is always open
+        # a repeating task (services/recurrence.py) never holds a gate: its next occurrence is always open
         open_in = Counter(t["stage"] if t["stage"] in names else project["stage"]
                           for t in db.execute("SELECT stage FROM tasks WHERE project_id = ? AND done = 0 AND recurrence IS NULL", (pid,)))
         for r in passed:
             if (n := open_in[r["name"]]) and r["name"] in gated:
                 where = "" if r["name"] == project["stage"] else f" in {r['name']}"
-                out.append({"stage": r["name"], "kind": "tasks", "count": n, "text": f"{n} open task{'s' if n != 1 else ''}{where}"})
+                out.append({"stage": r["name"], "kind": "tasks", "count": n, "text": f"{n} open {plural(n, 'task')}{where}"})
     wanted = {}
     for r in passed:
         for c in required_docs(r):

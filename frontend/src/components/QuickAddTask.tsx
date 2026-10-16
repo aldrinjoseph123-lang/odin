@@ -3,9 +3,10 @@ import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DatePicker } from "@/components/DatePicker"
-import { addTask, ApiError, type WorkProject } from "@/lib/api"
+import { addTask, type WorkProject } from "@/lib/api"
 import { fieldAuto } from "@/lib/ui"
 import { toast } from "@/lib/toast"
+import { useAction } from "@/lib/useAction"
 
 // My work: a task on one of my rollouts without opening it. The task lands on
 // the rollout's current stage, assigned to me, through the project page's own
@@ -17,19 +18,17 @@ export function QuickAddTask({ projects, me, preferred, onAdded }: {
   const [pick, setPick] = useState<number | null>(null)
   const [title, setTitle] = useState("")
   const [due, setDue] = useState("")
-  const [busy, setBusy] = useState(false)
+  const { busy, act } = useAction(undefined, { quiet: true })
   if (open.length === 0) return null
   const rollout = open.find((p) => p.id === (pick ?? preferred)) ?? open[0]
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (busy || !title.trim()) return
-    setBusy(true)
-    try {
-      await addTask(rollout.id, { title: title.trim(), stage: rollout.stage, assignee_id: me, due_date: due || null })
-      toast(`Added to ${rollout.name}: ${title.trim()}`)
-      setTitle(""); setDue("")
-      onAdded()
-    } catch (x) { toast(x instanceof ApiError ? x.message : "That did not save", { tone: "bad" }) } finally { setBusy(false) }
+    const ok = await act(() => addTask(rollout.id, { title: title.trim(), stage: rollout.stage, assignee_id: me, due_date: due || null }))
+    if (!ok) return
+    toast(`Added to ${rollout.name}: ${title.trim()}`)
+    setTitle(""); setDue("")
+    onAdded()
   }
   return (
     <form onSubmit={submit} aria-label="Add a task" className="mb-3 flex flex-wrap items-center gap-2">

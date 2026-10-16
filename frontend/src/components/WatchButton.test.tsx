@@ -12,9 +12,9 @@ describe("WatchButton", () => {
     api.setWatch.mockResolvedValueOnce({ can: "mute", on: true }).mockResolvedValueOnce({ can: "mute", on: false })
     const user = userEvent.setup()
     render(<WatchButton projectId={4} watch={{ can: "mute", on: false }} />)
-    await user.click(screen.getByRole("button", { name: "Mute" }))
+    await user.click(screen.getByRole("button", { name: "Mute updates" }))
     expect(api.setWatch).toHaveBeenLastCalledWith(4, true)
-    await user.click(await screen.findByRole("button", { name: "Unmute" }))
+    await user.click(await screen.findByRole("button", { name: "Unmute updates" }))
     expect(api.setWatch).toHaveBeenLastCalledWith(4, false)
   })
 

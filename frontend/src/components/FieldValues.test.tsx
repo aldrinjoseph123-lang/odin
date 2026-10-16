@@ -13,6 +13,8 @@ const values: ProjectField[] = [
   { ...def(1, "Region", "choice"), value: "UAE" }, { ...def(2, "Seats", "number"), value: 1200 }, { ...def(3, "Live", "yesno"), value: true },
   { ...def(4, "Go-live", "date"), value: null }, { ...def(5, "Ticket", "text"), value: "CHG-1" },
 ]
+const ask = vi.hoisted(() => ({ askConfirm: vi.fn(async () => true) }))
+vi.mock("@/lib/confirm", () => ask)
 const api = vi.hoisted(() => ({
   projectFields: vi.fn(), saveProjectFields: vi.fn(async () => ({ ok: true, changed: 1 })),
   customFields: vi.fn(), deleteField: vi.fn(async () => ({ ok: true })), createField: vi.fn(async () => ({ ok: true, id: 9 })),
@@ -59,19 +61,18 @@ describe("custom field values", () => {
 describe("FieldsEditor", () => {
   const kinds = { text: "Text", number: "Number", date: "Date", choice: "Choice", yesno: "Yes / no" }
 
-  it("lists each field with its kind and flags, and deletes only on the typed name", async () => {
+  it("lists each field with its kind and flags, and deletes only after the confirm, sending the name the server wants", async () => {
     api.customFields.mockResolvedValue({ fields: [def(1, "Region", "choice", { customer_visible: true, show_in_list: true }), def(2, "Seats", "number", { required: true })], kinds, max: 20 })
     const user = userEvent.setup()
     render(<FieldsEditor />)
     expect(await screen.findByText("Choice: UAE, KSA")).toBeInTheDocument()
     expect(screen.getByText("customers see it")).toBeInTheDocument()
     expect(screen.getByText("required")).toBeInTheDocument()
+    ask.askConfirm.mockResolvedValueOnce(false)
     await user.click(screen.getByRole("button", { name: "Delete Seats" }))
-    const go = screen.getByRole("button", { name: "Delete field" })
-    expect(go).toHaveAttribute("aria-disabled", "true")
-    await user.type(screen.getByRole("textbox", { name: /Type Seats to delete/ }), "Seats")
-    expect(go).toHaveAttribute("aria-disabled", "false")
-    await user.click(go)
+    expect(ask.askConfirm).toHaveBeenLastCalledWith(expect.stringMatching(/Delete Seats\? Every rollout's Seats value is deleted/), "Delete field")
+    expect(api.deleteField).not.toHaveBeenCalled()   // Cancel keeps it
+    await user.click(screen.getByRole("button", { name: "Delete Seats" }))
     await waitFor(() => expect(api.deleteField).toHaveBeenCalledWith(2, "Seats"))
   })
 

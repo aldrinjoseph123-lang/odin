@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, forecastTone, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday, isDay, isMonth, sinceLine } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, forecastTone, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday, isDay, isMonth, sinceLine, plural } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -387,5 +387,12 @@ describe("sinceLine", () => {
     expect(sinceLine({ kind: "decided", who: null, text: "Use SSO" })).toBe("Decided: Use SSO")
     expect(sinceLine({ kind: "approval", who: "Cus", text: "Deploy declined" })).toBe("Customer declined Deploy (Cus)")
     expect(sinceLine({ kind: "ask", who: null, text: "Upload the PO" })).toBe("The customer finished: Upload the PO")
+  })
+})
+
+describe("plural", () => {
+  it("counts a noun, with an irregular plural when given", () => {
+    expect([plural(0, "task"), plural(1, "task"), plural(3, "task")]).toEqual(["0 tasks", "1 task", "3 tasks"])
+    expect([plural(1, "person", "people"), plural(2, "person", "people")]).toEqual(["1 person", "2 people"])
   })
 })

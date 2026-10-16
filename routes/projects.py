@@ -47,6 +47,8 @@ from db import (
     partner_hidden_categories,
     PROJECT_OPEN_SQL,
     copy_template_stages,
+    customer_ids,
+    insert_task,
     my_project_ids,
     set_project_manager,
     is_customer_on,
@@ -56,11 +58,15 @@ from db import (
     touch_project,
 )
 from services.alerts import get_alert_type_settings
+from services import asks
 from services import fields as custom_fields
-from services import milestones
+from services import recurrence
 from services import rules
 from services import stages as stage_ops
+from services import task_links
+from services import template_tasks
 from services.audit import audit_log
+from services.fmt import plural
 from services.notifications import notify_event, notify_participants, notify_users
 
 PROJECTS_PER_PAGE = 25
@@ -96,12 +102,22 @@ def load_project(project_id, include_deleted=False):
     ).fetchone()
     if project is None or not project_visible(project):
         abort(404)
+    if project["intake_pending"] and request.method not in ("GET", "HEAD") and request.endpoint not in PENDING_ALLOWED:
+        # a CRM intake is not a rollout until it is confirmed: no team, tasks, sign-off, report or move by URL
+        abort(400, description="Confirm this intake first (attach the PO and take ownership)")
     return project
+
+
+# What may be done to a pending intake (services/intake.py) before it is confirmed:
+# confirm it, or discard it and undo the discard. Every other write is refused in load_project.
+PENDING_ALLOWED = {"intake_confirm", "project_delete", "undo_project"}
 
 
 def project_visible(project):
     if session.get("kind") != "external":
         return True
+    if project["intake_pending"]:   # staff only until it is confirmed
+        return False
     return project["id"] in my_project_ids(session["user_id"])
 
 
@@ -205,7 +221,7 @@ def projects_export_csv():
                 p["name"], p["client"], p["po_number"] if po else "", p["po_date"] if po else "", p["stage"],
                 p["owner_name"], p["delivery_mode"], "" if external else p["outsourcer_name"], p["vendor_name"],
                 p["product_name"], p["start_date"], p["target_end_date"], p["updated_at"],
-            ] + [custom_fields.csv_cell(values[p["id"]].get(f["id"])) for f in defs]
+            ] + ["" if (v := values[p["id"]].get(f["id"])) is None else ("Yes" if v else "No") if isinstance(v, bool) else v for f in defs]
         )
     audit_log("export_projects", details=f"{len(projects)} rollouts")   # it carries PO numbers: an export like the others (P3-17)
     return Response(
@@ -249,7 +265,6 @@ def raid_export_csv(project_id):
 def tasks_export_csv(project_id):
     if session.get("kind") == "external":
         abort(403)
-    from services import task_links
     db = get_db()
     project = load_project(project_id)
     stages = get_stage_names(project_id)
@@ -275,6 +290,24 @@ def report_all():
 def report_single(project_id):
     load_project(project_id)   # 404 unless the caller may see it, before any page is served
     return spa_index()
+
+
+def leads(db, keep=None):
+    """[{id, name}] of the staff who can be a project manager: those who may move stages
+    (`keep`: this owner too, so an edit never swaps them silently)."""
+    return [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name, role FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")
+            if role_has_permission(u["role"], "edit_project_stage") or u["id"] == keep]
+
+
+def pick_lead(db, raw):
+    """(the project manager's id, None) for a new rollout or a confirmed intake, or (None, the words to refuse with).
+    A project manager must be able to move stages: someone who can is their own; someone who cannot names one."""
+    if role_has_permission(session.get("role"), "edit_project_stage"):
+        return session["user_id"], None
+    lead = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone() if raw.isdigit() else None
+    if lead is None or not role_has_permission(lead["role"], "edit_project_stage"):
+        return None, "Choose a project manager who can move stages (an Admin or Member)"
+    return lead["id"], None
 
 
 @app.route("/projects/new", methods=["GET", "POST"])
@@ -324,16 +357,11 @@ def project_new():
     except ValueError as e:
         flash(str(e), "error")
         return redirect(url_for("project_new"))
-    # The project manager must be able to move stages. Someone who cannot
-    # (a Contributor) names one and joins as a Coordinator.
-    lead_id = session["user_id"]
-    if not role_has_permission(session.get("role"), "edit_project_stage"):
-        raw = request.form.get("owner_id", "")
-        lead = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1 AND kind = 'internal'", (raw,)).fetchone() if raw.isdigit() else None
-        if lead is None or not role_has_permission(lead["role"], "edit_project_stage"):
-            flash("Choose a project manager who can move stages (an Admin or Member)", "error")
-            return redirect(url_for("project_new"))
-        lead_id = lead["id"]
+    # Someone who cannot move stages (a Contributor) names a project manager who can and joins as a Coordinator.
+    lead_id, problem = pick_lead(db, request.form.get("owner_id", ""))
+    if problem:
+        flash(problem, "error")
+        return redirect(url_for("project_new"))
     now = datetime.utcnow().isoformat()
     name = request.form["name"].strip()[:200]
     cursor = db.execute(
@@ -385,7 +413,7 @@ def project_new():
                 "INSERT OR IGNORE INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, 'Coordinator', ?, ?)",
                 (project_id, int(raw), session["user_id"], now),
             )
-    from services import template_tasks   # the template's tasks, once the team that takes them is known
+    # the template's tasks, once the team that takes them is known
     template_tasks.instantiate(db, template["id"], project_id, session["user_name"])
     save_document(project_id, po_document, CLIENT_PO_DOC_CATEGORY, session["user_name"])
     db.commit()
@@ -582,8 +610,7 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None, 
     # no approval (the sign-off is the customer's word on the finish, P7).
     # Only someone in the Customer role can decide, so with nobody in it no
     # request is opened (it would wait for ever and count as waiting, sim L-7).
-    has_customer = db.execute("SELECT 1 FROM project_participants WHERE project_id = ? AND role = 'Customer'", (project_id,)).fetchone()
-    ask_customer = bool(project["customer_approval"]) and not terminal and bool(has_customer)
+    ask_customer = bool(project["customer_approval"]) and not terminal and bool(customer_ids(project_id))
     if project["customer_approval"]:
         db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
     if ask_customer:
@@ -603,8 +630,7 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None, 
     ask = "<br>Please review and approve this step."
     notify_event(project, f"Stage changed: {escape(project['name'])}", body + (ask if ask_customer else ""), channels={"email": False, "teams": True})
     # the customer is asked to approve as an approval (their own kind), everyone else hears of the move
-    customers = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ? AND role = 'Customer'", (project_id,))] \
-        if ask_customer else []
+    customers = customer_ids(project_id) if ask_customer else []
     team = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,)) if r[0] not in customers]
     notify_users(team, "stage", project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=actor_id)
     if customers:
@@ -789,7 +815,6 @@ def document_upload(project_id):
     project role), and the one door for an upload ask (services/asks.py): with
     `ask_id`, the person the ask is on uploads into its category only, rate
     limited, and the ask is done. Nothing else is opened to them."""
-    from services import asks
     db = get_db()
     if not load_project(project_id):
         abort(404)
@@ -798,7 +823,7 @@ def document_upload(project_id):
         ask = asks.own_ask(project_id, as_id(request.form.get("ask_id")), session["user_id"])
         if ask is None or ask["kind"] != "upload":
             abort(403)
-        if session.get("kind") == "external" and asks.limited(session["user_id"]):
+        if asks.limited(session["user_id"]):
             abort(429, description="Too many changes in a minute; wait a moment")
     elif not project_allows(project_id, "manage_documents"):
         abort(403)
@@ -1069,11 +1094,11 @@ def participant_remove(project_id, participant_id):
                            (project["owner_id"], project_id, row["user_id"])).rowcount if kind == "external" else 0
         moot = _moot_approvals(db, project_id)
         db.commit()
-        said = "".join([f"; {moved} open task{'s' if moved != 1 else ''} moved to the project manager" if moved else "",
+        said = "".join([f"; {moved} open {plural(moved, 'task')} moved to the project manager" if moved else "",
                         f"; {moot} pending approval withdrawn (no Customer left to decide)" if moot else ""])
         audit_log("remove_participant", "project", project_id, project["name"], f"{row['name']} ({row['role']}){said}")
         if moved:
-            notify_users([project["owner_id"]], "assigned", project_id, f"{moved} task{'s' if moved != 1 else ''} on {escape(project['name'])} came to you",
+            notify_users([project["owner_id"]], "assigned", project_id, f"{moved} {plural(moved, 'task')} on {escape(project['name'])} came to you",
                          f"{escape(session['user_name'])} removed {escape(row['name'])} from <b>{escape(project['name'])}</b>; their open tasks are yours now.",
                          exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
         flash(f"{row['name']} removed{said}")
@@ -1083,7 +1108,7 @@ def participant_remove(project_id, participant_id):
 def _moot_approvals(db, project_id):
     """With nobody left in the Customer role, a pending approval could never be
     decided (and would count as waiting for ever): withdraw it. The caller commits."""
-    if db.execute("SELECT 1 FROM project_participants WHERE project_id = ? AND role = 'Customer'", (project_id,)).fetchone():
+    if customer_ids(project_id):
         return 0
     return db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,)).rowcount
 
@@ -1390,7 +1415,6 @@ def _links_and_hours(db, project_id, task_id, form, hours=None):
     """What a posted task waits on (None: not sent, unchanged) and its
     estimate, checked: tasks of this rollout only, never a loop
     (services/task_links.py). Raises ValueError with the reason."""
-    from services import task_links, template_tasks
     waits = None
     if "waits_on" in form:
         raw = form.get("waits_on") if request.is_json else [x for x in form.getlist("waits_on") if x]
@@ -1423,30 +1447,25 @@ def task_add(project_id):
         return _task_reply(project_id, problem)
     try:
         waits, hours = _links_and_hours(db, project_id, None, form)
-        from services import asks
         kind, ask_category, ask_form = asks.clean_spec(form)   # a tick, a document, or a short form (services/asks.py)
     except ValueError as exc:
         return _task_reply(project_id, str(exc))
     done, done_at = _done_state(form)   # undo of a delete brings a finished task back finished
     try:
-        every, until, stage = milestones.clean_repeat(form, parse_date(form.get("due_date")), _task_stage(project_id, form.get("stage")), project["stage"])
+        every, until, stage = recurrence.clean_repeat(form, parse_date(form.get("due_date")), _task_stage(project_id, form.get("stage")), project["stage"])
     except ValueError as exc:
         return _task_reply(project_id, str(exc))
-    cur = db.execute(
-        "INSERT INTO tasks (project_id, title, assignee_id, due_date, created_at, created_by, stage, done, done_at, estimate_hours, kind, ask_category, ask_form) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (project_id, title, assignee_id, parse_date(form.get("due_date")),
-         datetime.utcnow().isoformat(), session["user_name"], _task_stage(project_id, form.get("stage")), done, done_at, hours, kind, ask_category, ask_form),
-    )
-    if every:   # repeats (services/milestones.py); "until the stage is done" pins the stage it names
-        db.execute("UPDATE tasks SET recurrence = ?, recur_until = ?, stage = ? WHERE id = ?", (every, until, stage, cur.lastrowid))
+    task_id = insert_task(db, project_id, title, session["user_name"], assignee_id=assignee_id, due_date=parse_date(form.get("due_date")),
+                          stage=_task_stage(project_id, form.get("stage")), done=done, done_at=done_at, estimate_hours=hours,
+                          kind=kind, ask_category=ask_category, ask_form=ask_form)
+    if every:   # repeats (services/recurrence.py); "until the stage is done" pins the stage it names
+        db.execute("UPDATE tasks SET recurrence = ?, recur_until = ?, stage = ? WHERE id = ?", (every, until, stage, task_id))
     if waits:
-        from services import task_links
-        task_links.replace(db, project_id, cur.lastrowid, waits)
+        task_links.replace(db, project_id, task_id, waits)
     if form.get("blocks"):   # the tasks that wait on this one (the undo of a delete gives their links back)
-        from services import task_links
         try:
             raw = form.get("blocks") if request.is_json else [x for x in form.getlist("blocks") if x]
-            task_links.add_successors(db, project_id, cur.lastrowid, task_links.clean_ids(raw))
+            task_links.add_successors(db, project_id, task_id, task_links.clean_ids(raw))
         except ValueError as exc:
             db.rollback()
             return _task_reply(project_id, str(exc).replace("waits_on", "blocks"))
@@ -1454,7 +1473,7 @@ def task_add(project_id):
     db.commit()
     _notify_assignee(assignee_id, project_id, title)
     audit_log("add_task", "project", project_id, None, title[:80])
-    return _task_reply(project_id, id=cur.lastrowid)
+    return _task_reply(project_id, id=task_id)
 
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>/toggle", methods=["POST"])
@@ -1473,10 +1492,8 @@ def task_toggle(project_id, task_id):
     # an upload or a form is done by uploading or answering (services/asks.py); whoever manages the tasks may still tick it
     if not manages and task["kind"] in ("upload", "form"):
         return _task_reply(project_id, "Upload the file or answer the questions to finish this")
-    if session.get("kind") == "external":
-        from services import asks
-        if asks.limited(session["user_id"]):
-            abort(429, description="Too many changes in a minute; wait a moment")
+    if asks.limited(session["user_id"]):
+        abort(429, description="Too many changes in a minute; wait a moment")
     # the page says what it wants (P2-26): a tick from a stale tab sets done, never flips it back open
     wanted = (json_body() if request.is_json else request.form).get("done")
     if wanted is None:
@@ -1488,8 +1505,9 @@ def task_toggle(project_id, task_id):
     if new_done == task["done"]:
         return _task_reply(project_id, done=bool(new_done))   # already so: nothing changed, nobody told
     # finish-to-start (services/task_links.py): a task waiting on open work is not ticked; an Admin may, on the record
-    from services import task_links
     waits = ", ".join(w["title"] for w in task_links.open_predecessors(db, task_id)) if new_done else ""
+    if waits and session.get("kind") == "external":   # the team's task titles stay with the team
+        return _task_reply(project_id, f"This waits on {task_links.HIDDEN_WAIT}")
     if waits and session.get("role") != "Admin":
         return _task_reply(project_id, f"{task['title']} waits on {waits}: finish that first")
     db.execute(
@@ -1500,13 +1518,12 @@ def task_toggle(project_id, task_id):
     db.commit()
     audit_log("toggle_task", "project", project_id, None, f"{'done' if new_done else 'reopened'}: {task['title'][:80]}")
     if new_done:
-        milestones.spawn_next(db, task_id)   # a repeating task makes its next occurrence, once (services/milestones.py)
+        recurrence.spawn_next(db, task_id)   # a repeating task makes its next occurrence, once (services/recurrence.py)
     if waits:
         audit_log("override_task_wait", "project", project_id, None, f"{task['title'][:80]} ticked while it waits on {waits[:160]}")
     if new_done:
         _tell_pm(project, f"Task done on {escape(project['name'])}",
                  f"{escape(session['user_name'])} completed <b>{escape(task['title'])}</b>.")
-        from services import asks
         if asks.is_external(db, task["assignee_id"]):   # an ask ticked (an upload or a form fires from services/asks.save_answers)
             rules.fire("ask_completed", project_id, {"task": task["title"], "kind": task["kind"] or "task"})
     return _task_reply(project_id, done=bool(new_done))
@@ -1521,7 +1538,6 @@ def task_delete(project_id, task_id):
     task = db.execute("SELECT title FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id)).fetchone()
     if task is None:
         abort(404)
-    from services import task_links
     task_links.forget(db, task_id)   # what waited on it is free to go
     db.execute("DELETE FROM tasks WHERE id = ? AND project_id = ?", (task_id, project_id))
     touch_project(db, project_id)
@@ -1560,14 +1576,13 @@ def task_edit(project_id, task_id):
         return _task_reply(project_id, problem)
     try:
         waits, hours = _links_and_hours(db, project_id, task_id, form, task["estimate_hours"])
-        from services import asks
         kind, ask_category, ask_form = asks.clean_spec(form, task)
     except ValueError as exc:
         return _task_reply(project_id, str(exc))
     due = parse_date(form.get("due_date")) if "due_date" in form else task["due_date"]
     stage = _task_stage(project_id, form.get("stage")) if "stage" in form else task["stage"]
-    try:   # Repeats (services/milestones.py): only the keys sent change
-        every, until, stage = milestones.clean_repeat(form, due, stage, project["stage"], existing=db.execute("SELECT recurrence, recur_until FROM tasks WHERE id = ?", (task_id,)).fetchone())
+    try:   # Repeats (services/recurrence.py): only the keys sent change
+        every, until, stage = recurrence.clean_repeat(form, due, stage, project["stage"], existing=db.execute("SELECT recurrence, recur_until FROM tasks WHERE id = ?", (task_id,)).fetchone())
     except ValueError as exc:
         return _task_reply(project_id, str(exc))
     db.execute(
@@ -1576,14 +1591,17 @@ def task_edit(project_id, task_id):
     )
     db.execute("UPDATE tasks SET recurrence = ?, recur_until = ?, stage = ? WHERE id = ?", (every, until, stage, task_id))
     if waits is not None:
-        from services import task_links
         task_links.replace(db, project_id, task_id, waits)
+    # an upload or a form handed to someone else starts again: the last person's answers are theirs, not the new one's
+    reset = kind in ("upload", "form") and str(assignee_id) != str(task["assignee_id"]) and asks.reset(db, task_id)
     touch_project(db, project_id)
     db.commit()
     # only ping on a genuine reassignment, not on every title tweak
     if assignee_id and str(assignee_id) != str(task["assignee_id"]):
         _notify_assignee(assignee_id, project_id, title)
     audit_log("edit_task", "project", project_id, None, title[:80] + (f" (was {task['title'][:60]})" if title != task["title"] else ""))
+    if reset:
+        audit_log("reset_ask", "project", project_id, None, f"{title[:80]}: reassigned, so the earlier answers were cleared and it is open again")
     return _task_reply(project_id)
 
 

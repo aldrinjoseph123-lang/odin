@@ -7,12 +7,13 @@ from flask import abort, flash, redirect, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 from constants import ROLES
-from policies import policy
+from policies import POLICIES, policy
 from core import app, as_id, permission_required, role_has_permission
 from spa import spa_index
 from db import PROJECT_OPEN_SQL, get_db, set_project_manager
 from security import identity_taken, password_problem, valid_email, valid_username, safe_csv_writer
 from services import workload
+from services.fmt import plural
 from services.audit import audit_log
 
 
@@ -158,8 +159,8 @@ def user_set_active(user_id):
     db.commit()
     said = ""
     if moved:
-        said = (f"; handed over to {handover['name']}: {moved['tasks']} open task{'s' if moved['tasks'] != 1 else ''}, "
-                f"{len(moved['rollouts'])} rollout{'s' if len(moved['rollouts']) != 1 else ''}, {moved['raid']} RAID item{'s' if moved['raid'] != 1 else ''}")
+        said = (f"; handed over to {handover['name']}: {moved['tasks']} open {plural(moved['tasks'], 'task')}, "
+                f"{len(moved['rollouts'])} {plural(len(moved['rollouts']), 'rollout')}, {moved['raid']} RAID {plural(moved['raid'], 'item')}")
     audit_log("set_user_active", "user", user_id, user["username"], f"active={active}{said}")
     if moved and (moved["tasks"] or moved["rollouts"] or moved["raid"]):
         _tell_new_owner(handover["id"], user["name"], moved)
@@ -182,11 +183,12 @@ def _handover_target(db, user, active, target_id):
 
 
 def _hand_over(db, from_id, to_id):
-    """Move the person's open tasks, rollouts (as owner) and RAID items to `to_id`; the caller commits."""
+    """Move the person's open tasks, rollouts (as owner, pending CRM intakes too) and RAID items to `to_id`; the caller commits."""
     now = datetime.utcnow().isoformat()
     live = f"IN (SELECT p.id FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL})"
-    rollouts = [dict(r) for r in db.execute(
-        f"SELECT p.id, p.name FROM projects p WHERE p.owner_id = ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} ORDER BY p.name", (from_id,))]
+    rollouts = [dict(r) for r in db.execute(   # an intake waiting for confirmation would otherwise wait on someone who left
+        f"SELECT p.id, p.name FROM projects p WHERE p.owner_id = ? AND p.deleted_at IS NULL AND ({PROJECT_OPEN_SQL} OR p.intake_pending = 1) ORDER BY p.name",
+        (from_id,))]
     for r in rollouts:
         db.execute("UPDATE projects SET owner_id = ?, updated_at = ? WHERE id = ?", (to_id, now, r["id"]))
         set_project_manager(db, r["id"], to_id, session["user_id"])   # the PM row follows the owner; they stay on the team as a coordinator
@@ -199,9 +201,9 @@ def _hand_over(db, from_id, to_id):
 def _tell_new_owner(to_id, from_name, moved):
     from markupsafe import escape
     from services.notifications import notify_users
-    parts = [f"{moved['tasks']} open task{'s' if moved['tasks'] != 1 else ''}" if moved["tasks"] else "",
-             f"{len(moved['rollouts'])} rollout{'s' if len(moved['rollouts']) != 1 else ''} to manage" if moved["rollouts"] else "",
-             f"{moved['raid']} RAID item{'s' if moved['raid'] != 1 else ''}" if moved["raid"] else ""]
+    parts = [f"{moved['tasks']} open {plural(moved['tasks'], 'task')}" if moved["tasks"] else "",
+             f"{len(moved['rollouts'])} {plural(len(moved['rollouts']), 'rollout')} to manage" if moved["rollouts"] else "",
+             f"{moved['raid']} RAID {plural(moved['raid'], 'item')}" if moved["raid"] else ""]
     what = ", ".join(x for x in parts if x)
     names = ", ".join(escape(r["name"]) for r in moved["rollouts"][:5]) + (" and more" if len(moved["rollouts"]) > 5 else "")
     notify_users([to_id], "assigned", None, f"{escape(from_name)}'s work is yours now",
@@ -216,12 +218,13 @@ def user_set_capacity(user_id):
     db = get_db()
     user = _user_or_404(db, user_id)
     raw = request.form.get("capacity_hours", "").strip()
+    low, high = POLICIES["capacity_hours_per_week"]["min"], POLICIES["capacity_hours_per_week"]["max"]   # one's own limits are the default's
     try:
         hours = round(float(raw), 1) if raw else None
     except ValueError:
         hours = -1
-    if hours is not None and not 1 <= hours <= 80:
-        flash("Capacity is between 1 and 80 hours a week; leave it blank for the default", "error")
+    if hours is not None and not low <= hours <= high:
+        flash(f"Capacity is between {low} and {high} hours a week; leave it blank for the default", "error")
         return redirect(url_for("users"))
     db.execute("UPDATE users SET capacity_hours = ? WHERE id = ?", (hours, user_id))
     db.commit()

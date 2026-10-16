@@ -1,7 +1,7 @@
 """Odin 2.0, workstream 5: milestones and repeating tasks.
 Run with: python -m unittest test_v2_milestones
 
-The clock is frozen at TODAY (services.milestones and services.alerts read their
+The clock is frozen at TODAY (services.milestones, services.recurrence and services.alerts read their
 own local_today), and every date in a test is written out, so nothing here
 depends on the weekday or the month of the day it runs."""
 import json
@@ -10,10 +10,9 @@ from datetime import date, timedelta
 from unittest.mock import patch
 
 import scheduler
-from test_app import STRONG_PASSWORD
 from test_fix_logic import FixBase
 
-TODAY = date(2026, 10, 14)
+TODAY = FixBase.NOW.date()
 J = {"Accept": "application/json"}
 
 
@@ -25,7 +24,7 @@ class MilestoneBase(FixBase):
     def setUp(self):
         super().setUp()
         self._set_policy(timezone="UTC", count_working_days="0")
-        for target in ("services.milestones.local_today", "services.alerts.local_today"):
+        for target in ("services.milestones.local_today", "services.recurrence.local_today", "services.alerts.local_today"):
             p = patch(target, return_value=TODAY)
             p.start()
             self.addCleanup(p.stop)
@@ -48,28 +47,13 @@ class MilestoneBase(FixBase):
     def listed(self, client=None, pid=1):
         return (client or self.client).get(f"/api/projects/{pid}/milestones").get_json()
 
-    def task(self, title="Weekly call", pid=1, **fields):
-        r = self.client.post(f"/projects/{pid}/tasks", json={"title": title, **fields})
-        self.assertEqual(r.status_code, 200, r.get_json())
-        return r.get_json()["id"]
-
     def tick(self, tid, pid=1, done=True):
         r = self.client.post(f"/projects/{pid}/tasks/{tid}/toggle", json={"done": done})
         self.assertEqual(r.status_code, 200, r.get_json())
 
-    def sql(self, query, *args):
-        return [tuple(r) for r in super().sql(query, *args)]   # tuples compare with tuples; a sqlite Row does not
-
     def tasks(self, where="1 = 1"):
         with self.raw_db() as db:
             return db.execute(f"SELECT id, title, due_date, done, recurrence, recur_until, recur_from, recur_spawned, stage FROM tasks WHERE {where} ORDER BY id").fetchall()
-
-    def coordinator(self):
-        """A Member who coordinates rollout 1: manages its tasks, does not manage the rollout."""
-        uid = self._make_user("co", "Member")
-        self.sql("INSERT INTO project_participants (project_id, user_id, role, added_at) VALUES (1, ?, 'Coordinator', datetime('now'))", uid)
-        c, csrf = self._api_client("co", STRONG_PASSWORD)
-        return c, {"X-CSRF-Token": csrf, **J}
 
 
 class MilestoneCrudTestCase(MilestoneBase):
@@ -84,17 +68,17 @@ class MilestoneCrudTestCase(MilestoneBase):
         r = self.put(f"/api/projects/1/milestones/{mid}", json={"name": "Pilot go-live", "date": iso(12)})
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.put(f"/api/projects/1/milestones/{mid}", json={"done": True}).status_code, 200)
-        first = self.sql("SELECT done_at FROM milestones WHERE id = ?", mid)[0][0]
+        first = self.tuples("SELECT done_at FROM milestones WHERE id = ?", mid)[0][0]
         self.assertTrue(first)
         self.put(f"/api/projects/1/milestones/{mid}", json={"done": True})   # still done: the first time stays
-        self.assertEqual(self.sql("SELECT done_at FROM milestones WHERE id = ?", mid)[0][0], first)
+        self.assertEqual(self.tuples("SELECT done_at FROM milestones WHERE id = ?", mid)[0][0], first)
         self.put(f"/api/projects/1/milestones/{mid}", json={"done": False})
-        self.assertIsNone(self.sql("SELECT done_at FROM milestones WHERE id = ?", mid)[0][0])
+        self.assertIsNone(self.tuples("SELECT done_at FROM milestones WHERE id = ?", mid)[0][0])
         self.assertEqual(self.listed()["items"][0]["name"], "Pilot go-live")   # a done-only edit kept the rest
         self.assertEqual(self.delete(f"/api/projects/1/milestones/{mid}").status_code, 200)
         self.assertEqual(self.listed()["items"], [])
         self.assertEqual((self.audits("add_milestone"), self.audits("update_milestone"), self.audits("delete_milestone")), (1, 4, 1))
-        said = [r[0] for r in self.sql("SELECT details FROM audit_logs WHERE action = 'update_milestone' ORDER BY id")]
+        said = [r[0] for r in self.tuples("SELECT details FROM audit_logs WHERE action = 'update_milestone' ORDER BY id")]
         self.assertTrue(any("reached" in s for s in said) and any("reopened" in s for s in said))
 
     def test_a_stage_renamed_carries_its_milestones(self):
@@ -106,7 +90,7 @@ class MilestoneCrudTestCase(MilestoneBase):
         from services import stages as stage_ops
         sid = get_db().execute("SELECT id FROM project_stages WHERE project_id = 1 AND name = ?", (name,)).fetchone()[0]
         self.assertIsNone(stage_ops.rename_stage("project", 1, sid, "Discovery"))
-        self.assertEqual(self.sql("SELECT stage FROM milestones"), [("Discovery",)])
+        self.assertEqual(self.tuples("SELECT stage FROM milestones"), [("Discovery",)])
 
     def test_what_is_refused(self):
         self.new_project()
@@ -119,12 +103,12 @@ class MilestoneCrudTestCase(MilestoneBase):
         self.assertEqual(post(name="x", date=iso(1), customer_visible="maybe").status_code, 400)
         self.assertEqual(self.client.get("/api/projects/9/milestones").status_code, 404)
         self.assertEqual(self.put("/api/projects/1/milestones/99", json={"done": True}).status_code, 404)
-        self.assertEqual(self.sql("SELECT COUNT(*) FROM milestones")[0][0], 0)
+        self.assertEqual(self.tuples("SELECT COUNT(*) FROM milestones")[0][0], 0)
 
     def test_a_coordinator_edits_the_project_manager_deletes(self):
         self.new_project()
         mid = self.add()
-        c, h = self.coordinator()
+        _, c, h = self.member("co", pid=1)   # manages its tasks, does not manage the rollout
         self.assertEqual(c.put(f"/api/projects/1/milestones/{mid}", json={"done": True}, headers=h).status_code, 200)
         self.assertEqual(c.delete(f"/api/projects/1/milestones/{mid}", headers=h).status_code, 403)
         d = c.get("/api/projects/1/milestones").get_json()
@@ -218,7 +202,7 @@ class MilestoneMissedAlertTestCase(MilestoneBase):
         sync_alerts_to_db(build_alerts(rows))
 
     def alerts(self):
-        return self.sql("SELECT resolved FROM alerts WHERE alert_type = 'milestone_missed' ORDER BY id")
+        return self.tuples("SELECT resolved FROM alerts WHERE alert_type = 'milestone_missed' ORDER BY id")
 
     def test_raised_once_and_cleared_when_it_is_done(self):
         self.new_project()
@@ -227,11 +211,11 @@ class MilestoneMissedAlertTestCase(MilestoneBase):
         self.sync()
         self.sync()                                                          # a second pass raises nothing new
         self.assertEqual(self.alerts(), [(0,)])
-        told = self.sql("SELECT kind, title, link FROM notifications WHERE kind = 'milestone'")
+        told = self.tuples("SELECT kind, title, link FROM notifications WHERE kind = 'milestone'")
         self.assertEqual(len(told), 1)
         self.assertIn("Milestone missed", told[0][1])
         self.assertEqual(told[0][2], "/projects/1#milestones")
-        self.assertEqual(self.sql("SELECT COUNT(*) FROM notifications WHERE kind = 'alert' AND title LIKE 'Milestone missed%'")[0][0], 0)
+        self.assertEqual(self.tuples("SELECT COUNT(*) FROM notifications WHERE kind = 'alert' AND title LIKE 'Milestone missed%'")[0][0], 0)
         self.put(f"/api/projects/1/milestones/{mid}", json={"done": True})
         self.sync()
         self.assertEqual(self.alerts(), [(1,)])                              # cleared, not deleted
@@ -256,7 +240,7 @@ class MilestoneMissedAlertTestCase(MilestoneBase):
         self.assertEqual(self.alerts(), [(1,), (0,)])
 
     def test_the_type_is_in_the_settings_and_the_digest(self):
-        self.assertEqual(self.sql("SELECT severity, threshold_days, notify_inapp FROM alert_type_settings WHERE alert_type = 'milestone_missed'"), [("warning", 0, 1)])
+        self.assertEqual(self.tuples("SELECT severity, threshold_days, notify_inapp FROM alert_type_settings WHERE alert_type = 'milestone_missed'"), [("warning", 0, 1)])
         keys = [a["key"] for a in self.client.get("/api/settings").get_json()["alerts"]]
         self.assertIn("milestone_missed", keys)
         self.assertIn("milestone", {k["key"] for k in self.client.get("/api/account").get_json()["email_kinds"]})
@@ -272,7 +256,7 @@ class MilestoneMissedAlertTestCase(MilestoneBase):
 
 class RepeatTestCase(MilestoneBase):
     def test_the_dates(self):
-        from services.milestones import add_months, next_due
+        from services.recurrence import add_months, next_due
         d = date
         self.assertEqual(next_due(d(2026, 10, 14), "weekly", d(2026, 10, 14)), d(2026, 10, 21))
         self.assertEqual(next_due(d(2026, 10, 14), "fortnightly", d(2026, 10, 14)), d(2026, 10, 28))
@@ -294,10 +278,10 @@ class RepeatTestCase(MilestoneBase):
         parent, child = rows
         self.assertEqual((child["title"], child["due_date"], child["done"], child["recurrence"], child["recur_from"]), ("Weekly call", iso(7), 0, "weekly", t))
         self.assertEqual(parent["recur_spawned"], 1)
-        self.assertEqual(self.sql("SELECT assignee_id, estimate_hours, created_by FROM tasks WHERE id = ?", child["id"])[0], (uid, 2.0, "Odin (repeats)"))
+        self.assertEqual(self.tuples("SELECT assignee_id, estimate_hours, created_by FROM tasks WHERE id = ?", child["id"])[0], (uid, 2.0, "Odin (repeats)"))
         self.tick(t, done=False)
         self.tick(t)                                                         # untick and tick again: still one
-        from services.milestones import run_recurring
+        from services.recurrence import run_recurring
         self.ctx()
         self.assertEqual(run_recurring(today=TODAY), 0)
         self.assertEqual(len(self.tasks()), 2)
@@ -311,7 +295,7 @@ class RepeatTestCase(MilestoneBase):
         plain = self.task("No repeat", due_date=iso(-5))
         self.ctx()
         from db import get_db
-        from services.milestones import run_recurring
+        from services.recurrence import run_recurring
         self.assertEqual(run_recurring(get_db(), TODAY), 1)                  # only the one past its day
         self.assertEqual(run_recurring(get_db(), TODAY), 0)
         made = self.tasks("recur_from IS NOT NULL")
@@ -321,15 +305,15 @@ class RepeatTestCase(MilestoneBase):
         # and a task ticked by another route (the customer's form, say) is found by the pass
         self.sql("UPDATE tasks SET done = 1 WHERE id = ?", ahead)
         self.assertEqual(run_recurring(get_db(), TODAY), 1)
-        self.assertEqual(self.sql("SELECT due_date FROM tasks WHERE recur_from = ?", ahead), [(iso(10),)])
+        self.assertEqual(self.tuples("SELECT due_date FROM tasks WHERE recur_from = ?", ahead), [(iso(10),)])
 
     def test_the_nightly_housekeeping_runs_the_pass(self):
         self.new_project()
         self.task("Backup check", due_date=iso(-1), recurrence="fortnightly")
         with patch("scheduler.due_jobs", return_value=["housekeeping"]), patch("services.retention.run_audit_retention", return_value=(0, None)):
             scheduler.run_due()
-        self.assertEqual(self.sql("SELECT due_date FROM tasks WHERE recur_from IS NOT NULL"), [(iso(13),)])
-        self.assertEqual(self.sql("SELECT username FROM audit_logs WHERE action = 'repeat_task'"), [("scheduler",)])
+        self.assertEqual(self.tuples("SELECT due_date FROM tasks WHERE recur_from IS NOT NULL"), [(iso(13),)])
+        self.assertEqual(self.tuples("SELECT username FROM audit_logs WHERE action = 'repeat_task'"), [("scheduler",)])
 
     def test_it_stops_at_the_until_date(self):
         self.new_project()
@@ -342,7 +326,7 @@ class RepeatTestCase(MilestoneBase):
         self.assertEqual(third["due_date"], iso(14))                         # on the last day is still in
         self.tick(third["id"])
         self.assertEqual(len(self.tasks()), 3)                               # iso(21) is past it: nothing more
-        self.assertEqual(self.sql("SELECT recur_spawned FROM tasks WHERE id = ?", third["id"]), [(1,)])
+        self.assertEqual(self.tuples("SELECT recur_spawned FROM tasks WHERE id = ?", third["id"]), [(1,)])
 
     def test_until_the_stage_is_done(self):
         self.new_project()
@@ -414,4 +398,4 @@ class RepeatTestCase(MilestoneBase):
         self.ctx()
         from db import cleanup_soft_deletes, get_db
         cleanup_soft_deletes(get_db())
-        self.assertEqual(self.sql("SELECT COUNT(*) FROM milestones")[0][0], 0)
+        self.assertEqual(self.tuples("SELECT COUNT(*) FROM milestones")[0][0], 0)

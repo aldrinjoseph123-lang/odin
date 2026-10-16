@@ -2,11 +2,11 @@ import { useState, type FormEvent } from "react"
 import { Segmented } from "@/components/Segmented"
 import { checkbox, field, danger, fieldArea } from "@/lib/ui"
 import { Field } from "@/components/ui/field"
-import { Badge } from "@/components/ui/badge"
 import { Tag } from "@/components/ui/tag"
 import { Notice } from "@/components/Notice"
 import { EmptyState } from "@/components/EmptyState"
 import { LoadFailed } from "@/components/LoadFailed"
+import { PanelLoading } from "@/components/PanelLoading"
 import { useLoad } from "@/lib/useLoad"
 import { askConfirm } from "@/lib/confirm"
 import { AlertOctagon, Eye, Gavel, Plus, ShieldAlert, TriangleAlert } from "lucide-react"
@@ -18,7 +18,7 @@ import { submitKey } from "@/lib/useSubmitShortcut"
 import { AIRaidProposals } from "@/components/AIRaidProposals"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
-import { fmtDate, lateBy, localToday } from "@/lib/format"
+import { fmtDate, lateBy, localToday, plural } from "@/lib/format"
 
 // The rollout's risks, issues, decisions and blockers: a filterable list, and
 // one dialog to add or edit an item. Open blockers and high-impact risks
@@ -38,7 +38,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
   const [error, setError] = useState<string | null>(null)
   const [fromAI, setFromAI] = useState<{ suggestion: number; index: number } | null>(null)   // the proposal this new item came from
   const [aiRefresh, setAiRefresh] = useState(0)
-  if (!d) return failed ? <LoadFailed what="the register" onRetry={() => void load()} /> : <p className="text-[13px] text-muted-foreground">Loading…</p>
+  if (!d) return failed ? <LoadFailed what="the register" onRetry={() => void load()} /> : <PanelLoading />
   const today = localToday()
   const list = d.items.filter((i) => show === "all" || i.open)
   const counts = (["blocker", "issue", "risk", "decision"] as RaidKind[]).map((k) => [k, d.items.filter((i) => i.kind === k && i.open).length] as const)
@@ -70,7 +70,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
       <div className="flex flex-wrap items-center gap-2">
         {counts.map(([k, n]) => {
           const K = RAID_KIND[k]
-          return <Badge key={k} variant="secondary" className={n ? (k === "blocker" ? "bg-bad-soft text-bad" : k === "issue" ? "bg-warn-soft text-warn" : "bg-muted") : "bg-transparent text-muted-foreground"}><K.icon aria-hidden />{n} {K.label.toLowerCase()}{n === 1 ? "" : "s"}</Badge>
+          return <Tag key={k} kind={n ? (k === "blocker" ? "bad" : k === "issue" ? "warn" : "plain") : "role"} className={n ? undefined : "bg-transparent"}><K.icon aria-hidden />{plural(n, K.label.toLowerCase())}</Tag>
         })}
         <Segmented label="Show" className="ml-auto" value={show} onChange={setShow} options={[{ value: "open", label: "Open" }, { value: "all", label: "All" }]} />
         {d.can_edit && <Button size="sm" onClick={() => { setError(null); setFromAI(null); open({ kind: "risk", title: "", impact: "medium", likelihood: "medium" }) }}><Plus className="h-3.5 w-3.5" /> Add</Button>}

@@ -59,12 +59,15 @@ note to a colleague is `POST /api/people/<id>/notify` (kind `nudge`, audited).
 The home page is `/dashboard` (`home_url()` in `routes/auth.py`: sign-in, `/`
 and the logo land there; a user may pick the flow on their Account page,
 `users.home`; partners always get the flow). Settings is one side-menu page (`components/SettingsLayout.tsx`), one address
-per area: `/settings/general|security|rbac|people|workflow|contacts|documents|notifications|integrations|ai|reports|backups|api|audit|map`
+per area: `/settings/general|security|rbac|people|workflow|contacts|documents|automations|notifications|integrations|ai|reports|backups|api|audit|map`
 (the menu is `frontend/src/lib/settingsMenu.ts`) plus Users (`/users`) and the Audit log (`/audit-logs`) in the same menu.
 Recurring work runs only in `scheduler.py` (its own service), never in a web
-worker: the digest, backups, weekly report and nightly housekeeping (audit
-retention, purges, partner expiry) at policy times in the workspace time zone;
-beside the clock, threads for the heartbeat, the AI worker and the **outbox**
+worker: the digest (with each person's daily summaries and the customer
+chasers), backups, weekly report and nightly housekeeping (audit retention,
+purges, partner expiry, the next occurrence of repeating tasks) at policy
+times in the workspace time zone; every quarter hour the alert pass, which
+also scans for the conditions automations wait on; beside the clock, threads
+for the heartbeat, the AI worker and the **outbox**
 (queued mail and Teams messages; sign-in links and the signed sign-off PDF go
 out inline instead); each pass also checks backup freshness and free disk and
 turns the updater's `ops-notices` file into bell items for the admins.
@@ -104,7 +107,7 @@ type raises `db.SCHEMA_VERSION`; boot deletes only names listed in `RETIRED_PERM
 warns). Dev and UAT bind to 127.0.0.1 (set `HOST=0.0.0.0` to open them) and, without `SECRET_KEY`, keep
 a private key in `DATA_DIR/secret_key`. Python tests: `test_app test_fix_logic test_fix_security
 test_release_safety test_scheduler_ops test_v18_identity test_v18_notify test_v18_projects test_v18_ops
-test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_resend test_v2_fields test_v2_deps test_v2_small test_v2_gates test_v2_intake test_v2_workload test_v2_milestones test_v2_selfserve test_v2_tools test_v2_rules test_v2_notify test_v2_lead test_v2_integrate test_v18_meta` (every `test_*.py` is named in `ci.yml` and
+test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_resend test_v2_fields test_v2_deps test_v2_switches test_v2_lock test_v2_gates test_v2_intake test_v2_workload test_v2_milestones test_v2_selfserve test_v2_tools test_v2_rules test_v2_notify test_v2_lead test_v2_integrate test_v2_fixes test_v18_meta` (every `test_*.py` is named in `ci.yml` and
 `scripts/ci_local.sh` too; `test_v18_meta` fails if one is missing). `scripts/ci_local.sh` runs everything CI
 runs, for a release while GitHub Actions is unavailable. Two generated guards fail on drift:
 `tests/golden_routes.json` (every route x role) and `frontend/src/lib/__contract__/` (the API answers
@@ -114,6 +117,12 @@ on `project_stages` (`plan_*`, `base_*`). Reports read one structure
 (`services/report_data.py` per rollout, `services/portfolio.py` for all) that
 the page, the PDF (`services/report_pdf.py`) and the weekly email share; the
 customer cut is made on the server, never in the page.
+Odin 2.0's tables (Oct 2026) are all defined in `schema.sql` (`migrate_db` only adds
+columns), wired as above when they are project-keyed: `task_links`, `task_answers`,
+`csat`, `milestones`, `project_field_values`, `rule_runs`, `rollout_watch`. Not
+project-keyed, so a reset keeps them as it keeps the templates: `rules`,
+`custom_fields`, `template_tasks`. `intake_calls` is a log trimmed to the newest 200
+(`services/intake.py`): a reset wipes it, a purge sets its `project_id` to NULL.
 `user_activity` (per-user active minutes, trimmed nightly), `signup_links` and
 `doc_templates` (not project-keyed) arrived the same day; template logos live in
 DATA_DIR/brand, which backups include. Document renderers take a template config

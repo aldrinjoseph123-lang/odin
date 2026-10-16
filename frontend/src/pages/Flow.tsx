@@ -36,7 +36,7 @@ import { useMedia, useWidth } from "@/lib/useMeasure"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { lazyPage } from "@/lib/lazyPage"
 import { readPref, usePref } from "@/lib/usePref"
-import { useSubmitShortcut } from "@/lib/useSubmitShortcut"
+import { submitKey } from "@/lib/useSubmitShortcut"
 import { useLoad } from "@/lib/useLoad"
 
 // the heavier views load when first opened, so the list stays fast
@@ -84,7 +84,6 @@ function TaskForm({ d, self, label, init, busy, onSave, onCancel, submitLabel }:
   onSave: (v: TaskValues) => Promise<boolean>; onCancel: () => void
 }) {
   const [v, setV] = useState(init)
-  const sendKeys = useSubmitShortcut()   // Ctrl/⌘ Enter from any field, the questions' text included
   // each colleague's hours in the week the task falls due ("Priya · 34 h that week"); nothing is hinted without a date
   const [week, setWeek] = useState<WorkloadWeek | null>(null)
   useEffect(() => {
@@ -94,9 +93,10 @@ function TaskForm({ d, self, label, init, busy, onSave, onCancel, submitLabel }:
     return () => { live = false }
   }, [v.due])
   const set = (k: keyof TaskValues) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value })
+  // Ctrl/⌘ Enter sends from any field, the questions' text included
   return (
     <form className="mt-2 grid grid-cols-1 gap-1" onSubmit={async (e) => { e.preventDefault(); if (v.title.trim() && await onSave(v) && !init.title) setV({ ...v, title: "" }) }}
-      onKeyDown={(e) => { sendKeys(e); if (e.key === "Escape") { e.stopPropagation(); onCancel() } }}>
+      onKeyDown={(e) => { submitKey(e); if (e.key === "Escape") { e.stopPropagation(); onCancel() } }}>
       <Input autoFocus value={v.title} onChange={set("title")} placeholder="Task" aria-label={label} maxLength={200} className="h-7 px-2 text-[13px]" />
       <select value={v.assignee} onChange={set("assignee")} aria-label="Assign to" className={cn(fieldAuto, "h-7 min-w-0 text-[12px]")}>
         <option value="">Unassigned</option>
@@ -319,7 +319,7 @@ function FlowHeader({ data, title, views, filter, setFilter, group, setGroup, st
     // a filter that changes nothing is noise: "Mine" for someone on every rollout, "Waiting" with none waiting
     .filter((c) => c.key === filter || c.key === "all" || (c.n > 0 && c.n < data.rows.length) || (c.key === "attention" && c.n > 0))
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
+    <div data-print-hide className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
       <h1 className={TITLE}>{title}</h1>
       {views}
       {filter && (
@@ -541,7 +541,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
   // what can be done now comes first; a task waiting on open work only when nothing else is left
   const next = nextUp(open.filter((t) => !t.blocked_by?.length), d.stage) ?? nextUp(open, d.stage)
   const nextWaits = next?.blocked_by?.length ? next.blocked_by : null
-  const openIn = (stage: string) => open.filter((t) => t.stage === stage).length
+  // counted as the stage gate counts (services/gates.py): a repeating task is always open again, so it never counts
+  const openIn = (stage: string) => open.filter((t) => t.stage === stage && !t.recurrence).length
   const openHere = openIn(d.stage)
   // the terminal stage is the end: the project is closed, nothing is "next"
   const closed = !d.next_stage && d.stage_index === d.stages.length - 1
@@ -626,7 +627,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
                 )
                 if (it.kind !== "stage") {
                   const names = d.stages.slice(it.from, it.to + 1).map((st) => st.name)
-                  const open = d.tasks.filter((t) => !t.done && names.includes(t.stage)).length
+                  const open = d.tasks.filter((t) => !t.done && names.includes(t.stage) && !t.recurrence).length
                   return (
                     <li key={`${it.kind}-${it.from}`} className="relative min-w-0 md:px-2 md:first:pl-0 md:last:pr-0">
                       {arrow}
@@ -1018,9 +1019,9 @@ export default function Flow({ user }: { user: User }) {
       <ResizablePanel defaultSize={selectedId == null ? 100 : 48} minSize={20}><div className="panel flex h-full min-h-0 flex-col overflow-hidden">{list}</div></ResizablePanel>
       {selectedId != null && (
         <>
-          <ResizableHandle withHandle aria-label="Resize the rollout list and the flowchart" />
+          <ResizableHandle withHandle data-print-hide aria-label="Resize the rollout list and the flowchart" />
           <ResizablePanel defaultSize={52} minSize={25}>
-            <ScrollArea className="panel h-full">{pane}</ScrollArea>
+            <ScrollArea data-print-hide className="panel h-full">{pane}</ScrollArea>
           </ResizablePanel>
         </>
       )}

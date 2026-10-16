@@ -11,14 +11,15 @@ from datetime import date, datetime
 from constants import CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, as_id, json_body, like_any, sees_po, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
-from db import PROJECT_OPEN_SQL, current_approval, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
+from db import PROJECT_OPEN_SQL, current_approval, customer_ids, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import alerts_page_data
-from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, StageConflict, change_stage, decide_approval, filtered_projects_query, load_project, stage_entry_note_ids
+from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, StageConflict, change_stage, decide_approval, filtered_projects_query, leads, load_project, stage_entry_note_ids
 from security import csrf_token, file_stem, nudge_limited, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, clock, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline, working_days
 from services.audit import audit_log
+from services.fmt import plural
 from services import signoff as signoff_service
 from services import fields as custom_fields
 from services import gates
@@ -242,7 +243,7 @@ def api_template_tasks(template_id):
             n = template_tasks.save(template_id, (json_body() or {}).get("tasks"))
         except ValueError as e:
             return jsonify(error=str(e)), 400
-        audit_log("update_template_tasks", "stage_template", template_id, template["name"], f"{n} task{'s' if n != 1 else ''}")
+        audit_log("update_template_tasks", "stage_template", template_id, template["name"], f"{n} {plural(n, 'task')}")
     return jsonify(tasks=template_tasks.for_template(template_id, db), roles=list(template_tasks.ROLES))
 
 
@@ -476,9 +477,8 @@ def api_rollout_report_save(project_id):
     db.commit()
     # Save and share (B8): the rollout's Customer contacts hear of it, each mail with a fresh
     # sign-in link to the customer copy of this version (the outbox mints it as it sends)
-    customers = [r[0] for r in db.execute("SELECT pp.user_id FROM project_participants pp JOIN users u ON u.id = pp.user_id "
-                                          "WHERE pp.project_id = ? AND pp.role = 'Customer' AND u.active = 1", (project_id,))] if body.get("share") is True else []
-    audit_log("save_report", "project", project_id, project["name"], f"version {version}{ai}" + (f"; shared with {len(customers)} customer contact{'s' if len(customers) != 1 else ''}" if body.get("share") is True else ""))
+    customers = customer_ids(project_id, db, active=True) if body.get("share") is True else []
+    audit_log("save_report", "project", project_id, project["name"], f"version {version}{ai}" + (f"; shared with {len(customers)} customer {plural(len(customers), 'contact')}" if body.get("share") is True else ""))
     if customers:
         from markupsafe import escape as _esc
         from services.notifications import notify_users
@@ -775,9 +775,7 @@ def api_project_form():
         # the team joins as coordinators: a Viewer only reads, so is not offered
         "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' AND role != 'Viewer' ORDER BY name")],
         # a project manager must be able to move stages; someone who cannot picks one
-        "leads": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name, role FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")
-                  # editing keeps the current owner listed, so the form never swaps them silently
-                  if role_has_permission(u["role"], "edit_project_stage") or (mode == "edit" and u["id"] == project.get("owner_id"))],
+        "leads": leads(db, project.get("owner_id") if mode == "edit" else None),   # editing keeps the current owner listed
         "can_lead": role_has_permission(session.get("role"), "edit_project_stage"),
         # custom fields (Settings › Rollouts & workflow), with the record's values on an edit or a copy
         "custom_fields": custom_fields.for_project(source["id"]) if source else [f | {"value": None} for f in custom_fields.definitions()],
@@ -822,7 +820,12 @@ def api_projects():
     # each row's state, counted as the Flow counts it, so a late rollout looks late here too (critique 10 Oct)
     from services.alerts import project_states
     states = project_states(rows)
-    columns, field_filters, field_values = custom_fields.list_view(ids, customer=session.get("kind") == "external")
+    external = session.get("kind") == "external"   # custom fields: the extra columns, a filter per choice field, each row's values in column order
+    defs = custom_fields.definitions(customer=external)
+    columns = [{"id": f["id"], "name": f["name"], "kind": f["kind"]} for f in defs if f["show_in_list"]]
+    field_filters = [{"id": f["id"], "name": f["name"], "choices": f["choices"]} for f in defs if f["kind"] == "choice"]
+    have = custom_fields.values_for(ids, external, list_only=True)
+    field_values = {pid: [have[pid].get(c["id"]) for c in columns] for pid in ids}
     for r in rows:
         names = [s["name"] for s in (lists.get(r["id"]) or [])]
         t = tally.get(r["id"])
@@ -901,7 +904,8 @@ def api_project(project_id):
         "roles": [r for r in PROJECT_ROLES if r not in (PROJECT_MANAGER, "Customer")], "external_roles": list(EXTERNAL_PROJECT_ROLES),
         "can": {
             "manage": can_manage, "tasks": project_allows(project_id, "manage_tasks"),
-            "docs": project_allows(project_id, "manage_documents"), "move": project_allows(project_id, "move_stage"),
+            "docs": project_allows(project_id, "manage_documents"),
+            "move": project_allows(project_id, "move_stage") and not project["intake_pending"],   # a pending intake has no stage to leave
             "note": role_has_permission(role, "add_project_note"), "download": role_has_permission(role, "download_document"),
             "create": role_has_permission(role, "create_project"),
             # the delete routes check the global permission too (Admin by default): offer only what will succeed
@@ -1120,7 +1124,7 @@ def api_flow():
         in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         at = stages.index(p["stage"]) if p["stage"] in stages else 0
         nxt = stages[at + 1] if at + 1 < len(stages) else None
-        # ponytail: two queries per rollout; batch them if the board ever holds thousands
+        # two queries per rollout; batch them if the board ever holds thousands
         held = gates.blocked(p, nxt, own) if nxt and staff else []
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
@@ -1207,6 +1211,7 @@ def api_plan(project_id):
         for s in d["stages"]:
             for k in ("base_start", "base_end", "slip_days"):
                 s.pop(k, None)
+            s["forecast_reason"] = None   # it names the internal task that holds the stage
         d["health"] = {"rag": d["health"]["rag"], "reasons": [], "confidence": d["health"]["confidence"]}
         d["finish"] = {k: v for k, v in d["finish"].items() if k in ("forecast", "planned", "target", "vs_target_days", "days_to_target")}
         d["changes"], d["baseline_at"] = [], None
@@ -1356,6 +1361,9 @@ def api_project_flow(project_id):
     blocked = task_links.blocked_by(tasks, links)
     if session.get("kind") == "external":   # the customer cut: their own asks only (services/asks.py), never the team's tasks
         tasks = [t for t in tasks if t["assignee_id"] == session["user_id"]]
+        own = {t["id"] for t in tasks}   # and what holds them, without the team's task titles or ids
+        links = {k: [i for i in v if i in own] for k, v in links.items()}
+        blocked = {k: task_links.outsider_cut(v, own) for k, v in blocked.items()}
     from services.asks import questions as ask_questions
     sla = stage_sla_state(project, slas, terminal, now)
     schedule = schedule_status(project, terminal_stage=terminal)
@@ -1381,7 +1389,7 @@ def api_project_flow(project_id):
                    "assignee": t["assignee_name"], "assignee_id": t["assignee_id"],
                    "assignee_avatar_url": f"/users/{t['assignee_id']}/avatar/{t['assignee_avatar']}" if t["assignee_avatar"] else None,
                    "stage": t["stage"] if t["stage"] in stages else project["stage"],
-                   "recurrence": t["recurrence"], "recur_until": t["recur_until"],   # Repeats (services/milestones.py)
+                   "recurrence": t["recurrence"], "recur_until": t["recur_until"],   # Repeats (services/recurrence.py)
                    # finish-to-start (services/task_links.py): what it waits on, and the open ones that hold it
                    "estimate_hours": t["estimate_hours"], "waits_on": links.get(t["id"], []), "blocked_by": blocked.get(t["id"], []),
                    # what it asks for (services/asks.py): a tick, a document of one category, or a short form
@@ -1397,7 +1405,7 @@ def api_project_flow(project_id):
                          for n in [n for n in notes if session.get("kind") != "external" or n["guest_visible"]][-4:][::-1]],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
                           "avatar_url": f"/users/{r['user_id']}/avatar/{r['avatar']}" if r["avatar"] else None} for r in participants_for(project_id)],
-        "can_move": project_allows(project_id, "move_stage"),
+        "can_move": project_allows(project_id, "move_stage") and not project["intake_pending"],   # a pending intake is confirmed first
         "customer_approval": bool(project["customer_approval"]),
         "approval": ({"id": a["id"], "stage": a["stage"], "status": a["status"], "decided_by": a["decided_by"], "comment": a["comment"],
                       "chases": a["chase_count"] if not external else 0}   # reminders Odin sent the customer (services/chasers.py)

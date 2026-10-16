@@ -169,8 +169,8 @@ function Card({ r, selected, onSelect, onMove, lifted }: { r: FlowRow; selected:
         {r.can_move && r.next_stage && r.signoff_needed && <li className="flex items-center gap-2"><FileSignature className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <Link to={`/projects/${r.id}/signoff`} className="truncate font-medium text-primary-text hover:underline">Sign-off before {r.next_stage}</Link></li>}
         {/* a stage gate holds the move (services/gates.py): what holds it, and the way to the rollout */}
-        {r.gate_blocked && !r.signoff_needed && <li className="flex items-center gap-2"><Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          <Link to={`/projects/${r.id}`} title={`Before leaving ${r.stage}: ${r.gate_reasons.join(" · ")}`} className="truncate font-medium text-primary-text hover:underline">Before {r.next_stage}: {r.gate_reasons.join(" · ")}</Link></li>}
+        {r.gate_blocked && !r.signoff_needed && <li className="flex min-w-0 items-center gap-2"><Lock className="h-3.5 w-3.5 shrink-0 text-warn" aria-hidden />
+          <Link to={`/projects/${r.id}`} title={`Before leaving ${r.stage}: ${r.gate_reasons.join(" · ")}`} className="min-w-0 flex-1 truncate font-medium text-warn hover:underline">Before {r.next_stage}: {r.gate_reasons.join(" · ")}</Link></li>}
       </ul>
       {r.state !== "on_track" && <StateChip state={r.state} text={stateText(r)} className="mt-2 inline-block" />}
       <div className="mt-2 flex items-center gap-3 border-t border-border pt-2 text-[11px] text-muted-foreground">

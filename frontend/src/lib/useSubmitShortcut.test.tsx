@@ -2,12 +2,11 @@
 import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { useSubmitShortcut } from "./useSubmitShortcut"
+import { submitKey } from "./useSubmitShortcut"
 
 function Form({ onSend, required }: { onSend: () => void; required?: boolean }) {
-  const keys = useSubmitShortcut()
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSend() }} onKeyDown={keys}>
+    <form onSubmit={(e) => { e.preventDefault(); onSend() }} onKeyDown={submitKey}>
       <textarea aria-label="Message" required={required} />
       <button type="submit">Send</button>
     </form>
