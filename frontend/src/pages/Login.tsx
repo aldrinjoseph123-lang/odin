@@ -123,7 +123,7 @@ export default function Login() {
         <form onSubmit={submit} className="grid grid-cols-1 gap-4" noValidate aria-busy={busy}>
           {error?.field === "form" && <Notice bad>{error.text}</Notice>}
           <div className="grid grid-cols-1 gap-2">
-            <Label htmlFor="username" className="text-[14px]">Username</Label>
+            <Label htmlFor="username" className="text-[14px]">Username or email</Label>
             <Input id="username" ref={userRef} name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus={!microsoft}
               value={username} onChange={(e) => { setUsername(e.target.value); if (error?.field === "username") setError(null) }}
               aria-invalid={error?.field === "username" || undefined} aria-describedby={error?.field === "username" ? "username-error" : undefined} className={field} />

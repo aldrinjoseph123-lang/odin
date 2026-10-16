@@ -235,3 +235,33 @@ class CodeQualityTestCase(Base):   # item 14
 if __name__ == "__main__":
     import unittest
     unittest.main()
+
+
+class SignInByEmailTestCase(Base):
+    """16 Oct 2026: people who joined by sign-up link chose a username, typed their
+    email at the sign-in form and heard "Bad username or password"."""
+
+    def _signed_in(self, c):
+        return (c.get("/api/session").get_json().get("user") or {}).get("name")   # _make_user names the account after its username
+
+    def test_the_email_or_any_case_of_the_username_signs_in(self):
+        uid = self._make_user("ajoseph", "Member")
+        self.sql("UPDATE users SET email = 'AJoseph@Example.com' WHERE id = ?", uid)
+        for typed in ("ajoseph", "AJOSEPH", "ajoseph@example.com", " AJoseph@Example.COM "):
+            with self.subTest(typed=typed):
+                self.assertEqual(self._signed_in(self.login(typed)), "ajoseph")
+        self.assertIsNone(self._signed_in(self.login("ajoseph@example.com", "wrong-password-1")))
+
+    def test_an_address_two_accounts_could_mean_signs_in_neither(self):
+        a = self._make_user("one", "Member")
+        self._make_user("ONE@example.com", "Member")   # a username that is someone else's address
+        self.sql("UPDATE users SET email = 'one@example.com' WHERE id = ?", a)
+        self.assertIsNone(self._signed_in(self.login("one@EXAMPLE.com")))
+        self.assertEqual(self._signed_in(self.login("one")), "one")   # the exact name still works
+
+    def test_a_failure_by_email_counts_against_the_real_account(self):
+        uid = self._make_user("ajoseph", "Member")
+        self.sql("UPDATE users SET email = 'aj@example.com' WHERE id = ?", uid)
+        self.login("aj@example.com", "wrong-password-1")
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM login_attempts WHERE username = 'ajoseph'").fetchone()[0], 1)

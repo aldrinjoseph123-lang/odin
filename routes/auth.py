@@ -36,6 +36,19 @@ from spa import spa_index
 _NO_ACCOUNT_HASH = generate_password_hash("no account has this password", method="pbkdf2:sha256")
 
 
+def _account_for(typed):
+    """The account a sign-in names: its exact username, else the one account whose
+    username or email matches ignoring case. People who joined through a sign-up
+    link chose a username but remember their email (16 Oct 2026)."""
+    db = get_db()
+    exact = db.execute("SELECT * FROM users WHERE username = ?", (typed,)).fetchone()
+    if exact:
+        return exact
+    rows = db.execute("SELECT * FROM users WHERE lower(username) = lower(?) OR lower(email) = lower(?) LIMIT 2",
+                      (typed.strip(), typed.strip())).fetchall()
+    return rows[0] if len(rows) == 1 else None   # two matches: neither, rather than guess
+
+
 def attempt_login(username, password):
     """The one login path, shared by the HTML form and /api/login.
 
@@ -48,7 +61,9 @@ def attempt_login(username, password):
     if not isinstance(username, str) or not isinstance(password, str) or "\x00" in username or len(username) > 200 or len(password) > 1000:
         return False, "Bad username or password"
     too_many = f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
-    user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    user = _account_for(username)
+    if user:
+        username = user["username"]   # the lockout, attempts and audit rows key on the real name, whichever was typed
     # a name no account has is counted and audited as a keyed hash, never as typed (review P3-4)
     key = username if user else unknown_name(username)
     if login_is_blocked(key):
