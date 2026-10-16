@@ -174,7 +174,8 @@ def send_login_link(user, raw_token, invited_by=None, project_name=None, project
     """Email the link; returns (ok, error). Never raises."""
     import graph
     try:
-        return graph.send_mail(user["email"], "Your Odin sign-in link", _login_link_html(raw_token, invited_by, project_name, project_id))
+        from services.resend import send_account_mail
+        return send_account_mail(user["email"], "Your Odin sign-in link", _login_link_html(raw_token, invited_by, project_name, project_id))
     except Exception as exc:  # network / token errors must not break the invite
         return False, str(exc)
 
@@ -184,14 +185,14 @@ def mail_after_reply(to, subject, html):
     as fast as one for an unknown address (review P3-3: a timing oracle). The
     link's token stays in memory, never in the outbox table. SEND_MAIL_INLINE
     (the tests) sends at once."""
-    import graph
     from flask import after_this_request, current_app
+    from services.resend import send_account_mail
     app_ = current_app._get_current_object()
 
     def send():
         with app_.app_context():
             try:
-                graph.send_mail(to, subject, html)
+                send_account_mail(to, subject, html)
             except Exception as exc:  # noqa: BLE001 — delivery failure must not reveal anything
                 app.logger.warning("mail after a reply (%s) failed: %s", subject, exc)
 
@@ -224,7 +225,8 @@ def _mail_off():
     """Mail is not connected: say so honestly instead of promising a link (the
     reply is the same for every address, so nothing is revealed)."""
     from db import get_setting
-    return get_setting("notify_email_enabled") != "1"
+    from services.resend import configured
+    return get_setting("notify_email_enabled") != "1" and not configured()   # Resend sends sign-in mail on its own
 
 
 @app.route("/auth/link", methods=["GET", "POST"])

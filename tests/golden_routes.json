@@ -209,6 +209,7 @@
     "POST /settings/integrations/test-email": "302 302 403 403 403 403 403 403",
     "POST /settings/integrations/test-teams": "302 302 403 403 403 403 403 403",
     "GET /settings/map/page": "302 200 403 403 403 403 403 403",
+    "POST /settings/notifications/test-resend": "302 302 403 403 403 403 403 403",
     "POST /settings/notifications/test-webhook": "302 302 403 403 403 403 403 403",
     "POST /settings/policies/<area>": "302 404 403 403 403 403 403 403",
     "GET /settings/rbac": "302 200 403 403 403 403 403 403",

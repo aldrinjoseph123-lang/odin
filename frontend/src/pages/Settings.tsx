@@ -140,7 +140,10 @@ export default function Settings(_props: { user: User }) {
         )}
         {section === "notifications" && policyForm("notifications")}
         {section === "notifications" && (
-          <div><TestButton path="/settings/notifications/test-webhook" label="Send a test to the Teams webhook" busy={busy} blocked={data.policies.find((p) => p.key === "teams_webhook_url")?.saved ? undefined : "Save a webhook address above first."} /></div>
+          <div className="flex flex-wrap gap-2">
+            <TestButton path="/settings/notifications/test-resend" label="Send me a test sign-in email (Resend)" busy={busy} blocked={data.policies.find((p) => p.key === "resend_api_key")?.saved ? undefined : "Save a Resend API key above first."} />
+            <TestButton path="/settings/notifications/test-webhook" label="Send a test to the Teams webhook" busy={busy} blocked={data.policies.find((p) => p.key === "teams_webhook_url")?.saved ? undefined : "Save a webhook address above first."} />
+          </div>
         )}
         {section === "notifications" && (
           <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="Channels" keys={[

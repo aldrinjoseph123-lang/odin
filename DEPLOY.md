@@ -160,6 +160,30 @@ on there. The app container must be able to reach that address (Docker's
 default bridge reaches the LAN); an address outside the private network is
 refused unless "Allow an external AI provider" is ticked.
 
+### Sign-in mail through Resend (optional)
+
+Odin can send its sign-in mail (sign-in links, password resets, address
+confirmations and partner invitations) through [Resend](https://resend.com)
+instead of Microsoft 365. Notifications, the digest and reports stay on
+Microsoft 365. Sign-in mail is a few emails a day, well inside Resend's free plan
+(100 a day, 3,000 a month).
+
+1. In Resend, add the sending domain (`protect24x7.com`) and add the DNS records
+   it shows (a DKIM record and the records for its own sending subdomain). Your
+   Microsoft 365 records stay as they are. Wait until Resend shows the domain as
+   verified.
+2. In Resend › API Keys, create a key with **sending access only**, limited to
+   that domain.
+3. In Odin, Settings › Notifications › Sign-in mail (Resend): paste the key
+   (stored sealed, never shown again), check the sender (default
+   `Odin PMS <odin-pms@protect24x7.com>`) and where replies go (default
+   `notifications@protect24x7.com`), switch on **Send sign-in mail through
+   Resend**, and press **Send me a test sign-in email (Resend)**.
+
+The VM needs outbound HTTPS to `api.resend.com`. If Resend refuses a message
+(over the daily limit, a revoked key), Odin uses Microsoft 365 when it is
+connected and tells the admins in the bell once a day.
+
 ### Upgrades: the self-updater
 
 Production updates itself. `deploy/odin-update.sh`, installed outside the

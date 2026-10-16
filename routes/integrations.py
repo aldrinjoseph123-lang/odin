@@ -225,6 +225,24 @@ def settings_report_send_test():
     return redirect(url_for("settings_section", section="reports"))
 
 
+@app.route("/settings/notifications/test-resend", methods=["POST"])
+@permission_required("manage_settings")
+def settings_test_resend():
+    """A sign-in style email through Resend alone (no Microsoft fallback), to the admin who asked."""
+    audit_log("test_resend")
+    from policies import policy
+    from services import resend
+    user = get_db().execute("SELECT email FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    if not policy("resend_api_key"):
+        flash("Save a Resend API key above first", "error")
+    elif not user or not user["email"]:
+        flash("Set your email on the Account page first", "error")
+    else:
+        ok, error = resend.send(user["email"], "Odin test sign-in email", "<p>This is a test of Odin's sign-in mail through Resend. Sign-in links, password resets and invitations will look like this.</p>")
+        flash(f"Sent to {user['email']} as {policy('resend_from')}" if ok else f"Resend refused it: {error}", "message" if ok else "error")
+    return redirect(url_for("settings"))
+
+
 @app.route("/settings/notifications/test-webhook", methods=["POST"])
 @permission_required("manage_settings")
 def settings_test_webhook():

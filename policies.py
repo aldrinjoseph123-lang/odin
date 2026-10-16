@@ -106,6 +106,15 @@ POLICIES = {
     # back to the page and audited only as set or cleared, like the AI key (test round P2-9)
     "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500, query=True, secret=True,
                               label="Teams Workflows webhook", help="From a Teams channel: Workflows › \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
+    # Resend carries sign-in mail only (16 Oct 2026, the user's call): links, resets, confirmations, invites
+    "resend_enabled": dict(area="notifications", kind="bool", default=False,
+                           label="Send sign-in mail through Resend", help="Sign-in links, password resets, address confirmations and invitations go out through Resend (api.resend.com) instead of Microsoft 365; notifications, the digest and reports stay on Microsoft 365. If Resend refuses, Odin uses Microsoft 365 when it is connected. The free plan allows 100 emails a day."),
+    "resend_api_key": dict(area="notifications", kind="text", default="", max=200, secret=True,
+                           label="Resend API key", help="From resend.com › API Keys: a key with sending access only, limited to your domain. Stored sealed; never shown again."),
+    "resend_from": dict(area="notifications", kind="text", default="Odin PMS <odin-pms@protect24x7.com>", max=200,
+                        label="Resend sends as", help="Name and address on a domain verified in Resend, e.g. Odin PMS <odin-pms@protect24x7.com>."),
+    "resend_reply_to": dict(area="notifications", kind="emails", one=True, default="notifications@protect24x7.com", max=254,
+                            label="Replies go to", help="Where a reply to a sign-in email lands. Blank: the sending address."),
     "outbox_attempts": dict(area="notifications", kind="int", default=8, min=1, max=20,
                             label="Tries before Odin gives up on a message", help="Mail and Teams messages go out from the scheduler; one that fails is tried again after 1, 2, 4, 8 … minutes (8 tries: about two hours). After the last try the admins are told in the bell, once a day."),
     "outbox_max_age_hours": dict(area="notifications", kind="int", default=24, min=1, max=168,
@@ -358,6 +367,7 @@ _GROUPS = {
     "Notes to colleagues": ("nudge_max", "nudge_pair_max"),
     "Daily digest": ("digest_time",),
     "Sender": ("mail_from",),
+    "Sign-in mail (Resend)": ("resend_enabled", "resend_api_key", "resend_from", "resend_reply_to"),
     "Teams webhook": ("teams_webhook_url",),
     "Delivery": ("outbox_attempts", "outbox_max_age_hours"),
     "When it goes out": ("report_enabled", "report_days", "report_time"),
