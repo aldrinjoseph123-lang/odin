@@ -27,7 +27,9 @@ def calendar_feed(token):
         abort(404)
     if rate_limited(f"ics:{user['id']}", policy("ics_feed_per_hour"), 60, any_ip=True):
         return Response("Too many reads of this feed this hour.\n", status=429, mimetype="text/plain", headers={"Retry-After": "3600"})
-    return Response(ics.build(user["id"], public_base()), mimetype="text/calendar",
+    body = ics.build(user["id"], public_base())
+    ics.touch(user["id"])   # a feed nobody reads switches itself off (policy ics_idle_days, the nightly housekeeping)
+    return Response(body, mimetype="text/calendar",
                     headers={"Content-Disposition": 'inline; filename="odin.ics"', "Cache-Control": "private, no-store"})
 
 

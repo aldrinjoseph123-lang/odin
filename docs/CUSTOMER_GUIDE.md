@@ -33,10 +33,17 @@ Each ask is one of three kinds, and you finish it where it is shown:
 | Kind | What you do | When it is done |
 |---|---|---|
 | A task | Tick it when you have done it (e.g. "Confirm the cut-over change window") | When you tick it |
-| An upload | Choose the file (e.g. "Upload the signed network diagram"); it is filed with the rollout's documents under the category we asked for | When the file is uploaded |
+| An upload | Choose the file (e.g. "Upload the signed network diagram"); it is filed with the rollout's documents under the category we asked for, and the project manager reviews it before the team uses it | When the file is uploaded (it shows "awaiting review" until it is accepted) |
 | A form | Answer a few short questions (a number, a date, a choice, yes or no, a line of text); Odin checks each answer and says what to fix | When every required question is answered |
 
 An ask may have a due date. You see your own asks only; colleagues of yours on the rollout see theirs.
+
+**A file you upload is reviewed first.** Until the project manager accepts it, nobody opens it, it is not in
+the documents list or a report, and it shows "awaiting review" on your finished ask. If it cannot be accepted
+(the wrong file, say), it is removed, the ask opens again and you get a message asking you to upload it again.
+
+Some of your tasks may only be done after the team finishes its part. They show as usual; if you tick one
+too early, Odin says it waits on work the team has not finished yet.
 
 ## Approving a stage
 

@@ -9,14 +9,14 @@ from datetime import datetime
 from flask import flash, g, jsonify, redirect, request, session, url_for
 from markupsafe import escape
 
-from constants import CLIENT_PO_DOC_CATEGORY
-from core import app, permission_required, role_has_permission, staff_required, text_field
+from constants import CLIENT_PO_DOC_CATEGORY, DELIVERY_MODES
+from core import app, parse_date, permission_required, role_has_permission, staff_required, text_field
 from db import get_db, set_project_manager
 from policies import policy_view
 from routes.projects import leads, load_project, pick_lead, save_document
 from routes.tokens import token_required
 from security import content_matches_extension, upload_problem
-from services import intake, template_tasks
+from services import fields as custom_fields, intake, template_tasks
 from services.audit import audit_log
 from services.notifications import notify_users
 
@@ -25,7 +25,7 @@ from services.notifications import notify_users
 @token_required(scope="create")
 def api_v1_intake():
     """A won deal from the CRM → a pending rollout (201), or the one this deal made before (200)."""
-    status, body, made = intake.handle(get_db(), g.api_token, request.get_json(force=True, silent=True))
+    status, body, made = intake.handle(get_db(), g.api_token, request.get_json(force=True, silent=True), request.remote_addr)
     if made:   # the act is audited under the token's name; every call, made or not, is in intake_calls
         audit_log("intake_create", "project", body["rollout"]["id"], body["rollout"]["name"], made, actor=f"token:{g.api_token}")
     response = jsonify(body)
@@ -57,6 +57,59 @@ def api_intake_pending():
     db = get_db()
     return jsonify(rows=intake.pending_rows(db), can_confirm=role_has_permission(session.get("role"), "create_project"),
                    can_lead=role_has_permission(session.get("role"), "edit_project_stage"), leads=leads(db), po_category=CLIENT_PO_DOC_CATEGORY)
+
+
+# The details a pending intake's edit may correct: form key → (column, length cap, label).
+EDITABLE = {"name": ("name", 200, "Name"), "client": ("client", 200, "Client"), "product_name": ("product_name", 120, "Product"),
+            "vendor_name": ("vendor_name", 120, "Vendor"), "po_number": ("po_number", 60, "PO number")}
+
+
+@app.route("/projects/<int:project_id>/intake/edit", methods=["POST"])
+@permission_required("create_project")
+def intake_edit(project_id):
+    """Correct what the CRM sent before confirming: the details above, the delivery mode, the
+    target date and the custom fields. A key the form leaves out keeps its value. Pending
+    intakes only (load_project lets this one write through, PENDING_ALLOWED); audited old → new."""
+    project = load_project(project_id)
+    back = url_for("project_detail", project_id=project_id)
+    if not project["intake_pending"]:
+        flash("That rollout is not waiting for confirmation; edit it as any rollout", "error")
+        return redirect(back)
+    new = {}
+    try:
+        for key, (column, limit, label) in EDITABLE.items():
+            if key in request.form:
+                new[column] = text_field(request.form[key], limit, label) or None
+        if "delivery_mode" in request.form:
+            if request.form["delivery_mode"] not in DELIVERY_MODES:
+                raise ValueError(f"Delivery mode: one of {', '.join(DELIVERY_MODES)}")
+            new["delivery_mode"] = request.form["delivery_mode"]
+        if "target_end_date" in request.form:
+            try:
+                new["target_end_date"] = parse_date(request.form["target_end_date"])
+            except ValueError as e:
+                raise ValueError(f"Target date: {e}") from None
+        if "name" in new and not new["name"] or "client" in new and not new["client"]:
+            raise ValueError("Name and client are required")
+        field_values = custom_fields.clean_values(custom_fields.form_items(request.form))
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(back)
+    changes = [f"{c}: {project[c] or '—'} → {v or '—'}" for c, v in new.items() if (project[c] or None) != v]
+    db = get_db()
+    if changes and not db.execute(f"UPDATE projects SET {', '.join(f'{c} = ?' for c in new)}, updated_at = ? WHERE id = ? AND intake_pending = 1",   # columns from EDITABLE only
+                                  (*new.values(), datetime.utcnow().isoformat(), project_id)).rowcount:
+        db.rollback()
+        flash("That rollout was confirmed a moment ago; edit it as any rollout", "error")
+        return redirect(back)
+    changes += custom_fields.save(db, project_id, field_values)
+    db.commit()
+    if not changes:
+        flash("Nothing changed")
+        return redirect(back)
+    audit_log("intake_edit", "project", project_id, new.get("name") or project["name"], "; ".join(changes))
+    flash("Intake details saved")
+    return redirect(back)
 
 
 @app.route("/projects/<int:project_id>/intake/confirm", methods=["POST"])

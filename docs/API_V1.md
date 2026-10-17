@@ -15,12 +15,16 @@ the three views), `routes/intake.py` and `services/intake.py` (the intake) and t
 An admin makes a token in **Settings → API tokens** (`/settings/api`): a name and a
 life of 30, 90 or 365 days. The token (`odin_` followed by 43 URL-safe characters) is shown
 once, with a Copy button; Odin keeps only its SHA-256. Revoking it stops it at once.
-Expired and revoked tokens are deleted after 90 days.
+Tokens revoked or expired more than 90 days ago are deleted.
 
 **Scopes.** A token has one scope, fixed when it is made. `read` (made in **Settings → API tokens**)
 opens the three `GET` routes. `create` (made in **Settings → Integrations → Intake**, where its name is
 the *source* shown on every intake) opens `POST /api/v1/intake` and nothing else. A token used on a route
-of the other scope answers `403`. Tokens made before scopes existed are `read`.
+of the other scope answers `403`. Tokens made before scopes existed are `read`. A `create` token lives for
+**Intake tokens last (days)** (policy `intake_token_days`, 365 by default, 1 to 1,095) and is not made anew
+when it runs out: **Renew** on its row extends it by as many days from today, expired or not, and the CRM keeps
+the secret it has (audited `renew_api_token`, old → new expiry). A renewed token stays renewable until 90 days
+after it expired.
 
 Send it on every request:
 
@@ -61,7 +65,7 @@ Every error is JSON `{"error": "<words>"}` with the status code.
 
 | Status | When |
 |---|---|
-| 401 | No token, a malformed header, an unknown, expired or revoked token. Body: `A valid API token is required (Authorization: Bearer <token>)` |
+| 401 | No token, a malformed header, an unknown or revoked token. Body: `A valid API token is required (Authorization: Bearer <token>)`. An expired token says so: `This API token expired on 2026-10-01; an admin can make a new one under Settings › API tokens` (an intake token: `…; an admin can renew it under Settings › Integrations › Intake`) |
 | 404 | No such rollout, or a rollout with no saved report (`No saved report for this rollout`) |
 | 403 | A token of the wrong scope for the route (`This token has the read scope; this route needs a token with the create scope`) |
 | 405 | Any method but the route's own (`GET`; `POST` for the intake) |
@@ -272,22 +276,40 @@ changes the first. This holds after the rollout is confirmed. Only a rollout del
 id, so a CRM retry after a timeout is always safe.
 
 **Audit and log.** Each created rollout is written to the audit trail (`intake_create`, actor `token:<name>`,
-naming the source, the deal id and the client). Settings → Integrations → Intake lists the last ten calls with
-their result (created, already had it, refused, too many); Odin keeps the newest 200.
+naming the source, the deal id and the client). A repeat (`intake_duplicate`) and a refused call
+(`intake_refused`: every 4xx below, the expired-token 401 and the 429 included) are audited too, under the same
+actor, with `HTTP <status>: <the error>` as the details; to keep a retry loop from flooding the trail, a token
+gets at most one such row per action and status a minute (the audit trail itself is checked). Settings →
+Integrations → Intake lists the last ten calls with their result (created, already had it, refused, too many);
+Odin keeps the newest 200, every call included.
+
+**Address list.** *Allowed addresses* (policy `intake_allowed_ips`: IP addresses or CIDR ranges such as
+`203.0.113.7, 203.0.113.0/24, 2001:db8::/32`, separated by commas or spaces; blank = any) holds the intake to the
+CRM's outbound addresses: a call from anywhere else answers `403`, is logged and audited, and does not count
+towards the rate limit (a stolen token used elsewhere cannot use up the CRM's minute). The address is the one Odin
+already trusts: the socket's peer, or with `PMS_TRUST_PROXY=1` the last hop nginx adds to `X-Forwarded-For`
+(nginx sets it from Cloudflare's `CF-Connecting-IP`; see DEPLOY.md). A client's own `X-Forwarded-For` is never
+believed.
 
 **Settings** (Settings → Integrations → Intake): the stage template and the default project manager a new
 intake gets (the first template and the first active Admin when left blank), the *allowed sources* (token names
-separated by commas; blank lets every `create` token in), and the rate limit (30 intakes per token per minute by
-default, 1 to 100). The default project manager is told in the bell, and by email if they have it on.
+separated by commas; blank lets every `create` token in), the rate limit (30 intakes per token per minute by
+default, 1 to 100), how long an intake token lasts and the allowed addresses (above). The default project
+manager is told in the bell, and by email if they have it on.
+
+**Correcting an intake.** Before confirming, staff who may create rollouts can correct what the CRM sent
+(name, client, vendor, product, delivery mode, target date, PO number, custom fields) with **Edit details** on
+the rollout's banner or in the Flow's holding lane (`POST /projects/<id>/intake/edit`, audited `intake_edit`
+with old → new). A later repeat of the deal still answers with the rollout as corrected.
 
 | Status | Body `error` | Meaning |
 |---|---|---|
 | 400 | The words: `client is required`, `client: at most 200 characters`, `delivery_mode: one of …`, `target_date: a date like 2026-10-31`, `Unknown field: budget`, `fields: unknown custom field Colour`, `Region: pick one of UAE, KSA`, `contacts: x is not an email address`, `Send a JSON object` | Nothing was made. Several problems are joined with `;` |
-| 401 | `A valid API token is required …` | No token, or an unknown, expired or revoked one |
-| 403 | `This token has the read scope; …` or `The token <name> is not an allowed source …` | Wrong scope, or the token's name is not in the allowed sources |
+| 401 | `A valid API token is required …` or `This intake token expired on <date>; an admin can renew it …` | No token, an unknown or revoked one, or an expired one (renew it) |
+| 403 | `This token has the read scope; …`, `Calls from <address> are not allowed …` or `The token <name> is not an allowed source …` | Wrong scope, a call from outside the allowed addresses, or the token's name is not in the allowed sources |
 | 405 | | Any method but `POST` |
 | 409 | `Intake is not set up: …` | Odin has no stage template with two stages, or no active Admin to hold the intake. Fix it in Settings and retry |
-| 429 | `Too many intakes from <name>: at most N a minute. Retry in a minute.` | Over the rate limit. The `Retry-After` header says `60`. A refused call counts towards the limit; a call that was itself refused for rate does not |
+| 429 | `Too many intakes from <name>: at most N a minute. Retry in a minute.` | Over the rate limit. The `Retry-After` header says `60`. A refused call counts towards the limit; a call refused for rate, for the token (401) or for its address or source (403) does not |
 
 ## What the API does not do
 

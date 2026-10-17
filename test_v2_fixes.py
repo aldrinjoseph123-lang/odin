@@ -57,7 +57,7 @@ class OutsiderWaitsTestCase(DepsBase):
     def test_flow_and_my_work_name_only_what_the_outsider_may_see(self):
         t = next(x for x in self.c.get("/api/projects/1/flow").get_json()["tasks"] if x["id"] == self.mine)
         self.assertEqual(t["waits_on"], [])
-        self.assertEqual(t["blocked_by"], [{"id": 0, "title": "work the team has not finished yet", "late_by": 0}])
+        self.assertEqual(t["blocked_by"], [])   # the team's work that holds it is not shown at all (17 Oct 2026)
         mw = next(x for x in self.c.get("/api/my-work").get_json()["tasks"] if x["id"] == self.mine)
         self.assertEqual(mw["blocked_by"], t["blocked_by"])
         # staff still read the predecessor by name
@@ -67,7 +67,7 @@ class OutsiderWaitsTestCase(DepsBase):
         self.edit(self.mine, waits_on=[self.late, own])
         t = next(x for x in self.c.get("/api/projects/1/flow").get_json()["tasks"] if x["id"] == self.mine)
         self.assertEqual(t["waits_on"], [own])
-        self.assertEqual([w["title"] for w in t["blocked_by"]], ["Customer sends logo", "work the team has not finished yet"])
+        self.assertEqual([w["title"] for w in t["blocked_by"]], ["Customer sends logo"])
 
     def test_the_tick_refusal_is_generic(self):
         csrf = self.c.get("/api/session").get_json()["csrf"]

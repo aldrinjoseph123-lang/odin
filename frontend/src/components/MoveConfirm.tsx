@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Notice } from "@/components/Notice"
-import { gateText, plural } from "@/lib/format"
+import { gateText, holdsGate, plural } from "@/lib/format"
 import { ApiError, changeStage, type FlowDetail } from "@/lib/api"
 
 // The one way a rollout moves to its next stage, from the detail's rail or a
@@ -38,7 +38,7 @@ export function MoveConfirm({ d, from = d.stage, onMoved, onStale, quiet, confir
   const advanceRef = useRef<HTMLButtonElement>(null)
   if (!d.next_stage) return null
   const next = d.next_stage
-  const openHere = d.tasks.filter((t) => !t.done && t.stage === d.stage && !t.recurrence).length   // as the gate counts (services/gates.py)
+  const openHere = d.tasks.filter((t) => t.stage === d.stage && holdsGate(t, d.today)).length   // as the gate counts (services/gates.py)
   const approvalPending = d.approval?.stage === d.stage && d.approval.status === "pending"
   const declined = d.approval?.status === "declined" && d.approval.stage === d.stage
   const told = d.participants.filter((p) => p.user_id !== d.me).length

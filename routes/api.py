@@ -494,7 +494,7 @@ def api_rollout_report_save(project_id):
 def api_account():
     from constants import ADMIN_KINDS, NOTIFICATION_KINDS, STAFF_KINDS
     from services.notifications import delivery
-    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, email_summary, home, password_hash, ics_created_at FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, email_summary, home, password_hash, ics_created_at, ics_last_read_at FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
     return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
                    has_password=bool(u["password_hash"] and "$" in u["password_hash"]),
@@ -503,7 +503,8 @@ def api_account():
                                 if (k not in ADMIN_KINDS or session.get("role") == "Admin")   # access requests and AI health reach admins only
                                 and (k not in STAFF_KINDS or u["kind"] != "external")],
                    mail_enabled=policy("notify_email_enabled"),
-                   calendar=None if u["kind"] == "external" else {"created_at": u["ics_created_at"]},   # the personal feed (routes/feeds.py)
+                   calendar=None if u["kind"] == "external" else {"created_at": u["ics_created_at"], "last_read_at": u["ics_last_read_at"],
+                                                                   "idle_days": policy("ics_idle_days")},   # the personal feed (routes/feeds.py)
                    activity=activity_summary(session["user_id"]) if activity_enabled() else None,
                    activity_viewers=policy("activity_roles"))
 
@@ -896,9 +897,11 @@ def api_project(project_id):
                    "stage_entry": n["id"] in entries}
                   for n in db.execute("SELECT * FROM status_notes WHERE project_id = ?" + (" AND guest_visible = 1" if session.get("kind") == "external" else "")
                                       + " ORDER BY created_at DESC", (project_id,))],
-        "documents": [{"id": d["id"], "category": d["category"], "filename": d["filename"], "uploaded_by": d["uploaded_by"], "uploaded_at": d["uploaded_at"]}
+        # review: "pending" while an outside upload waits for staff (services/doc_review.py); partners never see one pending
+        "documents": [{"id": d["id"], "category": d["category"], "filename": d["filename"], "uploaded_by": d["uploaded_by"], "uploaded_at": d["uploaded_at"],
+                       "review": d["review_status"]}
                       for d in db.execute("SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", (project_id,))
-                      if d["category"] not in hidden_docs],
+                      if d["category"] not in hidden_docs and not (external and d["review_status"] != "accepted")],
         "doc_categories": get_doc_category_names(),
         "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")] if can_manage else [],
         "roles": [r for r in PROJECT_ROLES if r not in (PROJECT_MANAGER, "Customer")], "external_roles": list(EXTERNAL_PROJECT_ROLES),
@@ -935,6 +938,7 @@ ACTIVITY_LABELS = {
     "download_report": "downloaded the report PDF", "download_signoff": "downloaded the sign-off PDF",
     "update_field_values": "changed custom fields",
     "complete_ask": "finished what was asked of them", "rate_rollout": "rated the rollout",
+    "accept_document": "accepted an uploaded file", "reject_document": "rejected an uploaded file",
 }
 
 
@@ -1361,7 +1365,7 @@ def api_project_flow(project_id):
     blocked = task_links.blocked_by(tasks, links)
     if session.get("kind") == "external":   # the customer cut: their own asks only (services/asks.py), never the team's tasks
         tasks = [t for t in tasks if t["assignee_id"] == session["user_id"]]
-        own = {t["id"] for t in tasks}   # and what holds them, without the team's task titles or ids
+        own = {t["id"] for t in tasks}   # and what holds them: their own only, never the team's (task_links.outsider_cut)
         links = {k: [i for i in v if i in own] for k, v in links.items()}
         blocked = {k: task_links.outsider_cut(v, own) for k, v in blocked.items()}
     from services.asks import questions as ask_questions
@@ -1399,8 +1403,8 @@ def api_project_flow(project_id):
         "doc_categories": get_doc_category_names() if project_allows(project_id, "manage_tasks") else [],   # what an upload ask may ask for
         "can_override": session.get("role") == "Admin",   # an Admin may tick a waiting task; it is audited as an override
         "me": session["user_id"],
-        "documents": sum(1 for d in db.execute("SELECT category FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,))
-                         if d["category"] not in hidden_docs),   # only what they can open
+        "documents": sum(1 for d in db.execute("SELECT category, review_status FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,))
+                         if d["category"] not in hidden_docs and not (external and d["review_status"] != "accepted")),   # only what they can open
         "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]}
                          for n in [n for n in notes if session.get("kind") != "external" or n["guest_visible"]][-4:][::-1]],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],

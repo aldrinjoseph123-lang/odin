@@ -196,10 +196,19 @@ manager confirms. The contract (every key, every answer) is `docs/API_V1.md`.
    copy the token: it is shown once and only its hash is kept. It has the `create` scope, which opens the
    intake and nothing else; a read token cannot post and an intake token cannot read.
 3. To accept only named CRMs, list their token names under *allowed sources* (blank lets every `create`
-   token in).
+   token in). To accept calls only from the CRM's servers, put its outbound addresses or ranges under
+   *allowed addresses* (e.g. `203.0.113.0/24, 198.51.100.7`; blank: any). Odin checks the client address it
+   already trusts: behind nginx and cloudflared that needs `PMS_TRUST_PROXY=1` (the compose file sets it) and
+   the nginx overlay that passes Cloudflare's `CF-Connecting-IP`; without them every call looks like it comes
+   from the proxy. Test with one call after saving: a refusal is a `403` naming the address it saw.
 4. In the CRM, call `https://odin.yourdomain/api/v1/intake` with `Authorization: Bearer <token>` and the deal
    as JSON. Use the CRM's deal id as `deal_id`: a retry after a timeout then answers with the same rollout.
 5. Check the last ten calls under the same settings card. To retire the CRM, revoke its token there.
+6. An intake token runs out after *Intake tokens last (days)* (365 by default) and then answers `401 … expired`.
+   Press **Renew** on its row before (or after) that: it works again for as many days from today with the same
+   secret, so nothing changes in the CRM. Put the expiry date in the CRM owner's calendar. Duplicate and refused
+   calls are in the audit trail as `intake_duplicate` / `intake_refused` (at most one row per token, kind and
+   status a minute).
 
 The request must reach Odin: from the LAN, the VM's address works; through the tunnel, `/api/v1` needs a
 Cloudflare Access bypass or service token if Access is ever put in front of Odin.
@@ -209,7 +218,10 @@ Cloudflare Access bypass or service token if Access is ever put in front of Odin
 Staff can subscribe to their own tasks, targets and milestones from Outlook or any calendar app (Account →
 Calendar feed). Nothing to install: the address is `https://odin.yourdomain/feeds/calendar/<token>.ics`, made,
 rotated and switched off by the person (each audited), stored only as a hash, dead the moment the account is
-deactivated, and limited to `ics_feed_per_hour` reads an hour (Settings → Notifications). Outlook on the web
+deactivated, and limited to `ics_feed_per_hour` reads an hour (Settings → Notifications). A feed nobody has
+fetched for `ics_idle_days` (30 by default, 0 = never; same settings page) switches itself off in the nightly
+housekeeping, audited as "calendar feed switched off: unused N days"; the Account page shows when it was last
+read, and the person makes a new address to turn it on again. Outlook on the web
 and phone calendars fetch it from their own servers on the internet, so the path must be reachable through the
 tunnel without a sign-in (it is, as long as no Cloudflare Access policy covers `/feeds/`). Partners and
 customers get no feed.

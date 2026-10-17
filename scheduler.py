@@ -180,6 +180,7 @@ def _run_job(job, report_on):
         from services.rules import trim as trim_rule_runs
         from services.recurrence import run_recurring
         from services.doctext import extract_pending as read_documents
+        from services.ics import switch_off_idle as idle_calendar_feeds
         failed = []
         with app.app_context():
             for step in (audit_retention,        # a step like the rest: its failure skipped them all (OPS-10)
@@ -189,6 +190,7 @@ def _run_job(job, report_on):
                          trim_notifications,     # read bell items past notifications_keep_days
                          trim_signup_links,      # sign-up links dead for 90 days
                          end_dormant_partners,   # partner accounts whose rollouts all closed long ago (A12)
+                         idle_calendar_feeds,    # calendar feeds unread for ics_idle_days switch off
                          trim_ai,                # AI checks past 180 days, finished AI jobs past 30
                          trim_outbox,            # mail and Teams messages sent, or given up on long ago
                          trim_rule_runs,         # automation run logs past rule_runs_keep_days

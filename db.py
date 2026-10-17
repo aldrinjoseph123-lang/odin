@@ -345,6 +345,12 @@ def migrate_db(db):
         table_columns = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
         if "deleted_at" not in table_columns:
             db.execute(f"ALTER TABLE {table} ADD COLUMN deleted_at TEXT")
+    # 17 Oct 2026 (loophole 65): a file an outside account uploads waits for staff review
+    # (services/doc_review.py); every document before this counts as accepted
+    doc_columns = {row[1] for row in db.execute("PRAGMA table_info(documents)")}
+    for column, coltype in (("review_status", "TEXT NOT NULL DEFAULT 'accepted'"), ("reviewed_by", "TEXT"), ("reviewed_at", "TEXT")):
+        if column not in doc_columns:
+            db.execute(f"ALTER TABLE documents ADD COLUMN {column} {coltype}")
 
     # Stage SLAs need to know when the project entered its current stage.
     # updated_at can't stand in for that — project_edit bumps it too, so an

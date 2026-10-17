@@ -436,7 +436,7 @@ class SettingsTestCase(IntakeBase):
         self.token("bi", "read")
         page = self.client.get("/api/settings/intake").get_json()
         self.assertEqual([t["name"] for t in page["tokens"]], ["crm"])
-        self.assertEqual({p["key"] for p in page["policies"]}, {"intake_template", "intake_owner", "intake_sources", "intake_rate_per_min"})
+        self.assertEqual({p["key"] for p in page["policies"]}, {"intake_template", "intake_owner", "intake_sources", "intake_rate_per_min", "intake_token_days", "intake_allowed_ips"})
         self.assertEqual(page["endpoint"], "/api/v1/intake")
         self.assertEqual([t["name"] for t in self.client.get("/api/settings?section=api").get_json()["api_tokens"]], ["bi"])
         self._make_user("member1", "Member")
@@ -448,7 +448,8 @@ class SettingsTestCase(IntakeBase):
         r = self.client.post("/settings/policies/intake", data={"intake_owner": str(owner), "intake_sources": "crm, crm-test", "intake_template": "", "intake_rate_per_min": "10"}, headers=J)
         self.assertEqual(r.status_code, 200, r.get_json())
         page = self.client.get("/api/settings/intake").get_json()
-        self.assertEqual({p["key"]: p["value"] for p in page["policies"]}, {"intake_owner": str(owner), "intake_sources": "crm, crm-test", "intake_template": "", "intake_rate_per_min": 10})
+        self.assertEqual({p["key"]: p["value"] for p in page["policies"]}, {"intake_owner": str(owner), "intake_sources": "crm, crm-test", "intake_template": "", "intake_rate_per_min": 10,
+                                                                          "intake_token_days": 365, "intake_allowed_ips": ""})
         self.assertIn(owner, [o["id"] for o in page["owners"]])
         bad = self.client.post("/settings/policies/intake", data={"intake_owner": "99999"}, headers=J)
         self.assertEqual(bad.status_code, 400)

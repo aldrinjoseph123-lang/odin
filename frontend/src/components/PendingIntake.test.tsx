@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { IntakeBanner, PendingIntake } from "./PendingIntake"
@@ -16,6 +16,9 @@ vi.mock("@/lib/api", async (orig) => ({
   ...(await orig<typeof import("@/lib/api")>()),
   pendingIntake: vi.fn(async () => meta()),
   confirmIntake: vi.fn(async () => ({ ok: true as const, messages: ["confirmed"], undo: null, location: "/projects/7" })),
+  editIntake: vi.fn(async () => ({ ok: true as const, messages: ["Intake details saved"], undo: null, location: null })),
+  projectForm: vi.fn(async () => ({ delivery_modes: ["Distribution/MSSP", "Outsourced"], vendors: ["Fortinet", "Palo Alto"], products: [{ name: "PA-440", vendor: "Palo Alto" }] })),
+  projectFields: vi.fn(async () => ({ can_edit: true, fields: [{ id: 3, name: "Region", kind: "choice", choices: ["UAE", "KSA"], required: false, customer_visible: false, show_in_list: false, value: null }] })),
 }))
 afterEach(() => { cleanup(); vi.mocked(api.pendingIntake).mockImplementation(async () => meta()) })
 
@@ -91,6 +94,36 @@ describe("Pending intake", () => {
     expect(screen.queryByRole("button", { name: "Discard" })).toBeNull()
     submit()
     await waitFor(() => expect(confirmed).toHaveBeenCalledWith(["confirmed"]))
+  })
+
+  it("corrects the details before confirming, in the lane and on the rollout's page", async () => {
+    const user = userEvent.setup()
+    const changed = vi.fn()
+    render(<MemoryRouter><PendingIntake rows={[row]} onChanged={changed} /></MemoryRouter>)
+    await user.click(await screen.findByRole("button", { name: "Edit details of Branch SD-WAN" }))
+    const dialog = await screen.findByRole("dialog")
+    const name = await within(dialog).findByRole("textbox", { name: "Name *" })
+    expect(name).toHaveValue("Branch SD-WAN")
+    await user.clear(name); await user.type(name, "Branch SD-WAN phase 1")
+    await user.selectOptions(within(dialog).getByRole("combobox", { name: "Region" }), "KSA")
+    await user.click(within(dialog).getByRole("button", { name: "Save details" }))
+    await waitFor(() => expect(api.editIntake).toHaveBeenCalledWith(7, {
+      name: "Branch SD-WAN phase 1", client: "Hooli", vendor_name: "Fortinet", product_name: "FortiGate", delivery_mode: "Outsourced",
+      target_end_date: "2026-12-01", po_number: "PO-1", field_3: "KSA" }))
+    await waitFor(() => expect(changed).toHaveBeenCalled())
+    cleanup()
+    const edited = vi.fn()
+    render(<MemoryRouter><IntakeBanner projectId={7} canDiscard={false} onConfirmed={() => {}} onEdited={edited} /></MemoryRouter>)
+    await user.click(await screen.findByRole("button", { name: "Edit details…" }))
+    await user.click(await within(await screen.findByRole("dialog")).findByRole("button", { name: "Save details" }))
+    await waitFor(() => expect(edited).toHaveBeenCalled())
+  })
+
+  it("offers no edit to a role that may not confirm", async () => {
+    vi.mocked(api.pendingIntake).mockImplementation(async () => meta({ can_confirm: false }))
+    mount()
+    expect(await screen.findByRole("button", { name: "Confirm Branch SD-WAN" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Edit details/ })).toBeNull()
   })
 
   it("draws nothing on a rollout that is not pending", async () => {

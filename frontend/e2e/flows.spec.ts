@@ -1337,3 +1337,34 @@ test("@flow automations: build a rule in three columns, dry run it, see it fire 
   await expect(page.getByRole("list", { name: "Rules" }).getByRole("listitem").filter({ hasText: name })).toHaveCount(0)
   expectClean(errors)
 })
+
+test("@flow customer upload: held for review, then the project manager accepts it", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin")
+  const rows = (await api<{ rows: { id: number }[] }>(page, "GET", "/api/projects")).body.rows
+  const pid = Math.max(...rows.map((r) => r.id))
+  const { email, link } = await inviteExternal(page, pid, "Customer")
+  const who = (await api<{ participants: { user_id: number; email: string | null; name: string }[] }>(page, "GET", `/api/projects/${pid}`)).body.participants.find((p) => p.email === email)!
+  const title = `E2E upload ${Date.now()}`, filename = `e2e-${Date.now()}.pdf`
+  expect((await api(page, "POST", `/projects/${pid}/tasks`, { title, assignee_id: who.user_id, kind: "upload", ask_category: "Deliverable" })).status).toBe(200)
+  // the customer uploads it from "What we need from you"; it waits for review
+  await signInWithLink(page, link)
+  await page.goto(`/projects/${pid}`)
+  const asks = page.getByRole("region", { name: "What we need from you" })
+  const item = asks.locator("li", { hasText: title })
+  await item.getByLabel(`File for ${title}`).setInputFiles({ name: filename, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 e2e upload") })
+  await item.getByRole("button", { name: "Upload", exact: true }).click()
+  await expect(page.getByText(`Uploaded for ${title}. Thank you.`)).toBeVisible()
+  await asks.getByRole("button", { name: /finished$/ }).click()
+  await expect(asks.locator("li", { hasText: title })).toContainText("awaiting review")
+  // the project manager sees the warning, accepts it, and it opens like any document
+  await page.context().clearCookies()
+  await signIn(page, "admin", `/projects/${pid}`)
+  const docs = page.getByRole("region", { name: "Documents" })
+  await expect(docs.locator("li", { hasText: filename })).toContainText(`Uploaded by ${who.name} · not reviewed yet`)
+  await expect(docs.getByRole("link", { name: filename })).toHaveCount(0)
+  await docs.getByRole("button", { name: `Accept ${filename}` }).click()
+  await expect(docs.getByRole("link", { name: filename })).toBeVisible()
+  await expect(docs.locator("li", { hasText: filename })).not.toContainText("not reviewed yet")
+  expectClean(errors)
+})

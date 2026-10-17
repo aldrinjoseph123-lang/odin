@@ -28,7 +28,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/u
 import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
 import { StateChip } from "@/components/StateChip"
-import { days, fitStages, fmtDate, gateText, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
+import { days, fitStages, fmtDate, gateText, groupRows, holdsGate, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
 import { PendingIntake } from "@/components/PendingIntake"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
@@ -541,8 +541,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
   // what can be done now comes first; a task waiting on open work only when nothing else is left
   const next = nextUp(open.filter((t) => !t.blocked_by?.length), d.stage) ?? nextUp(open, d.stage)
   const nextWaits = next?.blocked_by?.length ? next.blocked_by : null
-  // counted as the stage gate counts (services/gates.py): a repeating task is always open again, so it never counts
-  const openIn = (stage: string) => open.filter((t) => t.stage === stage && !t.recurrence).length
+  // counted as the stage gate counts (services/gates.py): a repeating task only while it is overdue
+  const openIn = (stage: string) => open.filter((t) => t.stage === stage && holdsGate(t, d.today)).length
   const openHere = openIn(d.stage)
   // the terminal stage is the end: the project is closed, nothing is "next"
   const closed = !d.next_stage && d.stage_index === d.stages.length - 1
@@ -627,7 +627,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
                 )
                 if (it.kind !== "stage") {
                   const names = d.stages.slice(it.from, it.to + 1).map((st) => st.name)
-                  const open = d.tasks.filter((t) => !t.done && names.includes(t.stage) && !t.recurrence).length
+                  const open = d.tasks.filter((t) => names.includes(t.stage) && holdsGate(t, d.today)).length
                   return (
                     <li key={`${it.kind}-${it.from}`} className="relative min-w-0 md:px-2 md:first:pl-0 md:last:pr-0">
                       {arrow}

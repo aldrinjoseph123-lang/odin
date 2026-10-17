@@ -120,7 +120,7 @@ def build(project, audience="internal"):
     note_sql = "SELECT author, note, stage, created_at FROM status_notes WHERE project_id = ? AND prev_stage IS NULL" + (" AND guest_visible = 1" if audience == "customer" else "") + " ORDER BY created_at DESC LIMIT 15"
     notes = [dict(r) for r in db.execute(note_sql, (pid,))]
     documents = [dict(r) for r in db.execute(
-        "SELECT category, filename, uploaded_by, uploaded_at FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", (pid,))]
+        "SELECT category, filename, uploaded_by, uploaded_at FROM documents WHERE project_id = ? AND deleted_at IS NULL AND review_status = 'accepted' ORDER BY uploaded_at DESC", (pid,))]   # a file held for review is not in a report (services/doc_review.py)
     pending_approval = next((a for a in approvals if a["status"] == "pending" and a["stage"] == project["stage"]), None)
     customer_tasks = [t for t in tasks if not t["done"] and t["who_role"] == "Customer"]
 

@@ -424,6 +424,10 @@ export const isMonth = (v: string | null): v is string => !!v && /^\d{4}-(0[1-9]
 
 // what holds a move out of a stage (services/gates.py): "2 open tasks · Client PO missing"
 export const gateText = (reasons: { text: string }[]) => reasons.map((r) => r.text).join(" · ")
+// Does a task hold its stage's gate, and count as open there (services/gates.holds_gate)? An
+// open task does, unless it repeats: its next occurrence is always open, so only while overdue.
+export const holdsGate = (t: { done: boolean | number; recurrence?: string | null; due_date: string | null }, today: string) =>
+  !t.done && (!t.recurrence || (!!t.due_date && t.due_date < today))
 
 // ---- custom fields (components/FieldValues) ----
 // A value as a person reads it

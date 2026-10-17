@@ -264,6 +264,9 @@ NEW_USER_COLUMNS = {
     # when it was made; NULL = no feed. The token itself is shown once.
     "ics_token_hash": "TEXT",
     "ics_created_at": "TEXT",
+    # The feed's last successful read (written at most once an hour): a feed unread
+    # for policy ics_idle_days switches itself off in the nightly housekeeping.
+    "ics_last_read_at": "TEXT",
     # The release whose "What's new" this user dismissed (B15).
     "whats_new_seen": "TEXT",
     # "Since you last looked" (services/dashboard.py, B10): where this visit's

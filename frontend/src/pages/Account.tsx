@@ -175,7 +175,7 @@ export default function Account({ user }: { user: User }) {
           <p className="panel p-4 text-[13px] text-muted-foreground">Partner accounts sign in with an email link and have no password.</p>
         )}
         <NotifyForm key={me.email_kinds.map((k) => `${k.key}:${k.mode}`).join("|")} me={me} busy={busy} onSave={(modes) => send("/account/notifications", modes)} />
-        {me.calendar && <CalendarFeed createdAt={me.calendar.created_at} onChange={load} />}
+        {me.calendar && <CalendarFeed createdAt={me.calendar.created_at} lastReadAt={me.calendar.last_read_at} idleDays={me.calendar.idle_days} onChange={load} />}
         {me.kind !== "external" && <TwoStepPanel />}
         {microsoft?.available && !microsoft.linked && (
           <section className="grid grid-cols-1 content-start gap-2 panel p-4">
@@ -220,7 +220,8 @@ function NotifyForm({ me, busy, onSave }: { me: { kind: string; email_kinds: { k
 
 // The personal calendar feed: an address Outlook subscribes to (Add calendar › From the internet).
 // It holds a secret, so it is shown once, when made or rotated; rotating kills the old one.
-function CalendarFeed({ createdAt, onChange }: { createdAt: string | null; onChange: () => Promise<void> }) {
+// A feed nobody reads for idleDays switches itself off overnight (policy ics_idle_days; 0 = never).
+function CalendarFeed({ createdAt, lastReadAt, idleDays, onChange }: { createdAt: string | null; lastReadAt: string | null; idleDays: number; onChange: () => Promise<void> }) {
   const [url, setUrl] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   async function make() {
@@ -246,7 +247,12 @@ function CalendarFeed({ createdAt, onChange }: { createdAt: string | null; onCha
           </div>
         </div>
       )}
-      {!url && createdAt && <p className="text-[12px] text-muted-foreground">On since {fmtWhen(createdAt)}.</p>}
+      {!url && createdAt && (
+        <p className="text-[12px] text-muted-foreground">
+          On since {fmtWhen(createdAt)}. {lastReadAt ? `Last read ${fmtWhen(lastReadAt)}.` : "Not read yet."}
+          {idleDays > 0 && ` Switches off if unused for ${idleDays} days.`}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="sm" variant={createdAt ? "outline" : "default"} loading={busy} onClick={() => void make()}>{createdAt ? "Make a new address" : "Make a feed"}</Button>
         {createdAt && <Button type="button" size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => void off()}>Turn off</Button>}

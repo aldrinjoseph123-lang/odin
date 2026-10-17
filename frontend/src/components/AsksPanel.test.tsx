@@ -57,4 +57,15 @@ describe("What we need from you", () => {
     expect(panel).toHaveTextContent("4 of 5")
     expect(panel).toHaveTextContent("Smooth cutover")
   })
+
+  it("marks a file still waiting for staff review, with no link to open it", async () => {
+    vi.mocked(api.asks).mockResolvedValueOnce({
+      ratings: [],
+      asks: [{ ...data.asks[1], done: true, answered_by: "Ann Reyes", answered_at: "2026-10-09T09:00:00", file: { id: 9, filename: "diagram.pdf", review: "pending" } }],
+    })
+    render(<AsksPanel projectId={7} staff today="2026-10-16" />)
+    const panel = await screen.findByRole("region", { name: "Asked of the customer and partners" })
+    expect(panel).toHaveTextContent("awaiting review")
+    expect(screen.queryByRole("link", { name: "diagram.pdf" })).toBeNull()
+  })
 })

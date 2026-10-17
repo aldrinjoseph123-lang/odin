@@ -575,7 +575,7 @@ def _replay(event, cfg, db, since, today):
             (since,))]
     if event == "document_uploaded":
         return [(r[0], {"category": r[1], "file": r[2]}, r[3]) for r in db.execute(
-            "SELECT project_id, category, filename, uploaded_at FROM documents WHERE deleted_at IS NULL AND uploaded_at >= ?", (since,))]
+            "SELECT project_id, category, filename, uploaded_at FROM documents WHERE deleted_at IS NULL AND review_status = 'accepted' AND uploaded_at >= ?", (since,))]
     if event == "field_set":
         from services import fields
         f = fields.get(cfg.get("field_id"))

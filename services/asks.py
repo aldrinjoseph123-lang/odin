@@ -220,9 +220,10 @@ def listing(project_id, user_id=None):
                 "answered_by": next(iter(given.values()))["by_name"] if given else None,
                 "answered_at": next(iter(given.values()))["at"] if given else None, "file": None}
         if FILE_KEY in given and str(given[FILE_KEY]["value"]).isdigit():
-            doc = db.execute("SELECT id, filename FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL",
+            doc = db.execute("SELECT id, filename, review_status FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL",
                              (int(given[FILE_KEY]["value"]), project_id)).fetchone()
-            item["file"] = {"id": doc["id"], "filename": doc["filename"]} if doc else None
+            # review: "pending" while staff have not accepted it yet (services/doc_review.py)
+            item["file"] = {"id": doc["id"], "filename": doc["filename"], "review": doc["review_status"]} if doc else None
         out.append(item)
     return out
 

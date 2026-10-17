@@ -19,13 +19,41 @@ from security import token_hash
 def mint(user_id):
     """A new feed token for this person (replacing any old one); the raw token, to show once. No commit."""
     raw = secrets.token_urlsafe(32)
-    get_db().execute("UPDATE users SET ics_token_hash = ?, ics_created_at = ? WHERE id = ?",
+    get_db().execute("UPDATE users SET ics_token_hash = ?, ics_created_at = ?, ics_last_read_at = NULL WHERE id = ?",
                      (token_hash(raw), datetime.utcnow().isoformat(), user_id))
     return raw
 
 
 def revoke(user_id):
-    get_db().execute("UPDATE users SET ics_token_hash = NULL, ics_created_at = NULL WHERE id = ?", (user_id,))
+    get_db().execute("UPDATE users SET ics_token_hash = NULL, ics_created_at = NULL, ics_last_read_at = NULL WHERE id = ?", (user_id,))
+
+
+def touch(user_id):
+    """Note a successful read: at most one write per feed an hour (Outlook polls every few). Commits."""
+    db = get_db()
+    hour_ago = (datetime.utcnow() - timedelta(hours=1)).isoformat()
+    if db.execute("UPDATE users SET ics_last_read_at = ? WHERE id = ? AND (ics_last_read_at IS NULL OR ics_last_read_at < ?)",
+                  (datetime.utcnow().isoformat(), user_id, hour_ago)).rowcount:
+        db.commit()
+
+
+def switch_off_idle(db=None):
+    """Nightly (scheduler housekeeping): turn off each feed nobody has read for policy
+    ics_idle_days (0 = never), counted from its last read, or from when it was made if it
+    never was. A forgotten subscription stops being a working address. Audited per feed."""
+    from policies import policy
+    from services.audit import audit_log
+    db = db or get_db()
+    days = policy("ics_idle_days", db)
+    if not days:
+        return 0
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    idle = db.execute("SELECT id, name FROM users WHERE ics_token_hash IS NOT NULL AND COALESCE(ics_last_read_at, ics_created_at, '') < ?", (cutoff,)).fetchall()
+    for u in idle:
+        revoke(u["id"])
+        db.commit()
+        audit_log("revoke_calendar_feed", "user", u["id"], u["name"], f"calendar feed switched off: unused {days} days", actor="scheduler", db=db)
+    return len(idle)
 
 
 def owner_of(raw):

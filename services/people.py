@@ -79,7 +79,7 @@ def my_work(uid, scope):
             due = parse_day(r["due_date"])
             late = (today - due).days if due else 0
             held.setdefault(r["task_id"], []).append({"id": r["id"], "title": r["title"], "late_by": max(0, late), "mine": r["assignee_id"] == uid})
-    # a partner or customer reads only their own tasks by name: the team's are one nameless line (task_links.outsider_cut)
+    # a partner or customer reads only their own tasks: the team's that hold one are left out (task_links.outsider_cut)
     outsider = (db.execute("SELECT kind FROM users WHERE id = ?", (uid,)).fetchone() or {"kind": None})["kind"] == "external"
     for t in tasks:
         t["can_edit"] = manages[t["project_id"]]

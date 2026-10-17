@@ -205,7 +205,7 @@ def draft(project, template_id=None):
                 n = sum(1 for t in tasks if t["done"] and t["stage"] == s["name"])
                 delivered.append(f"{s['name']}: completed {fmt_date(s['actual_end'], '—')}" + (f" ({n} {plural(n, 'task')})" if n else ""))
         delivered += [f"Delivered: {d['filename']}" for d in db.execute(
-            "SELECT filename FROM documents WHERE project_id = ? AND category = 'Deliverable' AND deleted_at IS NULL ORDER BY uploaded_at", (pid,))]
+            "SELECT filename FROM documents WHERE project_id = ? AND category = 'Deliverable' AND deleted_at IS NULL AND review_status = 'accepted' ORDER BY uploaded_at", (pid,))]
         # the milestones reached that the customer may see (a recorded scope is its own table of what was delivered)
         from services import milestones
         delivered += milestones.delivered_lines(pid)

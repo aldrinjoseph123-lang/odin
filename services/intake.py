@@ -7,9 +7,14 @@ the PO and taking ownership (routes/intake.py).
 
 The deal id is the key, per source (the token's name): a repeat call answers 200 with the
 rollout it made before, never a second one; the same deal id from another source is a 409
-that names nothing of the first. Every call is audited under the token's name and kept in intake_calls (the
-newest LOG_KEEP rows; the last SHOWN are on the settings page).
+that names nothing of the first. Every call is kept in intake_calls (the newest LOG_KEEP rows;
+the last SHOWN are on the settings page). A created rollout is audited under the token's name;
+a duplicate or refused call is audited too (intake_duplicate / intake_refused), at most once per
+token, action and HTTP status a minute, so a CRM's retry loop cannot flood the audit trail.
+A call from outside policy intake_allowed_ips is refused 403; an expired token is a 401
+(routes/tokens.token_required, which logs it here through refuse()).
 """
+import ipaddress
 import json
 import secrets
 from datetime import datetime, timedelta
@@ -19,7 +24,7 @@ from markupsafe import escape
 from constants import DELIVERY_MODES
 from core import parse_date, text_field
 from db import copy_template_stages, get_db, set_project_manager
-from policies import email_domain_allowed, policy
+from policies import email_domain_allowed, ip_networks, policy
 from security import valid_email
 from services import fields as custom_fields
 from services.fmt import plural
@@ -54,6 +59,28 @@ def log_call(db, token, status, result, deal_id=None, project_id=None, detail=No
     db.commit()
 
 
+AUDIT_EVERY = 60   # seconds: one audit row per token, action and status in this window (a seam for the tests)
+
+
+def _audit_once(db, token, action, status, message):
+    """An audit row for a duplicate or refused call, unless this token already has one for the
+    same action and HTTP status in the last AUDIT_EVERY seconds; intake_calls keeps every call.
+    The audit trail's own clock and rows are the bound, so nothing else needs to remember it."""
+    from services.audit import audit_log
+    actor, head = f"token:{token}", f"HTTP {status}"
+    since = (datetime.utcnow() - timedelta(seconds=AUDIT_EVERY)).isoformat()
+    if db.execute("SELECT 1 FROM audit_logs WHERE action = ? AND username = ? AND timestamp > ? AND details LIKE ? LIMIT 1",
+                  (action, actor, since, head + ":%")).fetchone():
+        return
+    audit_log(action, "api_token", None, token, f"{head}: {message}", actor=actor, db=db)
+
+
+def refuse(db, token, status, message, deal_id=None, result="refused"):
+    """A refused call: logged in intake_calls and (bounded) in the audit trail. Commits."""
+    log_call(db, token, status, result, deal_id, detail=message)
+    _audit_once(db, token, "intake_refused", status, message)
+
+
 def recent_calls(db, n=SHOWN):
     return [dict(r) for r in db.execute("SELECT * FROM intake_calls ORDER BY id DESC LIMIT ?", (n,))]
 
@@ -64,8 +91,25 @@ def over_rate(db, token):
     the log every call already lands in, rather than security.rate_limited: that would
     write a second row per call into login_attempts, and the `_now` seam lets a test move the minute."""
     since = (_now() - timedelta(seconds=60)).isoformat()
-    n = db.execute("SELECT COUNT(*) FROM intake_calls WHERE token_name = ? AND at > ? AND result != 'rate_limited'", (token, since)).fetchone()[0]
+    # nor do calls refused for the token or the address (401/403): a stolen token used from elsewhere
+    # must not use up the real CRM's minute
+    n = db.execute("SELECT COUNT(*) FROM intake_calls WHERE token_name = ? AND at > ? AND result != 'rate_limited' AND status NOT IN (401, 403)",
+                   (token, since)).fetchone()[0]
     return n >= policy("intake_rate_per_min", db)
+
+
+def address_allowed(ip, db=None):
+    """True when policy intake_allowed_ips is blank or holds this address (request.remote_addr:
+    the proxy's X-Forwarded-For is applied only under PMS_TRUST_PROXY, security.py)."""
+    nets = ip_networks(policy("intake_allowed_ips", db))
+    if not nets:
+        return True
+    try:
+        addr = ipaddress.ip_address(ip or "")
+    except ValueError:
+        return False
+    addr = getattr(addr, "ipv4_mapped", None) or addr   # ::ffff:203.0.113.7 from a dual-stack socket is 203.0.113.7
+    return any(addr in net for net in nets)
 
 
 def source_allowed(token):
@@ -224,22 +268,27 @@ def create(db, c, source):
         f"source={source} deal={c['deal_id']} client={c['client']}" + (f" fields: {'; '.join(changes)}" if changes else ""))
 
 
-def handle(db, token, body):
+def handle(db, token, body, ip=None):
     """The whole call after authentication: (status, JSON body, audit details). Every call is
-    logged in intake_calls; the details are set when a rollout was made, for the route to audit."""
+    logged in intake_calls; the details are set when a rollout was made, for the route to audit.
+    `ip` is the caller's address as the app trusts it (request.remote_addr)."""
     deal = body.get("deal_id") if isinstance(body, dict) and isinstance(body.get("deal_id"), str) else None
     try:
+        if not address_allowed(ip, db):
+            raise Refused(403, f"Calls from {ip or 'an unknown address'} are not allowed (Settings › Integrations › Intake › Allowed addresses)")
         if not source_allowed(token):
             raise Refused(403, f"The token {token} is not an allowed source (Settings › Integrations › Intake)")
         if over_rate(db, token):
-            log_call(db, token, 429, "rate_limited", deal, detail="over the limit for a minute")
+            refuse(db, token, 429, "over the limit for a minute", deal, result="rate_limited")
             return 429, {"error": f"Too many intakes from {token}: at most {policy('intake_rate_per_min', db)} a minute. Retry in a minute."}, None
         c, warnings = clean(body)
         p, created, details = create(db, c, token)
     except Refused as e:
-        log_call(db, token, e.status, "refused", deal, detail=e.message)
+        refuse(db, token, e.status, e.message, deal)
         return e.status, {"error": e.message}, None
     log_call(db, token, 201 if created else 200, "created" if created else "duplicate", c["deal_id"], p["id"])
+    if not created:
+        _audit_once(db, token, "intake_duplicate", 200, f"deal {c['deal_id']} already made rollout {p['id']}")
     return (201 if created else 200), {"created": created, "rollout": shown(p), "warnings": warnings if created else []}, details
 
 

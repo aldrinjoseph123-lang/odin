@@ -59,6 +59,7 @@ from db import (
 )
 from services.alerts import get_alert_type_settings
 from services import asks
+from services import doc_review
 from services import fields as custom_fields
 from services import recurrence
 from services import rules
@@ -109,8 +110,8 @@ def load_project(project_id, include_deleted=False):
 
 
 # What may be done to a pending intake (services/intake.py) before it is confirmed:
-# confirm it, or discard it and undo the discard. Every other write is refused in load_project.
-PENDING_ALLOWED = {"intake_confirm", "project_delete", "undo_project"}
+# correct its details, confirm it, or discard it and undo the discard. Every other write is refused in load_project.
+PENDING_ALLOWED = {"intake_edit", "intake_confirm", "project_delete", "undo_project"}
 
 
 def project_visible(project):
@@ -775,10 +776,12 @@ def _field_problem(form):
     return None
 
 
-def save_document(project_id, file, category, uploaded_by):
+def save_document(project_id, file, category, uploaded_by, pending=False):
     """Save an uploaded file to disk + documents table (+ OneDrive mirror if
     enabled). Assumes the caller already validated file/category — shared by
     the Documents panel upload and project creation's bundled PO upload.
+    `pending`: an outside account's upload, held for staff review and not
+    mirrored until accepted (services/doc_review.py).
     Returns (the file's name as given, the documents row id)."""
     # the name people gave the file, in any script (secure_filename kept only ASCII:
     # "日本語の報告.pdf" became "pdf"); on disk it is a random id with a plain extension
@@ -792,20 +795,26 @@ def save_document(project_id, file, category, uploaded_by):
     db = get_db()
     now = datetime.utcnow().isoformat()
     doc_id = db.execute(
-        """INSERT INTO documents (project_id, category, filename, stored_name, uploaded_by, uploaded_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (project_id, category, original_name, stored_name, uploaded_by, now),
+        """INSERT INTO documents (project_id, category, filename, stored_name, uploaded_by, uploaded_at, review_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (project_id, category, original_name, stored_name, uploaded_by, now, doc_review.PENDING if pending else doc_review.ACCEPTED),
     ).lastrowid
     touch_project(db, project_id)
     db.commit()
-
-    if policy("onedrive_mirror_uploads_enabled"):
-        project = db.execute("SELECT name FROM projects WHERE id = ?", (project_id,)).fetchone()
-        remote_path = f"Odin-Documents/{project_id}-{secure_filename(project['name'])}/{category}/{secure_filename(original_name) or stored_name}"
-        ok, error = graph.upload_file(os.path.join(project_dir, stored_name), remote_path)
-        if not ok:
-            app.logger.warning("OneDrive mirror of an upload failed: %s", error)
+    if not pending:
+        mirror_document(project_id, category, original_name, stored_name)
     return original_name, doc_id
+
+
+def mirror_document(project_id, category, original_name, stored_name):
+    """Copy a document to OneDrive when the policy says so (an upload, or a reviewed one accepted)."""
+    if not policy("onedrive_mirror_uploads_enabled"):
+        return
+    project = get_db().execute("SELECT name FROM projects WHERE id = ?", (project_id,)).fetchone()
+    remote_path = f"Odin-Documents/{project_id}-{secure_filename(project['name'])}/{category}/{secure_filename(original_name) or stored_name}"
+    ok, error = graph.upload_file(os.path.join(UPLOAD_DIR, str(project_id), stored_name), remote_path)
+    if not ok:
+        app.logger.warning("OneDrive mirror of an upload failed: %s", error)
 
 
 @app.route("/projects/<int:project_id>/documents", methods=["POST"])
@@ -841,19 +850,22 @@ def document_upload(project_id):
     if category not in get_doc_category_names():
         flash("Invalid category", "error")
         return redirect(url_for("project_detail", project_id=project_id))
-    original_name, doc_id = save_document(project_id, file, category, session["user_name"])
-    audit_log("upload_document", "project", project_id, None, f"{category}: {original_name}")
+    # an outside account's file waits for staff review before anyone opens or uses it (services/doc_review.py)
+    pending = session.get("kind") == "external"
+    original_name, doc_id = save_document(project_id, file, category, session["user_name"], pending=pending)
+    audit_log("upload_document", "project", project_id, None, f"{category}: {original_name}" + (" (held for review)" if pending else ""))
     project = load_project(project_id)
     if ask:
         asks.record_upload(db, ask, doc_id, session["user_id"], session["user_name"])
         db.commit()
         audit_log("complete_ask", "project", project_id, None, f"upload: {ask['title'][:80]}")
     _tell_pm(project, f"{'Ask done on' if ask else 'Document added to'} {escape(project['name'])}",
-             f"{escape(session['user_name'])} uploaded <b>{escape(original_name)}</b> ({escape(category)})"
-             + (f" for <b>{escape(ask['title'])}</b>." if ask else "."))
-    rules.fire("document_uploaded", project_id, {"category": category, "file": original_name})
+             f"{escape(session['user_name'])} uploaded {'a file for review: ' if pending else ''}<b>{escape(original_name)}</b> ({escape(category)})"
+             + (f" for <b>{escape(ask['title'])}</b>." if ask else ".") + (" Accept or reject it under Documents." if pending else ""))
+    if not pending:   # a held file counts once it is accepted (document_review)
+        rules.fire("document_uploaded", project_id, {"category": category, "file": original_name})
 
-    flash(f"Uploaded {original_name}")
+    flash(f"Uploaded {original_name}" + (". The team will review it." if pending else ""))
     return redirect(url_for("project_detail", project_id=project_id))
 
 
@@ -867,6 +879,8 @@ def document_download(project_id, doc_id):
     ).fetchone()
     if doc is None or (session.get("kind") == "external" and doc["category"] in partner_hidden_categories(db)):
         abort(404)   # a kind partners never see does not exist for them
+    if doc["review_status"] != doc_review.ACCEPTED:   # nobody opens an outside upload before staff accept it (loophole 65)
+        abort(409, description="This file has not been reviewed yet: accept it under Documents first")
     # Reads are data access; SOC 2 wants them in the trail as much as writes.
     audit_log("download_document", "document", doc_id, doc["filename"], f"project_id={project_id}")
     project_dir = os.path.join(UPLOAD_DIR, str(project_id))
@@ -876,6 +890,42 @@ def document_download(project_id, doc_id):
     return send_from_directory(
         project_dir, doc["stored_name"], download_name=doc["filename"], as_attachment=True
     )
+
+
+@app.route("/projects/<int:project_id>/documents/<int:doc_id>/review", methods=["POST"])
+@permission_required("upload_document")
+@project_role_required("manage_documents")
+def document_review(project_id, doc_id):
+    """Accept or reject a file an outside account uploaded (services/doc_review.py).
+    Accept makes it a normal document; reject deletes it, reopens the ask and
+    tells whoever uploaded it. Both audited."""
+    project = load_project(project_id)
+    db = get_db()
+    doc = db.execute("SELECT * FROM documents WHERE id = ? AND project_id = ? AND deleted_at IS NULL AND review_status = ?",
+                     (doc_id, project_id, doc_review.PENDING)).fetchone()
+    if doc is None:
+        abort(404)   # no such file waiting for review (or decided a moment ago)
+    decision = (json_body() or request.form).get("decision")
+    if decision not in ("accept", "reject"):
+        abort(400, description="Send decision: accept or reject")
+    if decision == "accept":
+        if not doc_review.accept(db, doc_id, session["user_name"]):
+            abort(404)
+        audit_log("accept_document", "project", project_id, None, f"{doc['category']}: {doc['filename']}")
+        mirror_document(project_id, doc["category"], doc["filename"], doc["stored_name"])
+        rules.fire("document_uploaded", project_id, {"category": doc["category"], "file": doc["filename"]})
+        flash(f"Accepted {doc['filename']}")
+        return redirect(url_for("project_detail", project_id=project_id))
+    done, ask = doc_review.reject(db, doc_id, session["user_name"])
+    if not done:
+        abort(404)
+    audit_log("reject_document", "project", project_id, None, f"{doc['category']}: {doc['filename']}" + (f" for {ask['title'][:80]}, reopened" if ask else ""))
+    if ask and ask["by_id"]:
+        notify_users([ask["by_id"]], "assigned", project_id, f"Upload again: {escape(ask['title'])}",
+                     f"{escape(session['user_name'])} could not accept <b>{escape(doc['filename'])}</b> for <b>{escape(ask['title'])}</b> "
+                     f"on {escape(project['name'])}. Please upload the file again.", exclude_user_id=session["user_id"])
+    flash(f"Rejected {doc['filename']}" + (f": {ask['title']} is open again" if ask else ""))
+    return redirect(url_for("project_detail", project_id=project_id))
 
 
 @app.route("/projects/<int:project_id>/documents/<int:doc_id>/delete", methods=["POST"])

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, forecastTone, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday, isDay, isMonth, sinceLine, plural } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, forecastTone, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday, isDay, isMonth, sinceLine, plural, holdsGate } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -394,5 +394,17 @@ describe("plural", () => {
   it("counts a noun, with an irregular plural when given", () => {
     expect([plural(0, "task"), plural(1, "task"), plural(3, "task")]).toEqual(["0 tasks", "1 task", "3 tasks"])
     expect([plural(1, "person", "people"), plural(2, "person", "people")]).toEqual(["1 person", "2 people"])
+  })
+})
+
+describe("holdsGate", () => {
+  it("counts an open task, and a repeating one only while it is overdue (services/gates.holds_gate)", () => {
+    const today = "2026-10-17"
+    expect(holdsGate({ done: false, due_date: null }, today)).toBe(true)
+    expect(holdsGate({ done: true, due_date: null }, today)).toBe(false)
+    expect(holdsGate({ done: false, recurrence: "weekly", due_date: "2026-10-20" }, today)).toBe(false)
+    expect(holdsGate({ done: false, recurrence: "weekly", due_date: today }, today)).toBe(false)
+    expect(holdsGate({ done: false, recurrence: "weekly", due_date: "2026-10-16" }, today)).toBe(true)
+    expect(holdsGate({ done: true, recurrence: "weekly", due_date: "2026-10-16" }, today)).toBe(false)
   })
 })

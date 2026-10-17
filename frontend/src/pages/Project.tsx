@@ -24,6 +24,7 @@ import { AINotesTasks } from "@/components/AINotesTasks"
 import { LessonsPanel } from "@/components/LessonsPanel"
 import { FieldValues } from "@/components/FieldValues"
 import { AsksPanel } from "@/components/AsksPanel"
+import { PendingDoc } from "@/components/DocReview"
 import { IntakeBanner } from "@/components/PendingIntake"
 import { ApiError, flowDetail, plan, postForm, projectActivity, projectExtras, type FormReply, type PlanData, type ProjectExtras, type User } from "@/lib/api"
 import { useLoad } from "@/lib/useLoad"
@@ -147,7 +148,7 @@ export default function Project({ user }: { user: User }) {
       )}
 
       {/* a CRM intake not yet confirmed (services/intake.py): say so first, with Confirm / Discard */}
-      {staff && x.intake_pending && <IntakeBanner projectId={id} canDiscard={!!can.delete_project} onConfirmed={(m) => { setNotice({ text: m.join(" ") || "Rollout confirmed" }); return reload() }} />}
+      {staff && x.intake_pending && <IntakeBanner projectId={id} canDiscard={!!can.delete_project} onConfirmed={(m) => { setNotice({ text: m.join(" ") || "Rollout confirmed" }); return reload() }} onEdited={reload} />}
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
       {/* Detail reloads after a move itself: the notice is all this page adds (review P3-35: it reloaded twice) */}
       {/* a customer, reseller or contractor: what the rollout needs from them comes first (services/asks.py) */}
@@ -247,11 +248,13 @@ export default function Project({ user }: { user: User }) {
           {can.docs && <UploadForm x={x} busy={busy} onSubmit={(fd) => send(`/projects/${id}/documents`, fd)} />}
           <ul className="mt-3 grid grid-cols-1 gap-2">
             {x.documents.map((doc) => (
-              <li key={doc.id} className="flex items-center gap-3 text-[13px]">
+              <li key={doc.id} className="flex flex-wrap items-center gap-3 text-[13px]">
                 <span className="w-28 shrink-0 truncate text-[12px] text-muted-foreground">{doc.category}</span>
-                {can.download ? <a href={`/projects/${id}/documents/${doc.id}/download`} className="min-w-0 flex-1 truncate font-medium hover:underline">{doc.filename}</a> : <span className="min-w-0 flex-1 truncate font-medium">{doc.filename}</span>}
-                <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtWhen(doc.uploaded_at)}</span>
-                {can.delete_doc && <button type="button" aria-disabled={busy || undefined} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}? The file is removed for everyone on the rollout.`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
+                {doc.review === "pending" ? <PendingDoc doc={doc} canReview={can.docs} onDecide={(decision, confirmText) => send(`/projects/${id}/documents/${doc.id}/review`, { decision }, confirmText)} /> : <>
+                  {can.download ? <a href={`/projects/${id}/documents/${doc.id}/download`} className="min-w-0 flex-1 truncate font-medium hover:underline">{doc.filename}</a> : <span className="min-w-0 flex-1 truncate font-medium">{doc.filename}</span>}
+                  <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtWhen(doc.uploaded_at)}</span>
+                </>}
+                {can.delete_doc && doc.review !== "pending" && <button type="button" aria-disabled={busy || undefined} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}? The file is removed for everyone on the rollout.`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
               </li>
             ))}
             {x.documents.length === 0 && <li className="text-[13px] text-muted-foreground">No documents uploaded yet.</li>}

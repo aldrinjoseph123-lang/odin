@@ -42,14 +42,14 @@ type Act = ReturnType<typeof useAction>["act"]
 
 function Tokens({ d, busy, act }: { d: IntakeSettingsData; busy: boolean; act: Act }) {
   const [name, setName] = useState("")
-  const [days, setDays] = useState("365")
+  const days = d.policies.find((p) => p.key === "intake_token_days")?.value ?? 365   // a policy: Renew extends by as many from today
   // shown once, until dismissed: Odin keeps only the token's hash
   const [made, setMade] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const now = new Date().toISOString()
   function create(e: FormEvent) {
     e.preventDefault()
-    void act(async () => { const r = await postForm("/settings/api-tokens", { name, days, scope: "create" }); setName(""); setMade(r.token ?? null); setCopied(false) })
+    void act(async () => { const r = await postForm("/settings/api-tokens", { name, scope: "create" }); setName(""); setMade(r.token ?? null); setCopied(false) })
   }
   return (
     <Panel title="CRM intake" hint="the CRM posts a won deal; a project manager confirms it">
@@ -62,10 +62,8 @@ function Tokens({ d, busy, act }: { d: IntakeSettingsData; busy: boolean; act: A
         <Field label="Source (the token's name)" hint="shown on each intake and in the audit trail">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. crm-prod" maxLength={80} required className="h-8 w-56 text-[13px]" />
         </Field>
-        <Field label="Valid for">
-          <select value={days} onChange={(e) => setDays(e.target.value)} className={fieldAuto}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select>
-        </Field>
         <Button type="submit" size="sm" loading={busy} disabled={!name.trim()}>Create intake token</Button>
+        <span className="pb-1.5 text-[12px] text-muted-foreground">Works for {String(days)} days; Renew extends it from today without a new secret.</span>
       </form>
       {made && (
         <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-muted/60 p-3">
@@ -90,10 +88,12 @@ function Tokens({ d, busy, act }: { d: IntakeSettingsData; busy: boolean; act: A
                     <td className={cn(td, "whitespace-nowrap")}><Ago iso={t.created_at} /> · {t.created_by}</td>
                     <td className={cn(td, "whitespace-nowrap")}>{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
                     <td className={cn(td, "whitespace-nowrap")}>{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDateY(t.expires_at)}</td>
-                    <td className={cn(td, "text-right")}>{!dead && (
-                      <Button size="sm" variant="ghost" className={danger} disabled={busy} aria-label={`Revoke ${t.name}`}
-                        onClick={async () => { if (await askConfirm(`Revoke ${t.name}? The CRM stops being able to send intakes with it now.`, "Revoke")) void act(() => postForm(`/settings/api-tokens/${t.id}/revoke`), `Revoked ${t.name}.`) }}>Revoke</Button>
-                    )}</td>
+                    <td className={cn(td, "whitespace-nowrap text-right")}>{!t.revoked_at && (<>
+                      <Button size="sm" variant="ghost" disabled={busy} aria-label={`Renew ${t.name}`}
+                        onClick={() => void act(async () => { await postForm(`/settings/api-tokens/${t.id}/renew`); toast(`Renewed ${t.name} for ${String(days)} days.`) })}>Renew</Button>
+                      {!dead && <Button size="sm" variant="ghost" className={danger} disabled={busy} aria-label={`Revoke ${t.name}`}
+                        onClick={async () => { if (await askConfirm(`Revoke ${t.name}? The CRM stops being able to send intakes with it now.`, "Revoke")) void act(() => postForm(`/settings/api-tokens/${t.id}/revoke`), `Revoked ${t.name}.`) }}>Revoke</Button>}
+                    </>)}</td>
                   </tr>
                 )
               })}
@@ -115,6 +115,7 @@ function Defaults({ d, busy, act }: { d: IntakeSettingsData; busy: boolean; act:
     void act(async () => { await postForm("/settings/policies/intake", v); toast("Intake defaults saved.") })
   }
   const rate = by.intake_rate_per_min
+  const life = by.intake_token_days
   return (
     <Panel title="Intake defaults" hint="what a new intake starts with">
       <form onSubmit={save} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -135,6 +136,12 @@ function Defaults({ d, busy, act }: { d: IntakeSettingsData; busy: boolean; act:
         </Field>
         <Field label={rate?.label ?? "Most intakes per minute"} hint={`${rate?.help ?? ""} ${rate?.min}–${rate?.max}.`}>
           <Input type="number" min={rate?.min} max={rate?.max} required value={v.intake_rate_per_min} onChange={set("intake_rate_per_min")} className="h-8 w-28 text-[13px]" />
+        </Field>
+        <Field label={life?.label ?? "Intake tokens last (days)"} hint={`${life?.help ?? ""} ${life?.min}–${life?.max}.`}>
+          <Input type="number" min={life?.min} max={life?.max} required value={v.intake_token_days} onChange={set("intake_token_days")} className="h-8 w-28 text-[13px]" />
+        </Field>
+        <Field label={by.intake_allowed_ips?.label ?? "Allowed addresses"} hint={by.intake_allowed_ips?.help}>
+          <Input value={v.intake_allowed_ips} onChange={set("intake_allowed_ips")} maxLength={by.intake_allowed_ips?.max} placeholder="203.0.113.0/24, 198.51.100.7" className="h-8 font-mono text-[12px]" />
         </Field>
         <div className="sm:col-span-2"><Button type="submit" size="sm" loading={busy} disabled={!dirty}>Save</Button></div>
       </form>

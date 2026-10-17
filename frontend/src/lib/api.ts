@@ -207,8 +207,10 @@ export type TaskAsk = { kind?: AskKind; ask_category?: string | null; questions?
 export type Ask = {
   id: number; title: string; kind: AskKind; done: boolean; done_at: string | null; due_date: string | null; assignee: string; assignee_role: string
   category: string | null; questions: AskQuestion[]; answers: { key: string; label: string; value: string }[]
-  answered_by: string | null; answered_at: string | null; file: { id: number; filename: string } | null
+  answered_by: string | null; answered_at: string | null; file: { id: number; filename: string; review: DocReview } | null
 }
+// an outside party's upload waits for staff review (services/doc_review.py): it cannot be opened until accepted
+export type DocReview = "accepted" | "pending"
 // the customer's rating at sign-off: staff only (an external's list is always empty)
 export type Rating = { signoff_version: number; rating: number; comment: string | null; by_name: string; at: string }
 export type AsksData = { asks: Ask[]; ratings: Rating[] }
@@ -557,6 +559,8 @@ export type PendingIntake = { rows: PendingIntakeRow[]; can_confirm: boolean; ca
 export const pendingIntake = () => getJson<PendingIntake>("/api/intake/pending")
 // the confirm: the PO file, the project manager (when the confirmer cannot move stages) and the PO number
 export const confirmIntake = (id: number, form: FormData) => postForm(`/projects/${id}/intake/confirm`, form)
+// correct what the CRM sent before confirming (name, client, vendor, product, delivery, target, PO number, field_<id>); audited old → new
+export const editIntake = (id: number, fields: Record<string, string>) => postForm(`/projects/${id}/intake/edit`, fields)
 export type IntakeCall = {
   id: number; token_name: string; at: string; status: number; result: "created" | "duplicate" | "refused" | "rate_limited"
   deal_id: string | null; project_id: number | null; detail: string | null
@@ -577,7 +581,7 @@ export type ProjectExtras = {
   stage_rows: ({ id: number; name: string; sla_days: number | null } & StageGate)[]
   participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean; avatar_url: string | null }[]
   notes: { id: number; author: string; note: string; stage: string; created_at: string; mine: boolean; edited: boolean; stage_entry: boolean }[]
-  documents: { id: number; category: string; filename: string; uploaded_by: string; uploaded_at: string }[]
+  documents: { id: number; category: string; filename: string; uploaded_by: string; uploaded_at: string; review: DocReview }[]
   doc_categories: string[]; users: { id: number; name: string }[]; roles: string[]; external_roles: string[]
   can: { manage: boolean; tasks: boolean; docs: boolean; move: boolean; note: boolean; download: boolean; create: boolean; delete_doc?: boolean; delete_project?: boolean }
 }
@@ -713,7 +717,7 @@ export type WhatsNew = { show: boolean; version: string; title: string; items: s
 export const whatsNew = () => getJson<WhatsNew>("/api/whats-new")
 export const whatsNewSeen = () => post<{ ok: true }>("/api/whats-new/seen")
 export const account = () => getJson<{ username: string; name: string; email: string | null; kind: "internal" | "external"; must_change_password: boolean; has_password: boolean; theme: "system" | "light" | "dark"; accent: string; avatar_url: string | null
-  email_kinds: { key: string; label: string; on: boolean; mode: Delivery }[]; mail_enabled: boolean; calendar: { created_at: string | null } | null; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[] }>("/api/account")
+  email_kinds: { key: string; label: string; on: boolean; mode: Delivery }[]; mail_enabled: boolean; calendar: { created_at: string | null; last_read_at: string | null; idle_days: number } | null; home: "dashboard" | "board"; activity: Activity | null; activity_viewers: string[] }>("/api/account")
 // active minutes (services/activity.py): today, 7 and 30 days, one row per day
 export type Activity = { today: number; week: number; month: number; days: { day: string; minutes: number }[]; last_seen_at: string | null; last_login_at: string | null }
 // sign-up links (services/signup.py): admins make them; a new colleague fills /join/<token>

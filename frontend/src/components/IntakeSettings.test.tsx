@@ -10,6 +10,8 @@ const policies: api.Policy[] = [
   { key: "intake_owner", area: "intake", kind: "choice", label: "Default project manager", help: "", value: "", group: "Intake defaults", choices: ["2"] },
   { key: "intake_sources", area: "intake", kind: "text", label: "Allowed sources", help: "", value: "", max: 300, group: "Intake defaults" },
   { key: "intake_rate_per_min", area: "intake", kind: "int", label: "Most intakes per token per minute", help: "Calls beyond this are refused.", value: 30, min: 1, max: 100, group: "Intake defaults" },
+  { key: "intake_token_days", area: "intake", kind: "int", label: "Intake tokens last (days)", help: "", value: 365, min: 1, max: 1095, group: "Intake defaults" },
+  { key: "intake_allowed_ips", area: "intake", kind: "text", label: "Allowed addresses", help: "", value: "", max: 500, group: "Intake defaults" },
 ]
 const page = (): api.IntakeSettingsData => ({
   tokens: [{ id: 4, name: "crm-prod", created_by: "Admin", created_at: "2026-10-01T08:00:00", expires_at: "2099-01-01T00:00:00", last_used_at: null, revoked_at: null }],
@@ -41,7 +43,7 @@ describe("Settings › Integrations › Intake", () => {
     render(<IntakeSettings />)
     await user.type(await screen.findByLabelText(/Source \(the token's name\)/), "crm-test")
     await user.click(screen.getByRole("button", { name: "Create intake token" }))
-    await waitFor(() => expect(api.postForm).toHaveBeenCalledWith("/settings/api-tokens", { name: "crm-test", days: "365", scope: "create" }))
+    await waitFor(() => expect(api.postForm).toHaveBeenCalledWith("/settings/api-tokens", { name: "crm-test", scope: "create" }))
     expect(await screen.findByLabelText("New intake token")).toHaveValue("odin_secret")
     await user.click(screen.getByRole("button", { name: "I have saved it" }))
     expect(screen.queryByLabelText("New intake token")).toBeNull()
@@ -52,8 +54,21 @@ describe("Settings › Integrations › Intake", () => {
     render(<IntakeSettings />)
     await user.selectOptions(await screen.findByRole("combobox", { name: /Default project manager/ }), "2")
     await user.type(screen.getByRole("textbox", { name: /Allowed sources/ }), "crm-prod")
+    await user.type(screen.getByRole("textbox", { name: /Allowed addresses/ }), "203.0.113.0/24")
     await user.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(api.postForm).toHaveBeenCalledWith("/settings/policies/intake",
-      { intake_template: "", intake_owner: "2", intake_sources: "crm-prod", intake_rate_per_min: "30" }))
+      { intake_template: "", intake_owner: "2", intake_sources: "crm-prod", intake_rate_per_min: "30", intake_token_days: "365", intake_allowed_ips: "203.0.113.0/24" }))
+  })
+
+  it("renews a token, an expired one too, and says how long a token lives", async () => {
+    vi.mocked(api.intakeSettings).mockResolvedValueOnce({ ...page(), tokens: [{ ...page().tokens[0], expires_at: "2020-01-01T00:00:00" }] })
+    const user = userEvent.setup()
+    render(<IntakeSettings />)
+    const tokens = await screen.findByRole("table", { name: "Intake tokens" })
+    expect(within(tokens).getByText("expired")).toBeInTheDocument()
+    expect(within(tokens).queryByRole("button", { name: "Revoke crm-prod" })).toBeNull()
+    expect(screen.getByText(/Works for 365 days; Renew extends it from today/)).toBeInTheDocument()
+    await user.click(within(tokens).getByRole("button", { name: "Renew crm-prod" }))
+    await waitFor(() => expect(api.postForm).toHaveBeenCalledWith("/settings/api-tokens/4/renew"))
   })
 })

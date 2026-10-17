@@ -20,7 +20,7 @@ from collections import Counter
 from flask import session
 
 from db import get_db
-from policies import policy
+from policies import local_today, policy
 from services.fmt import plural
 
 GUEST_MESSAGE = "This stage is not finished yet. The project manager will move the rollout on once its work is done."
@@ -50,14 +50,25 @@ def blocked(project, new_stage, rows=None):
     out = []
     gated = {r["name"] for r in passed if r["gate_tasks"]}
     if gated:
-        # a task with no stage, or a stage since removed, belongs to the current stage (as the Flow shows it)
-        # a repeating task (services/recurrence.py) never holds a gate: its next occurrence is always open
-        open_in = Counter(t["stage"] if t["stage"] in names else project["stage"]
-                          for t in db.execute("SELECT stage FROM tasks WHERE project_id = ? AND done = 0 AND recurrence IS NULL", (pid,)))
+        # a task with no stage, or a stage since removed, belongs to the current stage (as the Flow shows it).
+        # A repeating task (services/recurrence.py) always has its next occurrence open, so it holds the
+        # gate only while that occurrence is overdue (its day has passed and it is not done): holds_gate()
+        today = local_today(db).isoformat()
+        open_in, overdue = Counter(), []
+        for t in db.execute("SELECT stage, title, due_date, recurrence FROM tasks WHERE project_id = ? AND done = 0 ORDER BY due_date, id", (pid,)):
+            if holds_gate(t, today):
+                stage = t["stage"] if t["stage"] in names else project["stage"]
+                if t["recurrence"]:
+                    overdue.append((stage, t["title"]))
+                else:
+                    open_in[stage] += 1
         for r in passed:
-            if (n := open_in[r["name"]]) and r["name"] in gated:
-                where = "" if r["name"] == project["stage"] else f" in {r['name']}"
+            if r["name"] not in gated:
+                continue
+            where = "" if r["name"] == project["stage"] else f" in {r['name']}"
+            if n := open_in[r["name"]]:
                 out.append({"stage": r["name"], "kind": "tasks", "count": n, "text": f"{n} open {plural(n, 'task')}{where}"})
+            out += [{"stage": s, "kind": "tasks", "count": 1, "text": f"{title} is overdue{where}"} for s, title in overdue if s == r["name"]]
     wanted = {}
     for r in passed:
         for c in required_docs(r):
@@ -65,9 +76,23 @@ def blocked(project, new_stage, rows=None):
     if wanted:
         # a category since deleted in Settings can never be uploaded: it no longer holds the gate
         known = {r[0] for r in db.execute("SELECT name FROM doc_categories")}
-        have = {r[0] for r in db.execute("SELECT DISTINCT category FROM documents WHERE project_id = ? AND deleted_at IS NULL", (pid,))}
-        out += [{"stage": s, "kind": "document", "category": c, "text": f"{c} missing"} for c, s in wanted.items() if c in known and c not in have]
+        # an outside upload held for review (services/doc_review.py) does not count until it is accepted
+        have, held = set(), set()
+        for r in db.execute("SELECT DISTINCT category, review_status FROM documents WHERE project_id = ? AND deleted_at IS NULL", (pid,)):
+            if r["review_status"] == "accepted":
+                have.add(r["category"])
+            else:
+                held.add(r["category"])
+        out += [{"stage": s, "kind": "document", "category": c, "text": f"{c} {'awaiting review' if c in held else 'missing'}"}
+                for c, s in wanted.items() if c in known and c not in have]
     return out
+
+
+def holds_gate(task, today):
+    """Does this open task hold its stage's gate? Yes, unless it repeats: then
+    only while it is overdue. `today` is ISO; lib/format.holdsGate counts the
+    same on the Flow."""
+    return not task["recurrence"] or bool(task["due_date"]) and task["due_date"] < today
 
 
 def summary(reasons):

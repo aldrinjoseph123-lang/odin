@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest"
-import { render, screen, within } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import Account from "./Account"
@@ -11,7 +11,7 @@ import { applyTheme } from "@/lib/theme"
 const me = {
   username: "admin", name: "Admin User", email: "a@x.com", kind: "internal", must_change_password: false, has_password: true, theme: "light", accent: "blue",
   avatar_url: "/avatar/1", email_kinds: [{ key: "stage", label: "Stage changes", on: true, mode: "instant" }, { key: "task", label: "Tasks", on: false, mode: "off" }], mail_enabled: true, home: "dashboard",
-  calendar: { created_at: null },
+  calendar: { created_at: null as string | null, last_read_at: null as string | null, idle_days: 30 },
   activity: null, activity_viewers: [],
 }
 const api = vi.hoisted(() => ({ postForm: vi.fn(), makeCalendarFeed: vi.fn() }))
@@ -49,6 +49,19 @@ describe("Account", () => {
     page()
     await user.click(await screen.findByRole("button", { name: "Make a feed" }))
     expect(await screen.findByLabelText("Calendar feed address")).toHaveValue("https://odin.example/feeds/calendar/abc.ics")
+  })
+
+  it("says when the feed was last read and that an unused one switches off", async () => {
+    const { account } = await import("@/lib/api")
+    vi.mocked(account).mockResolvedValue({ ...me, calendar: { created_at: "2026-10-01T08:00:00", last_read_at: "2026-10-16T08:00:00", idle_days: 30 } } as never)
+    page()
+    expect(await screen.findByText(/Last read .+\. Switches off if unused for 30 days\./)).toBeInTheDocument()
+    vi.mocked(account).mockResolvedValue({ ...me, calendar: { created_at: "2026-10-01T08:00:00", last_read_at: null, idle_days: 0 } } as never)
+    cleanup()
+    page()
+    expect(await screen.findByText(/Not read yet\./)).toBeInTheDocument()
+    expect(screen.queryByText(/Switches off/)).toBeNull()   // 0 = never
+    vi.mocked(account).mockImplementation(async () => me as never)
   })
 
   it("takes the password length from the session and shows a refusal beside the form", async () => {

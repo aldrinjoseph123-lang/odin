@@ -68,6 +68,8 @@ function AskUpload({ ask, busy, onUpload }: { ask: Ask; busy: boolean; onUpload:
 
 // What came back: the answers, or the file
 function Given({ ask, projectId }: { ask: Ask; projectId: number }) {
+  // a file an outside party sent is opened only once staff accept it (services/doc_review.py)
+  if (ask.kind === "upload" && ask.file?.review === "pending") return <p className="mt-1 text-[12px] text-muted-foreground">Uploaded {ask.file.filename}{ask.answered_at && ` ${fmtWhen(ask.answered_at)}`} · <span className="font-medium text-warn">awaiting review</span></p>
   if (ask.kind === "upload" && ask.file) return <p className="mt-1 text-[12px] text-muted-foreground">Uploaded <a className="text-primary-text hover:underline" href={`/projects/${projectId}/documents/${ask.file.id}/download`}>{ask.file.filename}</a>{ask.answered_at && ` ${fmtWhen(ask.answered_at)}`}</p>
   if (ask.kind !== "form" || ask.answers.length === 0) return null
   const byKey = Object.fromEntries(ask.questions.map((q) => [q.key, q]))

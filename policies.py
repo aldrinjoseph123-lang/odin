@@ -147,6 +147,8 @@ POLICIES = {
                       label="Reminders at most", help="How many reminders one sign-off or approval gets before Odin stops; the project manager sees the count."),
     "ics_feed_per_hour": dict(area="notifications", kind="int", default=60, min=5, max=600,
                               label="Calendar feed reads per hour", help="How often one person's calendar feed (Account › Calendar feed) may be fetched in an hour; Outlook checks every few hours. More are refused until the hour has passed."),
+    "ics_idle_days": dict(area="notifications", kind="int", default=30, min=0, max=365,
+                          label="Switch off a feed unread for (days)", help="A calendar feed nobody has fetched for this many days switches itself off overnight, so a forgotten subscription does not stay a working address for good. 0: never."),
     # ---- Integrations (the Microsoft 365 connection itself is not a policy: it has its own sealed flow)
     "onedrive_mirror_uploads_enabled": dict(area="integrations", kind="bool", default=False,
                                             label="Mirror every uploaded document to OneDrive", help="Each upload is also copied to the connected Microsoft 365 account's OneDrive, folder Odin-Documents. Needs the Microsoft 365 connection."),
@@ -279,6 +281,10 @@ POLICIES = {
                            label="Allowed sources", help="Token names, separated by commas, that may send an intake. Blank: any token with the create scope."),
     "intake_rate_per_min": dict(area="intake", kind="int", default=30, min=1, max=100,
                                 label="Most intakes per token per minute", help="Calls beyond this are refused with 429 until the minute is over."),
+    "intake_token_days": dict(area="intake", kind="int", default=365, min=1, max=1095,
+                              label="Intake tokens last (days)", help="A new intake token works for this many days; Renew extends one by as many days from today. An expired token is refused with 401."),
+    "intake_allowed_ips": dict(area="intake", kind="text", default="", max=500, optional=True, ips=True,
+                               label="Allowed addresses", help="IP addresses or ranges (203.0.113.7, 203.0.113.0/24), separated by commas, the CRM calls from. A call from anywhere else is refused with 403. Blank: any address."),
 }
 
 
@@ -364,6 +370,8 @@ def _parse(entry, raw):
     if kind == "text":
         if (not v and not entry.get("optional")) or len(v) > entry["max"]:
             raise ValueError(f"up to {entry['max']} characters" if entry.get("optional") else f"1 to {entry['max']} characters")
+        if entry.get("ips"):
+            ip_networks(v)
         return v
     if kind == "choice":
         allowed = _timezones() if entry["choices"] == "timezones" else _choices(entry)
@@ -371,6 +379,19 @@ def _parse(entry, raw):
             raise ValueError("pick from the list")
         return v
     raise ValueError("unknown kind")
+
+
+def ip_networks(value):
+    """The networks in a list of IP addresses or CIDR ranges separated by commas or spaces
+    ("" = none); ValueError names the first that is neither."""
+    import ipaddress
+    out = []
+    for part in (p for p in re.split(r"[\s,;]+", value or "") if p):
+        try:
+            out.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            raise ValueError(f"{part[:45]} is not an IP address or a range like 203.0.113.0/24") from None
+    return out
 
 
 def _default(entry):
@@ -430,7 +451,7 @@ _GROUPS = {
     "Teams webhook": ("teams_webhook_url",),
     "Delivery": ("outbox_attempts", "outbox_max_age_hours"),
     "Reminders to the customer": ("chase_after_days", "chase_max"),
-    "Calendar feeds": ("ics_feed_per_hour",),
+    "Calendar feeds": ("ics_feed_per_hour", "ics_idle_days"),
     "When it goes out": ("report_enabled", "report_days", "report_time"),
     "Who gets it": ("report_roles", "report_emails"),
     "What it carries": ("report_attach", "report_teams"),
@@ -452,7 +473,7 @@ _GROUPS = {
     "Custom field limit": ("custom_fields_max",),
     "Automations": ("rules_max",),
     "Customer forms": ("ask_form_max_questions",),
-    "Intake defaults": ("intake_template", "intake_owner", "intake_sources", "intake_rate_per_min"),
+    "Intake defaults": ("intake_template", "intake_owner", "intake_sources", "intake_rate_per_min", "intake_token_days", "intake_allowed_ips"),
 }
 _HINTS = {
     "public_url": "The address people use to reach Odin, e.g. https://odin.example.com.",
@@ -487,6 +508,7 @@ _HINTS = {
     "chase_after_days": "Remind a customer who has not signed or approved after this many working days, e.g. 3. 0: never.",
     "chase_max": "Stop reminding after this many reminders, e.g. 3.",
     "ics_feed_per_hour": "Most reads of one person's calendar feed in an hour, e.g. 60.",
+    "ics_idle_days": "Switch off a calendar feed nobody has read for this many days, e.g. 30. 0: never.",
     "mail_from": "The address people see Odin's email come from, e.g. odin-pms@company.com.",
     "teams_webhook_url": "Paste a Teams channel's webhook address to post updates there.",
     "report_enabled": "Email a weekly summary of every rollout.",
@@ -514,6 +536,8 @@ _HINTS = {
     "intake_owner": "Who is told of a new intake from the CRM, e.g. your delivery lead.",
     "intake_sources": "Which tokens may send intakes, e.g. crm-prod. Blank: any token with the create scope.",
     "intake_rate_per_min": "Most intakes one token may send in a minute, e.g. 30.",
+    "intake_token_days": "How long an intake token works before it must be renewed, e.g. 365 days.",
+    "intake_allowed_ips": "The CRM's outbound addresses, e.g. 203.0.113.0/24. Blank: any address.",
 }
 for _title, _keys in _GROUPS.items():
     for _key in _keys:

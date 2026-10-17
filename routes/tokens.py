@@ -16,6 +16,7 @@ from flask import abort, flash, g, jsonify, redirect, request, session, url_for
 
 from core import app, permission_required, wants_json
 from db import PROJECT_OPEN_SQL, get_db, get_stage_names
+from policies import policy
 from routes.projects import load_project
 from security import token_hash
 from services.fields import named_values
@@ -38,10 +39,17 @@ def token_required(view=None, *, scope="read"):
         header = request.headers.get("Authorization", "")
         raw = header[7:].strip() if header.startswith("Bearer ") else ""
         now = datetime.utcnow().isoformat()
-        row = raw and get_db().execute(
-            "SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?", (token_hash(raw), now)).fetchone()
+        row = raw and get_db().execute("SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL", (token_hash(raw),)).fetchone()
         if not row:
             return jsonify(error="A valid API token is required (Authorization: Bearer <token>)"), 401
+        if row["expires_at"] <= now:   # its own words: the caller's admin knows what to do
+            if row["scope"] == "create":
+                from services import intake
+                message = f"This intake token expired on {row['expires_at'][:10]}; an admin can renew it under Settings › Integrations › Intake"
+                intake.refuse(get_db(), row["name"], 401, message)
+            else:
+                message = f"This API token expired on {row['expires_at'][:10]}; an admin can make a new one under Settings › API tokens"
+            return jsonify(error=message), 401
         if row["scope"] != scope:
             return jsonify(error=f"This token has the {row['scope']} scope; this route needs a token with the {scope} scope"), 403
         db = get_db()
@@ -60,16 +68,17 @@ def token_required(view=None, *, scope="read"):
 @permission_required("manage_settings")
 def api_token_create():
     name = request.form.get("name", "").strip()[:80]
-    days = LIFETIMES.get(request.form.get("days", ""))
     scope = request.form.get("scope", "read")   # `create`: the CRM intake endpoint only (Settings › Integrations)
+    # an intake token lives as long as the policy says, and is renewed rather than remade (the CRM keeps its secret)
+    days = policy("intake_token_days") if scope == "create" else LIFETIMES.get(request.form.get("days", ""))
     if not name or not days or scope not in SCOPES:
         flash("Name the token and pick how long it lives", "error")
         return redirect(url_for("settings_section", section="api"))
     raw = f"odin_{secrets.token_urlsafe(32)}"
     now = datetime.utcnow()
     db = get_db()
-    db.execute("DELETE FROM api_tokens WHERE (revoked_at IS NOT NULL OR expires_at < ?) AND created_at < ?",
-               (now.isoformat(), (now - timedelta(days=90)).isoformat()))
+    # revoked or expired over 90 days ago (an expired intake token stays renewable until then)
+    db.execute("DELETE FROM api_tokens WHERE COALESCE(revoked_at, expires_at) < ?", ((now - timedelta(days=90)).isoformat(),))
     cur = db.execute("INSERT INTO api_tokens (name, token_hash, created_by, created_at, expires_at, scope) VALUES (?, ?, ?, ?, ?, ?)",
                      (name, token_hash(raw), session.get("user_name", "?"), now.isoformat(), (now + timedelta(days=days)).isoformat(), scope))
     db.commit()
@@ -93,6 +102,24 @@ def api_token_revoke(token_id):
     audit_log("revoke_api_token", "api_token", token_id, row["name"])
     flash(f"Revoked {row['name']}: it stops working now")
     return redirect(url_for("settings_section", section="api"))
+
+
+@app.route("/settings/api-tokens/<int:token_id>/renew", methods=["POST"])
+@permission_required("manage_settings")
+def api_token_renew(token_id):
+    """An intake token (create scope) works again for intake_token_days from today, expired
+    or not; the CRM keeps the secret it has. A read token is made anew instead."""
+    db = get_db()
+    row = db.execute("SELECT * FROM api_tokens WHERE id = ? AND revoked_at IS NULL AND scope = 'create'", (token_id,)).fetchone()
+    if row is None:
+        abort(404)
+    days = policy("intake_token_days")
+    expires = (datetime.utcnow() + timedelta(days=days)).isoformat()
+    db.execute("UPDATE api_tokens SET expires_at = ? WHERE id = ?", (expires, token_id))
+    db.commit()
+    audit_log("renew_api_token", "api_token", token_id, row["name"], f"expires {row['expires_at'][:10]} → {expires[:10]} ({days} days from today)")
+    flash(f"Renewed {row['name']}: it works until {expires[:10]}")
+    return redirect(url_for("settings_section", section="integrations"))
 
 
 # ---- the read-only API -------------------------------------------------------
