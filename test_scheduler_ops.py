@@ -1,10 +1,16 @@
 """Scheduler reliability (review P2-13): a job is marked done only when it
 completed, a failure is retried no more than hourly, and admins hear about it
 in the bell once a day. Run with: python -m unittest test_scheduler_ops"""
+import os
+import tempfile
 import unittest
+import zipfile
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
+import backup
+import db as db_module
 import scheduler
 from test_fix_logic import FixBase
 
@@ -150,6 +156,98 @@ class SchedulerOpsTestCase(FixBase):
         self.assertEqual(run.call_count, 0)
         self.assertIsNone(self.setting("job.backup.last_try"))   # not held back for an hour
         self.assertIsNone(self.setting("job.backup.last_run"))
+
+    # ---- backup integrity and scheduler robustness (review 18 Oct 2026) ----------
+
+    def test_backup_is_written_under_a_partial_name_and_leftovers_are_removed(self):
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()):
+            folder = backup._backup_dir()
+            open(os.path.join(folder, ".partial-odin-backup-20260101-020000.zip"), "w").close()   # a killed run's leftover
+            seen, writestr = [], zipfile.ZipFile.writestr
+            def spy(zf, *a, **kw):   # mid-write: only the temporary name exists
+                seen.append(sorted(n for n in os.listdir(folder) if n.endswith(".zip")))
+                return writestr(zf, *a, **kw)
+            with patch("zipfile.ZipFile.writestr", spy):
+                ok, message = backup.run_backup(local_only=True)
+            self.assertTrue(ok, message)
+            self.assertEqual(len(seen[0]), 1)
+            self.assertTrue(seen[0][0].startswith(".partial-odin-backup-"))
+            names = [n for n in os.listdir(folder) if n.endswith(".zip")]
+            self.assertEqual(len(names), 1)
+            self.assertTrue(names[0].startswith("odin-backup-"))
+            with patch("zipfile.ZipFile.writestr", side_effect=OSError("disk full")):   # a failed write leaves nothing behind
+                ok, message = backup.run_backup(local_only=True)
+            self.assertFalse(ok)
+            self.assertEqual([n for n in os.listdir(folder) if n.endswith(".zip")], names)
+
+    def test_pre_update_backups_have_their_own_name_and_keep_the_newest_three(self):
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()):
+            folder = backup._backup_dir()
+            pre = [f"odin-preupdate-2026101{d}-020000.zip" for d in range(5)]
+            for name in pre + ["odin-backup-20261014-010000.zip"]:
+                open(os.path.join(folder, name), "w").close()
+            ok, message = backup.run_backup(trigger=backup.PRE_UPDATE_TRIGGER, local_only=True)
+            self.assertTrue(ok, message)
+            made = sorted(n for n in os.listdir(folder) if n.startswith("odin-preupdate-"))
+            self.assertEqual(len(made), 3)
+            self.assertEqual(made[:2], pre[3:])   # the two newest old ones and the one just made
+            ok, message = backup.run_backup(local_only=True)   # a later backup the same day
+            self.assertTrue(ok, message)
+            self.assertEqual(sorted(n for n in os.listdir(folder) if n.startswith("odin-preupdate-")), made)   # never prunes them
+            self.assertIsNone(backup._stamp(made[-1]))   # outside daily/weekly/monthly retention
+
+    def test_a_report_whose_mail_failed_is_retried_without_reposting_to_teams(self):
+        self._set_policy(report_enabled="1", report_teams="1", report_emails="boss@corp.example",
+                         teams_webhook_url="https://hook.example/x", report_attach="0")
+        def report_pass():
+            with patch("scheduler.due_jobs", return_value=["report"]), patch("graph.send_mail", return_value=(False, "mailbox gone")), \
+                 patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
+                scheduler.run_due()
+            return hook.call_count
+        self.assertEqual(report_pass(), 1)
+        self.assertIsNone(self.setting("job.report.last_run"))   # nothing was mailed: tried again
+        self.sql("UPDATE settings SET value = ? WHERE key = 'job.report.last_try'", (datetime.utcnow() - timedelta(hours=2)).isoformat())
+        self.assertEqual(report_pass(), 0)   # the retry mails again, Teams has it already
+
+    def test_a_stuck_clock_loop_is_told_once_a_day(self):
+        stuck = lambda: self.notices("Odin's schedule has stopped")
+        with patch("scheduler.due_jobs", return_value=[]):
+            scheduler.run_due()   # stamps the loop
+        scheduler.check_loop()
+        self.assertEqual(stuck(), [])
+        self.sql("UPDATE settings SET value = ? WHERE key = ?", (datetime.utcnow() - timedelta(hours=4)).isoformat(), scheduler.LOOP)
+        with patch.object(scheduler, "STARTED", datetime.utcnow()):   # just restarted: the old stamp is not a hang
+            scheduler.check_loop()
+        self.assertEqual(stuck(), [])
+        scheduler.check_loop()
+        scheduler.check_loop()
+        self.assertEqual(len(stuck()), 1)
+        self.assertEqual(stuck()[0]["kind"], "ops")
+        self._set_policy(scheduler_stuck_hours="6")
+        self.sql("DELETE FROM settings WHERE key = 'scheduler.notified.loop_stuck'")
+        scheduler.check_loop()
+        self.assertEqual(len(stuck()), 1)   # the threshold is the admin's
+
+    def test_ai_jobs_left_running_are_failed_at_start(self):
+        from services.ai.health import fail_interrupted
+        now = datetime.utcnow().isoformat()
+        for status in ("running", "cancelling", "queued"):
+            self.sql("INSERT INTO ai_jobs (kind, status, created_at, started_at) VALUES ('feature', ?, ?, ?)", status, now, now)
+        with db_module.sqlite3.connect(db_module.DB_PATH) as con:
+            fail_interrupted(con)
+        self.assertEqual(self.tuples("SELECT status, error FROM ai_jobs ORDER BY id"),
+                         [("failed", "interrupted"), ("failed", "interrupted"), ("queued", None)])
+
+    def test_a_crashing_grader_fails_its_feature_and_is_recorded(self):
+        from services.ai import health
+        def grader(inputs, out):
+            raise KeyError("summary")
+        feature = SimpleNamespace(key="fake", fixture=lambda: {}, graders=(grader,), budget_s=None)
+        with patch("services.ai.health.run", return_value=({}, {"seconds": 1, "model": "m", "prompt_hash": "h"})), \
+             patch("services.ai.health.prompt_of", return_value=("p", "h")), db_module.sqlite3.connect(db_module.DB_PATH) as con:
+            self.assertEqual(health.validate_feature(con, feature, {"model": "m"}, "fp"), "failed")
+        self.assertEqual(self.tuples("SELECT feature, state, fingerprint FROM ai_checks"), [("fake", "failed", "fp")])
+        self.assertIn("KeyError", self.sql("SELECT detail FROM ai_checks")[0][0])
 
 
 if __name__ == "__main__":
