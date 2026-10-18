@@ -28,11 +28,10 @@ class RulesBase(FixBase):
     def setUp(self):
         super().setUp()
         self._set_policy(timezone="UTC", count_working_days="0")
-        for target, value in (("services.rules.local_today", TODAY), ("services.alerts.local_today", TODAY),
-                              ("services.milestones.local_today", TODAY), ("services.rules._now", NOW)):
-            p = patch(target, return_value=value)
-            p.start()
-            self.addCleanup(p.stop)
+        self.freeze_clock()   # local_today in every module, not only the ones a test names
+        p = patch("services.rules._now", return_value=NOW)
+        p.start()
+        self.addCleanup(p.stop)
         self.new_project(name="Globex EDR", client="Globex")
         self.co = self._make_user("co", "Member")   # a coordinator on the rollout: who the rules tell
         self.sql("INSERT INTO project_participants (project_id, user_id, role, added_at) VALUES (1, ?, 'Coordinator', datetime('now'))", self.co)

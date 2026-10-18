@@ -1,7 +1,8 @@
 """Business-logic fixes (time in stage, plan, counts, sign-off, lifecycle,
 data integrity). Run with: python -m unittest test_fix_logic"""
+import io
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
 import test_app
@@ -111,6 +112,21 @@ class TimeInStageTestCase(FixBase):
         self.assertAlmostEqual(sat_early, 38 / 24, places=3)         # not cleared: Friday's last hour, nothing more
         self.assertAlmostEqual(sun, sat_early, places=6)             # the weekend adds nothing
         self.assertAlmostEqual(self._days("2026-11-28T10:00:00", datetime(2026, 11, 30, 10)), 10 / 24, places=3)   # Sat → Mon: 0.42
+
+    def test_workdays_self_check_and_a_holiday_on_either_end(self):
+        """services/workdays.py's own __main__ asserts, run here so CI runs them, and between()
+        counting (a, b]: a holiday on the start date is not in the span, one on the end date is."""
+        import contextlib
+        import runpy
+        from services import workdays
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            runpy.run_path(workdays.__file__, run_name="__main__")
+        self.assertEqual(out.getvalue().strip(), "ok")
+        wed = date(2026, 12, 2)
+        cal = (frozenset(range(5)), frozenset({wed}))   # Mon–Fri, the Wednesday off
+        self.assertEqual(workdays.between(wed, date(2026, 12, 4), cal), 2)              # Thu, Fri
+        self.assertEqual(workdays.between(date(2026, 11, 30), wed, cal), 1)             # Tue only
+        self.assertEqual(workdays.between(wed, wed, cal), 0)
 
     def test_sla_breach_fires_once_across_a_weekend(self):
         from services.analytics import stage_sla_state

@@ -1,9 +1,8 @@
 """Odin 2.0, workstream 5: milestones and repeating tasks.
 Run with: python -m unittest test_v2_milestones
 
-The clock is frozen at TODAY (services.milestones, services.recurrence and services.alerts read their
-own local_today), and every date in a test is written out, so nothing here
-depends on the weekday or the month of the day it runs."""
+The clock is frozen at TODAY for every module (FixBase.freeze_clock), and every
+date in a test is written out, so nothing here depends on the weekday or the month of the day it runs."""
 import json
 import secrets
 from datetime import date, timedelta
@@ -24,10 +23,9 @@ class MilestoneBase(FixBase):
     def setUp(self):
         super().setUp()
         self._set_policy(timezone="UTC", count_working_days="0")
-        for target in ("services.milestones.local_today", "services.recurrence.local_today", "services.alerts.local_today"):
-            p = patch(target, return_value=TODAY)
-            p.start()
-            self.addCleanup(p.stop)
+        # policies.local_now, which every module's local_today reads: a module patched by name alone
+        # (services.gates was missed) ran on the real day and failed once that passed TODAY + 3
+        self.freeze_clock()
 
     def _csrf(self):
         with self.client.session_transaction() as sess:   # the test client adds the token to POSTs only
