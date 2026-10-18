@@ -6,7 +6,7 @@ import { field, filterSelect, pill, fieldArea, checkbox } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { AIDraftBar } from "@/components/AIDraftBar"
 import { Link, useParams, useSearchParams } from "react-router-dom"
-import { CheckCircle2, ChevronLeft, Copy, Download, FileSignature, Link2, Printer, ShieldCheck, Upload } from "lucide-react"
+import { CheckCircle2, ChevronLeft, Download, FileSignature, Link2, Printer, ShieldCheck, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
@@ -24,7 +24,6 @@ import {
   type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User, type SignoffLink,
 } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
-import { copyWithToast } from "@/lib/copy"
 import { useLoad } from "@/lib/useLoad"
 import { submitKey } from "@/lib/useSubmitShortcut"
 import { TemplatePicker } from "@/components/TemplatePicker"
@@ -183,31 +182,24 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
   )
 }
 
-// Mail not connected, or the email went astray: a one-time link to hand over yourself.
+// The email went astray: a new one-time link, emailed to the signatory. Never shown
+// here (the user's call, 18 Oct 2026): a link carried by hand let staff sign as the customer.
 function SignerLink({ id, version, name }: { id: number; version: number; name: string }) {
   const [link, setLink] = useState<SignoffLink | null>(null)
-  const [copied, setCopied] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   async function get() {
-    setErr(null); setCopied(false)
-    try { setLink(await signoffLink(id, version)) } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not make a link") }
-  }
-  async function copy() {
-    setCopied(await copyWithToast(link!.link ?? "", "link"))
+    if (busy) return
+    setErr(null); setBusy(true)
+    try { setLink(await signoffLink(id, version)) } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not send a link") } finally { setBusy(false) }
   }
   return (
     <section className="panel grid grid-cols-1 gap-2 p-4">
-      <PanelTitle n={false} className="mb-0">Send the link yourself</PanelTitle>
-      <p className="text-[12px] text-muted-foreground">If {name} did not get the email, give them a one-time sign-in link that opens this sign-off.</p>
-      {link && !link.link ? (
-        <p className="text-[13px]" role="status">{link.message || (link.emailed ? `A new one-time link was emailed to ${link.email}.` : "No link was made.")}</p>
-      ) : link?.link ? (
-        <>
-          <input readOnly value={link.link} aria-label="Sign-in link for the signatory" onFocus={(e) => e.currentTarget.select()} className={cn(field, "font-mono text-[12px]")} />
-          <Button size="sm" variant="outline" onClick={copy}><Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy the link"}</Button>
-          <p className="text-[12px] text-muted-foreground">For {link.email} only. It works once and expires in {link.minutes} minutes; make a new one if it lapses.</p>
-        </>
-      ) : <Button size="sm" variant="outline" onClick={get}><Link2 className="h-3.5 w-3.5" /> Get a sign-in link</Button>}
+      <PanelTitle n={false} className="mb-0">Email the link again</PanelTitle>
+      <p className="text-[12px] text-muted-foreground">If {name} did not get the email, send them a new one-time sign-in link that opens this sign-off. If mail is down, upload the signed copy instead.</p>
+      {link ? (
+        <p className="text-[13px]" role="status">{link.message || (link.emailed ? `A new one-time link was emailed to ${link.email}.` : "No link was sent.")}</p>
+      ) : <Button size="sm" variant="outline" onClick={get} loading={busy}><Link2 className="h-3.5 w-3.5" /> Email a sign-in link</Button>}
       {err && <Notice bad>{err}</Notice>}
     </section>
   )

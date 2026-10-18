@@ -17,9 +17,10 @@ Work top to bottom; each phase ends with a check. Do not enable the public
 hostname until Phase 3's checks pass.
 
 **Until Phase 6 (no mail):** invitations and sign-off requests do not reach
-anyone by themselves. The inviter gets the invitation link on screen; for a
-sign-off, the project manager uses **Get a sign-in link** on the sign-off page
-and sends it (Teams, their own mail). Both are one-time and expire.
+anyone by themselves. The inviter gets the invitation link on screen. A
+sign-off's sign-in link is only ever emailed to the signatory (since v2.0.2):
+without mail, the customer signs on paper and the project manager uploads the
+signed copy on the sign-off page.
 
 ---
 
@@ -140,9 +141,9 @@ With a throw-away project named `GO-LIVE TEST`:
 1. Create it; add two scope items; invite your own second address as
    **Customer** (Team → Invite). No mail yet: copy the sign-in link the
    invite shows and open it on your phone, off the office network.
-2. Mark the scope delivered, move to Sign-off, send the sign-off. Mail is
-   not connected yet, so use **Get a sign-in link** on the sign-off page and
-   open that link on the phone; sign as the customer, countersign as admin,
+2. Mark the scope delivered, move to Sign-off, send the sign-off. The
+   signatory's sign-in link is emailed (Resend or Microsoft 365; without
+   either, sign on paper and upload it); open the link on the phone, sign as the customer, countersign as admin,
    open the PDF, move to Closed.
 3. Delete the project (Undo works for the undo window, 5 minutes by default; the nightly housekeeping then purges it with its files).
 4. Settings → Backups → **Back up now**; the run shows the restore test passed.

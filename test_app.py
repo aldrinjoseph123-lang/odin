@@ -3051,16 +3051,24 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.get("/api/projects/1/signoff").get_json()["current"]["signer_email"], "ann@globex.example")
         self.assertIn(b"PO-SECRET-7", e.get("/projects/1/signoff.pdf").data)   # so the PDF check above means something
 
-    def test_signoff_link_by_hand_lands_the_signatory_on_the_document(self):
+    def test_signoff_link_is_emailed_never_returned_and_lands_on_the_document(self):
+        # the user's call (18 Oct 2026): a hand-carried link let the project manager sign as the customer
         c, h, ann, _ = self._signoff_setup()
         c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["Everything"]}, headers=h)
-        r = c.post("/api/projects/1/signoff/1/link", headers=h).get_json()
-        self.assertEqual(r["email"], "ann@globex.example"); self.assertIn("next=/projects/1/signoff", r["link"].replace("%2F", "/"))
-        token = r["link"].split("/auth/link/")[1].split("?")[0]
+        with patch("routes.auth.send_login_link", return_value=(True, None)) as sent:
+            r = c.post("/api/projects/1/signoff/1/link", headers=h).get_json()
+        self.assertIsNone(r["link"]); self.assertTrue(r["emailed"]); self.assertEqual(r["email"], "ann@globex.example")
+        self.assertEqual(sent.call_args.args[0]["id"], ann)   # to the signatory, not to the person asking
+        token = sent.call_args.args[1]
         e = app_module.app.test_client()
         landed = e.post(f"/auth/link/{token}?next=/projects/1/signoff")
         self.assertEqual(landed.status_code, 302); self.assertTrue(landed.headers["Location"].endswith("/projects/1/signoff"))
         self.assertTrue(e.get("/api/projects/1/signoff").get_json()["can"]["sign"])
+        with self.raw_db() as db:   # nothing was carried by hand
+            self.assertIsNone(db.execute("SELECT link_issued_by FROM signoffs WHERE project_id = 1").fetchone()[0])
+        with patch("routes.auth.send_login_link", return_value=(False, "mail is off")):
+            r = c.post("/api/projects/1/signoff/1/link", headers=h).get_json()
+        self.assertIsNone(r["link"]); self.assertFalse(r["emailed"]); self.assertIn("upload the signed copy", r["message"])
         e.get("/api/session")
         csrf = e.get("/api/session").get_json()["csrf"]
         e.post("/api/projects/1/signoff/1/reject", json={"comment": "Not yet"}, headers={"X-CSRF-Token": csrf})

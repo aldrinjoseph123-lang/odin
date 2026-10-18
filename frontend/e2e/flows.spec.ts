@@ -377,9 +377,10 @@ test("@flow scope and sign-off: mark the last item, send, see it waiting, withdr
     return r.status
   })
   expect(refused).toBe(400)
-  // no mail on day one: the PM hands the signatory a one-time link
-  await page.getByRole("button", { name: "Get a sign-in link" }).click()
-  await expect(page.getByRole("textbox", { name: "Sign-in link for the signatory" })).toHaveValue(/\/auth\/link\/[^?]+\?next=%2Fprojects%2F1%2Fsignoff|\/auth\/link\/.+next=\/projects\/1\/signoff/)
+  // a new link only ever goes to the signatory's inbox, never to this page (no mail here, so it says so)
+  await page.getByRole("button", { name: "Email a sign-in link" }).click()
+  await expect(page.getByRole("status").filter({ hasText: /Email could not be sent|was emailed to/ })).toBeVisible()
+  await expect(page.getByText(/\/auth\/link\//)).toHaveCount(0)
   await page.getByRole("button", { name: "Withdraw and revise" }).click()
   await page.locator("[data-confirm-yes]").click()   // Odin's own confirm
   await expect(page.getByText(/withdrawn/).first()).toBeVisible()   // a toast

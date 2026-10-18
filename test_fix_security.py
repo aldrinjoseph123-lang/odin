@@ -173,7 +173,8 @@ class ExposureTest(Base):
     def test_signoff_link_for_a_signer_on_other_projects_is_emailed_not_returned(self):   # S1
         c, h, ann, _ = self._signoff_setup()
         c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["Everything"]}, headers=h)
-        self.assertTrue(c.post("/api/projects/1/signoff/1/link", headers=h).get_json()["link"])   # on this project only
+        with patch("routes.auth.send_login_link", return_value=(True, None)):
+            self.assertIsNone(c.post("/api/projects/1/signoff/1/link", headers=h).get_json()["link"])   # on this project only, too
         self.new_project(name="Other", client="Globex")
         self._invite(2, "ann@globex.example", "Customer", "Ann")
         with patch("routes.auth.send_login_link", return_value=(True, None)) as sent:
