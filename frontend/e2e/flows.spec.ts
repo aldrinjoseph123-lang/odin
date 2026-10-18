@@ -1271,7 +1271,9 @@ test("@flow crm intake: a deal posted with a create token waits pending, then a 
 test("@flow palette and settings filter: a policy's label leads to the setting, marked; 1–4 switch the Flow views; date quick picks", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin", "/dashboard")
-  // ⌘K / Ctrl K, a policy label, Enter: the Security page with the undo window's row marked
+  // ⌘K / Ctrl K, a policy label, Enter: the Security page with the undo window's row marked.
+  // The shell's shortcut listener exists once the header is up (a slow runner pressed too early).
+  await expect(page.getByRole("button", { name: "Search rollouts and tasks" })).toBeVisible()
   await page.keyboard.press("Control+k")
   const box = page.getByRole("combobox", { name: "Search" })
   await expect(page.getByText("Recent rollouts").or(page.getByText("Actions")).first()).toBeVisible()
