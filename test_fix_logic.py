@@ -390,6 +390,15 @@ class LifecycleTestCase(FixBase):
         self.assertEqual(self.sql("SELECT stage FROM stage_approvals")[0][0], "Renamed")
         self.assertNotIn(s[1], {r[0] for r in self.sql("SELECT stage FROM raid_items")})
 
+    def test_raid_customer_visible_is_a_yes_or_no(self):
+        """The string "false" is truthy: it must never show an internal item to the customer."""
+        self.new_project(name="P", client="C")
+        c, h = self._client()
+        self.assertEqual(c.post("/api/projects/1/raid", json={"kind": "risk", "title": "Internal", "customer_visible": "false"}, headers=h).status_code, 200)
+        self.assertEqual(c.post("/api/projects/1/raid", json={"kind": "risk", "title": "Shown", "customer_visible": "true"}, headers=h).status_code, 200)
+        self.assertEqual(c.post("/api/projects/1/raid", json={"kind": "risk", "title": "Odd", "customer_visible": "maybe"}, headers=h).status_code, 400)
+        self.assertEqual(self.tuples("SELECT title, customer_visible FROM raid_items ORDER BY id"), [("Internal", 0), ("Shown", 1)])
+
     def test_sla_bounds(self):
         sid = self.sql("SELECT id FROM stage_template_stages WHERE template_id = 1 ORDER BY position")[0][0]
         for bad in ("3000000", str(2 ** 70), "366"):

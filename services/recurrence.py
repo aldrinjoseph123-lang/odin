@@ -91,11 +91,10 @@ def spawn_next(db, task_id, today=None, actor=None):
         # neglected: an earlier occurrence is still open, so this one passing makes no third. It is not
         # claimed: once the earlier one is done, this one spawns when it passes or is ticked
         return None
-    if db.execute("UPDATE tasks SET recur_spawned = 1 WHERE id = ? AND recur_spawned = 0", (task_id,)).rowcount == 0:
-        return None
     project = db.execute(f"SELECT p.* FROM projects p WHERE p.id = ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}", (task["project_id"],)).fetchone()
-    if project is None:
-        db.commit()
+    if project is None:   # not claimed: once the rollout reopens, the nightly pass makes it
+        return None
+    if db.execute("UPDATE tasks SET recur_spawned = 1 WHERE id = ? AND recur_spawned = 0", (task_id,)).rowcount == 0:
         return None
     today = today or local_today(db)
     nxt = next_due(date.fromisoformat(task["due_date"]), task["recurrence"], today)

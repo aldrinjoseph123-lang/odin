@@ -281,14 +281,15 @@ def fire(event, project_id, context=None, key=None):
     """An event happened on a rollout: run the rules it starts. Never raises.
     Inside a request (routes/rules.py opened the queue) the firing waits for
     the end of the request; elsewhere (the scheduler, a test) it runs now.
-    While a rule's actions run, nothing fires (depth 1)."""
+    While a rule's actions run, nothing fires (depth 1). Returns how many
+    rules ran now (0 when queued)."""
     if _quiet.get() or event not in EVENTS or not project_id:
-        return
+        return 0
     queue = g.get("rules_later") if has_app_context() else None
     if queue is not None:
         queue.append((event, project_id, context or {}, key))
-        return
-    _run(event, project_id, context or {}, key)
+        return 0
+    return _run(event, project_id, context or {}, key)
 
 
 def flush():
@@ -362,29 +363,31 @@ def matches(rule, project, ctx, db):
 
 
 def _run(event, project_id, ctx, key=None):
+    ran = 0
     try:
         db = get_db()
         rows = db.execute("SELECT * FROM rules WHERE event = ? AND paused = 0 ORDER BY id", (event,)).fetchall()
         if not rows:
-            return
+            return 0
         project = db.execute("SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL", (project_id,)).fetchone()
         if project is None:
-            return
+            return 0
     except Exception:  # noqa: BLE001 — a rule never breaks the action that fired it
         _log_failure(event)
-        return
+        return 0
     for rule in rows:
         try:
             if ctx.get("on") and ctx["on"] < rule["armed_at"][:10]:
                 continue   # a scanned condition that arose before the rule was made or resumed
             if matches(rule, project, ctx, db):
-                _one(db, rule, project, event, ctx, key)
+                ran += _one(db, rule, project, event, ctx, key)
         except Exception:  # noqa: BLE001
             try:
                 db.rollback()
             except Exception:  # noqa: BLE001
                 pass
             _log_failure(event)
+    return ran
 
 
 def _log_failure(event):
@@ -403,7 +406,7 @@ def _one(db, rule, project, event, ctx, key):
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback()
-        return
+        return 0
     done = []
     token = _quiet.set(True)
     try:
@@ -425,6 +428,7 @@ def _one(db, rule, project, event, ctx, key):
     audit_log("rule_fired", "project", project["id"], project["name"],
               f"{rule['name'][:80]} (rule {rule['id']}): {what}; " + "; ".join(f"{d['kind']}: {'' if d['ok'] else 'FAILED '}{d['said']}" for d in done),
               actor=f"rule: {rule['name'][:60]}", db=db)
+    return 1
 
 
 def _act(db, rule, project, a, what):
@@ -513,25 +517,50 @@ def scan(alerts, today=None):
             return
         today = today or local_today(db)
         floor = (today - timedelta(days=policy("rule_runs_keep_days", db))).isoformat()
+        from db import PROJECT_OPEN_SQL, stages_for_projects
         if "stage_sla_breached" in live:
-            # the day the breach was first recorded (its alert, when that alert is on), else today
+            # the day the breach was first recorded (its alert, when that alert is on), else the day the SLA ran out:
+            # never today, or the same breach would fire again once its run row is trimmed
+            from policies import local_date
+            from services import workdays
+            from services.analytics import sla_by_stage
             seen = {r[0]: r[1][:10] for r in db.execute("SELECT project_id, created_at FROM alerts WHERE alert_type = 'stage_sla_breach' AND resolved = 0")}
-            for p in alerts.get("stage_sla_breach", [])[:SCAN_MAX]:
-                on = seen.get(p["id"], today.isoformat())
+            over = alerts.get("stage_sla_breach", [])
+            stages, cal, ran = stages_for_projects([p["id"] for p in over]), workdays.calendar(db), 0
+            for p in over:
+                on = seen.get(p["id"])
+                if on is None:
+                    entered, sla = local_date(p["stage_entered_at"], db), sla_by_stage(stages.get(p["id"]) or []).get(p["stage"])
+                    on = workdays.add(entered, sla, cal).isoformat() if entered and sla else today.isoformat()
                 if on >= floor:
-                    fire("stage_sla_breached", p["id"], {"stage": p["stage"], "on": on}, key=f"sla:{p['stage']}:{p['stage_entered_at']}")
-        from db import PROJECT_OPEN_SQL
+                    ran += fire("stage_sla_breached", p["id"], {"stage": p["stage"], "on": on}, key=f"sla:{p['stage']}:{p['stage_entered_at']}")
+                if ran >= SCAN_MAX:
+                    break
+        # candidates some live rule has not run for yet (the run log holds the rest); the cap counts runs, not candidates,
+        # so conditions that match nobody never crowd out a new one
+        unrun = ("EXISTS (SELECT 1 FROM rules r WHERE r.event = '{event}' AND r.paused = 0 AND NOT EXISTS "
+                 "(SELECT 1 FROM rule_runs rr WHERE rr.rule_id = r.id AND rr.event_key = {key}))")
+        task_unrun = unrun.format(event="task_overdue", key="'task:' || t.id || ':' || t.due_date")
+        milestone_unrun = unrun.format(event="milestone_missed", key="'milestone:' || m.id || ':' || m.date")
         if "task_overdue" in live:
+            ran = 0
             for t in db.execute(f"SELECT t.id, t.project_id, t.title, t.due_date FROM tasks t JOIN projects p ON p.id = t.project_id "
                                 f"WHERE t.done = 0 AND t.due_date IS NOT NULL AND t.due_date < ? AND t.due_date >= ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} "
-                                f"ORDER BY t.due_date, t.id LIMIT ?", (today.isoformat(), floor, SCAN_MAX)).fetchall():
-                fire("task_overdue", t["project_id"], {"task": t["title"], "task_id": t["id"], "due": t["due_date"], "on": _day_after(t["due_date"])},
-                     key=f"task:{t['id']}:{t['due_date']}")
+                                f"AND {task_unrun} "
+                                f"ORDER BY t.due_date, t.id", (today.isoformat(), floor)).fetchall():
+                ran += fire("task_overdue", t["project_id"], {"task": t["title"], "task_id": t["id"], "due": t["due_date"], "on": _day_after(t["due_date"])},
+                            key=f"task:{t['id']}:{t['due_date']}")
+                if ran >= SCAN_MAX:
+                    break
         if "milestone_missed" in live:
+            ran = 0
             for m in db.execute(f"SELECT m.id, m.project_id, m.name, m.date FROM milestones m JOIN projects p ON p.id = m.project_id "
                                 f"WHERE m.done_at IS NULL AND m.date < ? AND m.date >= ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} "
-                                f"ORDER BY m.date, m.id LIMIT ?", (today.isoformat(), floor, SCAN_MAX)).fetchall():
-                fire("milestone_missed", m["project_id"], {"milestone": m["name"], "date": m["date"], "on": _day_after(m["date"])}, key=f"milestone:{m['id']}:{m['date']}")
+                                f"AND {milestone_unrun} "
+                                f"ORDER BY m.date, m.id", (today.isoformat(), floor)).fetchall():
+                ran += fire("milestone_missed", m["project_id"], {"milestone": m["name"], "date": m["date"], "on": _day_after(m["date"])}, key=f"milestone:{m['id']}:{m['date']}")
+                if ran >= SCAN_MAX:
+                    break
     except Exception:  # noqa: BLE001 — the alert pass goes on
         _log_failure("the alert pass")
 

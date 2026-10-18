@@ -160,6 +160,37 @@ class TriggersTestCase(RulesBase):
         self.assertEqual([x["what"] for x in self.runs(sla)], [f"Over the SLA in {self.stages()[0]}"])
         self.assertEqual(self.told(), 3)
 
+    def test_old_overdue_tasks_that_already_fired_never_crowd_out_a_new_one(self):
+        """The scan's cap counts firings, and what already ran is not a candidate again."""
+        rid = self.rule("task_overdue", name="Late task")
+        self.sql("UPDATE rules SET armed_at = ?", iso(-30))
+        for n in range(3):
+            self.client.post("/projects/1/tasks", json={"title": f"Old {n}", "due_date": iso(-10 + n)})
+        with patch("services.rules.SCAN_MAX", 3):
+            scheduler.sync_alerts()
+            self.assertEqual(len(self.runs(rid)), 3)
+            self.client.post("/projects/1/tasks", json={"title": "Fresh", "due_date": iso(-1)})
+            scheduler.sync_alerts()
+        self.assertEqual(len(self.runs(rid)), 4)
+        self.assertIn("Fresh", self.runs(rid)[0]["what"])
+
+    def test_a_breach_with_its_alert_off_dates_from_the_sla_not_today(self):
+        """With the SLA alert off there is no alert row to date the breach: it is the day the SLA ran
+        out, so a breach older than the run log is never fired again once its run is trimmed."""
+        sla = self.rule("stage_sla_breached", name="Over SLA")
+        self.sql("UPDATE rules SET armed_at = ?", iso(-200))
+        self.sql("UPDATE project_stages SET sla_days = 1 WHERE project_id = 1")
+        self.sql("UPDATE projects SET stage_entered_at = ?", self.now(days=-101).isoformat())
+        self.ctx()
+        from db import get_db
+        from services import rules
+        p = get_db().execute("SELECT * FROM projects WHERE id = 1").fetchone()
+        rules.scan({"stage_sla_breach": [p]})
+        self.assertEqual(self.runs(sla), [])
+        self.sql("UPDATE projects SET stage_entered_at = ?", self.now(days=-5).isoformat())
+        rules.scan({"stage_sla_breach": [get_db().execute("SELECT * FROM projects WHERE id = 1").fetchone()]})
+        self.assertEqual(len(self.runs(sla)), 1)
+
 
 class ConditionsTestCase(RulesBase):
     def test_each_condition_must_hold(self):
@@ -207,6 +238,30 @@ class ActionsTestCase(RulesBase):
         rows = self.tuples("SELECT title, assignee_id, due_date, estimate_hours, created_by FROM tasks WHERE created_by LIKE 'Automation:%' ORDER BY id")
         self.assertEqual(rows, [("Book the change window", self.co, iso(2), 3.0, "Automation: Tell the team"),
                                 ("Customer sends the export", None, iso(0), None, "Automation: Tell the team")])   # never the customer's
+
+    def test_editing_the_template_tasks_keeps_the_rules_pointing_at_them(self):
+        """A save keeps the id of every task it was sent back (the editor's key), so an add_task
+        rule still finds it; only a task left out goes."""
+        self.ctx()
+        from services import template_tasks
+        tid, stage = self.sql("SELECT s.template_id, s.id FROM stage_template_stages s ORDER BY s.position LIMIT 1")[0]
+        template_tasks.save(tid, [{"key": "a", "stage_id": stage, "title": "Book the window", "offset_days": 2},
+                                  {"key": "b", "stage_id": stage, "title": "Old step", "offset_days": 0}])
+        a, b = [r[0] for r in self.sql("SELECT id FROM template_tasks ORDER BY id")]
+        rid = self.rule(actions=[{"kind": "add_task", "template_task_id": a}])
+        template_tasks.save(tid, [{"key": "new-1", "stage_id": stage, "title": "First step", "offset_days": 0},
+                                  {"key": str(a), "stage_id": stage, "title": "Book the change window", "offset_days": 3, "waits_on": "new-1"}])
+        rows = self.tuples("SELECT id, title, waits_on_id FROM template_tasks ORDER BY position")
+        self.assertEqual([r[1] for r in rows], ["First step", "Book the change window"])
+        self.assertEqual(rows[1][0], a)                      # kept its id
+        self.assertEqual(rows[1][2], rows[0][0])             # and waits on the new one
+        self.assertNotIn(b, [r[0] for r in rows])            # the one left out is gone
+        self.move(self.stages()[1])
+        self.assertTrue(self.runs(rid)[0]["ok"], self.runs(rid))
+        self.assertEqual(self.tuples("SELECT title, due_date FROM tasks WHERE created_by LIKE 'Automation:%'"), [("Book the change window", iso(3))])
+        with self.assertRaises(ValueError):                  # the loop check still holds
+            template_tasks.save(tid, [{"key": str(a), "stage_id": stage, "title": "X", "waits_on": str(rows[0][0])},
+                                      {"key": str(rows[0][0]), "stage_id": stage, "title": "Y", "waits_on": str(a)}])
 
     def test_add_a_raid_item(self):
         self.rule(actions=[{"kind": "add_raid", "raid_kind": "risk", "title": "Change freeze ahead", "impact": "high"}])
