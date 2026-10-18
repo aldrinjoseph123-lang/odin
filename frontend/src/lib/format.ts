@@ -7,6 +7,10 @@ export const initials = (name: string | null | undefined) => (name ?? "?").split
 export type DateFormat = "d MMM yyyy" | "yyyy-MM-dd" | "dd/MM/yyyy" | "MM/dd/yyyy"
 let dateFormat: DateFormat = "d MMM yyyy"
 export const setDateFormat = (f: DateFormat | undefined) => { if (f) dateFormat = f }
+// The workspace time zone (from /api/session): "today" for lateness is the workspace's day, as the
+// server counts it, so a chip never says "overdue 0 d" or disagrees with the dashboard near midnight.
+let workspaceZone: string | undefined
+export const setWorkspaceZone = (z: string | undefined) => { if (z) workspaceZone = z }
 // English month names, so "d MMM yyyy" reads "1 Nov 2026" in every browser
 // (a US-locale browser turned it into "Nov 1", sim L-23). Odin is English-only.
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -54,7 +58,7 @@ export const weekday = (iso: string) => WEEKDAYS[new Date(`${iso.slice(0, 10)}T0
 export const days = (n: number | null | undefined) => (n == null ? "—" : `${Math.round(n)} d`)
 
 // whole calendar days past the target, as the timeline and dashboard count them (never rounded from the clock, sim L-9)
-export const daysLate = (target: string | null) => (target ? lateBy(target, localToday()) : 0)
+export const daysLate = (target: string | null) => (target ? lateBy(target, workspaceToday()) : 0)
 // The reason behind a rollout's health word (lib/state.ts): "overdue 4 d",
 // "6 d over SLA", "due 30 Nov"; on track, its days in the stage.
 export function stateText(r: { state: FlowState; days_in_stage: number | null; over_by: number | null; target_end_date: string | null }) {
@@ -305,6 +309,17 @@ export const toLines = (text: string): string[] => text.split("\n").map((x) => x
 export function localToday(now: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0")
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
+}
+
+// Today in the workspace's time zone (YYYY-MM-DD); the browser's own day until the session says the zone
+// or when the zone is unknown to this browser. For what is late; a date the person picks stays localToday.
+export function workspaceToday(now: Date = new Date(), zone: string | undefined = workspaceZone): string {
+  if (!zone) return localToday(now)
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now)
+  } catch {
+    return localToday(now)
+  }
 }
 
 // Activity: ping only while the page is visible and was used in the last five minutes.

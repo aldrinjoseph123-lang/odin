@@ -20,7 +20,7 @@ export type User = {
 }
 
 export type SignIn = { microsoft: boolean; microsoft_only: boolean; link_minutes?: number; password_min_length?: number }
-type SessionResponse = { csrf: string; user: User | null; messages?: string[]; signin?: SignIn; version?: string }
+type SessionResponse = { csrf: string; user: User | null; messages?: string[]; signin?: SignIn; version?: string; timezone?: string }
 
 let csrfToken: string | null = null
 

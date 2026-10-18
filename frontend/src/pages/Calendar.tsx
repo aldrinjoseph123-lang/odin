@@ -17,7 +17,7 @@ import { addDays } from "@/lib/plan"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { STATE } from "@/lib/state"
-import { fmtDate, addMonths, isDay, isMonth, localToday, laneSpans, monthGrid, monthTitle, shortDay, weekday } from "@/lib/format"
+import { fmtDate, addMonths, isDay, isMonth, workspaceToday, laneSpans, monthGrid, monthTitle, shortDay, weekday } from "@/lib/format"
 
 // The Calendar view (rebuilt 13 Oct 2026 after ReUI's "event-calendar-2"): a
 // rail with the month at a glance, what is up next and the layers to show;
@@ -104,7 +104,7 @@ function Day({ day, className, children }: { day: string; className?: string; ch
 // `stamp` changes with every Flow reload (a move below, the poll): the month refetches (P2-35)
 export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: number; only?: Set<number> | null }) {
   const [params, setParams] = useSearchParams()
-  const today0 = localToday()
+  const today0 = workspaceToday()
   // the mode is in the URL; a link without one gets the person's last choice (advice B1)
   const [prefMode, setPrefMode] = usePref<Mode>("calendar.mode", "month")
   const cal = params.get("cal") ?? prefMode

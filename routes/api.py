@@ -98,7 +98,10 @@ def api_session():
     signin = {"microsoft": sso_configured(), "microsoft_only": sso_enforced(), "link_minutes": policy("link_minutes"),
               "password_min_length": policy("password_min_length")}
     from routes.client import app_version   # the page compares it with the one it loaded with (advice A20)
-    return jsonify({"csrf": csrf_token(), "user": user, "messages": messages, "signin": signin, "version": app_version()})
+    # the workspace time zone: the page counts "today" (overdue, late by n days) on the workspace's
+    # calendar, as the server does, not on the browser's
+    return jsonify({"csrf": csrf_token(), "user": user, "messages": messages, "signin": signin, "version": app_version(),
+                    "timezone": policy("timezone")})
 
 
 @app.route("/api/login", methods=["POST"])
