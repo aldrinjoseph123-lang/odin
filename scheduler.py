@@ -16,7 +16,9 @@ to each cloud destination again).
 
 It also leaves a heartbeat that Settings shows, so an admin can see whether
 the schedule is really being kept (a thread of its own, every minute, so a
-long backup does not look like a dead scheduler). Each pass it also runs a
+long backup does not look like a dead scheduler); that thread also warns the
+admins once a day when the clock loop itself has not moved for
+scheduler_stuck_hours (a hung job). Each pass it also runs a
 backup an admin asked for (Back up now), turns the self-updater's notices
 (DATA_DIR/ops-notices, deploy/odin-update.sh) into bell items for the admins,
 and warns them once a day when the data disk runs low.
@@ -40,6 +42,8 @@ def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 HEARTBEAT = "scheduler.heartbeat"
+LOOP = "scheduler.loop"   # the clock loop's own stamp, each pass: the heartbeat thread warns when it stops moving
+STARTED = None   # when this process's clock loop started (the service sets it): an old stamp from before a restart is not a hang
 BOOT = "scheduler.boot"   # which process left the heartbeat: the container health check accepts only its own
 BOOT_ID = uuid.uuid4().hex   # this process; written beside every beat and, by the service, to BOOT_FILE
 BOOT_FILE = os.path.join(tempfile.gettempdir(), "odin-scheduler.boot")   # inside the container, so `--healthcheck` (a second process) can read it
@@ -107,6 +111,12 @@ def next_run(now_local, at, days):
         if WEEKDAYS[day.weekday()] in days and when > now_local:
             return when
     return None
+
+
+def _connect():
+    """The clock's own connection: wait up to 30 s for a web worker's write
+    instead of failing the pass on "database is locked"."""
+    return sqlite3.connect(_db.DB_PATH, timeout=30)
 
 
 def _set(con, key, value):
@@ -218,7 +228,7 @@ def _tell_admins_once_a_day(key, title, body, link):
         from markupsafe import escape
         from services.notifications import notify_users
         today = _utcnow().date().isoformat()
-        con = sqlite3.connect(_db.DB_PATH)
+        con = _connect()
         try:
             row = con.execute("SELECT value FROM settings WHERE key = ?", (f"scheduler.notified.{key}",)).fetchone()
             if row and row[0] == today:
@@ -281,11 +291,12 @@ def run_due():
     # read-and-mark, so whoever comes second finds the jobs marked
     lock = open(os.path.join(_db.DATA_DIR, "scheduler.lock"), "w")
     fcntl.flock(lock, fcntl.LOCK_EX)
-    con = sqlite3.connect(_db.DB_PATH)
+    con = _connect()
     con.row_factory = sqlite3.Row
     try:
         now_local = local_now(con)
         _stamp(con)
+        _set(con, LOOP, _utcnow().isoformat())
         settings = {r["key"]: r["value"] for r in con.execute("SELECT key, value FROM settings WHERE key LIKE 'job.%'")}
         last = {k.split(".")[1]: v for k, v in settings.items() if k.endswith(".last_run")}
         times = {k: policy(k, con) for _, k, _ in JOBS if k}
@@ -311,13 +322,13 @@ def run_due():
         lock.close()
     for n, job in enumerate(todo):
         if _stopping:   # SIGTERM: leave the rest for the next start, which must not wait an hour
-            con = sqlite3.connect(_db.DB_PATH)
+            con = _connect()
             con.executemany("DELETE FROM settings WHERE key = ?", [(f"job.{j}.last_try",) for j in todo[n:]])
             con.commit()
             con.close()
             break
         if job in ONCE_A_DAY:   # marked before it runs: a failure is reported, not repeated
-            con = sqlite3.connect(_db.DB_PATH)
+            con = _connect()
             _set(con, f"job.{job}.last_run", now_local.date().isoformat())
             con.close()
         try:
@@ -326,7 +337,7 @@ def run_due():
             log.error("%s failed: %s", job, exc)
             _report_failure(job, exc)
         else:
-            con = sqlite3.connect(_db.DB_PATH)
+            con = _connect()
             _set(con, f"job.{job}.last_run", now_local.date().isoformat())
             con.close()
     if not _stopping:
@@ -341,7 +352,7 @@ def _tell_admins(title, body, link):
         from app import app
         from markupsafe import escape
         from services.notifications import notify_users
-        con = sqlite3.connect(_db.DB_PATH)
+        con = _connect()
         try:
             admins = [r[0] for r in con.execute("SELECT id FROM users WHERE role = 'Admin' AND active = 1")]
         finally:
@@ -356,7 +367,7 @@ def run_requested_backup():
     """Back up now (Settings › Backups) asks by leaving who asked in the
     settings; the request is cleared before the run, so a crash does not
     repeat it every minute. Runs here, never in a web worker (review P3-29)."""
-    con = sqlite3.connect(_db.DB_PATH)
+    con = _connect()
     try:
         row = con.execute("SELECT value FROM settings WHERE key = ?", (BACKUP_REQUEST,)).fetchone()
         if not row:
@@ -417,16 +428,41 @@ def beat():
         con.close()
 
 
+def check_loop():
+    """The heartbeat proves the process lives, not that the clock moves: a job
+    that hangs (a network share with no timeout) stops the digest, alerts,
+    backups and housekeeping, and the checks inside the loop with them. Warn
+    the admins once a day when the loop's stamp is older than the policy
+    scheduler_stuck_hours (counted from this process's start, not from the
+    stamp the previous container left)."""
+    from policies import policy
+    con = _connect()
+    try:
+        row = con.execute("SELECT value FROM settings WHERE key = ?", (LOOP,)).fetchone()
+        hours = policy("scheduler_stuck_hours", con)
+    finally:
+        con.close()
+    moved = max(filter(None, (STARTED, datetime.fromisoformat(row[0]) if row else None)), default=None)
+    if moved and moved < _utcnow() - timedelta(hours=hours):
+        _tell_admins_once_a_day(
+            "loop_stuck", "Odin's schedule has stopped",
+            f"The scheduler's clock has not moved since {moved.strftime('%d %b %H:%M')} UTC (more than {hours} hours): a job is hanging, "
+            "so the digest, alerts, backups and housekeeping are waiting behind it. Restart the scheduler (docker compose restart scheduler) "
+            "and read its log; see docs/RUNBOOK.md, \"The schedule has stopped\".",
+            "/settings/backups")
+
+
 def heartbeat():
     """The heartbeat from a thread of its own: a backup or report that takes
     longer than the health check's three minutes must not mark the scheduler
-    dead while it works (review P3-27)."""
-    # ponytail: proves the process is alive, not that the clock loop is unstuck; a hung job shows as an overdue job instead
+    dead while it works (review P3-27). It also watches the clock loop
+    (check_loop), which cannot watch itself."""
     while not _stopping:
-        try:
-            beat()
-        except Exception as exc:  # noqa: BLE001 — a locked database this minute is fine next minute
-            log.error("heartbeat failed: %s", exc)
+        for step in (beat, check_loop):
+            try:
+                step()
+            except Exception as exc:  # noqa: BLE001 — a locked database this minute is fine next minute
+                log.error("%s failed: %s", step.__name__, exc)
         _nap(60)
 
 
@@ -436,7 +472,7 @@ def healthy(max_age_minutes=3, boot=None):
     that process's: the database is shared, so the previous container's last
     beat would otherwise make a hung new scheduler look alive for three minutes."""
     try:
-        con = sqlite3.connect(_db.DB_PATH)
+        con = sqlite3.connect(_db.DB_PATH)  # healthcheck: the default 5 s wait, inside Docker's budget
         row = con.execute("SELECT value FROM settings WHERE key = ?", (HEARTBEAT,)).fetchone()
         who = con.execute("SELECT value FROM settings WHERE key = ?", (BOOT,)).fetchone()
         con.close()
@@ -532,6 +568,15 @@ if __name__ == "__main__":
         sys.exit(0)
     import threading
     signal.signal(signal.SIGTERM, _on_term)   # docker stop: finish the job in hand, then leave
+    STARTED = _utcnow()
+    try:   # AI jobs the previous process left running are not running: no other worker exists yet
+        from app import app
+        from db import get_db
+        from services.ai.health import fail_interrupted
+        with app.app_context():
+            fail_interrupted(get_db())
+    except Exception as exc:  # noqa: BLE001
+        log.error("could not clear interrupted AI jobs: %s", exc)
     try:
         with open(BOOT_FILE, "w") as f:
             f.write(BOOT_ID)

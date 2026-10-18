@@ -99,7 +99,9 @@ docker compose exec app python preflight.py
 
 Still failing: read `docker compose logs --tail=200 app`. If the database is
 the problem, restore the backup the updater made just before (trigger
-`before update`, the newest in `/data/backups`; see "Restore a backup"). When
+`before update`, the newest `odin-preupdate-<timestamp>.zip` in `/data/backups`;
+the newest three are kept apart from the daily copies, Settings → Backups →
+Copies kept; see "Restore a backup"). When
 Odin is up again: `rm ~/.odin-update/hold`. The updater will then retry the
 failed tag after its wait; to skip that release, keep the hold until a newer
 tag exists.
@@ -160,7 +162,7 @@ touch ~/.odin-update/hold
 docker compose run --rm --no-deps app ls -lt /data/backups | head    # pick one
 docker compose stop app scheduler
 docker compose run --rm --no-deps app sh -c \
-  'cd /data && rm -rf odin.db odin.db-wal odin.db-shm uploads avatars brand && python -m zipfile -e /data/backups/odin-backup-<timestamp>.zip . && rm -f manifest.json'
+  'cd /data && rm -rf odin.db odin.db-wal odin.db-shm uploads avatars brand && python -m zipfile -e /data/backups/odin-backup-<timestamp>.zip . && rm -f manifest.json'   # or odin-preupdate-<timestamp>.zip
 docker compose start app scheduler
 docker compose exec app python preflight.py
 rm ~/.odin-update/hold
@@ -196,3 +198,20 @@ disk on the **Proxmox host** (`qm resize <vmid> scsi0 +20G`), then in the VM
 `sudo growpart /dev/sda 1 && sudo resize2fs /dev/sda1` (check the device names
 with `lsblk` first). When space is back, an update that failed on it is retried
 with `rm ~/.odin-update/failed`.
+
+## The schedule has stopped
+
+The bell says "Odin's schedule has stopped": the scheduler is alive (its
+heartbeat thread sent the notice) but its clock loop has not moved for longer
+than Settings → Backups → Stuck schedule (3 hours by default). A job is
+hanging, most often a backup copying to a network share that stopped
+answering; the digest, alerts, backups and housekeeping wait behind it.
+
+```bash
+docker compose logs --tail=100 scheduler     # the last job it started
+docker compose restart scheduler             # stops it (two-minute grace), starts it afresh
+```
+
+A backup killed this way leaves only a `.partial-*` file, removed by the next
+run. Fix what hung (remount the share, or switch that destination off in
+Settings → Backups) before the next scheduled backup.

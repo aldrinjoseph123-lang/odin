@@ -10,11 +10,15 @@ Every run:
   3. copies it to each destination switched on in Settings → Backups —
      OneDrive, a SharePoint site folder, a mounted network share;
   4. prunes by daily / weekly / monthly retention, locally and at each
-     destination;
+     destination (the updater's pre-update copies, odin-preupdate-*, are
+     kept apart: the newest keep_pre_update of them);
   5. records the run in backup_runs (shown on the Backups settings page).
 
-A local copy is always written: a backup that only exists when a cloud
-integration happens to be configured is not a backup. Restore procedure:
+The zip is written as .partial-<name> and renamed once complete, so a run
+killed mid-write (a container recreated) never leaves a truncated archive for
+retention to keep; the next run removes the leftover. A local copy is always
+written: a backup that only exists when a cloud integration happens to be
+configured is not a backup. Restore procedure:
 docs/RUNBOOK.md, "Restore a backup".
 
 Runs from the scheduler (scheduler.py, at the time set in Settings), from
@@ -33,6 +37,11 @@ import db as _db
 import graph
 
 NAME_PREFIX, NAME_SUFFIX = "odin-backup-", ".zip"
+# The updater's backup before each update (backup.py --local): a name of its
+# own, so a later backup the same day never prunes the pre-migration copy; the
+# newest keep_pre_update of them are kept apart from the daily/weekly/monthly set.
+PRE_UPDATE_PREFIX, PRE_UPDATE_TRIGGER = "odin-preupdate-", "before update"
+PARTIAL = ".partial-"   # an archive still being written: renamed to its real name once complete
 
 
 def _backup_dir():
@@ -133,9 +142,11 @@ def restore_test(zip_path):
         return False, f"could not open the archive: {exc}"
 
 
-def _prune_local(keep_args):
+def _prune_local(keep_args, keep_pre_update):
     names = os.listdir(_backup_dir())
     keep = retention_keep(names, *keep_args)
+    pre = sorted((n for n in names if n.startswith(PRE_UPDATE_PREFIX) and n.endswith(NAME_SUFFIX)), reverse=True)
+    keep -= set(pre[keep_pre_update:])   # the stamp sorts by name: the newest first
     for name in names:
         if name not in keep:
             os.remove(os.path.join(_backup_dir(), name))
@@ -202,20 +213,26 @@ def _run_backup(trigger, actor, local_only):
     from policies import policy
     con = sqlite3.connect(_db.DB_PATH)
     con.row_factory = sqlite3.Row
-    p = {k: policy(k, con) for k in ("keep_daily", "keep_weekly", "keep_monthly", "restore_test", "dest_onedrive",
+    p = {k: policy(k, con) for k in ("keep_daily", "keep_weekly", "keep_monthly", "keep_pre_update", "restore_test", "dest_onedrive",
                                        "dest_sharepoint", "sharepoint_site", "sharepoint_folder", "dest_share", "share_path")}
     keep_args = (p["keep_daily"], p["keep_weekly"], p["keep_monthly"])
     started = datetime.utcnow()
-    zip_name = f"{NAME_PREFIX}{started.strftime('%Y%m%d-%H%M%S')}{NAME_SUFFIX}"
+    prefix = PRE_UPDATE_PREFIX if trigger == PRE_UPDATE_TRIGGER else NAME_PREFIX
+    zip_name = f"{prefix}{started.strftime('%Y%m%d-%H%M%S')}{NAME_SUFFIX}"
     zip_path = os.path.join(_backup_dir(), zip_name)
+    partial = os.path.join(_backup_dir(), PARTIAL + zip_name)
     results, ok, restore_ok, restore_detail = [], True, None, None
     written = False   # the zip is complete: only an unfinished one is removed on failure
     try:
+        for name in os.listdir(_backup_dir()):   # left by a run that was killed (a container recreated mid-backup)
+            if name.startswith(PARTIAL):
+                os.remove(os.path.join(_backup_dir(), name))
         with tempfile.TemporaryDirectory() as tmp:
             snapshot = _snapshot(tmp)
             manifest = _manifest(snapshot)
-            # created 0600 (never world-readable, whatever the umask): it carries guest tokens and every document
-            with os.fdopen(os.open(zip_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as out, \
+            # created 0600 (never world-readable, whatever the umask): it carries guest tokens and every document;
+            # written under a temporary name, so a run killed mid-write never leaves a truncated archive passing for that day's copy
+            with os.fdopen(os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as out, \
                     zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.write(snapshot, arcname="odin.db")
                 zf.writestr("manifest.json", json.dumps(manifest, indent=1))
@@ -227,6 +244,7 @@ def _run_backup(trigger, actor, local_only):
                         for fname in files:
                             full = os.path.join(root, fname)
                             zf.write(full, arcname=os.path.join(label, os.path.relpath(full, folder)))
+            os.replace(partial, zip_path)
             written = True
         if p["restore_test"]:
             restore_ok, restore_detail = restore_test(zip_path)
@@ -243,7 +261,7 @@ def _run_backup(trigger, actor, local_only):
         if p["dest_share"] and not local_only:
             destinations.append(_destination("network share", lambda: _copy_share(zip_path, p["share_path"], keep_args, prune)))
         if prune:
-            _prune_local(keep_args)
+            _prune_local(keep_args, p["keep_pre_update"])
         for name, done, error in destinations:
             results.append(name if done else f"{name} failed: {error}")
             ok = ok and done
@@ -252,8 +270,8 @@ def _run_backup(trigger, actor, local_only):
     except Exception as exc:  # noqa: BLE001 — the run is recorded as failed, never lost
         ok, size, message = False, None, f"backup failed: {exc}"
         if not written:
-            try:   # a half-written zip must not pass for that day's copy
-                os.remove(zip_path)
+            try:   # a half-written zip must not linger
+                os.remove(partial)
             except OSError:
                 pass
     con.execute(
@@ -269,6 +287,6 @@ def _run_backup(trigger, actor, local_only):
 
 if __name__ == "__main__":
     local = "--local" in sys.argv   # the updater: this server only
-    success, msg = run_backup(trigger="before update" if local else "command line", local_only=local)
+    success, msg = run_backup(trigger=PRE_UPDATE_TRIGGER if local else "command line", local_only=local)
     print(msg if success else f"Backup failed: {msg}", file=sys.stdout if success else sys.stderr)
     sys.exit(0 if success else 1)

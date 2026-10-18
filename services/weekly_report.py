@@ -157,12 +157,25 @@ def send(to=None, teams=True):
             failed.append(f"{address}: {error}")
     posted = []
     if teams and policy("report_teams"):
-        if policy("notify_teams_enabled"):
-            ok, _ = graph.send_teams_message(f"<b>{escape(subject)}</b><br>" + "<br>".join(escape(s) for s in summary))
-            posted.append("Teams channel" if ok else "Teams channel failed")
-        if policy("teams_webhook_url"):
-            ok, _ = graph.post_teams_webhook(policy("teams_webhook_url"), subject, summary, external_url("board"))
-            posted.append("Teams webhook" if ok else "Teams webhook failed")
+        # The scheduler retries a report whose mail all failed: each Teams post goes out once a day, never again on the retry.
+        db, today = get_db(), local_today().isoformat()
+        for name, on, post in (
+                ("Teams channel", policy("notify_teams_enabled"),
+                 lambda: graph.send_teams_message(f"<b>{escape(subject)}</b><br>" + "<br>".join(escape(s) for s in summary))),
+                ("Teams webhook", policy("teams_webhook_url"),
+                 lambda: graph.post_teams_webhook(policy("teams_webhook_url"), subject, summary, external_url("board")))):
+            if not on:
+                continue
+            key = f"report.posted.{name.split()[1]}"
+            row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+            if row and row[0] == today:
+                posted.append(f"{name} already posted today")
+                continue
+            ok, _ = post()
+            posted.append(name if ok else f"{name} failed")
+            if ok:
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, today))
+                db.commit()
     message = f"Sent to {sent} of {len(targets)}" + (f" with {len(attachments)} PDF{'s' if len(attachments) != 1 else ''}" if attachments else "") \
         + (f"; {', '.join(posted)}" if posted else "") + (f"; failed: {'; '.join(failed)[:300]}" if failed else "")
     return sent, failed, message
