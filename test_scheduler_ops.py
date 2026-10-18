@@ -13,6 +13,10 @@ class SchedulerOpsTestCase(FixBase):
     def setUp(self):
         super().setUp()
         self.addCleanup(setattr, scheduler, "_stopping", False)
+        # every pass checks free disk (scheduler.check_disk): a host under disk_free_min_pct would add its notice
+        p = patch("shutil.disk_usage", return_value=__import__("shutil")._ntuple_diskusage(100 * 2**30, 10 * 2**30, 90 * 2**30))
+        p.start()
+        self.addCleanup(p.stop)
 
     def run_backup_pass(self, result):
         """One pass in which only the backup is due and run_backup gives `result`."""

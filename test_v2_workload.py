@@ -1,9 +1,9 @@
 """Odin 2.0, workstream 7: workload and capacity, and the hand-over on leave.
 Run with: python -m unittest test_v2_workload
 
-The clock is frozen at Wednesday 4 Nov 2026 (the week of Mon 2 Nov) for the
-workload service, so no test depends on the weekday or the month."""
-from datetime import date
+The clock is frozen at Wednesday 4 Nov 2026 (the week of Mon 2 Nov) for every
+module, so no test depends on the weekday or the month."""
+from datetime import date, datetime
 from unittest import mock
 
 from test_app import STRONG_PASSWORD
@@ -15,13 +15,12 @@ W0, W1, W2, W3 = "2026-11-02", "2026-11-09", "2026-11-16", "2026-11-23"
 
 
 class WorkloadBase(FixBase):
+    NOW = datetime(2026, 11, 4, 9, 0, 0)   # TODAY, for freeze_clock
+
     def setUp(self):
         super().setUp()
         self._set_policy(timezone="UTC")
-        for target in ("services.workload.local_today", "routes.workload.local_today"):
-            p = mock.patch(target, return_value=TODAY)
-            p.start()
-            self.addCleanup(p.stop)
+        self.freeze_clock()   # local_today in every module, not only services.workload and routes.workload
         self.csrf = self.client.get("/api/session").get_json()["csrf"]
         self.new_project(name="Alpha")   # rollout 1, managed by the admin
 
