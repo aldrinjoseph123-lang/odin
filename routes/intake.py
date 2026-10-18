@@ -160,5 +160,7 @@ def intake_confirm(project_id):
     if lead_id != session["user_id"]:
         notify_users([lead_id], "assigned", project_id, f"You manage {escape(name)}",
                      f"{escape(session['user_name'])} confirmed <b>{escape(name)}</b> from the CRM and made you its project manager.", link=f"/projects/{project_id}")
+    from services import rules
+    rules.fire("rollout_created", project_id, {"source": project["intake_source"] or "crm"})   # now, not at intake: the PM is known
     flash(f"{name} confirmed: it is now an active rollout")
     return redirect(url_for("project_detail", project_id=project_id))

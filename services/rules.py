@@ -587,7 +587,7 @@ def _replay(event, cfg, db, since, today):
     day = since[:10]
     if event == "rollout_created":
         return [(r[0], {"source": r[1] or "form"}, r[2]) for r in db.execute(
-            "SELECT id, intake_source, created_at FROM projects WHERE created_at >= ?", (since,))]
+            "SELECT id, intake_source, created_at FROM projects WHERE created_at >= ? AND COALESCE(intake_pending, 0) = 0", (since,))]
     if event == "stage_entered":
         return [(r[0], {"stage": r[1], "from": r[2]}, r[3]) for r in db.execute(
             "SELECT project_id, stage, prev_stage, created_at FROM status_notes WHERE prev_stage IS NOT NULL AND created_at >= ?", (since,))]

@@ -262,8 +262,8 @@ def create(db, c, source):
     notify_users([owner], "assigned", pid, f"New intake: {escape(c['name'])}",
                  f"<b>{escape(c['name'])}</b> for {escape(c['client'])} came in from {escape(source)} and waits for a project manager to confirm it.",
                  link="/projects?view=pending")
-    from services import rules
-    rules.fire("rollout_created", pid, {"source": source})
+    # "rollout created" automations fire when staff confirm it (routes/intake.py), once the real
+    # project manager is known: firing here put their tasks and notices on the placeholder owner
     return db.execute("SELECT * FROM projects WHERE id = ?", (pid,)).fetchone(), True, (
         f"source={source} deal={c['deal_id']} client={c['client']}" + (f" fields: {'; '.join(changes)}" if changes else ""))
 

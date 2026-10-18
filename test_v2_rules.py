@@ -75,14 +75,24 @@ class RulesBase(FixBase):
 
 class TriggersTestCase(RulesBase):
     def test_a_rollout_created_from_the_form_and_from_the_crm(self):
-        rid = self.rule("rollout_created")
+        # a CRM intake fires when staff confirm it, so the rule reaches the confirmed project manager,
+        # never the placeholder owner of the pending intake (the user's call, 18 Oct 2026)
+        rid = self.rule("rollout_created", actions=[{"kind": "notify", "roles": ["Project manager"], "email": False}])
         self.new_project(name="Initech SIEM", client="Initech")
         token = self.client.post("/settings/api-tokens", data={"name": "crm", "days": "30", "scope": "create"}, headers=J).get_json()["token"]
         r = app_module.app.test_client().post("/api/v1/intake", json={"client": "Hooli", "name": "SD-WAN", "deal_id": "D-1"},
                                               headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(r.status_code, 201, r.get_json())
+        self.assertEqual([x["what"] for x in self.runs(rid)], ["Rollout created"])   # the pending intake fires nothing yet
+        pid = self.sql("SELECT id FROM projects WHERE intake_pending = 1")[0][0]
+        pm, pm_client, h = self.member("pm")   # a Member confirms it and so becomes its project manager
+        done = pm_client.post(f"/projects/{pid}/intake/confirm", data={"po_document": (io.BytesIO(b"%PDF-1.4 fake PO"), "po.pdf")},
+                              headers=h, content_type="multipart/form-data")
+        self.assertEqual(done.status_code, 200, done.get_json())
+        self.assertEqual(self.sql("SELECT owner_id FROM projects WHERE id = ?", pid)[0][0], pm)
         self.assertEqual([x["what"] for x in self.runs(rid)], ["Rollout created from crm", "Rollout created"])
-        self.assertEqual(self.told(), 2)
+        self.assertEqual(self.runs(rid)[0]["actions"][0]["said"], "nobody to tell (the roles are empty, or only the person who did it)")
+        self.assertEqual(self.told(1), 0)   # the placeholder owner (the first admin) is told nothing about the intake
 
     def test_a_stage_entered_fires_once_per_move(self):
         stages = self.stages()
