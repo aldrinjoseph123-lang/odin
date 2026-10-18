@@ -95,15 +95,27 @@ def validate(template_id, items, db=None):
 
 
 def save(template_id, items):
-    """Replace the template's tasks with the editor's list. Returns the count."""
+    """Make the template's tasks the editor's list. A row whose key is the id of
+    one of this template's tasks keeps that id (rules point at it: services/rules.py
+    add_task); the others are added, and tasks left out are deleted. Returns the count."""
     db = get_db()
     rows = validate(template_id, items, db)
-    db.execute("DELETE FROM template_tasks WHERE stage_id IN (SELECT id FROM stage_template_stages WHERE template_id = ?)", (template_id,))
+    have = {t["id"] for t in for_template(template_id, db)}
+    db.execute("UPDATE template_tasks SET waits_on_id = NULL WHERE id IN (SELECT tt.id FROM template_tasks tt "
+               "JOIN stage_template_stages s ON s.id = tt.stage_id WHERE s.template_id = ?)", (template_id,))
     ids = {}
     for position, r in enumerate(rows):
-        ids[r["key"]] = db.execute(
-            "INSERT INTO template_tasks (stage_id, title, role, offset_days, estimate_hours, position) VALUES (?, ?, ?, ?, ?, ?)",
-            (r["stage_id"], r["title"], r["role"], r["offset_days"], r["estimate_hours"], position)).lastrowid
+        vals = (r["stage_id"], r["title"], r["role"], r["offset_days"], r["estimate_hours"], position)
+        old = int(r["key"]) if r["key"].isdigit() and int(r["key"]) in have else None
+        if old is not None and old not in ids.values():
+            db.execute("UPDATE template_tasks SET stage_id = ?, title = ?, role = ?, offset_days = ?, estimate_hours = ?, position = ? WHERE id = ?", (*vals, old))
+            ids[r["key"]] = old
+        else:
+            ids[r["key"]] = db.execute(
+                "INSERT INTO template_tasks (stage_id, title, role, offset_days, estimate_hours, position) VALUES (?, ?, ?, ?, ?, ?)", vals).lastrowid
+    gone = have - set(ids.values())
+    if gone:
+        db.execute(f"DELETE FROM template_tasks WHERE id IN ({','.join('?' * len(gone))})", tuple(gone))
     for r in rows:
         if r["waits_on"]:
             db.execute("UPDATE template_tasks SET waits_on_id = ? WHERE id = ?", (ids[r["waits_on"]], ids[r["key"]]))

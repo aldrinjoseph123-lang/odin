@@ -3124,6 +3124,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             db.execute("INSERT INTO settings (key, value) VALUES ('policy.signoff_required', '0')"); db.commit()
         self.assertEqual(c.post("/api/projects/1/stage", json={"stage": stages[-1]}, headers=h).status_code, 200)
+        with self.raw_db() as db:   # a 200 alone would pass a gate that answered without moving it
+            self.assertEqual(db.execute("SELECT stage FROM projects WHERE id = 1").fetchone()["stage"], stages[-1])
 
     def test_a_stage_list_edit_cannot_close_an_unsigned_project(self):
         # test report FN-1: reordering or deleting stages made the current stage terminal, closing it unsigned
@@ -4278,6 +4280,37 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                     f"{table} rows survived the purge")
             self.assertEqual(db.execute("SELECT COUNT(*) AS c FROM pragma_foreign_key_check").fetchone()["c"], 0)
         self.assertFalse(os.path.exists(path), "uploaded file survived the purge")
+
+    def test_purge_reaches_every_table_with_a_project_id(self):
+        """Every table holding a project_id, read from the schema itself: a new table missing from the
+        purge lists in db.cleanup_soft_deletes would leave rows that attach to the next project
+        given the same id. The ones that outlive the project keep the row and lose the pointer."""
+        nulled = {"intake_calls", "signup_links", "lessons"}
+        self.new_project(name="Doomed", client="C")
+        with self.raw_db() as db:
+            tables = [t for (t,) in db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+                      if any(c["name"] == "project_id" for c in db.execute(f"PRAGMA table_info({t})"))]
+            self.assertGreater(len(tables), 20)
+            for t in tables:   # a row per table on project 1, made from its own columns (foreign keys off here)
+                info = db.execute(f"PRAGMA table_info({t})").fetchall()
+                rowid = [c["name"] for c in info if c["pk"]] == ["id"]   # an id the table numbers itself
+                cols = [c for c in info if (c["notnull"] or c["pk"]) and c["dflt_value"] is None and not (rowid and c["pk"])]
+                vals = {c["name"]: 1 if c["type"].upper() in ("INTEGER", "REAL") else f"x-{t}" for c in cols}
+                vals["project_id"] = 1
+                db.execute(f"INSERT OR IGNORE INTO {t} ({', '.join(vals)}) VALUES ({', '.join('?' * len(vals))})", list(vals.values()))
+            missing = [t for t in tables if not db.execute(f"SELECT 1 FROM {t} WHERE project_id = 1").fetchone()]
+            self.assertEqual(missing, [], "no row could be made on project 1 for these tables")
+            db.execute("UPDATE projects SET deleted_at = '2020-01-01T00:00:00' WHERE id = 1")
+            db.commit()
+        with self.raw_db() as db:
+            db.execute("PRAGMA foreign_keys = ON")   # as the nightly purge runs (db.py)
+            db_module.cleanup_soft_deletes(db)
+            self.assertIsNone(db.execute("SELECT 1 FROM projects WHERE id = 1").fetchone())
+            for t in tables:
+                left = db.execute(f"SELECT COUNT(*) FROM {t} WHERE project_id = 1").fetchone()[0]
+                self.assertEqual(left, 0, f"{t} rows survived the purge of their project")
+            for t in nulled & set(tables):
+                self.assertTrue(db.execute(f"SELECT 1 FROM {t} WHERE project_id IS NULL").fetchone(), f"{t} row should outlive the project")
 
     # ---- duplicate / global search / bulk tasks --------------------------
 

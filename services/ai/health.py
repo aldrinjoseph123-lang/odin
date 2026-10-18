@@ -110,10 +110,11 @@ def validate_feature(db, feature, cfg, fp, run_id=None):
     inputs = feature.fixture()
     try:
         out, meta = run(feature, inputs, cfg, log={"job_id": run_id, "user": "validation"})
-    except AIError as exc:
-        _record(db, run_id, "feature", "failed", feature.key, detail=exc.reason, model=cfg["model"], fp=fp, prompt_hash=prompt_of(feature)[1])
+        problems = [p for p in (g(inputs, out) for g in feature.graders) if p]
+    except Exception as exc:  # noqa: BLE001 — a grader that crashes fails its feature; unrecorded, validation would be queued again every 30 minutes
+        reason = exc.reason if isinstance(exc, AIError) else f"{type(exc).__name__}: {exc}"[:300]
+        _record(db, run_id, "feature", "failed", feature.key, detail=reason, model=cfg["model"], fp=fp, prompt_hash=prompt_of(feature)[1])
         return "failed"
-    problems = [p for p in (g(inputs, out) for g in feature.graders) if p]
     budget = feature.budget_s or policy("ai_budget_s", db)
     state = "failed" if problems else "slow" if meta["seconds"] > budget else "passed"
     detail = "; ".join(problems) if problems else (f"{meta['seconds']} s, over the {budget} s budget" if state == "slow" else None)
@@ -287,6 +288,14 @@ def work_once(db):
         db.execute("UPDATE ai_jobs SET status = 'failed', finished_at = ?, error = ? WHERE id = ?", (_now(), str(exc)[:500], job["id"]))
     db.commit()
     return job["id"]
+
+
+def fail_interrupted(db):
+    """At the scheduler's start: no AI worker runs yet, so any job still
+    'running' or 'cancelling' was cut off by the last stop. Fail it now rather
+    than an hour later (tick's own sweep, for cron mode)."""
+    db.execute("UPDATE ai_jobs SET status = 'failed', error = 'interrupted', finished_at = ? WHERE status IN ('running', 'cancelling')", (_now(),))
+    db.commit()
 
 
 def tick(db, now_local=None):

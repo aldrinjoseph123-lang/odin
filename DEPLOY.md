@@ -129,7 +129,12 @@ Backups**, or by "Back up now") always writes `odin-backup-<timestamp>.zip`
 present), copies it to the destinations switched on there — OneDrive, a
 SharePoint site folder, a network share mounted into the `scheduler`
 container — and keeps daily / weekly / monthly copies by the retention set
-there, locally and at each destination. Every run, and its restore-test
+there, locally and at each destination. An archive is written as
+`.partial-<name>` and renamed once complete, so a run killed mid-write never
+leaves a truncated copy (the next run removes the leftover). The updater's
+backup before each update (`backup.py --local`) is named
+`odin-preupdate-<timestamp>.zip`: a later backup the same day never prunes
+it, and the newest three (Copies kept) are kept apart. Every run, and its restore-test
 result, is listed in Settings → Backups. Switch on at least one off-host
 destination: a backup on the disk it protects is only half a backup.
 
