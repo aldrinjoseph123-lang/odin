@@ -21,6 +21,7 @@ from db import PROJECT_OPEN_SQL, avatar_url, get_db, get_setting, get_stage_name
 from policies import local_date, local_today
 from services.alerts import build_alerts, project_states
 from services.analytics import _parse, sla_by_stage, stage_sla_state
+from services import workload
 
 COUNT_KEYS = ("active", "overdue", "over_sla", "due_soon", "awaiting", "idle")
 LAYOUT_KEY = "dashboard.layout"
@@ -60,6 +61,10 @@ WIDGETS = {
     "mywork":     dict(title="My work", blurb="Your open tasks, soonest first, and the rollouts you own.", w=2, settings={}),
     "cycle":      dict(title="Cycle time", blurb="Lead time and rollouts closed per month for the main stage template.", w=1,
                        settings={"chart": dict(kind="choice", choices=("bar", "line"), default="bar", label="Chart")}),
+    "workload":   dict(title="Workload", blurb="The next four weeks per person in hours against capacity, the busiest first: amber when heavy, red when over.", w=1,
+                       settings={"limit": dict(kind="int", min=3, max=20, default=6, label="People")}),
+    "since":      dict(title="Since you last looked", blurb="On your rollouts since your previous visit: stage moves, new blockers and RAID items, decisions, and what customers and partners finished.", w=1,
+                       settings={"limit": dict(kind="int", min=5, max=30, default=10, label="Items")}),
     # a widget of the user's own; `multiple` means the layout may hold it more than once, each with a handle (uid)
     "custom":     dict(title="Custom metric", blurb="A number, bar, pie or list of your own: rollouts by stage, client, state, owner or mode; open or finished tasks by person; tasks per day. Add as many as you like.", w=1, multiple=True,
                        settings={"title": dict(kind="text", max=40, default="Custom metric", label="Title"),
@@ -233,6 +238,40 @@ def _activity(db, scope, limit=30):
             for r in db.execute(sql, (*scope_params * 5, limit))]
 
 
+# A visit ends after an hour without a dashboard load (the page polls every 15 s while open);
+# not a policy: nobody has a reason to tune it. Upgrade: read the activity pings' gaps instead.
+VISIT_GAP = timedelta(hours=1)
+
+
+def _since(db, scope, user_id, limit=30):
+    """What changed on this person's rollouts since their previous visit
+    (B10): the window starts where the last visit ended, and moves on when
+    they come back after VISIT_GAP. Their own acts are left out."""
+    now = datetime.utcnow()
+    u = db.execute("SELECT name, since_from, since_seen_at FROM users WHERE id = ?", (user_id,)).fetchone()
+    start = u["since_from"]
+    if not start or not u["since_seen_at"] or (_parse(u["since_seen_at"]) or now) < now - VISIT_GAP:
+        start = u["since_seen_at"] or (now - timedelta(days=1)).isoformat()   # a first look covers the last day
+    db.execute("UPDATE users SET since_from = ?, since_seen_at = ? WHERE id = ?", (start, now.isoformat(), user_id))
+    db.commit()
+    scope_sql, scope_params = scope
+    base = (f"JOIN projects p ON p.id = x.project_id WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}{scope_sql} "
+            "AND (p.owner_id = ? OR p.id IN (SELECT project_id FROM project_participants WHERE user_id = ?))")
+    mine = (*scope_params, user_id, user_id)
+    sql = " UNION ALL ".join([
+        f"SELECT 'move' AS kind, x.created_at AS at, x.author AS who, p.id AS pid, p.name AS project, x.prev_stage || ' to ' || x.stage AS text "
+        f"FROM status_notes x {base} AND x.prev_stage IS NOT NULL AND x.created_at > ? AND x.author_id IS NOT ?",
+        f"SELECT 'raid_' || x.kind, x.created_at, x.created_by, p.id, p.name, x.title FROM raid_items x {base} AND x.created_at > ? AND x.created_by <> ?",
+        f"SELECT 'decided', x.closed_at, NULL, p.id, p.name, x.title FROM raid_items x {base} AND x.kind = 'decision' AND x.status = 'decided' AND x.closed_at > ?",
+        f"SELECT 'approval', x.decided_at, x.decided_by, p.id, p.name, x.stage || ' ' || x.status FROM stage_approvals x {base} AND x.decided_at > ? AND x.status IN ('approved', 'declined')",
+        f"SELECT 'ask', x.done_at, a.name, p.id, p.name, x.title FROM tasks x JOIN users a ON a.id = x.assignee_id {base} "
+        "AND x.done = 1 AND x.done_at > ? AND a.kind = 'external'",
+    ]) + " ORDER BY at DESC LIMIT ?"
+    params = (*mine, start, user_id, *mine, start, u["name"], *mine, start, *mine, start, *mine, start, limit)
+    return {"from": start, "items": [{"kind": r["kind"], "at": r["at"], "who": r["who"], "project_id": r["pid"], "project": r["project"], "text": r["text"]}
+                                     for r in db.execute(sql, params)]}
+
+
 def _cycle(db, scope):
     """Lead time and throughput for the busiest stage template, as Cycle time shows them."""
     from services.analytics import build_cycle_times, busiest_template, clock
@@ -240,11 +279,11 @@ def _cycle(db, scope):
     template = busiest_template(db, scope)
     if not template:
         return None
-    projects = db.execute(f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{scope_sql}", (template["id"], *scope_params)).fetchall()
+    projects = db.execute(f"SELECT p.* FROM projects p WHERE p.deleted_at IS NULL AND p.intake_pending = 0 AND p.stage_template_id IS ?{scope_sql}", (template["id"], *scope_params)).fetchall()
     notes = {}
     # those projects' notes only, in index order (review P3-25: this read every note of every rollout)
     for n in db.execute("SELECT project_id, stage, created_at FROM status_notes WHERE project_id IN "
-                        f"(SELECT p.id FROM projects p WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{scope_sql}) "
+                        f"(SELECT p.id FROM projects p WHERE p.deleted_at IS NULL AND p.intake_pending = 0 AND p.stage_template_id IS ?{scope_sql}) "
                         "ORDER BY project_id, created_at", (template["id"], *scope_params)):
         notes.setdefault(n["project_id"], []).append(n)
     names = [r["name"] for r in db.execute("SELECT name FROM stage_template_stages WHERE template_id = ? ORDER BY position", (template["id"],))]
@@ -286,6 +325,8 @@ def build(scope, user_id):
     state = lambda p: states[p["id"]]   # noqa: E731
     stage_lists = stages_for_projects(ids)
     team = _team_of(db, ids)
+    from services.milestones import items_for
+    marks = items_for(ids, today=today.isoformat())   # the diamonds on each bar (staff only: the dashboard is theirs)
     done_steps = current_steps = pending_steps = 0
     timeline = []
     for p in projects:
@@ -295,7 +336,8 @@ def build(scope, user_id):
         timeline.append({"id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
                          "start_date": p["start_date"] or _day(p["created_at"]), "target_end_date": p["target_end_date"],
                          "state": state(p), "progress": (at / (len(names) - 1)) if len(names) > 1 else 0,
-                         "team": team.get(p["id"], [])})
+                         "team": team.get(p["id"], []),
+                         "milestones": [{"name": m["name"], "date": m["date"], "done": m["done"], "missed": m["missed"]} for m in marks[p["id"]]]})
     timeline.sort(key=lambda r: (r["target_end_date"] or "9999", r["name"]))
 
     # what stands behind each headline number: the rollouts, one line each (the tile's pop-up)
@@ -413,4 +455,5 @@ def build(scope, user_id):
                      "aggregates": aggregates,
                      "attention": attention, "timeline": timeline, "progress": progress, "stages": stages, "completion": completion,
                      "schedule": {"due": due, "approvals": approvals}, "team": {"people": people, "unassigned": unassigned},
-                     "activity": _activity(db, scope), "alerts": open_alerts, "mywork": mine, "cycle": _cycle(db, scope)}}
+                     "activity": _activity(db, scope), "alerts": open_alerts, "mywork": mine, "cycle": _cycle(db, scope),
+                     "workload": workload.build(limit=20), "since": _since(db, scope, user_id)}}

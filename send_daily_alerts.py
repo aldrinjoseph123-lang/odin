@@ -11,8 +11,10 @@ events (a project created, a stage changed) are sent as they happen instead.
 import sys
 
 from app import app  # only for the Flask app context that get_db() needs
-from db import PROJECT_OPEN_SQL, get_db, get_setting
+from db import PROJECT_OPEN_SQL, get_db
+from policies import policy
 from services.alerts import build_alerts, project_states
+from services.fmt import plural
 
 import graph
 
@@ -29,6 +31,7 @@ def _format_alerts_html(alerts):
         "blocker_open": "Blockers still open",
         "task_unowned": "Overdue tasks nobody owns",
         "customer_quiet": "Customer tasks overdue",
+        "milestone_missed": "Milestones missed",
     }
     for key, label in labels.items():
         items = alerts.get(key) or []
@@ -50,7 +53,7 @@ def send_due_reminders(db):
     from policies import local_today
     today = local_today(db).isoformat()
     rows = db.execute(
-        "SELECT t.title, t.due_date, t.assignee_id, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
+        "SELECT t.title, t.due_date, t.assignee_id, t.project_id, u.kind, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
         "JOIN users u ON u.id = t.assignee_id "
         f"WHERE t.done = 0 AND t.assignee_id IS NOT NULL AND t.due_date IS NOT NULL AND t.due_date <= ? AND p.deleted_at IS NULL AND {OPEN} "
         # an outsider hears only about projects they are still on (a removed partner is not told a project's task names)
@@ -65,7 +68,12 @@ def send_due_reminders(db):
             f"<li>{escape(t['title'])} — {escape(t['project_name'])}, {'due today' if t['due_date'] == today else 'overdue since ' + t['due_date']}</li>"
             for t in tasks)
         n = len(tasks)
-        notify_users([uid], "due", None, f"{n} task{'s' if n != 1 else ''} need{'' if n != 1 else 's'} you today", f"<ul>{items}</ul>", link="/my-work")
+        # a partner or customer (their asks, services/asks.py) lands on the rollout's "What we need from you";
+        # the mail carries a fresh one-time sign-in link, minted by the outbox as it sends
+        one = {t["project_id"] for t in tasks}
+        pid = one.pop() if tasks[0]["kind"] == "external" and len(one) == 1 else None
+        notify_users([uid], "due", pid, f"{n} {plural(n, 'task')} need{'' if n != 1 else 's'} you today", f"<ul>{items}</ul>",
+                     link=f"/projects/{pid}" if pid else "/my-work")
     return len(by_person)
 
 
@@ -94,7 +102,7 @@ def main():
 
         sent_anything = False
 
-        if get_setting("notify_teams_enabled") == "1":
+        if policy("notify_teams_enabled"):
             ok, error = graph.send_teams_message(f"<b>Daily Odin Alert Digest</b><br>{html}")
             print("Teams digest sent." if ok else f"Teams digest failed: {error}")
             sent_anything = sent_anything or ok

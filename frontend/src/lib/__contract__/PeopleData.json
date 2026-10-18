@@ -4,25 +4,29 @@
  "people": [
   {
    "avatar_url": null,
+   "csat": 4.0,
+   "csat_count": 1,
    "done_30d": 11,
    "id": 1,
-   "last_login_at": "2026-10-15T19:13:43.567163",
-   "last_seen_at": "2026-10-15T19:13:43.567163",
+   "last_login_at": "2026-10-16T19:20:31.359416",
+   "last_seen_at": "2026-10-16T19:20:31.359416",
    "late": 4,
    "name": "Admin",
-   "open": 5,
+   "open": 6,
    "projects": 22,
    "role": "Admin"
   },
   {
    "avatar_url": null,
+   "csat": null,
+   "csat_count": 0,
    "done_30d": 10,
    "id": 4,
    "last_login_at": null,
-   "last_seen_at": "2026-10-15T04:33:43.261641",
-   "late": 6,
+   "last_seen_at": "2026-10-16T04:40:30.781154",
+   "late": 7,
    "name": "Sara Lind",
-   "open": 7,
+   "open": 8,
    "projects": 12,
    "role": "Contributor"
   }

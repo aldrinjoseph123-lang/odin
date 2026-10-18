@@ -4,7 +4,10 @@ import { StatTile } from "@/components/StatTile"
 import { pill, filterSelect } from "@/lib/ui"
 import { Link } from "react-router-dom"
 import { AlertTriangle, CalendarClock, Check, CheckSquare, Layers } from "lucide-react"
+import { WaitsOn } from "@/components/WaitsOnPicker"
+import { askConfirm } from "@/lib/confirm"
 import { Stepper } from "@/components/Stepper"
+import { QuickAddTask } from "@/components/QuickAddTask"
 import { StateChip } from "@/components/StateChip"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, editTask, myWork, toggleTask, type User, type WorkTask } from "@/lib/api"
@@ -23,9 +26,10 @@ type Group = { key: string; title: string; hint: string; tone?: "bad" | "warn"; 
 
 function groupTasks(tasks: WorkTask[], today: string): Group[] {
   const w = addDays(today, 7)
-  const g: Record<string, WorkTask[]> = { overdue: [], today: [], week: [], later: [], undated: [] }
+  const g: Record<string, WorkTask[]> = { overdue: [], today: [], week: [], later: [], undated: [], waiting: [] }
   for (const t of tasks) {
-    if (!t.due_date) g.undated.push(t)
+    if (t.blocked_by?.length) g.waiting.push(t)   // it cannot be done yet, whatever its date
+    else if (!t.due_date) g.undated.push(t)
     else if (t.due_date < today) g.overdue.push(t)
     else if (t.due_date === today) g.today.push(t)
     else if (t.due_date <= w) g.week.push(t)
@@ -37,6 +41,7 @@ function groupTasks(tasks: WorkTask[], today: string): Group[] {
     { key: "week", title: "This week", hint: "the next 7 days", tasks: g.week },
     { key: "later", title: "Later", hint: "beyond this week", tasks: g.later },
     { key: "undated", title: "No date", hint: "whenever", tasks: g.undated },
+    { key: "waiting", title: "Waiting on others", hint: "each waits on a task still open", tasks: g.waiting },
   ]
   return groups.filter((x) => x.tasks.length > 0)
 }
@@ -76,6 +81,8 @@ export default function MyWork({ user }: { user: User }) {
   // a tick leaves the list; the toast's Undo brings the task back
   async function tick(t: WorkTask) {
     if (busy === t.id) return   // the box stays focusable while it saves (review P2-41), so a second press lands here
+    // a task waiting on open work: only an Admin ticks it, after saying so (audited as an override)
+    if (t.blocked_by?.length && !(await askConfirm(`Tick ${t.title} anyway? It waits on ${t.blocked_by.map((x) => x.title).join(", ")}. Your override goes in the audit log.`, "Tick"))) return
     setBusy(t.id)
     try {
       await toggleTask(t.project_id, t.id, true)
@@ -120,6 +127,7 @@ export default function MyWork({ user }: { user: User }) {
               </select>
             )}
           </div>
+          <QuickAddTask projects={d.projects} me={user.id} preferred={project} onAdded={() => void load()} />
           {groups.length === 0 && <EmptyState>Nothing open{project ? " on this rollout" : ""}. Enjoy it.</EmptyState>}
           {groups.map((g) => (
             <div key={g.key} className="mb-3 last:mb-0">
@@ -127,15 +135,18 @@ export default function MyWork({ user }: { user: User }) {
               <ul className="divide-y divide-border text-[13px]">
                 {g.tasks.map((t) => {
                   const late = t.due_date ? lateBy(t.due_date, d.today) : 0
+                  const held = !!t.blocked_by?.length && user.role !== "Admin"
                   return (
                     <li key={t.id} className="flex items-center gap-3 py-2">
-                      <button type="button" aria-disabled={busy === t.id || undefined} onClick={() => tick(t)} aria-label={`Complete ${t.title}`}
-                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-control bg-background hover:border-foreground aria-disabled:opacity-50">
+                      <button type="button" disabled={held} aria-disabled={busy === t.id || undefined} onClick={() => tick(t)} aria-label={`Complete ${t.title}`}
+                        title={t.blocked_by?.length ? `Waits on ${t.blocked_by.map((x) => x.title).join(", ")}` : undefined}
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-control bg-background hover:border-foreground disabled:cursor-default disabled:opacity-50 aria-disabled:opacity-50">
                         {busy === t.id && <Check className="h-3 w-3 text-muted-foreground" />}
                       </button>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium" title={t.title}>{t.title}</span>
                         <Link to={`/board?rollout=${t.project_id}`} title={t.project} className="block truncate text-[12px] text-muted-foreground hover:underline">{t.project} · {t.stage || t.project_stage}</Link>
+                        {t.blocked_by?.length ? <WaitsOn waits={t.blocked_by} /> : null}
                       </span>
                       <DueButton t={t} late={late} onChange={(v) => void redate(t, v)} />
                     </li>

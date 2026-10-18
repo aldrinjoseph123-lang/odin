@@ -1,0 +1,40 @@
+{
+ "people": {
+  "1": {
+   "capacity": 30,
+   "hours": 96.0,
+   "level": "over"
+  },
+  "2": {
+   "capacity": 30,
+   "hours": 6.0,
+   "level": "ok"
+  },
+  "3": {
+   "capacity": 30,
+   "hours": 4.0,
+   "level": "ok"
+  },
+  "4": {
+   "capacity": 30,
+   "hours": 18.0,
+   "level": "ok"
+  },
+  "5": {
+   "capacity": 30,
+   "hours": 4.0,
+   "level": "ok"
+  },
+  "6": {
+   "capacity": 30,
+   "hours": 6.0,
+   "level": "ok"
+  },
+  "7": {
+   "capacity": 30,
+   "hours": 0.0,
+   "level": "ok"
+  }
+ },
+ "week": "2026-10-12"
+}

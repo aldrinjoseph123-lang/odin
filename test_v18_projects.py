@@ -242,7 +242,9 @@ class TeamAndSignalsTestCase(V18Base):   # P3-20, P3-21, P3-22, P3-23, P3-29, A1
         r = self.client.post("/api/projects/1/signoff", json={"signer_id": ann, "counter_id": 1, "summary": "Done", "delivered": ["All of it"]})
         self.assertEqual(r.status_code, 200, r.get_json())
         self.client.post("/projects/1/documents", data={"file": (io.BytesIO(b"%PDF-1.4 x"), "signed.pdf"), "category": "Deliverable"})
-        today = datetime.utcnow().date().isoformat()
+        with app_module.app.app_context():   # the upload checks the date against the workspace's own day, not UTC's
+            from policies import local_today
+            today = local_today().isoformat()
         self.client.post("/api/projects/1/signoff/1/upload", data={"file": (io.BytesIO(b"%PDF-1.4 y"), "signed.pdf"), "signer_name": "Ann", "signed_on": today})
         self.ctx()
         doc = signoff.completed(1)["document_id"]

@@ -4,7 +4,7 @@ import { Notice } from "@/components/Notice"
 import { EmptyState } from "@/components/EmptyState"
 import { pill } from "@/lib/ui"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { AlarmClock, ArrowRight, CalendarClock, Check, CheckSquare, ChevronLeft, ChevronRight, GanttChart, Hourglass, ShieldCheck, Target } from "lucide-react"
+import { AlarmClock, ArrowRight, CalendarClock, Check, CheckSquare, ChevronLeft, ChevronRight, Diamond, GanttChart, Hourglass, ShieldCheck, Target } from "lucide-react"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { Segmented } from "@/components/Segmented"
 import { Calendar as MiniMonth } from "@/components/ui/calendar"
@@ -28,8 +28,8 @@ import { fmtDate, addMonths, isDay, isMonth, localToday, laneSpans, monthGrid, m
 // or the person it is on (the server checks again); the toast can undo it.
 // The keyboard way is the chip's Move button and a date dialog (P2-43): Enter
 // on the chip opens its rollout, as on any link.
-type Item = { key: string; kind: "task" | "target" | "move" | "approval" | "span"; day: string; text: string; sub?: string; id: number; tone?: "bad" | "warn" | "ok" | "muted"; done?: boolean; state?: FlowState; task?: { id: number; project_id: number; title: string } }
-type Show = Record<"tasks" | "targets" | "history" | "spans", boolean>
+type Item = { key: string; kind: "task" | "target" | "move" | "approval" | "span" | "milestone"; day: string; text: string; sub?: string; id: number; tone?: "bad" | "warn" | "ok" | "muted"; done?: boolean; state?: FlowState; task?: { id: number; project_id: number; title: string } }
+type Show = Record<"tasks" | "targets" | "history" | "spans" | "milestones", boolean>
 type Mode = "month" | "week" | "agenda"
 const LANES = 3, WEEK_LANES = 6
 
@@ -39,6 +39,8 @@ function items(d: CalendarData, show: Show, only: Set<number> | null): Map<strin
   const add = (it: Item) => { if (!only || only.has(it.id)) out.set(it.day, [...(out.get(it.day) ?? []), it]) }
   if (show.targets) for (const t of d.targets) add({ key: `t${t.id}`, kind: "target", day: t.day, text: t.name, sub: `target · ${t.client}`, id: t.id, state: t.state, tone: t.state === "overdue" ? "bad" : t.state === "on_track" ? "muted" : "warn" })
   if (show.tasks) for (const t of d.tasks) add({ key: `k${t.id}`, kind: "task", day: t.day, text: t.title, sub: `${t.project}${t.who ? ` · ${t.who}` : ""}`, id: t.project_id, done: !!t.done, tone: !t.done && t.day < d.today ? "bad" : "muted", task: t.can_edit ? { id: t.id, project_id: t.project_id, title: t.title } : undefined })
+  // a diamond on its day; one that passed unreached is late in words as well as in the amber (the alert's word: missed)
+  if (show.milestones) for (const m of d.milestones) add({ key: `ms${m.id}`, kind: "milestone", day: m.day, text: m.name, sub: `${m.project}${m.stage ? ` · ${m.stage}` : ""}`, id: m.project_id, done: !!m.done, tone: !m.done && m.day < d.today ? "warn" : "muted" })
   if (show.history) {
     // a rollout can move, be put back and move again on one day: the place in the list keeps keys apart (P3-34)
     d.moves.forEach((m, i) => add({ key: `m${i}-${m.project_id}`, kind: "move", day: m.day, text: `${m.prev_stage} to ${m.stage}`, sub: `${m.project} · ${m.who}`, id: m.project_id, tone: "muted" }))
@@ -51,18 +53,20 @@ let lastDrop = 0
 const mondayOf = (iso: string) => addDays(iso, -((new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7))
 // a hand-edited link must not break the page (?month=2026-13 did: P3-34)
 
-const ICON = { task: CheckSquare, target: Target, move: ArrowRight, approval: ShieldCheck, span: GanttChart }
-const KIND = { task: "Task", target: "Target", move: "Moved", approval: "Approval", span: "Rollout" }
+const ICON = { task: CheckSquare, target: Target, move: ArrowRight, approval: ShieldCheck, span: GanttChart, milestone: Diamond }
+const KIND = { task: "Task", target: "Target", move: "Moved", approval: "Approval", span: "Rollout", milestone: "Milestone" }
 // a chip opens its rollout under the calendar (the URL keeps the view); `scope` keeps a
 // second copy of a chip (the open day's list) from registering the same draggable (P3-34)
 function Chip({ it, full, href, still, onMove, scope = "" }: { it: Item; full?: boolean; href: (id: number) => string; still?: boolean; onMove?: (it: Item) => void; scope?: string }) {
   // late is a glyph and a word, not red alone (WCAG 1.4.1, test report UX-19); so is a target at risk
   const late = it.tone === "bad" && !it.done && (it.kind === "task" || it.kind === "target")
-  const atRisk = it.kind === "target" && it.tone === "warn"
+  const warnTarget = it.kind === "target" && it.tone === "warn"
+  const atRisk = warnTarget && it.state !== "due_soon"   // the hourglass and its amber are for a rollout over its SLA; due soon is only a date coming up
+  const missed = it.kind === "milestone" && it.tone === "warn"
   const Icon = late ? AlarmClock : atRisk ? Hourglass : ICON[it.kind]
-  const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
+  const tone = it.tone === "bad" ? "text-bad" : it.tone === "warn" && (it.kind !== "target" || atRisk) ? "text-warn" : it.tone === "ok" ? "text-ok" : "text-muted-foreground"
   // what colour and the glyph say, in words for the screen reader (P2-44): "Task, late: …", "Target, due soon: …"
-  const said = `${KIND[it.kind]}${late ? ", late" : atRisk && it.state ? `, ${STATE[it.state].label.toLowerCase()}` : it.done ? ", done" : ""}:`
+  const said = `${KIND[it.kind]}${late ? ", late" : warnTarget && it.state ? `, ${STATE[it.state].label.toLowerCase()}` : missed ? ", missed" : it.done ? (it.kind === "milestone" ? ", reached" : ", done") : ""}:`
   const movable = !!it.task && !still
   const { setNodeRef, listeners, transform, isDragging } = useDraggable({ id: still ? `still-${it.key}` : `${scope}${it.key}`, data: it, disabled: !movable })
   const navigate = useNavigate()
@@ -70,7 +74,7 @@ function Chip({ it, full, href, still, onMove, scope = "" }: { it: Item; full?: 
   const title = `${late ? "Late: " : ""}${it.text}${it.sub ? ` — ${it.sub}` : ""}${movable ? " · drag to another day, or use Move" : ""}`
   const body = (
     <>
-      <Icon className={cn("mt-px h-3 w-3 shrink-0", tone)} aria-hidden />
+      <Icon className={cn("mt-px h-3 w-3 shrink-0", tone, it.kind === "milestone" && it.done && "fill-current")} aria-hidden />
       <span className="min-w-0">
         {/* the week is narrow at 1280: two lines each before the cut (P3-49) */}
         <span className={cn("block", full ? "line-clamp-2" : "truncate", it.done && "line-through text-muted-foreground", it.tone === "bad" && !it.done && "font-medium text-bad")}><span className="sr-only">{said}</span> {it.text}</span>
@@ -114,7 +118,7 @@ export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: 
   const href = (id: number) => { const n = new URLSearchParams(params); n.set("rollout", String(id)); return `/board?${n}` }
   const [d, setD] = useState<CalendarData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [show, setShow] = useState<Show>({ tasks: true, targets: true, history: true, spans: true })
+  const [show, setShow] = useState<Show>({ tasks: true, targets: true, history: true, spans: true, milestones: true })
   const [tick, setTick] = useState(0)   // a moved task reloads the month
   useEffect(() => {
     let live = true   // paging months quickly: only the month on screen lands
@@ -188,7 +192,7 @@ export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: 
 
   const step = (n: number) => mode === "week" ? set({ week: addDays(week, 7 * n), day: null }) : setMonth(addMonths(month, n))
   const title = mode === "week" ? `${shortDay(week)} – ${shortDay(addDays(week, 6))} ${addDays(week, 6).slice(0, 4)}` : monthTitle(month)
-  const layers: { key: keyof Show; label: string; icon: typeof Target }[] = [{ key: "spans", label: "Rollouts", icon: GanttChart }, { key: "targets", label: "Targets", icon: Target }, { key: "tasks", label: "Tasks", icon: CheckSquare }, { key: "history", label: "Moves & approvals", icon: ArrowRight }]
+  const layers: { key: keyof Show; label: string; icon: typeof Target }[] = [{ key: "spans", label: "Rollouts", icon: GanttChart }, { key: "targets", label: "Targets", icon: Target }, { key: "tasks", label: "Tasks", icon: CheckSquare }, { key: "milestones", label: "Milestones", icon: Diamond }, { key: "history", label: "Moves & approvals", icon: ArrowRight }]
   const header = (
     <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-3">
       <button type="button" onClick={() => mode === "week" ? set({ week: mondayOf(today), day: null }) : setMonth(today.slice(0, 7))} className={pill}>Today</button>
@@ -312,7 +316,7 @@ export function Calendar({ wide, stamp, only = null }: { wide: boolean; stamp?: 
                       <button type="button" onClick={() => setOpenDay(openDay === day ? null : day)} aria-label={`${fmtDate(day)}, ${list.length} item${list.length === 1 ? "" : "s"}`}
                         className={cn("mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] hover:bg-muted", day === today && "bg-primary font-semibold text-primary-foreground hover:bg-primary", openDay === day && day !== today && "ring-2 ring-primary/40")}>{Number(day.slice(8, 10))}</button>
                       <div style={{ height: laneCount * 18 }} aria-hidden />
-                      {extra > 0 && <button type="button" onClick={() => setOpenDay(day)} className="block px-2 text-[11px] text-muted-foreground hover:text-foreground">+{extra} rollout{extra === 1 ? "" : "s"}</button>}
+                      {extra > 0 && <button type="button" onClick={() => setOpenDay(day)} className="block px-2 text-[11px] text-muted-foreground hover:text-foreground" title={`${extra} more rollout${extra === 1 ? " is" : "s are"} running this week; open the day for the list`}>+{extra} more running</button>}
                       {list.slice(0, 3).map((it) => <Chip key={it.key} it={it} href={href} onMove={ask} />)}
                       {list.length > 3 && <button type="button" onClick={() => setOpenDay(day)} className="px-2 text-[11px] text-muted-foreground hover:text-foreground">+{list.length - 3} more</button>}
                     </Day>

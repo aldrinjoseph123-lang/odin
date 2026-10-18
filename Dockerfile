@@ -29,9 +29,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Dependencies first so image layers cache on code changes.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Dependencies first so image layers cache on code changes. requirements.lock
+# is requirements.txt with the sha256 of every file (scripts/make_lock.py): pip
+# refuses anything else (and any package the lock leaves out), so a registry cannot hand this build different bytes.
+COPY requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY . .
 COPY --from=frontend /frontend/dist ./frontend/dist

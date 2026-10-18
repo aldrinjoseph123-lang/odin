@@ -34,12 +34,20 @@ export function expectClean(errors: string[]) {
   expect(errors, "no console errors, page errors or failed requests").toEqual([])
 }
 
+// An element that has stopped moving (a panel that opened, a list that re-laid
+// out): its box is the same on two looks in a row. For a pointer drag, which
+// (unlike a click) does not wait for the target to settle.
+export async function settled(target: Locator) {
+  let last = ""
+  await expect.poll(async () => { const now = JSON.stringify(await target.boundingBox()); const same = now === last; last = now; return same }).toBe(true)
+}
+
 // Dark on demand: the app reads the theme from the root attribute (index.html sets it before paint).
 // Transitions are switched off first: a colour sampled mid-fade is neither theme.
 export async function setTheme(page: Page, theme: "light" | "dark") {
   await page.addStyleTag({ content: "*, *::before, *::after { transition: none !important; animation: none !important }" })
   await page.evaluate((t) => { document.documentElement.dataset.theme = t; document.documentElement.classList.toggle("dark", t === "dark") }, theme)
-  await page.waitForTimeout(50)
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))))   // the new tokens are painted
 }
 
 // The date picker (shadcn Calendar in a popover): open it unless it is open,

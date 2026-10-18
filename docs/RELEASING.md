@@ -43,6 +43,25 @@ not a squash, so the change log keeps every commit. Nothing is pushed straight t
 9. **The server follows** (`DEPLOY.md`, "Upgrades: the self-updater"). Never SSH in to check: ask the user to read
    `~/odin-update.log` and the version shown in the app.
 
+## The Python lock
+
+`requirements.txt` is the human-edited list of exact pins; `requirements.lock` is generated from it and holds the
+sha256 of every file the production image installs (Python 3.12, Linux x86_64, glibc). The Dockerfile installs with
+`pip install --require-hashes -r requirements.lock`, so a changed or substituted package fails the build.
+
+After **any** change to `requirements.txt`, regenerate and commit both together:
+
+    python3 scripts/make_lock.py            # needs network and pip >= 23 (any OS: it downloads Linux wheels)
+    python3 scripts/make_lock.py --check    # exit 1 = the lock is stale (test_v2_lock also fails)
+
+The script runs `pip download --no-deps --only-binary=:all: --python-version 3.12 --implementation cp --abi cp312
+--platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 --platform manylinux_2_28_x86_64` on the pins for
+Python >= 3.10 and hashes each file. It stops when a package has no wheel for that target (an sdist would need a
+compiler in the image, so decide that deliberately; today every package has a wheel). The lock covers x86_64 only: an
+arm64 build (Apple Silicon `docker build`) is refused until a second platform is added to `TARGET`. A transitive
+package missing from `requirements.txt` shows up as a failed image build (`--require-hashes` refuses a dependency
+it holds no hash for), which step 6 below exercises.
+
 ## Rolling back
 
 Tag the previous good commit as the next patch version from a branch that reverts the change, and release it the

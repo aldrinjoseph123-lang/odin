@@ -307,7 +307,7 @@ class AccessControlTest(Base):
     def test_creator_is_not_mailed_about_their_own_project(self):   # D12 (the part in notify_event)
         with self.raw_db() as db:
             db.execute("UPDATE users SET email = 'admin@odin.example' WHERE id = 1")
-            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('notify_email_enabled', '1')"); db.commit()
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('policy.notify_email_enabled', '1')"); db.commit()
         with patch("graph.send_mail", return_value=(True, None)) as mail:
             self.new_project(name="Mine", client="C")
             T.drain_outbox()
@@ -318,7 +318,7 @@ class AccessControlTest(Base):
         self._invite(1, "ann@acme.example", "Customer", "Ann")
         with self.raw_db() as db:
             stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position")]
-            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('notify_teams_enabled', '1')"); db.commit()
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('policy.notify_teams_enabled', '1')"); db.commit()
         self.client.post("/api/projects/1/stage", json={"stage": stages[1]})
         ann = self._external_client("ann@acme.example")
         aid = ann.get("/api/projects/1/flow").get_json()["approval"]["id"]
@@ -578,7 +578,7 @@ class IdentityTest(Base):   # test round 14 Oct 2026: P2-1 to P2-4, P2-9
         m = self.login_as("ms1")
         with self.raw_db() as db:
             db.execute("UPDATE users SET ms_oid = 'oid-ms1', password_hash = 'microsoft:no-password' WHERE id = ?", (ms,))
-            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('notify_email_enabled', '1')"); db.commit()
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('policy.notify_email_enabled', '1')"); db.commit()
         r = m.post("/account/email", data={"email": "me@evil.example"}, headers={"Accept": "application/json"})
         self.assertEqual(r.status_code, 400)
         with patch("graph.send_mail", return_value=(True, None)) as mail:

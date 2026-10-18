@@ -26,7 +26,8 @@ KINDS = {
         "label": "Rollout report", "title": "Rollout report",
         "sections": [("numbers", "Health and key numbers"), ("summary", "Summary, next steps, asks"), ("timeline", "Timeline and stage table"),
                      ("raid", "Risks, issues, decisions, blockers"), ("work", "Work, people and open tasks"), ("history", "Stage history and approvals"),
-                     ("plan_changes", "What moved in the plan (internal)"), ("notes", "Notes"), ("team", "Team")],
+                     ("plan_changes", "What moved in the plan (internal)"), ("notes", "Notes"),
+                     ("asks", "Asks of the customer and their rating (internal)"), ("team", "Team")],
         "texts": [("intro", "Opening text", "Printed under the title."), ("closing", "Closing text", "Printed at the end, e.g. contacts or a disclaimer.")],
     },
     "portfolio": {
@@ -43,7 +44,8 @@ KINDS = {
     },
 }
 PLACEHOLDERS = {"project": "the project's name", "client": "the customer", "company": "your company", "pm": "the project manager",
-                "po": "the PO number", "stage": "the current stage", "target": "the target date", "forecast": "the forecast finish", "date": "today"}
+                "po": "the PO number", "stage": "the current stage", "target": "the target date", "forecast": "the forecast finish", "date": "today",
+                "field:Name": "a custom field marked for customers, by its name (Settings › Rollouts & workflow)"}
 ACCENTS = {"blue": (61, 90, 254), "indigo": (79, 70, 229), "teal": (13, 148, 136), "green": (22, 163, 74), "orange": (234, 88, 12),
            "red": (225, 29, 46), "slate": (51, 65, 85), "black": (16, 17, 20)}
 LOGO_MAX = 1024 * 1024
@@ -190,8 +192,8 @@ def delete(template_id):
 
 
 def fill(text, values):
-    """Replace {placeholders}; unknown ones are left as typed."""
-    return re.sub(r"\{(\w+)\}", lambda m: str(values.get(m.group(1), m.group(0)) or ""), text or "")
+    """Replace {placeholders} and {field:Name}; unknown ones are left as typed."""
+    return re.sub(r"\{(\w+|field:[^{}\n]{1,60})\}", lambda m: str(values.get(m.group(1), m.group(0)) or ""), text or "")
 
 
 def section_on(config, key):

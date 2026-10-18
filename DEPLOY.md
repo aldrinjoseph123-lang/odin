@@ -160,6 +160,72 @@ on there. The app container must be able to reach that address (Docker's
 default bridge reaches the LAN); an address outside the private network is
 refused unless "Allow an external AI provider" is ticked.
 
+### Sign-in mail through Resend (optional)
+
+Odin can send its sign-in mail (sign-in links, password resets, address
+confirmations and partner invitations) through [Resend](https://resend.com)
+instead of Microsoft 365. Notifications, the digest and reports stay on
+Microsoft 365. Sign-in mail is a few emails a day, well inside Resend's free plan
+(100 a day, 3,000 a month).
+
+1. In Resend, add the sending domain (`protect24x7.com`) and add the DNS records
+   it shows (a DKIM record and the records for its own sending subdomain). Your
+   Microsoft 365 records stay as they are. Wait until Resend shows the domain as
+   verified.
+2. In Resend › API Keys, create a key with **sending access only**, limited to
+   that domain.
+3. In Odin, Settings › Notifications › Sign-in mail (Resend): paste the key
+   (stored sealed, never shown again), check the sender (default
+   `Odin PMS <odin-pms@protect24x7.com>`) and where replies go (default
+   `notifications@protect24x7.com`), switch on **Send sign-in mail through
+   Resend**, and press **Send me a test sign-in email (Resend)**.
+
+The VM needs outbound HTTPS to `api.resend.com`. If Resend refuses a message
+(over the daily limit, a revoked key), Odin uses Microsoft 365 when it is
+connected and tells the admins in the bell once a day.
+
+### CRM intake (optional, v2.0.0)
+
+The CRM hands a won deal to Odin with `POST /api/v1/intake`; Odin makes a pending rollout that a project
+manager confirms. The contract (every key, every answer) is `docs/API_V1.md`.
+
+1. In Odin, **Settings → Integrations → Intake**: set the stage template and the default project manager a new
+   intake gets (blank: the first template and the first active Admin), and the rate limit (30 a minute per
+   token by default).
+2. Press **Create intake token**, name it after the CRM (the name is the *source* shown on every intake) and
+   copy the token: it is shown once and only its hash is kept. It has the `create` scope, which opens the
+   intake and nothing else; a read token cannot post and an intake token cannot read.
+3. To accept only named CRMs, list their token names under *allowed sources* (blank lets every `create`
+   token in). To accept calls only from the CRM's servers, put its outbound addresses or ranges under
+   *allowed addresses* (e.g. `203.0.113.0/24, 198.51.100.7`; blank: any). Odin checks the client address it
+   already trusts: behind nginx and cloudflared that needs `PMS_TRUST_PROXY=1` (the compose file sets it) and
+   the nginx overlay that passes Cloudflare's `CF-Connecting-IP`; without them every call looks like it comes
+   from the proxy. Test with one call after saving: a refusal is a `403` naming the address it saw.
+4. In the CRM, call `https://odin.yourdomain/api/v1/intake` with `Authorization: Bearer <token>` and the deal
+   as JSON. Use the CRM's deal id as `deal_id`: a retry after a timeout then answers with the same rollout.
+5. Check the last ten calls under the same settings card. To retire the CRM, revoke its token there.
+6. An intake token runs out after *Intake tokens last (days)* (365 by default) and then answers `401 … expired`.
+   Press **Renew** on its row before (or after) that: it works again for as many days from today with the same
+   secret, so nothing changes in the CRM. Put the expiry date in the CRM owner's calendar. Duplicate and refused
+   calls are in the audit trail as `intake_duplicate` / `intake_refused` (at most one row per token, kind and
+   status a minute).
+
+The request must reach Odin: from the LAN, the VM's address works; through the tunnel, `/api/v1` needs a
+Cloudflare Access bypass or service token if Access is ever put in front of Odin.
+
+### Personal calendar feeds (v2.0.0)
+
+Staff can subscribe to their own tasks, targets and milestones from Outlook or any calendar app (Account →
+Calendar feed). Nothing to install: the address is `https://odin.yourdomain/feeds/calendar/<token>.ics`, made,
+rotated and switched off by the person (each audited), stored only as a hash, dead the moment the account is
+deactivated, and limited to `ics_feed_per_hour` reads an hour (Settings → Notifications). A feed nobody has
+fetched for `ics_idle_days` (30 by default, 0 = never; same settings page) switches itself off in the nightly
+housekeeping, audited as "calendar feed switched off: unused N days"; the Account page shows when it was last
+read, and the person makes a new address to turn it on again. Outlook on the web
+and phone calendars fetch it from their own servers on the internet, so the path must be reachable through the
+tunnel without a sign-in (it is, as long as no Cloudflare Access policy covers `/feeds/`). Partners and
+customers get no feed.
+
 ### Upgrades: the self-updater
 
 Production updates itself. `deploy/odin-update.sh`, installed outside the

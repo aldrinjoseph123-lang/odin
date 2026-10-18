@@ -15,6 +15,7 @@ from constants import ACCENTS, ADMIN_KINDS, AVATAR_EXTENSIONS, AVATAR_MAX_BYTES,
 from db import AVATAR_DIR, get_db
 from security import (
     consume_login_link,
+    identity_taken,
     reset_link_row,
     issue_login_link,
     login_account_paused,
@@ -36,6 +37,32 @@ from spa import spa_index
 _NO_ACCOUNT_HASH = generate_password_hash("no account has this password", method="pbkdf2:sha256")
 
 
+def _account_for(typed):
+    """The account a sign-in names: its exact username, else the one account whose
+    username or email matches ignoring case. People who joined through a sign-up
+    link chose a username but remember their email (16 Oct 2026).
+
+    Typed text that looks like an email and is exactly one account's address
+    names that account, even when another account has it as its username. New
+    usernames may not be another account's email (security.py), so only older
+    rows collide; the address wins because it is the one the owner proves
+    (sign-in links and resets go to it), while a username equal to someone
+    else's address would let that account take the owner's sign-ins and lock
+    them out with its failed attempts. The other account signs in by its own
+    email or an admin renames it."""
+    db = get_db()
+    if "@" in typed:
+        owners = db.execute("SELECT * FROM users WHERE lower(email) = lower(?) LIMIT 2", (typed.strip(),)).fetchall()
+        if len(owners) == 1:
+            return owners[0]
+    exact = db.execute("SELECT * FROM users WHERE username = ?", (typed,)).fetchone()
+    if exact:
+        return exact
+    rows = db.execute("SELECT * FROM users WHERE lower(username) = lower(?) OR lower(email) = lower(?) LIMIT 2",
+                      (typed.strip(), typed.strip())).fetchall()
+    return rows[0] if len(rows) == 1 else None   # two matches: neither, rather than guess
+
+
 def attempt_login(username, password):
     """The one login path, shared by the HTML form and /api/login.
 
@@ -48,7 +75,9 @@ def attempt_login(username, password):
     if not isinstance(username, str) or not isinstance(password, str) or "\x00" in username or len(username) > 200 or len(password) > 1000:
         return False, "Bad username or password"
     too_many = f"Too many failed attempts. Try again in {policy('login_window_minutes')} minutes."
-    user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    user = _account_for(username)
+    if user:
+        username = user["username"]   # the lockout, attempts and audit rows key on the real name, whichever was typed
     # a name no account has is counted and audited as a keyed hash, never as typed (review P3-4)
     key = username if user else unknown_name(username)
     if login_is_blocked(key):
@@ -158,7 +187,8 @@ def send_login_link(user, raw_token, invited_by=None, project_name=None, project
     """Email the link; returns (ok, error). Never raises."""
     import graph
     try:
-        return graph.send_mail(user["email"], "Your Odin sign-in link", _login_link_html(raw_token, invited_by, project_name, project_id))
+        from services.resend import send_account_mail
+        return send_account_mail(user["email"], "Your Odin sign-in link", _login_link_html(raw_token, invited_by, project_name, project_id))
     except Exception as exc:  # network / token errors must not break the invite
         return False, str(exc)
 
@@ -168,14 +198,14 @@ def mail_after_reply(to, subject, html):
     as fast as one for an unknown address (review P3-3: a timing oracle). The
     link's token stays in memory, never in the outbox table. SEND_MAIL_INLINE
     (the tests) sends at once."""
-    import graph
     from flask import after_this_request, current_app
+    from services.resend import send_account_mail
     app_ = current_app._get_current_object()
 
     def send():
         with app_.app_context():
             try:
-                graph.send_mail(to, subject, html)
+                send_account_mail(to, subject, html)
             except Exception as exc:  # noqa: BLE001 — delivery failure must not reveal anything
                 app.logger.warning("mail after a reply (%s) failed: %s", subject, exc)
 
@@ -207,8 +237,9 @@ def send_verification(user_id):
 def _mail_off():
     """Mail is not connected: say so honestly instead of promising a link (the
     reply is the same for every address, so nothing is revealed)."""
-    from db import get_setting
-    return get_setting("notify_email_enabled") != "1"
+    from policies import policy
+    from services.resend import configured
+    return not policy("notify_email_enabled") and not configured()   # Resend sends sign-in mail on its own
 
 
 @app.route("/auth/link", methods=["GET", "POST"])
@@ -550,13 +581,17 @@ def account_sign_out_others():
 @app.route("/account/notifications", methods=["POST"])
 @login_required
 def account_notifications():
-    """Which kinds this user wants by email. Ticked = on; the form sends only
-    the ticked ones. In-app notifications always arrive."""
-    off = [k for k in NOTIFICATION_KINDS if request.form.get(k) != "on" and (k not in ADMIN_KINDS or session.get("role") == "Admin")]
+    """How this user takes each kind by email and Teams: kind=instant (or "on",
+    the old switch), kind=summary (the daily summary), anything else or absent
+    = off. In-app notifications always arrive at once."""
+    mine = [k for k in NOTIFICATION_KINDS if k not in ADMIN_KINDS or session.get("role") == "Admin"]
+    off = [k for k in mine if request.form.get(k) not in ("on", "instant", "summary")]
+    summary = [k for k in mine if request.form.get(k) == "summary"]
     db = get_db()
-    db.execute("UPDATE users SET email_off = ? WHERE id = ?", (",".join(off), session["user_id"]))
+    db.execute("UPDATE users SET email_off = ?, email_summary = ? WHERE id = ?", (",".join(off), ",".join(summary), session["user_id"]))
     db.commit()
-    audit_log("change_own_notification_prefs", "user", session["user_id"], session.get("user_name"), f"email off: {','.join(off) or 'none'}")
+    audit_log("change_own_notification_prefs", "user", session["user_id"], session.get("user_name"),
+              f"email off: {','.join(off) or 'none'}; daily summary: {','.join(summary) or 'none'}")
     flash("Notification settings saved")
     return redirect(url_for("account"))
 
@@ -676,7 +711,7 @@ def account_email():
     if wrong := recheck_password(me, request.form.get("password", ""), "Enter your current password to change your email"):
         flash(wrong, "error")
         return redirect(url_for("account"))
-    if email and db.execute("SELECT 1 FROM users WHERE lower(email) = ? AND id != ?", (email.lower(), session["user_id"])).fetchone():
+    if email and identity_taken(db, email, session["user_id"]):
         flash("That address belongs to another account", "error")
         return redirect(url_for("account"))
     # links sent to the old address die with the epoch; other sessions end, this one carries on.

@@ -13,45 +13,46 @@
  "page": 1,
  "projects": [
   {
-   "id": 1,
-   "name": "EDR Rollout - Globex"
+   "id": 24,
+   "name": "Branch SD-WAN refresh"
   },
   {
-   "id": 10,
-   "name": "EDR rollout - Acme Bank"
+   "id": 1,
+   "name": "EDR Rollout - Globex"
   }
  ],
  "rows": [
   {
    "action": "login_success",
    "details": null,
-   "id": 164,
+   "id": 174,
    "ip_address": "127.0.0.1",
    "resource_id": 1,
    "resource_name": "admin",
    "resource_type": "user",
-   "timestamp": "2026-10-15T19:13:43.567247",
+   "timestamp": "2026-10-16T19:20:31.359508",
    "user_id": 1,
    "user_name": "Admin",
    "username": "admin"
   },
   {
-   "action": "signoff_send",
-   "details": "v1 to signer14@customer.example sha256=cde8e17423f8dfeb",
-   "id": 163,
+   "action": "intake_create",
+   "details": "source=crm-seed deal=CRM-2041 client=Hooli fields: Endpoints in scope: \u2014 \u2192 220; Region: \u2014 \u2192 UAE",
+   "id": 173,
    "ip_address": "127.0.0.1",
-   "resource_id": 14,
-   "resource_name": "Email security - Hooli",
+   "resource_id": 24,
+   "resource_name": "Branch SD-WAN refresh",
    "resource_type": "project",
-   "timestamp": "2026-10-15T19:13:43.257476",
-   "user_id": 1,
-   "user_name": "Admin",
-   "username": "Admin"
+   "timestamp": "2026-10-16T19:20:31.086370",
+   "user_id": null,
+   "user_name": null,
+   "username": "token:crm-seed"
   }
  ],
- "total": 164,
+ "total": 174,
  "total_pages": 2,
  "usernames": [
-  "Admin"
+  "Admin",
+  "token:crm-seed"
  ]
 }

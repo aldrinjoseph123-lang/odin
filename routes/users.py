@@ -7,17 +7,19 @@ from flask import abort, flash, redirect, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 from constants import ROLES
-from policies import policy
-from core import app, permission_required
+from policies import POLICIES, policy
+from core import app, as_id, permission_required, role_has_permission
 from spa import spa_index
-from db import get_db
-from security import password_problem, valid_email, valid_username, safe_csv_writer
+from db import PROJECT_OPEN_SQL, get_db, set_project_manager
+from security import identity_taken, password_problem, valid_email, valid_username, safe_csv_writer
+from services import workload
+from services.fmt import plural
 from services.audit import audit_log
 
 
 def _email_taken(db, email, user_id=None):
     """Email lookups (invites, sign-in links, password resets) need one account per address (test report FN-6)."""
-    return db.execute("SELECT 1 FROM users WHERE lower(email) = lower(?) AND id != ?", (email, user_id or 0)).fetchone() is not None
+    return identity_taken(db, email, user_id)   # nor anyone's username: sign-in takes either
 
 
 def admin_only(*roles):
@@ -45,7 +47,7 @@ def users():
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "")
     role = request.form.get("role") or "Member"
-    existing = db.execute("SELECT id FROM users WHERE lower(username) = lower(?)", (username,)).fetchone()   # "Pm1" is "pm1"
+    existing = identity_taken(db, username)   # "Pm1" is "pm1", and no one's address either
     problem = password_problem(password)
     if not username or not name:
         flash("Username and name are required", "error")
@@ -58,7 +60,7 @@ def users():
     elif admin_only(role):
         flash("Only an admin can create an admin", "error")
     elif existing:
-        flash("Username already exists", "error")
+        flash("That username is taken, or is another account's email", "error")
     elif email and not valid_email(email):
         flash("Enter a valid email address", "error")
     elif email and _email_taken(db, email):
@@ -86,14 +88,17 @@ def users_export():
     import csv
     import io
     from flask import Response
-    rows = get_db().execute(
-        "SELECT username, name, email, role, active, created_at, last_login_at FROM users ORDER BY username"
+    from services.access_review import review
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, username, name, email, role, active, created_at, last_login_at FROM users ORDER BY username"
     ).fetchall()
+    flagged = review(db, policy("access_review_days"))
     out = io.StringIO()
     writer = safe_csv_writer(out)
-    writer.writerow(["username", "name", "email", "role", "active", "created_at", "last_login_at"])
+    writer.writerow(["username", "name", "email", "role", "active", "created_at", "last_login_at", "review"])
     for r in rows:
-        writer.writerow([r["username"], r["name"], r["email"], r["role"], r["active"], r["created_at"], r["last_login_at"]])
+        writer.writerow([r["username"], r["name"], r["email"], r["role"], r["active"], r["created_at"], r["last_login_at"], "; ".join(flagged.get(r["id"], []))])
     audit_log("export_users", details=f"{len(rows)} accounts")
     return Response(out.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": "attachment; filename=odin-users.csv"})
@@ -142,11 +147,89 @@ def user_set_active(user_id):
         # the switch would skip the approval: no role chosen, no rollout joined, still "waiting" (review P3-15)
         flash("This person is waiting for approval: use Approve or Decline on the Users page", "error")
         return redirect(url_for("users"))
+    handover = None
+    if request.form.get("handover_to"):
+        handover, problem = _handover_target(db, user, active, as_id(request.form.get("handover_to")))
+        if problem:
+            flash(problem, "error")
+            return redirect(url_for("users"))
     # Bumping the epoch ends any session this user currently has open.
     db.execute("UPDATE users SET active = ?, session_epoch = session_epoch + 1 WHERE id = ?", (active, user_id))
+    moved = _hand_over(db, user_id, handover["id"]) if handover else None   # same transaction: all of it or none
     db.commit()
-    audit_log("set_user_active", "user", user_id, user["username"], f"active={active}")
-    flash("User updated")
+    said = ""
+    if moved:
+        said = (f"; handed over to {handover['name']}: {moved['tasks']} open {plural(moved['tasks'], 'task')}, "
+                f"{len(moved['rollouts'])} {plural(len(moved['rollouts']), 'rollout')}, {moved['raid']} RAID {plural(moved['raid'], 'item')}")
+    audit_log("set_user_active", "user", user_id, user["username"], f"active={active}{said}")
+    if moved and (moved["tasks"] or moved["rollouts"] or moved["raid"]):
+        _tell_new_owner(handover["id"], user["name"], moved)
+    flash("User updated" + said)
+    return redirect(url_for("users"))
+
+
+def _handover_target(db, user, active, target_id):
+    """(the colleague to hand the work to, None) or (None, why not). Leave only: an
+    active staff account other than the person, who can manage a rollout when they hold some."""
+    if active:
+        return None, "A hand-over goes with deactivating, not reactivating"
+    target = db.execute("SELECT id, name, role FROM users WHERE id = ? AND active = 1 AND kind = 'internal' AND pending = 0",
+                        (target_id or 0,)).fetchone()
+    if target is None or target["id"] == user["id"]:
+        return None, "Pick an active colleague (not an external account) to hand the work to"
+    if workload.holds(db, [user["id"]])[user["id"]]["rollouts"] and not role_has_permission(target["role"], "edit_project_stage"):
+        return None, f"{target['name']} cannot manage rollouts: pick an Admin or Member"   # as the owner of a rollout must be
+    return target, None
+
+
+def _hand_over(db, from_id, to_id):
+    """Move the person's open tasks, rollouts (as owner, pending CRM intakes too) and RAID items to `to_id`; the caller commits."""
+    now = datetime.utcnow().isoformat()
+    live = f"IN (SELECT p.id FROM projects p WHERE p.deleted_at IS NULL AND {PROJECT_OPEN_SQL})"
+    rollouts = [dict(r) for r in db.execute(   # an intake waiting for confirmation would otherwise wait on someone who left
+        f"SELECT p.id, p.name FROM projects p WHERE p.owner_id = ? AND p.deleted_at IS NULL AND ({PROJECT_OPEN_SQL} OR p.intake_pending = 1) ORDER BY p.name",
+        (from_id,))]
+    for r in rollouts:
+        db.execute("UPDATE projects SET owner_id = ?, updated_at = ? WHERE id = ?", (to_id, now, r["id"]))
+        set_project_manager(db, r["id"], to_id, session["user_id"])   # the PM row follows the owner; they stay on the team as a coordinator
+    tasks = db.execute(f"UPDATE tasks SET assignee_id = ? WHERE assignee_id = ? AND done = 0 AND project_id {live}", (to_id, from_id)).rowcount
+    raid = db.execute(f"UPDATE raid_items SET owner_id = ?, updated_at = ? WHERE owner_id = ? AND status NOT IN ('closed', 'decided') AND project_id {live}",
+                      (to_id, now, from_id)).rowcount
+    return {"tasks": tasks, "rollouts": rollouts, "raid": raid}
+
+
+def _tell_new_owner(to_id, from_name, moved):
+    from markupsafe import escape
+    from services.notifications import notify_users
+    parts = [f"{moved['tasks']} open {plural(moved['tasks'], 'task')}" if moved["tasks"] else "",
+             f"{len(moved['rollouts'])} {plural(len(moved['rollouts']), 'rollout')} to manage" if moved["rollouts"] else "",
+             f"{moved['raid']} RAID {plural(moved['raid'], 'item')}" if moved["raid"] else ""]
+    what = ", ".join(x for x in parts if x)
+    names = ", ".join(escape(r["name"]) for r in moved["rollouts"][:5]) + (" and more" if len(moved["rollouts"]) > 5 else "")
+    notify_users([to_id], "assigned", None, f"{escape(from_name)}'s work is yours now",
+                 f"{escape(session['user_name'])} handed over {escape(from_name)}'s work to you: {what}." + (f" Rollouts: <b>{names}</b>." if names else ""),
+                 exclude_user_id=session["user_id"], link="/my-work")
+
+
+@app.route("/users/<int:user_id>/capacity", methods=["POST"])
+@permission_required("manage_users")
+def user_set_capacity(user_id):
+    """Hours a week this person can plan (People › Workload); blank takes the workspace default."""
+    db = get_db()
+    user = _user_or_404(db, user_id)
+    raw = request.form.get("capacity_hours", "").strip()
+    low, high = POLICIES["capacity_hours_per_week"]["min"], POLICIES["capacity_hours_per_week"]["max"]   # one's own limits are the default's
+    try:
+        hours = round(float(raw), 1) if raw else None
+    except ValueError:
+        hours = -1
+    if hours is not None and not low <= hours <= high:
+        flash(f"Capacity is between {low} and {high} hours a week; leave it blank for the default", "error")
+        return redirect(url_for("users"))
+    db.execute("UPDATE users SET capacity_hours = ? WHERE id = ?", (hours, user_id))
+    db.commit()
+    audit_log("set_user_capacity", "user", user_id, user["username"], f"capacity_hours={hours}")
+    flash("Capacity saved" if hours else "Capacity back to the default")
     return redirect(url_for("users"))
 
 

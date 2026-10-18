@@ -133,6 +133,7 @@
     --brand-paper: #FFFFFF;
     --brand-muted: #B8B8B4;
     --brand-edge: transparent;
+    --segment-on: var(--card);       /* the chosen option of a Segmented: white on the muted track */
     --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B6270' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
@@ -178,6 +179,7 @@
     --sidebar: #15181E;
     --sidebar-foreground: #E7E8EC;
     --sidebar-border: #262B34;
+    --segment-on: #4C5059;          /* foreground at 20% over --muted: 1.8:1 against the track (the card tone was 1.2:1) */
     --brand-edge: #2E3440;          /* keeps the black tile visible on the dark ground */
     --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239AA0AB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     color-scheme: dark;
@@ -398,6 +400,20 @@ main { counter-reset: panel; }
   nav, [role="tooltip"], [data-slot="tooltip-content"], [aria-live="polite"].fixed { display: none !important; }
   /* bars, dots and pills are data: print their fills */
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* The Gantt as shown (B20): its own landscape page, nothing but the chart. What sits beside it
+     in the page (the Flow's header, the open rollout's pane) carries data-print-hide; the ones
+     that hold the chart lose their screen height, scroll and card so the whole chart is laid
+     out. FlowGantt squeezes the timeline to the page while printing (beforeprint). */
+  @page gantt { size: A4 landscape; margin: 8mm; }
+  [data-gantt-print] { page: gantt; }
+  body:has([data-gantt-print]) [data-print-hide] { display: none; }
+  body:has([data-gantt-print]) :has([data-gantt-print]) {
+    display: block !important; position: static !important; height: auto !important; max-height: none !important; min-height: 0 !important;
+    overflow: visible !important; margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; transform: none !important; background: transparent !important;
+  }
+  [data-gantt-print] [role="table"] { overflow: visible !important; height: auto !important; }
+  [data-gantt-print] [role="row"] { break-inside: avoid; }
 }
 
 /* Respect the OS "reduce motion" setting: no transitions, no animations. */

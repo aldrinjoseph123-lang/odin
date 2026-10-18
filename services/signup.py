@@ -13,7 +13,7 @@ from werkzeug.security import generate_password_hash
 from constants import PROJECT_MANAGER, PROJECT_ROLES, EXTERNAL_PROJECT_ROLES
 from db import get_db
 from policies import policy
-from security import password_problem, token_hash, valid_email, valid_username
+from security import identity_taken, password_problem, token_hash, valid_email, valid_username
 
 LINK_ROLES = ("Member", "Contributor", "Viewer")                                  # never Admin by link
 PROJECT_LINK_ROLES = tuple(r for r in PROJECT_ROLES if r != PROJECT_MANAGER and r not in EXTERNAL_PROJECT_ROLES)
@@ -122,9 +122,9 @@ def register(link, form):
     if channel not in CHANNELS:
         raise ValueError("Pick email or Teams")
     db = get_db()
-    if db.execute("SELECT 1 FROM users WHERE lower(username) = ?", (username.lower(),)).fetchone():
+    if identity_taken(db, username):   # nor another person's email: sign-in takes either
         raise ValueError("That username is taken; pick another")
-    if db.execute("SELECT 1 FROM users WHERE lower(email) = ?", (email,)).fetchone():
+    if identity_taken(db, email):
         raise ValueError("That address already has an account; ask an admin")
     # take the use first, guarded: two people on a single-use link at the same moment cannot both get in
     if not db.execute("UPDATE signup_links SET uses = uses + 1 WHERE id = ? AND uses < max_uses AND revoked_at IS NULL",

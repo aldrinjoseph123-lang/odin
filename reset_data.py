@@ -10,9 +10,9 @@ stopped (docker compose stop app scheduler) so nothing writes meanwhile:
 Kept:    users, roles/permissions, stages (and their SLAs), doc categories,
          contacts/partners/vendors/products/outsourcers, settings, the M365
          connection, and the audit log.
-Removed: projects and everything hanging off them — status notes, tasks,
+Removed: projects and everything hanging off them — status notes, tasks, their links and answers,
          document rows, alerts, each project's own stage list, its team,
-         approval requests and saved reports, the dashboard's daily counts and
+         approval requests, ratings and saved reports, the dashboard's daily counts and
          the AI's cached portfolio words — plus the uploaded files on
          disk, and every outstanding sign-in link (they belong to demo
          invitations). External accounts created by demo invites are kept
@@ -36,8 +36,8 @@ from db import DB_PATH, UPLOAD_DIR
 # "new table" checklist in CLAUDE.md). The dashboard's daily counts describe
 # the wiped projects too, so they go first, and so does mail still queued
 # about them (the outbox: its sign-in links would lead nowhere).
-WIPE_TABLES = ["outbox", "portfolio_snapshots", "lessons", "doc_text", "ai_calls", "ai_suggestions", "ai_jobs", "signoffs", "scope_items", "plan_changes", "raid_items", "notifications", "status_notes", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
-               "project_participants", "project_stages", "login_links", "signup_links", "projects"]
+WIPE_TABLES = ["rollout_watch", "outbox", "portfolio_snapshots", "lessons", "doc_text", "ai_calls", "ai_suggestions", "ai_jobs", "signoffs", "scope_items", "project_field_values", "plan_changes", "raid_items", "milestones", "rule_runs", "notifications", "status_notes", "csat", "task_answers", "task_links", "tasks", "documents", "alerts", "stage_approvals", "project_reports",
+               "project_participants", "project_stages", "login_links", "signup_links", "intake_calls", "projects"]
 
 
 def counts(db):

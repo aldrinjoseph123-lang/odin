@@ -21,9 +21,11 @@ import Alerts from "@/pages/Alerts"
 // the admin pages: most people never open them, so they are not in the main bundle (advice A21)
 const Users = lazyPage(() => import("@/pages/Users"))
 const Audit = lazyPage(() => import("@/pages/Audit"))
+const Workload = lazyPage(() => import("@/pages/Workload"))   // People › Workload
 const Settings = lazyPage(() => import("@/pages/Settings"))
 const Rbac = lazyPage(() => import("@/pages/Rbac"))
 const Contacts = lazyPage(() => import("@/pages/Contacts"))
+const Automations = lazyPage(() => import("@/pages/Automations"))   // Settings › Automations (manage_rules)
 const Analytics = lazyPage(() => import("@/pages/Analytics"))
 const ReportAll = lazyPage(() => import("@/pages/ReportAll"))
 // the report carries the chart library too: its own chunk
@@ -131,12 +133,14 @@ export default function App() {
         <Route path="/account" element={<Protected>{(user) => <Account user={user} />}</Protected>} />
         <Route path="/my-work" element={<Protected>{(user) => <MyWork user={user} />}</Protected>} />
         <Route path="/people" element={<Protected>{(user) => <People user={user} />}</Protected>} />
+        <Route path="/people/workload" element={<Protected>{(user) => <Workload user={user} />}</Protected>} />
         <Route path="/people/:id" element={<Protected>{(user) => <Remount><Person user={user} /></Remount>}</Protected>} />
         <Route path="/alerts" element={<Protected>{(user) => <Alerts user={user} />}</Protected>} />
         <Route path="/analytics" element={<Protected>{(user) => admin(<Analytics user={user} />)}</Protected>} />
         <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
         <Route path="/settings/rbac" element={<Protected>{(user) => <SettingsLayout user={user}>{admin(<Rbac user={user} />)}</SettingsLayout>}</Protected>} />
         <Route path="/settings/contacts" element={<Protected>{(user) => <SettingsLayout user={user}>{admin(<Contacts user={user} />)}</SettingsLayout>}</Protected>} />
+        <Route path="/settings/automations" element={<Protected>{(user) => <SettingsLayout user={user}>{admin(<Automations user={user} />)}</SettingsLayout>}</Protected>} />
         <Route path="/settings/:section" element={<Protected>{(user) => <SettingsLayout user={user}>{admin(<Settings user={user} />)}</SettingsLayout>}</Protected>} />
         <Route path="*" element={<HandOffToFlask />} />
       </Routes>

@@ -128,7 +128,7 @@ def extract_pending(db=None, limit=200):
     from db import get_db
     db = db or get_db()
     ids = [r[0] for r in db.execute("SELECT d.id FROM documents d LEFT JOIN doc_text t ON t.document_id = d.id "
-                                    "WHERE d.deleted_at IS NULL AND t.document_id IS NULL ORDER BY d.id DESC LIMIT ?", (limit,))]
+                                    "WHERE d.deleted_at IS NULL AND d.review_status = 'accepted' AND t.document_id IS NULL ORDER BY d.id DESC LIMIT ?", (limit,))]
     for i in ids:
         text_of(i, db)
     return len(ids)
@@ -141,9 +141,11 @@ def text_of(document_id, db=None):
     row = db.execute("SELECT text, error FROM doc_text WHERE document_id = ?", (document_id,)).fetchone()
     if row:
         return row["text"] or "", row["error"]
-    doc = db.execute("SELECT id, project_id, filename, stored_name FROM documents WHERE id = ? AND deleted_at IS NULL", (document_id,)).fetchone()
+    doc = db.execute("SELECT id, project_id, filename, stored_name, review_status FROM documents WHERE id = ? AND deleted_at IS NULL", (document_id,)).fetchone()
     if doc is None:
         return "", "the document is gone"
+    if doc["review_status"] != "accepted":   # an outside upload is not read before staff accept it (services/doc_review.py)
+        return "", "not reviewed yet"
     path = os.path.join(UPLOAD_DIR, str(doc["project_id"]), doc["stored_name"])
     text, error = extract_isolated(path, os.path.splitext(doc["filename"])[1]) if os.path.exists(path) else ("", "the file is missing")
     db.execute("INSERT OR REPLACE INTO doc_text (document_id, project_id, chars, text, error, extracted_at) VALUES (?, ?, ?, ?, ?, ?)",

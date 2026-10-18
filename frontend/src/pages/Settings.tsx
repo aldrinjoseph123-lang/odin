@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react"
 import { PageHeader } from "@/components/PageHeader"
 import { EmptyState } from "@/components/EmptyState"
 import { toast } from "@/lib/toast"
 import { Panel } from "@/components/PanelTitle"
 import { fieldAuto, danger, fieldArea, th, td } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
-import { Navigate, useParams } from "react-router-dom"
+import { Navigate, useLocation, useParams } from "react-router-dom"
 import { Trash2 } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { ApiError, postForm, settingsData, type FormReply, type BackupRun, type BackupsView, type Policy, type SettingsData, type User } from "@/lib/api"
 import { Ago } from "@/components/Ago"
-import { fmtDate } from "@/lib/format"
+import { fmtDateY } from "@/lib/format"
 import { copyWithToast } from "@/lib/copy"
 import { Notice } from "@/components/Notice"
 import { cn } from "@/lib/utils"
@@ -23,6 +23,8 @@ import { isDark } from "@/lib/theme"
 import { DocTemplates } from "@/components/DocTemplates"
 import { AISettings } from "@/components/AISettings"
 import { SlaCheck } from "@/components/SlaCheck"
+import { FieldsEditor } from "@/components/FieldsEditor"
+import { IntakeSettings } from "@/components/IntakeSettings"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 
@@ -38,7 +40,7 @@ const TITLES: Record<string, { title: string; lede: string }> = {
   people: { title: "Sign-up & activity", lede: "Sign-up links, and whether Odin records each person's active time." },
   workflow: { title: "Rollouts & workflow", lede: "What new rollouts start with, their stages and the alerts they raise." },
   notifications: { title: "Notifications", lede: "Which channels carry rollout events; each person tunes their own email." },
-  integrations: { title: "Integrations", lede: "Microsoft 365 mail, Teams and OneDrive." },
+  integrations: { title: "Integrations", lede: "Microsoft 365 mail, Teams, OneDrive and the CRM intake." },
   ai: { title: "AI", lede: "The AI server, its health, and which features pass on today's model." },
   reports: { title: "Reports", lede: "The weekly portfolio report: who gets it, when, and what rides along." },
   documents: { title: "Documents", lede: "Brand, sections and wording for reports and the sign-off." },
@@ -59,6 +61,19 @@ export default function Settings(_props: { user: User }) {
     try { setData(await settingsData(section, teamId)); setError(null) } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load settings") }
   }, [teamId, section])
   useEffect(() => { if (TITLES[section]) { document.title = `${TITLES[section].title} · Settings · Odin`; void load() } }, [load, section])
+  // a link from the palette or the menu filter (#pol-<key>) scrolls to that setting and marks it for a moment (advice B7)
+  const { hash } = useLocation()
+  const marked = useRef("")
+  useEffect(() => {
+    const row = data && hash.startsWith("#pol-") && marked.current !== hash ? document.getElementById(`row-${hash.slice(5)}`) : null
+    if (!row) return
+    marked.current = hash   // once per link: a save that reloads the page does not mark it again
+    row.scrollIntoView({ block: "center" })
+    row.classList.add("rounded-lg", "bg-accent", "ring-8", "ring-accent")
+    const clear = () => row.classList.remove("rounded-lg", "bg-accent", "ring-8", "ring-accent")
+    const t = setTimeout(clear, 2500)
+    return () => { clearTimeout(t); clear() }
+  }, [data, hash])
 
   const send: Send = async (path, fields = {}, confirmText) => {
     if (busy) return null   // buttons stay focusable while a save runs (review P2-41), so a click lands here
@@ -98,24 +113,22 @@ export default function Settings(_props: { user: User }) {
 
       {/* min-w-0 on every grid item: a wide table scrolls inside its panel
           instead of stretching the page on a phone */}
-      <div className={cn("mt-4 grid gap-4 [&>*]:min-w-0", section !== "map" && "max-w-5xl")}>
+      <div className={cn("mt-4 grid gap-4 [&>*]:min-w-0", section !== "map" && "max-w-7xl")}>
         {section === "general" && policyForm("general")}
         {section === "people" && policyForm("people")}
         {section === "security" && (
           <>
             <Sso key={JSON.stringify(data.sso)} sso={data.sso} busy={busy} send={send} />
             {policyForm("security")}
-            <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="Outside access" keys={[
-              { key: "guest_links_enabled", label: "Keep the legacy anonymous guest links working (turn off once invited partner and customer accounts have replaced them; every old link then stops)" },
-            ]} />
           </>
         )}
         {section === "workflow" && (
           <>
             {policyForm("workflow")}
+            <FieldsEditor />
             <Panel title="Stage templates" hint="a new rollout copies one, then owns its list" id="templates">
               <div className="grid grid-cols-1 gap-5">
-                {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} />)}
+                {data.templates.map((t) => <Template key={`${t.id}:${t.name}`} t={t} onlyOne={data.templates.length <= 1} busy={busy} send={send} categories={data.doc_categories.map((c) => c.name)} />)}
               </div>
               <AddForm placeholder="New template name (e.g. EDR rollout)" label="New template name" button="Add template" busy={busy} onSubmit={(name) => send("/settings/templates/add", { name })} />
               <p className="mt-2 text-[12px] text-muted-foreground">A new template starts as a copy of the first one. The last stage in any list is the closed stage for rollouts using it.</p>
@@ -140,18 +153,17 @@ export default function Settings(_props: { user: User }) {
         )}
         {section === "notifications" && policyForm("notifications")}
         {section === "notifications" && (
-          <div><TestButton path="/settings/notifications/test-webhook" label="Send a test to the Teams webhook" busy={busy} blocked={data.policies.find((p) => p.key === "teams_webhook_url")?.saved ? undefined : "Save a webhook address above first."} /></div>
+          <div className="flex flex-wrap gap-2">
+            <TestButton path="/settings/notifications/test-resend" label="Send me a test sign-in email (Resend)" busy={busy} blocked={data.policies.find((p) => p.key === "resend_api_key")?.saved ? undefined : "Save a Resend API key above first."} />
+            <TestButton path="/settings/notifications/test-webhook" label="Send a test to the Teams webhook" busy={busy} blocked={data.policies.find((p) => p.key === "teams_webhook_url")?.saved ? undefined : "Save a webhook address above first."} />
+          </div>
         )}
         {section === "notifications" && (
-          <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="Channels" keys={[
-            { key: "notify_email_enabled", label: "Email notifications on rollout events (stage changes, approvals, assignments, mentions, due tasks)" },
-            { key: "notify_teams_chat_enabled", label: "Teams messages to each person: every notification also as a card from the Odin PMS app (staff only; set it up under Integrations)" },
-            { key: "notify_teams_enabled", label: "Teams channel posts for stage changes and decisions, plus the daily alert digest" },
-          ]} extra={<>
+          <div className="flex flex-wrap gap-2">
             {!data.m365.connected && <p className="basis-full text-[13px] text-warn" role="note">Microsoft 365 is not connected (Settings › Integrations), so email and Teams messages cannot be delivered. The bell and the Teams webhook still work.</p>}
             <TestButton path="/settings/integrations/test-email" label="Send test email" busy={busy} blocked={notConnected} />
             <TestButton path="/settings/integrations/test-teams" label="Send test Teams message" busy={busy} blocked={notConnected} />
-          </>} />
+          </div>
         )}
         {section === "integrations" && (
           <>
@@ -168,9 +180,8 @@ export default function Settings(_props: { user: User }) {
                 <TestButton path="/settings/integrations/test-teams" label="Send me a test in Teams" busy={busy} blocked={notConnected} />
               </div>
             </Panel>
-            <Toggles key={JSON.stringify(data.toggles)} data={data} busy={busy} send={send} title="OneDrive" keys={[
-              { key: "onedrive_mirror_uploads_enabled", label: "Mirror every uploaded document to OneDrive" },
-            ]} />
+            {policyForm("integrations")}
+            <IntakeSettings />
           </>
         )}
         {section === "ai" && (
@@ -259,13 +270,14 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
     p.key === "default_template" ? templates.find((t) => String(t.id) === c)?.name ?? c
       : p.key === "date_format" ? DATE_EXAMPLES[c] ?? c
         : p.key === "default_theme" ? (c === "system" ? "Follow the device" : cap(c)) : p.key === "default_accent" ? cap(c)
-          : p.key === "mfa_required" ? ({ off: "Optional (each person decides)", admins: "Required for admins", everyone: "Required for everyone" }[c] ?? c) : c
+          : p.key === "mfa_required" ? ({ off: "Optional (each person decides)", admins: "Required for admins", everyone: "Required for everyone" }[c] ?? c)
+            : p.key === "gate_override" ? ({ admin: "Admins only", admin_and_pm: "Admins and the project manager" }[c] ?? c) : c
   return (
     <Panel title={title} hint={hint}>
       <form onSubmit={submit} className="grid grid-cols-1 gap-4">
         <div className="grid grid-cols-1 gap-4">
           {policies.map((p) => (
-            <div key={p.key} className="grid min-w-0 content-start gap-1">
+            <div key={p.key} id={`row-${p.key}`} className="grid min-w-0 content-start gap-1">
               {p.kind === "bool" ? (
                 <label className="flex items-start gap-2 text-[13px] font-medium">
                   <Switch checked={!!v[p.key]} onCheckedChange={(c) => setV({ ...v, [p.key]: c })} className="mt-1" />{p.label}
@@ -285,10 +297,11 @@ function PolicyForm({ area, title, hint, policies, templates, busy, send }: {
               )}
               {p.secret && p.saved && (
                 <Button type="button" size="sm" variant="ghost" className={cn("self-start", danger)} loading={busy} aria-label={`Remove the saved ${p.label}`}
-                  onClick={() => void send(`/settings/policies/${area}`, { [p.key]: "", clear: p.key }, "Remove the saved address? Odin stops posting there.")}>Remove</Button>
+                  onClick={() => void send(`/settings/policies/${area}`, { [p.key]: "", clear: p.key }, `Remove the saved ${p.label}? Odin stops using it.`)}>Remove</Button>
               )}
               {p.kind === "text" && !p.multiline && (
-                <Input id={`pol-${p.key}`} required maxLength={p.max} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-sm text-[13px]" />
+                <Input id={`pol-${p.key}`} required={!p.secret} maxLength={p.max} value={String(v[p.key])} onChange={(e) => setV({ ...v, [p.key]: e.target.value })} className="h-8 max-w-sm text-[13px]"
+                  {...(p.secret ? { type: "password", autoComplete: "off", placeholder: p.saved ? "Saved and hidden: paste a new one to replace it" : "Paste the key" } : {})} />
               )}
               {p.kind === "text" && p.multiline && (
                 <textarea id={`pol-${p.key}`} rows={4} maxLength={p.max} value={String(v[p.key] ?? "")} onChange={(e) => setV({ ...v, [p.key]: e.target.value })}
@@ -378,7 +391,7 @@ function ApiTokens({ tokens, busy, send }: { tokens: SettingsData["api_tokens"];
                     <td className={cn(td, "font-medium")}>{t.name}</td>
                     <td className={cn(td, "whitespace-nowrap")}><Ago iso={t.created_at} /> · {t.created_by}</td>
                     <td className={cn(td, "whitespace-nowrap")}>{t.last_used_at ? <Ago iso={t.last_used_at} /> : "never"}</td>
-                    <td className={cn(td, "whitespace-nowrap")}>{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDate(t.expires_at)}</td>
+                    <td className={cn(td, "whitespace-nowrap")}>{t.revoked_at ? "revoked" : t.expires_at < now ? "expired" : fmtDateY(t.expires_at)}</td>
                     <td className={cn(td, "text-right")}>{!dead && <Button size="sm" variant="ghost" className={danger} disabled={busy} onClick={() => send(`/settings/api-tokens/${t.id}/revoke`, {}, `Revoke ${t.name}? Anything using it stops working now.`)}>Revoke</Button>}</td>
                   </tr>
                 )
@@ -473,34 +486,6 @@ function Sso({ sso, busy, send }: { sso: SettingsData["sso"]; busy: boolean; sen
   )
 }
 
-// The on/off integration switches live in one route that saves all five at
-// once, so each area posts its own boxes plus everyone else's saved values.
-type ToggleKey = keyof SettingsData["toggles"]
-function Toggles({ data, busy, send, title, keys, extra }: { data: SettingsData; busy: boolean; send: Send; title: string; keys: { key: ToggleKey; label: string }[]; extra?: ReactNode }) {
-  // keyed on the saved values by the caller: a reload after another button (Send test email) keeps an unsaved switch (review P2-30)
-  const [t, setT] = useState(data.toggles)
-  const dirty = keys.some((k) => t[k.key] !== data.toggles[k.key])
-  useUnsavedGuard(dirty)
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    void send("/settings/integrations", Object.fromEntries((Object.keys(t) as ToggleKey[]).filter((k) => t[k]).map((k) => [k, "on"])))
-  }
-  return (
-    <Panel title={title}>
-      <form onSubmit={submit} className="grid grid-cols-1 gap-2 text-[13px]">
-        {keys.map((i) => (
-          <label key={i.key} className="flex items-start gap-2">
-            <Switch checked={t[i.key]} onCheckedChange={(c) => setT({ ...t, [i.key]: c })} className="mt-1" />
-            <span>{i.label}</span>
-          </label>
-        ))}
-        <div><Button type="submit" size="sm" loading={busy} disabled={!dirty}>Save</Button></div>
-      </form>
-      {extra && <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">{extra}</div>}
-    </Panel>
-  )
-}
-
 function AddForm({ placeholder, label, button, busy, onSubmit }: { placeholder: string; label: string; button: string; busy: boolean; onSubmit: (name: string) => Promise<unknown> }) {
   const [name, setName] = useState("")
   return (
@@ -511,7 +496,7 @@ function AddForm({ placeholder, label, button, busy, onSubmit }: { placeholder: 
   )
 }
 
-function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][number]; onlyOne: boolean; busy: boolean; send: Send }) {
+function Template({ t, onlyOne, busy, send, categories }: { t: SettingsData["templates"][number]; onlyOne: boolean; busy: boolean; send: Send; categories: string[] }) {
   const [name, setName] = useState(t.name)   // remounted by key when the saved name changes
   const base = `/settings/templates/${t.id}`
   return (
@@ -524,8 +509,8 @@ function Template({ t, onlyOne, busy, send }: { t: SettingsData["templates"][num
         <span className="whitespace-nowrap text-[12px] text-muted-foreground">{t.projects} project{t.projects === 1 ? "" : "s"}</span>
         <button type="button" aria-disabled={busy || onlyOne || undefined} onClick={() => { if (!onlyOne) void send(`${base}/delete`, {}, `Delete template ${t.name}? Rollouts keep their own copies.`) }} aria-label={`Delete template ${t.name}`} className="text-muted-foreground hover:text-destructive aria-disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
       </div>
-      <StageListEditor key={stageRowsKey(t.stages)} rows={t.stages} busy={busy} send={send} label={t.name}
-        paths={{ add: `${base}/stages/add`, rename: (s) => `${base}/stages/${s}/rename`, move: (s) => `${base}/stages/${s}/move`, remove: (s) => `${base}/stages/${s}/delete`, sla: `${base}/sla` }} />
+      <StageListEditor key={stageRowsKey(t.stages)} rows={t.stages} busy={busy} send={send} label={t.name} categories={categories} templateId={t.id}
+        paths={{ add: `${base}/stages/add`, rename: (s) => `${base}/stages/${s}/rename`, move: (s) => `${base}/stages/${s}/move`, remove: (s) => `${base}/stages/${s}/delete`, sla: `${base}/sla`, gates: `${base}/gates` }} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" disabled={busy} onClick={() => send(`${base}/sla/from-measured`, {}, "Overwrite this template's SLAs with measured averages?")}>Set SLAs from measured averages</Button>
         <span className="text-[12px] text-muted-foreground">From rollouts created with this template. Applies to new rollouts; existing ones keep their own.</span>

@@ -23,6 +23,7 @@ from db import get_db, get_stage_names, get_terminal_stage, participants_for, to
 from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
+from services.fmt import fmt_date, plural
 
 SCOPE_STATUSES = ("agreed", "delivered", "partial", "descoped")
 OPEN = ("sent", "signed")
@@ -32,13 +33,6 @@ SIGNER_ROLES = ("Customer", "Reseller")
 
 def _now():
     return datetime.utcnow().isoformat()
-
-
-def _fmt(iso):
-    if not iso:
-        return "—"
-    d = datetime.fromisoformat(iso[:10])
-    return f"{d.day} {d.strftime('%b %Y')}"
 
 
 # ---- scope -----------------------------------------------------------------
@@ -188,10 +182,10 @@ def _meta(project):
 
 
 def _values(project):
-    from services.report_pdf import _fmt
+    from services.fields import placeholders as fields_placeholders
     return {"project": project["name"], "client": project["client"], "company": policy("company_name"), "pm": project["owner_name"],
-            "po": project["po_number"] or "", "stage": project["stage"], "target": _fmt(project["target_end_date"]), "forecast": "",
-            "date": _fmt(local_today().isoformat())}
+            "po": project["po_number"] or "", "stage": project["stage"], "target": fmt_date(project["target_end_date"]), "forecast": "",
+            "date": fmt_date(local_today().isoformat())} | fields_placeholders(project["id"])   # {field:Name}: the customer's fields only
 
 
 def draft(project, template_id=None):
@@ -209,10 +203,13 @@ def draft(project, template_id=None):
         for s in stages:
             if s["status"] == "done" and s["actual_start"]:
                 n = sum(1 for t in tasks if t["done"] and t["stage"] == s["name"])
-                delivered.append(f"{s['name']}: completed {_fmt(s['actual_end'])}" + (f" ({n} task{'s' if n != 1 else ''})" if n else ""))
+                delivered.append(f"{s['name']}: completed {fmt_date(s['actual_end'], '—')}" + (f" ({n} {plural(n, 'task')})" if n else ""))
         delivered += [f"Delivered: {d['filename']}" for d in db.execute(
-            "SELECT filename FROM documents WHERE project_id = ? AND category = 'Deliverable' AND deleted_at IS NULL ORDER BY uploaded_at", (pid,))]
-    outstanding = [t["title"] + (f" (due {_fmt(t['due_date'])})" if t["due_date"] else "") for t in tasks if not t["done"]]
+            "SELECT filename FROM documents WHERE project_id = ? AND category = 'Deliverable' AND deleted_at IS NULL AND review_status = 'accepted' ORDER BY uploaded_at", (pid,))]
+        # the milestones reached that the customer may see (a recorded scope is its own table of what was delivered)
+        from services import milestones
+        delivered += milestones.delivered_lines(pid)
+    outstanding = [t["title"] + (f" (due {fmt_date(t['due_date'], '—')})" if t["due_date"] else "") for t in tasks if not t["done"]]
     outstanding += [r["title"] for r in raid_service.items(pid, customer=True) if r["open"] and r["kind"] != "decision"]
     counts = {k: sum(1 for x in items if x["status"] == k) for k in ("delivered", "partial", "descoped")}
     start = project["start_date"] or (stages[0]["actual_start"] if stages else None)
@@ -221,7 +218,7 @@ def draft(project, template_id=None):
     words = [f"{policy('company_name')} has completed {project['name']} for {project['client']}." if now >= len(stages) - 2
              else f"{policy('company_name')} is delivering {project['name']} for {project['client']}; the work is now in {stages[now]['name']}."]
     if start:
-        words.append(f"The work started on {_fmt(start)}" + (f" against a target of {_fmt(project['target_end_date'])}." if project["target_end_date"] else "."))
+        words.append(f"The work started on {fmt_date(start, '—')}" + (f" against a target of {fmt_date(project['target_end_date'], '—')}." if project["target_end_date"] else "."))
     if items:
         extra = [f"{counts['partial']} in part" if counts["partial"] else "", f"{counts['descoped']} descoped by agreement" if counts["descoped"] else ""]
         words.append(f"{counts['delivered']} of {len(items)} agreed scope items were delivered in full" + ("".join(f", {x}" for x in extra if x)) + ".")

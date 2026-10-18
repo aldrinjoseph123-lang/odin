@@ -11,16 +11,20 @@ from datetime import date, datetime
 from constants import CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, as_id, json_body, like_any, sees_po, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
-from db import PROJECT_OPEN_SQL, current_approval, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
+from db import PROJECT_OPEN_SQL, current_approval, customer_ids, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import alerts_page_data
-from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, StageConflict, change_stage, decide_approval, filtered_projects_query, load_project, stage_entry_note_ids
+from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, StageConflict, change_stage, decide_approval, filtered_projects_query, leads, load_project, stage_entry_note_ids
 from security import csrf_token, file_stem, nudge_limited, safe_csv_writer
 from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, clock, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline, working_days
 from services.audit import audit_log
+from services.fmt import plural
 from services import signoff as signoff_service
+from services import fields as custom_fields
+from services import gates
 from services.activity import enabled as activity_enabled, summary as activity_summary
+from services.notifications import watch_state
 from spa import spa_asset
 
 
@@ -143,13 +147,13 @@ def api_settings():
     ?team_id asked for): each is a Graph round trip."""
     import graph
     from constants import ALERT_TYPE_TITLES as TITLES, DEFAULT_ALERT_TYPE_SETTINGS
-    from db import get_setting
     from services import stages as stage_ops
     from services.alerts import get_alert_type_settings
     db = get_db()
     templates = [
         {"id": t["id"], "name": t["name"],
-         "stages": [{"id": s["id"], "name": s["name"], "sla_days": s["sla_days"]} for s in stage_ops.list_stages("template", t["id"])],
+         "stages": [{"id": s["id"], "name": s["name"], "sla_days": s["sla_days"], "gate_tasks": bool(s["gate_tasks"]), "required_docs": gates.required_docs(s)}
+                    for s in stage_ops.list_stages("template", t["id"])],
          "projects": db.execute("SELECT COUNT(*) FROM projects WHERE stage_template_id = ? AND deleted_at IS NULL", (t["id"],)).fetchone()[0]}
         for t in db.execute("SELECT * FROM stage_templates ORDER BY id").fetchall()
     ]
@@ -180,13 +184,11 @@ def api_settings():
             "channel_id": connection["channel_id"] if connected else None,
             "teams": teams, "channels": channels, "team_id": team_id, "teams_error": teams_error,
         },
-        "toggles": {**{k: get_setting(k) == "1" for k in ("notify_email_enabled", "notify_teams_enabled", "notify_teams_chat_enabled", "onedrive_mirror_uploads_enabled")},
-                    "guest_links_enabled": get_setting("guest_links_enabled", "1") == "1"},
         "policies": policy_view(),
         "sso": _sso_view(),
         "backups": _backups_view() if request.args.get("section") in (None, "backups") else None,
         "api_tokens": [dict(r) for r in db.execute(
-            "SELECT id, name, created_by, created_at, expires_at, last_used_at, revoked_at FROM api_tokens ORDER BY id DESC LIMIT 100")],
+            "SELECT id, name, created_by, created_at, expires_at, last_used_at, revoked_at, scope FROM api_tokens WHERE scope = 'read' ORDER BY id DESC LIMIT 100")],
         "audit_archives": _audit_archives(),
         "public_url_set": bool(policy("public_url")),
     })
@@ -223,6 +225,26 @@ def _sso_view():
     return {"client_id": client_id or None, "tenant_id": tenant or None, "has_secret": bool(secret), "configured": sso_configured(),
             "enforced": sso_enforced(), "redirect_uri": external_url("sso_callback"),
             "password_admins": get_db().execute("SELECT COUNT(*) FROM users WHERE role = 'Admin' AND active = 1 AND password_login = 1").fetchone()[0]}
+
+
+@app.route("/api/settings/templates/<int:template_id>/tasks", methods=["GET", "PUT"])
+@permission_required("manage_settings")
+def api_template_tasks(template_id):
+    """The tasks a template's stages bring to a new rollout
+    (services/template_tasks.py). PUT replaces the whole list; links name
+    other items by their key."""
+    from services import template_tasks
+    db = get_db()
+    template = db.execute("SELECT id, name FROM stage_templates WHERE id = ?", (template_id,)).fetchone()
+    if template is None:
+        abort(404)
+    if request.method == "PUT":
+        try:
+            n = template_tasks.save(template_id, (json_body() or {}).get("tasks"))
+        except ValueError as e:
+            return jsonify(error=str(e)), 400
+        audit_log("update_template_tasks", "stage_template", template_id, template["name"], f"{n} {plural(n, 'task')}")
+    return jsonify(tasks=template_tasks.for_template(template_id, db), roles=list(template_tasks.ROLES))
 
 
 @app.route("/api/settings/rbac")
@@ -280,14 +302,19 @@ def api_settings_contacts():
 def api_users():
     rows = get_db().execute(
         "SELECT u.id, u.username, u.name, u.email, u.role, u.active, u.kind, u.last_login_at, u.created_at, u.avatar, u.pending, u.password_login, u.ms_oid, "
-        "u.totp_enabled_at IS NOT NULL AS two_step, l.label AS signup_label, p.name AS signup_project, u.signup_project_role FROM users u "
+        "u.totp_enabled_at IS NOT NULL AS two_step, u.capacity_hours, l.label AS signup_label, p.name AS signup_project, u.signup_project_role, u.declined_reason FROM users u "
         "LEFT JOIN signup_links l ON l.id = u.signup_link_id LEFT JOIN projects p ON p.id = u.signup_project_id ORDER BY u.name"
     ).fetchall()
     from routes.sso import sso_enforced
+    from services.workload import holds
+    held = holds(get_db(), [r["id"] for r in rows])   # what a hand-over on leave would move
+    from services.access_review import review
+    flagged = review(get_db(), policy("access_review_days"))
     return jsonify(users=[{k: r[k] for k in r.keys() if k not in ("avatar", "ms_oid")}
                           | {"active": bool(r["active"]), "pending": bool(r["pending"]), "password_login": bool(r["password_login"]), "two_step": bool(r["two_step"]),
-                             "microsoft": r["ms_oid"] is not None, "avatar_url": avatar_url(r)} for r in rows],
-                   roles=list(ROLES), me=session["user_id"], microsoft_only=sso_enforced())
+                             "microsoft": r["ms_oid"] is not None, "avatar_url": avatar_url(r), "holds": held[r["id"]], "review": flagged.get(r["id"], [])} for r in rows],
+                   roles=list(ROLES), me=session["user_id"], microsoft_only=sso_enforced(), capacity_default=policy("capacity_hours_per_week"),
+                   review_days=policy("access_review_days"))
 
 
 @app.route("/api/audit")
@@ -448,33 +475,71 @@ def api_rollout_report_save(project_id):
     from routes.ai import use_suggestion
     ai = use_suggestion(project_id, body.get("ai_suggestion"), ("weekly_words", "customer_words"))
     db.commit()
-    audit_log("save_report", "project", project_id, project["name"], f"version {version}{ai}")
-    return jsonify(ok=True, version=version)
+    # Save and share (B8): the rollout's Customer contacts hear of it, each mail with a fresh
+    # sign-in link to the customer copy of this version (the outbox mints it as it sends)
+    customers = customer_ids(project_id, db, active=True) if body.get("share") is True else []
+    audit_log("save_report", "project", project_id, project["name"], f"version {version}{ai}" + (f"; shared with {len(customers)} customer {plural(len(customers), 'contact')}" if body.get("share") is True else ""))
+    if customers:
+        from markupsafe import escape as _esc
+        from services.notifications import notify_users
+        notify_users(customers, "report", project_id, f"{project['name']}: a new rollout report",
+                     f"<p>{_esc(session['user_name'])} has shared version {version} of the report on <b>{_esc(project['name'])}</b>: "
+                     "where the rollout stands, what comes next and what we need from you.</p>",
+                     exclude_user_id=session["user_id"], link=f"/projects/{project_id}/report?v={version}")
+    return jsonify(ok=True, version=version, shared=len(customers))
 
 
 @app.route("/api/account")
 @login_required
 def api_account():
     from constants import ADMIN_KINDS, NOTIFICATION_KINDS, STAFF_KINDS
-    from db import get_setting
-    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, home, password_hash FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    from services.notifications import delivery
+    u = get_db().execute("SELECT id, username, name, email, kind, must_change_password, theme, accent, avatar, email_off, email_summary, home, password_hash, ics_created_at, ics_last_read_at FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     off = set((u["email_off"] or "").split(","))
     return jsonify(username=u["username"], name=u["name"], email=u["email"], kind=u["kind"], must_change_password=bool(u["must_change_password"]),
                    has_password=bool(u["password_hash"] and "$" in u["password_hash"]),
                    theme=u["theme"], accent=u["accent"], avatar_url=avatar_url(u), home=u["home"],
-                   email_kinds=[{"key": k, "label": v, "on": k not in off} for k, v in NOTIFICATION_KINDS.items()
+                   email_kinds=[{"key": k, "label": v, "on": k not in off, "mode": delivery(u, k)} for k, v in NOTIFICATION_KINDS.items()
                                 if (k not in ADMIN_KINDS or session.get("role") == "Admin")   # access requests and AI health reach admins only
                                 and (k not in STAFF_KINDS or u["kind"] != "external")],
-                   mail_enabled=get_setting("notify_email_enabled") == "1",
+                   mail_enabled=policy("notify_email_enabled"),
+                   calendar=None if u["kind"] == "external" else {"created_at": u["ics_created_at"], "last_read_at": u["ics_last_read_at"],
+                                                                   "idle_days": policy("ics_idle_days")},   # the personal feed (routes/feeds.py)
                    activity=activity_summary(session["user_id"]) if activity_enabled() else None,
                    activity_viewers=policy("activity_roles"))
+
+
+@app.route("/api/whats-new")
+@login_required
+def api_whats_new():
+    """The release's change log for staff, once (B15): `show` until they press Got it."""
+    from routes.client import app_version
+    from services.whats_new import summary
+    version = app_version()
+    seen = get_db().execute("SELECT whats_new_seen FROM users WHERE id = ?", (session["user_id"],)).fetchone()[0]
+    news = summary(version) if session.get("kind") != "external" else None
+    return jsonify(show=bool(news) and seen != version, **(news or {"version": version, "title": "", "items": []}))
+
+
+@app.route("/api/whats-new/seen", methods=["POST"])
+@login_required
+def api_whats_new_seen():
+    from routes.client import app_version
+    version = app_version()
+    get_db().execute("UPDATE users SET whats_new_seen = ? WHERE id = ?", (version, session["user_id"]))
+    get_db().commit()
+    audit_log("dismiss_whats_new", "user", session["user_id"], session.get("user_name"), f"v{version}")
+    return jsonify(ok=True)
 
 
 @app.route("/api/my-work")
 @permission_required("view_board")
 def api_my_work():
     from services.people import my_work
-    return jsonify(my_work(session["user_id"], project_scope()))
+    d = my_work(session["user_id"], project_scope())
+    for p in d["projects"]:   # the quick-add picks only rollouts the task route would accept
+        p["can_add_task"] = project_allows(p["id"], "manage_tasks")
+    return jsonify(d)
 
 
 @app.route("/api/people")
@@ -557,8 +622,12 @@ def api_calendar():
     if not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", month):   # the window parse_date keeps; year 1 overflowed the grid's arithmetic
         month = ""   # the current month
     d = calendar.build(month, project_scope())
+    from services import milestones   # diamonds on their day; an outsider sees only those marked for the customer
+    d["milestones"] = milestones.between(d["from"], d["to"], project_scope(), customer=session.get("kind") == "external")
     # who may drag a task to another day: whoever manages the rollout's tasks, done or not, exactly
     # as task_edit decides (P2-10: the person a task is on ticks it, never re-dates it; P3-18)
+    if session.get("kind") == "external":   # a partner sees their own tasks, never the team's (as on the rollout page)
+        d["tasks"] = [t for t in d["tasks"] if t["assignee_id"] == session["user_id"]]
     manages = {pid: project_allows(pid, "manage_tasks") for pid in {t["project_id"] for t in d["tasks"]}}
     for t in d["tasks"]:
         t.pop("assignee_id")
@@ -636,7 +705,7 @@ def api_analytics():
     template_id = request.args.get("template", type=as_id) or (templates and busiest_template(db, project_scope())["id"]) or None
     projects = db.execute(
         "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id "
-        f"WHERE p.deleted_at IS NULL AND p.stage_template_id IS ?{project_scope()[0]}", (template_id, *project_scope()[1])
+        f"WHERE p.deleted_at IS NULL AND p.intake_pending = 0 AND p.stage_template_id IS ?{project_scope()[0]}", (template_id, *project_scope()[1])
     ).fetchall()
     notes = {}
     for n in db.execute("SELECT project_id, stage, created_at FROM status_notes ORDER BY created_at"):
@@ -707,10 +776,10 @@ def api_project_form():
         # the team joins as coordinators: a Viewer only reads, so is not offered
         "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' AND role != 'Viewer' ORDER BY name")],
         # a project manager must be able to move stages; someone who cannot picks one
-        "leads": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name, role FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")
-                  # editing keeps the current owner listed, so the form never swaps them silently
-                  if role_has_permission(u["role"], "edit_project_stage") or (mode == "edit" and u["id"] == project.get("owner_id"))],
+        "leads": leads(db, project.get("owner_id") if mode == "edit" else None),   # editing keeps the current owner listed
         "can_lead": role_has_permission(session.get("role"), "edit_project_stage"),
+        # custom fields (Settings › Rollouts & workflow), with the record's values on an edit or a copy
+        "custom_fields": custom_fields.for_project(source["id"]) if source else [f | {"value": None} for f in custom_fields.definitions()],
     })
 
 
@@ -752,6 +821,12 @@ def api_projects():
     # each row's state, counted as the Flow counts it, so a late rollout looks late here too (critique 10 Oct)
     from services.alerts import project_states
     states = project_states(rows)
+    external = session.get("kind") == "external"   # custom fields: the extra columns, a filter per choice field, each row's values in column order
+    defs = custom_fields.definitions(customer=external)
+    columns = [{"id": f["id"], "name": f["name"], "kind": f["kind"]} for f in defs if f["show_in_list"]]
+    field_filters = [{"id": f["id"], "name": f["name"], "choices": f["choices"]} for f in defs if f["kind"] == "choice"]
+    have = custom_fields.values_for(ids, external, list_only=True)
+    field_values = {pid: [have[pid].get(c["id"]) for c in columns] for pid in ids}
     for r in rows:
         names = [s["name"] for s in (lists.get(r["id"]) or [])]
         t = tally.get(r["id"])
@@ -763,9 +838,12 @@ def api_projects():
             "closed": bool(names) and r["stage"] == names[-1], "state": states.get(r["id"], "on_track"),
             "owner_name": r["owner_name"], "delivery_mode": r["delivery_mode"], "vendor_name": r["vendor_name"],
             "product_name": r["product_name"], "target_end_date": r["target_end_date"], "updated_at": r["updated_at"],
+            "fields": field_values[r["id"]],   # in the order of `fields` below
         })
-    return jsonify(rows=out, total=total, page=page, total_pages=total_pages, sort=sort, dir=direction,
-                   stages=stage_names, delivery_modes=list(DELIVERY_MODES),
+    # CRM intakes waiting for a project manager: the "Pending intake" filter's count (staff only; an outsider has none)
+    pending = db.execute(f"SELECT COUNT(*) FROM projects p WHERE p.deleted_at IS NULL AND p.intake_pending = 1{scope_sql}", scope_params).fetchone()[0]
+    return jsonify(rows=out, total=total, page=page, total_pages=total_pages, sort=sort, dir=direction, pending=pending,
+                   stages=stage_names, delivery_modes=list(DELIVERY_MODES), fields=columns, field_filters=field_filters,
                    can_create=role_has_permission(session.get("role"), "create_project"))
 
 
@@ -790,13 +868,14 @@ def api_project(project_id):
         if project_role_of(project_id, session["user_id"]) == "Customer":
             fields += ["po_number", "po_date"]
     hidden_docs = partner_hidden_categories(db) if external else set()
-    from db import get_setting
     from routes.guest import links_expire
     from core import external_url   # the public address, never the Host a PM happened to use (P3-1)
-    guest_on = get_setting("guest_links_enabled", "1") == "1"
+    guest_on = policy("guest_links_enabled")
     return jsonify({
         "id": project["id"], "name": project["name"], "owner_id": project["owner_id"],
         "guest_links_enabled": guest_on,
+        # a CRM intake waiting for a project manager (services/intake.py): the page says so and offers Confirm (staff only)
+        "intake_pending": bool(project["intake_pending"]) and not external,
         "details": {f: project[f] for f in fields},
         "customer_approval": bool(project["customer_approval"]),
         "guest_links": {
@@ -806,7 +885,9 @@ def api_project(project_id):
         } if guest_on and can_manage else {"customer": None, "vendor": None},
         # when those links stop working (None: never); rotating renews them (P2-6)
         "guest_links_expire": links_expire(project) if guest_on and can_manage else None,
-        "stage_rows": [{"id": r["id"], "name": r["name"], "sla_days": r["sla_days"]} for r in stage_rows(project_id)],
+        "stage_rows": [{"id": r["id"], "name": r["name"], "sla_days": r["sla_days"],   # the gates are staff-only (services/gates.py)
+                        "gate_tasks": bool(r["gate_tasks"]) and not external, "required_docs": [] if external else gates.required_docs(r)}
+                       for r in stage_rows(project_id)],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
                           "email": r["email"] if not external or r["user_id"] == session["user_id"] else None, "active": bool(r["active"]),
                           "avatar_url": f"/users/{r['user_id']}/avatar/{r['avatar']}" if r["avatar"] else None}
@@ -816,15 +897,18 @@ def api_project(project_id):
                    "stage_entry": n["id"] in entries}
                   for n in db.execute("SELECT * FROM status_notes WHERE project_id = ?" + (" AND guest_visible = 1" if session.get("kind") == "external" else "")
                                       + " ORDER BY created_at DESC", (project_id,))],
-        "documents": [{"id": d["id"], "category": d["category"], "filename": d["filename"], "uploaded_by": d["uploaded_by"], "uploaded_at": d["uploaded_at"]}
+        # review: "pending" while an outside upload waits for staff (services/doc_review.py); partners never see one pending
+        "documents": [{"id": d["id"], "category": d["category"], "filename": d["filename"], "uploaded_by": d["uploaded_by"], "uploaded_at": d["uploaded_at"],
+                       "review": d["review_status"]}
                       for d in db.execute("SELECT * FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", (project_id,))
-                      if d["category"] not in hidden_docs],
+                      if d["category"] not in hidden_docs and not (external and d["review_status"] != "accepted")],
         "doc_categories": get_doc_category_names(),
         "users": [{"id": u["id"], "name": u["name"]} for u in db.execute("SELECT id, name FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")] if can_manage else [],
         "roles": [r for r in PROJECT_ROLES if r not in (PROJECT_MANAGER, "Customer")], "external_roles": list(EXTERNAL_PROJECT_ROLES),
         "can": {
             "manage": can_manage, "tasks": project_allows(project_id, "manage_tasks"),
-            "docs": project_allows(project_id, "manage_documents"), "move": project_allows(project_id, "move_stage"),
+            "docs": project_allows(project_id, "manage_documents"),
+            "move": project_allows(project_id, "move_stage") and not project["intake_pending"],   # a pending intake has no stage to leave
             "note": role_has_permission(role, "add_project_note"), "download": role_has_permission(role, "download_document"),
             "create": role_has_permission(role, "create_project"),
             # the delete routes check the global permission too (Admin by default): offer only what will succeed
@@ -840,17 +924,21 @@ def api_project(project_id):
 ACTIVITY_LABELS = {
     "create_project": "created the project", "update_project": "edited the project", "update_project_stage": "moved the stage", "undo_project_stage": "undid a stage move",
     "add_project_note": "added a note", "add_task": "added a task", "edit_task": "edited a task", "toggle_task": "ticked or reopened a task",
-    "delete_task": "removed a task", "upload_document": "uploaded a document", "delete_document": "removed a document",
+    "delete_task": "removed a task", "override_task_wait": "ticked a task still waiting on another (Admin override)", "upload_document": "uploaded a document", "delete_document": "removed a document",
     "add_participant": "added someone to the team", "invite_participant": "invited a partner", "remove_participant": "removed someone from the team",
     "approval_decision": "recorded the customer's decision", "save_report": "saved a report version",
     "add_project_stage": "added a stage", "rename_project_stage": "renamed a stage", "move_project_stage": "reordered the stages",
     "delete_project_stage": "removed a stage", "update_project_slas": "changed the stage SLAs", "rotate_guest_token": "rotated the guest links",
+    "update_project_stage_gates": "changed what each stage asks before it is left", "override_stage_gate": "moved past a stage gate",
     "delete_project": "deleted the project", "restore_project": "restored the project",
     "add_scope_item": "added to the scope", "edit_scope_item": "updated the scope", "move_scope_item": "reordered the scope", "delete_scope_item": "removed a scope item",
     "signoff_send": "sent the sign-off", "signoff_sign": "signed the sign-off", "signoff_countersign": "countersigned the sign-off",
     "signoff_reject": "did not accept the sign-off", "signoff_withdraw": "withdrew the sign-off", "signoff_upload": "uploaded the signed sign-off",
     "signoff_waive": "waived the sign-off", "signoff_link": "made a sign-in link for the signatory",
     "download_report": "downloaded the report PDF", "download_signoff": "downloaded the sign-off PDF",
+    "update_field_values": "changed custom fields",
+    "complete_ask": "finished what was asked of them", "rate_rollout": "rated the rollout",
+    "accept_document": "accepted an uploaded file", "reject_document": "rejected an uploaded file",
 }
 
 
@@ -921,10 +1009,11 @@ def api_project_stage(project_id):
         stage, note = text_field(data.get("stage"), 200, "Stage"), text_field(data.get("note"), 5000, "Note", multiline=True)
         # the stage the page showed: a move from a stale view is a 409, never a step backwards (P2-26)
         seen = text_field(data.get("from_stage"), 200, "From stage") if data.get("from_stage") is not None else None
+        override = text_field(data.get("override"), 300, "Reason")   # moving past a stage gate (services/gates.py)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     # change_stage audits and notifies; this is the same door the form uses.
-    error = change_stage(project_id, stage, note, from_stage=seen)
+    error = change_stage(project_id, stage, note, from_stage=seen, override=override or None)
     if error:
         return jsonify({"error": error}), 409 if isinstance(error, StageConflict) else 400
     return jsonify({"ok": True, "undo": g.stage_undo_url})
@@ -1002,10 +1091,13 @@ def api_flow():
     stage_of = {p["id"]: p["stage"] for p in projects}
     names_of = {pid: {r["name"] for r in rows} for pid, rows in stage_lists.items()}
     next_task = {}
+    # a task still waiting on open work is not the next step; a partner hears only of their own tasks
+    own, own_params = (" AND t.assignee_id = ?", [session["user_id"]]) if session.get("kind") == "external" else ("", [])
     for t in db.execute(
         "SELECT t.project_id, t.stage, t.title, t.due_date, u.name AS assignee_name FROM tasks t "
-        f"LEFT JOIN users u ON u.id = t.assignee_id WHERE t.done = 0 AND t.project_id IN ({shown}) "
-        "ORDER BY t.due_date IS NULL, t.due_date, t.id", project_scope()[1]
+        f"LEFT JOIN users u ON u.id = t.assignee_id WHERE t.done = 0 AND t.project_id IN ({shown}){own} "
+        "AND NOT EXISTS (SELECT 1 FROM task_links l JOIN tasks w ON w.id = l.depends_on_task_id WHERE l.task_id = t.id AND w.done = 0) "
+        "ORDER BY t.due_date IS NULL, t.due_date, t.id", [*project_scope()[1], *own_params]
     ):
         here = t["stage"] == stage_of.get(t["project_id"]) or t["stage"] not in names_of.get(t["project_id"], ())
         if t["project_id"] not in next_task or (here and not next_task[t["project_id"]]["here"]):
@@ -1019,6 +1111,7 @@ def api_flow():
     my_roles = {r["project_id"]: r["role"] for r in db.execute("SELECT project_id, role FROM project_participants WHERE user_id = ?", (session["user_id"],))}
     may_move = lambda pid: role_has_permission(role, move_perm) and (role == "Admin" or my_roles.get(pid) in move_roles)   # noqa: E731
     signoff_on = bool(policy("signoff_required"))
+    staff = session.get("kind") != "external"
     alert_settings = get_alert_type_settings()
     stale_days = (alert_settings.get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
     soon_days = (alert_settings.get("project_due_soon") or DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
@@ -1035,6 +1128,8 @@ def api_flow():
         in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         at = stages.index(p["stage"]) if p["stage"] in stages else 0
         nxt = stages[at + 1] if at + 1 < len(stages) else None
+        # two queries per rollout; batch them if the board ever holds thousands
+        held = gates.blocked(p, nxt, own) if nxt and staff else []
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
@@ -1050,6 +1145,8 @@ def api_flow():
             "start_date": p["start_date"], "next_stage": nxt, "can_move": bool(nxt) and may_move(p["id"]),
             # the last stage waits for a signed sign-off (services/signoff.gate): the board refuses that drop up front
             "signoff_needed": signoff_on and nxt is not None and nxt == terminal and not signoff_service.completed(p["id"]),
+            # so does a stage gate (services/gates.blocked): staff see why, the customer never sees gate internals
+            "gate_blocked": bool(held), "gate_reasons": [r["text"] for r in held],
         })
     rows.sort(key=lambda r: (STATE_RANK[r["state"]], 0 if r["late_tasks"] else 1, _flow_urgency(r, now)))
     counts = {k: sum(1 for r in rows if r["state"] == k) for k in STATE_RANK}
@@ -1058,8 +1155,10 @@ def api_flow():
     for lst in stage_lists.values():
         for r in lst:
             first_at[r["name"]] = min(r["position"], first_at.get(r["name"], r["position"]))
+    from services import intake   # CRM intakes wait in the List's holding lane, in no count (staff only)
     return jsonify({"stages": sorted(first_at, key=lambda n: (first_at[n], n)), "rows": rows, "counts": counts, "today": local_today().isoformat(),
-                    "can_move": role_has_permission(session.get("role"), "edit_project_stage")})
+                    "can_move": role_has_permission(session.get("role"), "edit_project_stage"),
+                    "pending": intake.pending_rows(db) if staff else []})
 
 
 @app.route("/api/flow/plan")
@@ -1116,6 +1215,7 @@ def api_plan(project_id):
         for s in d["stages"]:
             for k in ("base_start", "base_end", "slip_days"):
                 s.pop(k, None)
+            s["forecast_reason"] = None   # it names the internal task that holds the stage
         d["health"] = {"rag": d["health"]["rag"], "reasons": [], "confidence": d["health"]["confidence"]}
         d["finish"] = {k: v for k, v in d["finish"].items() if k in ("forecast", "planned", "target", "vs_target_days", "days_to_target")}
         d["changes"], d["baseline_at"] = [], None
@@ -1260,6 +1360,15 @@ def api_project_flow(project_id):
         "SELECT t.*, u.name AS assignee_name, u.avatar AS assignee_avatar FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
         "WHERE t.project_id = ? ORDER BY t.done, t.due_date IS NULL, t.due_date, t.id", (project_id,),
     ).fetchall()
+    from services import task_links
+    links = task_links.links_for(project_id, db)
+    blocked = task_links.blocked_by(tasks, links)
+    if session.get("kind") == "external":   # the customer cut: their own asks only (services/asks.py), never the team's tasks
+        tasks = [t for t in tasks if t["assignee_id"] == session["user_id"]]
+        own = {t["id"] for t in tasks}   # and what holds them: their own only, never the team's (task_links.outsider_cut)
+        links = {k: [i for i in v if i in own] for k, v in links.items()}
+        blocked = {k: task_links.outsider_cut(v, own) for k, v in blocked.items()}
+    from services.asks import questions as ask_questions
     sla = stage_sla_state(project, slas, terminal, now)
     schedule = schedule_status(project, terminal_stage=terminal)
     target = date.fromisoformat(project["target_end_date"]) if project["target_end_date"] else None
@@ -1283,22 +1392,35 @@ def api_project_flow(project_id):
         "tasks": [{"id": t["id"], "title": t["title"], "done": bool(t["done"]), "done_at": t["done_at"], "due_date": t["due_date"],
                    "assignee": t["assignee_name"], "assignee_id": t["assignee_id"],
                    "assignee_avatar_url": f"/users/{t['assignee_id']}/avatar/{t['assignee_avatar']}" if t["assignee_avatar"] else None,
-                   "stage": t["stage"] if t["stage"] in stages else project["stage"]} for t in tasks],
+                   "stage": t["stage"] if t["stage"] in stages else project["stage"],
+                   "recurrence": t["recurrence"], "recur_until": t["recur_until"],   # Repeats (services/recurrence.py)
+                   # finish-to-start (services/task_links.py): what it waits on, and the open ones that hold it
+                   "estimate_hours": t["estimate_hours"], "waits_on": links.get(t["id"], []), "blocked_by": blocked.get(t["id"], []),
+                   # what it asks for (services/asks.py): a tick, a document of one category, or a short form
+                   "kind": t["kind"] or "task", "ask_category": t["ask_category"], "questions": ask_questions(t) if t["kind"] == "form" else []} for t in tasks],
         "assignable": [{"id": r["user_id"], "name": r["name"]} for r in participants_for(project_id) if r["active"]],
         "can_edit": project_allows(project_id, "manage_tasks"),
+        "doc_categories": get_doc_category_names() if project_allows(project_id, "manage_tasks") else [],   # what an upload ask may ask for
+        "can_override": session.get("role") == "Admin",   # an Admin may tick a waiting task; it is audited as an override
         "me": session["user_id"],
-        "documents": sum(1 for d in db.execute("SELECT category FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,))
-                         if d["category"] not in hidden_docs),   # only what they can open
+        "documents": sum(1 for d in db.execute("SELECT category, review_status FROM documents WHERE project_id = ? AND deleted_at IS NULL", (project_id,))
+                         if d["category"] not in hidden_docs and not (external and d["review_status"] != "accepted")),   # only what they can open
         "recent_notes": [{"author": n["author"], "note": n["note"], "stage": n["stage"], "created_at": n["created_at"]}
                          for n in [n for n in notes if session.get("kind") != "external" or n["guest_visible"]][-4:][::-1]],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
                           "avatar_url": f"/users/{r['user_id']}/avatar/{r['avatar']}" if r["avatar"] else None} for r in participants_for(project_id)],
-        "can_move": project_allows(project_id, "move_stage"),
+        "can_move": project_allows(project_id, "move_stage") and not project["intake_pending"],   # a pending intake is confirmed first
         "customer_approval": bool(project["customer_approval"]),
-        "approval": ({"id": a["id"], "stage": a["stage"], "status": a["status"], "decided_by": a["decided_by"], "comment": a["comment"]}
+        "approval": ({"id": a["id"], "stage": a["stage"], "status": a["status"], "decided_by": a["decided_by"], "comment": a["comment"],
+                      "chases": a["chase_count"] if not external else 0}   # reminders Odin sent the customer (services/chasers.py)
                      if (a := current_approval(project_id)) else None),
         "can_approve": is_customer_on(project_id, session["user_id"]),
         "signoff": signoff_service.state(project, session["user_id"], session.get("kind") != "external"),
+        "signoff_chases": 0 if external else (db.execute("SELECT chase_count FROM signoffs WHERE project_id = ? AND status = 'sent' ORDER BY version DESC LIMIT 1", (project_id,)).fetchone() or [0])[0],
+        "watch": watch_state(project_id, session["user_id"], session.get("kind")),   # mute or follow (B3)
+        # what stops the next move (services/gates.py), for staff only
+        "gate": None if external else {"blocked": gates.blocked(project, stages[current + 1]) if current + 1 < len(stages) else [],
+                                       "can_override": gates.may_override(project)},
     })
 
 
@@ -1319,7 +1441,7 @@ def api_notifications():
     unread = get_db().execute(f"SELECT COUNT(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL{where}", (session["user_id"], *params)).fetchone()[0]
     return jsonify(unread=unread, more=more, rows=[{
         "id": r["id"], "kind": r["kind"], "title": r["title"], "body": r["body"], "link": r["link"], "actor": r["actor"],
-        "project_name": r["project_name"], "created_at": r["created_at"], "read": r["read_at"] is not None,
+        "project_name": r["project_name"], "created_at": r["created_at"], "read": r["read_at"] is not None, "muted": bool(r["muted"]),
     } for r in rows])
 
 

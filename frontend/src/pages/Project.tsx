@@ -3,7 +3,7 @@ import { Panel } from "@/components/PanelTitle"
 import { toastAfterLoad } from "@/lib/toast"
 import { fieldAuto, fieldArea, checkbox } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
-import { Copy, MoreHorizontal, Trash2 } from "lucide-react"
+import { Copy, Download, MoreHorizontal, Trash2 } from "lucide-react"
 import { askConfirm } from "@/lib/confirm"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { RagPill } from "@/components/PlanGantt"
@@ -15,14 +15,20 @@ import { Detail } from "@/pages/Flow"
 import { StageListEditor, stageRowsKey } from "@/components/StageListEditor"
 import { PlanPanel } from "@/components/PlanPanel"
 import { RaidPanel } from "@/components/RaidPanel"
+import { MilestonesPanel } from "@/components/MilestonesPanel"
 import { ScopePanel } from "@/components/ScopePanel"
 import { AIChase } from "@/components/AIChase"
 import { AICatchUp } from "@/components/AICatchUp"
 import { AIAsk } from "@/components/AIAsk"
 import { AINotesTasks } from "@/components/AINotesTasks"
 import { LessonsPanel } from "@/components/LessonsPanel"
+import { FieldValues } from "@/components/FieldValues"
+import { AsksPanel } from "@/components/AsksPanel"
+import { PendingDoc } from "@/components/DocReview"
+import { IntakeBanner } from "@/components/PendingIntake"
 import { ApiError, flowDetail, plan, postForm, projectActivity, projectExtras, type FormReply, type PlanData, type ProjectExtras, type User } from "@/lib/api"
 import { useLoad } from "@/lib/useLoad"
+import { submitKey } from "@/lib/useSubmitShortcut"
 import { cn } from "@/lib/utils"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { dayBucket, fmtDate, fmtWhen } from "@/lib/format"
@@ -127,7 +133,7 @@ export default function Project({ user }: { user: User }) {
       </div>
       {/* the page is long: one row of anchors to every section, always in reach */}
       <nav aria-label="Sections of this rollout" className="sticky top-0 z-20 mt-2 flex gap-1 overflow-x-auto bg-background/95 px-5 py-2 text-[13px] backdrop-blur">
-        {[["notes", "Notes"], ["plan", "Plan"], ["raid", "Risks & issues"], ["scope", "Scope & sign-off"], ["details", "Details"], ["team", "Team"],
+        {[["notes", "Notes"], ["plan", "Plan"], ["raid", "Risks & issues"], ["milestones", "Milestones"], ["scope", "Scope & sign-off"], ["details", "Details"], ["team", "Team"],
           ...(can.manage ? [["stages", "Stages"]] : []), ["documents", "Documents"], ...(activity.length ? [["activity", "Activity"]] : []),
           ...((x.guest_links.customer || can.manage) ? [["sharing", "Sharing"]] : [])].map(([k, label]) => (
           <a key={k} href={`#${k}`} className="shrink-0 rounded-full px-3 py-1 text-nav-fg outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">{label}</a>
@@ -141,9 +147,14 @@ export default function Project({ user }: { user: User }) {
         </div>
       )}
 
+      {/* a CRM intake not yet confirmed (services/intake.py): say so first, with Confirm / Discard */}
+      {staff && x.intake_pending && <IntakeBanner projectId={id} canDiscard={!!can.delete_project} onConfirmed={(m) => { setNotice({ text: m.join(" ") || "Rollout confirmed" }); return reload() }} onEdited={reload} />}
       {/* the same detail as the flow screen: flowchart, tasks per stage, rail */}
       {/* Detail reloads after a move itself: the notice is all this page adds (review P3-35: it reloaded twice) */}
-      <Detail d={d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
+      {/* a customer, reseller or contractor: what the rollout needs from them comes first (services/asks.py) */}
+      {!staff && <div className="px-5 pt-4 empty:hidden"><AsksPanel projectId={id} staff={false} today={d.today} onChanged={reload} /></div>}
+      {/* an unconfirmed intake cannot move: no Move control, and no "tells 0 people" line, until it is confirmed */}
+      <Detail d={x.intake_pending ? { ...d, can_move: false } : d} reload={reload} onMoved={(m, undo) => setNotice({ text: m, undo })} standalone />
 
       <div className="grid grid-cols-1 gap-4 px-5 pb-4 [&>*]:min-w-0">
         <div className="empty:hidden"><AICatchUp projectId={id} /></div>
@@ -164,8 +175,16 @@ export default function Project({ user }: { user: User }) {
         </Panel></div>
         <div><Panel title="Plan" hint="dates per stage, the baseline, and the forecast" id="plan"><PlanPanel projectId={id} refresh={planRefresh} /></Panel></div>
         <div><Panel title="Risks, issues, decisions, blockers" id="raid"><RaidPanel projectId={id} onChanged={() => setPlanRefresh((n) => n + 1)} /></Panel></div>
+        {/* staff only: a partner's cut of the RAID and tasks is the page and the customer report, not a file */}
+        {staff && <div className="-mt-2 flex flex-wrap items-center justify-end gap-2 text-[12px] text-muted-foreground" role="group" aria-label="Download this rollout's registers">
+          Download
+          <a href={`/projects/${id}/raid.csv`} className={buttonVariants({ variant: "outline", size: "sm" })}><Download className="h-3.5 w-3.5" aria-hidden />RAID (CSV)</a>
+          <a href={`/projects/${id}/tasks.csv`} className={buttonVariants({ variant: "outline", size: "sm" })}><Download className="h-3.5 w-3.5" aria-hidden />Tasks (CSV)</a>
+        </div>}
+        <div><Panel title="Milestones" hint="dated commitments, reached or missed" id="milestones"><MilestonesPanel projectId={id} /></Panel></div>
         {staff && <div className="empty:hidden"><LessonsPanel projectId={id} /></div>}
         <div><Panel title="Scope and sign-off" hint="what was agreed, what was delivered, and the customer's signature" id="scope"><ScopePanel projectId={id} signoff={d.signoff} /></Panel></div>
+        {staff && <div className="empty:hidden"><AsksPanel key={d.tasks.map((t) => `${t.id}:${t.done}`).join()} projectId={id} staff today={d.today} /></div>}
       </div>
       {/* the half-width panels: two columns from lg, filled across, so the panel numbers
           read in order (a masonry numbered down one column, then down the next: review P3) */}
@@ -185,6 +204,7 @@ export default function Project({ user }: { user: User }) {
             })}
             <dt className="text-muted-foreground">Customer approval</dt><dd>{x.customer_approval ? "Asked on every stage change" : "Off"}</dd>
           </dl>
+          <FieldValues projectId={id} />
         </Panel>
 
         <Panel title="Team" hint="who is on this rollout, and as what" id="team">
@@ -193,8 +213,8 @@ export default function Project({ user }: { user: User }) {
               <li key={m.id} className="group flex items-center gap-2 text-[13px]">
                 <UserAvatar name={m.name} url={m.avatar_url} />
                 <span className="min-w-0 flex-1 truncate font-medium" title={m.name}>{m.name}{!m.active && <span className="ml-1 font-normal text-muted-foreground">(deactivated)</span>}</span>
-                <span className="text-muted-foreground">{m.role}</span>
-                {m.email && <span className="hidden text-[12px] text-muted-foreground sm:inline">{m.email}</span>}
+                <span className="w-28 shrink-0 text-muted-foreground">{m.role}</span>
+                <span className="hidden w-48 shrink-0 truncate text-[12px] text-muted-foreground sm:inline" title={m.email ?? undefined}>{m.email}</span>
                 {can.manage && m.user_id !== x.owner_id && (
                   <button type="button" aria-disabled={busy || undefined} onClick={() => send(`/projects/${id}/participants/${m.id}/remove`, {}, `Remove ${m.name} from this rollout? They lose access to it and stop hearing about it; their notes and tasks stay.`)} aria-label={`Remove ${m.name}`} className={cn(hit, "opacity-0 focus:opacity-100 group-hover:opacity-100")}><Trash2 className="h-3.5 w-3.5" /></button>
                 )}
@@ -219,8 +239,8 @@ export default function Project({ user }: { user: User }) {
                 <span className="min-w-0 flex-1 text-muted-foreground">{x.stage_rows.length} stages: {x.stage_rows.map((r) => r.name).join(" › ")}</span>
                 <Button size="sm" variant="outline" onClick={() => setEditStages(true)}>Edit stages</Button>
               </div>
-            ) : <><button type="button" onClick={() => setEditStages(false)} className="mb-2 text-[12px] text-muted-foreground hover:text-foreground">Done editing</button><StageListEditor key={stageRowsKey(x.stage_rows)} rows={x.stage_rows} current={d.stage} busy={busy} send={send}
-              paths={{ add: `/projects/${id}/stages/add`, rename: (s) => `/projects/${id}/stages/${s}/rename`, move: (s) => `/projects/${id}/stages/${s}/move`, remove: (s) => `/projects/${id}/stages/${s}/delete`, sla: `/projects/${id}/stages/sla` }} /></>}
+            ) : <><button type="button" onClick={() => setEditStages(false)} className="mb-2 text-[12px] text-muted-foreground hover:text-foreground">Done editing</button><StageListEditor key={stageRowsKey(x.stage_rows)} rows={x.stage_rows} current={d.stage} busy={busy} send={send} categories={x.doc_categories}
+              paths={{ add: `/projects/${id}/stages/add`, rename: (s) => `/projects/${id}/stages/${s}/rename`, move: (s) => `/projects/${id}/stages/${s}/move`, remove: (s) => `/projects/${id}/stages/${s}/delete`, sla: `/projects/${id}/stages/sla`, gates: `/projects/${id}/stages/gates` }} /></>}
           </Panel>
         )}
 
@@ -228,11 +248,13 @@ export default function Project({ user }: { user: User }) {
           {can.docs && <UploadForm x={x} busy={busy} onSubmit={(fd) => send(`/projects/${id}/documents`, fd)} />}
           <ul className="mt-3 grid grid-cols-1 gap-2">
             {x.documents.map((doc) => (
-              <li key={doc.id} className="flex items-center gap-3 text-[13px]">
+              <li key={doc.id} className="flex flex-wrap items-center gap-3 text-[13px]">
                 <span className="w-28 shrink-0 truncate text-[12px] text-muted-foreground">{doc.category}</span>
-                {can.download ? <a href={`/projects/${id}/documents/${doc.id}/download`} className="min-w-0 flex-1 truncate font-medium hover:underline">{doc.filename}</a> : <span className="min-w-0 flex-1 truncate font-medium">{doc.filename}</span>}
-                <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtWhen(doc.uploaded_at)}</span>
-                {can.delete_doc && <button type="button" aria-disabled={busy || undefined} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}? The file is removed for everyone on the rollout.`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
+                {doc.review === "pending" ? <PendingDoc doc={doc} canReview={can.docs} onDecide={(decision, confirmText) => send(`/projects/${id}/documents/${doc.id}/review`, { decision }, confirmText)} /> : <>
+                  {can.download ? <a href={`/projects/${id}/documents/${doc.id}/download`} className="min-w-0 flex-1 truncate font-medium hover:underline">{doc.filename}</a> : <span className="min-w-0 flex-1 truncate font-medium">{doc.filename}</span>}
+                  <span className="hidden text-[12px] text-muted-foreground sm:inline">{doc.uploaded_by} · {fmtWhen(doc.uploaded_at)}</span>
+                </>}
+                {can.delete_doc && doc.review !== "pending" && <button type="button" aria-disabled={busy || undefined} onClick={() => send(`/projects/${id}/documents/${doc.id}/delete`, {}, `Delete ${doc.filename}? The file is removed for everyone on the rollout.`)} aria-label={`Delete ${doc.filename}`} className={hit}><Trash2 className="h-3.5 w-3.5" /></button>}
               </li>
             ))}
             {x.documents.length === 0 && <li className="text-[13px] text-muted-foreground">No documents uploaded yet.</li>}
@@ -305,7 +327,7 @@ function NoteRow({ n, busy, onEdit, onDelete }: { n: ProjectExtras["notes"][numb
       {editing ? (
         <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void onEdit(text.trim()).then((r) => { if (r) setEditing(false) }) }} className="mt-1 grid grid-cols-1 gap-2">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={5000} aria-label="Edit note" autoFocus
-            className={fieldArea} onKeyDown={(e) => { if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
+            className={fieldArea} onKeyDown={(e) => { submitKey(e); if (e.key === "Escape") { setEditing(false); setText(n.note) } }} />
           <div className="flex gap-2">
             <Button type="submit" size="sm" loading={busy} disabled={!text.trim() || text.trim() === n.note}>Save</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(false); setText(n.note) }}>Cancel</Button>

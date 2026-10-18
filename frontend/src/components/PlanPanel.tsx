@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { checkbox, td, th } from "@/lib/ui"
 import { Input } from "@/components/ui/input"
 import { Field } from "@/components/ui/field"
-import { CalendarRange, History, Wand2 } from "lucide-react"
+import { CalendarRange, History, Link2, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PlanGantt } from "@/components/PlanGantt"
@@ -12,7 +12,7 @@ import { ApiError, plan as loadPlan, rebaseline, savePlan } from "@/lib/api"
 import { fillSuggested, setDate, workDays, type PlanRow } from "@/lib/plan"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
-import { fmtDate, forecastTone } from "@/lib/format"
+import { fmtDate, forecastTone, plural } from "@/lib/format"
 import { Notice } from "@/components/Notice"
 import { LoadFailed } from "@/components/LoadFailed"
 import { useLoad } from "@/lib/useLoad"
@@ -68,7 +68,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
   const save = () => run(async () => {
     const r = await savePlan(projectId, rows.map(({ id, plan_start, plan_end }) => ({ id, plan_start, plan_end })), reason.trim())
     setReason("")
-    const said = r.baselined ? "Plan saved and frozen as the baseline." : `Plan saved: ${r.changed} date${r.changed === 1 ? "" : "s"} moved.`
+    const said = r.baselined ? "Plan saved and frozen as the baseline." : `Plan saved: ${plural(r.changed, "date")} moved.`
     return r.warning ? `${said} ${r.warning}` : said
   })
   const f = d.finish
@@ -119,7 +119,8 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
                   <td className={cn(td, "tabular-nums text-muted-foreground")}>{days ?? "—"}</td>
                   <td className={cn(td, "tabular-nums text-muted-foreground")}>{s.sla_days ? `${s.sla_days} d` : "—"}</td>
                   <td className={cn(td, "text-muted-foreground")}>{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` – ${fmtDate(s.actual_end)}` : " – now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
-                  <td className={td}>{s.forecast_end ? fmtDate(s.forecast_end) : "—"}</td>
+                  {/* a late predecessor moved it (services/task_links.py): the glyph, and the reason under the table */}
+                  <td className={cn(td, "whitespace-nowrap")} title={s.forecast_reason ?? undefined}>{s.forecast_end ? fmtDate(s.forecast_end) : "—"}{s.forecast_reason && <><Link2 className="ml-1 inline h-3 w-3 text-warn" aria-hidden /><span className="sr-only"> (moved by a task it waits on)</span></>}</td>
                   {/* a finished stage's slip is history (muted); a running or coming stage that slips is amber;
                       red only once the target date itself has passed: red means overdue (critique 10 Oct) */}
                   <td className={cn(td, "whitespace-nowrap", s.slip_days && s.slip_days > 0 && s.status !== "done" ? (forecastTone(s.slip_days, f.target, d.today) === "bad" ? "font-medium text-bad" : "text-warn") : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
@@ -129,6 +130,9 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
           </tbody>
         </table>
       </div>
+      {d.stages.filter((s) => s.forecast_reason).map((s) => (
+        <p key={s.id} className="mt-2 flex items-start gap-1 text-[12px] text-muted-foreground"><Link2 className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />{s.forecast_reason}</p>
+      ))}
 
       {editable && !open && <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditing(true)}><CalendarRange className="h-3.5 w-3.5" /> Edit dates</Button>}
       {open && (

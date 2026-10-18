@@ -125,7 +125,28 @@ def _run_job(job, report_on):
     done only if this returns (the ONCE_A_DAY jobs are marked before it runs)."""
     if job == "digest":
         import send_daily_alerts
-        send_daily_alerts.main()
+        from app import app
+        from services import chasers
+        from services.notifications import send_summaries
+        from policies import is_working_day
+
+        def on_working_days(step):   # a holiday holds the summaries and chasers, as it holds the digest
+            def run():
+                with app.test_request_context():   # mail links need one
+                    if is_working_day():
+                        step()
+            return run
+
+        failed = []
+        # the reminders and alert digest, each person's daily summary (B2) and the customer chasers (B9): one failing does not skip the rest
+        for name, step in (("digest", send_daily_alerts.main), ("daily summaries", on_working_days(send_summaries)), ("chasers", on_working_days(chasers.run))):
+            try:
+                step()
+            except Exception as exc:  # noqa: BLE001
+                failed.append(f"{name}: {exc}")
+                log.error("%s failed: %s", name, exc)
+        if failed:
+            raise RuntimeError("; ".join(failed))
     elif job == "backup":
         import backup
         ok, message = backup.run_backup(trigger="schedule")
@@ -156,17 +177,23 @@ def _run_job(job, report_on):
         from services.partner_access import end_dormant as end_dormant_partners
         from services.ai.health import trim as trim_ai
         from services.outbox import trim as trim_outbox
+        from services.rules import trim as trim_rule_runs
+        from services.recurrence import run_recurring
         from services.doctext import extract_pending as read_documents
+        from services.ics import switch_off_idle as idle_calendar_feeds
         failed = []
         with app.app_context():
             for step in (audit_retention,        # a step like the rest: its failure skipped them all (OPS-10)
                          cleanup_soft_deletes,   # deleted projects and files past the undo window
+                         run_recurring,          # the next occurrence of repeating tasks done or past their day
                          trim_activity,          # active-minute rows past activity_keep_days
                          trim_notifications,     # read bell items past notifications_keep_days
                          trim_signup_links,      # sign-up links dead for 90 days
                          end_dormant_partners,   # partner accounts whose rollouts all closed long ago (A12)
+                         idle_calendar_feeds,    # calendar feeds unread for ics_idle_days switch off
                          trim_ai,                # AI checks past 180 days, finished AI jobs past 30
                          trim_outbox,            # mail and Teams messages sent, or given up on long ago
+                         trim_rule_runs,         # automation run logs past rule_runs_keep_days
                          trim_settled,           # resolved alerts past alerts_keep_days, Teams chats of people gone
                          read_documents,         # the text of new uploads, for search and the AI
                          record_snapshot,        # the day's portfolio counts, for the Dashboard's deltas

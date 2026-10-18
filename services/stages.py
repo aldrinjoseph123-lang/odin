@@ -5,8 +5,10 @@ names — so a rename on a project cascades into that project's rows and its
 history keeps whatever the stage was called when each note was written.
 Every function returns an error message for the user, or None on success.
 """
+import json
+
 from constants import SIGNOFF_STAGE
-from db import get_db
+from db import get_db, get_doc_category_names
 
 MAX_SLA_DAYS = 365
 
@@ -75,7 +77,7 @@ def rename_stage(scope, scope_id, stage_id, new_name):
     db.execute(f"UPDATE {table} SET name = ? WHERE id = ?", (new_name, stage_id))
     if scope == "project":   # every row that names the stage (B5)
         db.execute("UPDATE projects SET stage = ? WHERE id = ? AND stage = ?", (new_name, scope_id, row["name"]))
-        for named in ("status_notes", "tasks", "stage_approvals", "raid_items", "plan_changes"):
+        for named in ("status_notes", "tasks", "stage_approvals", "raid_items", "plan_changes", "milestones"):
             db.execute(f"UPDATE {named} SET stage = ? WHERE project_id = ? AND stage = ?", (new_name, scope_id, row["name"]))
         db.execute("UPDATE status_notes SET prev_stage = ? WHERE project_id = ? AND prev_stage = ?", (new_name, scope_id, row["name"]))
     db.commit()
@@ -154,5 +156,27 @@ def set_slas(scope, scope_id, form):
         updates.append((days, stage["id"]))
     for days, stage_id in updates:
         db.execute(f"UPDATE {table} SET sla_days = ? WHERE id = ?", (days, stage_id))
+    db.commit()
+    return None
+
+
+def set_gates(scope, scope_id, form):
+    """What each stage asks before a rollout leaves it (services/gates.py),
+    from gate::<id> ("1" = every task done) and docs::<id> (required
+    document categories, one per line) fields. A stage the form does not
+    name keeps its gate."""
+    table, col = _table(scope)
+    db = get_db()
+    known = set(get_doc_category_names())
+    updates = []
+    for stage in list_stages(scope, scope_id):
+        if f"gate::{stage['id']}" not in form and f"docs::{stage['id']}" not in form:
+            continue
+        docs = list(dict.fromkeys(c.strip() for c in (form.get(f"docs::{stage['id']}", "") or "").splitlines() if c.strip()))
+        if unknown := [c for c in docs if c not in known]:
+            return f"{stage['name']}: '{unknown[0]}' is not a document category"
+        updates.append((1 if form.get(f"gate::{stage['id']}") == "1" else 0, json.dumps(docs) if docs else None, stage["id"]))
+    for gate_tasks, docs, stage_id in updates:
+        db.execute(f"UPDATE {table} SET gate_tasks = ?, required_docs = ? WHERE id = ?", (gate_tasks, docs, stage_id))
     db.commit()
     return None

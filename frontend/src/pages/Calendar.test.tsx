@@ -73,6 +73,17 @@ describe("Calendar", () => {
     expect(await screen.findByRole("heading", { level: 3, name: /10 Sep/ })).toBeInTheDocument()
   })
 
+  it("a milestone is a diamond on its day, missed in words when its day passed, with its own layer", async () => {
+    const user = userEvent.setup()
+    mount()
+    expect(await screen.findByRole("link", { name: /^Milestone, missed: Pilot go-live/ })).toBeInTheDocument()   // 17 Sep, today is 29 Sep
+    vi.mocked(api.calendar).mockResolvedValueOnce({ ...calendarData, milestones: [{ ...calendarData.milestones[0], done: 1, day: "2026-09-30" }] })
+    cleanup(); mount()
+    expect(await screen.findByRole("link", { name: /^Milestone, reached: Pilot go-live/ })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Milestones" }))
+    expect(screen.queryByRole("link", { name: /Pilot go-live/ })).toBeNull()
+  })
+
   it("a hand-edited month or week does not break the page (P3-34)", async () => {
     mount(true, "/board?view=calendar&month=2026-13&week=2026-02-31x&day=nope")
     expect(await screen.findByRole("heading", { level: 2 })).toBeInTheDocument()

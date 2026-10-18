@@ -3,7 +3,8 @@
 An admin names a token and picks how long it lives; the token is shown once
 and only its SHA-256 is stored. A script sends it as
 `Authorization: Bearer <token>` to the /api/v1 endpoints below, which read
-projects, their stages and tasks, and saved reports — never write. A token
+projects (with their custom fields), their stages, tasks and task links,
+milestones, asks and ratings, and saved reports — never write. A token
 sees what internal staff see (every project). Behind Cloudflare Access,
 /api/v1 needs its own Access policy (a service token) to be reachable.
 """
@@ -15,25 +16,42 @@ from flask import abort, flash, g, jsonify, redirect, request, session, url_for
 
 from core import app, permission_required, wants_json
 from db import PROJECT_OPEN_SQL, get_db, get_stage_names
+from policies import policy
 from routes.projects import load_project
 from security import token_hash
+from services.fields import named_values
 from services.audit import audit_log
 
 LIFETIMES = {"30": 30, "90": 90, "365": 365}
+SCOPES = ("read", "create")
 
 
 
-def token_required(view):
-    """Bearer token → the view, or 401. Never falls back to a session."""
+def token_required(view=None, *, scope="read"):
+    """Bearer token → the view, or 401. Never falls back to a session. A token
+    has one scope: `read` opens the GET routes below, `create` only the CRM intake
+    endpoint (services/intake.py); the wrong scope for a route is a 403."""
+    if view is None:
+        return lambda v: token_required(v, scope=scope)
+
     @wraps(view)
     def wrapped(*args, **kwargs):
         header = request.headers.get("Authorization", "")
         raw = header[7:].strip() if header.startswith("Bearer ") else ""
         now = datetime.utcnow().isoformat()
-        row = raw and get_db().execute(
-            "SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?", (token_hash(raw), now)).fetchone()
+        row = raw and get_db().execute("SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL", (token_hash(raw),)).fetchone()
         if not row:
             return jsonify(error="A valid API token is required (Authorization: Bearer <token>)"), 401
+        if row["expires_at"] <= now:   # its own words: the caller's admin knows what to do
+            if row["scope"] == "create":
+                from services import intake
+                message = f"This intake token expired on {row['expires_at'][:10]}; an admin can renew it under Settings › Integrations › Intake"
+                intake.refuse(get_db(), row["name"], 401, message)
+            else:
+                message = f"This API token expired on {row['expires_at'][:10]}; an admin can make a new one under Settings › API tokens"
+            return jsonify(error=message), 401
+        if row["scope"] != scope:
+            return jsonify(error=f"This token has the {row['scope']} scope; this route needs a token with the {scope} scope"), 403
         db = get_db()
         if (row["last_used_at"] or "")[:10] != now[:10]:
             # one audit row per token per day, naming what it read first; last_used_at keeps the rest
@@ -50,19 +68,21 @@ def token_required(view):
 @permission_required("manage_settings")
 def api_token_create():
     name = request.form.get("name", "").strip()[:80]
-    days = LIFETIMES.get(request.form.get("days", ""))
-    if not name or not days:
+    scope = request.form.get("scope", "read")   # `create`: the CRM intake endpoint only (Settings › Integrations)
+    # an intake token lives as long as the policy says, and is renewed rather than remade (the CRM keeps its secret)
+    days = policy("intake_token_days") if scope == "create" else LIFETIMES.get(request.form.get("days", ""))
+    if not name or not days or scope not in SCOPES:
         flash("Name the token and pick how long it lives", "error")
         return redirect(url_for("settings_section", section="api"))
     raw = f"odin_{secrets.token_urlsafe(32)}"
     now = datetime.utcnow()
     db = get_db()
-    db.execute("DELETE FROM api_tokens WHERE (revoked_at IS NOT NULL OR expires_at < ?) AND created_at < ?",
-               (now.isoformat(), (now - timedelta(days=90)).isoformat()))
-    cur = db.execute("INSERT INTO api_tokens (name, token_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-                     (name, token_hash(raw), session.get("user_name", "?"), now.isoformat(), (now + timedelta(days=days)).isoformat()))
+    # revoked or expired over 90 days ago (an expired intake token stays renewable until then)
+    db.execute("DELETE FROM api_tokens WHERE COALESCE(revoked_at, expires_at) < ?", ((now - timedelta(days=90)).isoformat(),))
+    cur = db.execute("INSERT INTO api_tokens (name, token_hash, created_by, created_at, expires_at, scope) VALUES (?, ?, ?, ?, ?, ?)",
+                     (name, token_hash(raw), session.get("user_name", "?"), now.isoformat(), (now + timedelta(days=days)).isoformat(), scope))
     db.commit()
-    audit_log("create_api_token", "api_token", cur.lastrowid, name, f"read-only, {days} days")
+    audit_log("create_api_token", "api_token", cur.lastrowid, name, f"{'read-only' if scope == 'read' else 'create (intake)'}, {days} days")
     if wants_json():
         # the page keeps it on screen with a Copy button until dismissed (review P1-2); never in a toast
         return jsonify(ok=True, messages=[f"Token for {name} made"], undo=None, location=None, token=raw)
@@ -84,33 +104,87 @@ def api_token_revoke(token_id):
     return redirect(url_for("settings_section", section="api"))
 
 
+@app.route("/settings/api-tokens/<int:token_id>/renew", methods=["POST"])
+@permission_required("manage_settings")
+def api_token_renew(token_id):
+    """An intake token (create scope) works again for intake_token_days from today, expired
+    or not; the CRM keeps the secret it has. A read token is made anew instead."""
+    db = get_db()
+    row = db.execute("SELECT * FROM api_tokens WHERE id = ? AND revoked_at IS NULL AND scope = 'create'", (token_id,)).fetchone()
+    if row is None:
+        abort(404)
+    days = policy("intake_token_days")
+    expires = (datetime.utcnow() + timedelta(days=days)).isoformat()
+    db.execute("UPDATE api_tokens SET expires_at = ? WHERE id = ?", (expires, token_id))
+    db.commit()
+    audit_log("renew_api_token", "api_token", token_id, row["name"], f"expires {row['expires_at'][:10]} → {expires[:10]} ({days} days from today)")
+    flash(f"Renewed {row['name']}: it works until {expires[:10]}")
+    return redirect(url_for("settings_section", section="integrations"))
+
+
 # ---- the read-only API -------------------------------------------------------
 
-def _project_json(p):
+def _project_json(p, fields):
+    """`fields`: the rollout's custom fields as {name: value} (services.fields.named_values)."""
     return {k: p[k] for k in ("id", "name", "client", "stage", "delivery_mode", "vendor_name", "product_name",
-                              "po_number", "start_date", "target_end_date", "created_at", "updated_at")} | {"owner": p["owner_name"]}
+                              "po_number", "start_date", "target_end_date", "created_at", "updated_at")} | {"owner": p["owner_name"], "fields": fields}
+
+
+PAGE_MAX = 500   # a fixed cap, not a policy; a page larger than this is a scrape, not a report
+
+
+def _page_args():
+    """(limit, offset) from ?limit=&offset=; limit None (the whole set) when not asked for. ValueError says why."""
+    raw_limit, raw_offset = request.args.get("limit"), request.args.get("offset")
+    try:
+        limit = None if raw_limit in (None, "") else int(raw_limit)
+        offset = 0 if raw_offset in (None, "") else int(raw_offset)
+    except ValueError:
+        raise ValueError("limit and offset are whole numbers") from None
+    if limit is not None and not 1 <= limit <= PAGE_MAX:
+        raise ValueError(f"limit: 1 to {PAGE_MAX}")
+    if offset < 0:
+        raise ValueError("offset: 0 or more")
+    return limit, offset
 
 
 @app.route("/api/v1/projects")
 @token_required
 def api_v1_projects():
-    """Active projects (?all=1 includes closed ones)."""
+    """Active projects (?all=1 includes closed ones); ?limit=&offset= pages them (the whole set by default)."""
+    try:
+        limit, offset = _page_args()
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     where = "" if request.args.get("all") == "1" else f" AND {PROJECT_OPEN_SQL}"
-    rows = get_db().execute(
-        "SELECT p.*, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL" + where + " ORDER BY p.id").fetchall()
-    return jsonify(projects=[_project_json(p) for p in rows])
+    base = "FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.deleted_at IS NULL AND p.intake_pending = 0" + where
+    db = get_db()
+    total = db.execute("SELECT COUNT(*) " + base).fetchone()[0]
+    page = "" if limit is None and not offset else f" LIMIT {limit if limit is not None else -1} OFFSET {offset}"   # ints, checked above
+    rows = db.execute("SELECT p.*, u.name AS owner_name " + base + " ORDER BY p.id" + page).fetchall()
+    named = named_values([p["id"] for p in rows])
+    return jsonify(projects=[_project_json(p, named[p["id"]]) for p in rows], total=total, limit=limit, offset=offset)
 
 
 @app.route("/api/v1/projects/<int:project_id>")
 @token_required
 def api_v1_project(project_id):
-    """One project with its stage list and tasks."""
+    """One project with its stage list, tasks (with what each waits on), milestones,
+    and the asks of the customer and partners with their sign-off ratings."""
+    from services import asks, milestones, task_links
     p = load_project(project_id)
+    if p["intake_pending"]:   # an intake not yet confirmed is not a rollout to the readers
+        abort(404)
     db = get_db()
-    tasks = db.execute("SELECT t.title, t.stage, t.done, t.due_date, u.name AS assignee FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
-                       "WHERE t.project_id = ? ORDER BY t.id", (project_id,)).fetchall()
-    return jsonify(project=_project_json(p) | {"stages": get_stage_names(project_id)},
-                   tasks=[dict(t) | {"done": bool(t["done"])} for t in tasks])
+    tasks = db.execute("SELECT t.id, t.title, t.stage, t.done, t.due_date, t.kind, t.estimate_hours, t.recurrence, u.name AS assignee "
+                       "FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id WHERE t.project_id = ? ORDER BY t.id", (project_id,)).fetchall()
+    links = task_links.links_for(project_id, db)
+    marks = [{k: m[k] for k in ("id", "name", "date", "stage", "customer_visible", "done", "done_at", "missed")} for m in milestones.items(project_id)]
+    ask_rows = [{k: a[k] for k in ("id", "title", "kind", "done", "done_at", "due_date", "assignee", "assignee_role", "category", "answers", "answered_by", "answered_at")}
+                | {"file": a["file"]["filename"] if a["file"] else None} for a in asks.listing(project_id)]
+    return jsonify(project=_project_json(p, named_values([project_id])[project_id]) | {"stages": get_stage_names(project_id)},
+                   tasks=[dict(t) | {"done": bool(t["done"]), "kind": t["kind"] or "task", "waits_on": links.get(t["id"], [])} for t in tasks],
+                   milestones=marks, asks=ask_rows, csat=asks.ratings(project_id))
 
 
 @app.route("/api/v1/projects/<int:project_id>/report")
@@ -120,7 +194,8 @@ def api_v1_report(project_id):
     asks) and the frozen report data (stages, plan, health, RAID…) as the
     internal report shows them (P2-28). An old plain-text version has body only."""
     import json
-    load_project(project_id)
+    if load_project(project_id)["intake_pending"]:
+        abort(404)
     row = get_db().execute("SELECT version, kind, body, summary, next_steps, asks, data, created_by, created_at FROM project_reports "
                            "WHERE project_id = ? ORDER BY version DESC LIMIT 1", (project_id,)).fetchone()
     if row is None:

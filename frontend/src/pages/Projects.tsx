@@ -13,8 +13,9 @@ import { EmptyState } from "@/components/EmptyState"
 import { Segmented } from "@/components/Segmented"
 import { usePref } from "@/lib/usePref"
 import { Pager } from "@/components/Pager"
-import { activeProjectsView, fmtWhen } from "@/lib/format"
+import { activeProjectsView, fieldText, fmtWhen } from "@/lib/format"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
+import { PendingView } from "@/components/PendingIntake"
 
 // Every filter lives in the URL: shareable, back-button friendly, and the
 // same query string the CSV export and Flask's nav memory understand.
@@ -24,6 +25,7 @@ const VIEWS: { key: string; label: string; params: Record<string, string> }[] = 
   { key: "overdue", label: "Overdue", params: { view: "overdue" } },
   { key: "at_risk", label: "Due soon", params: { view: "at_risk" } },
   { key: "stale", label: "Idle", params: { view: "stale" } },
+  { key: "pending", label: "Pending intake", params: { view: "pending" } },   // deals from the CRM awaiting a project manager; shown while any wait
 ]
 const COLUMNS: { key: string; label: string; className?: string }[] = [
   { key: "name", label: "Rollout" }, { key: "client", label: "Client", className: "hidden sm:table-cell" },
@@ -62,7 +64,7 @@ export default function Projects({ user }: { user: User }) {
   }
   // the search field is uncontrolled: it remounts with the URL's value (key) and is read on submit
   function search(e: FormEvent<HTMLFormElement>) { e.preventDefault(); update({ q: String(new FormData(e.currentTarget).get("q") ?? "").trim() || null }) }
-  const filtered = Boolean(params.get("q") || params.get("view") || params.get("stage") || params.get("delivery_mode"))
+  const filtered = Boolean(params.get("q") || params.get("view") || params.get("stage") || params.get("delivery_mode") || [...params.keys()].some((k) => k.startsWith("field.")))
   const noRows = filtered ? <>No rollouts match this filter. <button type="button" className="text-primary-text hover:underline" onClick={() => setParams({})}>Clear filters</button></>
     : <>No rollouts yet.{data?.can_create && user.role !== "Viewer" && <> <a href="/projects/new" className="text-primary-text hover:underline">Create the first one</a></>}</>
 
@@ -83,10 +85,10 @@ export default function Projects({ user }: { user: User }) {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {VIEWS.map((v) => (
+        {VIEWS.filter((v) => v.key !== "pending" || data.pending > 0 || activeView === "pending").map((v) => (
           <button key={v.key} type="button" onClick={() => pickView(v)} aria-pressed={activeView === v.key}
             className={chip(activeView === v.key)}>
-            {v.label}
+            {v.label}{v.key === "pending" && <span className="ml-1 tabular-nums">{data.pending}</span>}
           </button>
         ))}
         <select value={params.get("stage") ?? ""} onChange={(e) => update({ stage: e.target.value || null, view: null, closed: null })} aria-label="Stage" className={filterSelect}>
@@ -97,6 +99,13 @@ export default function Projects({ user }: { user: User }) {
           <option value="">Any mode</option>
           {data.delivery_modes.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
+        {/* a filter per choice custom field (Settings › Rollouts & workflow) */}
+        {data.field_filters.map((f) => (
+          <select key={f.id} value={params.get(`field.${f.id}`) ?? ""} onChange={(e) => update({ [`field.${f.id}`]: e.target.value || null })} aria-label={f.name} className={filterSelect}>
+            <option value="">Any {f.name}</option>
+            {f.choices.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        ))}
         {layout === "cards" && (
           // cards have no column heads to click: the sort lives here instead
           <span className="flex items-center gap-1">
@@ -114,7 +123,7 @@ export default function Projects({ user }: { user: User }) {
         </form>
       </div>
 
-      {layout === "cards" ? (
+      {activeView === "pending" ? <PendingView /> : layout === "cards" ? (
         <div className="mt-3 min-h-0 flex-1 overflow-auto">
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Rollouts">
             {data.rows.map((r) => {
@@ -157,6 +166,7 @@ export default function Projects({ user }: { user: User }) {
                     </button>
                   </th>
                 ))}
+                {data.fields.map((c) => <th key={`field-${c.id}`} className={cn(th, "hidden lg:table-cell")}>{c.name}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -181,10 +191,11 @@ export default function Projects({ user }: { user: User }) {
                   <td className={cn(td, "hidden text-muted-foreground xl:table-cell")}>{r.vendor_name ?? "—"}</td>
                   <td className={cn(td, "hidden text-muted-foreground xl:table-cell")}>{r.product_name ?? "—"}</td>
                   <td className={cn(td, "hidden whitespace-nowrap text-muted-foreground md:table-cell")}>{fmtWhen(r.updated_at)}</td>
+                  {data.fields.map((c, i) => <td key={`field-${c.id}`} className={cn(td, "hidden text-muted-foreground wrap-anywhere lg:table-cell")}>{fieldText(c.kind, r.fields[i] ?? null)}</td>)}
                 </tr>
               ))}
               {data.rows.length === 0 && (
-                <tr><td colSpan={COLUMNS.length} className="p-3"><EmptyState>{noRows}</EmptyState></td></tr>
+                <tr><td colSpan={COLUMNS.length + data.fields.length} className="p-3"><EmptyState>{noRows}</EmptyState></td></tr>
               )}
             </tbody>
           </table>

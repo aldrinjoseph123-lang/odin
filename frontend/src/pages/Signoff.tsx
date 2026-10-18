@@ -15,8 +15,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { PrintBrand } from "@/components/Brand"
 import { LoadError, PageSkeleton } from "@/components/PageSkeleton"
 import { Section } from "@/components/ReportParts"
-import { SCOPE_TONE, SCOPE_WORD } from "@/components/ScopePanel"
+import { SCOPE_WORD } from "@/components/ScopePanel"
+import { Tag } from "@/components/ui/tag"
 import { SignaturePad, SignatureView } from "@/components/SignaturePad"
+import { CsatPrompt, type Csat } from "@/components/CsatPrompt"
 import {
   ApiError, rejectSignoff, sendSignoff, signoff, signoffLink, signSignoff, uploadSignoff, waiveSignoff, withdrawSignoff,
   type Signature, type SignoffContent, type SignoffData, type SignoffStatus, type SignoffVersion, type User, type SignoffLink,
@@ -24,6 +26,7 @@ import {
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { copyWithToast } from "@/lib/copy"
 import { useLoad } from "@/lib/useLoad"
+import { submitKey } from "@/lib/useSubmitShortcut"
 import { TemplatePicker } from "@/components/TemplatePicker"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
@@ -61,7 +64,7 @@ function ScopeTable({ items }: { items: { title: string; detail: string | null; 
           <span className="w-5 shrink-0 text-right text-[12px] tabular-nums text-muted-foreground">{i + 1}</span>
           <span className="min-w-0 flex-1"><span className={cn("block font-medium", x.status === "descoped" && "text-muted-foreground line-through")}>{x.title}</span>
             {(x.detail || x.note) && <span className="block text-[12px] text-muted-foreground">{[x.detail, x.note].filter(Boolean).join(" · ")}</span>}</span>
-          <span className={cn("shrink-0 rounded-full px-2 py-1 text-[11px] font-medium", SCOPE_TONE[x.status].replace("line-through", ""))}>{SCOPE_WORD[x.status]}</span>
+          <Tag kind="scope" level={x.status}>{SCOPE_WORD[x.status]}</Tag>
         </li>
       ))}
     </ol>
@@ -131,6 +134,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
   const [title, setTitle] = useState("")
   const [sig, setSig] = useState<Signature | null>(null)
   const [accept, setAccept] = useState(false)
+  const [csat, setCsat] = useState<Csat>({ rating: null, comment: "" })   // the signer's optional rating of the rollout
   const [rejecting, setRejecting] = useState(false)
   const [comment, setComment] = useState("")
   const [err, setErr] = useState<string | null>(null)
@@ -139,7 +143,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
     e.preventDefault()
     if (!sig) { setErr("Sign by drawing or typing your name"); return }
     setBusy(true); setErr(null)
-    try { await signSignoff(id, version, { name, title, accept, signature: sig }, counter); onDone(counter ? "Countersigned. The rollout can now close." : "Signed. Thank you — we will countersign and send you the signed copy.") }
+    try { await signSignoff(id, version, { name, title, accept, signature: sig, ...(counter || csat.rating === null ? {} : { rating: csat.rating, rating_comment: csat.comment }) }, counter); onDone(counter ? "Countersigned. The rollout can now close." : "Signed. Thank you — we will countersign and send you the signed copy.") }
     catch (x) { setErr(x instanceof ApiError ? x.message : "That did not go through") } finally { setBusy(false) }
   }
   async function reject() {
@@ -150,7 +154,8 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
   if (rejecting) return (
     <div className="grid grid-cols-1 gap-2">
       <Field label="What needs to change before you can sign?">
-        <textarea rows={4} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} className={area} autoFocus />
+        <textarea rows={4} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} className={area} autoFocus
+          onKeyDown={(e) => submitKey(e, () => { if (comment.trim() && !busy) void reject() })} />
       </Field>
       {err && <Notice bad>{err}</Notice>}
       <div className="flex gap-2"><Button size="sm" variant="ghost" onClick={() => setRejecting(false)} disabled={busy}>Back</Button>
@@ -168,6 +173,7 @@ function SignForm({ who, client, counter, onDone, busy, setBusy, id, version, ca
         <input type="checkbox" className={cn(checkbox, "mt-1")} checked={accept} onChange={(e) => setAccept(e.target.checked)} />
         <span>{counter ? "I confirm the work above is complete and countersign on our behalf." : `I have read this document and accept it on behalf of ${client}.`}</span>
       </label>
+      {!counter && <CsatPrompt value={csat} onChange={setCsat} />}
       {err && <Notice bad>{err}</Notice>}
       {/* a disabled button says what it waits for (WCAG 3.3.1), and the reason is tied to it */}
       {missing.length > 0 && <p id="sign-missing" className="text-[12px] text-muted-foreground">To {counter ? "countersign" : "sign"}: {missing.join(", ")}.</p>}

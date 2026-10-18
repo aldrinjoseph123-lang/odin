@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Crosshair } from "lucide-react"
+import { flushSync } from "react-dom"
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Crosshair, Download, Printer } from "lucide-react"
 import { Notice } from "@/components/Notice"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DatePicker } from "@/components/DatePicker"
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils"
 type Zoom = "week" | "month" | "quarter"
 const PX: Record<Zoom, number> = { week: 44, month: 18, quarter: 6 }
 const ROW = 36, LEFT = 440
+const PRINT_W = 1040   // the printable width of an A4 landscape page (281 mm, a little under), in CSS pixels
 const RAG_BAR = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-nav-fg/60", done: "bg-ok-line" } as const
 const RAG_WORD = { red: "Off track", amber: "At risk", green: "On track", done: "Complete" } as const
 
@@ -51,7 +53,7 @@ function stageWords(s: GanttStage) {
     s.forecast_end && s.status !== "done" ? `forecast to end ${fmtDate(s.forecast_end)}` : ""].filter(Boolean).join("; ")
 }
 
-export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: number[]; stamp?: number; selectedId: number | null; onSelect: (id: number) => void }) {
+export default function FlowGantt({ ids, stamp, selectedId, onSelect, portfolioPdf }: { ids: number[]; stamp?: number; selectedId: number | null; onSelect: (id: number) => void; portfolioPdf?: boolean }) {
   // a failed refresh keeps the chart (useLoad, P2-29)
   const { data, error: failed, reload: load } = useLoad("flow-plan", flowPlan)
   // the Flow's every reload after this mounted, so a new rollout or a move shows here too (P2-35)
@@ -62,6 +64,14 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: n
   const [drag, setDrag] = useState<{ row: number; index: number; mode: Edit["mode"]; x: number; days: number } | null>(null)
   const [edit, setEdit] = useState<Edit | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
+  // Print (B20): the timeline is squeezed to the page for as long as the browser prints, so Ctrl+P and the
+  // button both give one landscape page wide, in the same type size as the screen
+  const [printing, setPrinting] = useState(false)
+  useEffect(() => {
+    const before = () => flushSync(() => setPrinting(true)), after = () => setPrinting(false)
+    window.addEventListener("beforeprint", before); window.addEventListener("afterprint", after)
+    return () => { window.removeEventListener("beforeprint", before); window.removeEventListener("afterprint", after) }
+  }, [])
 
   const rows = useMemo(() => {
     const order = new Set(ids)
@@ -74,8 +84,10 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: n
       .concat(today).filter((x): x is string => !!x).sort()
     return [addDays(all[0], -7), addDays(all[all.length - 1], 21)]
   }, [rows, data])
-  const px = PX[zoom]
   const span = daysBetween(t0, t1) + 1
+  // A range over ~700 days runs past the page edge at 1 px a day; zoom out or filter the rollouts first
+  const px = printing ? Math.max(1, (PRINT_W - LEFT) / span) : PX[zoom]
+  const dense = zoom === "quarter" || printing   // Mondays over the axis, no shading of days off
   const x = (iso: string) => daysBetween(t0, iso) * px
   const w = (a: string, b: string) => Math.max(px, (daysBetween(a, b) + 1) * px)
   // open on today, a little in from the left, and again on a new zoom
@@ -125,12 +137,17 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: n
   const months = days.filter((d, i) => i === 0 || d.endsWith("-01"))
   const mondays = days.filter((d) => weekday(d) === "Mon")
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div data-gantt-print className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <h2 className="hidden px-5 pb-2 text-[14px] font-semibold print:block">Rollouts on a timeline <span className="font-normal text-muted-foreground">as of {fmtDate(data.today)}</span></h2>
       <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
-        <Button size="sm" variant="outline" onClick={() => { if (scroller.current) scroller.current.scrollLeft = Math.max(0, x(data.today) - 6 * px) }}><Crosshair className="h-3.5 w-3.5" /> Today</Button>
-        <Segmented label="Zoom" value={zoom} onChange={setZoom} options={[{ value: "week", label: "Week" }, { value: "month", label: "Month" }, { value: "quarter", label: "Quarter" }]} />
-        <Button size="sm" variant="ghost" aria-expanded={open.length > 0} onClick={() => setOpen(open.length ? [] : rows.map((r) => r.id))}>
-          {open.length ? <><ChevronsDownUp className="h-3.5 w-3.5" /> Close all</> : <><ChevronsUpDown className="h-3.5 w-3.5" /> Open every rollout</>}</Button>
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <Button size="sm" variant="outline" onClick={() => { if (scroller.current) scroller.current.scrollLeft = Math.max(0, x(data.today) - 6 * px) }}><Crosshair className="h-3.5 w-3.5" /> Today</Button>
+          <Segmented label="Zoom" value={zoom} onChange={setZoom} options={[{ value: "week", label: "Week" }, { value: "month", label: "Month" }, { value: "quarter", label: "Quarter" }]} />
+          <Button size="sm" variant="ghost" aria-expanded={open.length > 0} onClick={() => setOpen(open.length ? [] : rows.map((r) => r.id))}>
+            {open.length ? <><ChevronsDownUp className="h-3.5 w-3.5" /> Close all</> : <><ChevronsUpDown className="h-3.5 w-3.5" /> Open every rollout</>}</Button>
+          <Button size="sm" variant="ghost" onClick={() => window.print()} title="Prints the timeline as shown, with the stages you have opened, on one landscape page"><Printer className="h-3.5 w-3.5" /> Print</Button>
+          {portfolioPdf && <a href="/reports/all.pdf" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "ghost", size: "sm" })} title="The portfolio report as a PDF, with its roadmap"><Download className="h-3.5 w-3.5" /> Roadmap PDF</a>}
+        </div>
         <ul className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
           <li className="flex items-center gap-2"><span className="h-3 w-5 rounded-md border-[1.5px] border-foreground/45" />Plan</li>
           <li className="flex items-center gap-2"><span className="h-2 w-5 rounded-full bg-ok-line" />Done</li>
@@ -157,9 +174,9 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: n
                   <span className="sticky inline-block whitespace-nowrap pl-1 text-[12px] font-medium" style={{ left: LEFT }}>{monthName(m)} {m.slice(0, 4)}</span>
                 </span>
               ))}
-              {(zoom === "quarter" ? mondays : days).map((d) => (
+              {(dense ? mondays : days).map((d) => (
                 <span key={d} aria-hidden className={cn("absolute bottom-1 text-center text-[11px] tabular-nums text-muted-foreground", d === data.today && "font-semibold text-foreground")}
-                  style={{ left: x(d), width: zoom === "quarter" ? 7 * px : px }}>
+                  style={{ left: x(d), width: dense ? 7 * px : px }}>
                   {zoom === "week" ? `${weekday(d)[0]} ${Number(d.slice(8))}` : Number(d.slice(8))}
                 </span>
               ))}
@@ -167,7 +184,7 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: n
           </div>
           {/* days off shaded, Mondays ruled, today drawn through every row */}
           <div className="pointer-events-none absolute bottom-0 top-12" style={{ left: LEFT, width: span * px }} aria-hidden>
-            {zoom !== "quarter" && days.filter(off).map((d) => <span key={d} className="absolute inset-y-0 bg-muted/60" style={{ left: x(d), width: px }} />)}
+            {!dense && days.filter(off).map((d) => <span key={d} className="absolute inset-y-0 bg-muted/60" style={{ left: x(d), width: px }} />)}
             {mondays.map((d) => <span key={d} className="absolute inset-y-0 w-px bg-border" style={{ left: x(d) }} />)}
             <span className="absolute inset-y-0 w-[1.5px] bg-foreground" style={{ left: x(data.today) + px / 2 }} />
           </div>
@@ -198,7 +215,7 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect }: { ids: n
                       </button>
                     )}
                     {r.target_end_date && <span className={cn("absolute inset-y-1 w-0 border-l border-dashed", r.forecast && r.forecast > r.target_end_date ? "border-bad-line" : "border-foreground/60")} style={{ left: x(r.target_end_date) + px }} title={`Target ${fmtDate(r.target_end_date)}`} />}
-                    {from && to && <BarLabel at={x(from) + w(from, to) + 4}>{r.pct_complete}% · {RAG_WORD[r.rag]}{r.forecast && ` · ends ${shortDay(r.forecast)}`}</BarLabel>}
+                    {from && to && <BarLabel at={x(from) + w(from, to) + 4}>{r.pct_complete > 0 ? `${r.pct_complete}%` : "Not started"} · {RAG_WORD[r.rag]}{r.forecast && ` · ends ${shortDay(r.forecast)}`}</BarLabel>}
                   </div>
                 </div>
               )

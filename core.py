@@ -425,6 +425,23 @@ def admin_required(view):
     return wrapped
 
 
+def is_staff():
+    """The signed-in account is our own staff, not a partner or customer."""
+    return session.get("kind") != "external"
+
+
+def staff_required(view):
+    """Staff only: an outside account gets 403. Put it under permission_required
+    (or login_required), so that check runs first."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not is_staff():
+            abort(403)
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 def role_has_permission(role, permission):
     """Read once per request (g.role_permissions): a page that asks per row,
     as the Flow does for each rollout, ran one query per row (review P3-25)."""

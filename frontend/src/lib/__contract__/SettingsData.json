@@ -89,16 +89,20 @@
   {
    "id": 1,
    "name": "Generic",
-   "projects": 1,
+   "projects": 2,
    "stages": [
     {
+     "gate_tasks": false,
      "id": 1,
      "name": "PO Received",
+     "required_docs": [],
      "sla_days": null
     },
     {
+     "gate_tasks": false,
      "id": 2,
      "name": "Scoping",
+     "required_docs": [],
      "sla_days": null
     }
    ]
@@ -109,23 +113,20 @@
    "projects": 11,
    "stages": [
     {
+     "gate_tasks": false,
      "id": 9,
      "name": "PO Received",
+     "required_docs": [],
      "sla_days": null
     },
     {
+     "gate_tasks": false,
      "id": 10,
      "name": "Scoping",
+     "required_docs": [],
      "sla_days": null
     }
    ]
   }
- ],
- "toggles": {
-  "guest_links_enabled": true,
-  "notify_email_enabled": false,
-  "notify_teams_chat_enabled": false,
-  "notify_teams_enabled": false,
-  "onedrive_mirror_uploads_enabled": false
- }
+ ]
 }

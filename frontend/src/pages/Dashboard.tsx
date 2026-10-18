@@ -5,11 +5,15 @@ import { Link } from "react-router-dom"
 import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckSquare, ChevronDown, ChevronUp, FileText, GripHorizontal, Layers, Maximize2, MessageSquare, MoreHorizontal, PauseCircle, Plus, ShieldCheck, Timer, Trash2, UserCheck } from "lucide-react"
 import { Area, AreaChart, Bar, BarChart, Cell, LabelList, Line, LineChart, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as ChartTip, XAxis } from "recharts"
 import { Button } from "@/components/ui/button"
+import { Tag } from "@/components/ui/tag"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
+import { WorkloadRows } from "@/components/WorkloadRows"
+import { SinceRows } from "@/components/SinceLastLooked"
+import { hrs, weekLabel } from "@/lib/workload"
 import { Ago } from "@/components/Ago"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { useLoad } from "@/lib/useLoad"
@@ -18,7 +22,7 @@ import { cn } from "@/lib/utils"
 import { toast } from "@/lib/toast"
 import { askConfirm } from "@/lib/confirm"
 import { STATE } from "@/lib/state"
-import { dayOf, deltaText, fmtDate, lateBy, monthName, monthTicks, shortDay, timelineDomain, weekday } from "@/lib/format"
+import { dayOf, deltaText, fmtDate, sinceLine, lateBy, monthName, monthTicks, shortDay, timelineDomain, weekday } from "@/lib/format"
 import { addDays } from "@/lib/plan"
 import { configure, GRID_CLASS, keyOf, move, newUid, pack, pctChange, remove, reorder, resize, SPAN_CLASS, splitWindow, type LayoutItem, type Width } from "@/lib/dashboard"
 import { useMedia, useWidth } from "@/lib/useMeasure"
@@ -38,7 +42,6 @@ const tip = {
   labelStyle: { color: "var(--muted-foreground)" }, itemStyle: { color: "var(--foreground)" }, cursor: { fill: "var(--muted)" },
 }
 const axis = { tickLine: false, axisLine: false, tick: { fontSize: 11, fill: "var(--muted-foreground)" } }
-const badge = "rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
 
 // Each grid cell hands its widget the ⋯ menu to show in the header.
 const MenuSlot = createContext<ReactNode>(null)
@@ -179,7 +182,7 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
   const months = monthTicks(t0, t1, width ? Math.max(2, Math.floor(width / 64)) : 8)
   const crowded = months.some((tk) => Math.abs(tk.t - now) / (t1 - t0) * (width || 800) < 44)
   return (
-    <Widget title="Timeline" sub="start to target; grey is the share of stages done, red hatching is time past the target" action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
+    <Widget title="Timeline" sub="start to target; grey is the share of stages done, red hatching is time past the target, a diamond is a milestone" action={<Link to="/board" className={pill}>Open the flow</Link>} onExpand={onExpand}>
       {shown.length === 0 ? <Quiet>No active rollouts{s.show === "attention" ? " need attention" : ""}.</Quiet> : (
         <div className="grid grid-cols-[minmax(160px,256px)_minmax(0,1fr)_auto] gap-x-3 overflow-x-clip text-[13px]">
           <span />
@@ -217,6 +220,13 @@ function Timeline({ rows, today, s, onExpand, large }: { rows: D["timeline"]; to
                     </>}
                     <TooltipContent>{r.name} · {r.stage} · {fmtDate(r.start_date)} – {r.target_end_date ? fmtDate(r.target_end_date) : "no target"} · {Math.round(r.progress * 100)}% of stages{r.state !== "on_track" && ` · ${STATE[r.state].label}`}</TooltipContent>
                   </Tooltip>
+                  {/* milestones: a diamond on its day (grey ahead, amber once missed, green when reached); the title is the tooltip */}
+                  {r.milestones.filter((m) => dayOf(m.date) >= t0 && dayOf(m.date) <= t1).map((m, i) => {
+                    const word = m.done ? "reached" : m.missed ? "missed" : "ahead"
+                    return <span key={i} role="img" aria-label={`Milestone, ${word}: ${m.name}, ${fmtDate(m.date)}`} title={`${m.name} · ${fmtDate(m.date)} · ${word}`}
+                      className={cn("absolute top-1/2 block h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border", m.done ? "border-ok-line bg-ok-line" : m.missed ? "border-warn-line bg-warn-soft" : "border-foreground bg-background")}
+                      style={{ left: pct(dayOf(m.date)) }} />
+                  })}
                 </div>
                 <div className="flex items-center justify-end py-2">{r.team.length > 0 && <TeamStack people={r.team} avatarClass="h-5 w-5" className="flex" />}</div>
               </Fragment>
@@ -385,13 +395,31 @@ function Team({ t, s, onExpand, large }: { t: D["team"]; s: S; onExpand?: () => 
                 <Link to={`/people/${m.id}`} className="block truncate font-medium hover:underline">{m.name}</Link>
                 <span className="block truncate text-[12px] text-muted-foreground">{m.projects} rollout{m.projects === 1 ? "" : "s"} · {m.open} open{m.late > 0 && <> · <span className="font-medium text-bad">{m.late} late</span></>}</span>
               </span>
-              <span className={badge}>{m.role}</span>
+              <Tag kind="role">{m.role}</Tag>
             </li>
           ))}
           {t.people.length === 0 && <li><Quiet>No open tasks are assigned.</Quiet></li>}
         </ul>
       )}
       {t.unassigned > 0 && <p className="mt-2 text-[12px] text-muted-foreground">{t.unassigned} open task{t.unassigned === 1 ? "" : "s"} unassigned</p>}
+    </Widget>
+  )
+}
+
+// ---- workload ---------------------------------------------------------------
+function Workload({ w, s, onExpand, large }: { w: D["workload"]; s: S; onExpand?: () => void; large?: boolean }) {
+  return (
+    <Widget title="Workload" sub="hours against capacity, next four weeks" action={<Link to="/people/workload" className={pill}>Workload</Link>} onExpand={onExpand}>
+      <WorkloadRows w={w} limit={large ? 100 : Number(s.limit ?? 6)} />
+    </Widget>
+  )
+}
+
+// ---- since you last looked ---------------------------------------------------
+function Since({ d, s, onExpand, large }: { d: D["since"]; s: S; onExpand?: () => void; large?: boolean }) {
+  return (
+    <Widget title="Since you last looked" sub={<>on your rollouts, since <Ago iso={d.from} /></>} onExpand={onExpand}>
+      <SinceRows since={d} limit={large ? 100 : Number(s.limit ?? 10)} />
     </Widget>
   )
 }
@@ -603,8 +631,10 @@ function tableFor(item: LayoutItem, d: D): Table | null {
     case "schedule": return { columns: ["Due", "Task", "Rollout", "Who"], rows: d.schedule.due.map((t) => [fmtDate(t.due_date), t.title, t.project, t.who ?? "—"]) }
     case "completion": return { columns: ["Day", "Tasks completed"], rows: d.completion.slice(-28).map((x) => [fmtDate(x.day), x.count]) }
     case "team": return { columns: ["Person", "Role", "Rollouts", "Open", "Late"], rows: d.team.people.map((m) => [m.name, m.role, m.projects, m.open, m.late]) }
+    case "workload": return { columns: ["Person", "Capacity", ...d.workload.weeks.map((w, i) => weekLabel(w, i))], rows: d.workload.people.map((p) => [p.name, hrs(p.capacity), ...p.weeks.map((c) => `${hrs(c.hours)} (${c.pct} %)`)]) }
     case "stages": return { columns: ["Stage", "Rollouts", "Off track", "At risk"], rows: d.stages.map((s) => [s.stage, s.count, s.late, s.warn]) }
     case "activity": return { columns: ["When", "Who", "Rollout", "What"], rows: d.activity.map((a) => [a.at.slice(0, 16).replace("T", " "), a.who ?? "—", a.project, a.text]) }
+    case "since": return { columns: ["When", "Rollout", "What"], rows: (d.since?.items ?? []).map((a) => [a.at.slice(0, 16).replace("T", " "), a.project, sinceLine(a)]) }
     case "alerts": return { columns: ["Severity", "Alert", "Rollout", "Raised"], rows: d.alerts.map((a) => [a.severity, a.title, a.project, a.created_at.slice(0, 10)]) }
     case "mywork": return { columns: ["Due", "Task", "Rollout", "Stage"], rows: d.mywork.tasks.map((t) => [t.due_date ? fmtDate(t.due_date) : "—", t.title, t.project, t.stage ?? "—"]) }
     case "cycle": return d.cycle ? { columns: ["Month", "Closed"], rows: d.cycle.throughput.map(([m, n]) => [m, n]) } : null
@@ -623,6 +653,8 @@ function renderWidget(item: LayoutItem, d: D, today: string, on: { tile: (k: Das
     case "schedule": return <Schedule sch={d.schedule} today={today} s={s} onExpand={on.expand} large={large} />
     case "completion": return <Completion series={d.completion} s={s} onExpand={on.expand} large={large} />
     case "team": return <Team t={d.team} s={s} onExpand={on.expand} large={large} />
+    case "workload": return <Workload w={d.workload} s={s} onExpand={on.expand} large={large} />
+    case "since": return d.since ? <Since d={d.since} s={s} onExpand={on.expand} large={large} /> : null
     case "stages": return <Stages rows={d.stages} s={s} onExpand={on.expand} large={large} />
     case "activity": return <ActivityFeed rows={d.activity} s={s} onExpand={on.expand} large={large} />
     case "alerts": return <Alerts rows={d.alerts} s={s} onExpand={on.expand} large={large} />

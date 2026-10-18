@@ -3,7 +3,7 @@ import { Link } from "react-router-dom"
 import { Sparkles, Trash2 } from "lucide-react"
 import { checkbox } from "@/lib/ui"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Tag } from "@/components/ui/tag"
 import { AIProgress } from "@/components/AIProgress"
 import { cancelAIJob, deleteLesson, dismissAISuggestion, lessonsOf, requestProjectAI, saveLessons, saveRaid, type Lesson } from "@/lib/api"
 import { useProjectAI } from "@/lib/usePoll"
@@ -42,7 +42,7 @@ export function LessonsPanel({ projectId }: { projectId: number }) {
         <ul className="mt-2 divide-y divide-border text-[13px]">
           {d.lessons.map((l) => (
             <li key={l.id} className="flex items-start gap-2 py-2">
-              <Badge variant="secondary" className="w-16">{KIND[l.kind]}</Badge>
+              <Tag kind="kind">{KIND[l.kind]}</Tag>
               <span className="min-w-0 flex-1">{l.text}</span>
               {d.can_edit && <Button type="button" variant="ghost" size="icon-sm" disabled={busy} onClick={async () => { if (await askConfirm("Delete this lesson? It leaves this rollout and the library that similar rollouts read.", "Delete")) void act(() => deleteLesson(projectId, l.id)) }} aria-label={`Delete lesson: ${l.text}`} className="-my-1 text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></Button>}
             </li>

@@ -1,0 +1,76 @@
+{
+ "calls": [
+  {
+   "at": "2026-10-16T19:20:31.086334",
+   "deal_id": "CRM-2041",
+   "detail": null,
+   "id": 1,
+   "project_id": 24,
+   "result": "created",
+   "status": 201,
+   "token_name": "crm-seed"
+  }
+ ],
+ "endpoint": "/api/v1/intake",
+ "keep": 200,
+ "owners": [
+  {
+   "id": 1,
+   "name": "Admin"
+  },
+  {
+   "id": 2,
+   "name": "Priya Menon"
+  }
+ ],
+ "policies": [
+  {
+   "area": "intake",
+   "choices": [
+    "1",
+    "2"
+   ],
+   "group": "Intake defaults",
+   "help": "The stage list a rollout made by the CRM starts with. Blank: the first template.",
+   "key": "intake_template",
+   "kind": "choice",
+   "label": "Stage template for intakes",
+   "value": ""
+  },
+  {
+   "area": "intake",
+   "choices": [
+    "1",
+    "2"
+   ],
+   "group": "Intake defaults",
+   "help": "Who is told of a new intake and holds it until a project manager confirms it. Blank: the first active Admin.",
+   "hint": "Who is told of a new intake from the CRM, e.g. your delivery lead.",
+   "key": "intake_owner",
+   "kind": "choice",
+   "label": "Default project manager",
+   "value": ""
+  }
+ ],
+ "templates": [
+  {
+   "id": 1,
+   "name": "Generic"
+  },
+  {
+   "id": 2,
+   "name": "EDR rollout"
+  }
+ ],
+ "tokens": [
+  {
+   "created_at": "2026-10-16T19:20:31.082178",
+   "created_by": "Admin",
+   "expires_at": "2027-10-16T19:20:31.082178",
+   "id": 1,
+   "last_used_at": "2026-10-16T19:20:31.084617",
+   "name": "crm-seed",
+   "revoked_at": null
+  }
+ ]
+}

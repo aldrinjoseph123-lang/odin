@@ -23,6 +23,9 @@
   "manage_integrations": [
    "External"
   ],
+  "manage_rules": [
+   "External"
+  ],
   "manage_settings": [
    "External"
   ],
@@ -47,6 +50,7 @@
   "edit_project_stage": [],
   "manage_contacts": [],
   "manage_integrations": [],
+  "manage_rules": [],
   "manage_settings": [
    "Admin"
   ],
@@ -125,6 +129,13 @@
    "Viewer": false
   },
   "manage_integrations": {
+   "Admin": true,
+   "Contributor": false,
+   "External": false,
+   "Member": false,
+   "Viewer": false
+  },
+  "manage_rules": {
    "Admin": true,
    "Contributor": false,
    "External": false,

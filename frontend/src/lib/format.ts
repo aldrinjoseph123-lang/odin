@@ -1,4 +1,4 @@
-import type { FlowState } from "@/lib/api"
+import type { FieldKind, FieldValue, FlowState } from "@/lib/api"
 
 // Pure formatting shared by the flow screen and the projects list; tested in
 // src/lib/format.test.ts, which is why nothing here touches the DOM.
@@ -40,6 +40,12 @@ export function fmtDate(iso: string | null | undefined): string {
 }
 // "27 Sep" whatever the workspace format: for tiles too narrow for a numeric date.
 export const shortDay = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`
+// A date for something that lives longer than a season (a token's expiry): the year too when it is not this one,
+// so "16 Oct" is never read as the coming October. The numeric formats always carry it.
+export function fmtDateY(iso: string | null | undefined): string {
+  const day = fmtDate(iso)
+  return iso && dateFormat === "d MMM yyyy" && iso.slice(0, 4) !== localToday().slice(0, 4) ? `${day} ${iso.slice(0, 4)}` : day
+}
 // "Sep" from "2026-09" or "2026-09-27"
 export const monthName = (iso: string) => MONTHS[Number(iso.slice(5, 7)) - 1]
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -313,7 +319,8 @@ export function minutesText(m: number): string {
 }
 
 // A document template's {placeholders} (services/doc_templates.fill): known ones filled, others left as typed.
-export const fillPlaceholders = (text: string, values: Record<string, string>) => text.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? values[k] : m))
+// {client}, {project}… and {field:Name} (a custom field), as services/doc_templates.fill reads them
+export const fillPlaceholders = (text: string, values: Record<string, string>) => text.replace(/\{(\w+|field:[^{}\n]{1,60})\}/g, (m, k: string) => (k in values ? values[k] : m))
 
 // Who besides the person can see their time on Odin (policy activity_roles)
 export function viewersText(roles: string[]) {
@@ -388,12 +395,15 @@ export function productsFor(products: { name: string; vendor: string }[], vendor
   return current && !names.includes(current) ? [current, ...names] : names
 }
 
+// "1 task", "3 tasks": the count and its noun (pass `many` for an irregular one)
+export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
+
 // The project timeline's one line in words: "Started 9 Oct · day 1 · no target
 // date" / "… · target 30 Oct, 21 days left" / "… · target 2 Oct, 7 days late".
 // A start still ahead reads "Starts 1 Nov, in 22 days"; a closed rollout has
 // no days left to count (sim L-13). Calendar days (gaps between dates stay calendar days).
 export function timelineSummary(start: string, today: string, target?: string | null, closed = false): string {
-  const n = (k: number) => `${k} day${k === 1 ? "" : "s"}`
+  const n = (k: number) => plural(k, "day")
   const ahead = lateBy(today, start)
   const head = ahead ? `Starts ${fmtDate(start)}, in ${n(ahead)}` : `Started ${start === today ? "today" : fmtDate(start)} · day ${lateBy(start, today) + 1}`
   if (closed) return `${head.replace(/ · day \d+$/, "")} · closed`
@@ -411,3 +421,38 @@ export const isDay = (v: string | null): v is string => {
   return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v
 }
 export const isMonth = (v: string | null): v is string => !!v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v)
+
+// what holds a move out of a stage (services/gates.py): "2 open tasks · Client PO missing"
+export const gateText = (reasons: { text: string }[]) => reasons.map((r) => r.text).join(" · ")
+// Does a task hold its stage's gate, and count as open there (services/gates.holds_gate)? An
+// open task does, unless it repeats: its next occurrence is always open, so only while overdue.
+export const holdsGate = (t: { done: boolean | number; recurrence?: string | null; due_date: string | null }, today: string) =>
+  !t.done && (!t.recurrence || (!!t.due_date && t.due_date < today))
+
+// ---- custom fields (components/FieldValues) ----
+// A value as a person reads it
+export function fieldText(kind: FieldKind, value: FieldValue): string {
+  if (value === null || value === "") return "—"
+  if (kind === "yesno") return value ? "Yes" : "No"
+  if (kind === "date") return fmtDate(String(value))
+  if (kind === "number") return Number(value).toLocaleString("en-GB", { maximumFractionDigits: 6 })
+  return String(value)
+}
+
+// A value as an input holds it: "" for none, yes / no for a yes-no
+export function fieldInput(kind: FieldKind, value: FieldValue): string {
+  if (value === null) return ""
+  if (kind === "yesno") return value ? "yes" : "no"
+  return String(value)
+}
+
+// One line of "Since you last looked" (services/dashboard._since): what happened, in words.
+const RAID_WORD: Record<string, string> = { blocker: "New blocker", risk: "New risk", issue: "New issue", decision: "Decision proposed" }
+export function sinceLine(a: { kind: string; who: string | null; text: string }): string {
+  if (a.kind === "move") return `Moved ${a.text}${a.who ? ` by ${a.who}` : ""}`
+  if (a.kind.startsWith("raid_")) return `${RAID_WORD[a.kind.slice(5)] ?? "New RAID item"}: ${a.text}`
+  if (a.kind === "decided") return `Decided: ${a.text}`
+  if (a.kind === "approval") return `Customer ${a.text.endsWith(" declined") ? "declined" : "approved"} ${a.text.replace(/ (approved|declined)$/, "")}${a.who ? ` (${a.who})` : ""}`
+  if (a.kind === "ask") return `${a.who ?? "The customer"} finished: ${a.text}`
+  return a.text
+}

@@ -20,18 +20,19 @@ from datetime import date, datetime, timedelta
 
 from db import get_db, participants_for
 from policies import local_date, local_today, policy
+from services import gates
+from services import fields as fields_service
+from services import milestones as milestones_service
 from services import plan as plan_service
 from services import raid as raid_service
+from services.fmt import fmt_date
+from services.workdays import week_start
+
 
 def _day(stamp):
     """A stored UTC timestamp's workspace-local date, as 'YYYY-MM-DD' ('' when empty)."""
     d = local_date(stamp)
     return d.isoformat() if d else ""
-
-
-def _fmt(iso):
-    d = date.fromisoformat(iso[:10]) if iso else None
-    return d.strftime("%-d %b %Y") if d else "—"
 
 
 def draft_words(project, p, raid_items, audience="internal"):
@@ -43,11 +44,11 @@ def draft_words(project, p, raid_items, audience="internal"):
     parts = [f"{project['name']} is in {project['stage']} (stage {cur + 1} of {len(stages)}), {p['pct_complete']}% complete."]
     if f["forecast"]:
         if f["vs_target_days"] is None:
-            parts.append(f"Forecast to finish {_fmt(f['forecast'])}.")
+            parts.append(f"Forecast to finish {fmt_date(f['forecast'], '—')}.")
         elif f["vs_target_days"] > 0:
-            parts.append(f"Forecast to finish {_fmt(f['forecast'])}, {f['vs_target_days']} days after the {_fmt(f['target'])} target.")
+            parts.append(f"Forecast to finish {fmt_date(f['forecast'], '—')}, {f['vs_target_days']} days after the {fmt_date(f['target'], '—')} target.")
         else:
-            parts.append(f"Forecast to finish {_fmt(f['forecast'])}, {-f['vs_target_days']} days ahead of the {_fmt(f['target'])} target.")
+            parts.append(f"Forecast to finish {fmt_date(f['forecast'], '—')}, {-f['vs_target_days']} days ahead of the {fmt_date(f['target'], '—')} target.")
     if f["vs_baseline_days"] and audience == "internal":   # the baseline is an internal yardstick
         # slip carries down the chain, so blame the stage where it grew most, not the last one
         grew, prev = [], 0
@@ -64,11 +65,11 @@ def draft_words(project, p, raid_items, audience="internal"):
     ahead = [s for s in stages if s["status"] == "next"][:2]
     def line(st):   # the finish line is a day, not a span ("Closed: 19 Oct to 19 Oct" read as noise)
         if stages and st is stages[-1]:
-            return f"Close by {_fmt(st['forecast_end'])}."
+            return f"Close by {fmt_date(st['forecast_end'], '—')}."
         if st["forecast_start"] == st["forecast_end"]:
-            return f"{st['name']}: {_fmt(st['forecast_start'])}."
-        return f"{st['name']}: {_fmt(st['forecast_start'])} to {_fmt(st['forecast_end'])}."
-    nxt = ([f"Finish {stages[cur]['name']} by {_fmt(stages[cur]['forecast_end'])}."] if stages else []) + [line(st) for st in ahead]
+            return f"{st['name']}: {fmt_date(st['forecast_start'], '—')}."
+        return f"{st['name']}: {fmt_date(st['forecast_start'], '—')} to {fmt_date(st['forecast_end'], '—')}."
+    nxt = ([f"Finish {stages[cur]['name']} by {fmt_date(stages[cur]['forecast_end'], '—')}."] if stages else []) + [line(st) for st in ahead]
     return {"summary": " ".join(parts), "next_steps": "\n".join(nxt), "asks": ""}
 
 
@@ -102,7 +103,7 @@ def build(project, audience="internal"):
             x["done" if t["done"] else "open"] += 1
             x["late"] += t["late"]
     start = plan_service._d(project["start_date"]) or plan_service._d(project["created_at"]) or today
-    weeks, w = [], start - timedelta(days=start.weekday())
+    weeks, w = [], week_start(start)
     while w <= today:
         end = (w + timedelta(days=7)).isoformat()
         weeks.append({"week": w.isoformat(), "total": sum(1 for t in tasks if _day(t["created_at"]) < end),
@@ -119,7 +120,7 @@ def build(project, audience="internal"):
     note_sql = "SELECT author, note, stage, created_at FROM status_notes WHERE project_id = ? AND prev_stage IS NULL" + (" AND guest_visible = 1" if audience == "customer" else "") + " ORDER BY created_at DESC LIMIT 15"
     notes = [dict(r) for r in db.execute(note_sql, (pid,))]
     documents = [dict(r) for r in db.execute(
-        "SELECT category, filename, uploaded_by, uploaded_at FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", (pid,))]
+        "SELECT category, filename, uploaded_by, uploaded_at FROM documents WHERE project_id = ? AND deleted_at IS NULL AND review_status = 'accepted' ORDER BY uploaded_at DESC", (pid,))]   # a file held for review is not in a report (services/doc_review.py)
     pending_approval = next((a for a in approvals if a["status"] == "pending" and a["stage"] == project["stage"]), None)
     customer_tasks = [t for t in tasks if not t["done"] and t["who_role"] == "Customer"]
 
@@ -137,25 +138,40 @@ def build(project, audience="internal"):
         "milestones": [{"stage": s["name"], "start": s["forecast_start"], "end": s["forecast_end"], "planned_end": s["plan_end"]}
                        for s in p["stages"] if s["status"] in ("current", "next")][:5],
         "raid": items,
+        # the rollout's own milestones (services/milestones.py), not the stage forecast above; the customer's copy: those marked for them
+        "project_milestones": milestones_service.items(pid, customer=audience == "customer", today=t_iso),
         "work": {"total": len(tasks), "done": sum(t["done"] for t in tasks), "late": sum(t["late"] for t in tasks), "by_stage": by_stage,
                  "burn": weeks, "open": [t for t in tasks if not t["done"]][:40]},
         "team": team,
         "history": {"dwell": dwell, "approvals": approvals, "notes": notes},
         "needs": {"approval": pending_approval, "tasks": customer_tasks},
+        # custom fields with a value (services/fields.py); the customer's copy: those marked for them
+        "fields": [{"name": f["name"], "kind": f["kind"], "value": f["value"], "customer_visible": f["customer_visible"]}
+                   for f in fields_service.for_project(pid, customer=audience == "customer") if f["value"] is not None],
     }
     # The words are saved once and the customer reads them, so the suggestion
     # is always the customer's: no baseline, no blocker they cannot see.
     data["draft"] = draft_words(project, p, items, "customer")
     if audience == "internal":
+        # what the outside parties were asked and answered, and their ratings at sign-off (services/asks.py): ours only
+        from services import asks
+        data["asks"] = asks.listing(pid)
+        data["csat"] = asks.ratings(pid)
         data["people"] = [{"name": k, **v} for k, v in sorted(people.items(), key=lambda kv: (-kv[1]["late"], -kv[1]["open"]))]
         data["plan_changes"] = plan_service.changes(pid, 30)
         data["documents"] = documents
+        # what holds the next move (services/gates.py) on the current stage's line of "What's next"
+        nxt = next((s["name"] for s in p["stages"] if s["status"] == "next"), None)
+        held = gates.blocked(project, nxt) if nxt else []
+        if held and data["milestones"] and data["milestones"][0]["stage"] == project["stage"]:
+            data["milestones"][0]["gate"] = gates.summary(held)
     else:
         # the customer's health is the word, not the internal reasons
         data["health"] = customer_health(data)
         data["baseline_at"] = None
         for s in data["stages"]:
             s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
+            s["forecast_reason"] = None   # it names the internal task that holds the stage
         data["finish"] = {k: v for k, v in p["finish"].items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
         data["work"].pop("open")
         data["documents"] = [{"category": c, "count": n} for c, n in Counter(d["category"] for d in documents).most_common()]
@@ -190,8 +206,12 @@ def customer_words(project_id, words, snapshot=None):
     import re
     hidden = {r["title"].strip().lower() for r in get_db().execute(
         "SELECT title FROM raid_items WHERE project_id = ? AND customer_visible = 0", (project_id,))}
+    # a milestone kept for the team is not named either (unless the customer's list has one of the same name)
+    shown = {r["name"].strip().lower() for r in get_db().execute("SELECT name FROM milestones WHERE project_id = ? AND customer_visible = 1", (project_id,))}
+    hidden |= {r["name"].strip().lower() for r in get_db().execute("SELECT name FROM milestones WHERE project_id = ? AND customer_visible = 0", (project_id,))} - shown
     if snapshot:
         hidden |= {str(r.get("title") or "").strip().lower() for r in snapshot.get("raid", []) if not r.get("customer_visible")}
+        hidden |= {str(m.get("name") or "").strip().lower() for m in snapshot.get("project_milestones", []) if not m.get("customer_visible")} - shown
     hidden = {t for t in hidden if len(t) >= 3}
 
     def keep(sentence):
@@ -222,11 +242,16 @@ def customer_view(snapshot):
     d["baseline_at"] = None   # the baseline is an internal yardstick
     for s in d.get("stages", []):
         s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
+        s["forecast_reason"] = None   # it names the internal task that holds the stage
     d["finish"] = {k: v for k, v in d.get("finish", {}).items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
     d["raid"] = [r for r in d.get("raid", []) if r.get("customer_visible")]
+    d["project_milestones"] = [m for m in d.get("project_milestones", []) if m.get("customer_visible")]
+    d["fields"] = [f for f in d.get("fields", []) if f.get("customer_visible")]
     d["history"]["notes"] = d.get("customer_notes", [])
     d["work"].pop("open", None)
-    for k in ("people", "plan_changes"):
+    for m in d.get("milestones", []):
+        m.pop("gate", None)   # gate internals are staff only
+    for k in ("people", "plan_changes", "asks", "csat"):
         d.pop(k, None)
     d["documents"] = [{"category": c, "count": n} for c, n in Counter(x["category"] for x in d.get("documents", [])).most_common()]
     d.pop("customer_notes", None)

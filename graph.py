@@ -325,14 +325,23 @@ def send_mail(to_email, subject, html_body, attachments=None, report=True):
     return ok, error
 
 
-def _send_mail(to_email, subject, html_body, attachments=None):
+def email_html(html_body):
+    """The branded shell every Odin email wears (Microsoft 365 and Resend alike)."""
     try:   # the footer names the company from Settings → General; a script without the app still sends
         from policies import policy
         company = policy("company_name").upper()
+    except Exception:  # noqa: BLE001
+        company = "PROTECT24X7"
+    return EMAIL_SHELL.format(body=html_body, company=escape(company))
+
+
+def _send_mail(to_email, subject, html_body, attachments=None):
+    try:
+        from policies import policy
         alias = next(iter(policy("mail_from")), None)   # Settings › Notifications › Send email as
     except Exception:  # noqa: BLE001
-        company, alias = "PROTECT24X7", None
-    html_body = EMAIL_SHELL.format(body=html_body, company=escape(company))
+        alias = None
+    html_body = email_html(html_body)
     if not is_connected():
         return False, "Outlook mail is not connected"
     headers, error = _headers()
@@ -362,7 +371,7 @@ def _send_mail(to_email, subject, html_body, attachments=None):
             if resp.status_code < 400:
                 try:
                     from services.notifications import report_mail_failure
-                    report_mail_failure(refused, alias=True)
+                    report_mail_failure(refused, "alias")
                 except Exception:  # noqa: BLE001
                     pass
         if resp.status_code >= 400:

@@ -109,22 +109,6 @@ def integrations_set_channel():
     return redirect(url_for("settings"))
 
 
-@app.route("/settings/integrations", methods=["POST"])
-@permission_required("manage_integrations")
-def settings_integrations():
-    set_setting("notify_email_enabled", "1" if request.form.get("notify_email_enabled") == "on" else "0")
-    set_setting("notify_teams_enabled", "1" if request.form.get("notify_teams_enabled") == "on" else "0")
-    set_setting("notify_teams_chat_enabled", "1" if request.form.get("notify_teams_chat_enabled") == "on" else "0")
-    set_setting(
-        "onedrive_mirror_uploads_enabled",
-        "1" if request.form.get("onedrive_mirror_uploads_enabled") == "on" else "0",
-    )
-    set_setting("guest_links_enabled", "1" if request.form.get("guest_links_enabled") == "on" else "0")
-    audit_log("update_integration_settings")
-    flash("Saved")   # posted from Security, Notifications and Integrations alike (sim roles)
-    return redirect(url_for("settings"))
-
-
 @app.route("/settings/integrations/test-email", methods=["POST"])
 @permission_required("manage_integrations")
 def settings_test_email():
@@ -223,6 +207,24 @@ def settings_report_send_test():
         audit_log("report_send_test", details=message)
         flash(f"Test report sent to {me['email']}" if sent else f"Not sent: {message}", "message" if sent else "error")
     return redirect(url_for("settings_section", section="reports"))
+
+
+@app.route("/settings/notifications/test-resend", methods=["POST"])
+@permission_required("manage_settings")
+def settings_test_resend():
+    """A sign-in style email through Resend alone (no Microsoft fallback), to the admin who asked."""
+    audit_log("test_resend")
+    from policies import policy
+    from services import resend
+    user = get_db().execute("SELECT email FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    if not policy("resend_api_key"):
+        flash("Save a Resend API key above first", "error")
+    elif not user or not user["email"]:
+        flash("Set your email on the Account page first", "error")
+    else:
+        ok, error = resend.send(user["email"], "Odin test sign-in email", "<p>This is a test of Odin's sign-in mail through Resend. Sign-in links, password resets and invitations will look like this.</p>")
+        flash(f"Sent to {user['email']} as {policy('resend_from')}" if ok else f"Resend refused it: {error}", "message" if ok else "error")
+    return redirect(url_for("settings"))
 
 
 @app.route("/settings/notifications/test-webhook", methods=["POST"])

@@ -22,11 +22,13 @@ from db import get_db
 
 def add(kind, **payload):
     """Queue one message: kind "mail" (to, subject, html) or "teams" (to = an
-    address for the person's chat, "channel" or "webhook")."""
+    address for the person's chat, "channel" or "webhook"). Kind "held" is an
+    item kept for the daily summary (services/notifications.send_summaries):
+    never due, so the worker never sends it."""
     db = get_db()
     now = datetime.utcnow().isoformat()
     db.execute("INSERT INTO outbox (kind, payload, next_try_at, created_at) VALUES (?, ?, ?, ?)",
-               (kind, json.dumps(payload), now, now))
+               (kind, json.dumps(payload), None if kind == "held" else now, now))
     db.commit()
 
 
@@ -60,7 +62,7 @@ def drain(db=None, limit=50):
     from services.notifications import report_mail_failure
     db = db or get_db()
     now = datetime.utcnow()
-    rows = db.execute("SELECT * FROM outbox WHERE sent_at IS NULL AND next_try_at <= ? ORDER BY id LIMIT ?",
+    rows = db.execute("SELECT * FROM outbox WHERE sent_at IS NULL AND kind != 'held' AND next_try_at <= ? ORDER BY id LIMIT ?",
                       (now.isoformat(), limit)).fetchall()
     for r in rows:
         # claim it first: a second drain (a cron --once beside the service) leaves it alone,
@@ -74,7 +76,7 @@ def drain(db=None, limit=50):
             # too late to be worth sending (a sign-in link a day on, an event long past): given up, the admins told
             db.execute("UPDATE outbox SET next_try_at = NULL, last_error = ? WHERE id = ?", ("too old to send", r["id"]))
             db.commit()
-            report_mail_failure(f"a message queued at {r['created_at'][:16]} was too old to send", teams=r["kind"] == "teams")
+            report_mail_failure(f"a message queued at {r['created_at'][:16]} was too old to send", "teams" if r["kind"] == "teams" else "mail")
             continue
         try:
             ok, error = _send(r["kind"], json.loads(r["payload"]))
@@ -88,7 +90,7 @@ def drain(db=None, limit=50):
             db.execute("UPDATE outbox SET attempts = ?, next_try_at = NULL, last_error = ? WHERE id = ?",
                        (tries, str(error)[:500], r["id"]))
             db.commit()
-            report_mail_failure(f"{error} (after {tries} tries)", teams=r["kind"] == "teams")
+            report_mail_failure(f"{error} (after {tries} tries)", "teams" if r["kind"] == "teams" else "mail")
         else:
             db.execute("UPDATE outbox SET attempts = ?, next_try_at = ?, last_error = ? WHERE id = ?",
                        (tries, (datetime.utcnow() + timedelta(minutes=2 ** (tries - 1))).isoformat(), str(error)[:500], r["id"]))

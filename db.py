@@ -134,7 +134,8 @@ def cleanup_soft_deletes(db=None):
             # a sign-up link that named the project keeps working, without the project
             db.execute(f"UPDATE signup_links SET project_id = NULL, project_role = NULL WHERE project_id IN ({marks})", doomed)
             db.execute(f"UPDATE lessons SET project_id = NULL WHERE project_id IN ({marks})", doomed)   # the lesson stays in the library
-            for table in ("doc_text", "ai_calls", "signoffs", "scope_items", "status_notes", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs", "ai_suggestions"):
+            db.execute(f"UPDATE intake_calls SET project_id = NULL WHERE project_id IN ({marks})", doomed)   # the log of the call stays, trimmed with the log
+            for table in ("doc_text", "ai_calls", "signoffs", "scope_items", "project_field_values", "status_notes", "csat", "task_answers", "task_links", "tasks", "alerts", "documents", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "milestones", "rule_runs", "ai_jobs", "ai_suggestions", "rollout_watch"):
                 db.execute(f"DELETE FROM {table} WHERE project_id IN ({marks})", doomed)
 
         gone_docs = "SELECT id FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < ?"
@@ -170,12 +171,13 @@ def _purge_orphans(db):
     their children. Everything removed here is unreachable by definition: no
     project row means no page can ever display it.
     """
-    for table in ("doc_text", "signoffs", "scope_items", "status_notes", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "ai_jobs", "ai_suggestions"):
+    for table in ("doc_text", "signoffs", "scope_items", "project_field_values", "status_notes", "csat", "task_answers", "task_links", "tasks", "alerts", "project_stages", "project_participants", "project_reports", "stage_approvals", "notifications", "plan_changes", "raid_items", "milestones", "rule_runs", "ai_jobs", "ai_suggestions", "rollout_watch"):
         column = "project_id"
         db.execute(
             f"DELETE FROM {table} WHERE {column} IS NOT NULL "
             f"AND {column} NOT IN (SELECT id FROM projects)"
         )
+    db.execute("UPDATE intake_calls SET project_id = NULL WHERE project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects)")
     # an account that signed up through a project's link keeps no pointer to a project that is gone
     db.execute("UPDATE users SET signup_project_id = NULL WHERE signup_project_id IS NOT NULL AND signup_project_id NOT IN (SELECT id FROM projects)")
     # Files are never swept here. A folder "not in the database" is also what
@@ -246,7 +248,7 @@ def _backfill_stage_entered_at(db):
 # PRAGMA user_version. Raise SCHEMA_VERSION in any release that adds a table,
 # column, permission or alert type. A database above it was written by a newer
 # release, so this code is a rollback: it boots, but deletes nothing.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3   # v2.0.0: fields, gates, task links, asks, milestones, rules, workload, intake, notification kinds
 
 # Names retired from PERMISSIONS / ALERT_TYPES; their rows are deleted on boot.
 # Retire a name by adding it here. Never delete "whatever this code does not
@@ -343,6 +345,12 @@ def migrate_db(db):
         table_columns = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
         if "deleted_at" not in table_columns:
             db.execute(f"ALTER TABLE {table} ADD COLUMN deleted_at TEXT")
+    # 17 Oct 2026 (loophole 65): a file an outside account uploads waits for staff review
+    # (services/doc_review.py); every document before this counts as accepted
+    doc_columns = {row[1] for row in db.execute("PRAGMA table_info(documents)")}
+    for column, coltype in (("review_status", "TEXT NOT NULL DEFAULT 'accepted'"), ("reviewed_by", "TEXT"), ("reviewed_at", "TEXT")):
+        if column not in doc_columns:
+            db.execute(f"ALTER TABLE documents ADD COLUMN {column} {coltype}")
 
     # Stage SLAs need to know when the project entered its current stage.
     # updated_at can't stand in for that — project_edit bumps it too, so an
@@ -399,6 +407,25 @@ def migrate_db(db):
     # NULL = "whatever stage the project is in" — old tasks and quick adds.
     if "stage" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
         db.execute("ALTER TABLE tasks ADD COLUMN stage TEXT")
+    # Odin 2.0 (W3): a task's estimate in hours (workload reads it), what it
+    # waits on (task_links) and the tasks a template's stages bring to a new
+    # rollout (template_tasks): both tables are in schema.sql.
+    if "estimate_hours" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
+        db.execute("ALTER TABLE tasks ADD COLUMN estimate_hours REAL")
+    # Odin 2.0 (W4): what a task asks for (services/asks.py): a tick, a document
+    # of one category, or a few questions (JSON); answers live in task_answers.
+    task_columns = {row[1] for row in db.execute("PRAGMA table_info(tasks)")}
+    for column, coltype in (("kind", "TEXT NOT NULL DEFAULT 'task'"), ("ask_category", "TEXT"), ("ask_form", "TEXT")):
+        if column not in task_columns:
+            db.execute(f"ALTER TABLE tasks ADD COLUMN {column} {coltype}")
+    # Odin 2.0 (W5): a repeating task (services/recurrence.py). recurrence: weekly / fortnightly /
+    # monthly; recur_until: a date, or 'stage' (until the task's stage is done); recur_spawned: its
+    # next occurrence was made (once, ever); recur_from: the task this one is the next occurrence of.
+    task_columns = {row[1] for row in db.execute("PRAGMA table_info(tasks)")}
+    for column, coltype in (("recurrence", "TEXT"), ("recur_until", "TEXT"), ("recur_spawned", "INTEGER NOT NULL DEFAULT 0"), ("recur_from", "INTEGER")):
+        if column not in task_columns:
+            db.execute(f"ALTER TABLE tasks ADD COLUMN {column} {coltype}")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_recur_from ON tasks (recur_from) WHERE recur_from IS NOT NULL")
     # Read-only API tokens (routes/tokens.py): only a hash is stored; the
     # token itself is shown once. Revoked/expired ones are trimmed after 90 days.
     db.execute("""CREATE TABLE IF NOT EXISTS api_tokens (
@@ -406,6 +433,11 @@ def migrate_db(db):
         name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
         created_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
         last_used_at TEXT, revoked_at TEXT)""")
+    # CRM intake (services/intake.py): a token's scope is 'read' (the /api/v1 reads) or
+    # 'create' (POST /api/v1/intake only); the calls themselves are intake_calls (schema.sql).
+    if "scope" not in {row[1] for row in db.execute("PRAGMA table_info(api_tokens)")}:
+        db.execute("ALTER TABLE api_tokens ADD COLUMN scope TEXT NOT NULL DEFAULT 'read'")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_projects_intake_deal ON projects (intake_deal_id)")
     # One row per backup run (backup.py): what was made, where it went, and
     # whether its restore test passed. Trimmed to the newest 200 by each run.
     db.execute("""CREATE TABLE IF NOT EXISTS backup_runs (
@@ -451,6 +483,13 @@ def migrate_db(db):
         id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, payload TEXT NOT NULL,
         attempts INTEGER NOT NULL DEFAULT 0, next_try_at TEXT, last_error TEXT, sent_at TEXT, created_at TEXT NOT NULL)""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_outbox_due ON outbox (sent_at, next_try_at)")
+    # Mute or follow one rollout (services/notifications.py, B3): a participant
+    # who muted it gets no mail or Teams from it (the bell still shows it); staff
+    # not on it who follow it hear of its events. Purged with the project.
+    db.execute("""CREATE TABLE IF NOT EXISTS rollout_watch (
+        user_id INTEGER NOT NULL REFERENCES users(id), project_id INTEGER NOT NULL REFERENCES projects(id),
+        mode TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (user_id, project_id))""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_rollout_watch_project ON rollout_watch (project_id, mode)")
     # The lessons library: what went wrong and what to repeat, saved by a
     # project manager from a rollout (services/lessons.py). It outlives the
     # rollout: when a project is purged its lessons keep their words and the
@@ -482,6 +521,9 @@ def migrate_db(db):
         read_at TEXT
     )""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, read_at, id)")
+    # a bell item from a rollout the person muted (B3): shown, marked muted, never mailed
+    if "muted" not in {row[1] for row in db.execute("PRAGMA table_info(notifications)")}:
+        db.execute("ALTER TABLE notifications ADD COLUMN muted INTEGER NOT NULL DEFAULT 0")
     # the board and the flow count each project's tasks and notes: without these
     # every project scanned the whole table (test report OPS-11: 4.3 s at 2,000 projects, 96 ms with them)
     db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks (project_id, done)")
@@ -500,6 +542,12 @@ def migrate_db(db):
         decided_at TEXT,
         comment TEXT
     )""")
+    # Automatic chasers (services/chasers.py, B9): how many reminders went out, the last one when.
+    for table in ("stage_approvals", "signoffs"):
+        chase_columns = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+        if chase_columns and "chase_count" not in chase_columns:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN chase_count INTEGER NOT NULL DEFAULT 0")
+            db.execute(f"ALTER TABLE {table} ADD COLUMN chased_at TEXT")
     # Project reports: the PM's text, one row per saved version, never edited in place.
     db.execute("""CREATE TABLE IF NOT EXISTS project_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -558,6 +606,13 @@ def migrate_db(db):
 
     for key, value in DEFAULT_SETTINGS.items():
         db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
+
+    # The channel switches, the guest-link switch and the OneDrive mirror switch became policies
+    # (policies.POLICIES, 16 Oct 2026): carry a saved choice over once. The old row stays, so a
+    # rollback to the earlier release still finds it; the policy row, once it exists, wins.
+    for key in ("notify_email_enabled", "notify_teams_enabled", "notify_teams_chat_enabled",
+                "onedrive_mirror_uploads_enabled", "guest_links_enabled"):
+        db.execute("INSERT OR IGNORE INTO settings (key, value) SELECT 'policy.' || key, value FROM settings WHERE key = ?", (key,))
 
     # alert dismissals moved to the session (per-login, never persisted) —
     # drop the old persistent table from installs that had it
@@ -776,7 +831,9 @@ PROJECT_CLOSED_SQL = (
     "COALESCE(p.stage = (SELECT ps.name FROM project_stages ps WHERE ps.project_id = p.id "
     "ORDER BY ps.position DESC LIMIT 1), 0)"
 )
-PROJECT_OPEN_SQL = f"({PROJECT_CLOSED_SQL} = 0)"
+# A pending CRM intake (services/intake.py) is neither open nor closed: it joins the
+# flow, counts, alerts and reports only when a project manager confirms it.
+PROJECT_OPEN_SQL = f"({PROJECT_CLOSED_SQL} = 0 AND COALESCE(p.intake_pending, 0) = 0)"
 
 
 def _migrate_stage_lists(db):
@@ -802,6 +859,13 @@ def _migrate_stage_lists(db):
         sla_days INTEGER,
         UNIQUE (project_id, name)
     )""")
+    # Stage gates (services/gates.py): leave a stage only with its tasks done and its documents on file.
+    for table in ("project_stages", "stage_template_stages"):
+        gate_columns = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+        if "gate_tasks" not in gate_columns:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN gate_tasks INTEGER NOT NULL DEFAULT 0")
+        if "required_docs" not in gate_columns:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN required_docs TEXT")
     if not db.execute("SELECT 1 FROM stage_templates LIMIT 1").fetchone():
         legacy = db.execute("SELECT name, sla_days FROM stages ORDER BY position").fetchall()
         source = [(row[0], row[1]) for row in legacy] or [(name, None) for name in DEFAULT_STAGES]
@@ -940,6 +1004,25 @@ def participants_for(project_id):
     ).fetchall()
 
 
+def role_holders(project_id, role, db=None, active=False):
+    """User ids holding `role` on a rollout, in the order they joined (`active`: only accounts that are on)."""
+    return [r[0] for r in (db or get_db()).execute(
+        "SELECT pp.user_id FROM project_participants pp JOIN users u ON u.id = pp.user_id WHERE pp.project_id = ? AND pp.role = ?"
+        + (" AND u.active = 1" if active else "") + " ORDER BY pp.added_at, pp.id", (project_id, role))]
+
+
+def customer_ids(project_id, db=None, active=False):
+    """A rollout's Customer participants (their user ids): who approvals, chasers and shared reports reach."""
+    return role_holders(project_id, "Customer", db, active)
+
+
+def insert_task(db, project_id, title, created_by, created_at=None, **columns):
+    """Add a task row (the caller commits): the given columns, created now unless `created_at` says when.
+    Returns its id. The column names are the code's own, never a request's."""
+    row = {"project_id": project_id, "title": title, "created_at": created_at or datetime.utcnow().isoformat(), "created_by": created_by, **columns}
+    return db.execute(f"INSERT INTO tasks ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", tuple(row.values())).lastrowid
+
+
 def current_approval(project_id):
     """The approval row for the latest stage change, or None."""
     return get_db().execute(
@@ -976,14 +1059,14 @@ def my_project_ids(user_id):
 
 
 def copy_template_stages(db, template_id, project_id):
-    """Give a project its own copy of a template's stages (names, order, SLAs)."""
-    for name, position, sla in db.execute(
-        "SELECT name, position, sla_days FROM stage_template_stages WHERE template_id = ? ORDER BY position",
+    """Give a project its own copy of a template's stages (names, order, SLAs, gates)."""
+    for name, position, sla, gate_tasks, required_docs in db.execute(
+        "SELECT name, position, sla_days, gate_tasks, required_docs FROM stage_template_stages WHERE template_id = ? ORDER BY position",
         (template_id,),
     ).fetchall():
         db.execute(
-            "INSERT OR IGNORE INTO project_stages (project_id, name, position, sla_days) VALUES (?, ?, ?, ?)",
-            (project_id, name, position, sla),
+            "INSERT OR IGNORE INTO project_stages (project_id, name, position, sla_days, gate_tasks, required_docs) VALUES (?, ?, ?, ?, ?, ?)",
+            (project_id, name, position, sla, gate_tasks, required_docs),
         )
     db.execute(
         "UPDATE projects SET stage_template_id = ? WHERE id = ? AND stage_template_id IS NULL",

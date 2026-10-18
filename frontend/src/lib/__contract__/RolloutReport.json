@@ -2,28 +2,77 @@
  "audience": "internal",
  "can_edit": true,
  "data": {
+  "asks": [
+   {
+    "answered_at": null,
+    "answered_by": null,
+    "answers": [],
+    "assignee": "Ann Reyes",
+    "assignee_role": "Customer",
+    "category": null,
+    "done": false,
+    "done_at": null,
+    "due_date": null,
+    "file": null,
+    "id": 5,
+    "kind": "task",
+    "questions": [],
+    "title": "Confirm the cutover change window"
+   },
+   {
+    "answered_at": null,
+    "answered_by": null,
+    "answers": [],
+    "assignee": "Ann Reyes",
+    "assignee_role": "Customer",
+    "category": "Deliverable",
+    "done": false,
+    "done_at": null,
+    "due_date": null,
+    "file": null,
+    "id": 6,
+    "kind": "upload",
+    "questions": [],
+    "title": "Upload the signed network diagram"
+   }
+  ],
   "audience": "internal",
-  "baseline_at": "2026-09-19T19:13:43.261641",
+  "baseline_at": "2026-09-20T19:20:30.781154",
   "company": "Protect24x7",
+  "csat": [],
   "documents": [
    {
     "category": "Client PO",
     "filename": "po.pdf",
-    "uploaded_at": "2026-10-15T19:13:42.783734",
+    "uploaded_at": "2026-10-16T19:20:30.220865",
     "uploaded_by": "Admin"
    }
   ],
   "elapsed_days": 27,
+  "fields": [
+   {
+    "customer_visible": true,
+    "kind": "choice",
+    "name": "Region",
+    "value": "KSA"
+   },
+   {
+    "customer_visible": true,
+    "kind": "number",
+    "name": "Endpoints in scope",
+    "value": 200
+   }
+  ],
   "finish": {
-   "baseline": "2026-11-26",
+   "baseline": "2026-11-27",
    "days_to_target": 62,
-   "forecast": "2026-12-03",
-   "planned": "2026-12-01",
-   "target": "2026-12-16",
+   "forecast": "2026-12-04",
+   "planned": "2026-12-02",
+   "target": "2026-12-17",
    "vs_baseline_days": 7,
    "vs_target_days": -13
   },
-  "generated_at": "2026-10-15T19:13:43.593646",
+  "generated_at": "2026-10-16T19:20:31.388116",
   "has_plan": true,
   "health": {
    "confidence": "low",
@@ -37,9 +86,9 @@
    "approvals": [],
    "dwell": [
     {
-     "days": 3.7,
-     "entered": "2026-09-18",
-     "left": "2026-09-24",
+     "days": 4.6,
+     "entered": "2026-09-19",
+     "left": "2026-09-25",
      "over": 0,
      "sla": null,
      "stage": "PO Received",
@@ -47,8 +96,8 @@
     },
     {
      "days": 3.7,
-     "entered": "2026-09-24",
-     "left": "2026-09-30",
+     "entered": "2026-09-25",
+     "left": "2026-10-01",
      "over": 0,
      "sla": null,
      "stage": "Scoping",
@@ -58,13 +107,13 @@
    "notes": [
     {
      "author": "Admin",
-     "created_at": "2026-10-15T17:13:43.261641",
+     "created_at": "2026-10-16T17:20:30.781154",
      "note": "Customer asked to add the branch office; PO amendment requested.",
      "stage": "Sensor pilot"
     },
     {
      "author": "Omar Haddad",
-     "created_at": "2026-09-26T10:13:43.261641",
+     "created_at": "2026-09-27T10:20:30.781154",
      "note": "Pilot group live, no issues in 48 h.",
      "stage": "Sensor pilot"
     }
@@ -72,21 +121,46 @@
   },
   "milestones": [
    {
-    "end": "2026-10-15",
-    "planned_end": "2026-10-13",
+    "end": "2026-10-16",
+    "planned_end": "2026-10-14",
     "stage": "Sensor pilot",
-    "start": "2026-09-30"
+    "start": "2026-10-01"
    },
    {
-    "end": "2026-10-21",
-    "planned_end": "2026-10-19",
+    "end": "2026-10-22",
+    "planned_end": "2026-10-20",
     "stage": "Deployment",
-    "start": "2026-10-15"
+    "start": "2026-10-16"
    }
   ],
   "needs": {
    "approval": null,
-   "tasks": []
+   "tasks": [
+    {
+     "created_at": "2026-10-16T19:20:30.447376",
+     "done": false,
+     "done_at": null,
+     "due_date": null,
+     "id": 5,
+     "late": false,
+     "stage": null,
+     "title": "Confirm the cutover change window",
+     "who": "Ann Reyes",
+     "who_role": "Customer"
+    },
+    {
+     "created_at": "2026-10-16T19:20:30.451033",
+     "done": false,
+     "done_at": null,
+     "due_date": null,
+     "id": 6,
+     "late": false,
+     "stage": null,
+     "title": "Upload the signed network diagram",
+     "who": "Ann Reyes",
+     "who_role": "Customer"
+    }
+   ]
   },
   "pct_complete": 27,
   "people": [
@@ -98,29 +172,29 @@
     "role": "Coordinator"
    },
    {
-    "done": 1,
+    "done": 0,
     "late": 0,
-    "name": "Admin",
-    "open": 0,
-    "role": "Project manager"
+    "name": "Ann Reyes",
+    "open": 3,
+    "role": "Customer"
    }
   ],
   "plan_changes": [
    {
     "author": "Priya Menon",
-    "created_at": "2026-10-14T19:13:43.261641",
+    "created_at": "2026-10-15T19:20:30.781154",
     "field": "end",
-    "new": "2026-12-01",
-    "old": "2026-11-26",
+    "new": "2026-12-02",
+    "old": "2026-11-27",
     "reason": "Waiting on firewall approval",
     "stage": "Closed"
    },
    {
     "author": "Priya Menon",
-    "created_at": "2026-10-12T19:13:43.261641",
+    "created_at": "2026-10-13T19:20:30.781154",
     "field": "end",
-    "new": "2026-12-01",
-    "old": "2026-11-26",
+    "new": "2026-12-02",
+    "old": "2026-11-27",
     "reason": "Waiting on firewall approval",
     "stage": "Sign-off"
    }
@@ -136,18 +210,46 @@
    "stage": "Sensor pilot",
    "stage_count": 9,
    "stage_number": 3,
-   "start_date": "2026-09-18",
-   "target_end_date": "2026-12-16",
+   "start_date": "2026-09-19",
+   "target_end_date": "2026-12-17",
    "vendor_name": "CrowdStrike"
   },
+  "project_milestones": [
+   {
+    "created_at": "2026-10-16T19:20:30.781154",
+    "created_by": "Priya Menon",
+    "customer_visible": false,
+    "date": "2026-10-13",
+    "done": false,
+    "done_at": null,
+    "id": 2,
+    "missed": true,
+    "name": "Security review signed off",
+    "project_id": 1,
+    "stage": "Sensor pilot"
+   },
+   {
+    "created_at": "2026-10-16T19:20:30.781154",
+    "created_by": "Priya Menon",
+    "customer_visible": true,
+    "date": "2026-10-28",
+    "done": false,
+    "done_at": null,
+    "id": 1,
+    "missed": false,
+    "name": "Pilot go-live",
+    "project_id": 1,
+    "stage": "Sensor pilot"
+   }
+  ],
   "raid": [
    {
-    "closed_at": "2026-09-30T19:13:43.261641",
-    "created_at": "2026-09-30T19:13:43.261641",
+    "closed_at": "2026-10-01T19:20:30.781154",
+    "created_at": "2026-10-01T19:20:30.781154",
     "created_by": "Priya Menon",
     "customer_visible": true,
     "detail": null,
-    "due_date": "2026-10-24",
+    "due_date": "2026-10-25",
     "id": 1,
     "impact": "high",
     "kind": "blocker",
@@ -160,43 +262,45 @@
     "stage": "Sensor pilot",
     "status": "closed",
     "title": "Waiting on firewall change approval",
-    "updated_at": "2026-09-30T19:13:43.261641"
+    "updated_at": "2026-10-01T19:20:30.781154"
    }
   ],
   "stages": [
    {
-    "actual_days": 3.7,
-    "actual_end": "2026-09-24",
-    "actual_start": "2026-09-18",
-    "base_end": "2026-09-23",
-    "base_start": "2026-09-18",
-    "forecast_end": "2026-09-24",
-    "forecast_start": "2026-09-18",
+    "actual_days": 4.6,
+    "actual_end": "2026-09-25",
+    "actual_start": "2026-09-19",
+    "base_end": "2026-09-24",
+    "base_start": "2026-09-19",
+    "forecast_end": "2026-09-25",
+    "forecast_reason": null,
+    "forecast_start": "2026-09-19",
     "id": 1,
     "name": "PO Received",
-    "plan_end": "2026-09-23",
-    "plan_start": "2026-09-18",
-    "planned_days": 3,
+    "plan_end": "2026-09-24",
+    "plan_start": "2026-09-19",
+    "planned_days": 4,
     "position": 0,
     "sla_days": null,
     "slip_days": 1,
     "status": "done",
     "suggested_end": "2026-09-29",
-    "suggested_start": "2026-09-18"
+    "suggested_start": "2026-09-19"
    },
    {
     "actual_days": 3.7,
-    "actual_end": "2026-09-30",
-    "actual_start": "2026-09-24",
-    "base_end": "2026-10-03",
-    "base_start": "2026-09-23",
-    "forecast_end": "2026-09-30",
-    "forecast_start": "2026-09-24",
+    "actual_end": "2026-10-01",
+    "actual_start": "2026-09-25",
+    "base_end": "2026-10-04",
+    "base_start": "2026-09-24",
+    "forecast_end": "2026-10-01",
+    "forecast_reason": null,
+    "forecast_start": "2026-09-25",
     "id": 2,
     "name": "Scoping",
-    "plan_end": "2026-10-03",
-    "plan_start": "2026-09-23",
-    "planned_days": 7,
+    "plan_end": "2026-10-04",
+    "plan_start": "2026-09-24",
+    "planned_days": 6,
     "position": 1,
     "sla_days": null,
     "slip_days": -3,
@@ -239,17 +343,17 @@
    },
    "title": "Rollout report"
   },
-  "today": "2026-10-15",
+  "today": "2026-10-16",
   "work": {
    "burn": [
     {
      "done": 0,
-     "total": 3,
+     "total": 2,
      "week": "2026-09-14"
     },
     {
      "done": 0,
-     "total": 4,
+     "total": 3,
      "week": "2026-09-21"
     }
    ],
@@ -271,10 +375,10 @@
    "late": 1,
    "open": [
     {
-     "created_at": "2026-10-15T19:13:42.884068",
+     "created_at": "2026-10-16T19:20:30.323738",
      "done": false,
      "done_at": null,
-     "due_date": "2026-10-11",
+     "due_date": "2026-10-12",
      "id": 1,
      "late": true,
      "stage": null,
@@ -283,10 +387,10 @@
      "who_role": "Coordinator"
     },
     {
-     "created_at": "2026-10-15T19:13:42.887383",
+     "created_at": "2026-10-16T19:20:30.326752",
      "done": false,
      "done_at": null,
-     "due_date": "2026-10-18",
+     "due_date": "2026-10-19",
      "id": 2,
      "late": false,
      "stage": "Sensor pilot",
@@ -295,7 +399,7 @@
      "who_role": null
     }
    ],
-   "total": 7
+   "total": 11
   }
  },
  "is_live": true,
@@ -308,12 +412,12 @@
  "versions": [],
  "words": {
   "asks": "",
-  "next_steps": "Finish Sensor pilot by 15 Oct 2026.\nDeployment: 15 Oct 2026 to 21 Oct 2026.\nTuning/UAT: 21 Oct 2026 to 3 Nov 2026.",
+  "next_steps": "Finish Sensor pilot by 16 Oct 2026.\nDeployment: 16 Oct 2026 to 22 Oct 2026.\nTuning/UAT: 22 Oct 2026 to 3 Nov 2026.",
   "suggested": {
    "asks": "",
-   "next_steps": "Finish Sensor pilot by 15 Oct 2026.\nDeployment: 15 Oct 2026 to 21 Oct 2026.\nTuning/UAT: 21 Oct 2026 to 3 Nov 2026.",
-   "summary": "EDR Rollout - Globex is in Sensor pilot (stage 3 of 9), 27% complete. Forecast to finish 3 Dec 2026, 13 days ahead of the 16 Dec 2026 target."
+   "next_steps": "Finish Sensor pilot by 16 Oct 2026.\nDeployment: 16 Oct 2026 to 22 Oct 2026.\nTuning/UAT: 22 Oct 2026 to 3 Nov 2026.",
+   "summary": "EDR Rollout - Globex is in Sensor pilot (stage 3 of 9), 27% complete. Forecast to finish 4 Dec 2026, 13 days ahead of the 17 Dec 2026 target."
   },
-  "summary": "EDR Rollout - Globex is in Sensor pilot (stage 3 of 9), 27% complete. Forecast to finish 3 Dec 2026, 13 days ahead of the 16 Dec 2026 target."
+  "summary": "EDR Rollout - Globex is in Sensor pilot (stage 3 of 9), 27% complete. Forecast to finish 4 Dec 2026, 13 days ahead of the 17 Dec 2026 target."
  }
 }

@@ -35,12 +35,9 @@ SIGNOFF_STAGE = "Sign-off"
 SIGNOFF_DOC_CATEGORY = "Sign-off"
 DEFAULT_DOC_CATEGORIES = ["Client PO", "Deliverable", "Sign-off"]
 
-DEFAULT_SETTINGS = {
-    "notify_email_enabled": "0",
-    "notify_teams_enabled": "0",
-    "notify_teams_chat_enabled": "0",
-    "onedrive_mirror_uploads_enabled": "0",
-}
+# Seeded on first boot. The switches that used to live here (notify_*_enabled,
+# onedrive_mirror_uploads_enabled) are policies now (policies.POLICIES).
+DEFAULT_SETTINGS = {}
 
 # The one document category the project can't be created without — its upload
 # is the create-project trigger (routes/projects.project_new).
@@ -86,13 +83,23 @@ NOTIFICATION_KINDS = {
     "due": "A daily reminder of my tasks due today or overdue",
     "nudge": "A note a colleague sends me from the People page",
     "alert": "Alerts on rollouts I am on (overdue, due soon, over SLA, idle), and my daily digest",
+    "milestone": "A milestone passing undone on rollouts I am on",
     "brief": "My morning brief: my rollouts, what is due, what came in (written by AI)",
+    "report": "A rollout report shared with me",
+    "automation": "Automations an admin set up (Settings › Automations) that name me or my role on a rollout",
 }
+
+# What a follower of a rollout hears about (services/notifications, B3): its
+# events, never what is addressed to one person (an assignment, a reminder).
+FOLLOW_KINDS = ("stage", "activity", "alert", "milestone")
+# How a person takes each kind by email and Teams (Account page, B2): at once,
+# in one mail at the digest time, or not at all. The bell is always at once.
+DELIVERY = ("instant", "summary", "off")
 
 # Kinds only admins receive, so only admins see them on the Account page.
 ADMIN_KINDS = ("access", "ai", "ops")
 # Kinds only staff receive (People page notes, the AI morning brief): partner and customer accounts never see them.
-STAFF_KINDS = ("nudge", "brief")
+STAFF_KINDS = ("nudge", "brief", "milestone", "automation")   # automation: a rule never reaches the customer (services/rules.py)
 
 THEMES = ("system", "light", "dark")
 # Pastel accents (9 Oct 2026); blue the default again since 10 Oct (policy default_accent), as red read
@@ -131,6 +138,7 @@ PERMISSIONS = {
     "manage_settings": ["Admin"],
     "manage_users": ["Admin"],
     "manage_integrations": ["Admin"],
+    "manage_rules": ["Admin"],   # Settings › Automations (services/rules.py)
 }
 
 # Lifecycle alerts: schedule health (vs a project's target end date) + inactivity.
@@ -145,6 +153,7 @@ ALERT_TYPE_TITLES = {
     "blocker_open": "Blocker still open",
     "task_unowned": "Overdue task with no owner",
     "customer_quiet": "Customer task overdue",
+    "milestone_missed": "Milestone missed",
 }
 
 ALERT_TYPES = set(ALERT_TYPE_TITLES)   # every type with a title; boot deletes only db.RETIRED_ALERT_TYPES, so a newer release's types survive a rollback
@@ -161,6 +170,8 @@ DEFAULT_ALERT_TYPE_SETTINGS = {
     "blocker_open": {"severity": "critical", "threshold_days": 3, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
     "task_unowned": {"severity": "warning", "threshold_days": 1, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
     "customer_quiet": {"severity": "warning", "threshold_days": 3, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+    # milestones (W5): a dated commitment passed undone; the days are the grace after its date (0: raised the day after)
+    "milestone_missed": {"severity": "warning", "threshold_days": 0, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
 }
 
 # Columns added to projects / users after their original CREATE TABLE — applied
@@ -188,6 +199,13 @@ NEW_PROJECT_COLUMNS = {
     # when the guest links were last minted (rotation); NULL = since created_at. They expire per guest_link_days
     "guest_tokens_at": "TEXT",
     "deleted_at": "TEXT",
+    # CRM intake (services/intake.py): 1 = created by POST /api/v1/intake and
+    # not yet confirmed by a project manager. A pending rollout is neither open
+    # nor closed (db.PROJECT_OPEN_SQL), so no lane, count, alert or report has it.
+    "intake_pending": "INTEGER NOT NULL DEFAULT 0",
+    "intake_deal_id": "TEXT",       # the CRM's deal id: a repeat call answers with this rollout
+    "intake_source": "TEXT",        # the intake token's name
+    "intake_contacts": "TEXT",      # JSON list of the customer contact emails the CRM sent
 }
 
 # Commercial columns dropped in the project-tracker phase-out (invoice/payment/
@@ -231,12 +249,30 @@ NEW_USER_COLUMNS = {
     # Appearance is the user's, not the deployment's: light / dark / follow the
     # OS, and which hue the one accent takes. The avatar is a filename under
     # ODIN_DATA_DIR/avatars, unique per upload so its URL changes on replace.
+    # Odin 2.0 (workload): hours per week this person can plan; NULL takes the policy
+    "capacity_hours": "REAL",
     "theme": "TEXT NOT NULL DEFAULT 'system'",
     "accent": "TEXT NOT NULL DEFAULT 'blue'",
     "avatar": "TEXT",
     # Notification kinds this user does NOT want by email (comma list); the
     # in-app notification always arrives.
     "email_off": "TEXT NOT NULL DEFAULT ''",
+    # Kinds this user takes in the daily summary instead (comma list, B2): the
+    # outbox holds them until the digest time. Neither list = at once.
+    "email_summary": "TEXT NOT NULL DEFAULT ''",
+    # The personal calendar feed (services/ics.py, B13): the token's hash and
+    # when it was made; NULL = no feed. The token itself is shown once.
+    "ics_token_hash": "TEXT",
+    "ics_created_at": "TEXT",
+    # The feed's last successful read (written at most once an hour): a feed unread
+    # for policy ics_idle_days switches itself off in the nightly housekeeping.
+    "ics_last_read_at": "TEXT",
+    # The release whose "What's new" this user dismissed (B15).
+    "whats_new_seen": "TEXT",
+    # "Since you last looked" (services/dashboard.py, B10): where this visit's
+    # window starts, and the last dashboard load (a gap starts a new visit).
+    "since_from": "TEXT",
+    "since_seen_at": "TEXT",
     # The dashboard as this user arranged it (JSON layout; NULL = the
     # workspace default), and which page sign-in lands on.
     "dashboard_layout": "TEXT",
@@ -255,4 +291,6 @@ NEW_USER_COLUMNS = {
     "ms_oid": "TEXT",
     "pending": "INTEGER NOT NULL DEFAULT 0",
     "password_login": "INTEGER NOT NULL DEFAULT 0",
+    # why an admin declined a sign-up request (one line, optional): kept with the inactive account
+    "declined_reason": "TEXT",
 }

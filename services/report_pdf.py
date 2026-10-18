@@ -4,6 +4,7 @@ plan-versus-actual timeline drawn as vectors, and the tables. Dependency-free
 (services/pdf.Canvas): Helvetica, Windows-1252 text."""
 from datetime import date, timedelta
 
+from services.fmt import fmt_date, iso_date
 from services.pdf import MARGIN, Canvas
 
 INK, MUTED, HAIR, FAINT = (16, 17, 20), (91, 98, 112), (228, 230, 235), (243, 244, 246)
@@ -14,22 +15,6 @@ WARN_LINE, BAD_LINE, BRAND_RED = (227, 155, 29), (224, 70, 61), (225, 29, 46)
 MARK = {"green": (31, 157, 85), "amber": WARN_LINE, "red": BAD_LINE, "done": (150, 154, 162)}   # fills wear the -line colours
 LEFT, RIGHT = MARGIN - 16, Canvas.W - (MARGIN - 16)
 WIDTH = RIGHT - LEFT
-
-
-def _d(iso):
-    """A date from a stored value, or None for one that is empty, malformed or
-    absurd: one bad task date must not take the whole PDF (and the weekly
-    email's attachments) down with it (P8)."""
-    try:
-        d = date.fromisoformat(str(iso)[:10]) if iso else None
-    except ValueError:
-        return None
-    return d if d and 1900 <= d.year <= 2200 else None
-
-
-def _fmt(iso):
-    d = _d(iso)
-    return f"{d.day} {d.strftime('%b %Y')}" if d else "-"
 
 
 class _Doc:
@@ -69,7 +54,7 @@ class _Doc:
                 c.image(self.co_logo, RIGHT - 114, 12, 110, 34)
                 right = RIGHT - 128
             c.text(right - c.width(self.label, 8.5), 19, self.label, 8.5, False, (184, 184, 180))
-            when = f"as of {_fmt(self.data['today'])}"
+            when = f"as of {fmt_date(self.data['today'])}"
             c.text(right - c.width(when, 8.5), 32, when, 8.5, False, WHITE)
             self.y = 76
         else:
@@ -160,9 +145,9 @@ def _opening_month(t0, t1):
 def _gantt(doc, stages, today, target, customer=False):
     """Plan (outline), actual (solid), forecast (pale), baseline (thin grey), today and target lines."""
     c = doc.c
-    dates = [d for s in stages for d in map(_d, (s.get("plan_start"), s.get("plan_end"), s.get("base_start"), s.get("base_end"),
+    dates = [d for s in stages for d in map(iso_date, (s.get("plan_start"), s.get("plan_end"), s.get("base_start"), s.get("base_end"),
                                                  s.get("actual_start"), s.get("actual_end"), s.get("forecast_start"), s.get("forecast_end"))) if d]
-    dates += [d for d in (_d(today), _d(target)) if d]
+    dates += [d for d in (iso_date(today), iso_date(target)) if d]
     if not dates:
         return
     t0, t1 = min(dates) - timedelta(days=3), max(dates) + timedelta(days=3)
@@ -187,22 +172,22 @@ def _gantt(doc, stages, today, target, customer=False):
         c.text(LEFT, y + 4, c.fit(s["name"], 8.5, label_w - 8, s["status"] == "current"), 8.5, s["status"] == "current", INK if s["status"] != "next" else MUTED)
         mid = y + row_h / 2
         if s.get("base_start") and s.get("base_end"):
-            c.rect(x(_d(s["base_start"])), mid + 5, max(1.5, x(_d(s["base_end"])) - x(_d(s["base_start"]))), 1.6, fill=(208, 211, 218))
+            c.rect(x(iso_date(s["base_start"])), mid + 5, max(1.5, x(iso_date(s["base_end"])) - x(iso_date(s["base_start"]))), 1.6, fill=(208, 211, 218))
         if s.get("plan_start") and s.get("plan_end"):
-            c.rect(x(_d(s["plan_start"])), mid - 4.5, max(2, x(_d(s["plan_end"])) - x(_d(s["plan_start"]))), 9, stroke=doc.accent, width=0.9)
+            c.rect(x(iso_date(s["plan_start"])), mid - 4.5, max(2, x(iso_date(s["plan_end"])) - x(iso_date(s["plan_start"]))), 9, stroke=doc.accent, width=0.9)
         if s.get("actual_start") and (s.get("actual_end") or s["status"] == "current"):
-            a0, a1 = _d(s["actual_start"]), _d(s["actual_end"]) or _d(today)
+            a0, a1 = iso_date(s["actual_start"]), iso_date(s["actual_end"]) or iso_date(today)
             late = s["status"] == "current" and s.get("plan_end") and s.get("forecast_end") and s["forecast_end"] > s["plan_end"]
             c.rect(x(a0), mid - 2.5, max(2, x(a1) - x(a0)), 5, fill=WARN_LINE if late else (doc.accent if s["status"] == "current" else (86, 88, 94)))
         if s.get("forecast_start") and s.get("forecast_end") and (s["status"] == "next" or (s["status"] == "current" and s["forecast_end"] > today)):
-            f0 = _d(today) if s["status"] == "current" else _d(s["forecast_start"])
-            c.rect(x(f0), mid - 2.5, max(2, x(_d(s["forecast_end"])) - x(f0)), 5, fill=doc.accent_soft)
+            f0 = iso_date(today) if s["status"] == "current" else iso_date(s["forecast_start"])
+            c.rect(x(f0), mid - 2.5, max(2, x(iso_date(s["forecast_end"])) - x(f0)), 5, fill=doc.accent_soft)
     bottom = top + len(stages) * row_h
-    c.line(x(_d(today)), top - 2, x(_d(today)), bottom, doc.accent, 1.1)
-    c.text(x(_d(today)) - 9, bottom + 2, "today", 7, True, doc.accent)
+    c.line(x(iso_date(today)), top - 2, x(iso_date(today)), bottom, doc.accent, 1.1)
+    c.text(x(iso_date(today)) - 9, bottom + 2, "today", 7, True, doc.accent)
     if target:
-        c.line(x(_d(target)), top - 2, x(_d(target)), bottom, BAD_LINE, 0.9, dash=(3, 2))
-        c.text(x(_d(target)) - 10, bottom + 2, "target", 7, False, BAD_LINE)
+        c.line(x(iso_date(target)), top - 2, x(iso_date(target)), bottom, BAD_LINE, 0.9, dash=(3, 2))
+        c.text(x(iso_date(target)) - 10, bottom + 2, "target", 7, False, BAD_LINE)
     doc.y = bottom + 14
     # legend
     lx = LEFT
@@ -230,7 +215,9 @@ def render(data, words, tpl=None):
     c, p, f, h = doc.c, data["project"], data["finish"], data["health"]
     customer = data["audience"] == "customer"
     values = {"project": p["name"], "client": p["client"], "company": data["company"], "pm": p["owner_name"], "po": p.get("po_number") or "",
-              "stage": p["stage"], "target": _fmt(f.get("target")), "forecast": _fmt(f.get("forecast")), "date": _fmt(data["today"])}
+              "stage": p["stage"], "target": fmt_date(f.get("target")), "forecast": fmt_date(f.get("forecast")), "date": fmt_date(data["today"])}
+    from services.fields import shown   # {field:Name}: the fields this copy carries (the customer's copy: theirs only)
+    values |= {f"field:{x['name']}": shown(x["kind"], x["value"]) for x in data.get("fields", [])}
 
     c.text(LEFT, doc.y, c.fit(p["name"], 18, WIDTH, True), 18, True)
     doc.y += 24
@@ -238,13 +225,16 @@ def render(data, words, tpl=None):
                                          p.get("po_number") and (p["po_number"] if p["po_number"].upper().startswith("PO") else f"PO {p['po_number']}")) if x)
     c.text(LEFT, doc.y, c.fit(meta, 9, WIDTH), 9, False, MUTED)
     doc.y += 18
+    if data.get("fields"):   # the custom fields this copy carries, one line
+        c.text(LEFT, doc.y - 4, c.fit(" · ".join(f"{x['name']}: {shown(x['kind'], x['value'])}" for x in data["fields"]), 9, WIDTH), 9, False, MUTED)
+        doc.y += 14
 
     soft, strong, word = RAG[h["rag"]]
     pw = c.width(word, 9.5, True) + 22
     c.rect(LEFT, doc.y, pw, 17, fill=soft)
     c.rect(LEFT + 7, doc.y + 6.5, 4, 4, fill=strong)
     c.text(LEFT + 15, doc.y + 3.5, word, 9.5, True, strong)
-    reasons = " ".join(h["reasons"]) if h["reasons"] and not customer else f"Status as of {_fmt(data['today'])}."
+    reasons = " ".join(h["reasons"]) if h["reasons"] and not customer else f"Status as of {fmt_date(data['today'])}."
     for i, line in enumerate(c.wrap(reasons, 8.5, WIDTH - pw - 10)[:2]):
         c.text(LEFT + pw + 10, doc.y + 1 + i * 11, line, 8.5, False, MUTED)
     doc.y += 30
@@ -254,13 +244,13 @@ def render(data, words, tpl=None):
     def numbers():
         # the numbers
         vs_t = f.get("vs_target_days")
-        boxes = [("Forecast finish", _fmt(f.get("forecast")), "" if vs_t is None else f"{vs_t} d after target" if vs_t > 0 else f"{-vs_t} d before target", vs_t is not None and vs_t > 0),
-                 ("Target", _fmt(f.get("target")), "" if f.get("days_to_target") is None else (f"{-f['days_to_target']} d ago" if f["days_to_target"] < 0 else f"{f['days_to_target']} d to go"), False),
+        boxes = [("Forecast finish", fmt_date(f.get("forecast")), "" if vs_t is None else f"{vs_t} d after target" if vs_t > 0 else f"{-vs_t} d before target", vs_t is not None and vs_t > 0),
+                 ("Target", fmt_date(f.get("target")), "" if f.get("days_to_target") is None else (f"{-f['days_to_target']} d ago" if f["days_to_target"] < 0 else f"{f['days_to_target']} d to go"), False),
                  ("Complete", f"{data['pct_complete']}%", f"{data['elapsed_days']} d since start", False)]
         if not customer:
             vb = f.get("vs_baseline_days")
             boxes.insert(2, ("Against baseline", "-" if vb is None else "on plan" if vb == 0 else f"{abs(vb)} d {'late' if vb > 0 else 'early'}",
-                             f"baseline of {_fmt(data['baseline_at'])}" if data.get("baseline_at") else "no baseline", bool(vb and vb > 0)))
+                             f"baseline of {fmt_date(data['baseline_at'])}" if data.get("baseline_at") else "no baseline", bool(vb and vb > 0)))
         _boxes(doc, boxes)
 
     def summary():
@@ -273,8 +263,8 @@ def render(data, words, tpl=None):
             doc.heading("What we need from you" if customer else "What we need from the customer")
             asks = [x for x in (words.get("asks") or "").splitlines() if x.strip()]
             if data["needs"].get("approval"):
-                asks.append(f"Approve the {data['needs']['approval']['stage']} stage (asked {_fmt(data['needs']['approval']['requested_at'])}).")
-            asks += [t["title"] + (" - due " + _fmt(t["due_date"]) if t.get("due_date") else "") for t in data["needs"].get("tasks", [])]
+                asks.append(f"Approve the {data['needs']['approval']['stage']} stage (asked {fmt_date(data['needs']['approval']['requested_at'])}).")
+            asks += [t["title"] + (" - due " + fmt_date(t["due_date"]) if t.get("due_date") else "") for t in data["needs"].get("tasks", [])]
             doc.bullets(asks)
 
     def timeline():
@@ -284,15 +274,24 @@ def render(data, words, tpl=None):
         widths = [0.24, 0.24, 0.24, 0.16] + ([] if customer else [0.12])
         rows, tones = [], []
         for s in data["stages"]:
-            planned = f"{_fmt(s['plan_start'])} - {_fmt(s['plan_end'])}" if s.get("plan_start") else "-"
-            actual = f"{_fmt(s['actual_start'])} - {_fmt(s['actual_end']) if s.get('actual_end') else 'now'}" if s.get("actual_start") else ("skipped" if s["status"] == "skipped" else "-")
+            planned = f"{fmt_date(s['plan_start'])} - {fmt_date(s['plan_end'])}" if s.get("plan_start") else "-"
+            actual = f"{fmt_date(s['actual_start'])} - {fmt_date(s['actual_end']) if s.get('actual_end') else 'now'}" if s.get("actual_start") else ("skipped" if s["status"] == "skipped" else "-")
             slip = s.get("slip_days")
-            row = [s["name"] + (" (now)" if s["status"] == "current" else ""), planned, actual, _fmt(s.get("forecast_end"))]
+            row = [s["name"] + (" (now)" if s["status"] == "current" else ""), planned, actual, fmt_date(s.get("forecast_end"))]
             if not customer:
                 row.append("-" if slip is None else "on plan" if slip == 0 else f"{abs(slip)} d {'late' if slip > 0 else 'early'}")
             rows.append(row)
             tones.append({4: (180, 35, 28)} if not customer and slip and slip > 0 else {})
         doc.table(cols, rows, widths, tones)
+        held = next((m["gate"] for m in data.get("milestones", []) if m.get("gate")), None)   # what holds the next move (internal only)
+        if held and not customer:
+            doc.para(f"Before the next stage: {held}", 9, (138, 83, 0))
+        ms = data.get("project_milestones") or []   # the rollout's own milestones (the customer's copy: those marked for them)
+        if ms:
+            doc.heading("Milestones", f"{sum(1 for m in ms if m['done'])} of {len(ms)} reached")
+            doc.table(["Milestone", "Stage", "Date", "State"],
+                      [[m["name"], m.get("stage") or "-", fmt_date(m["date"]), f"reached {fmt_date(m['done_at'][:10])}" if m["done"] else "missed" if m["missed"] else "ahead"] for m in ms],
+                      [0.44, 0.2, 0.16, 0.2], [{3: (180, 35, 28)} if m["missed"] and not m["done"] else {} for m in ms])
 
     def raid():
         raid = data.get("raid", [])
@@ -300,7 +299,7 @@ def render(data, words, tpl=None):
             doc.heading("Risks, issues, decisions and blockers" if not customer else "Decisions and open points", f"{sum(1 for r in raid if r['open'])} open")
             doc.table(["Kind", "Item", "Owner", "Impact", "Status", "Due"],
                       [[r["kind"].title(), r["title"] + (f" - {r['resolution']}" if r.get("resolution") else ""), r.get("owner_name") or "-",
-                        r["impact"] if r["kind"] != "decision" else "", r["status"], _fmt(r.get("due_date")) if r.get("due_date") else "-"] for r in raid],
+                        r["impact"] if r["kind"] != "decision" else "", r["status"], fmt_date(r.get("due_date")) if r.get("due_date") else "-"] for r in raid],
                       [0.1, 0.44, 0.14, 0.09, 0.11, 0.12],
                       [{0: (180, 35, 28)} if r["kind"] == "blocker" and r["open"] else {} for r in raid])
 
@@ -314,19 +313,19 @@ def render(data, words, tpl=None):
                       [0.34, 0.22, 0.14, 0.14, 0.16], [{4: (180, 35, 28)} if x["late"] else {} for x in data["people"]])
             if w.get("open"):
                 doc.heading("Open tasks")
-                doc.table(["Task", "Stage", "Who", "Due"], [[t["title"], t.get("stage") or "-", t.get("who") or "-", (_fmt(t["due_date"]) + (" - late" if t["late"] else "")) if t.get("due_date") else "-"] for t in w["open"]],
+                doc.table(["Task", "Stage", "Who", "Due"], [[t["title"], t.get("stage") or "-", t.get("who") or "-", (fmt_date(t["due_date"]) + (" - late" if t["late"] else "")) if t.get("due_date") else "-"] for t in w["open"]],
                           [0.46, 0.2, 0.16, 0.18], [{3: (180, 35, 28)} if t["late"] else {} for t in w["open"]])
 
     def history():
         hist = data["history"]
         doc.heading("Stage history", "time in each stage against its SLA")
         doc.table(["Stage", "Entered", "Left", "Days", "SLA"],
-                  [[x["stage"], _fmt(x["entered"]), _fmt(x["left"]) if x.get("left") else "still here", "-" if x["days"] is None else str(x["days"]), f"{x['sla']} d" if x.get("sla") else "-"] for x in hist["dwell"]],
+                  [[x["stage"], fmt_date(x["entered"]), fmt_date(x["left"]) if x.get("left") else "still here", "-" if x["days"] is None else str(x["days"]), f"{x['sla']} d" if x.get("sla") else "-"] for x in hist["dwell"]],
                   [0.32, 0.2, 0.2, 0.14, 0.14], [{3: (138, 83, 0)} if x.get("over") else {} for x in hist["dwell"]])
         if hist.get("approvals"):
             doc.heading("Customer approvals")
             doc.table(["Stage", "Status", "Asked", "Decided", "Comment"],
-                      [[a["stage"], a["status"], _fmt(a["requested_at"]), _fmt(a["decided_at"]) if a.get("decided_at") else "-", a.get("comment") or ""] for a in hist["approvals"]],
+                      [[a["stage"], a["status"], fmt_date(a["requested_at"]), fmt_date(a["decided_at"]) if a.get("decided_at") else "-", a.get("comment") or ""] for a in hist["approvals"]],
                       [0.22, 0.14, 0.16, 0.16, 0.32])
 
     def plan_changes():
@@ -334,7 +333,7 @@ def render(data, words, tpl=None):
         if not customer and data.get("plan_changes"):
             doc.heading("What moved in the plan")
             doc.table(["When", "Stage", "Change", "Why", "By"],
-                      [[_fmt(x["created_at"]), x.get("stage") or "-", "re-baselined" if x["field"] == "baseline" else f"{x['field']} {_fmt(x['old'])} -> {_fmt(x['new'])}", x.get("reason") or "", x["author"]] for x in data["plan_changes"]],
+                      [[fmt_date(x["created_at"]), x.get("stage") or "-", "re-baselined" if x["field"] == "baseline" else f"{x['field']} {fmt_date(x['old'])} -> {fmt_date(x['new'])}", x.get("reason") or "", x["author"]] for x in data["plan_changes"]],
                       [0.14, 0.18, 0.3, 0.24, 0.14])
 
     def notes():
@@ -343,10 +342,25 @@ def render(data, words, tpl=None):
             doc.heading("Notes")
             for n in hist["notes"][:10]:
                 doc.room(26)
-                c.text(LEFT, doc.y, f"{n['author']} · {n['stage']} · {_fmt(n['created_at'])}", 7.5, False, MUTED)
+                c.text(LEFT, doc.y, f"{n['author']} · {n['stage']} · {fmt_date(n['created_at'])}", 7.5, False, MUTED)
                 doc.y += 11
                 doc.para(n["note"], 9)
                 doc.y += 2
+
+    def asks():
+        # what the outside parties were asked and answered, and their ratings at sign-off: internal only (the customer cut drops both)
+        if customer or not (data.get("asks") or data.get("csat")):
+            return
+        rated = data.get("csat") or []
+        doc.heading("Asked of the customer and partners", f"rated {rated[-1]['rating']} of 5 at sign-off" if rated else None)
+        if data.get("asks"):
+            doc.table(["Ask", "Who", "State", "What came back"],
+                      [[a["title"], f"{a['assignee'] or '-'} ({a['assignee_role'] or '-'})", "done" if a["done"] else f"open · due {fmt_date(a['due_date'])}" if a.get("due_date") else "open",
+                        (a["file"]["filename"] if a.get("file") else "; ".join(f"{x['label']}: {x['value']}" for x in a.get("answers", []))) or "-"] for a in data["asks"]],
+                      [0.32, 0.22, 0.16, 0.3])
+        for r in rated:
+            if r.get("comment"):
+                doc.para(f"\"{r['comment']}\" - {r['by_name']}, version {r['signoff_version']} ({r['rating']} of 5)", 9)
 
     def team():
         if data.get("team"):
@@ -354,7 +368,7 @@ def render(data, words, tpl=None):
             doc.para(" · ".join(f"{m['name']} ({m['role']})" for m in data["team"]), 9)
 
     sections = {"numbers": numbers, "summary": summary, "timeline": timeline, "raid": raid, "work": work,
-                "history": history, "plan_changes": plan_changes, "notes": notes, "team": team}
+                "history": history, "plan_changes": plan_changes, "notes": notes, "asks": asks, "team": team}
     for key in order(tpl):
         sections[key]()
     doc.block("closing", values)
@@ -378,7 +392,7 @@ def _roadmap(doc, rows, today):
     """One bar per rollout from its start to its forecast finish: done so far
     solid, the rest pale, the baseline finish as a tick, the target as a dashed tick."""
     c = doc.c
-    dates = [d for r in rows for d in map(_d, (r["start"], r["forecast"], r["baseline"], r["target_end_date"])) if d] + [_d(today)]
+    dates = [d for r in rows for d in map(iso_date, (r["start"], r["forecast"], r["baseline"], r["target_end_date"])) if d] + [iso_date(today)]
     t0, t1 = min(dates) - timedelta(days=5), max(dates) + timedelta(days=5)
     label_w, row_h = 150, 16
     track_x, track_w = LEFT + label_w, WIDTH - label_w
@@ -398,7 +412,7 @@ def _roadmap(doc, rows, today):
     top = doc.y
     for r in rows:
         if doc.y + row_h > c.H - 44:
-            tx = x(_d(today))
+            tx = x(iso_date(today))
             c.line(tx, top, tx, doc.y, doc.accent, 0.9)
             doc._new_page(); ticks(); top = doc.y
         y, mid = doc.y, doc.y + row_h / 2
@@ -406,19 +420,19 @@ def _roadmap(doc, rows, today):
         c.rect(LEFT, mid - 2.5, 5, 5, fill=strong)
         c.text(LEFT + 9, y + 3.5, c.fit(f"{r['name']}", 8, label_w - 14), 8, False, INK)
         c.line(track_x, y + row_h, RIGHT, y + row_h, FAINT, 0.5)
-        s, f = _d(r["start"]), _d(r["forecast"]) or _d(today)
-        now = min(max(_d(today), s), f)
+        s, f = iso_date(r["start"]), iso_date(r["forecast"]) or iso_date(today)
+        now = min(max(iso_date(today), s), f)
         c.rect(x(s), mid - 3, max(2, x(now) - x(s)), 6, fill=strong)
         if f > now:
             c.rect(x(now), mid - 3, max(2, x(f) - x(now)), 6, fill=soft, stroke=strong, width=0.4)
         if r["baseline"]:
-            bx = x(_d(r["baseline"]))
+            bx = x(iso_date(r["baseline"]))
             c.rect(bx - 0.6, mid - 5.5, 1.2, 11, fill=(120, 124, 134))
         if r["target_end_date"]:
-            tx = x(_d(r["target_end_date"]))
+            tx = x(iso_date(r["target_end_date"]))
             c.line(tx, mid - 6, tx, mid + 6, BAD_LINE, 0.9, dash=(1.5, 1.5))
         doc.y += row_h
-    tx = x(_d(today))
+    tx = x(iso_date(today))
     c.line(tx, top, tx, doc.y, doc.accent, 0.9)
     c.text(tx - 9, doc.y + 2, "today", 7, True, doc.accent)
     doc.y += 14
@@ -439,10 +453,10 @@ def render_portfolio(data, tpl=None):
     tpl = tpl or default_config("portfolio")
     doc = _Doc(data, label=f"{tpl['title']} · internal", running=tpl["title"], tpl=tpl)
     c, s, rows = doc.c, data["summary"], data["rows"]
-    values = {"company": data["company"], "date": _fmt(data["today"]), "project": "", "client": "", "pm": "", "po": "", "stage": "", "target": "", "forecast": ""}
+    values = {"company": data["company"], "date": fmt_date(data["today"]), "project": "", "client": "", "pm": "", "po": "", "stage": "", "target": "", "forecast": ""}
     c.text(LEFT, doc.y, c.fit(tpl["title"], 18, WIDTH, True), 18, True)
     doc.y += 24
-    c.text(LEFT, doc.y, f"{s['count']} active rollouts, as of {_fmt(data['today'])}", 9, False, MUTED)
+    c.text(LEFT, doc.y, f"{s['count']} active rollouts, as of {fmt_date(data['today'])}", 9, False, MUTED)
     doc.y += 18
     doc.company_line()
     doc.block("intro", values)
@@ -468,7 +482,8 @@ def render_portfolio(data, tpl=None):
         _boxes(doc, [("Late against target", str(s["late_vs_target"]), f"of {s['count']} rollouts", s["late_vs_target"] > 0),
                      ("Behind baseline", str(s["behind_baseline"]), "no baseline data" if s["avg_slip"] is None else f"average {s['avg_slip']:+} d", False),
                      ("Open blockers", str(s["blockers"]), "across the portfolio", s["blockers"] > 0),
-                     ("Finishing in 30 days", str(s["finishing_30d"]), "by forecast", False)])
+                     ("Finishing in 30 days", str(s["finishing_30d"]), "by forecast", False)]
+                    + ([("Customer rating", f"{s['csat']} of 5", f"{s['csat_count']} rated at sign-off", False)] if s.get("csat") is not None else []))
 
     def roadmap():
         if rows:
@@ -480,7 +495,7 @@ def render_portfolio(data, tpl=None):
         if league:
             doc.heading("Slippage", "against each rollout's baseline")
             doc.table(["Rollout", "Stage", "Against baseline", "Forecast", "Against target", "Confidence"],
-                      [[r["name"], r["stage"], f"{abs(r['vs_baseline_days'])} d {'late' if r['vs_baseline_days'] > 0 else 'early'}", _fmt(r["forecast"]),
+                      [[r["name"], r["stage"], f"{abs(r['vs_baseline_days'])} d {'late' if r['vs_baseline_days'] > 0 else 'early'}", fmt_date(r["forecast"]),
                         "-" if r["vs_target_days"] is None else f"{abs(r['vs_target_days'])} d {'after' if r['vs_target_days'] > 0 else 'before'}", r["confidence"]] for r in league],
                       [0.3, 0.16, 0.14, 0.13, 0.14, 0.13],
                       [{2: (180, 35, 28)} if r["vs_baseline_days"] > 0 else {} for r in league])
@@ -489,16 +504,20 @@ def render_portfolio(data, tpl=None):
         if data["risks"]:
             doc.heading("Blockers and high-impact risks", f"{len(data['risks'])} open")
             doc.table(["Rollout", "Kind", "Item", "Owner", "Due"],
-                      [[r["project"], r["kind"].title(), r["title"], r.get("owner_name") or "-", _fmt(r.get("due_date")) if r.get("due_date") else "-"] for r in data["risks"]],
+                      [[r["project"], r["kind"].title(), r["title"], r.get("owner_name") or "-", fmt_date(r.get("due_date")) if r.get("due_date") else "-"] for r in data["risks"]],
                       [0.22, 0.1, 0.4, 0.14, 0.14], [{1: (180, 35, 28)} if r["kind"] == "blocker" else {} for r in data["risks"]])
 
     def table():
         doc.heading("Every rollout")
-        doc.table(["Rollout", "Client", "Health", "Stage", "Done", "Forecast", "Target", "PM"],
+        def mark(m):   # the rollout's next milestone (services/milestones.summary_of), and how many it missed
+            m = m or {}
+            nxt = f"{m['next']['name']} {fmt_date(m['next']['date'])}" if m.get("next") else "-"
+            return nxt + (f" ({m['missed']} missed)" if m.get("missed") else "")
+        doc.table(["Rollout", "Client", "Health", "Stage", "Done", "Forecast", "Target", "Next milestone", "PM"],
                   [[r["name"], r["client"] or "-", RAG[r["rag"]][2], f"{r['stage_number']}/{r['stage_count']} {r['stage']}", f"{r['pct_complete']}%",
-                    _fmt(r["forecast"]), _fmt(r["target_end_date"]) if r["target_end_date"] else "-", r["owner_name"]] for r in rows],
-                  [0.2, 0.13, 0.09, 0.18, 0.06, 0.11, 0.11, 0.12],
-                  [{2: RAG[r["rag"]][1]} for r in rows])
+                    fmt_date(r["forecast"]), fmt_date(r["target_end_date"]) if r["target_end_date"] else "-", mark(r.get("milestones")), r["owner_name"]] for r in rows],
+                  [0.16, 0.1, 0.08, 0.14, 0.05, 0.1, 0.1, 0.18, 0.09],
+                  [{2: RAG[r["rag"]][1], **({7: (180, 35, 28)} if (r.get("milestones") or {}).get("missed") else {})} for r in rows])
 
     sections = {"health": health, "roadmap": roadmap, "slippage": slippage, "risks": risks, "table": table}
     for key in order(tpl):

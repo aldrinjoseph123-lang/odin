@@ -24,7 +24,7 @@ export function Segmented<T extends string | number>({ value, options, onChange,
         return (
           <button key={String(o.value)} type="button" role="radio" aria-checked={on} tabIndex={on ? 0 : -1} disabled={disabled} onClick={() => onChange(o.value)}
             className={cn("inline-flex h-7 items-center justify-center gap-2 rounded-full px-3 text-[12px] font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60",
-              full && "flex-1", on ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground")}>
+              full && "flex-1", on ? "bg-[var(--segment-on)] text-foreground shadow-card" : "text-muted-foreground hover:text-foreground")}>
             {o.icon}{o.label}
           </button>
         )

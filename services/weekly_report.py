@@ -1,8 +1,9 @@
 """The weekly portfolio report (Settings › Reports).
 
 One email: what needs attention first (overdue, over their stage SLA, due
-soon), stages moved in the last 7 days, what falls due in the next 7, and
-how many rollouts sit in each stage, with a link into Odin. Optionally the
+soon), stages moved in the last 7 days, what falls due in the next 7, the
+milestones missed or due this week, who is over capacity this week or next,
+and how many rollouts sit in each stage, with a link into Odin. Optionally the
 portfolio report and each active project's latest saved report ride along
 as PDFs, and a short
 summary goes to Teams (the connected channel and/or a Workflows webhook).
@@ -22,11 +23,12 @@ import graph
 # request and base64 adds a third, so the PDFs together stay under 3 MB (P2-19).
 ATTACH_LIMIT = 3 * 1024 * 1024
 from core import external_url
-from db import PROJECT_OPEN_SQL, get_db, get_setting
+from db import PROJECT_OPEN_SQL, get_db
 from policies import local_today, policy
 from security import file_stem
 from services.alerts import build_alerts, project_states
 from services.dashboard import tasks_due_by
+from services.fmt import plural
 from services import portfolio
 from services.pdf import report_pdf
 from services.report_pdf import render, render_portfolio
@@ -49,6 +51,13 @@ def build():
     due_tasks = tasks_due_by(db, soon)
     per_stage = Counter(p["stage"] for p in projects)
     state = Counter(project_states(projects, alerts).values())   # one state per rollout, as the Flow counts (P3-28)
+    # milestones missed or falling due this week (services/milestones.py), and who is over capacity (services/workload.py)
+    from services import milestones, workload
+    name_of = {p["id"]: p["name"] for p in projects}
+    marks = sorted(((m, pid) for pid, ms in milestones.items_for(list(name_of), today=today.isoformat()).items() for m in ms
+                    if not m["done"] and m["date"] <= soon), key=lambda x: x[0]["date"])
+    load = workload.build(weeks=2)
+    over = [(u, next(c for c in u["weeks"] if c["level"] == "over")) for u in load["people"] if any(c["level"] == "over" for c in u["weeks"])]
 
     late = "<b style='color:#B4231C'>late</b>"
 
@@ -65,6 +74,10 @@ def build():
         ("Needs attention", attention, "Nothing is overdue, over SLA or due soon."),
         ("Stages moved this week", [f"<li><b>{escape(m['name'])}</b>: {escape(m['prev_stage'])} → {escape(m['stage'])} <span style='color:#6B7280'>({escape(m['author'])})</span></li>" for m in moves], "No stage moved this week."),
         ("Due in the next 7 days", [due_row(t) for t in due_tasks], "Nothing falls due."),
+        ("Milestones", [f"<li>{escape(m['date'])} · <b>{escape(m['name'])}</b> — {escape(name_of[pid])}{' ' + late if m['date'] < today.isoformat() else ''}</li>" for m, pid in marks],
+         "No milestone is missed or due in the next 7 days."),
+        ("Over capacity", [f"<li><b>{escape(u['name'])}</b>: {c['hours']:g} h of {u['capacity']:g} h in the week of {escape(c['week'])} ({c['tasks']} {plural(c['tasks'], 'task')}, {u['rollouts']} {plural(u['rollouts'], 'rollout')} managed)</li>" for u, c in over],
+         "Nobody is over capacity this week or next."),
         ("Rollouts per stage", [f"<li>{escape(stage)}: {n}</li>" for stage, n in per_stage.most_common()], "No active rollouts."),
     ]
     health = f"{mix.get('green', 0)} on track · {mix.get('amber', 0)} at risk · {mix.get('red', 0)} off track"
@@ -86,6 +99,8 @@ def build():
     html += f"<p style='margin-top:18px'><a href=\"{external_url('board')}\">Open the flow in Odin</a></p>"
     summary = [f"{len(projects)} active · {state['overdue']} overdue · {state['over_sla']} over SLA · {state['due_soon']} due soon",
                f"{len(moves)} stage move{'s' if len(moves) != 1 else ''} this week, {len(due_tasks)} task{'s' if len(due_tasks) != 1 else ''} due in the next 7 days", health]
+    if marks or over:
+        summary.append(f"{len(marks)} milestone{'s' if len(marks) != 1 else ''} missed or due this week, {len(over)} {plural(len(over), 'person', 'people')} over capacity")
 
     attachments = []
     if policy("report_attach"):
@@ -142,7 +157,7 @@ def send(to=None, teams=True):
             failed.append(f"{address}: {error}")
     posted = []
     if teams and policy("report_teams"):
-        if get_setting("notify_teams_enabled") == "1":
+        if policy("notify_teams_enabled"):
             ok, _ = graph.send_teams_message(f"<b>{escape(subject)}</b><br>" + "<br>".join(escape(s) for s in summary))
             posted.append("Teams channel" if ok else "Teams channel failed")
         if policy("teams_webhook_url"):

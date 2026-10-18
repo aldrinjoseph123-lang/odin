@@ -2,28 +2,49 @@
  "can_move": true,
  "counts": {
   "due_soon": 2,
-  "late_tasks": 10,
+  "late_tasks": 11,
   "on_track": 12,
   "over_sla": 2,
   "overdue": 6
  },
+ "pending": [
+  {
+   "client": "Hooli",
+   "contacts": [
+    "it.lead@hooli.example"
+   ],
+   "created_at": "2026-10-16T19:20:31.086028",
+   "deal_id": "CRM-2041",
+   "delivery_mode": "Outsourced",
+   "id": 24,
+   "name": "Branch SD-WAN refresh",
+   "owner_name": "Admin",
+   "po_number": "PO-HOO-8812",
+   "product_name": "FortiGate 90G",
+   "source": "crm-seed",
+   "target_end_date": "2026-12-30",
+   "vendor_name": "Fortinet"
+  }
+ ],
  "rows": [
   {
    "approval": null,
    "can_move": true,
    "client": "Umbrella Health",
-   "days_in_stage": 9.8,
+   "days_in_stage": 10.0,
    "delivery_mode": "Distribution/MSSP",
+   "gate_blocked": false,
+   "gate_reasons": [],
    "id": 5,
    "idle_days": 0.0,
-   "late_since": "2026-09-30",
+   "late_since": "2026-10-01",
    "late_tasks": 1,
    "mine": true,
    "name": "SIEM onboarding - Umbrella Health",
    "next_stage": "Tuning/UAT",
    "next_task": {
     "assignee": "Tom Keller",
-    "due_date": "2026-09-30",
+    "due_date": "2026-10-01",
     "title": "Deploy agents to pilot group"
    },
    "open_tasks": 2,
@@ -38,9 +59,9 @@
     "Scoping"
    ],
    "stale": false,
-   "start_date": "2026-08-30",
+   "start_date": "2026-08-31",
    "state": "overdue",
-   "target_end_date": "2026-09-05",
+   "target_end_date": "2026-09-06",
    "team": [
     {
      "avatar_url": null,
@@ -54,24 +75,26 @@
     }
    ],
    "total_tasks": 5,
-   "updated_at": "2026-10-15T19:13:42.923689"
+   "updated_at": "2026-10-16T19:20:30.468713"
   },
   {
    "approval": null,
    "can_move": true,
    "client": "Globex",
-   "days_in_stage": 14.5,
+   "days_in_stage": 15.0,
    "delivery_mode": "Distribution/MSSP",
+   "gate_blocked": false,
+   "gate_reasons": [],
    "id": 4,
    "idle_days": 0.0,
-   "late_since": "2026-09-21",
+   "late_since": "2026-09-22",
    "late_tasks": 1,
    "mine": true,
    "name": "EDR rollout - Globex",
    "next_stage": "Kickoff",
    "next_task": {
     "assignee": "Omar Haddad",
-    "due_date": "2026-09-21",
+    "due_date": "2026-09-22",
     "title": "Train the SOC on the new source"
    },
    "open_tasks": 1,
@@ -86,9 +109,9 @@
     "Scoping"
    ],
    "stale": false,
-   "start_date": "2026-09-08",
+   "start_date": "2026-09-09",
    "state": "overdue",
-   "target_end_date": "2026-10-03",
+   "target_end_date": "2026-10-04",
    "team": [
     {
      "avatar_url": null,
@@ -102,12 +125,12 @@
     }
    ],
    "total_tasks": 6,
-   "updated_at": "2026-10-15T19:13:42.914362"
+   "updated_at": "2026-10-16T19:20:30.459727"
   }
  ],
  "stages": [
   "PO Received",
   "Scoping"
  ],
- "today": "2026-10-15"
+ "today": "2026-10-16"
 }

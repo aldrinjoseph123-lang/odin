@@ -258,7 +258,8 @@ def _request_access(oid, email, name, upn):
     username = (email.split("@")[0] if email else f"ms-{oid[:8]}")[:40]
     if db.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
         username = f"{username}-{oid[:6]}"
-    taken = bool(email) and db.execute("SELECT 1 FROM users WHERE lower(email) = ?", (email,)).fetchone()
+    from security import identity_taken
+    taken = bool(email) and identity_taken(db, email)
     now = datetime.utcnow().isoformat()
     # the address counts as proven when it is the UPN: a name in a domain this tenant verified
     cur = db.execute(
@@ -350,10 +351,16 @@ def user_decline(user_id):
     user = db.execute("SELECT * FROM users WHERE id = ? AND pending = 1", (user_id,)).fetchone()
     if user is None:
         abort(404)
+    # An optional reason, one line of up to 300 characters; it stays on the account and in the audit row.
+    # The person is not emailed (as before), so there is no "tell them why" to offer.
+    reason = clean_text(" ".join(request.form.get("reason", "").split()), 1000)
+    if len(reason) > 300:
+        flash("Give the reason in 300 characters or fewer", "error")
+        return redirect(url_for("users"))
     # Kept as an inactive account, so a second attempt is visibly the same person.
-    db.execute("UPDATE users SET pending = 0, active = 0 WHERE id = ?", (user_id,))
+    db.execute("UPDATE users SET pending = 0, active = 0, declined_reason = ? WHERE id = ?", (reason or None, user_id))
     db.commit()
-    audit_log("decline_access", "user", user_id, user["username"])
+    audit_log("decline_access", "user", user_id, user["username"], f"reason: {reason}" if reason else None)
     flash(f"Declined {user['name']}")
     return redirect(url_for("users"))
 

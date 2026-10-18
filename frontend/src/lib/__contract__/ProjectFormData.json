@@ -1,6 +1,33 @@
 {
  "account_managers": [],
  "can_lead": true,
+ "custom_fields": [
+  {
+   "choices": [
+    "UAE",
+    "KSA"
+   ],
+   "customer_visible": true,
+   "id": 1,
+   "kind": "choice",
+   "name": "Region",
+   "position": 0,
+   "required": false,
+   "show_in_list": true,
+   "value": null
+  },
+  {
+   "choices": [],
+   "customer_visible": true,
+   "id": 2,
+   "kind": "number",
+   "name": "Endpoints in scope",
+   "position": 1,
+   "required": false,
+   "show_in_list": false,
+   "value": null
+  }
+ ],
  "defaults": {
   "customer_approval": false,
   "stage_template_id": 1

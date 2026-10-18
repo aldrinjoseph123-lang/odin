@@ -2,16 +2,16 @@
  "activity": {
   "days": [
    {
-    "day": "2026-09-16",
+    "day": "2026-09-17",
     "minutes": 18
    },
    {
-    "day": "2026-09-17",
+    "day": "2026-09-18",
     "minutes": 118
    }
   ],
   "last_login_at": null,
-  "last_seen_at": "2026-10-14T19:58:43.261641",
+  "last_seen_at": "2026-10-15T20:05:30.781154",
   "month": 1564,
   "today": 189,
   "week": 466
@@ -32,6 +32,8 @@
   ]
  },
  "kpis": {
+  "csat": null,
+  "csat_count": 0,
   "done_30d": 12,
   "late": 3,
   "on_time_pct": 75,
@@ -44,8 +46,8 @@
    "client": "Umbrella Health",
    "done": 0,
    "done_at": null,
-   "due_date": "2026-09-17",
-   "id": 64,
+   "due_date": "2026-09-18",
+   "id": 68,
    "project": "MDR onboarding - Umbrella Health",
    "project_id": 13,
    "project_stage": "Deployment",
@@ -56,8 +58,8 @@
    "client": "Globex",
    "done": 0,
    "done_at": null,
-   "due_date": "2026-09-30",
-   "id": 91,
+   "due_date": "2026-10-01",
+   "id": 95,
    "project": "Email security - Globex",
    "project_id": 20,
    "project_stage": "Hypercare",
@@ -82,7 +84,7 @@
     "Scoping"
    ],
    "state": "over_sla",
-   "target_end_date": "2026-12-16"
+   "target_end_date": "2026-12-17"
   },
   {
    "client": "Acme Bank",
@@ -100,26 +102,26 @@
     "Scoping"
    ],
    "state": "on_track",
-   "target_end_date": "2026-11-29"
+   "target_end_date": "2026-11-30"
   }
  ],
  "recent": [
   {
-   "at": "2026-10-15T19:13:43.261641",
+   "at": "2026-10-16T19:20:30.781154",
    "kind": "note",
    "project": "EDR rollout - Globex",
    "project_id": 4,
    "text": "Pilot group live, no issues in 48 h."
   },
   {
-   "at": "2026-10-15T02:13:43.261641",
+   "at": "2026-10-16T02:20:30.781154",
    "kind": "task",
    "project": "Email security - Stark Logistics",
    "project_id": 8,
    "text": "Set up SSO for console"
   }
  ],
- "today": "2026-10-15",
+ "today": "2026-10-16",
  "upcoming": [],
  "user": {
   "avatar_url": null,
@@ -128,6 +130,6 @@
   "last_login_at": null,
   "name": "Priya Menon",
   "role": "Member",
-  "since": "2026-10-15T19:13:41.454707"
+  "since": "2026-10-16T19:20:28.913684"
  }
 }

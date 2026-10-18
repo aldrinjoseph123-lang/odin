@@ -2,20 +2,18 @@
 by the model from the rollout's week, for the project manager to edit and
 save. Fallback: the template draft (report_data.draft_words) the report page
 has always offered."""
-from datetime import date, timedelta
+from datetime import timedelta
 
 from services.ai import AIFeature, register
 from services.ai.graders import facts_kept, finds, max_words, never_says, no_health_colours, reject_health_colours
+from services.fmt import fmt_date
 
 # health as the customer's copy words it; the model never sees Odin's colours (P2-24)
 PLAN_WORDS = {"green": "on track", "amber": "at risk", "red": "off track", "done": "complete"}
 
 
 def _fmt(iso):
-    if not iso:
-        return None
-    d = date.fromisoformat(str(iso)[:10])
-    return f"{d.day} {d.strftime('%b %Y')}"
+    return fmt_date(iso, None)   # null, not a dash, tells the model a date is not there
 
 
 def gather(project_id):

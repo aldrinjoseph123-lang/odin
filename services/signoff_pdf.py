@@ -2,7 +2,8 @@
 left, the terms, the acceptance statement, both signature blocks (drawn
 signatures as vector strokes) and the signing record with the document's
 fingerprint. Drawn with the report PDF's page builder (services/report_pdf)."""
-from services.report_pdf import BAD_LINE, FAINT, HAIR, INK, LEFT, MUTED, RAG, WIDTH, _Doc, _fmt
+from services.fmt import fmt_date
+from services.report_pdf import BAD_LINE, FAINT, HAIR, INK, LEFT, MUTED, RAG, WIDTH, _Doc
 
 STATUS = {
     "sent": ("amber", "Awaiting the customer's signature"), "signed": ("amber", "Signed by the customer, awaiting our countersignature"),
@@ -13,7 +14,7 @@ SCOPE_WORD = {"delivered": "Delivered", "partial": "Partly delivered", "descoped
 
 
 def _when(iso):
-    return f"{_fmt(iso)}, {iso[11:16]} UTC" if iso and len(iso) > 15 else _fmt(iso)
+    return f"{fmt_date(iso)}, {iso[11:16]} UTC" if iso and len(iso) > 15 else fmt_date(iso)
 
 
 def _signature(c, sig, x, y, w, h):
@@ -45,9 +46,9 @@ def render(v):
     if d.get("intro"):
         doc.para(d["intro"]); doc.y += 6
     facts = [("Customer", p["client"]), ("Delivered by", p["company"] + (f" with {p['partner_name']}" if p.get("partner_name") else "")),
-             ("Purchase order", " · ".join(x for x in (p.get("po_number"), _fmt(p.get("po_date")) if p.get("po_date") else None) if x) or "-"),
+             ("Purchase order", " · ".join(x for x in (p.get("po_number"), fmt_date(p.get("po_date")) if p.get("po_date") else None) if x) or "-"),
              ("Project manager", p["owner_name"]), ("Solution", " ".join(x for x in (p.get("vendor_name"), p.get("product_name")) if x) or "-"),
-             ("Started", _fmt(p.get("start_date"))), ("Target", _fmt(p.get("target_end_date"))), ("Issued", _fmt(p.get("finished")))]
+             ("Started", fmt_date(p.get("start_date"))), ("Target", fmt_date(p.get("target_end_date"))), ("Issued", fmt_date(p.get("finished")))]
     col = WIDTH / 2
     if section_on(tpl, "facts"):
         for i, (label, value) in enumerate(facts):
@@ -119,7 +120,7 @@ def render(v):
         elif v["status"] == "uploaded" and i == 0:
             c.text(x + 8, top + 42, "Signed on paper - copy on file", 8.5, False, MUTED)
         y = top + 88
-        for k, val in (("Name", name or (named and f"{named} (to sign)") or ""), ("Title", title or ""), ("Date", _fmt(when) if when else "")):
+        for k, val in (("Name", name or (named and f"{named} (to sign)") or ""), ("Title", title or ""), ("Date", fmt_date(when) if when else "")):
             c.text(x, y, k, 7.5, False, MUTED)
             c.text(x + 34, y, c.fit(val, 9, bw - 40), 9, False, INK)
             c.line(x + 32, y + 11, x + bw, y + 11, HAIR, 0.6)
@@ -139,7 +140,7 @@ def render(v):
     if v["counter_signed_at"]:
         rows.append(["Countersigned", f"{v['counter_name']} signed {_when(v['counter_signed_at'])} in Odin" + (f"; from {v['counter_ip']}" if v.get("counter_ip") else "")])
     if v["status"] == "uploaded":
-        rows.append(["Paper copy", f"Signed by {v['signer_name']} on {_fmt(v['signed_at'])}; the scanned copy is document #{v['document_id']} on the rollout"])
+        rows.append(["Paper copy", f"Signed by {v['signer_name']} on {fmt_date(v['signed_at'])}; the scanned copy is document #{v['document_id']} on the rollout"])
     if v["status"] == "rejected":
         rows.append(["Not accepted", f"{_when(v['rejected_at'])}: {v['reject_comment']}"])
     if v["status"] == "waived":

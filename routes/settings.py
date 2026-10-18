@@ -287,11 +287,11 @@ def settings_template_add():
     source = db.execute("SELECT id FROM stage_templates ORDER BY id LIMIT 1").fetchone()
     if source and source["id"] != cursor.lastrowid:
         for row in db.execute(
-            "SELECT name, position, sla_days FROM stage_template_stages WHERE template_id = ? ORDER BY position", (source["id"],)
+            "SELECT name, position, sla_days, gate_tasks, required_docs FROM stage_template_stages WHERE template_id = ? ORDER BY position", (source["id"],)
         ).fetchall():
             db.execute(
-                "INSERT INTO stage_template_stages (template_id, name, position, sla_days) VALUES (?, ?, ?, ?)",
-                (cursor.lastrowid, row["name"], row["position"], row["sla_days"]),
+                "INSERT INTO stage_template_stages (template_id, name, position, sla_days, gate_tasks, required_docs) VALUES (?, ?, ?, ?, ?, ?)",
+                (cursor.lastrowid, row["name"], row["position"], row["sla_days"], row["gate_tasks"], row["required_docs"]),
             )
     db.commit()
     return _template_change("add_stage_template", None, name)
@@ -371,6 +371,14 @@ def settings_stage_sla(template_id):
     """Expected days per stage for projects created from this template."""
     _template(template_id)
     return _template_change("update_template_slas", stage_ops.set_slas("template", template_id, request.form), str(template_id))
+
+
+@app.route("/settings/templates/<int:template_id>/gates", methods=["POST"])
+@permission_required("manage_settings")
+def settings_stage_gates(template_id):
+    """What each stage asks before a rollout leaves it, for rollouts created from this template."""
+    _template(template_id)
+    return _template_change("update_template_gates", stage_ops.set_gates("template", template_id, request.form), str(template_id))
 
 
 @app.route("/settings/templates/<int:template_id>/sla/from-measured", methods=["POST"])

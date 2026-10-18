@@ -10,8 +10,9 @@ import { Field } from "@/components/ui/field"
 import { ApiError, postForm, projectForm, type ProjectFormData, type User } from "@/lib/api"
 import { useUnsavedGuard } from "@/lib/useUnsavedGuard"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
-import { productsFor } from "@/lib/format"
+import { fieldInput, productsFor } from "@/lib/format"
 import { toastAfterLoad } from "@/lib/toast"
+import { FieldInput } from "@/components/FieldValues"
 
 // Field names are Flask's: the form posts to the same route the Jinja page
 // did, as multipart (the PO document rides along on create).
@@ -29,9 +30,10 @@ export default function ProjectForm(_props: { user: User }) {
   const [f, setF] = useState<Record<string, string>>({})
   const [team, setTeam] = useState<string[]>([])
   const [approval, setApproval] = useState(false)
+  const [vals, setVals] = useState<Record<string, string>>({})   // custom fields, by id
   const [initial, setInitial] = useState("")
   const [saved, setSaved] = useState(false)
-  const snap = JSON.stringify({ f, approval, team })   // everything the user can change, not just the text fields
+  const snap = JSON.stringify({ f, approval, team, vals })   // everything the user can change, not just the text fields
   useUnsavedGuard(!saved && initial !== "" && initial !== snap)
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export default function ProjectForm(_props: { user: User }) {
         stage_template_id: String(p.stage_template_id ?? data.defaults.stage_template_id ?? data.templates[0]?.id ?? ""), owner_id: String(p.owner_id ?? (data.mode !== "edit" && !data.can_lead ? "" : data.me)),
       })
       setApproval(data.mode === "new" ? data.defaults.customer_approval : !!p.customer_approval)
+      setVals(Object.fromEntries(data.custom_fields.map((c) => [c.id, fieldInput(c.kind, c.value)])))
       setInitial("pending")   // the snapshot is taken on the next render, once f is set
       document.title = `${data.mode === "edit" ? "Edit" : data.mode === "duplicate" ? "Duplicate" : "New"} project · Odin`
     }).catch((e) => setError(editId && e instanceof ApiError && (e.status === 403 || e.status === 404) ? MISSING : e instanceof ApiError && e.status === 403 ? "You cannot create projects." : e instanceof ApiError ? e.message : "Could not load the form"))
@@ -64,6 +67,7 @@ export default function ProjectForm(_props: { user: User }) {
     for (const [k, v] of Object.entries(f)) fd.set(k, v)
     fd.delete("team_user_ids"); for (const id of team) fd.append("team_user_ids", id)
     if (approval) fd.set("customer_approval", "1"); else fd.delete("customer_approval")
+    for (const [id, v] of Object.entries(vals)) fd.set(`field_${id}`, v)   // checked by kind on the server; required ones on create
     if (sending.current) return
     sending.current = true
     setBusy(true); setNotice(null)
@@ -200,6 +204,17 @@ export default function ProjectForm(_props: { user: User }) {
             </Field>
           )}
         </section>
+
+        {d.custom_fields.length > 0 && (
+          <section className="grid grid-cols-1 content-start gap-3 panel p-4 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-3">
+            <PanelTitle className="mb-0 sm:col-span-2 lg:col-span-3">Custom fields</PanelTitle>
+            {d.custom_fields.map((c) => (
+              <Field key={c.id} label={`${c.name}${c.required && !editing ? " *" : ""}`}>
+                <FieldInput field={c} value={vals[c.id] ?? ""} onChange={(v) => setVals({ ...vals, [c.id]: v })} />
+              </Field>
+            ))}
+          </section>
+        )}
 
         <div className="flex items-center gap-3 lg:col-span-2">
           <Button type="submit" size="sm" loading={busy} disabled={editing && initial === snap}>{editing ? "Save changes" : "Create project"}</Button>

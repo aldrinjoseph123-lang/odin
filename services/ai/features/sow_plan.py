@@ -34,7 +34,7 @@ def documents(project_id):
     for the page to choose from."""
     from db import get_db
     from services.doctext import READABLE
-    rows = get_db().execute("SELECT id, filename, category, uploaded_at FROM documents WHERE project_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC",
+    rows = get_db().execute("SELECT id, filename, category, uploaded_at FROM documents WHERE project_id = ? AND deleted_at IS NULL AND review_status = 'accepted' ORDER BY uploaded_at DESC",
                             (project_id,)).fetchall()
     out = [{"id": r["id"], "filename": r["filename"], "category": r["category"],
             "likely": bool(r["category"] == "Client PO" or SOW_WORDS.search(r["filename"]))}

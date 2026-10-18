@@ -13,11 +13,20 @@
  "can_approve": false,
  "can_edit": true,
  "can_move": true,
+ "can_override": true,
  "client": "Globex",
  "customer_approval": true,
  "days_left": 62,
  "delivery_mode": "Distribution/MSSP",
+ "doc_categories": [
+  "Client PO",
+  "Deliverable"
+ ],
  "documents": 1,
+ "gate": {
+  "blocked": [],
+  "can_override": true
+ },
  "id": 1,
  "me": 1,
  "name": "EDR Rollout - Globex",
@@ -45,13 +54,13 @@
  "recent_notes": [
   {
    "author": "Admin",
-   "created_at": "2026-10-15T17:13:43.261641",
+   "created_at": "2026-10-16T17:20:30.781154",
    "note": "Customer asked to add the branch office; PO amendment requested.",
    "stage": "Sensor pilot"
   },
   {
    "author": "Admin",
-   "created_at": "2026-09-30T03:13:43.261641",
+   "created_at": "2026-10-01T03:20:30.781154",
    "note": "Pilot group of 50 endpoints",
    "stage": "Sensor pilot"
   }
@@ -65,51 +74,72 @@
   "status": null,
   "version": null
  },
+ "signoff_chases": 0,
  "stage": "Sensor pilot",
  "stage_index": 2,
  "stages": [
   {
-   "days": 3.7,
-   "entered_at": "2026-09-18T19:13:43.261641",
+   "days": 4.6,
+   "entered_at": "2026-09-19T19:20:30.781154",
    "name": "PO Received",
    "sla_days": null,
    "status": "done"
   },
   {
-   "days": 1.4,
-   "entered_at": "2026-09-24T11:13:43.261641",
+   "days": 0.4,
+   "entered_at": "2026-09-25T11:20:30.781154",
    "name": "Scoping",
    "sla_days": null,
    "status": "done"
   }
  ],
- "start_date": "2026-09-18",
+ "start_date": "2026-09-19",
  "state": "over_sla",
- "target_end_date": "2026-12-16",
+ "target_end_date": "2026-12-17",
  "tasks": [
   {
+   "ask_category": null,
    "assignee": "Sara Lind",
    "assignee_avatar_url": null,
    "assignee_id": 4,
+   "blocked_by": [],
    "done": false,
    "done_at": null,
-   "due_date": "2026-10-11",
+   "due_date": "2026-10-12",
+   "estimate_hours": null,
    "id": 1,
+   "kind": "task",
+   "questions": [],
+   "recur_until": null,
+   "recurrence": null,
    "stage": "Sensor pilot",
-   "title": "Collect asset inventory"
+   "title": "Collect asset inventory",
+   "waits_on": []
   },
   {
+   "ask_category": null,
    "assignee": null,
    "assignee_avatar_url": null,
    "assignee_id": null,
+   "blocked_by": [],
    "done": false,
    "done_at": null,
-   "due_date": "2026-10-18",
+   "due_date": "2026-10-19",
+   "estimate_hours": null,
    "id": 2,
+   "kind": "task",
+   "questions": [],
+   "recur_until": null,
+   "recurrence": null,
    "stage": "Sensor pilot",
-   "title": "Deploy sensors to pilot group"
+   "title": "Deploy sensors to pilot group",
+   "waits_on": []
   }
  ],
- "today": "2026-10-15",
- "vendor_name": "CrowdStrike"
+ "today": "2026-10-16",
+ "vendor_name": "CrowdStrike",
+ "watch": {
+  "can": "mute",
+  "on": false
+ }
 }

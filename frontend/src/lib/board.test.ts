@@ -24,4 +24,10 @@ describe("the Kanban's rules", () => {
     expect(canDrag({ ...r, signoff_needed: true })).toBe(false)
     expect(canDrag({ ...r, next_stage: null })).toBe(false)
   })
+  it("offers no grip while a stage gate holds the move, and says what holds it", () => {
+    const held = { ...r, gate_blocked: true, gate_reasons: ["2 open tasks", "Client PO missing"] }
+    expect(canDrag(held)).toBe(false)
+    expect(dropRefusal(held, "Sensor pilot")).toBe("Before leaving Scoping: 2 open tasks · Client PO missing")
+    expect(dropRefusal(held, "Scoping")).toBeNull()   // dropped back where it was: nothing to refuse
+  })
 })

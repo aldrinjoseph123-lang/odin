@@ -8,12 +8,12 @@
  ],
  "projects": [
   {
-   "id": 1,
-   "name": "EDR Rollout - Globex"
+   "id": 24,
+   "name": "Branch SD-WAN refresh"
   },
   {
-   "id": 10,
-   "name": "EDR rollout - Acme Bank"
+   "id": 1,
+   "name": "EDR Rollout - Globex"
   }
  ],
  "roles": [

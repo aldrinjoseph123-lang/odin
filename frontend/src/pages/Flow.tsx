@@ -1,10 +1,16 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { WatchButton } from "@/components/WatchButton"
 import { Notice } from "@/components/Notice"
 import { Segmented } from "@/components/Segmented"
 import { MoveConfirm } from "@/components/MoveConfirm"
+import { GateBlock } from "@/components/GateBlock"
 import { chip, fieldAuto, filterSelect, focusSoon } from "@/lib/ui"
 import { askConfirm } from "@/lib/confirm"
 import { Inbox, ArrowRight, CalendarDays, GanttChart, Kanban as KanbanIcon, Check, ChevronLeft, ChevronRight, LayoutList, Clock, ExternalLink, FileSignature, Plus, Trash2, UserRound, X } from "lucide-react"
+import { WaitsOn, WaitsOnPicker } from "@/components/WaitsOnPicker"
+import { AskFormEditor } from "@/components/AskFormEditor"
+import { RepeatPicker } from "@/components/RepeatPicker"
+import { EVERY, repeatFields, type Repeat } from "@/lib/repeat"
 import { Link, useSearchParams } from "react-router-dom"
 import { UserAvatar } from "@/components/UserAvatar"
 import { TeamStack } from "@/components/TeamStack"
@@ -14,20 +20,23 @@ import { Input } from "@/components/ui/input"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ApiError, addTask, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, type ApprovalStatus, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User } from "@/lib/api"
+import { pickerHint } from "@/lib/workload"
+import { ApiError, addTask, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, workloadWeek, type ApprovalStatus, type AskKind, type AskQuestion, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User, type WorkloadWeek } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
 import { StateChip } from "@/components/StateChip"
-import { days, fitStages, fmtDate, groupRows, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
+import { days, fitStages, fmtDate, gateText, groupRows, holdsGate, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
+import { PendingIntake } from "@/components/PendingIntake"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { useMedia, useWidth } from "@/lib/useMeasure"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { lazyPage } from "@/lib/lazyPage"
-import { usePref } from "@/lib/usePref"
+import { readPref, usePref } from "@/lib/usePref"
+import { submitKey } from "@/lib/useSubmitShortcut"
 import { useLoad } from "@/lib/useLoad"
 
 // the heavier views load when first opened, so the list stays fast
@@ -66,22 +75,50 @@ function DueDate({ due, today, className }: { due: string; today: string; classN
 
 // A task's fields, for adding one or correcting one in place. What was typed
 // stays when the save fails; `save` says whether it worked.
-type TaskValues = { title: string; assignee: string; due: string }
-function TaskForm({ d, label, init, busy, onSave, onCancel, submitLabel }: {
-  d: FlowDetail; label: string; init: TaskValues; busy: boolean; submitLabel: string
+// `waits`: the tasks of this rollout it waits on (finish-to-start); `hours`: its estimate.
+// `kind`: a tick, a document of `category`, or a form of `questions` (services/asks.py);
+// on someone outside the team it is an ask they do from their rollout page.
+type TaskValues = { title: string; assignee: string; due: string; waits: number[]; hours: string; kind: AskKind; category: string; questions: AskQuestion[] } & Repeat   // Repeat: services/milestones.py
+function TaskForm({ d, self, label, init, busy, onSave, onCancel, submitLabel }: {
+  d: FlowDetail; self?: number; label: string; init: TaskValues; busy: boolean; submitLabel: string
   onSave: (v: TaskValues) => Promise<boolean>; onCancel: () => void
 }) {
   const [v, setV] = useState(init)
+  // each colleague's hours in the week the task falls due ("Priya · 34 h that week"); nothing is hinted without a date
+  const [week, setWeek] = useState<WorkloadWeek | null>(null)
+  useEffect(() => {
+    let live = true
+    if (!v.due) setWeek(null)
+    else workloadWeek(v.due).then((w) => { if (live) setWeek(w) }).catch(() => { if (live) setWeek(null) })
+    return () => { live = false }
+  }, [v.due])
   const set = (k: keyof TaskValues) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value })
+  // Ctrl/⌘ Enter sends from any field, the questions' text included
   return (
     <form className="mt-2 grid grid-cols-1 gap-1" onSubmit={async (e) => { e.preventDefault(); if (v.title.trim() && await onSave(v) && !init.title) setV({ ...v, title: "" }) }}
-      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel() } }}>
+      onKeyDown={(e) => { submitKey(e); if (e.key === "Escape") { e.stopPropagation(); onCancel() } }}>
       <Input autoFocus value={v.title} onChange={set("title")} placeholder="Task" aria-label={label} maxLength={200} className="h-7 px-2 text-[13px]" />
       <select value={v.assignee} onChange={set("assignee")} aria-label="Assign to" className={cn(fieldAuto, "h-7 min-w-0 text-[12px]")}>
         <option value="">Unassigned</option>
-        {d.assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+        {d.assignable.map((u) => <option key={u.id} value={u.id}>{pickerHint(u.name, week?.people[u.id])}</option>)}
       </select>
-      <DatePicker value={v.due} onChange={(due) => setV({ ...v, due })} label="Due date" placeholder="Due" className="h-7 px-2 text-[12px]" />
+      <select value={v.kind} onChange={set("kind")} aria-label="What it asks for" className={cn(fieldAuto, "h-7 min-w-0 text-[12px]")}>
+        <option value="task">Tick when done</option>
+        <option value="upload">Upload a document</option>
+        <option value="form">Answer a form</option>
+      </select>
+      {v.kind === "upload" && (
+        <select value={v.category} onChange={set("category")} aria-label="Document to ask for" className={cn(fieldAuto, "h-7 min-w-0 text-[12px]")}>
+          {(d.doc_categories ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      )}
+      {v.kind === "form" && <AskFormEditor value={v.questions} onChange={(questions) => setV({ ...v, questions })} />}
+      <div className="flex items-center gap-1">
+        <DatePicker value={v.due} onChange={(due) => setV({ ...v, due })} label="Due date" placeholder="Due" className="h-7 min-w-0 flex-1 px-2 text-[12px]" />
+        <Input type="number" min={0.5} max={999} step={0.5} value={v.hours} onChange={set("hours")} placeholder="Hours" aria-label="Estimate hours" className="h-7 w-20 px-2 text-[12px]" />
+      </div>
+      <WaitsOnPicker options={d.tasks.filter((t) => t.id !== self).map((t) => ({ id: t.id, title: t.title }))} value={v.waits} onChange={(waits) => setV({ ...v, waits })} />
+      <RepeatPicker value={v} due={v.due} onChange={(r) => setV({ ...v, ...r })} />
       <div className="flex items-center gap-1">
         <Button type="submit" size="sm" className="h-7 flex-1 px-2" loading={busy} disabled={!v.title.trim()} aria-label={submitLabel}>{init.title ? "Save" : <><Plus className="h-3.5 w-3.5" /> Add task</>}</Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={onCancel} aria-label="Cancel"><X className="h-3.5 w-3.5" /></Button>
@@ -103,7 +140,15 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
   const [busy, setBusy] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const addButton = useRef<HTMLButtonElement>(null)
-  const canTick = (t: FlowTask) => d.can_edit || t.assignee_id === d.me
+  // a task waiting on open work is not ticked; an Admin may, after saying so (audited as an override)
+  const waiting = (t: FlowTask) => (!t.done && t.blocked_by?.length ? t.blocked_by : null)
+  // an upload or a form is done by doing it (the rollout page's asks panel); whoever manages the tasks may still tick it
+  const canTick = (t: FlowTask) => (d.can_edit || (t.assignee_id === d.me && (t.kind ?? "task") === "task")) && (!waiting(t) || !!d.can_override)
+  async function tick(t: FlowTask, at: number) {
+    const w = waiting(t)
+    if (w && !(await askConfirm(`Tick ${t.title} anyway? It waits on ${w.map((x) => x.title).join(", ")}. Your override goes in the audit log.`, "Tick"))) return
+    void run(() => toggleTask(d.id, t.id, !t.done), t.done ? `Reopened ${t.title}` : `Done: ${t.title}`, at)
+  }
   // Controls stay focusable while busy (a disabled one drops the keyboard to the page top);
   // a row that went away (deleted, or ticked off a folded stage) hands the focus to the
   // tick now in its place, or the last one (review P2-41).
@@ -123,20 +168,25 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
     }
   }
   const backTo = (sel: string) => focusSoon(() => box.current?.querySelector<HTMLElement>(sel))
-  const fields = (v: TaskValues) => ({ title: v.title.trim(), assignee_id: v.assignee ? Number(v.assignee) : null, due_date: v.due || null })
+  const fields = (v: TaskValues) => ({ title: v.title.trim(), assignee_id: v.assignee ? Number(v.assignee) : null, due_date: v.due || null,
+    waits_on: v.waits, estimate_hours: v.hours ? Number(v.hours) : null, ...repeatFields(v),
+    kind: v.kind, ask_category: v.kind === "upload" ? v.category : null, ...(v.kind === "form" ? { questions: v.questions } : {}) })
   return (
     <div ref={box} className="mt-2 text-[13px]">
       {tasks.length > 0 && (
         <ul className="divide-y divide-border border-t border-border">
           {tasks.map((t, i) => editing === t.id ? (
             <li key={t.id} className="py-1">
-              <TaskForm d={d} label={`Task title`} submitLabel={`Save ${t.title}`} busy={busy} init={{ title: t.title, assignee: t.assignee_id ? String(t.assignee_id) : "", due: t.due_date ?? "" }}
+              <TaskForm d={d} self={t.id} label={`Task title`} submitLabel={`Save ${t.title}`} busy={busy}
+                init={{ title: t.title, assignee: t.assignee_id ? String(t.assignee_id) : "", due: t.due_date ?? "", waits: t.waits_on ?? [], hours: t.estimate_hours ? String(t.estimate_hours) : "",
+                  kind: t.kind ?? "task", category: t.ask_category ?? d.doc_categories?.[0] ?? "", questions: t.questions ?? [], repeat: t.recurrence ?? "", until: t.recur_until ?? "" }}
                 onCancel={() => { setEditing(null); backTo(`[data-edit="${t.id}"]`) }}
                 onSave={async (v) => { const ok = await run(() => editTask(d.id, t.id, fields(v)), "Task saved"); if (ok) { setEditing(null); backTo(`[data-edit="${t.id}"]`) } return ok }} />
             </li>
           ) : (
             <li key={t.id} className={cn("group flex items-center gap-2 py-2", t.done && "text-muted-foreground")}>
-              <button type="button" data-tick disabled={!canTick(t)} aria-disabled={busy || undefined} onClick={() => run(() => toggleTask(d.id, t.id, !t.done), t.done ? `Reopened ${t.title}` : `Done: ${t.title}`, i)}
+              <button type="button" data-tick disabled={!canTick(t)} aria-disabled={busy || undefined} onClick={() => void tick(t, i)}
+                title={waiting(t) ? `Waits on ${waiting(t)!.map((x) => x.title).join(", ")}` : undefined}
                 aria-label={t.done ? `Reopen ${t.title}` : `Complete ${t.title}`}
                 className={cn("relative flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border before:absolute before:-inset-[5px] before:content-['']", t.done ? "border-ok-line bg-ok-line text-background" : "border-control bg-background", canTick(t) ? "hover:border-foreground" : "cursor-default opacity-60")}>
                 {t.done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
@@ -148,12 +198,15 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
                   : <span title={t.title} className={cn("line-clamp-3", t.done && "line-through")}>{t.title}</span>}
                 {/* the person the task is on ticks it; its date is the managers' (server: task_edit) */}
                 {t.due_date && !t.done && <DueDate due={t.due_date} today={d.today} />}
+                {t.recurrence && !t.done && <span className="block text-[11px] text-muted-foreground">repeats {EVERY[t.recurrence]}{t.recur_until === "stage" ? " until the stage is done" : t.recur_until ? ` until ${fmtDate(t.recur_until)}` : ""}</span>}
+                {waiting(t) && <WaitsOn waits={waiting(t)!} />}
               </span>
               {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[11px]" />}
               {d.can_edit && (
                 <button type="button" aria-disabled={busy || undefined} onClick={async () => {
-                  // a deleted task comes back with Undo: the same title, person, date and stage
-                  if (await run(() => deleteTask(d.id, t.id), undefined, i)) toast(`Deleted ${t.title}`, { action: { label: "Undo", run: () => void run(() => addTask(d.id, { title: t.title, stage: t.stage, assignee_id: t.assignee_id, due_date: t.due_date, done: t.done, done_at: t.done_at }), `${t.title} is back`) } })
+                  // a deleted task comes back with Undo: the same title, person, date and stage, and the tasks that waited on it wait again
+                  const blocks = d.tasks.filter((x) => x.waits_on?.includes(t.id)).map((x) => x.id)
+                  if (await run(() => deleteTask(d.id, t.id), undefined, i)) toast(`Deleted ${t.title}`, { action: { label: "Undo", run: () => void run(() => addTask(d.id, { title: t.title, stage: t.stage, assignee_id: t.assignee_id, due_date: t.due_date, done: t.done, done_at: t.done_at, waits_on: t.waits_on, blocks, estimate_hours: t.estimate_hours, recurrence: t.recurrence, recur_until: t.recur_until, kind: t.kind, ask_category: t.ask_category, questions: t.questions }), `${t.title} is back`) } })
                 }} aria-label={`Delete ${t.title}`}
                   className="relative hidden shrink-0 text-muted-foreground before:absolute before:-inset-[5px] before:content-[''] hover:text-destructive group-hover:block group-focus-within:block [@media(hover:none)]:block"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
@@ -164,7 +217,7 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
       {quiet && finished > 0 && <button type="button" onClick={() => setShowDone(!showDone)} className="mt-1 text-[12px] text-muted-foreground hover:text-foreground">{showDone ? "Hide finished" : `${finished} done`}</button>}
       {/* a finished stage keeps its tasks but takes no new ones */}
       {d.can_edit && !done && (adding ? (
-        <TaskForm d={d} label={`New task in ${stage}`} submitLabel="Add task" busy={busy} init={{ title: "", assignee: "", due: "" }} onCancel={() => { setAdding(false); focusSoon(() => addButton.current) }}
+        <TaskForm d={d} label={`New task in ${stage}`} submitLabel="Add task" busy={busy} init={{ title: "", assignee: "", due: "", waits: [], hours: "", kind: "task", category: d.doc_categories?.[0] ?? "", questions: [] }} onCancel={() => { setAdding(false); focusSoon(() => addButton.current) }}
           onSave={(v) => run(() => addTask(d.id, { stage, ...fields(v) }), `Task added to ${stage}`)} />
       ) : (
         <button ref={addButton} type="button" onClick={() => setAdding(true)} aria-label={`Add a task to ${stage}`} className={cn("mt-1 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary-text", quiet && "opacity-0 transition-opacity focus:opacity-100 group-hover/node:opacity-100")}>
@@ -266,7 +319,7 @@ function FlowHeader({ data, title, views, filter, setFilter, group, setGroup, st
     // a filter that changes nothing is noise: "Mine" for someone on every rollout, "Waiting" with none waiting
     .filter((c) => c.key === filter || c.key === "all" || (c.n > 0 && c.n < data.rows.length) || (c.key === "attention" && c.n > 0))
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
+    <div data-print-hide className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
       <h1 className={TITLE}>{title}</h1>
       {views}
       {filter && (
@@ -304,9 +357,9 @@ function FlowHeader({ data, title, views, filter, setFilter, group, setGroup, st
   )
 }
 
-function RolloutList({ data, me, partner, selectedId, onSelect, filter, stage, setStage, showAll, group }: {
+function RolloutList({ data, me, partner, selectedId, onSelect, filter, stage, setStage, showAll, group, onPendingChanged }: {
   data: FlowData; me: number; partner?: boolean; selectedId: number | null; onSelect: (id: number) => void
-  filter: Filter; stage: string | null; setStage: (s: string | null) => void; showAll: () => void; group: FlowGroupBy | null
+  filter: Filter; stage: string | null; setStage: (s: string | null) => void; showAll: () => void; group: FlowGroupBy | null; onPendingChanged: () => void
 }) {
   const rows = useMemo(() => data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage)), [data.rows, filter, stage])
   // Every row's stages in one column order, so a stage lines up down the list.
@@ -361,6 +414,8 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, stage, s
           <span>Rollout · next step <span className="ml-1">(↑↓ or j/k, Enter opens, right arrow to its actions)</span></span><span>Progress</span><span>Stage · status</span><span>Team</span>
         </div>
         <ul className="grid grid-cols-1 gap-1 px-3 pb-3" onKeyDown={onKeys} aria-label="Active rollouts, stuck first">
+          {/* CRM intakes wait in their own lane until a project manager confirms them: in no count, filter or group */}
+          {!partner && data.pending && data.pending.length > 0 && <li className="mb-2"><PendingIntake rows={data.pending} onChanged={onPendingChanged} /></li>}
           {group ? groupRows(shown, group).map((g) => (
             <li key={g.key} className="mt-2 first:mt-0">
               <p className="flex items-baseline gap-2 border-b border-border px-3 pb-1 text-[13px] font-semibold">
@@ -483,8 +538,11 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not record the decision") } finally { setBusy(false) }
   }
   const open = d.tasks.filter((t) => !t.done)
-  const next = nextUp(open, d.stage)
-  const openIn = (stage: string) => open.filter((t) => t.stage === stage).length
+  // what can be done now comes first; a task waiting on open work only when nothing else is left
+  const next = nextUp(open.filter((t) => !t.blocked_by?.length), d.stage) ?? nextUp(open, d.stage)
+  const nextWaits = next?.blocked_by?.length ? next.blocked_by : null
+  // counted as the stage gate counts (services/gates.py): a repeating task only while it is overdue
+  const openIn = (stage: string) => open.filter((t) => t.stage === stage && holdsGate(t, d.today)).length
   const openHere = openIn(d.stage)
   // the terminal stage is the end: the project is closed, nothing is "next"
   const closed = !d.next_stage && d.stage_index === d.stages.length - 1
@@ -492,7 +550,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
   const workFirst = openHere > 0 && !!next && next.stage === d.stage
   // with no open task, "next" is the move itself: ready to advance, or the sign-off, or nothing to do here
   const nextMove = d.can_move && d.next_stage
-    ? d.signoff?.needed ? `Sign-off: ${signoffText(d.signoff.status)}` : `Ready to move to ${d.next_stage}`
+    ? d.signoff?.needed ? `Sign-off: ${signoffText(d.signoff.status)}` : d.gate?.blocked.length ? `Before ${d.next_stage}: ${gateText(d.gate.blocked)}` : `Ready to move to ${d.next_stage}`
     : `No open task in ${d.stage}`
   // Next up, as a panel: first in the rail while work is open in the stage, after the move otherwise
   // (with no task left and the sign-off panel showing, it would only repeat that panel)
@@ -502,11 +560,11 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
           {next ? (
             <>
               <div className="flex items-start gap-2">
-                {(d.can_edit || next.assignee_id === d.me) && (
+                {(d.can_edit || next.assignee_id === d.me) && (!nextWaits || d.can_override) && (
                   <button type="button" aria-disabled={busy || undefined} onClick={() => void tickNext()} aria-label={`Complete ${next.title}`} title="Mark done"
                     className="relative mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border border-control bg-background before:absolute before:-inset-[5px] before:content-[''] hover:border-foreground" />
                 )}
-                <p className="font-medium">{next.title}</p>
+                <p className="font-medium">{next.title}{nextWaits && <WaitsOn waits={nextWaits} />}</p>
               </div>
               <p className="mt-1 flex items-center gap-3 text-muted-foreground">
                 <span className="flex items-center gap-1">{next.assignee ? <UserAvatar name={next.assignee} url={next.assignee_avatar_url} className="h-5 w-5" /> : <UserRound className="h-3.5 w-3.5" />}{next.assignee ?? "Unassigned"}</span>
@@ -518,6 +576,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
   )
   async function tickNext() {
     if (!next || busy) return
+    if (nextWaits && !(await askConfirm(`Tick ${next.title} anyway? It waits on ${nextWaits.map((x) => x.title).join(", ")}. Your override goes in the audit log.`, "Tick"))) return
     setBusy(true); setErr(null)
     try { await toggleTask(d.id, next.id, true); toast(`Done: ${next.title}`); await reload() } catch (e) { setErr(e instanceof ApiError ? e.message : "That did not save") } finally { setBusy(false) }
   }
@@ -536,6 +595,10 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {d.approval && d.approval.stage === d.stage && <ApprovalChip status={d.approval.status} className="px-2 py-1 text-[12px]" />}
+            {/* the customer reminders Odin sent (services/chasers.py), for staff */}
+            {(() => { const n = (d.approval?.status === "pending" && d.approval.stage === d.stage ? d.approval.chases ?? 0 : 0) + (d.signoff?.status === "sent" ? d.signoff_chases ?? 0 : 0)
+              return n > 0 ? <span className="text-[12px] text-muted-foreground">Customer reminded {n}×</span> : null })()}
+            {d.watch && <WatchButton key={d.id} projectId={d.id} watch={d.watch} />}
             {closed && <span className="rounded-md bg-ok-soft px-2 py-1 text-[12px] font-medium text-ok">Closed{closedOn ? ` on ${fmtDate(closedOn)}` : ""}</span>}
             {/* the project page shows the plan's verdict in its title row instead (one health, not two) */}
             {!closed && !standalone && <StateChip state={d.state} text={stateText({ state: d.state, days_in_stage: d.stages[d.stage_index]?.days ?? null, over_by: d.over_by, target_end_date: d.target_end_date })} />}
@@ -564,7 +627,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
                 )
                 if (it.kind !== "stage") {
                   const names = d.stages.slice(it.from, it.to + 1).map((st) => st.name)
-                  const open = d.tasks.filter((t) => !t.done && names.includes(t.stage)).length
+                  const open = d.tasks.filter((t) => names.includes(t.stage) && holdsGate(t, d.today)).length
                   return (
                     <li key={`${it.kind}-${it.from}`} className="relative min-w-0 md:px-2 md:first:pl-0 md:last:pr-0">
                       {arrow}
@@ -597,6 +660,8 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
                       <div className="mt-1 truncate text-[12px] text-muted-foreground">
                         {st.status === "next" ? (st.sla_days ? `SLA ${st.sla_days} d` : "") : st.status === "done" ? days(st.days) : `${days(st.days)}${st.sla_days ? ` · SLA ${st.sla_days}` : ""}`}
                       </div>
+                      {/* what holds the move out of this stage (services/gates.py) */}
+                      {st.status === "current" && !!d.gate?.blocked.length && <GateBlock text={gateText(d.gate.blocked)} className="mt-1" />}
                     </div>
                     {/* every stage carries its own tasks — work happens here, not on the project page; the
                         current stage's list sits full width under the chart, a stage with open tasks gets its own
@@ -817,6 +882,17 @@ export default function Flow({ user }: { user: User }) {
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [selectedId, close])
+  // 1–4 switch the views (advice B6). Single keys: not while typing or in a dialog, and the Account page's switch turns them off.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const v = VIEWS[Number(e.key) - 1]
+      if (!v || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.defaultPrevented || (v === "gantt" && user.kind === "external")) return
+      if ((e.target as HTMLElement).closest?.("input, textarea, select, dialog, [role=dialog], [contenteditable=true]") || !readPref("shortcut.slash", true)) return
+      setView(v)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [setView, user.kind])
 
   async function undoMove(path: string, say: (text: string, bad: boolean) => void = (text, bad) => { if (selectedId != null) setNotice({ id: selectedId, text, bad }) }) {
     try {
@@ -859,13 +935,13 @@ export default function Flow({ user }: { user: User }) {
   const body = view === "calendar" ? (
     <Suspense fallback={<PageSkeleton />}><Calendar wide={wide} stamp={stamp} only={only} /></Suspense>
   ) : view === "gantt" ? (
-    <Suspense fallback={<PageSkeleton />}><FlowGantt ids={shownIds} stamp={stamp} selectedId={selectedId} onSelect={setSelectedId} /></Suspense>
+    <Suspense fallback={<PageSkeleton />}><FlowGantt ids={shownIds} stamp={stamp} selectedId={selectedId} onSelect={setSelectedId} portfolioPdf={user.permissions.includes("view_reports") && user.kind !== "external"} /></Suspense>
   ) : view === "kanban" ? (
     <Suspense fallback={<PageSkeleton />}>
       <FlowKanban rows={shownRows} columns={columns} selectedId={selectedId} onSelect={setSelectedId} onMove={(r) => void askMove(r)} onOnly={setStage} />
     </Suspense>
   ) : (
-    <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} stage={stage} setStage={setStage} showAll={showAll} group={group} />
+    <RolloutList data={data} me={user.id} partner={user.kind === "external"} selectedId={selectedId} onSelect={setSelectedId} filter={filter} stage={stage} setStage={setStage} showAll={showAll} group={group} onPendingChanged={() => void load()} />
   )
   const list = (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -943,9 +1019,9 @@ export default function Flow({ user }: { user: User }) {
       <ResizablePanel defaultSize={selectedId == null ? 100 : 48} minSize={20}><div className="panel flex h-full min-h-0 flex-col overflow-hidden">{list}</div></ResizablePanel>
       {selectedId != null && (
         <>
-          <ResizableHandle withHandle aria-label="Resize the rollout list and the flowchart" />
+          <ResizableHandle withHandle data-print-hide aria-label="Resize the rollout list and the flowchart" />
           <ResizablePanel defaultSize={52} minSize={25}>
-            <ScrollArea className="panel h-full">{pane}</ScrollArea>
+            <ScrollArea data-print-hide className="panel h-full">{pane}</ScrollArea>
           </ResizablePanel>
         </>
       )}

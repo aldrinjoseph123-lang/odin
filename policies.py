@@ -72,10 +72,13 @@ POLICIES = {
                              label="Partner email domains", help="e.g. partner.com, vendor.ae. Only these can be invited or sent a sign-in link. Blank: any domain."),
     "guest_link_days": dict(area="security", kind="int", default=180, min=0, max=3650,
                             label="Guest links last (days)", help="A rollout's vendor and customer links stop working this long after they were made or last rotated; rotating renews them. 0: they never expire."),
+    # was a bespoke switch (settings key guest_links_enabled): moved into the policy table 16 Oct 2026; db.migrate_db copies a saved choice
+    "guest_links_enabled": dict(area="security", kind="bool", default=True,
+                                label="Legacy anonymous guest links work", help="Turn off once invited partner and customer accounts have replaced them: every old link then stops, and the guest actions on a rollout disappear. On again, they work again (links past their date stay expired)."),
     "external_access_days_after_close": dict(area="security", kind="int", default=0, min=0, max=3650,
                                              label="Partner accounts end after (days)", help="A partner or customer account is deactivated, overnight, once every rollout it is on has been closed this long. 0: never; an admin deactivates them on the Users page."),
     "guest_writes_per_minute": dict(area="security", kind="int", default=10, min=1, max=120,
-                                    label="Guest link writes per minute", help="Comments and stage moves through one anonymous guest link; more than this in a minute is refused for a minute."),
+                                    label="Guest link writes per minute", help="Comments and stage moves through one anonymous guest link, and each partner's or customer's answers and uploads to what is asked of them; more than this in a minute is refused for a minute."),
     "undo_minutes": dict(area="security", kind="int", default=5, min=1, max=60,
                          label="Undo window (minutes)", help="How long deletes and stage moves can be undone."),
     # ---- Sign-up links and time on Odin (Settings › Sign-up & activity)
@@ -97,7 +100,25 @@ POLICIES = {
                       label="Notes a person may send per hour", help="To all their colleagues together (People › Send a note)."),
     "nudge_pair_max": dict(area="people", kind="int", default=5, min=1, max=200,
                            label="Notes to one colleague per hour", help="From one person to one colleague. Counted per pair, so one person's notes never use up what others may send."),
+    # ---- Workload (People › Workload, the dashboard widget, the task picker's hint)
+    "capacity_hours_per_week": dict(area="people", kind="int", default=30, min=1, max=80,
+                                    label="Hours a person can plan per week", help="The default capacity; Manage on the Users page sets another for one person (part-timers)."),
+    "default_task_hours": dict(area="people", kind="int", default=2, min=1, max=40,
+                               label="Hours for a task with no estimate", help="Counted in the workload when a task has no estimate of its own."),
+    "pm_hours_per_rollout": dict(area="people", kind="int", default=4, min=0, max=40,
+                                 label="Hours per week for managing a rollout", help="A fixed allowance for each active rollout the person manages, added to every week."),
+    "workload_warn_pct": dict(area="people", kind="int", default=90, min=50, max=99,
+                              label="Heavy load from (% of capacity)", help="Amber from here; red above 100 %."),
+    "access_review_days": dict(area="people", kind="int", default=90, min=7, max=730,
+                               label="Access review: no sign-in for (days)", help="Users › Access review lists accounts that have not signed in for this long, partners whose rollouts have all closed, and offers to deactivate them."),
     # ---- Notifications
+    # the three channel switches were bespoke settings rows (notify_*_enabled): policies since 16 Oct 2026; db.migrate_db copies a saved choice
+    "notify_email_enabled": dict(area="notifications", kind="bool", default=False,
+                                 label="Email notifications on rollout events", help="Stage changes, approvals, assignments, mentions and due tasks go out as email through the connected Microsoft 365 mailbox. Each person can still switch kinds off on their Account page."),
+    "notify_teams_chat_enabled": dict(area="notifications", kind="bool", default=False,
+                                      label="Teams messages to each person", help="Every notification also as a card from the Odin PMS app in the person's own Teams chat (staff only; set it up under Settings › Integrations)."),
+    "notify_teams_enabled": dict(area="notifications", kind="bool", default=False,
+                                 label="Teams channel posts", help="Stage changes and decisions, plus the daily alert digest and the weekly report, posted in the channel chosen under Settings › Integrations."),
     "digest_time": dict(area="notifications", kind="time", default="08:00",
                         label="Daily digest and reminders at", help="Workspace time zone, working days only. Needs the scheduler service running."),
     "mail_from": dict(area="notifications", kind="emails", one=True, default="", max=254,
@@ -106,10 +127,31 @@ POLICIES = {
     # back to the page and audited only as set or cleared, like the AI key (test round P2-9)
     "teams_webhook_url": dict(area="notifications", kind="url", default="", max=500, query=True, secret=True,
                               label="Teams Workflows webhook", help="From a Teams channel: Workflows › \"Post to a channel when a webhook request is received\". Stage changes, decisions and the weekly report are posted here too. Blank: channel posts only."),
+    # Resend carries sign-in mail only (16 Oct 2026, the user's call): links, resets, confirmations, invites
+    "resend_enabled": dict(area="notifications", kind="bool", default=False,
+                           label="Send sign-in mail through Resend", help="Sign-in links, password resets, address confirmations and invitations go out through Resend (api.resend.com) instead of Microsoft 365; notifications, the digest and reports stay on Microsoft 365. If Resend refuses, Odin uses Microsoft 365 when it is connected. The free plan allows 100 emails a day."),
+    "resend_api_key": dict(area="notifications", kind="text", default="", max=200, secret=True,
+                           label="Resend API key", help="From resend.com › API Keys: a key with sending access only, limited to your domain. Stored sealed; never shown again."),
+    "resend_from": dict(area="notifications", kind="text", default="Odin PMS <odin-pms@protect24x7.com>", max=200,
+                        label="Resend sends as", help="Name and address on a domain verified in Resend, e.g. Odin PMS <odin-pms@protect24x7.com>."),
+    "resend_reply_to": dict(area="notifications", kind="emails", one=True, default="notifications@protect24x7.com", max=254,
+                            label="Replies go to", help="Where a reply to a sign-in email lands. Blank: the sending address."),
     "outbox_attempts": dict(area="notifications", kind="int", default=8, min=1, max=20,
                             label="Tries before Odin gives up on a message", help="Mail and Teams messages go out from the scheduler; one that fails is tried again after 1, 2, 4, 8 … minutes (8 tries: about two hours). After the last try the admins are told in the bell, once a day."),
     "outbox_max_age_hours": dict(area="notifications", kind="int", default=24, min=1, max=168,
                                  label="Give up on a message after (hours)", help="A message that could not go out within this long is dropped and the admins are told: a sign-in link or a reminder a day late does more harm than good."),
+    # Automatic chasers (services/chasers.py): in the digest pass, working days counted
+    "chase_after_days": dict(area="notifications", kind="int", default=3, min=0, max=30,
+                             label="Remind the customer after (working days)", help="A sign-off waiting for the customer's signature, and a stage move waiting for their approval, get a reminder with a fresh sign-in link after this many working days, then again every as many days. 0: no reminders."),
+    "chase_max": dict(area="notifications", kind="int", default=3, min=1, max=10,
+                      label="Reminders at most", help="How many reminders one sign-off or approval gets before Odin stops; the project manager sees the count."),
+    "ics_feed_per_hour": dict(area="notifications", kind="int", default=60, min=5, max=600,
+                              label="Calendar feed reads per hour", help="How often one person's calendar feed (Account › Calendar feed) may be fetched in an hour; Outlook checks every few hours. More are refused until the hour has passed."),
+    "ics_idle_days": dict(area="notifications", kind="int", default=30, min=0, max=365,
+                          label="Switch off a feed unread for (days)", help="A calendar feed nobody has fetched for this many days switches itself off overnight, so a forgotten subscription does not stay a working address for good. 0: never."),
+    # ---- Integrations (the Microsoft 365 connection itself is not a policy: it has its own sealed flow)
+    "onedrive_mirror_uploads_enabled": dict(area="integrations", kind="bool", default=False,
+                                            label="Mirror every uploaded document to OneDrive", help="Each upload is also copied to the connected Microsoft 365 account's OneDrive, folder Odin-Documents. Needs the Microsoft 365 connection."),
     # ---- Reports
     "report_enabled": dict(area="reports", kind="bool", default=False,
                            label="Send the weekly report", help="Stuck and overdue rollouts first, stages moved this week, due next week, counts per stage."),
@@ -136,6 +178,8 @@ POLICIES = {
                              label="Keep resolved alerts for (days)", help="Alerts that cleared (a task done, a date moved) are removed nightly after this. Open alerts always stay."),
     "ai_keep_days": dict(area="audit", kind="int", default=90, min=14, max=730,
                          label="Keep AI history for (days)", help="The log of AI requests, the daily validation results, finished AI jobs and suggestions, including ones nobody accepted or dismissed, are removed nightly after this."),
+    "rule_runs_keep_days": dict(area="audit", kind="int", default=90, min=7, max=730,
+                                label="Keep automation run logs for (days)", help="Each automation's run log (Settings › Automations) loses entries older than this, nightly. Every firing stays in the audit log."),
     # ---- Backups
     "backup_time": dict(area="backups", kind="time", default="02:00",
                         label="Back up at", help="Workspace time zone."),
@@ -203,6 +247,12 @@ POLICIES = {
                            help="A rollout is at risk when it is forecast to finish more than this many days after its target date."),
     "rag_red_days": dict(area="workflow", kind="int", default=7, min=1, max=180, label="Off track after (days late)",
                          help="…and off track past this many days, or when it is already past its target, or has an open blocker."),
+    "gate_override": dict(area="workflow", kind="choice", default="admin_and_pm", choices=("admin", "admin_and_pm"),
+                          label="Who may move past a stage gate",
+                          help="A stage can ask for all its tasks done and some documents on file before the rollout leaves it. Choose whether only an Admin may move past it, or the rollout's project manager too. Always with a written reason, kept in the stage history and the audit log."),
+    "ask_form_max_questions": dict(area="workflow", kind="int", default=12, min=1, max=30,
+                                   label="Questions on a customer form (most)",
+                                   help="A task can ask a customer, reseller or contractor to answer a short form; this caps its questions."),
     "signoff_required": dict(area="workflow", kind="bool", default=True,
                              label="A signed sign-off closes a rollout",
                              help="The last stage cannot be reached until the customer has signed the sign-off document and we have countersigned (or a signed copy is uploaded). An admin can waive it with a written reason."),
@@ -218,6 +268,23 @@ POLICIES = {
     "default_customer_approval": dict(area="workflow", kind="bool", default=False,
                                       label="Ask the customer to approve each stage by default",
                                       help="Pre-ticked on the new project form; each rollout can still change it."),
+    "custom_fields_max": dict(area="workflow", kind="int", default=20, min=1, max=100, label="Most custom fields",
+                              help="How many custom fields (Custom fields, below) a rollout may carry. Lowering it removes none: it only stops new ones."),
+    "rules_max": dict(area="workflow", kind="int", default=50, min=1, max=200, label="Most automations",
+                      help="How many rules Settings › Automations may hold, paused ones included. Lowering it removes none: it only stops new ones."),
+    # ---- CRM intake (services/intake.py), drawn by components/IntakeSettings.tsx under Integrations
+    "intake_template": dict(area="intake", kind="choice", default="", choices="templates",
+                            label="Stage template for intakes", help="The stage list a rollout made by the CRM starts with. Blank: the first template."),
+    "intake_owner": dict(area="intake", kind="choice", default="", choices="users",
+                         label="Default project manager", help="Who is told of a new intake and holds it until a project manager confirms it. Blank: the first active Admin."),
+    "intake_sources": dict(area="intake", kind="text", default="", max=300, optional=True,
+                           label="Allowed sources", help="Token names, separated by commas, that may send an intake. Blank: any token with the create scope."),
+    "intake_rate_per_min": dict(area="intake", kind="int", default=30, min=1, max=100,
+                                label="Most intakes per token per minute", help="Calls beyond this are refused with 429 until the minute is over."),
+    "intake_token_days": dict(area="intake", kind="int", default=365, min=1, max=1095,
+                              label="Intake tokens last (days)", help="A new intake token works for this many days; Renew extends one by as many days from today. An expired token is refused with 401."),
+    "intake_allowed_ips": dict(area="intake", kind="text", default="", max=500, optional=True, ips=True,
+                               label="Allowed addresses", help="IP addresses or ranges (203.0.113.7, 203.0.113.0/24), separated by commas, the CRM calls from. A call from anywhere else is refused with 403. Blank: any address."),
 }
 
 
@@ -235,6 +302,10 @@ def _choices(entry):
         return sorted(_timezones())
     if c == "templates":
         return [str(r["id"]) for r in get_db().execute("SELECT id FROM stage_templates ORDER BY id")]
+    if c == "users":   # who can be a project manager: active staff who may move stages
+        from core import role_has_permission
+        return [str(r["id"]) for r in get_db().execute("SELECT id, role FROM users WHERE active = 1 AND kind = 'internal' ORDER BY name")
+                if role_has_permission(r["role"], "edit_project_stage")]
     return list(c or ())
 
 
@@ -299,13 +370,28 @@ def _parse(entry, raw):
     if kind == "text":
         if (not v and not entry.get("optional")) or len(v) > entry["max"]:
             raise ValueError(f"up to {entry['max']} characters" if entry.get("optional") else f"1 to {entry['max']} characters")
+        if entry.get("ips"):
+            ip_networks(v)
         return v
     if kind == "choice":
         allowed = _timezones() if entry["choices"] == "timezones" else _choices(entry)
-        if v not in allowed and not (entry["choices"] == "templates" and v == ""):   # "" = the first template
+        if v not in allowed and not (entry["choices"] in ("templates", "users") and v == ""):   # "" = the first template
             raise ValueError("pick from the list")
         return v
     raise ValueError("unknown kind")
+
+
+def ip_networks(value):
+    """The networks in a list of IP addresses or CIDR ranges separated by commas or spaces
+    ("" = none); ValueError names the first that is neither."""
+    import ipaddress
+    out = []
+    for part in (p for p in re.split(r"[\s,;]+", value or "") if p):
+        try:
+            out.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            raise ValueError(f"{part[:45]} is not an IP address or a range like 203.0.113.0/24") from None
+    return out
 
 
 def _default(entry):
@@ -351,22 +437,29 @@ _GROUPS = {
     "Wrong passwords": ("login_max_attempts", "login_account_max", "login_ip_max", "login_window_minutes"),
     "Emailed links": ("mail_link_max",),
     "Uploads": ("upload_max_mb", "upload_types"),
-    "Partner access": ("external_domains", "link_minutes", "guest_link_days", "external_access_days_after_close", "guest_writes_per_minute"),
+    "Partner access": ("external_domains", "link_minutes", "guest_links_enabled", "guest_link_days", "external_access_days_after_close", "guest_writes_per_minute"),
     "Undo": ("undo_minutes",),
     "Sign-up links": ("signup_enabled", "signup_domains", "signup_days", "join_attempts"),
     "Time on Odin": ("activity_tracking", "activity_roles", "activity_idle_minutes"),
     "Notes to colleagues": ("nudge_max", "nudge_pair_max"),
+    "Workload": ("capacity_hours_per_week", "default_task_hours", "pm_hours_per_rollout", "workload_warn_pct"),
+    "Access review": ("access_review_days",),
+    "Channels": ("notify_email_enabled", "notify_teams_chat_enabled", "notify_teams_enabled"),
     "Daily digest": ("digest_time",),
     "Sender": ("mail_from",),
+    "Sign-in mail (Resend)": ("resend_enabled", "resend_api_key", "resend_from", "resend_reply_to"),
     "Teams webhook": ("teams_webhook_url",),
     "Delivery": ("outbox_attempts", "outbox_max_age_hours"),
+    "Reminders to the customer": ("chase_after_days", "chase_max"),
+    "Calendar feeds": ("ics_feed_per_hour", "ics_idle_days"),
     "When it goes out": ("report_enabled", "report_days", "report_time"),
     "Who gets it": ("report_roles", "report_emails"),
     "What it carries": ("report_attach", "report_teams"),
-    "Retention": ("audit_keep", "notifications_keep_days", "activity_keep_days", "alerts_keep_days", "ai_keep_days"),
+    "Retention": ("audit_keep", "notifications_keep_days", "activity_keep_days", "alerts_keep_days", "ai_keep_days", "rule_runs_keep_days"),
     "When to back up": ("backup_time", "backup_days", "restore_test"),
     "Disk space": ("disk_free_min_pct",),
     "Copies kept": ("keep_daily", "keep_weekly", "keep_monthly"),
+    "OneDrive": ("onedrive_mirror_uploads_enabled",),
     "Where copies go": ("dest_onedrive", "dest_sharepoint", "sharepoint_site", "sharepoint_folder", "dest_share", "share_path"),
     "AI server": ("ai_enabled", "ai_base_url", "ai_model", "ai_identity", "ai_allow_external"),
     "Watching the server": ("ai_heartbeat_minutes", "ai_down_after", "ai_validate_time", "ai_night_time", "ai_brief_time",
@@ -374,8 +467,13 @@ _GROUPS = {
     "Defaults": ("default_template",),
     "Stage timing": ("default_stage_days", "count_working_days", "sla_min_visits"),
     "Plan health": ("rag_amber_days", "rag_red_days"),
+    "Stage gates": ("gate_override",),
     "Sign-off": ("signoff_required", "signoff_statement", "signoff_terms"),
     "Customer approval": ("default_customer_approval",),
+    "Custom field limit": ("custom_fields_max",),
+    "Automations": ("rules_max",),
+    "Customer forms": ("ask_form_max_questions",),
+    "Intake defaults": ("intake_template", "intake_owner", "intake_sources", "intake_rate_per_min", "intake_token_days", "intake_allowed_ips"),
 }
 _HINTS = {
     "public_url": "The address people use to reach Odin, e.g. https://odin.example.com.",
@@ -387,8 +485,13 @@ _HINTS = {
     "login_ip_max": "Pause one network address after wrong passwords for this many different accounts, e.g. 50.",
     "login_window_minutes": "How long the pause lasts, e.g. 15 minutes.",
     "mail_link_max": "Most sign-in, reset or address-check links one email address gets in an hour, e.g. 5.",
+    "capacity_hours_per_week": "Hours of rollout work one person can take in a week, e.g. 30.",
+    "default_task_hours": "What a task counts for when nobody estimated it, e.g. 2 hours.",
+    "pm_hours_per_rollout": "Weekly hours a project manager spends on each rollout they manage, e.g. 4.",
+    "workload_warn_pct": "Show a week amber from this share of capacity, e.g. 90 %. Over 100 % is red.",
     "nudge_max": "Most notes one person sends in an hour, e.g. 20.",
     "nudge_pair_max": "Most notes one person sends one colleague in an hour, e.g. 5.",
+    "access_review_days": "Flag an account that has not signed in for this long, e.g. 90 days.",
     "upload_types": "The kinds of file people may attach, e.g. PDF and Word.",
     "external_domains": "Partners can be invited only from these email domains, e.g. partner.com. Blank: any.",
     "link_minutes": "How long a sign-in or password-reset email link works, e.g. 30 minutes.",
@@ -402,6 +505,10 @@ _HINTS = {
     "activity_roles": "Which roles may see other people's time. Everyone always sees their own.",
     "activity_idle_minutes": "Stop counting after this long without mouse or keyboard, e.g. 5 minutes.",
     "digest_time": "When the daily summary email and reminders go out, e.g. 08:00.",
+    "chase_after_days": "Remind a customer who has not signed or approved after this many working days, e.g. 3. 0: never.",
+    "chase_max": "Stop reminding after this many reminders, e.g. 3.",
+    "ics_feed_per_hour": "Most reads of one person's calendar feed in an hour, e.g. 60.",
+    "ics_idle_days": "Switch off a calendar feed nobody has read for this many days, e.g. 30. 0: never.",
     "mail_from": "The address people see Odin's email come from, e.g. odin-pms@company.com.",
     "teams_webhook_url": "Paste a Teams channel's webhook address to post updates there.",
     "report_enabled": "Email a weekly summary of every rollout.",
@@ -422,6 +529,15 @@ _HINTS = {
     "signoff_statement": "What the customer agrees to when they sign.",
     "signoff_terms": "Support terms printed on the sign-off, one per line.",
     "default_customer_approval": "New rollouts ask the customer to approve each stage move.",
+    "custom_fields_max": "How many extra fields an admin may add to every rollout, e.g. 20.",
+    "rules_max": "How many automations (Settings › Automations) the workspace may hold, e.g. 50.",
+    "rule_runs_keep_days": "How long each automation remembers what it did, e.g. 90 days.",
+    "ask_form_max_questions": "The most questions a form asked of a customer, reseller or contractor may hold, e.g. 12.",
+    "intake_owner": "Who is told of a new intake from the CRM, e.g. your delivery lead.",
+    "intake_sources": "Which tokens may send intakes, e.g. crm-prod. Blank: any token with the create scope.",
+    "intake_rate_per_min": "Most intakes one token may send in a minute, e.g. 30.",
+    "intake_token_days": "How long an intake token works before it must be renewed, e.g. 365 days.",
+    "intake_allowed_ips": "The CRM's outbound addresses, e.g. 203.0.113.0/24. Blank: any address.",
 }
 for _title, _keys in _GROUPS.items():
     for _key in _keys:
