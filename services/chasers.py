@@ -25,6 +25,15 @@ def _due(since, today, every, cal):
     return day is not None and workdays.between(day, today, cal) >= every
 
 
+def _gave_up(row, cap, what):
+    """The last reminder just went (the row's count is read before the bump): the project manager hears once that the customer has not answered."""
+    if row["chase_count"] + 1 >= cap and row["owner_id"]:
+        from services.notifications import notify_users
+        notify_users([row["owner_id"]], "approval", row["project_id"], f"No answer to the {what} of {escape(row['name'])}",
+                     f"The customer has not answered {cap} reminder{'s' if cap != 1 else ''} about the {what} of <b>{escape(row['name'])}</b>. "
+                     "Odin will not chase again; follow up yourself.", link=f"/projects/{row['project_id']}")
+
+
 def run(db=None, today=None):
     """Send the reminders that are due; returns how many went out. Needs a
     request context (notify_users builds links)."""
@@ -40,7 +49,7 @@ def run(db=None, today=None):
     sent = 0
     live = f"p.deleted_at IS NULL AND {PROJECT_OPEN_SQL}"
     for s in db.execute(
-            "SELECT s.id, s.project_id, s.version, s.signer_id, s.created_at, s.chased_at, s.chase_count, p.name FROM signoffs s "
+            "SELECT s.id, s.project_id, s.version, s.signer_id, s.created_at, s.chased_at, s.chase_count, p.name, p.owner_id FROM signoffs s "
             f"JOIN projects p ON p.id = s.project_id WHERE s.status = 'sent' AND s.superseded_at IS NULL AND s.signer_id IS NOT NULL "
             f"AND s.chase_count < ? AND {live}", (cap,)).fetchall():
         if not _due(s["chased_at"] or s["created_at"], today, every, cal):
@@ -50,11 +59,12 @@ def run(db=None, today=None):
         notify_users([s["signer_id"]], "approval", s["project_id"], f"Reminder: please sign off {escape(s['name'])}",
                      f"<p>The sign-off for <b>{escape(s['name'])}</b> (version {s['version']}) is waiting for your signature. "
                      "Please review it, then sign — or say what needs to change.</p>", link=f"/projects/{s['project_id']}/signoff")
+        _gave_up(s, cap, "sign-off")
         audit_log("chase_signoff", "project", s["project_id"], s["name"], f"v{s['version']} reminder {s['chase_count'] + 1} of {cap}", actor="scheduler")
         sent += 1
     # the latest request of each rollout, for the stage it is still in (as the dashboard counts them waiting)
     for a in db.execute(
-            "SELECT a.id, a.project_id, a.stage, a.requested_at, a.chased_at, a.chase_count, p.name FROM stage_approvals a "
+            "SELECT a.id, a.project_id, a.stage, a.requested_at, a.chased_at, a.chase_count, p.name, p.owner_id FROM stage_approvals a "
             "JOIN projects p ON p.id = a.project_id WHERE a.status = 'pending' AND a.stage = p.stage "
             "AND a.id = (SELECT MAX(id) FROM stage_approvals WHERE project_id = a.project_id) "
             f"AND a.chase_count < ? AND {live}", (cap,)).fetchall():
@@ -68,6 +78,7 @@ def run(db=None, today=None):
         notify_users(customers, "approval", a["project_id"], f"Reminder: please approve the move of {escape(a['name'])} to {escape(a['stage'])}",
                      f"<p><b>{escape(a['name'])}</b> moved to <b>{escape(a['stage'])}</b> and is waiting for your approval. "
                      "Please review and approve this step, or decline it with a comment.</p>", link=f"/projects/{a['project_id']}")
+        _gave_up(a, cap, "approval")
         audit_log("chase_approval", "project", a["project_id"], a["name"], f"{a['stage']} reminder {a['chase_count'] + 1} of {cap}", actor="scheduler")
         sent += 1
     return sent

@@ -524,6 +524,10 @@ def project_edit(project_id):
         notify_users([project["owner_id"]], "activity", project_id, f"{escape(name)} has a new project manager",
                      f"{escape(session['user_name'])} handed <b>{escape(name)}</b> to someone else; you stay on the team as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
     audit_log("update_project", "project", project_id, name, f"client={client}; owner_id={owner_id}")
+    if request.form.get("customer_approval") and not project["customer_approval"]:   # switched on mid-rollout: tell who will be asked (sim R1)
+        notify_users(customer_ids(project_id, db), "approval", project_id, f"Your approval will be asked on {escape(name)}",
+                     f"From now on, each stage move of <b>{escape(name)}</b> waits for your approval. You will get a request when the next one happens.",
+                     exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
     if field_changes:
         audit_log("update_field_values", "project", project_id, name, "; ".join(field_changes))
     flash("Project updated")
@@ -706,7 +710,7 @@ def decide_approval(project_id, approval_id, decision, comment):
     if row is None:
         abort(404)
     if decision not in ("approved", "declined"):
-        return "Approve or decline"
+        return "Send decision: approved or declined"
     if row["status"] != "pending":
         return "That request is no longer open"
     comment = (comment or "").strip()[:2000]
@@ -914,6 +918,11 @@ def document_review(project_id, doc_id):
         audit_log("accept_document", "project", project_id, None, f"{doc['category']}: {doc['filename']}")
         mirror_document(project_id, doc["category"], doc["filename"], doc["stored_name"])
         rules.fire("document_uploaded", project_id, {"category": doc["category"], "file": doc["filename"]})
+        ask = doc_review.ask_of(db, doc_id)
+        if ask and ask["by_id"]:   # a held upload's owner heard only on a rejection (sim 28 Oct)
+            notify_users([ask["by_id"]], "assigned", project_id, f"Accepted: {escape(doc['filename'])}",
+                         f"{escape(session['user_name'])} accepted <b>{escape(doc['filename'])}</b> for <b>{escape(ask['title'])}</b> "
+                         f"on {escape(project['name'])}.", exclude_user_id=session["user_id"])
         flash(f"Accepted {doc['filename']}")
         return redirect(url_for("project_detail", project_id=project_id))
     done, ask = doc_review.reject(db, doc_id, session["user_name"])
@@ -1046,8 +1055,12 @@ def participant_add(project_id):
         moot = _moot_approvals(db, project_id)   # a Customer re-roled away may leave nobody to decide
         db.commit()
         audit_log("add_participant", "project", project_id, project["name"], f"{user['name']} as {role}" + (f"; {moot} pending approval withdrawn" if moot else ""))
-        notify_users([user["id"]], "assigned", project_id, f"You are on {escape(project['name'])}",
-                     f"{escape(session['user_name'])} added you to <b>{escape(project['name'])}</b> as {escape(role)}.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
+        # create told the team "You are on …" as Coordinators; a role set within the minute does not tell them twice (sim P3)
+        told = db.execute("SELECT 1 FROM notifications WHERE user_id = ? AND project_id = ? AND title LIKE 'You are on %' AND created_at > ?",
+                          (user["id"], project_id, (datetime.utcnow() - timedelta(seconds=60)).isoformat())).fetchone()
+        if not told:
+            notify_users([user["id"]], "assigned", project_id, f"You are on {escape(project['name'])}",
+                         f"{escape(session['user_name'])} added you to <b>{escape(project['name'])}</b> as {escape(role)}.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
         flash(f"{user['name']} added as {role}")
     return redirect(url_for("project_detail", project_id=project_id) + "#team")
 
@@ -1099,6 +1112,10 @@ def participant_invite(project_id):
         )
         db.commit()
         audit_log("invite_participant", "project", project_id, project["name"], f"{email} as {role}")
+        if not created:   # an existing account gets the bell item participants/add gives; a new one has its sign-in link (mail)
+            notify_users([user["id"]], "assigned", project_id, f"You are on {escape(project['name'])}",
+                         f"{escape(session['user_name'])} added you to <b>{escape(project['name'])}</b> as {escape(role)}.",
+                         exclude_user_id=session["user_id"], link=f"/projects/{project_id}", email=user["kind"] != "external")
         if user["kind"] != "external" or not user["active"]:
             flash(f"{user['name']} added as {role}" + ("" if user["active"] else " (account is deactivated)"))
         else:

@@ -9,7 +9,7 @@ from services.ai.graders import facts_kept, finds, max_words, never_says, no_hea
 from services.fmt import fmt_date
 
 # health as the customer's copy words it; the model never sees Odin's colours (P2-24)
-PLAN_WORDS = {"green": "on track", "amber": "at risk", "red": "off track", "done": "complete"}
+PLAN_WORDS = {"green": "on track", "amber": "at risk", "red": "off track", "done": "complete", "none": "no plan yet"}
 
 
 def _fmt(iso):

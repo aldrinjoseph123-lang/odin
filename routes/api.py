@@ -11,7 +11,7 @@ from datetime import date, datetime
 from constants import CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, as_id, json_body, like_any, sees_po, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
-from db import PROJECT_OPEN_SQL, current_approval, customer_ids, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
+from db import PROJECT_CLOSED_SQL, PROJECT_OPEN_SQL, current_approval, customer_ids, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import alerts_page_data
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, StageConflict, change_stage, decide_approval, filtered_projects_query, leads, load_project, stage_entry_note_ids
@@ -1156,9 +1156,20 @@ def api_flow():
         for r in lst:
             first_at[r["name"]] = min(r["position"], first_at.get(r["name"], r["position"]))
     from services import intake   # CRM intakes wait in the List's holding lane, in no count (staff only)
+    closed = []   # an outsider keeps their finished rollouts, with the way to the sign-off and the report (sim 28 Oct): staff find theirs in Rollouts
+    if not staff:
+        from policies import local_date
+        for p in db.execute(
+                "SELECT p.id, p.name, p.client, p.stage_entered_at, "
+                "EXISTS (SELECT 1 FROM project_reports r WHERE r.project_id = p.id) AS has_report FROM projects p "
+                f"WHERE p.deleted_at IS NULL AND {PROJECT_CLOSED_SQL} = 1 AND COALESCE(p.intake_pending, 0) = 0{project_scope()[0]} ORDER BY p.stage_entered_at DESC",
+                project_scope()[1]).fetchall():
+            on = local_date(p["stage_entered_at"]) if p["stage_entered_at"] else None
+            closed.append({"id": p["id"], "name": p["name"], "client": p["client"], "closed_on": on.isoformat() if on else None,
+                           "signed_off": bool(signoff_service.completed(p["id"])), "report": bool(p["has_report"])})
     return jsonify({"stages": sorted(first_at, key=lambda n: (first_at[n], n)), "rows": rows, "counts": counts, "today": local_today().isoformat(),
                     "can_move": role_has_permission(session.get("role"), "edit_project_stage"),
-                    "pending": intake.pending_rows(db) if staff else []})
+                    "pending": intake.pending_rows(db) if staff else [], **({} if staff else {"closed": closed})})
 
 
 @app.route("/api/flow/plan")
