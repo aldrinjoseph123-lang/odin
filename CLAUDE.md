@@ -91,6 +91,16 @@ session (Account → Link Microsoft, `routes/sso.py`). Only an Admin acts on an 
 or the role matrix (`routes/users.admin_only`). Stage lengths and
 SLAs count working days through `services/workdays.py`; gaps between dates stay
 calendar days.
+**Customer approval (29 Oct 2026, the user's call):** `services/approvals.py` is the one door.
+One approver per rollout (`projects.approver_id`, else the first Customer contact); only the
+approver decides or is told. A decline pauses the stage as a gate reason in `services/gates.blocked()`
+(re-request `POST /api/projects/<id>/approvals/request`, or override with a reason); moving on while
+a request is pending calls `approvals.withdraw()`, which tells the approver — never set
+`stage_approvals.status` by hand. A neglected repeating task (two open, no third made) is `stalled`
+(`services/recurrence.stalled`): shown on the row, an amber health reason and the `task_stalled` alert.
+Deleting a signed-off rollout needs a reason and writes the signed record to
+`DATA_DIR/signoff-archive/` (`services/retention.keep_evidence`, in backups, trimmed by `audit_keep`);
+the admins get a bell with no project id so the purge keeps it.
 
 # Adding a table
 
