@@ -39,6 +39,7 @@ describe("stateText", () => {
     expect(stateText({ state: "on_track", days_in_stage: 3.2, over_by: null, target_end_date: null })).toBe("3 d")
     expect(stateText({ state: "over_sla", days_in_stage: 9, over_by: 4, target_end_date: null })).toBe("4 d over SLA")
     expect(stateText({ state: "over_sla", days_in_stage: null, over_by: null, target_end_date: null })).toBe("over SLA")   // not "0 d over SLA" (V12)
+    expect(stateText({ state: "over_sla", days_in_stage: 5, over_by: 0.3, target_end_date: null })).toBe("over SLA today")   // rounds to 0: not "0 d over SLA" (sim 28 Oct)
     expect(stateText({ state: "due_soon", days_in_stage: 1, over_by: null, target_end_date: "2026-11-30" })).toMatch(/^due /)
     expect(stateText({ state: "overdue", days_in_stage: 1, over_by: null, target_end_date: "2020-01-01" })).toMatch(/^overdue \d+ d$/)
   })

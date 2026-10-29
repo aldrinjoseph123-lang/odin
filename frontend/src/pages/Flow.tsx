@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type ReactNode } from "react"
 import { WatchButton } from "@/components/WatchButton"
 import { Notice } from "@/components/Notice"
 import { Segmented } from "@/components/Segmented"
@@ -17,16 +17,18 @@ import { TeamStack } from "@/components/TeamStack"
 import { Ago } from "@/components/Ago"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { pickerHint } from "@/lib/workload"
-import { ApiError, addTask, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, workloadWeek, type ApprovalStatus, type AskKind, type AskQuestion, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User, type WorkloadWeek } from "@/lib/api"
+import { ApiError, addTask, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, workloadWeek, type ApprovalStatus, type AskKind, type AskQuestion, type ClosedRollout, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User, type WorkloadWeek } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { DatePicker } from "@/components/DatePicker"
 import { STATE } from "@/lib/state"
+import { flowChips, flowFilterParams, matchFlow, needsAttention, noFlowFilter, parseFlowFilter, type FlowFilter, type Reading } from "@/lib/flowFilter"
 import { StateChip } from "@/components/StateChip"
 import { days, fitStages, fmtDate, gateText, groupRows, holdsGate, parseStamp, signoffText, stateText, lateBy, nextUp, stageColumns, timelineSummary, type FlowGroupBy } from "@/lib/format"
 import { Stepper } from "@/components/Stepper"
@@ -229,8 +231,6 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
 }
 
 // ---- top pane: every active rollout, stuck first -------------------------------
-const needsAttention = (r: FlowRow) => r.state !== "on_track" || r.late_tasks > 0
-type Filter = "all" | "attention" | "customer" | "mine"
 
 // What happens next on this rollout, in one quiet line.
 function NextLine({ r, today }: { r: FlowRow; today: string }) {
@@ -298,26 +298,23 @@ function RolloutRow({ r, selected, tabStop, onSelect, today, me }: {
   )
 }
 
-// attention: off track, or on track with a task past its date (critique 10 Oct; the state stays On track)
-const match = (r: FlowRow, f: Filter) =>
-  f === "attention" ? needsAttention(r) : f === "customer" ? r.approval === "pending" : f === "mine" ? r.mine : true
-
 // One header for every view of the flow: the title, the view switcher, the
 // counts and the filters, in the same place, so switching views moves nothing.
 function FlowHeader({ data, title, views, filter, setFilter, group, setGroup, stage, setStage }: {
-  data: FlowData; title: string; views: ReactNode; filter?: Filter; setFilter?: (f: Filter) => void
+  data: FlowData; title: string; views: ReactNode; filter?: FlowFilter; setFilter?: (f: FlowFilter) => void
   group?: FlowGroupBy | null; setGroup?: (g: FlowGroupBy | null) => void
   stage?: string | null; setStage?: (s: string | null) => void   // shown as a removable chip where the view has no stage pills
 }) {
-  const count = (f: Filter) => data.rows.filter((r) => match(r, f)).length
-  const chips = ([
-    { key: "all", label: "All", n: data.rows.length },
-    { key: "attention", label: "Needs attention", n: data.rows.filter(needsAttention).length },
-    { key: "customer", label: "Waiting on customer", n: count("customer") },
-    { key: "mine", label: "Mine", n: count("mine") },
-  ] as { key: Filter; label: string; n: number }[])
+  const chips = flowChips(data.rows, filter ?? noFlowFilter)
     // a filter that changes nothing is noise: "Mine" for someone on every rollout, "Waiting" with none waiting
-    .filter((c) => c.key === filter || c.key === "all" || (c.n > 0 && c.n < data.rows.length) || (c.key === "attention" && c.n > 0))
+    .filter((c) => c.on || c.key === "all" || (c.n > 0 && c.n < data.rows.length) || (c.key === "attention" && c.n > 0))
+  // a reading toggles (a second click clears it); Mine combines with whichever reading is on
+  const pick = (key: string) => {
+    if (!filter || !setFilter) return
+    if (key === "all") setFilter(noFlowFilter)
+    else if (key === "mine") setFilter({ ...filter, mine: !filter.mine })
+    else setFilter({ ...filter, reading: filter.reading === key ? "all" : key as Reading })
+  }
   return (
     <div data-print-hide className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 pb-2 pt-4">
       <h1 className={TITLE}>{title}</h1>
@@ -337,9 +334,9 @@ function FlowHeader({ data, title, views, filter, setFilter, group, setGroup, st
             <button type="button" onClick={() => setStage(null)} aria-label={`Stage ${stage}: show every stage`} className={cn(chip(true), "flex items-center gap-1")}>{stage} <X className="h-3 w-3" aria-hidden /></button>
           )}
           {chips.map((c) => (
-            <button key={c.key} type="button" onClick={() => setFilter(c.key)} aria-pressed={filter === c.key} aria-label={`${c.label}, ${c.n}`}
-              className={cn(chip(filter === c.key), "flex items-center gap-1")}>
-              {c.label}{c.n ? <span className={filter === c.key ? "text-background/70" : "text-muted-foreground"}>{c.n}</span> : null}
+            <button key={c.key} type="button" onClick={() => pick(c.key)} aria-pressed={c.on} aria-label={`${c.label}, ${c.n}`}
+              className={cn(chip(c.on), "flex items-center gap-1")}>
+              {c.label}{c.n ? <span className={c.on ? "text-background/70" : "text-muted-foreground"}>{c.n}</span> : null}
             </button>
           ))}
           {setGroup && (
@@ -359,14 +356,14 @@ function FlowHeader({ data, title, views, filter, setFilter, group, setGroup, st
 
 function RolloutList({ data, me, partner, selectedId, onSelect, filter, stage, setStage, showAll, group, onPendingChanged }: {
   data: FlowData; me: number; partner?: boolean; selectedId: number | null; onSelect: (id: number) => void
-  filter: Filter; stage: string | null; setStage: (s: string | null) => void; showAll: () => void; group: FlowGroupBy | null; onPendingChanged: () => void
+  filter: FlowFilter; stage: string | null; setStage: (s: string | null) => void; showAll: () => void; group: FlowGroupBy | null; onPendingChanged: () => void
 }) {
-  const rows = useMemo(() => data.rows.filter((r) => match(r, filter) && (!stage || r.stage === stage)), [data.rows, filter, stage])
+  const rows = useMemo(() => data.rows.filter((r) => matchFlow(r, filter) && (!stage || r.stage === stage)), [data.rows, filter, stage])
   // Every row's stages in one column order, so a stage lines up down the list.
   const columns = useMemo(() => stageColumns(data.rows.map((r) => r.stages)), [data.rows])
   const inStage = useMemo(() => {
     const n = new Map<string, number>()
-    for (const r of data.rows) if (match(r, filter)) n.set(r.stage, (n.get(r.stage) ?? 0) + 1)
+    for (const r of data.rows) if (matchFlow(r, filter)) n.set(r.stage, (n.get(r.stage) ?? 0) + 1)
     return n
   }, [data.rows, filter])
   // On track needs no attention: folded into one line while anything else does.
@@ -436,15 +433,37 @@ function RolloutList({ data, me, partner, selectedId, onSelect, filter, stage, s
           )}
           {rows.length === 0 && (
             <li><Empty className="rounded-lg bg-muted/40 py-12"><EmptyHeader><EmptyMedia variant="icon"><Inbox /></EmptyMedia><EmptyDescription>
-              {data.rows.length === 0 ? (partner ? "No rollout is shared with you yet. It appears here once a project manager adds you." : "No active rollouts yet. Create one from a client PO and it appears here.")
+              {data.rows.length === 0 ? (partner ? (data.closed?.length ? "Nothing is active right now. Your finished rollouts are listed below." : "No rollout is shared with you yet. It appears here once a project manager adds you.") : "No active rollouts yet. Create one from a client PO and it appears here.")
                 : stage ? <>No rollout in {stage} matches this filter. <button type="button" onClick={showAll} className="font-medium text-foreground underline underline-offset-2">Show every rollout</button></>
-                : filter === "customer" ? "No rollout is waiting on a customer's approval."
+                : filter.reading === "customer" ? "No rollout is waiting on a customer's approval."
+                : filter.mine && filter.reading === "all" ? "You are on none of the active rollouts."
+                : filter.mine ? "Nothing needs attention on your rollouts."
                 : "Nothing needs attention — every rollout is inside its stage SLA, on schedule, and no task is late."}
             </EmptyDescription></EmptyHeader></Empty></li>
           )}
         </ul>
+        {partner && data.closed && data.closed.length > 0 && <ClosedRollouts rows={data.closed} />}
       </ScrollArea>
     </div>
+  )
+}
+
+// What an outsider keeps after a rollout closes: it, its sign-off and its report (sim 28 Oct: they landed on an empty board).
+function ClosedRollouts({ rows }: { rows: ClosedRollout[] }) {
+  return (
+    <section aria-labelledby="flow-closed" className="px-3 pb-3 pt-2">
+      <h2 id="flow-closed" className="border-b border-border px-3 pb-1 text-[13px] font-semibold">Closed <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
+      <ul className="mt-1 grid grid-cols-1 gap-1">
+        {rows.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 text-[13px]">
+            <Link to={`/projects/${r.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{r.name}</Link>
+            <span className="text-muted-foreground">{r.closed_on ? `Closed ${fmtDate(r.closed_on)}` : "Closed"}</span>
+            {r.signed_off && <Link to={`/projects/${r.id}/signoff`} className="text-primary-text hover:underline">Sign-off</Link>}
+            {r.report && <Link to={`/projects/${r.id}/report`} className="text-primary-text hover:underline">Report</Link>}
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -513,7 +532,41 @@ function TimeStrip({ d }: { d: FlowDetail }) {
   )
 }
 
-export function Detail({ d, reload, onMoved, onClose, standalone = false, report = true }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string, undo?: string) => void; onClose?: () => void; standalone?: boolean; report?: boolean }) {
+// A status note without leaving the flow (sim 28 Oct: it cost two page loads). Staff may share it with the customer; an outsider's note always is.
+function NoteBox({ id, staff, after }: { id: number; staff: boolean; after: () => Promise<void> }) {
+  const [text, setText] = useState("")
+  const [share, setShare] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  async function send(e: FormEvent) {
+    e.preventDefault()
+    if (!text.trim() || busy) return
+    setBusy(true); setErr(null)
+    try {
+      await postForm(`/projects/${id}/note`, share && staff ? { note: text.trim(), share: "1" } : { note: text.trim() })
+      setText(""); setShare(false)
+      toast(share && staff ? "Note added, visible to the customer" : "Note added")
+      await after()
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "The note did not save") }
+    finally { setBusy(false) }
+  }
+  return (
+    <form onSubmit={(e) => void send(e)} className="min-w-0 md:col-span-2" aria-label="Add a note">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={5000} placeholder="Add a status note" aria-label="Status note" aria-invalid={err ? true : undefined} className="min-w-0 flex-1 basis-64" />
+        {staff && (
+          <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
+            <Switch id={`note-share-${id}`} size="sm" checked={share} onCheckedChange={setShare} /><label htmlFor={`note-share-${id}`}>Visible to the customer</label>
+          </span>
+        )}
+        <Button type="submit" size="sm" loading={busy} disabled={!text.trim()}>Add note</Button>
+      </div>
+      {err && <p role="alert" className="mt-1 text-[12px] text-destructive">{err}</p>}
+    </form>
+  )
+}
+
+export function Detail({ d, reload, onMoved, onClose, standalone = false, report = true, canNote = false }: { d: FlowDetail; reload: () => Promise<void>; onMoved: (msg: string, undo?: string) => void; onClose?: () => void; standalone?: boolean; report?: boolean; canNote?: boolean }) {
   // on the project page the name is the h1, so the rail's headings are h2s there
   const H = standalone ? "h2" : "h3"
   // The flowchart fits its width: measure it, and fold stages that don't fit
@@ -749,6 +802,7 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
       {/* who and what happened: under the flowchart on wide screens, after the rail otherwise;
           the project page has its own Team and Notes panels, so it leaves this out */}
       {!standalone && <div className="grid grid-cols-1 content-start gap-4 text-[13px] md:grid-cols-2 xl:col-start-1 xl:row-start-2">
+        {canNote && <NoteBox id={d.id} staff={report} after={reload} />}
         <section>
           <H className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><UserRound className="h-3.5 w-3.5" /> Team</H>
           <ul className="grid grid-cols-1 gap-2">
@@ -807,7 +861,7 @@ export default function Flow({ user }: { user: User }) {
   // Ways to look at the portfolio, kept in the URL; a link without them gets the
   // person's last choice in this browser (advice B1).
   const [prefView, setPrefView] = usePref<View>("flow.view", "list")
-  const [prefFilter, setPrefFilter] = usePref<Filter>("flow.filter", "all")
+  const [prefFilter, setPrefFilter] = usePref<FlowFilter | string>("flow.filter", "all")   // before 29 Oct a single word, "mine" among them
   const [prefGroup, setPrefGroup] = usePref<FlowGroupBy | null>("flow.group", null)
   const vw = params.get("view") ?? prefView
   // the Gantt reads plans, which are staff-only (the customer cut is the rollout report's)
@@ -820,16 +874,20 @@ export default function Flow({ user }: { user: User }) {
     setPrefView(v)
     setParam("view", v === "list" ? null : v, (n) => { n.delete("month"); n.delete("day") })
   }, [setParam, setPrefView])
-  const f = params.get("filter") ?? prefFilter
-  const filter: Filter = f === "attention" || f === "mine" || f === "customer" ? f : "all"
+  const filter = useMemo(() => parseFlowFilter(params.get("filter"), params.get("mine"), typeof prefFilter === "string" ? parseFlowFilter(prefFilter, null) : prefFilter),
+    [params, prefFilter])
   const stage = params.get("stage")
   const g = params.get("group") ?? prefGroup
   const group: FlowGroupBy | null = g === "stage" || g === "client" || g === "owner" ? g : null
   const setGroup = useCallback((v: FlowGroupBy | null) => { setPrefGroup(v); setParam("group", v) }, [setParam, setPrefGroup])
   const setStage = useCallback((v: string | null) => setParam("stage", v), [setParam])
-  const setFilter = useCallback((v: Filter) => { setPrefFilter(v); setParam("filter", v === "all" ? null : v) }, [setParam, setPrefFilter])
+  const setFilter = useCallback((v: FlowFilter) => {
+    setPrefFilter(v)
+    const p = flowFilterParams(v)
+    setParam("filter", p.filter, (n) => { if (p.mine) n.set("mine", p.mine); else n.delete("mine") })
+  }, [setParam, setPrefFilter])
   // one change for both, so neither overwrites the other
-  const showAll = useCallback(() => { setPrefFilter("all"); setParam("filter", null, (n) => n.delete("stage")) }, [setParam, setPrefFilter])
+  const showAll = useCallback(() => { setPrefFilter(noFlowFilter); setParam("filter", null, (n) => { n.delete("stage"); n.delete("mine") }) }, [setParam, setPrefFilter])
   // the move notice belongs to the rollout it is about (review P3-37)
   const [notice, setNotice] = useState<{ id: number; text: string; undo?: string; bad?: boolean } | null>(null)
 
@@ -911,11 +969,11 @@ export default function Flow({ user }: { user: User }) {
 
   // what the filter and the stage leave, the same for every view
   const rows = data?.rows
-  const shownRows = useMemo(() => (rows ?? []).filter((r) => match(r, filter) && (!stage || r.stage === stage)), [rows, filter, stage])
+  const shownRows = useMemo(() => (rows ?? []).filter((r) => matchFlow(r, filter) && (!stage || r.stage === stage)), [rows, filter, stage])
   const shownIds = useMemo(() => shownRows.map((r) => r.id), [shownRows])
   const columns = useMemo(() => stageColumns((rows ?? []).map((r) => r.stages)), [rows])
   // the Calendar shows closed rollouts' history too: it narrows only when a filter is on (review P3-34)
-  const only = useMemo(() => (filter !== "all" || stage ? new Set(shownIds) : null), [filter, stage, shownIds])
+  const only = useMemo(() => (filter.reading !== "all" || filter.mine || stage ? new Set(shownIds) : null), [filter, stage, shownIds])
 
   if (failed) return <LoadError message={failed.message} />
   if (!data) return <PageSkeleton />
@@ -1005,7 +1063,7 @@ export default function Flow({ user }: { user: User }) {
                   <Button size="sm" variant="outline" onClick={() => setSelectedId(null)}>Back to all rollouts</Button>
                 </div>
               ) : detail && detail.id === selectedId ? (
-                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail()]) }} onMoved={(text, undo) => setNotice({ id: detail.id, text, undo })} onClose={wide ? close : undefined} report={user.kind !== "external"} />
+                <Detail d={detail} reload={async () => { await Promise.all([load(), loadDetail()]) }} onMoved={(text, undo) => setNotice({ id: detail.id, text, undo })} onClose={wide ? close : undefined} report={user.kind !== "external"} canNote={user.permissions.includes("add_project_note")} />
               ) : <PageSkeleton />}
     </div>
   )

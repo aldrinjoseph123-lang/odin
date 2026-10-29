@@ -21,6 +21,7 @@ export default function Alerts(_props: { user: User }) {
     for (const [k, v] of Object.entries(changes)) { if (v) next.set(k, v); else next.delete(k) }
     setParams(next)
   }
+  const mine = params.get("mine") === "1"
   if (error) return <LoadError message={error.message} />
   if (!d) return <PageSkeleton />
   return (
@@ -32,6 +33,8 @@ export default function Alerts(_props: { user: User }) {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => update({ resolved: null })} aria-pressed={!d.show_resolved} className={chip(!d.show_resolved)}>Active</button>
         <button type="button" onClick={() => update({ resolved: "1" })} aria-pressed={d.show_resolved} className={chip(d.show_resolved)}>All</button>
+        <span className="mx-1 h-4 w-px bg-border" />
+        <button type="button" onClick={() => update({ mine: mine ? null : "1" })} aria-pressed={mine} className={chip(mine)}>Mine</button>
         <span className="mx-1 h-4 w-px bg-border" />
         <button type="button" onClick={() => update({ type: null })} aria-pressed={!d.alert_type} className={chip(!d.alert_type)}>All types</button>
         {Object.entries(d.types).map(([k, title]) => <button key={k} type="button" onClick={() => update({ type: k })} aria-pressed={d.alert_type === k} className={chip(d.alert_type === k)}>{title}</button>)}

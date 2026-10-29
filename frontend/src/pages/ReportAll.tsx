@@ -20,10 +20,10 @@ import { dayOf, fmtDate, fmtWhen, forecastTone, monthTicks } from "@/lib/format"
 // its target and baseline, what is blocking, and a way into each rollout's own
 // report. Partners and customers get the cut the server makes for them (no
 // reasons, no baseline, only the RAID items marked for them) and no PDF.
-const RAGS: Rag[] = ["red", "amber", "green", "done"]
+const RAGS: Rag[] = ["red", "amber", "green", "none", "done"]
 const WORD = Object.fromEntries(RAGS.map((g) => [g, HEALTH[g].label])) as Record<Rag, string>
-const SOLID: Record<Rag, string> = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-ok-line", done: "bg-muted-foreground" }   // marks wear the -line tokens; text wears the state colour
-const SOFT: Record<Rag, string> = { red: "bg-bad-soft border-bad-line", amber: "bg-warn-soft border-warn-line", green: "bg-ok-soft border-ok-line", done: "bg-muted border-border" }
+const SOLID: Record<Rag, string> = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-ok-line", done: "bg-muted-foreground", none: "bg-border" }   // marks wear the -line tokens; text wears the state colour
+const SOFT: Record<Rag, string> = { red: "bg-bad-soft border-bad-line", amber: "bg-warn-soft border-warn-line", green: "bg-ok-soft border-ok-line", done: "bg-muted border-border", none: "bg-muted border-border" }
 const days = (n: number | null | undefined, late = "late", early = "early") => (n == null ? "—" : n === 0 ? "on plan" : n > 0 ? `${n} d ${late}` : `${-n} d ${early}`)
 
 function Roadmap({ rows, today, external = false }: { rows: PortfolioRow[]; today: string; external?: boolean }) {

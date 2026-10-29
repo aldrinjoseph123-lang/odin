@@ -30,8 +30,8 @@ type Zoom = "week" | "month" | "quarter"
 const PX: Record<Zoom, number> = { week: 44, month: 18, quarter: 6 }
 const ROW = 36, LEFT = 440
 const PRINT_W = 1040   // the printable width of an A4 landscape page (281 mm, a little under), in CSS pixels
-const RAG_BAR = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-nav-fg/60", done: "bg-ok-line" } as const
-const RAG_WORD = { red: "Off track", amber: "At risk", green: "On track", done: "Complete" } as const
+const RAG_BAR = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-nav-fg/60", done: "bg-ok-line", none: "bg-border" } as const
+const RAG_WORD = { red: "Off track", amber: "At risk", green: "On track", done: "Complete", none: "No plan yet" } as const
 
 type Edit = { row: GanttRow; index: number; mode: "move" | "start" | "end" | "pick"; days: number; start?: string; end?: string; cascade: boolean }
 
