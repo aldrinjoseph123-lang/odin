@@ -87,6 +87,10 @@ class CreateTestCase(IntakeBase):
         r = self.post(DEAL)
         self.assertEqual((r.status_code, r.get_json()["rollout"]["status"]), (200, "confirmed"))
         self.client.post("/projects/1/delete")
+        back = self.post(DEAL)   # within the undo window the re-send is the undo, never a twin (test_v2_atomic)
+        self.assertEqual((back.status_code, back.get_json()["rollout"]["id"]), (200, 1))
+        self.client.post("/projects/1/delete")
+        self.sql("UPDATE projects SET deleted_at = '2000-01-01T00:00:00' WHERE id = 1")   # past the undo window
         again = self.post(DEAL)
         self.assertEqual((again.status_code, again.get_json()["rollout"]["id"]), (201, 2))
 

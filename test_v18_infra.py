@@ -39,15 +39,17 @@ class StopBudgetTestCase(FixBase):
 
     def test_a_stop_leaves_the_batch_after_the_send_in_hand(self):
         self.addCleanup(setattr, scheduler, "_stopping", False)
-        calls = []
+        from services import outbox
+        self.ctx()
+        for n in range(3):
+            outbox.add("mail", to=f"p{n}@corp.example", subject="s", html="x")
 
-        def drain(limit):
-            calls.append(limit)
+        def send(*_a, **_k):
             scheduler._stopping = True   # SIGTERM arrives during the first send
-            return 1
-        with patch("services.outbox.drain", drain):
+            return True, None
+        with patch("graph.send_mail", side_effect=send):
             self.assertEqual(scheduler.outbox_pass(), 1)
-        self.assertEqual(calls, [1])
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM outbox WHERE sent_at IS NULL")[0][0], 2)   # untouched, for the next start
 
 
 class PackagingTestCase(FixBase):

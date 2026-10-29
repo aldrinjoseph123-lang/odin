@@ -35,10 +35,28 @@ def required_docs(row):
     return [c for c in value if isinstance(c, str)] if isinstance(value, list) else []
 
 
-def blocked(project, new_stage, rows=None):
+def preload(project_ids):
+    """What blocked() reads, for many rollouts at once (the Flow): their open
+    tasks, their documents, the categories and today, in three queries however
+    many rollouts there are."""
+    db = get_db()
+    ids = list(project_ids)
+    tasks, docs = {}, {}
+    if ids:
+        marks = ",".join("?" * len(ids))
+        for t in db.execute(f"SELECT project_id, stage, title, due_date, recurrence FROM tasks WHERE project_id IN ({marks}) AND done = 0 "
+                            "ORDER BY due_date, id", ids):
+            tasks.setdefault(t["project_id"], []).append(t)
+        for r in db.execute(f"SELECT DISTINCT project_id, category, review_status FROM documents WHERE project_id IN ({marks}) AND deleted_at IS NULL", ids):
+            docs.setdefault(r["project_id"], []).append(r)
+    return {"tasks": tasks, "docs": docs, "known": {r[0] for r in db.execute("SELECT name FROM doc_categories")}, "today": local_today(db).isoformat()}
+
+
+def blocked(project, new_stage, rows=None, loaded=None):
     """What stops `project` moving to `new_stage`: a list of
     {stage, kind: "tasks" | "document", count | category, text}, empty when
-    nothing does. `rows` are its project_stages rows when the caller has them."""
+    nothing does. `rows` are its project_stages rows when the caller has them;
+    `loaded` is preload() for a caller checking many rollouts."""
     db = get_db()
     pid = project["id"]
     if rows is None:
@@ -53,9 +71,10 @@ def blocked(project, new_stage, rows=None):
         # a task with no stage, or a stage since removed, belongs to the current stage (as the Flow shows it).
         # A repeating task (services/recurrence.py) always has its next occurrence open, so it holds the
         # gate only while that occurrence is overdue (its day has passed and it is not done): holds_gate()
-        today = local_today(db).isoformat()
+        today = loaded["today"] if loaded else local_today(db).isoformat()
         open_in, overdue = Counter(), []
-        for t in db.execute("SELECT stage, title, due_date, recurrence FROM tasks WHERE project_id = ? AND done = 0 ORDER BY due_date, id", (pid,)):
+        for t in loaded["tasks"].get(pid, []) if loaded else db.execute(
+                "SELECT stage, title, due_date, recurrence FROM tasks WHERE project_id = ? AND done = 0 ORDER BY due_date, id", (pid,)):
             if holds_gate(t, today):
                 stage = t["stage"] if t["stage"] in names else project["stage"]
                 if t["recurrence"]:
@@ -75,10 +94,11 @@ def blocked(project, new_stage, rows=None):
             wanted.setdefault(c, r["name"])
     if wanted:
         # a category since deleted in Settings can never be uploaded: it no longer holds the gate
-        known = {r[0] for r in db.execute("SELECT name FROM doc_categories")}
+        known = loaded["known"] if loaded else {r[0] for r in db.execute("SELECT name FROM doc_categories")}
         # an outside upload held for review (services/doc_review.py) does not count until it is accepted
         have, held = set(), set()
-        for r in db.execute("SELECT DISTINCT category, review_status FROM documents WHERE project_id = ? AND deleted_at IS NULL", (pid,)):
+        for r in loaded["docs"].get(pid, []) if loaded else db.execute(
+                "SELECT DISTINCT category, review_status FROM documents WHERE project_id = ? AND deleted_at IS NULL", (pid,)):
             if r["review_status"] == "accepted":
                 have.add(r["category"])
             else:

@@ -325,3 +325,20 @@ class NextStepTestCase(Base):
         self.assertIn("What we need from you", self.outbox("mail")[1]["payload"]["html"])
         self.notify([1], "stage", 1, "Moved", "<p>x</p>")
         self.assertNotIn("next step", self.outbox("mail")[2]["payload"]["html"])   # nothing open: no block
+
+
+class WordsTestCase(Base):
+    def test_a_message_keeps_its_lines_in_the_bell(self):
+        """Sim P3: _plain ran paragraphs and list items together ("One Two a b")."""
+        from services.notifications import _plain
+        self.assertEqual(_plain("<p>One</p><p>Two &amp; more</p><ul><li>a</li><li> b </li></ul>x<br>y<BR/>z"), "One\nTwo & more\na\nb\nx\ny\nz")
+        self.notify([self.user("pm")], "stage", 1, "Moved", "<p>First</p><p>Second</p>")
+        self.assertEqual(self.sql("SELECT body FROM notifications ORDER BY id DESC LIMIT 1")[0][0], "First\nSecond")
+
+    def test_a_raid_status_refusal_reads_as_english(self):
+        from services import raid
+        with app_module.app.test_request_context():
+            for kind, words in (("issue", "An issue's status is open or closed"), ("risk", "A risk's status is open, mitigating or closed")):
+                with self.assertRaises(ValueError) as said:
+                    raid.clean({"kind": kind, "title": "x", "status": "nonsense"}, 1)
+                self.assertEqual(str(said.exception), words)

@@ -10,9 +10,10 @@ from services.pdf import MARGIN, Canvas
 INK, MUTED, HAIR, FAINT = (16, 17, 20), (91, 98, 112), (228, 230, 235), (243, 244, 246)
 ACCENT, ACCENT_SOFT, WHITE = (61, 90, 254), (197, 206, 255), (255, 255, 255)
 RAG = {"green": ((230, 246, 236), (23, 122, 66), "On track"), "amber": ((255, 244, 224), (138, 83, 0), "At risk"),
-       "red": ((253, 236, 235), (180, 35, 28), "Off track"), "done": ((243, 244, 246), (91, 98, 112), "Complete")}
+       "red": ((253, 236, 235), (180, 35, 28), "Off track"), "done": ((243, 244, 246), (91, 98, 112), "Complete"),
+       "none": ((243, 244, 246), (91, 98, 112), "No plan yet")}
 WARN_LINE, BAD_LINE, BRAND_RED = (227, 155, 29), (224, 70, 61), (225, 29, 46)
-MARK = {"green": (31, 157, 85), "amber": WARN_LINE, "red": BAD_LINE, "done": (150, 154, 162)}   # fills wear the -line colours
+MARK = {"green": (31, 157, 85), "amber": WARN_LINE, "red": BAD_LINE, "done": (150, 154, 162), "none": (200, 203, 210)}   # fills wear the -line colours
 LEFT, RIGHT = MARGIN - 16, Canvas.W - (MARGIN - 16)
 WIDTH = RIGHT - LEFT
 
@@ -305,6 +306,11 @@ def render(data, words, tpl=None):
 
     def work():
         w = data["work"]
+        if customer:   # progress per stage; the customer's cut has no late counts (report_data._customer_cut)
+            rows = [b for b in w["by_stage"] if b["total"]]
+            doc.heading("Work", f"{sum(b['done'] for b in rows)} of {sum(b['total'] for b in rows)} tasks done")
+            doc.table(["Stage", "Tasks", "Done"], [[b["stage"], str(b["total"]), str(b["done"])] for b in rows], [0.52, 0.24, 0.24])
+            return
         doc.heading("Work", f"{w['done']} of {w['total']} tasks done" + (f", {w['late']} late" if w["late"] else ""))
         doc.table(["Stage", "Tasks", "Done", "Late"], [[b["stage"], str(b["total"]), str(b["done"]), str(b["late"])] for b in w["by_stage"] if b["total"]],
                   [0.46, 0.18, 0.18, 0.18], [{3: (180, 35, 28)} if b["late"] else {} for b in w["by_stage"] if b["total"]])
@@ -318,10 +324,11 @@ def render(data, words, tpl=None):
 
     def history():
         hist = data["history"]
-        doc.heading("Stage history", "time in each stage against its SLA")
-        doc.table(["Stage", "Entered", "Left", "Days", "SLA"],
-                  [[x["stage"], fmt_date(x["entered"]), fmt_date(x["left"]) if x.get("left") else "still here", "-" if x["days"] is None else str(x["days"]), f"{x['sla']} d" if x.get("sla") else "-"] for x in hist["dwell"]],
-                  [0.32, 0.2, 0.2, 0.14, 0.14], [{3: (138, 83, 0)} if x.get("over") else {} for x in hist["dwell"]])
+        if hist.get("dwell"):   # internal only: the customer's cut has no SLAs
+            doc.heading("Stage history", "time in each stage against its SLA")
+            doc.table(["Stage", "Entered", "Left", "Days", "SLA"],
+                      [[x["stage"], fmt_date(x["entered"]), fmt_date(x["left"]) if x.get("left") else "still here", "-" if x["days"] is None else str(x["days"]), f"{x['sla']} d" if x.get("sla") else "-"] for x in hist["dwell"]],
+                      [0.32, 0.2, 0.2, 0.14, 0.14], [{3: (138, 83, 0)} if x.get("over") else {} for x in hist["dwell"]])
         if hist.get("approvals"):
             doc.heading("Customer approvals")
             doc.table(["Stage", "Status", "Asked", "Decided", "Comment"],
@@ -464,7 +471,7 @@ def render_portfolio(data, tpl=None):
     def health():
         h = s["health"]   # health mix: one bar split by health
         x0 = LEFT
-        for rag in ("red", "amber", "green", "done"):
+        for rag in ("red", "amber", "green", "none", "done"):
             n = h.get(rag, 0)
             if n:
                 w = WIDTH * n / max(1, s["count"])
@@ -472,7 +479,7 @@ def render_portfolio(data, tpl=None):
                 x0 += w
         doc.y += 13
         lx = LEFT
-        for rag in ("red", "amber", "green", "done"):
+        for rag in ("red", "amber", "green", "none", "done"):
             if h.get(rag):
                 label = f"{RAG[rag][2]} {h[rag]}"
                 c.rect(lx, doc.y + 2, 5, 5, fill=MARK[rag])

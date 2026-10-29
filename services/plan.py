@@ -221,6 +221,8 @@ def _health(project, stages, cur, finish, risks, today, closed, has_plan, gate=N
     t = _d(finish["target"])
     if t and t < today:
         reasons_red.append(f"Past its target date by {(today - t).days} d.")
+    elif not has_plan:
+        pass   # no plan saved: the forecast is only the template's default lengths, so it says nothing about the target (sim 28 Oct)
     elif vs_t is not None and vs_t > red:
         reasons_red.append(f"Forecast to finish {vs_t} d after the target date.")
     elif vs_t is not None and vs_t > amber:
@@ -241,8 +243,8 @@ def _health(project, stages, cur, finish, risks, today, closed, has_plan, gate=N
     reasons_amber += [s["forecast_reason"] for s in stages if s.get("forecast_reason")]   # a late predecessor, by name
     if high:
         reasons_amber.append(f"{len(high)} open high-impact risk{'s' if len(high) != 1 else ''} or issue{'s' if len(high) != 1 else ''}.")
-    rag = "red" if reasons_red else "amber" if reasons_amber else "green"
-    reasons = reasons_red + reasons_amber or ["On plan, inside its SLAs, nothing blocking."]
+    rag = "red" if reasons_red else "amber" if reasons_amber else "green" if has_plan else "none"   # "none": no plan yet, nothing else wrong
+    reasons = reasons_red + reasons_amber or (["On plan, inside its SLAs, nothing blocking."] if has_plan else ["No plan has been saved yet; health starts when one is."])
     # confidence: how much of what is left rests on real dates rather than defaults
     ahead = stages[cur:] if stages else []
     planned = sum(1 for s in ahead if s["plan_start"])

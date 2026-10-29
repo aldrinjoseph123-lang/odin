@@ -228,6 +228,16 @@ def listing(project_id, user_id=None):
     return out
 
 
+CLOSED = "This rollout is closed: it is read-only"
+
+
+def closed(project):
+    """An external account's writes (a tick, an upload, answers) stop once the
+    rollout is in its terminal stage, as the guest links do (routes/guest._guard)."""
+    from db import get_terminal_stage
+    return session.get("kind") == "external" and project["stage"] == get_terminal_stage(project["id"])
+
+
 def limited(user_id):
     """An external account's writes to its asks (a tick, an upload, answers):
     at most policy guest_writes_per_minute a minute, from any address.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, forecastTone, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday, isDay, isMonth, sinceLine, plural, holdsGate } from "./format"
+import { activeProjectsView, days, fmtDate, groupBlocks, initials, lateBy, forecastTone, localDateTime, nextUp, fitStages, fmtWhen, groupRows, deltaText, monthTicks, timelineDomain, addMonths, laneSpans, monthGrid, setDateFormat, fillPlaceholders, localToday, workspaceToday, minutesText, shouldPing, signoffText, stageColumns, viewersText, stateText, timeAgo, toLines, dayBucket, reminderText, aiStale, actionText, aiProgress, productsFor, timelineSummary, shortDay, monthName, weekday, isDay, isMonth, sinceLine, plural, holdsGate } from "./format"
 
 describe("initials", () => {
   it("takes the first letter of the first two words, upper-cased", () => {
@@ -39,6 +39,7 @@ describe("stateText", () => {
     expect(stateText({ state: "on_track", days_in_stage: 3.2, over_by: null, target_end_date: null })).toBe("3 d")
     expect(stateText({ state: "over_sla", days_in_stage: 9, over_by: 4, target_end_date: null })).toBe("4 d over SLA")
     expect(stateText({ state: "over_sla", days_in_stage: null, over_by: null, target_end_date: null })).toBe("over SLA")   // not "0 d over SLA" (V12)
+    expect(stateText({ state: "over_sla", days_in_stage: 5, over_by: 0.3, target_end_date: null })).toBe("over SLA today")   // rounds to 0: not "0 d over SLA" (sim 28 Oct)
     expect(stateText({ state: "due_soon", days_in_stage: 1, over_by: null, target_end_date: "2026-11-30" })).toMatch(/^due /)
     expect(stateText({ state: "overdue", days_in_stage: 1, over_by: null, target_end_date: "2020-01-01" })).toMatch(/^overdue \d+ d$/)
   })
@@ -406,5 +407,18 @@ describe("holdsGate", () => {
     expect(holdsGate({ done: false, recurrence: "weekly", due_date: today }, today)).toBe(false)
     expect(holdsGate({ done: false, recurrence: "weekly", due_date: "2026-10-16" }, today)).toBe(true)
     expect(holdsGate({ done: true, recurrence: "weekly", due_date: "2026-10-16" }, today)).toBe(false)
+  })
+})
+
+describe("workspaceToday", () => {
+  // 21:30 UTC on 18 Oct is already 19 Oct in Dubai and still 18 Oct in New York
+  const at = new Date("2026-10-18T21:30:00Z")
+  it("counts the day in the workspace's zone, not the browser's", () => {
+    expect(workspaceToday(at, "Asia/Dubai")).toBe("2026-10-19")
+    expect(workspaceToday(at, "America/New_York")).toBe("2026-10-18")
+  })
+  it("falls back to the browser's day without a zone or with one it does not know", () => {
+    expect(workspaceToday(at, undefined)).toBe(localToday(at))
+    expect(workspaceToday(at, "Not/AZone")).toBe(localToday(at))
   })
 })

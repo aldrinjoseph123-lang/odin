@@ -18,7 +18,7 @@ import { submitKey } from "@/lib/useSubmitShortcut"
 import { AIRaidProposals } from "@/components/AIRaidProposals"
 import { cn } from "@/lib/utils"
 import { DatePicker } from "@/components/DatePicker"
-import { fmtDate, lateBy, localToday, plural } from "@/lib/format"
+import { fmtDate, lateBy, workspaceToday, plural } from "@/lib/format"
 
 // The rollout's risks, issues, decisions and blockers: a filterable list, and
 // one dialog to add or edit an item. Open blockers and high-impact risks
@@ -39,7 +39,7 @@ export function RaidPanel({ projectId, onChanged }: { projectId: number; onChang
   const [fromAI, setFromAI] = useState<{ suggestion: number; index: number } | null>(null)   // the proposal this new item came from
   const [aiRefresh, setAiRefresh] = useState(0)
   if (!d) return failed ? <LoadFailed what="the register" onRetry={() => void load()} /> : <PanelLoading />
-  const today = localToday()
+  const today = workspaceToday()
   const list = d.items.filter((i) => show === "all" || i.open)
   const counts = (["blocker", "issue", "risk", "decision"] as RaidKind[]).map((k) => [k, d.items.filter((i) => i.kind === k && i.open).length] as const)
 

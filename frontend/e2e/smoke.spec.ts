@@ -96,6 +96,19 @@ test("@smoke the account page offers each kind at once, daily or off, and a cale
   expectClean(errors)
 })
 
+test("@smoke Mine chips: the Alerts page filters to my rollouts and the Flow combines Mine with Needs attention", async ({ page }) => {
+  const errors = watch(page)
+  await signIn(page, "admin")
+  await page.goto("/alerts")
+  await page.getByRole("button", { name: "Mine" }).click()
+  await expect(page).toHaveURL(/mine=1/)
+  await expect(page.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true")
+  await page.goto("/board?filter=attention&mine=1")
+  await expect(page.getByRole("button", { name: /^Mine, / })).toHaveAttribute("aria-pressed", "true")
+  await expect(page.getByRole("button", { name: /^Needs attention, / })).toHaveAttribute("aria-pressed", "true")
+  expectClean(errors)
+})
+
 test("@smoke the header: every link lands, every button does something", async ({ page }) => {
   const errors = watch(page)
   await signIn(page, "admin")

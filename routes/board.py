@@ -81,6 +81,9 @@ def alerts_page_data():
     if alert_type:
         where.append("a.alert_type = ?")
         params.append(alert_type)
+    if request.args.get("mine") == "1":   # the Flow's Mine: rollouts this person owns or is on, beside any other filter
+        where.append("(p.owner_id = ? OR p.id IN (SELECT project_id FROM project_participants WHERE user_id = ?))")
+        params += [session["user_id"]] * 2
     clause = (" WHERE " + " AND ".join(where)) if where else ""
     order = ("a.resolved ASC, " if show_resolved else "") + \
             "CASE a.severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, a.created_at DESC"

@@ -273,8 +273,11 @@ def work_once(db):
     job = db.execute("SELECT * FROM ai_jobs WHERE status = 'queued' ORDER BY id LIMIT 1").fetchone()
     if not job:
         return None
-    db.execute("UPDATE ai_jobs SET status = 'running', started_at = ? WHERE id = ?", (_now(), job["id"]))
+    # compare-and-set: a second worker (the --once cron beside the service) or a cancel got there first
+    claimed = db.execute("UPDATE ai_jobs SET status = 'running', started_at = ? WHERE id = ? AND status = 'queued'", (_now(), job["id"])).rowcount
     db.commit()
+    if not claimed:
+        return None
     try:
         if job["kind"] == "validate":
             result = validate_all(db, job["id"])

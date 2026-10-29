@@ -110,7 +110,7 @@ export default function Project({ user }: { user: User }) {
         {/* health first: the plan's verdict and its main reason, in the title row (critique 10 Oct) */}
         {/* the plan already counts overdue and over-SLA; "due soon" is the schedule's alone, so show the worse of the two */}
         {health && (() => {
-          const due = d.state === "due_soon" && health.rag === "green"
+          const due = d.state === "due_soon" && (health.rag === "green" || health.rag === "none")
           const reasons = due ? [`Due ${fmtDate(d.target_end_date)}.`] : health.reasons
           return <span className="flex min-w-0 items-center gap-2"><RagPill rag={due ? "amber" : health.rag} />{reasons[0] && <span className="truncate text-[13px] text-muted-foreground" title={reasons.join(" · ")}>{reasons[0]}</span>}</span>
         })()}

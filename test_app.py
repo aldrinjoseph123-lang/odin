@@ -925,7 +925,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         fields = {f"{p}::{r}": "on" for p, roles in d["matrix"].items() for r, ok in roles.items() if ok}
         fields.pop("edit_project_stage::Member")
-        self.assertEqual(c.post("/settings/rbac", data=fields, headers=h).get_json()["messages"], ["Permissions updated"])
+        self.assertEqual(c.post("/settings/rbac", data={**fields, "matrix": "full"}, headers=h).get_json()["messages"], ["Permissions updated"])
         self.assertFalse(c.get("/api/settings/rbac").get_json()["matrix"]["edit_project_stage"]["Member"])
         self.assertTrue(c.get("/api/settings/rbac").get_json()["matrix"]["manage_users"]["Admin"])
         c.post("/settings/contacts/vendors/add", data={"name": "CrowdStrike"}, headers=h)
@@ -3051,16 +3051,24 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.get("/api/projects/1/signoff").get_json()["current"]["signer_email"], "ann@globex.example")
         self.assertIn(b"PO-SECRET-7", e.get("/projects/1/signoff.pdf").data)   # so the PDF check above means something
 
-    def test_signoff_link_by_hand_lands_the_signatory_on_the_document(self):
+    def test_signoff_link_is_emailed_never_returned_and_lands_on_the_document(self):
+        # the user's call (18 Oct 2026): a hand-carried link let the project manager sign as the customer
         c, h, ann, _ = self._signoff_setup()
         c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["Everything"]}, headers=h)
-        r = c.post("/api/projects/1/signoff/1/link", headers=h).get_json()
-        self.assertEqual(r["email"], "ann@globex.example"); self.assertIn("next=/projects/1/signoff", r["link"].replace("%2F", "/"))
-        token = r["link"].split("/auth/link/")[1].split("?")[0]
+        with patch("routes.auth.send_login_link", return_value=(True, None)) as sent:
+            r = c.post("/api/projects/1/signoff/1/link", headers=h).get_json()
+        self.assertIsNone(r["link"]); self.assertTrue(r["emailed"]); self.assertEqual(r["email"], "ann@globex.example")
+        self.assertEqual(sent.call_args.args[0]["id"], ann)   # to the signatory, not to the person asking
+        token = sent.call_args.args[1]
         e = app_module.app.test_client()
         landed = e.post(f"/auth/link/{token}?next=/projects/1/signoff")
         self.assertEqual(landed.status_code, 302); self.assertTrue(landed.headers["Location"].endswith("/projects/1/signoff"))
         self.assertTrue(e.get("/api/projects/1/signoff").get_json()["can"]["sign"])
+        with self.raw_db() as db:   # nothing was carried by hand
+            self.assertIsNone(db.execute("SELECT link_issued_by FROM signoffs WHERE project_id = 1").fetchone()[0])
+        with patch("routes.auth.send_login_link", return_value=(False, "mail is off")):
+            r = c.post("/api/projects/1/signoff/1/link", headers=h).get_json()
+        self.assertIsNone(r["link"]); self.assertFalse(r["emailed"]); self.assertIn("upload the signed copy", r["message"])
         e.get("/api/session")
         csrf = e.get("/api/session").get_json()["csrf"]
         e.post("/api/projects/1/signoff/1/reject", json={"comment": "Not yet"}, headers={"X-CSRF-Token": csrf})
@@ -3682,7 +3690,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.post("/projects/1/delete").status_code, 403)
 
     def test_admin_cannot_strip_its_own_view_rights(self):
-        self.client.post("/settings/rbac", data={"manage_settings::Admin": "on"})   # everything else unticked
+        self.client.post("/settings/rbac", data={"manage_settings::Admin": "on", "matrix": "full", "confirm": "1"})   # everything else unticked
         self.assertEqual(self.client.get("/projects").status_code, 200)
         self.assertEqual(self.client.get("/board").status_code, 200)
 
@@ -3786,6 +3794,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual(weekly_report.recipients(), ["admin@corp.example", "ceo@corp.example", "pm1@corp.example"])
             with patch("graph.send_mail", return_value=(True, None)) as mail, patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
                 sent, failed, message = weekly_report.send()
+                self.assertFalse(mail.called)   # queued: the outbox sends it, and tries again when Microsoft fails
+                from services import outbox
+                self.assertEqual(outbox.drain(), 3)
         self.assertEqual((sent, failed), (3, []))
         subject, body = mail.call_args.args[1], mail.call_args.args[2]
         self.assertTrue(subject.startswith("Odin weekly report"))
@@ -4007,7 +4018,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=1").fetchone()[0], stages[1])
                 row = db.execute("SELECT username, details FROM audit_logs WHERE action='guest_stage_change'").fetchone()
             self.assertEqual(row["username"], "guest:vendor")
-            self.assertIn("Sam · VendorCo", row["details"])
+            self.assertIn("Sam (vendor)", row["details"])
+            self.assertNotIn("VendorCo", row["details"])   # the author reaches outsiders, who never see the outsourcer
             self.assertTrue(notify.called)                               # owner hears about it
 
     def test_customer_link_is_view_and_comment_only(self):
@@ -4501,8 +4513,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE users SET email = 'admin@corp.example' WHERE id = 1"); db.commit()
         self._set_policy(report_attach="1", report_emails="ceo@corp.example,someone@outside.example", report_roles="Admin")
         got = {}
-        with app_module.app.test_request_context(), patch("services.weekly_report.graph.send_mail", side_effect=lambda to, subject, body, attachments=None: got.update({to: len(attachments or [])}) or (True, None)):
+        from services import outbox
+        with app_module.app.test_request_context(), patch("graph.send_mail", side_effect=lambda to, subject, body, attachments=None, report=True: got.update({to: len(attachments or [])}) or (True, None)):
             weekly_report.send(teams=False)
+            outbox.drain()
         self.assertGreater(got["admin@corp.example"], 0)
         self.assertEqual((got["ceo@corp.example"], got["someone@outside.example"]), (0, 0))   # not Odin accounts: the summary only
 
@@ -4552,7 +4566,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             note = db.execute("SELECT author, prev_stage FROM status_notes WHERE stage = ? ORDER BY id DESC", (stages[1],)).fetchone()
             approval = db.execute("SELECT stage, status FROM stage_approvals WHERE project_id = 1").fetchone()
         self.assertEqual((note["prev_stage"], approval["stage"], approval["status"]), (stages[0], stages[1], "pending"))   # history and the customer's approval
-        self.assertIn("vendor link", note["author"])
+        self.assertEqual(note["author"], "Sam (vendor)")   # never the outsourcer's name: the customer reads it
         self.assertIn("stage", [k for k, _ in self._bell(member)])                     # the team hears of it
         self.assertEqual([k for k, _ in self._bell(cara)][-1], "approval")             # #20: the customer is asked as an approval
 
@@ -4568,7 +4582,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         import send_daily_alerts
         with patch("policies.is_working_day", return_value=True):
             send_daily_alerts.main()
-        self.assertTrue(any("of your rollout" in t for k, t in self._bell(pm) if k == "alert"))   # the PM's own digest
+        self.assertIn("1 of your rollouts needs attention today", [t for k, t in self._bell(pm) if k == "alert"])   # the PM's own digest, in good English
         self.assertTrue(any("digest" in t for k, t in self._bell(1) if k == "alert"))             # the admins' digest, in the bell
 
     def test_the_silent_events_now_tell_the_people_they_affect(self):
@@ -5647,7 +5661,7 @@ class WeeklyWordsTestCase(AITestBase):
         self.assertEqual(facts["rollout"]["name"], "Rollout One")
         self.assertIn("Site B", facts["this_week"]["notes"][0]["text"])
         self.assertNotIn("useless", json.dumps(facts))                          # a note the customer cannot see stays out (P2-24)
-        self.assertIn(facts["rollout"]["health"], ("on track", "at risk", "off track", "complete"))   # the plan word, never the colour
+        self.assertIn(facts["rollout"]["health"], ("on track", "at risk", "off track", "complete", "no plan yet"))   # the plan word, never the colour
 
     def test_graders_catch_what_a_reader_would_mind(self):
         from services.ai.features.weekly_words import FEATURE, fixture

@@ -13,7 +13,7 @@ import { Segmented } from "@/components/Segmented"
 import { SubmitForm } from "@/components/SubmitForm"
 import { deleteMilestone, milestones, saveMilestone, type Milestone } from "@/lib/api"
 import { askConfirm } from "@/lib/confirm"
-import { fmtDate, lateBy, localToday } from "@/lib/format"
+import { fmtDate, lateBy, workspaceToday } from "@/lib/format"
 import { toast } from "@/lib/toast"
 import { checkbox, danger, field } from "@/lib/ui"
 import { useAction } from "@/lib/useAction"
@@ -34,7 +34,7 @@ export function MilestonesPanel({ projectId, onChanged }: { projectId: number; o
   const after = async () => { await reload(); onChanged?.() }
   const { busy, note, setNote, act } = useAction(after)
   if (!d) return failed ? <LoadFailed what="the milestones" onRetry={() => void reload()} /> : <PanelLoading />
-  const today = localToday()
+  const today = workspaceToday()
   const list = d.items.filter((m) => show === "all" || !m.done)
   const missed = d.items.filter((m) => m.missed).length
   const reached = d.items.filter((m) => m.done).length

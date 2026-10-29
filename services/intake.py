@@ -221,6 +221,13 @@ def find(db, deal_id):
     return db.execute("SELECT * FROM projects WHERE intake_deal_id = ? AND deleted_at IS NULL ORDER BY id LIMIT 1", (deal_id,)).fetchone()
 
 
+def _discarded(db, deal_id, source):
+    """This source's rollout for the deal, deleted within the undo window (so an undo could still bring it back)."""
+    cutoff = (datetime.utcnow() - timedelta(minutes=policy("undo_minutes", db))).isoformat()   # as db.restore_deleted
+    return db.execute("SELECT * FROM projects WHERE intake_deal_id = ? AND LOWER(intake_source) = LOWER(?) AND deleted_at >= ? "
+                      "ORDER BY deleted_at DESC LIMIT 1", (deal_id, source, cutoff)).fetchone()
+
+
 def shown(p):
     """A rollout as the intake answers describe it."""
     return {"id": p["id"], "name": p["name"], "client": p["client"], "deal_id": p["intake_deal_id"],
@@ -242,6 +249,14 @@ def create(db, c, source):
                 # a deal id is the key only within one source: another CRM's rollout is not this caller's to read
                 raise Refused(409, "That deal id is already taken by another source; send it with the token that created it")
             return old, False, None
+        if (gone := _discarded(db, c["deal_id"], source)) is not None:
+            # discarded a moment ago: the re-send is the undo, never a twin beside the row the undo would bring back (sim R3)
+            db.execute("UPDATE projects SET deleted_at = NULL WHERE id = ?", (gone["id"],))
+            db.execute("UPDATE documents SET deleted_at = NULL WHERE project_id = ? AND deleted_at = ?", (gone["id"], gone["deleted_at"]))
+            from services.audit import audit_log
+            audit_log("restore_project", "project", gone["id"], gone["name"], f"deal {c['deal_id']} sent again by {source}", actor=f"token:{source}", db=db)
+            db.commit()
+            return db.execute("SELECT * FROM projects WHERE id = ?", (gone["id"],)).fetchone(), False, None
         now = _now().isoformat()
         pid = db.execute(
             """INSERT INTO projects (name, client, po_number, stage, owner_id, target_end_date, delivery_mode, vendor_name, product_name,
@@ -262,8 +277,8 @@ def create(db, c, source):
     notify_users([owner], "assigned", pid, f"New intake: {escape(c['name'])}",
                  f"<b>{escape(c['name'])}</b> for {escape(c['client'])} came in from {escape(source)} and waits for a project manager to confirm it.",
                  link="/projects?view=pending")
-    from services import rules
-    rules.fire("rollout_created", pid, {"source": source})
+    # "rollout created" automations fire when staff confirm it (routes/intake.py), once the real
+    # project manager is known: firing here put their tasks and notices on the placeholder owner
     return db.execute("SELECT * FROM projects WHERE id = ?", (pid,)).fetchone(), True, (
         f"source={source} deal={c['deal_id']} client={c['client']}" + (f" fields: {'; '.join(changes)}" if changes else ""))
 

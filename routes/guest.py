@@ -64,12 +64,13 @@ def next_stage_for(project):
 
 
 def _author(project, party):
-    """'Name · Party' — a shared link is anonymous, so every write asks who."""
+    """'Name · Client' or 'Name (vendor)' — a shared link is anonymous, so every
+    write asks who. Never the outsourcer's name: the author reaches the
+    customer, the reseller and the approval, and outsiders never see it."""
     who = request.form.get("author", "").strip()[:80]
     if not who:
         return None
-    party_name = (project["outsourcer_name"] or "Vendor") if party == "vendor" else project["client"]
-    return f"{who} · {party_name}"
+    return f"{who} (vendor)" if party == "vendor" else f"{who} · {project['client']}"
 
 
 def _guard(token):

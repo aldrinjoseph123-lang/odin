@@ -46,7 +46,8 @@ def clean(body, project_id, existing=None):
         raise ValueError("Likelihood is low, medium or high")
     status = body.get("status", existing["status"] if existing and existing["kind"] == kind else STATUSES[kind][0])
     if status not in STATUSES[kind]:
-        raise ValueError(f"A {kind} is {', '.join(STATUSES[kind])}")
+        *rest, last = STATUSES[kind]
+        raise ValueError(f"{'An' if kind[0] in 'aeiou' else 'A'} {kind}'s status is {', '.join(rest)} or {last}")
     try:
         due = parse_date(body.get("due_date", existing["due_date"] if existing else None))
     except ValueError as exc:
@@ -71,7 +72,8 @@ def clean(body, project_id, existing=None):
     }
 
 
-def create(project_id, fields, author):
+def create(project_id, fields, author, commit=True):
+    """The new item's id. commit=False leaves it in the caller's transaction (the sign-off's reject)."""
     now = datetime.utcnow().isoformat()
     db = get_db()
     cur = db.execute(
@@ -79,7 +81,8 @@ def create(project_id, fields, author):
         "created_by, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (project_id, fields["kind"], fields["title"], fields["detail"], fields["impact"], fields["likelihood"], fields["status"], fields["owner_id"],
          fields["due_date"], fields["stage"], fields["resolution"], fields["customer_visible"], author, now, now, now if fields["status"] in DONE else None))
-    db.commit()
+    if commit:
+        db.commit()
     return cur.lastrowid
 
 

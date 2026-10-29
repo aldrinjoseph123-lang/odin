@@ -209,7 +209,9 @@ def draft(project, template_id=None):
         # the milestones reached that the customer may see (a recorded scope is its own table of what was delivered)
         from services import milestones
         delivered += milestones.delivered_lines(pid)
-    outstanding = [t["title"] + (f" (due {fmt_date(t['due_date'], '—')})" if t["due_date"] else "") for t in tasks if not t["done"]]
+    # the customer's document: only the asks on outside parties, never an internal task (services/asks.py)
+    from services import asks
+    outstanding = [t["title"] + (f" (due {fmt_date(t['due_date'], '—')})" if t["due_date"] else "") for t in asks.listing(pid) if not t["done"]]
     outstanding += [r["title"] for r in raid_service.items(pid, customer=True) if r["open"] and r["kind"] != "decision"]
     counts = {k: sum(1 for x in items if x["status"] == k) for k in ("delivered", "partial", "descoped")}
     start = project["start_date"] or (stages[0]["actual_start"] if stages else None)
@@ -408,11 +410,18 @@ def reject(project, row, comment, author):
     if not done:
         db.rollback()
         raise ValueError("This version is not waiting for a signature")
-    touch_project(db, project["id"])
-    db.commit()
-    raid_service.create(project["id"], {"kind": "issue", "title": f"Sign-off v{row['version']} not accepted"[:200], "detail": f"{author}: {comment}",
-                                        "impact": "medium", "likelihood": None, "status": "open", "owner_id": project["owner_id"], "due_date": None,
-                                        "stage": project["stage"], "resolution": None, "customer_visible": 1}, author)
+    # the version and its issue are one transaction: a failed issue leaves the version waiting (sim A5)
+    try:
+        raid_service.create(project["id"], {"kind": "issue", "title": f"Sign-off v{row['version']} not accepted"[:200], "detail": f"{author}: {comment}",
+                                            "impact": "medium", "likelihood": None, "status": "open", "owner_id": project["owner_id"], "due_date": None,
+                                            "stage": project["stage"], "resolution": None, "customer_visible": 1}, author, commit=False)
+        touch_project(db, project["id"])
+        db.commit()
+    except Exception:
+        db.rollback()
+        from flask import current_app
+        current_app.logger.exception("sign-off v%s of project %s: the rejection did not save", row["version"], project["id"])
+        raise ValueError("Your answer did not save, and the version still waits for you; try again in a moment") from None
 
 
 def withdraw(row):
@@ -439,14 +448,18 @@ def record_upload(row, document_id, name, title, signed_on):
     db.commit()
 
 
+def _closed(row):
+    return "The sign-off is already waived" if row["status"] == "waived" else "This rollout is already signed off"
+
+
 def waive(project, reason, author):
     """An admin closes the gate without signatures; the reason is kept on a version of its own."""
     from core import text_field
     reason = text_field(reason, 1000, "Reason", multiline=True)
     if len(reason) < 10:
         raise ValueError("Give the reason in a sentence")
-    if completed(project["id"]):
-        raise ValueError("This rollout is already signed off")
+    if done := completed(project["id"]):
+        raise ValueError(_closed(done))
     early = sendable(project)   # a waiver stands in for the signatures, not for the stages before them (sim L-12)
     if early:
         raise ValueError(early.replace("Send the sign-off", "Waive the sign-off"))
@@ -455,6 +468,12 @@ def waive(project, reason, author):
                "delivered": d["delivered"], "outstanding": d["outstanding"], "terms": d["terms"], "statement": policy("signoff_statement"),
                "signer": None, "countersigner": None, "prepared_by": author, "prepared_at": _now()}
     db = get_db()
+    if not db.in_transaction:
+        db.execute("BEGIN IMMEDIATE")   # as send(): the check and the next version are one step (sim A5: a double click made two)
+    last = latest(project["id"])
+    if last and last["status"] in DONE and not last["superseded_at"]:
+        db.rollback()
+        raise ValueError(_closed(last))
     version = db.execute("SELECT COALESCE(MAX(version), 0) + 1 FROM signoffs WHERE project_id = ?", (project["id"],)).fetchone()[0]
     db.execute(f"UPDATE signoffs SET status = 'withdrawn' WHERE project_id = ? AND status IN ({','.join('?' * len(OPEN))})", (project["id"], *OPEN))
     db.execute("INSERT INTO signoffs (project_id, version, status, content, content_hash, created_by, created_at, waiver_reason, waived_by, completed_at) "

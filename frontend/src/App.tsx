@@ -37,7 +37,7 @@ import LinkContinue from "@/pages/LinkContinue"
 const Join = lazyPage(() => import("@/pages/Join"))
 import ForgotPassword from "@/pages/ForgotPassword"
 import { newerVersion, reportClientError, session, type User } from "@/lib/api"
-import { setDateFormat } from "@/lib/format"
+import { setDateFormat, setWorkspaceZone } from "@/lib/format"
 import { setPrefUser } from "@/lib/usePref"
 import { currentToasts, toast } from "@/lib/toast"
 
@@ -79,6 +79,7 @@ function Protected({ children }: { children: (user: User) => React.ReactNode }) 
         const next = s.user
         if (newerVersion(s.version)) updated()
         setDateFormat(next.prefs?.date_format)
+        setWorkspaceZone(s.timezone)
         setPrefUser(next.id)
         setUser((prev) => prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next)
         if (s.messages?.length) setMessages(s.messages)

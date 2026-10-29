@@ -168,9 +168,7 @@ def _run_job(job, report_on):
         from services import weekly_report
         with app.test_request_context():
             sent, failed, message = weekly_report.send()
-        log.info("weekly report: %s", message)
-        if failed and not sent:   # a partly sent report is not re-sent: the others would get it twice
-            raise RuntimeError(message)
+        log.info("weekly report: %s", message)   # queued: the outbox sends it and tries again
     elif job == "housekeeping":
         from services.retention import run_audit_retention
 
@@ -283,7 +281,9 @@ def check_backups_fresh(con):
 
 
 def run_due():
-    """One pass: heartbeat, then every due job. Returns the jobs it ran."""
+    """One pass: heartbeat, then every due job, the backup last and after this
+    quarter hour's alert sync (a 2 GB archive takes a minute and more, and
+    must not hold up the alerts). Returns the jobs it ran."""
     from policies import local_now, policy
     import fcntl
     # one scheduler at a time decides what is due (test report OPS-8: a second
@@ -305,6 +305,7 @@ def run_due():
         cutoff = (_utcnow() - RETRY_AFTER).isoformat()
         todo = [j for j in due_jobs(now_local, last, times, days)
                 if (settings.get(f"job.{j}.last_try") or "") < cutoff]   # a failure waits an hour
+        todo.sort(key=lambda j: j == "backup")   # the long one last
         for job in todo:
             # Marked tried first (not done: that waits for success), so a second
             # process or a crash loop does not start it again this hour.
@@ -327,6 +328,8 @@ def run_due():
             con.commit()
             con.close()
             break
+        if job == "backup":
+            sync_alerts_due()
         if job in ONCE_A_DAY:   # marked before it runs: a failure is reported, not repeated
             con = _connect()
             _set(con, f"job.{job}.last_run", now_local.date().isoformat())
@@ -377,6 +380,7 @@ def run_requested_backup():
     finally:
         con.close()
     import backup
+    sync_alerts_due()
     ok, message = backup.run_backup(trigger="manual", actor=row[0] or None)
     log.info("backup now (%s): %s", row[0], message)
     if not ok:
@@ -488,6 +492,23 @@ def alert_quarter(now):
     return now.replace(minute=now.minute - now.minute % 15, second=0, microsecond=0)
 
 
+_synced = None   # the quarter hour alerts were last recorded in (sync_alerts_due)
+
+
+def sync_alerts_due():
+    """sync_alerts on the first call in each quarter hour: from the clock loop
+    after each pass, and from run_due before a backup. Never raises."""
+    global _synced
+    quarter = alert_quarter(_utcnow())
+    if quarter == _synced:
+        return
+    try:
+        sync_alerts()
+        _synced = quarter
+    except Exception as exc:  # noqa: BLE001
+        log.error("alert sync failed: %s", exc)
+
+
 def sync_alerts():
     """Record the alert conditions (overdue, over SLA, due soon, stale...) every
     quarter hour: the Alerts page, the nav badge, the dashboard and the alert
@@ -524,16 +545,16 @@ def ai_worker():
 
 
 def outbox_pass():
-    """Send the mail and Teams messages that are due (services/outbox.py), one
-    row at a time so a SIGTERM waits for the send in hand (which commits its
-    result) and for no more, not for the whole batch."""
+    """Send the mail and Teams messages that are due (services/outbox.py),
+    urgent first, for at most outbox_pass_seconds (a hung Microsoft takes 15 s
+    a row): it stops between rows, so a SIGTERM waits for the send in hand
+    (which commits its result) and for no more, not for the whole batch."""
     from app import app
+    from policies import policy
     from services.outbox import drain
-    sent = 0
     with app.app_context():
-        while sent < 50 and not _stopping and drain(limit=1):
-            sent += 1
-    return sent
+        deadline = time.monotonic() + policy("outbox_pass_seconds")
+        return drain(limit=50, stop=lambda: _stopping or time.monotonic() >= deadline)
 
 
 def outbox_worker():
@@ -587,7 +608,6 @@ if __name__ == "__main__":
     worker.start()
     mailer = threading.Thread(target=outbox_worker, name="outbox-worker", daemon=True)
     mailer.start()
-    synced = None   # the quarter hour alerts were last recorded in
     while not _stopping:
         try:
             run_due()
@@ -595,13 +615,7 @@ if __name__ == "__main__":
             log.error("pass failed: %s", exc)
         # alerts every quarter hour, on the first pass after each boundary
         # even when a long job made this pass late, and whatever run_due did
-        quarter = alert_quarter(_utcnow())
-        if quarter != synced:
-            try:
-                sync_alerts()
-                synced = quarter
-            except Exception as exc:  # noqa: BLE001
-                log.error("alert sync failed: %s", exc)
+        sync_alerts_due()
         _nap(60 - _utcnow().second)   # wake on the minute
     # one budget for both, counted from the SIGTERM (not from the end of the job in
     # hand), so the joins never run past compose's stop_grace_period

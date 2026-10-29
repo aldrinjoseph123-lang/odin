@@ -11,7 +11,7 @@ from datetime import date, datetime
 from constants import CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, as_id, json_body, like_any, sees_po, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
-from db import PROJECT_OPEN_SQL, current_approval, customer_ids, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
+from db import PROJECT_CLOSED_SQL, PROJECT_OPEN_SQL, current_approval, customer_ids, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import alerts_page_data
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, StageConflict, change_stage, decide_approval, filtered_projects_query, leads, load_project, stage_entry_note_ids
@@ -98,7 +98,10 @@ def api_session():
     signin = {"microsoft": sso_configured(), "microsoft_only": sso_enforced(), "link_minutes": policy("link_minutes"),
               "password_min_length": policy("password_min_length")}
     from routes.client import app_version   # the page compares it with the one it loaded with (advice A20)
-    return jsonify({"csrf": csrf_token(), "user": user, "messages": messages, "signin": signin, "version": app_version()})
+    # the workspace time zone: the page counts "today" (overdue, late by n days) on the workspace's
+    # calendar, as the server does, not on the browser's
+    return jsonify({"csrf": csrf_token(), "user": user, "messages": messages, "signin": signin, "version": app_version(),
+                    "timezone": policy("timezone")})
 
 
 @app.route("/api/login", methods=["POST"])
@@ -885,7 +888,8 @@ def api_project(project_id):
         } if guest_on and can_manage else {"customer": None, "vendor": None},
         # when those links stop working (None: never); rotating renews them (P2-6)
         "guest_links_expire": links_expire(project) if guest_on and can_manage else None,
-        "stage_rows": [{"id": r["id"], "name": r["name"], "sla_days": r["sla_days"],   # the gates are staff-only (services/gates.py)
+        # the gates and the SLAs are staff-only (services/gates.py; PRODUCT.md, "Customer copy")
+        "stage_rows": [{"id": r["id"], "name": r["name"], **({} if external else {"sla_days": r["sla_days"]}),
                         "gate_tasks": bool(r["gate_tasks"]) and not external, "required_docs": [] if external else gates.required_docs(r)}
                        for r in stage_rows(project_id)],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
@@ -940,6 +944,22 @@ ACTIVITY_LABELS = {
     "complete_ask": "finished what was asked of them", "rate_rollout": "rated the rollout",
     "accept_document": "accepted an uploaded file", "reject_document": "rejected an uploaded file",
 }
+
+# Audit actions that change nothing a dashboard shows (signing in and out, reading, downloading,
+# exporting, testing a connection, a person's own look): the dashboard's change check
+# (services/dashboard.version) skips them, so a sign-in does not rebuild every open dashboard.
+# A new action is a change unless it is named here; test_v18_meta checks each name is a real action.
+READ_ONLY_ACTIONS = (
+    "login_success", "login_failure", "login_password_ok", "login_link_requested", "login_link_rejected", "break_glass_login",
+    "logout", "session_ended", "sign_out_other_sessions", "end_sessions_for_two_step",
+    "password_reset_requested", "password_reset_rejected", "email_verification_sent", "email_verification_refused", "email_verify_rejected",
+    "mfa_setup_started", "mfa_setup_refused", "mfa_disable_refused", "link_microsoft_started", "link_microsoft_refused",
+    "download_document", "download_report", "download_portfolio_report", "download_signoff",
+    "export_audit_log", "export_project_activity", "export_projects", "export_users", "api_token_read",
+    "change_own_appearance", "change_own_home", "change_own_notification_prefs", "dismiss_whats_new",
+    "check_ai_server", "test_email", "test_resend", "test_teams", "test_teams_webhook", "backup_test_share",
+    "report_send_test",
+)
 
 
 @app.route("/api/projects/<int:project_id>/activity")
@@ -1115,6 +1135,8 @@ def api_flow():
     alert_settings = get_alert_type_settings()
     stale_days = (alert_settings.get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
     soon_days = (alert_settings.get("project_due_soon") or DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
+    gated = {r["project_id"] for rows_ in stage_lists.values() for r in rows_ if r["gate_tasks"] or gates.required_docs(r)}
+    loaded = gates.preload(p["id"] for p in projects if p["id"] in gated) if staff and gated else None   # one read for every row
     rows = []
     for p in projects:
         own = stage_lists.get(p["id"]) or []
@@ -1123,13 +1145,12 @@ def api_flow():
         slas = sla_by_stage(own)
         sla = stage_sla_state(p, slas, terminal, now)
         schedule = schedule_status(p, soon_days=soon_days, terminal_stage=terminal)
-        state = _flow_state(p, sla, schedule)
+        state = _flow_state(p, sla if staff else None, schedule)   # SLAs are staff-only: an outsider never reads "over SLA"
         idle = _days_since(p["updated_at"], now)
         in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         at = stages.index(p["stage"]) if p["stage"] in stages else 0
         nxt = stages[at + 1] if at + 1 < len(stages) else None
-        # two queries per rollout; batch them if the board ever holds thousands
-        held = gates.blocked(p, nxt, own) if nxt and staff else []
+        held = gates.blocked(p, nxt, own, loaded) if nxt and staff and p["id"] in gated else []
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
@@ -1137,7 +1158,7 @@ def api_flow():
             "stage_index": stages.index(p["stage"]) if p["stage"] in stages else 0,
             "owner_name": p["owner_name"], "delivery_mode": p["delivery_mode"],
             "target_end_date": p["target_end_date"], "days_in_stage": None if in_stage is None else round(in_stage, 1),
-            "sla_days": slas.get(p["stage"]), "over_by": round(sla["over_by"], 1) if sla else None,
+            "sla_days": slas.get(p["stage"]) if staff else None, "over_by": round(sla["over_by"], 1) if sla and staff else None,
             "state": state, "open_tasks": p["open_tasks"], "total_tasks": p["total_tasks"],
             "late_tasks": p["late_tasks"], "late_since": p["late_since"],
             "next_task": next_task.get(p["id"]), "updated_at": p["updated_at"],
@@ -1156,9 +1177,20 @@ def api_flow():
         for r in lst:
             first_at[r["name"]] = min(r["position"], first_at.get(r["name"], r["position"]))
     from services import intake   # CRM intakes wait in the List's holding lane, in no count (staff only)
+    closed = []   # an outsider keeps their finished rollouts, with the way to the sign-off and the report (sim 28 Oct): staff find theirs in Rollouts
+    if not staff:
+        from policies import local_date
+        for p in db.execute(
+                "SELECT p.id, p.name, p.client, p.stage_entered_at, "
+                "EXISTS (SELECT 1 FROM project_reports r WHERE r.project_id = p.id) AS has_report FROM projects p "
+                f"WHERE p.deleted_at IS NULL AND {PROJECT_CLOSED_SQL} = 1 AND COALESCE(p.intake_pending, 0) = 0{project_scope()[0]} ORDER BY p.stage_entered_at DESC",
+                project_scope()[1]).fetchall():
+            on = local_date(p["stage_entered_at"]) if p["stage_entered_at"] else None
+            closed.append({"id": p["id"], "name": p["name"], "client": p["client"], "closed_on": on.isoformat() if on else None,
+                           "signed_off": bool(signoff_service.completed(p["id"])), "report": bool(p["has_report"])})
     return jsonify({"stages": sorted(first_at, key=lambda n: (first_at[n], n)), "rows": rows, "counts": counts, "today": local_today().isoformat(),
                     "can_move": role_has_permission(session.get("role"), "edit_project_stage"),
-                    "pending": intake.pending_rows(db) if staff else []})
+                    "pending": intake.pending_rows(db) if staff else [], **({} if staff else {"closed": closed})})
 
 
 @app.route("/api/flow/plan")
@@ -1213,7 +1245,7 @@ def api_plan(project_id):
         d["health"] = customer_health({"health": d["health"], "stages": d["stages"], "finish": d["finish"], "raid": visible,
                                        "today": local_today().isoformat(), "has_plan": d.get("has_plan")})
         for s in d["stages"]:
-            for k in ("base_start", "base_end", "slip_days"):
+            for k in ("base_start", "base_end", "slip_days", "sla_days", "planned_days"):
                 s.pop(k, None)
             s["forecast_reason"] = None   # it names the internal task that holds the stage
         d["health"] = {"rag": d["health"]["rag"], "reasons": [], "confidence": d["health"]["confidence"]}
@@ -1352,9 +1384,10 @@ def api_project_flow(project_id):
     if entered_now and project["stage"] in stages:
         visits[project["stage"]] = {"entered_at": entered_now.isoformat(), "days": round(working_days(entered_now, now, clk), 1)}
     stage_rows = []
+    external = session.get("kind") == "external"
     for i, name in enumerate(stages):
         status = "done" if i < current else "current" if i == current else "next"
-        stage_rows.append({"name": name, "status": status, "sla_days": slas.get(name),
+        stage_rows.append({"name": name, "status": status, "sla_days": None if external else slas.get(name),   # SLAs are staff-only
                            **(visits.get(name) or {"entered_at": None, "days": None})})
     tasks = db.execute(
         "SELECT t.*, u.name AS assignee_name, u.avatar AS assignee_avatar FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
@@ -1374,7 +1407,6 @@ def api_project_flow(project_id):
     target = date.fromisoformat(project["target_end_date"]) if project["target_end_date"] else None
     from policies import local_date
     start = project["start_date"] or local_date(project["created_at"]).isoformat()
-    external = session.get("kind") == "external"
     hidden_docs = partner_hidden_categories(db) if external else set()
     return jsonify({
         "id": project["id"], "name": project["name"], "client": project["client"],
@@ -1383,7 +1415,7 @@ def api_project_flow(project_id):
         "delivery_mode": project["delivery_mode"], "outsourcer_name": None if external else project["outsourcer_name"],
         "owner_name": project["owner_name"], "stage": project["stage"], "stage_index": current,
         "next_stage": stages[current + 1] if current + 1 < len(stages) else None,
-        "state": _flow_state(project, sla, schedule), "over_by": round(sla["over_by"], 1) if sla else None,
+        "state": _flow_state(project, None if external else sla, schedule), "over_by": round(sla["over_by"], 1) if sla and not external else None,
         "start_date": start, "target_end_date": project["target_end_date"],
         "days_left": (target - local_today()).days if target else None,
         "today": local_today().isoformat(),
@@ -1485,10 +1517,11 @@ def api_search():
         "AND (p.name LIKE ? ESCAPE '\\' OR p.client LIKE ? ESCAPE '\\'" + ("" if external else " OR p.po_number LIKE ? ESCAPE '\\'") + ") ORDER BY p.updated_at DESC LIMIT 8",
         (*scope_params, like, like, *([] if external else [like])),
     ).fetchall()
+    own, own_params = (" AND t.assignee_id = ?", [session["user_id"]]) if external else ("", [])   # a partner finds only their own asks
     tasks = db.execute(
         f"SELECT t.id, t.title, t.done, t.project_id, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
-        f"WHERE p.deleted_at IS NULL{scope_sql} AND t.title LIKE ? ESCAPE '\\' ORDER BY t.done, t.id DESC LIMIT 8",
-        (*scope_params, like),
+        f"WHERE p.deleted_at IS NULL{scope_sql}{own} AND t.title LIKE ? ESCAPE '\\' ORDER BY t.done, t.id DESC LIMIT 8",
+        (*scope_params, *own_params, like),
     ).fetchall()
     sources = (
         ("note", "/projects/{pid}", f"SELECT n.project_id, p.name AS project_name, n.note AS text, n.created_at AS at FROM status_notes n JOIN projects p ON p.id = n.project_id "

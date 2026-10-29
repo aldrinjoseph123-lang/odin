@@ -220,23 +220,32 @@ def settings_rbac_update():
         # their own role manage_users and then make themselves Admin (test round P2-1)
         flash("Only an admin can change role permissions", "error")
         return redirect(url_for("settings_rbac"))
+    if request.form.get("matrix") != "full":
+        # an absent box means "off", so only a post of the whole matrix may save: a partial
+        # one (an API caller, an old page) used to switch off every grant it left out
+        flash("Not saved: send the whole matrix (the field matrix=full with every box that is on)", "error")
+        return redirect(url_for("settings_rbac"))
     db = get_db()
     refused = [p for p in PERMISSIONS if p not in EXTERNAL_ALLOWED and request.form.get(f"{p}::External") == "on"]
     if refused:
         flash(f"Not saved: partner and customer accounts (External) can only view, comment and download, not {', '.join(refused)}", "error")
         return redirect(url_for("settings_rbac"))
     before = {(r["permission"], r["role"]): bool(r["allowed"]) for r in db.execute("SELECT * FROM role_permissions")}
+    # Admin always keeps manage_settings + manage_users — otherwise an admin could
+    # lock every account (including their own) out of this page with no UI path
+    # back in — and every view_* right, since an admin who cannot see projects is
+    # just a confused admin.
+    floor = {(p, "Admin") for p in PERMISSIONS if p in ("manage_settings", "manage_users") or p.startswith("view_")}
+    wanted = {(p, r): (p, r) in floor or request.form.get(f"{p}::{r}") == "on" for p in PERMISSIONS for r in ROLES}
+    on = [k for k, v in before.items() if v and k not in floor]
+    going = sum(1 for k in on if not wanted.get(k, True))
+    if going * 2 > len(on) and request.form.get("confirm") != "1":
+        flash(f"Not saved: this would switch off {going} of the {len(on)} permissions that are on. Confirm to save it.", "error")
+        return redirect(url_for("settings_rbac"))
     changes = []
     for permission in PERMISSIONS:
         for role in ROLES:
-            # Admin always keeps manage_settings + manage_users — otherwise an
-            # admin could lock every account (including their own) out of this
-            # page with no UI path back in — and every view_* right, since an
-            # admin who cannot see projects is just a confused admin.
-            if role == "Admin" and (permission in ("manage_settings", "manage_users") or permission.startswith("view_")):
-                allowed = 1
-            else:
-                allowed = 1 if request.form.get(f"{permission}::{role}") == "on" else 0
+            allowed = 1 if wanted[(permission, role)] else 0
             db.execute(
                 "UPDATE role_permissions SET allowed = ? WHERE permission = ? AND role = ?",
                 (allowed, permission, role),

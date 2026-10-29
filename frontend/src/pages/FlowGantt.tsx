@@ -11,7 +11,7 @@ import { UserAvatar } from "@/components/UserAvatar"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
 import { ApiError, flowPlan, savePlan, type GanttData, type GanttRow, type GanttStage } from "@/lib/api"
 import { addDays, changedStages, daysBetween, dragPlan, setDate, workDays } from "@/lib/plan"
-import { fmtDate, monthName, shortDay, weekday } from "@/lib/format"
+import { fmtDate, monthName, shortDay, weekday, workspaceToday } from "@/lib/format"
 import { toast } from "@/lib/toast"
 import { usePref } from "@/lib/usePref"
 import { useLoad } from "@/lib/useLoad"
@@ -30,8 +30,8 @@ type Zoom = "week" | "month" | "quarter"
 const PX: Record<Zoom, number> = { week: 44, month: 18, quarter: 6 }
 const ROW = 36, LEFT = 440
 const PRINT_W = 1040   // the printable width of an A4 landscape page (281 mm, a little under), in CSS pixels
-const RAG_BAR = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-nav-fg/60", done: "bg-ok-line" } as const
-const RAG_WORD = { red: "Off track", amber: "At risk", green: "On track", done: "Complete" } as const
+const RAG_BAR = { red: "bg-bad-line", amber: "bg-warn-line", green: "bg-nav-fg/60", done: "bg-ok-line", none: "bg-border" } as const
+const RAG_WORD = { red: "Off track", amber: "At risk", green: "On track", done: "Complete", none: "No plan yet" } as const
 
 type Edit = { row: GanttRow; index: number; mode: "move" | "start" | "end" | "pick"; days: number; start?: string; end?: string; cascade: boolean }
 
@@ -79,7 +79,7 @@ export default function FlowGantt({ ids, stamp, selectedId, onSelect, portfolioP
   }, [data, ids])
   // the range: a week before the earliest date (or today) to three after the latest
   const [t0, t1] = useMemo(() => {
-    const today = data?.today ?? new Date().toISOString().slice(0, 10)
+    const today = data?.today ?? workspaceToday()
     const all = rows.flatMap((r) => [r.start_date, r.target_end_date, r.forecast, ...r.stages.flatMap((s) => [s.plan_start, s.plan_end, s.actual_start, s.forecast_end, s.base_end])])
       .concat(today).filter((x): x is string => !!x).sort()
     return [addDays(all[0], -7), addDays(all[all.length - 1], 21)]

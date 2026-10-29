@@ -69,7 +69,10 @@ def draft_words(project, p, raid_items, audience="internal"):
         if st["forecast_start"] == st["forecast_end"]:
             return f"{st['name']}: {fmt_date(st['forecast_start'], '—')}."
         return f"{st['name']}: {fmt_date(st['forecast_start'], '—')} to {fmt_date(st['forecast_end'], '—')}."
-    nxt = ([f"Finish {stages[cur]['name']} by {fmt_date(stages[cur]['forecast_end'], '—')}."] if stages else []) + [line(st) for st in ahead]
+    # on the last stage there is nothing left to finish: the rollout closed on that day (sim R2: "Finish Closed by ...")
+    first = ([f"{stages[cur]['name']} {fmt_date(stages[cur].get('actual_start') or stages[cur]['forecast_end'], '—')}."] if stages and cur == len(stages) - 1
+             else [f"Finish {stages[cur]['name']} by {fmt_date(stages[cur]['forecast_end'], '—')}."] if stages else [])
+    nxt = first + [line(st) for st in ahead]
     return {"summary": " ".join(parts), "next_steps": "\n".join(nxt), "asks": ""}
 
 
@@ -166,16 +169,32 @@ def build(project, audience="internal"):
         if held and data["milestones"] and data["milestones"][0]["stage"] == project["stage"]:
             data["milestones"][0]["gate"] = gates.summary(held)
     else:
-        # the customer's health is the word, not the internal reasons
-        data["health"] = customer_health(data)
-        data["baseline_at"] = None
-        for s in data["stages"]:
-            s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
-            s["forecast_reason"] = None   # it names the internal task that holds the stage
-        data["finish"] = {k: v for k, v in p["finish"].items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
-        data["work"].pop("open")
-        data["documents"] = [{"category": c, "count": n} for c, n in Counter(d["category"] for d in documents).most_common()]
+        data["documents"] = documents
+        _customer_cut(data)
     return data
+
+
+def _customer_cut(d):
+    """What the live customer copy and a saved version's customer view both
+    leave out (PRODUCT.md, "Customer copy"): the health's reasons, the
+    baseline and slip, the stage SLAs and lengths, the dwell against them,
+    late counts, the team and the internal sections. In place."""
+    d["audience"] = "customer"
+    d["health"] = customer_health(d)   # first: it reads the stages' SLAs
+    d["baseline_at"] = None   # the baseline is an internal yardstick
+    for s in d.get("stages", []):
+        for k in ("base_start", "base_end", "slip_days", "sla_days", "planned_days"):
+            s.pop(k, None)
+        s["forecast_reason"] = None   # it names the internal task that holds the stage
+    d["finish"] = {k: v for k, v in d.get("finish", {}).items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
+    w = d.get("work") or {}   # progress per stage, never late counts
+    d["work"] = {"by_stage": [{"stage": b["stage"], "total": b["total"], "done": b["done"]} for b in w.get("by_stage", [])], "burn": w.get("burn", [])}
+    d.get("history", {}).pop("dwell", None)   # days against the SLA
+    for m in d.get("milestones", []):
+        m.pop("gate", None)   # gate internals are staff only
+    for k in ("team", "people", "plan_changes", "asks", "csat"):
+        d.pop(k, None)
+    d["documents"] = [{"category": c, "count": n} for c, n in Counter(x["category"] for x in d.get("documents", [])).most_common()]
 
 
 def customer_health(d):
@@ -237,24 +256,12 @@ def customer_view(snapshot):
     """A saved internal snapshot, cut down to what the customer may see."""
     d = json.loads(snapshot) if isinstance(snapshot, str) else dict(snapshot)
     d = json.loads(json.dumps(d))   # a deep copy
-    d["audience"] = "customer"
-    d["health"] = customer_health(d)
-    d["baseline_at"] = None   # the baseline is an internal yardstick
-    for s in d.get("stages", []):
-        s.pop("base_start", None); s.pop("base_end", None); s.pop("slip_days", None)
-        s["forecast_reason"] = None   # it names the internal task that holds the stage
-    d["finish"] = {k: v for k, v in d.get("finish", {}).items() if k in ("forecast", "target", "vs_target_days", "days_to_target")}
     d["raid"] = [r for r in d.get("raid", []) if r.get("customer_visible")]
     d["project_milestones"] = [m for m in d.get("project_milestones", []) if m.get("customer_visible")]
     d["fields"] = [f for f in d.get("fields", []) if f.get("customer_visible")]
     d["history"]["notes"] = d.get("customer_notes", [])
-    d["work"].pop("open", None)
-    for m in d.get("milestones", []):
-        m.pop("gate", None)   # gate internals are staff only
-    for k in ("people", "plan_changes", "asks", "csat"):
-        d.pop(k, None)
-    d["documents"] = [{"category": c, "count": n} for c, n in Counter(x["category"] for x in d.get("documents", [])).most_common()]
     d.pop("customer_notes", None)
+    _customer_cut(d)
     return d
 
 
