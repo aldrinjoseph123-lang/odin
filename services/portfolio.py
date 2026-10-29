@@ -11,7 +11,7 @@ from policies import local_date, local_today, policy
 from services import plan as plan_service
 from services import raid as raid_service
 
-RAG_ORDER = {"red": 0, "amber": 1, "green": 2, "done": 3}
+RAG_ORDER = {"red": 0, "amber": 1, "green": 2, "none": 3, "done": 4}
 
 
 INTERNAL = ("reasons", "confidence", "baseline", "vs_baseline_days", "csat")

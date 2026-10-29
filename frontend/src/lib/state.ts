@@ -18,4 +18,5 @@ export const HEALTH: Record<Rag, { label: string; tone: string }> = {
   amber: { label: "At risk",   tone: "bg-warn-soft text-warn" },
   green: { label: "On track",  tone: "bg-muted text-nav-fg" },
   done:  { label: "Complete",  tone: "bg-muted text-muted-foreground" },
+  none:  { label: "No plan yet", tone: "bg-muted text-muted-foreground" },
 }

@@ -190,7 +190,9 @@ export type FlowRow = {
   gate_blocked: boolean; gate_reasons: string[]
 }
 export type FlowData = { stages: string[]; rows: FlowRow[]; counts: Record<FlowState | "late_tasks", number>; can_move: boolean; today: string
-  pending?: PendingIntakeRow[] }   // CRM intakes in the List's holding lane (staff only; counted nowhere)
+  pending?: PendingIntakeRow[]   // CRM intakes in the List's holding lane (staff only; counted nowhere)
+  closed?: ClosedRollout[] }       // an outsider's finished rollouts, newest first (staff: always empty)
+export type ClosedRollout = { id: number; name: string; client: string; closed_on: string | null; signed_off: boolean; report: boolean }
 export type FlowStage = { name: string; status: "done" | "current" | "next"; sla_days: number | null; entered_at: string | null; days: number | null }
 // waits_on: the tasks it waits on (finish-to-start); blocked_by: the open ones among them, and how late each is
 export type Recurrence = "weekly" | "fortnightly" | "monthly"
@@ -257,7 +259,7 @@ export const flow = () => getJson<FlowData>("/api/flow")
 export const flowDetail = (id: number) => getJson<FlowDetail>(`/api/projects/${id}/flow`)
 
 // ---- the plan and the RAID register (services/plan.py, services/raid.py) ----
-export type Rag = "green" | "amber" | "red" | "done"
+export type Rag = "green" | "amber" | "red" | "done" | "none"   // none: no plan saved yet
 // working: stage lengths count working days; week: Python weekday numbers (Mon = 0); off: holidays
 export type WorkCalendar = { working: boolean; week: number[]; off: string[] }
 export type PlanStage = {

@@ -10,9 +10,10 @@ from services.pdf import MARGIN, Canvas
 INK, MUTED, HAIR, FAINT = (16, 17, 20), (91, 98, 112), (228, 230, 235), (243, 244, 246)
 ACCENT, ACCENT_SOFT, WHITE = (61, 90, 254), (197, 206, 255), (255, 255, 255)
 RAG = {"green": ((230, 246, 236), (23, 122, 66), "On track"), "amber": ((255, 244, 224), (138, 83, 0), "At risk"),
-       "red": ((253, 236, 235), (180, 35, 28), "Off track"), "done": ((243, 244, 246), (91, 98, 112), "Complete")}
+       "red": ((253, 236, 235), (180, 35, 28), "Off track"), "done": ((243, 244, 246), (91, 98, 112), "Complete"),
+       "none": ((243, 244, 246), (91, 98, 112), "No plan yet")}
 WARN_LINE, BAD_LINE, BRAND_RED = (227, 155, 29), (224, 70, 61), (225, 29, 46)
-MARK = {"green": (31, 157, 85), "amber": WARN_LINE, "red": BAD_LINE, "done": (150, 154, 162)}   # fills wear the -line colours
+MARK = {"green": (31, 157, 85), "amber": WARN_LINE, "red": BAD_LINE, "done": (150, 154, 162), "none": (200, 203, 210)}   # fills wear the -line colours
 LEFT, RIGHT = MARGIN - 16, Canvas.W - (MARGIN - 16)
 WIDTH = RIGHT - LEFT
 
@@ -470,7 +471,7 @@ def render_portfolio(data, tpl=None):
     def health():
         h = s["health"]   # health mix: one bar split by health
         x0 = LEFT
-        for rag in ("red", "amber", "green", "done"):
+        for rag in ("red", "amber", "green", "none", "done"):
             n = h.get(rag, 0)
             if n:
                 w = WIDTH * n / max(1, s["count"])
@@ -478,7 +479,7 @@ def render_portfolio(data, tpl=None):
                 x0 += w
         doc.y += 13
         lx = LEFT
-        for rag in ("red", "amber", "green", "done"):
+        for rag in ("red", "amber", "green", "none", "done"):
             if h.get(rag):
                 label = f"{RAG[rag][2]} {h[rag]}"
                 c.rect(lx, doc.y + 2, 5, 5, fill=MARK[rag])

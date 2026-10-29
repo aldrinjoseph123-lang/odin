@@ -5656,7 +5656,7 @@ class WeeklyWordsTestCase(AITestBase):
         self.assertEqual(facts["rollout"]["name"], "Rollout One")
         self.assertIn("Site B", facts["this_week"]["notes"][0]["text"])
         self.assertNotIn("useless", json.dumps(facts))                          # a note the customer cannot see stays out (P2-24)
-        self.assertIn(facts["rollout"]["health"], ("on track", "at risk", "off track", "complete"))   # the plan word, never the colour
+        self.assertIn(facts["rollout"]["health"], ("on track", "at risk", "off track", "complete", "no plan yet"))   # the plan word, never the colour
 
     def test_graders_catch_what_a_reader_would_mind(self):
         from services.ai.features.weekly_words import FEATURE, fixture

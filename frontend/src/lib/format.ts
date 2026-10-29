@@ -63,7 +63,7 @@ export const daysLate = (target: string | null) => (target ? lateBy(target, work
 // "6 d over SLA", "due 30 Nov"; on track, its days in the stage.
 export function stateText(r: { state: FlowState; days_in_stage: number | null; over_by: number | null; target_end_date: string | null }) {
   if (r.state === "overdue") return `overdue ${daysLate(r.target_end_date)} d`
-  if (r.state === "over_sla") return r.over_by == null ? "over SLA" : `${Math.round(r.over_by)} d over SLA`
+  if (r.state === "over_sla") return r.over_by == null ? "over SLA" : Math.round(r.over_by) < 1 ? "over SLA today" : `${Math.round(r.over_by)} d over SLA`
   if (r.state === "due_soon") return `due ${fmtDate(r.target_end_date)}`
   return days(r.days_in_stage)
 }
