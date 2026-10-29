@@ -1055,12 +1055,6 @@ def project_role_of(project_id, user_id):
     return row["role"] if row else None
 
 
-def is_customer_on(project_id, user_id):
-    return get_db().execute(
-        "SELECT 1 FROM project_participants WHERE project_id = ? AND user_id = ? AND role = 'Customer'", (project_id, user_id)
-    ).fetchone() is not None
-
-
 def my_project_ids(user_id):
     """Projects this user owns or participates in — the board's 'Mine' filter
     today, and the whole visible set for external accounts later."""
