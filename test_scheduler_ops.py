@@ -214,6 +214,34 @@ class SchedulerOpsTestCase(FixBase):
             outbox.drain()
         self.assertEqual(self.tuples("SELECT attempts, sent_at IS NULL, next_try_at IS NOT NULL FROM outbox"), [(1, 1, 1)])   # tried again later
 
+    def test_the_backup_runs_last_and_after_the_alert_sync(self):
+        """Sim B3: the backup (66 s for 2 GB) ran in the clock thread ahead of the quarter hour's alert sync."""
+        calls = []
+        self.addCleanup(setattr, scheduler, "_synced", None)
+        scheduler._synced = None
+        with patch("scheduler.due_jobs", return_value=["backup", "housekeeping"]), \
+             patch("scheduler._run_job", side_effect=lambda job, _on: calls.append(job)), \
+             patch("scheduler.sync_alerts", side_effect=lambda: calls.append("alerts")):
+            scheduler.run_due()
+            scheduler.sync_alerts_due()   # the clock loop after the pass: this quarter hour is done
+        self.assertEqual(calls, ["housekeeping", "alerts", "backup"])
+
+    def test_a_backup_is_refused_when_the_disk_is_too_full(self):
+        """Sim B3: nothing checked free space before writing an archive onto the database's disk."""
+        small = __import__("shutil")._ntuple_diskusage(100 * 2**30, 99 * 2**30, 500 * 2**20)   # 500 MB free
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()), patch("shutil.disk_usage", return_value=small):
+            ok, message = backup.run_backup(local_only=True)   # no archive yet: a backup needs 1,024 MB
+            self.assertFalse(ok)
+            self.assertIn("only 500 MB free", message)
+            self.assertEqual([n for n in os.listdir(backup._backup_dir()) if n.endswith(".zip")], [])
+            self.assertEqual(self.tuples("SELECT ok, size_bytes FROM backup_runs"), [(0, None)])
+            self.assertEqual([n["kind"] for n in self.notices("Odin skipped a backup%")], ["ops"])
+            backup.run_backup(local_only=True)
+            self.assertEqual(len(self.notices("Odin skipped a backup%")), 1)   # once a day
+            self._set_policy(backup_min_free_mb="100")   # the admin's number
+            ok, message = backup.run_backup(local_only=True)
+            self.assertTrue(ok, message)
+
     def test_a_stuck_clock_loop_is_told_once_a_day(self):
         stuck = lambda: self.notices("Odin's schedule has stopped")
         with patch("scheduler.due_jobs", return_value=[]):
