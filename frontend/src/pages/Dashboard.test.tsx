@@ -130,4 +130,14 @@ describe("Dashboard", () => {
     expect(resetLayout).toHaveBeenCalled()
     expect(await screen.findByText("Back to the workspace default.")).toBeInTheDocument()
   })
+
+  it("asks for the version once when the tab comes back, not again for the window's focus (sim B2)", async () => {
+    const { dashboardVersion } = await import("@/lib/api")
+    mount()
+    await screen.findByRole("heading", { level: 1 })
+    vi.mocked(dashboardVersion).mockClear()
+    window.dispatchEvent(new Event("focus"))
+    document.dispatchEvent(new Event("visibilitychange"))
+    await waitFor(() => expect(dashboardVersion).toHaveBeenCalledTimes(1))
+  })
 })

@@ -22,9 +22,8 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
   useEffect(() => {
     const tick = () => { if (!document.hidden) void refresh() }
     const timer = window.setInterval(tick, 60_000)
-    window.addEventListener("focus", tick)
-    document.addEventListener("visibilitychange", tick)
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", tick); document.removeEventListener("visibilitychange", tick) }
+    document.addEventListener("visibilitychange", tick)   // the tab coming back; focus as well asked twice (sim B2)
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", tick) }
   }, [refresh])
   useEffect(() => {
     if (!open) return

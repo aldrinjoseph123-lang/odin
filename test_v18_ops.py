@@ -249,6 +249,26 @@ class PerformanceTestCase(OpsBase):
         self.assertEqual(rest["rows"][0]["title"], "n4")
         self.assertEqual(len(c.get("/api/notifications?limit=500").get_json()["rows"]), 45)   # capped at 100
 
+    def test_the_dashboard_version_moves_on_writes_only(self):
+        """Sim B2: the change check was MAX(audit_logs.id), so a sign-in, a download or a theme change
+        rebuilt every open dashboard. Read-only actions (routes/api.READ_ONLY_ACTIONS) no longer move it."""
+        import glob
+        import re
+        from routes.api import READ_ONLY_ACTIONS
+        c, _ = self._api_client()
+        version = lambda: c.get("/api/dashboard/version").get_json()["version"]   # noqa: E731
+        before = version()
+        for action in ("login_success", "download_report", "change_own_appearance", "logout"):
+            self.sql("INSERT INTO audit_logs (username, action, timestamp) VALUES ('pm', ?, ?)", action, datetime.utcnow().isoformat())
+        self.assertEqual(version(), before)
+        self.sql("INSERT INTO audit_logs (username, action, timestamp) VALUES ('pm', 'add_task', ?)", datetime.utcnow().isoformat())
+        self.assertGreater(version(), before)
+        # each name is an action the code really writes: a renamed action must not slip back into the change check unnoticed
+        source = "".join(open(f, encoding="utf-8").read() for f in glob.glob("*.py") + glob.glob("routes/*.py") + glob.glob("services/**/*.py", recursive=True)
+                         if not os.path.basename(f).startswith("test_"))
+        written = set(re.findall(r'audit_log\(\s*"([a-z_]+)"', source))
+        self.assertEqual([a for a in READ_ONLY_ACTIONS if a not in written], [])
+
     def test_tasks_done_count_on_the_workspace_day(self):
         """P3-29: 22:30 UTC is already tomorrow in Dubai."""
         from policies import local_today

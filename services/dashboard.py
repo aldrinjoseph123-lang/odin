@@ -190,10 +190,15 @@ def _active(db, scope):
 
 
 def version():
-    """A number that moves whenever anything changes: the audit log's last id
-    (every mutation writes one). The page polls it and reloads on a change."""
-    row = get_db().execute("SELECT MAX(id) FROM audit_logs").fetchone()
-    return row[0] or 0
+    """A number that moves whenever anything changes: the last id of an audit
+    row that wrote something (every mutation writes one; reads such as a
+    sign-in or a download, routes/api.READ_ONLY_ACTIONS, do not count). The
+    page polls it and reloads on a change. Read from the newest row back, so
+    it stops at the first write."""
+    from routes.api import READ_ONLY_ACTIONS
+    row = get_db().execute(f"SELECT id FROM audit_logs WHERE action NOT IN ({','.join('?' * len(READ_ONLY_ACTIONS))}) ORDER BY id DESC LIMIT 1",
+                           READ_ONLY_ACTIONS).fetchone()
+    return row[0] if row else 0
 
 
 def record_snapshot(day=None):

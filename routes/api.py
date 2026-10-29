@@ -944,6 +944,22 @@ ACTIVITY_LABELS = {
     "accept_document": "accepted an uploaded file", "reject_document": "rejected an uploaded file",
 }
 
+# Audit actions that change nothing a dashboard shows (signing in and out, reading, downloading,
+# exporting, testing a connection, a person's own look): the dashboard's change check
+# (services/dashboard.version) skips them, so a sign-in does not rebuild every open dashboard.
+# A new action is a change unless it is named here; test_v18_meta checks each name is a real action.
+READ_ONLY_ACTIONS = (
+    "login_success", "login_failure", "login_password_ok", "login_link_requested", "login_link_rejected", "break_glass_login",
+    "logout", "session_ended", "sign_out_other_sessions", "end_sessions_for_two_step",
+    "password_reset_requested", "password_reset_rejected", "email_verification_sent", "email_verification_refused", "email_verify_rejected",
+    "mfa_setup_started", "mfa_setup_refused", "mfa_disable_refused", "link_microsoft_started", "link_microsoft_refused",
+    "download_document", "download_report", "download_portfolio_report", "download_signoff",
+    "export_audit_log", "export_project_activity", "export_projects", "export_users", "api_token_read",
+    "change_own_appearance", "change_own_home", "change_own_notification_prefs", "dismiss_whats_new",
+    "check_ai_server", "test_email", "test_resend", "test_teams", "test_teams_webhook", "backup_test_share",
+    "report_send_test",
+)
+
 
 @app.route("/api/projects/<int:project_id>/activity")
 @permission_required("view_project_detail")
