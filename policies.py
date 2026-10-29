@@ -276,6 +276,8 @@ POLICIES = {
                               help="How many custom fields (Custom fields, below) a rollout may carry. Lowering it removes none: it only stops new ones."),
     "rules_max": dict(area="workflow", kind="int", default=50, min=1, max=200, label="Most automations",
                       help="How many rules Settings › Automations may hold, paused ones included. Lowering it removes none: it only stops new ones."),
+    "rules_scan_max": dict(area="workflow", kind="int", default=2000, min=1, max=20000, label="Conditions checked per quarter hour",
+                           help="How many overdue tasks, missed milestones and SLA breaches the alert pass checks against the automations each quarter hour. Each is checked once per rule; a bigger backlog is worked through over the next passes."),
     # ---- CRM intake (services/intake.py), drawn by components/IntakeSettings.tsx under Integrations
     "intake_template": dict(area="intake", kind="choice", default="", choices="templates",
                             label="Stage template for intakes", help="The stage list a rollout made by the CRM starts with. Blank: the first template."),
@@ -476,7 +478,7 @@ _GROUPS = {
     "Sign-off": ("signoff_required", "signoff_statement", "signoff_terms"),
     "Customer approval": ("default_customer_approval",),
     "Custom field limit": ("custom_fields_max",),
-    "Automations": ("rules_max",),
+    "Automations": ("rules_max", "rules_scan_max"),
     "Customer forms": ("ask_form_max_questions",),
     "Intake defaults": ("intake_template", "intake_owner", "intake_sources", "intake_rate_per_min", "intake_token_days", "intake_allowed_ips"),
 }
@@ -536,6 +538,7 @@ _HINTS = {
     "default_customer_approval": "New rollouts ask the customer to approve each stage move.",
     "custom_fields_max": "How many extra fields an admin may add to every rollout, e.g. 20.",
     "rules_max": "How many automations (Settings › Automations) the workspace may hold, e.g. 50.",
+    "rules_scan_max": "How many overdue tasks and missed dates the automations check each quarter hour, e.g. 2,000.",
     "rule_runs_keep_days": "How long each automation remembers what it did, e.g. 90 days.",
     "ask_form_max_questions": "The most questions a form asked of a customer, reseller or contractor may hold, e.g. 12.",
     "intake_owner": "Who is told of a new intake from the CRM, e.g. your delivery lead.",

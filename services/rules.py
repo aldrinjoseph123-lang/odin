@@ -21,6 +21,9 @@ log, trimmed nightly past rule_runs_keep_days) and one audit row. A condition
 the alert pass sees (an SLA breach, an overdue task, a missed milestone) fires
 once per rule (the run's `event_key`), and only when it arose after the rule
 was made or last resumed: a new rule does not flood the bell with the past.
+A rule that looks at such a condition and does not match it keeps a hidden
+row (ok = SEEN) under the same key, so each condition is examined once per
+rule; editing the rule forgets those rows.
 """
 import json
 from contextvars import ContextVar
@@ -51,7 +54,7 @@ STAFF_ROLES = ("Project manager", "Sales", "Coordinator")   # a rule never reach
 SCANNED = ("stage_sla_breached", "task_overdue", "milestone_missed")
 MAX_CONDITIONS = 10
 MAX_ACTIONS = 10
-SCAN_MAX = 200     # firings per scanned trigger per alert pass; a backlog drains over the next passes
+SEEN = -1          # rule_runs.ok of a scanned condition a rule looked at and did not run for: never shown, never looked at again
 RUNS_SHOWN = 100
 REPLAY_DAYS = 30
 
@@ -197,11 +200,11 @@ def clean(body):
 
 
 def _row(r, db):
-    last = db.execute("SELECT at, ok FROM rule_runs WHERE rule_id = ? ORDER BY id DESC LIMIT 1", (r["id"],)).fetchone()
+    last = db.execute("SELECT at, ok FROM rule_runs WHERE rule_id = ? AND ok != ? ORDER BY id DESC LIMIT 1", (r["id"], SEEN)).fetchone()
     return {"id": r["id"], "name": r["name"], "event": r["event"], "event_config": json.loads(r["event_config"] or "{}"),
             "conditions": json.loads(r["conditions"] or "[]"), "actions": json.loads(r["actions"] or "[]"), "paused": bool(r["paused"]),
             "created_by": r["created_by"], "created_at": r["created_at"], "updated_at": r["updated_at"],
-            "runs": db.execute("SELECT COUNT(*) FROM rule_runs WHERE rule_id = ?", (r["id"],)).fetchone()[0],
+            "runs": db.execute("SELECT COUNT(*) FROM rule_runs WHERE rule_id = ? AND ok != ?", (r["id"], SEEN)).fetchone()[0],
             "last_run": {"at": last["at"], "ok": bool(last["ok"])} if last else None}
 
 
@@ -232,6 +235,7 @@ def update(rule_id, d):
     db.execute("UPDATE rules SET name = ?, event = ?, event_config = ?, conditions = ?, actions = ?, updated_at = ? WHERE id = ?",
                (d["name"], d["event"], json.dumps(d["event_config"]), json.dumps(d["conditions"]), json.dumps(d["actions"]),
                 _now().isoformat(), rule_id))
+    db.execute("DELETE FROM rule_runs WHERE rule_id = ? AND ok = ?", (rule_id, SEEN))   # new conditions look again
     db.commit()
 
 
@@ -258,7 +262,7 @@ def runs(rule_id, limit=RUNS_SHOWN):
     """The run log, newest first."""
     out = []
     for r in get_db().execute("SELECT rr.*, p.name AS project FROM rule_runs rr LEFT JOIN projects p ON p.id = rr.project_id "
-                              "WHERE rr.rule_id = ? ORDER BY rr.id DESC LIMIT ?", (rule_id, limit)):
+                              "WHERE rr.rule_id = ? AND rr.ok != ? ORDER BY rr.id DESC LIMIT ?", (rule_id, SEEN, limit)):
         try:
             detail = json.loads(r["detail"] or "{}")
         except ValueError:
@@ -377,10 +381,16 @@ def _run(event, project_id, ctx, key=None):
         return 0
     for rule in rows:
         try:
-            if ctx.get("on") and ctx["on"] < rule["armed_at"][:10]:
-                continue   # a scanned condition that arose before the rule was made or resumed
-            if matches(rule, project, ctx, db):
-                ran += _one(db, rule, project, event, ctx, key)
+            if key and db.execute("SELECT 1 FROM rule_runs WHERE rule_id = ? AND event_key = ?", (rule["id"], key)).fetchone():
+                continue   # this rule already ran for (or looked at) this scanned condition
+            if (ctx.get("on") and ctx["on"] < rule["armed_at"][:10]) or not matches(rule, project, ctx, db):
+                # arose before the rule was made or resumed, or does not match: a scanned condition is not looked at again
+                if key:
+                    db.execute("INSERT OR IGNORE INTO rule_runs (rule_id, project_id, event, event_key, at, ok) VALUES (?, ?, ?, ?, ?, ?)",
+                               (rule["id"], project["id"], event, key, _now().isoformat(), SEEN))
+                    db.commit()
+                continue
+            ran += _one(db, rule, project, event, ctx, key)
         except Exception:  # noqa: BLE001
             try:
                 db.rollback()
@@ -509,16 +519,20 @@ def scan(alerts, today=None):
     """The triggers only time brings, from the alert pass (services/alerts.py):
     a stage over its SLA (per visit), a task overdue (per task and due day),
     a milestone missed (per milestone and day). Each fires once per rule;
-    older than the run log keeps is never fired (its run row may be gone)."""
+    older than the run log keeps, or than every live rule for it, is never
+    fired (its run row may be gone). At most rules_scan_max candidates are
+    examined per pass; a backlog drains over the next passes."""
     try:
         db = get_db()
-        live = {r[0] for r in db.execute("SELECT DISTINCT event FROM rules WHERE paused = 0")} & set(SCANNED)
-        if not live:
+        armed = {r[0]: r[1][:10] for r in db.execute(
+            "SELECT event, MIN(armed_at) FROM rules WHERE paused = 0 GROUP BY event") if r[0] in SCANNED}
+        if not armed:
             return
         today = today or local_today(db)
         floor = (today - timedelta(days=policy("rule_runs_keep_days", db))).isoformat()
+        budget = policy("rules_scan_max", db)
         from db import PROJECT_OPEN_SQL, stages_for_projects
-        if "stage_sla_breached" in live:
+        if "stage_sla_breached" in armed:
             # the day the breach was first recorded (its alert, when that alert is on), else the day the SLA ran out:
             # never today, or the same breach would fire again once its run row is trimmed
             from policies import local_date
@@ -526,41 +540,43 @@ def scan(alerts, today=None):
             from services.analytics import sla_by_stage
             seen = {r[0]: r[1][:10] for r in db.execute("SELECT project_id, created_at FROM alerts WHERE alert_type = 'stage_sla_breach' AND resolved = 0")}
             over = alerts.get("stage_sla_breach", [])
-            stages, cal, ran = stages_for_projects([p["id"] for p in over]), workdays.calendar(db), 0
+            stages, cal = stages_for_projects([p["id"] for p in over]), workdays.calendar(db)
             for p in over:
+                if budget <= 0:
+                    break
                 on = seen.get(p["id"])
                 if on is None:
                     entered, sla = local_date(p["stage_entered_at"], db), sla_by_stage(stages.get(p["id"]) or []).get(p["stage"])
                     on = workdays.add(entered, sla, cal).isoformat() if entered and sla else today.isoformat()
-                if on >= floor:
-                    ran += fire("stage_sla_breached", p["id"], {"stage": p["stage"], "on": on}, key=f"sla:{p['stage']}:{p['stage_entered_at']}")
-                if ran >= SCAN_MAX:
-                    break
-        # candidates some live rule has not run for yet (the run log holds the rest); the cap counts runs, not candidates,
-        # so conditions that match nobody never crowd out a new one
+                if on >= floor and on >= armed["stage_sla_breached"]:
+                    budget -= 1
+                    fire("stage_sla_breached", p["id"], {"stage": p["stage"], "on": on}, key=f"sla:{p['stage']}:{p['stage_entered_at']}")
+
+        def since(event):
+            """The earliest due day that can still fire: late from the next day, so one day before the earliest armed day."""
+            from datetime import date
+            return max(floor, (date.fromisoformat(armed[event]) - timedelta(days=1)).isoformat())
+
+        # candidates some live rule has not looked at yet: a run, or a SEEN row when it did not match, closes it for that rule
         unrun = ("EXISTS (SELECT 1 FROM rules r WHERE r.event = '{event}' AND r.paused = 0 AND NOT EXISTS "
                  "(SELECT 1 FROM rule_runs rr WHERE rr.rule_id = r.id AND rr.event_key = {key}))")
         task_unrun = unrun.format(event="task_overdue", key="'task:' || t.id || ':' || t.due_date")
         milestone_unrun = unrun.format(event="milestone_missed", key="'milestone:' || m.id || ':' || m.date")
-        if "task_overdue" in live:
-            ran = 0
+        if "task_overdue" in armed and budget > 0:
             for t in db.execute(f"SELECT t.id, t.project_id, t.title, t.due_date FROM tasks t JOIN projects p ON p.id = t.project_id "
                                 f"WHERE t.done = 0 AND t.due_date IS NOT NULL AND t.due_date < ? AND t.due_date >= ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} "
                                 f"AND {task_unrun} "
-                                f"ORDER BY t.due_date, t.id", (today.isoformat(), floor)).fetchall():
-                ran += fire("task_overdue", t["project_id"], {"task": t["title"], "task_id": t["id"], "due": t["due_date"], "on": _day_after(t["due_date"])},
-                            key=f"task:{t['id']}:{t['due_date']}")
-                if ran >= SCAN_MAX:
-                    break
-        if "milestone_missed" in live:
-            ran = 0
+                                f"ORDER BY t.due_date, t.id LIMIT ?", (today.isoformat(), since("task_overdue"), budget)).fetchall():
+                budget -= 1
+                fire("task_overdue", t["project_id"], {"task": t["title"], "task_id": t["id"], "due": t["due_date"], "on": _day_after(t["due_date"])},
+                     key=f"task:{t['id']}:{t['due_date']}")
+        if "milestone_missed" in armed and budget > 0:
             for m in db.execute(f"SELECT m.id, m.project_id, m.name, m.date FROM milestones m JOIN projects p ON p.id = m.project_id "
                                 f"WHERE m.done_at IS NULL AND m.date < ? AND m.date >= ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} "
                                 f"AND {milestone_unrun} "
-                                f"ORDER BY m.date, m.id", (today.isoformat(), floor)).fetchall():
-                ran += fire("milestone_missed", m["project_id"], {"milestone": m["name"], "date": m["date"], "on": _day_after(m["date"])}, key=f"milestone:{m['id']}:{m['date']}")
-                if ran >= SCAN_MAX:
-                    break
+                                f"ORDER BY m.date, m.id LIMIT ?", (today.isoformat(), since("milestone_missed"), budget)).fetchall():
+                budget -= 1
+                fire("milestone_missed", m["project_id"], {"milestone": m["name"], "date": m["date"], "on": _day_after(m["date"])}, key=f"milestone:{m['id']}:{m['date']}")
     except Exception:  # noqa: BLE001 — the alert pass goes on
         _log_failure("the alert pass")
 
