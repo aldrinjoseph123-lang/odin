@@ -4,7 +4,7 @@ import { toastAfterLoad } from "@/lib/toast"
 import { fieldAuto, fieldArea, checkbox } from "@/lib/ui"
 import { Link, useParams } from "react-router-dom"
 import { Copy, Download, MoreHorizontal, Trash2 } from "lucide-react"
-import { askConfirm } from "@/lib/confirm"
+import { askConfirm, askReason } from "@/lib/confirm"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { RagPill } from "@/components/PlanGantt"
 import { UserAvatar } from "@/components/UserAvatar"
@@ -85,6 +85,14 @@ export default function Project({ user }: { user: User }) {
       return r
     } catch (e) { setNotice({ text: e instanceof ApiError ? e.message : "That did not save", bad: true }); return null } finally { if (!leaving) setBusy(false) }
   }
+  // a signed-off rollout is deleted with a reason: the admins are told and the signed evidence is kept (services/signoff.evidence)
+  async function remove() {
+    const undoNote = `you have ${user.prefs?.undo_minutes ?? 5} minutes to undo.`
+    if (d?.signoff?.status && ["countersigned", "uploaded", "waived"].includes(d.signoff.status)) {
+      const why = await askReason(`Delete this signed-off project? The admins are told and the signed copy is kept on file; ${undoNote}`, "Delete project", { min: 10, max: 1000 })
+      if (why) await send(`/projects/${id}/delete`, { reason: why })
+    } else await send(`/projects/${id}/delete`, {}, `Delete this project? It leaves every list at once; ${undoNote}`)
+  }
   async function undo() {
     if (!notice?.undo) return
     await send(notice.undo)
@@ -125,7 +133,7 @@ export default function Project({ user }: { user: User }) {
               <DropdownMenuTrigger render={<button type="button" />} aria-disabled={busy || undefined} aria-label="More actions" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "px-2 aria-disabled:opacity-40")}><MoreHorizontal className="h-4 w-4" /></DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
                 {x.guest_links_enabled && <DropdownMenuItem onClick={() => send(`/projects/${id}/rotate-token`, {}, "Rotate both guest links? The current links stop working at once; anyone using them needs the new ones.")}>Rotate guest links</DropdownMenuItem>}
-                {can.delete_project && <DropdownMenuItem variant="destructive" onClick={() => send(`/projects/${id}/delete`, {}, `Delete this project? It leaves every list at once; you have ${user.prefs?.undo_minutes ?? 5} minutes to undo.`)}>Delete project</DropdownMenuItem>}
+                {can.delete_project && <DropdownMenuItem variant="destructive" onClick={remove}>Delete project</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
           )}

@@ -635,7 +635,7 @@ export type SettingsData = {
   }
   backups: BackupsView | null
   api_tokens: { id: number; name: string; created_by: string; created_at: string; expires_at: string; last_used_at: string | null; revoked_at: string | null; scope: string }[]
-  audit_archives: { name: string; size: number }[]
+  audit_archives: { name: string; kind: string; size: number }[]
   public_url_set: boolean
   policies: Policy[]
   sso: { client_id: string | null; tenant_id: string | null; has_secret: boolean; configured: boolean; enforced: boolean; redirect_uri: string; password_admins: number }

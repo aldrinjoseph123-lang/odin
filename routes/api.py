@@ -199,9 +199,11 @@ def api_settings():
 
 def _audit_archives():
     import os
-    from services.retention import archive_dir
-    folder = archive_dir()
-    return [{"name": n, "size": os.path.getsize(os.path.join(folder, n))} for n in sorted(os.listdir(folder), reverse=True) if n.endswith(".csv")][:50]
+    from services.retention import archive_dir, evidence_dir
+    rows = []
+    for folder, kind, keep in ((archive_dir(), "Audit", lambda n: n.endswith(".csv")), (evidence_dir(), "Sign-off evidence", lambda n: True)):
+        rows += [{"name": n, "kind": kind, "size": os.path.getsize(os.path.join(folder, n))} for n in sorted(os.listdir(folder), reverse=True) if keep(n)][:50]
+    return rows
 
 
 def _backups_view():
