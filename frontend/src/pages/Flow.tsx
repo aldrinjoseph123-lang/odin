@@ -22,7 +22,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { pickerHint } from "@/lib/workload"
-import { ApiError, addTask, postForm, decideApproval, deleteTask, editTask, flow, flowDetail, toggleTask, workloadWeek, type ApprovalStatus, type AskKind, type AskQuestion, type ClosedRollout, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User, type WorkloadWeek } from "@/lib/api"
+import { ApiError, addTask, postForm, decideApproval, requestApproval, deleteTask, editTask, flow, flowDetail, toggleTask, workloadWeek, type ApprovalStatus, type AskKind, type AskQuestion, type ClosedRollout, type FlowData, type FlowDetail, type FlowRow, type FlowTask, type User, type WorkloadWeek } from "@/lib/api"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
@@ -591,6 +591,17 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
       document.querySelector<HTMLElement>("[data-pane-title]")?.focus()   // the decision's section is gone (P2-41)
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not record the decision") } finally { setBusy(false) }
   }
+  // Re-request: after a decline, or with no open request for this stage, the project manager asks the approver again
+  const here = d.approval?.stage === d.stage ? d.approval : null
+  const canAsk = d.can_move && d.customer_approval && !!d.approver && !!d.next_stage && (!here || here.status === "declined" || here.status === "superseded")
+  async function ask() {
+    setBusy(true); setErr(null)
+    try {
+      await requestApproval(d.id)
+      toast(`Asked ${d.approver?.name ?? "the approver"} to approve ${d.stage}`)
+      await reload()
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not ask for the approval") } finally { setBusy(false) }
+  }
   const open = d.tasks.filter((t) => !t.done)
   // what can be done now comes first; a task waiting on open work only when nothing else is left
   const next = nextUp(open.filter((t) => !t.blocked_by?.length), d.stage) ?? nextUp(open, d.stage)
@@ -766,6 +777,13 @@ export function Detail({ d, reload, onMoved, onClose, standalone = false, report
         )}
         {d.approval && d.approval.stage === d.stage && d.approval.status !== "pending" && d.approval.status !== "superseded" && (
           <p className="text-[13px] text-muted-foreground">{d.stage} {d.approval.status} by {d.approval.decided_by}{d.approval.comment ? ` · ${d.approval.comment}` : ""}</p>
+        )}
+        {/* one named approver decides (services/approvals.py); everyone else sees who it waits on */}
+        {d.approval && d.approval.stage === d.stage && d.approval.status === "pending" && !d.can_approve && d.approver && (
+          <p className="text-[13px] text-muted-foreground">Waiting on {d.approver.name} to approve {d.stage}</p>
+        )}
+        {canAsk && (
+          <Button size="sm" variant="outline" loading={busy} onClick={() => void ask()}>{here ? "Re-request approval" : "Ask for approval"}</Button>
         )}
         {d.signoff?.awaiting_me && (
           <section className="rounded-lg bg-warn-soft p-3">

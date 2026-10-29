@@ -2007,7 +2007,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         with self.raw_db() as db:
             self.assertIsNone(db.execute("SELECT 1 FROM login_links WHERE token_hash='stale'").fetchone())
 
-    def test_customer_approval_is_optional_per_project_and_only_the_customer_decides(self):
+    def test_customer_approval_is_optional_per_project_and_only_the_approver_decides(self):
         self.new_project(name="Plain", client="Acme")
         self.new_project(name="Careful", client="Globex", customer_approval="1")
         with self.raw_db() as db:
@@ -2050,16 +2050,22 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         ann.post("/api/projects/2/approvals/2", json={"decision": "declined", "comment": "Not yet"})
         with self.raw_db() as db:
             self.assertEqual([r[0] for r in db.execute("SELECT status FROM stage_approvals ORDER BY id")], ["approved", "declined"])
-        # a change while a request is still open supersedes it
-        self.client.post("/api/projects/2/stage", json={"stage": stages[3]})
+        # a decline pauses the stage (29 Oct 2026): the next move waits for the customer, or a typed override
+        r = self.client.post("/api/projects/2/stage", json={"stage": stages[3]})
+        self.assertEqual(r.status_code, 409)
+        self.assertIn(f"The customer declined {stages[2]}: Not yet", r.get_json()["error"])
+        self.assertEqual(self.client.post("/api/projects/2/stage", json={"stage": stages[3], "override": "Agreed on the call"}).status_code, 200)
+        # a change while a request is still open withdraws it, and the approver is told
         self.client.post("/api/projects/2/stage", json={"stage": stages[4]})
         with self.raw_db() as db:
             self.assertEqual([r[0] for r in db.execute("SELECT status FROM stage_approvals ORDER BY id")], ["approved", "declined", "superseded", "pending"])
-        # switch it off on edit: no new requests
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notifications n JOIN users u ON u.id = n.user_id "
+                                        "WHERE u.name = 'Ann' AND n.body LIKE 'No longer needed%'").fetchone()[0], 1)
+        # switch it off on edit: the open request is withdrawn, and no new ones
         self.client.post("/projects/2/edit", data={"name": "Careful", "client": "Globex"})
         self.client.post("/api/projects/2/stage", json={"stage": stages[5]})
         with self.raw_db() as db:
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM stage_approvals").fetchone()[0], 4)
+            self.assertEqual([r[0] for r in db.execute("SELECT status FROM stage_approvals ORDER BY id")], ["approved", "declined", "superseded", "superseded"])
 
     # ---- Phase 5: project reports, drafted then owned by the PM -------------
 

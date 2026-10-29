@@ -233,7 +233,9 @@ export type FlowDetail = {
   participants: { id: number; user_id: number; name: string; role: string; avatar_url: string | null }[]
   assignable: { id: number; name: string }[]; can_edit: boolean; me: number; can_override?: boolean; doc_categories?: string[]
   customer_approval: boolean; can_approve: boolean
-  approval: { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null; chases?: number } | null
+  approval: FlowApproval | null
+  // the rollout's one named approver (services/approvals.py): only they decide
+  approver?: { id: number; name: string } | null
   signoff?: SignoffState
   // reminders Odin sent the signatory (services/chasers.py), staff only; mute or follow (services/notifications.py)
   signoff_chases?: number
@@ -243,11 +245,14 @@ export type FlowDetail = {
 }
 export type Watch = { can: "mute" | "follow" | null; on: boolean }
 export const setWatch = (projectId: number, on: boolean) => post<Watch>(`/api/projects/${projectId}/watch`, { on })
-export type GateReason = { stage: string; kind: "tasks" | "document"; count?: number; category?: string; text: string }
+export type GateReason = { stage: string; kind: "tasks" | "document" | "declined"; count?: number; category?: string; text: string }
 // what a stage asks before a rollout leaves it
 export type StageGate = { gate_tasks: boolean; required_docs: string[] }
 export const decideApproval = (projectId: number, approvalId: number, decision: "approved" | "declined", comment = "") =>
   post<{ ok: true }>(`/api/projects/${projectId}/approvals/${approvalId}`, { decision, comment })
+export type FlowApproval = { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null; chases?: number }
+// Re-request: ask the approver again for the current stage (after a decline or a withdrawn request)
+export const requestApproval = (projectId: number) => post<FlowApproval>(`/api/projects/${projectId}/approvals/request`)
 async function getJson<T>(path: string): Promise<T> {
   const res = await call(path)
   // the server's own words when it gave some (review P3-30); a proxy's HTML error page gives none
@@ -580,6 +585,7 @@ export type ProjectExtras = {
   id: number; name: string; owner_id: number
   details: Record<string, string | null>
   customer_approval: boolean
+  approver?: { id: number; name: string } | null
   guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean; guest_links_expire: string | null
   intake_pending?: boolean   // a CRM intake waiting for a project manager (staff only)
   stage_rows: ({ id: number; name: string; sla_days?: number | null } & StageGate)[]   // no SLAs for partners and customers
@@ -830,7 +836,7 @@ export type ProjectFormData = {
   mode: "new" | "duplicate" | "edit"; id: number | null; me: number
   // who may manage a project (they can move stages); can_lead: whether you can yourself
   leads: { id: number; name: string }[]; can_lead: boolean
-  project: Partial<Record<string, string | null>> & { customer_approval?: boolean; stage_template_id?: number | null; owner_id?: number }
+  project: Partial<Record<string, string | null>> & { customer_approval?: boolean; stage_template_id?: number | null; owner_id?: number; approver_id?: number | null }
   defaults: { stage_template_id: number | null; customer_approval: boolean }
   via_options: string[]; delivery_modes: string[]
   account_managers: { name: string; email: string | null }[]
@@ -838,6 +844,8 @@ export type ProjectFormData = {
   vendors: string[]; products: { name: string; vendor: string }[]; outsourcers: { name: string; email: string | null }[]
   templates: { id: number; name: string }[]; users: { id: number; name: string }[]
   custom_fields: ProjectField[]
+  // who may be the approver: the rollout's active Customer contacts (an edit only)
+  customers?: { id: number; name: string }[]
 }
 export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/project-form${query ? `?${query}` : ""}`)
 

@@ -211,6 +211,7 @@ export default function Project({ user }: { user: User }) {
               return <div key={k} className="contents"><dt className="text-muted-foreground">{label}</dt><dd>{k.endsWith("_date") && x.details[k] ? fmtWhen(x.details[k]) : (x.details[k] ?? "—")}{email ? <span className="text-muted-foreground"> · {email}</span> : null}</dd></div>
             })}
             <dt className="text-muted-foreground">Customer approval</dt><dd>{x.customer_approval ? "Asked on every stage change" : "Off"}</dd>
+            {x.customer_approval && <><dt className="text-muted-foreground">Approver</dt><dd>{x.approver?.name ?? "Nobody yet: add the customer's contact to the team as Customer"}</dd></>}
           </dl>
           <FieldValues projectId={id} />
         </Panel>

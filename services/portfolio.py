@@ -33,10 +33,13 @@ def plans(projects):
             "ORDER BY r.status IN ('closed', 'decided'), CASE r.kind WHEN 'blocker' THEN 0 WHEN 'issue' THEN 1 WHEN 'risk' THEN 2 ELSE 3 END, "
             "CASE r.impact WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, r.due_date IS NULL, r.due_date, r.id", ids):
         raid.setdefault(r["project_id"], []).append(dict(r) | {"customer_visible": bool(r["customer_visible"]), "open": r["status"] not in raid_service.DONE})
+    from services import approvals
+    declined = approvals.declined_many(db, ids)
     out = {}
     for p in projects:
         every = raid.get(p["id"], [])
-        out[p["id"]] = (plan_service.build(p, stage_rows.get(p["id"]) or [], notes.get(p["id"], []), [r for r in every if r["open"]]), every)
+        out[p["id"]] = (plan_service.build(p, stage_rows.get(p["id"]) or [], notes.get(p["id"], []), [r for r in every if r["open"]],
+                                           declined=declined.get(p["id"])), every)
     return out
 
 
