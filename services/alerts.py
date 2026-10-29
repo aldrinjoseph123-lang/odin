@@ -178,8 +178,10 @@ def build_alerts(projects):
     today = local_today()
     stage_lists = stages_for_projects([p["id"] for p in projects])
     alerts = {"project_overdue": [], "project_due_soon": [], "stage_sla_breach": [], "stale": [],
-              "approval_waiting": [], "blocker_open": [], "task_unowned": [], "customer_quiet": [], "milestone_missed": []}
+              "approval_waiting": [], "blocker_open": [], "task_unowned": [], "customer_quiet": [], "milestone_missed": [], "task_stalled": []}
     bottlenecks = _bottlenecks([p["id"] for p in projects], thresholds, today)
+    from services import recurrence
+    stalled = recurrence.stalled_in(get_db(), [p["id"] for p in projects], today)   # the two-open cap left a series unticked
     missed = missed_projects([p["id"] for p in projects], thresholds.get("milestone_missed", DEFAULT_ALERT_TYPE_SETTINGS["milestone_missed"])["threshold_days"], today)
     for p in projects:
         rows = stage_lists.get(p["id"]) or []
@@ -199,6 +201,8 @@ def build_alerts(projects):
             alerts[rule].append(p)
         if p["id"] in missed:
             alerts["milestone_missed"].append(p)
+        if p["id"] in stalled:
+            alerts["task_stalled"].append(p)
     return alerts
 
 

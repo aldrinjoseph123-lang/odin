@@ -896,7 +896,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(d["templates"][0]["projects"], 1); self.assertEqual(len(d["templates"][0]["stages"]), 8)
         self.assertIn("Client PO", [x["name"] for x in d["doc_categories"]])
         self.assertEqual([a["key"] for a in d["alerts"]], ["project_overdue", "project_due_soon", "stage_sla_breach", "stale",
-                                                         "approval_waiting", "blocker_open", "task_unowned", "customer_quiet", "milestone_missed"])
+                                                         "approval_waiting", "blocker_open", "task_unowned", "customer_quiet", "milestone_missed", "task_stalled"])
         self.assertEqual(d["alerts"][1]["threshold_days"], 7); self.assertTrue(d["alerts"][1]["notify_inapp"])
         self.assertFalse(d["m365"]["connected"]); self.assertEqual(d["m365"]["teams"], [])
         self.assertEqual(next(p for p in d["policies"] if p["key"] == "notify_email_enabled")["value"], False)

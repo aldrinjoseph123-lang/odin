@@ -32,6 +32,7 @@ def _format_alerts_html(alerts):
         "task_unowned": "Overdue tasks nobody owns",
         "customer_quiet": "Customer tasks overdue",
         "milestone_missed": "Milestones missed",
+        "task_stalled": "Repeating tasks stalled",
     }
     for key, label in labels.items():
         items = alerts.get(key) or []

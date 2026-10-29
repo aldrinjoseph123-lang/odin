@@ -205,7 +205,10 @@ def build(project, rows=None, notes=None, risks=None, tasks=None, declined=...):
     if declined is ...:
         from services import approvals
         declined = None if closed else approvals.declined(project, db)
-    health = _health(project, stages, cur, finish, risks, today, closed, has_plan, gate, declined)
+    from services import recurrence
+    stuck = recurrence.stalled(db, pid, today)
+    stuck = db.execute("SELECT title FROM tasks WHERE id = ?", (stuck[0],)).fetchone()["title"] if stuck else None
+    health = _health(project, stages, cur, finish, risks, today, closed, has_plan, gate, declined, stalled=stuck)
     return {"stages": stages, "finish": finish, "health": health, "pct_complete": pct, "has_plan": has_plan,
             "warning": past_target(max((s["plan_end"] for s in stages if s["plan_end"]), default=None), project["target_end_date"]),
             # every visit, revisits included, for the report's history
@@ -215,7 +218,7 @@ def build(project, rows=None, notes=None, risks=None, tasks=None, declined=...):
             "calendar": {"working": policy("count_working_days"), "week": sorted(cal[0]), "off": sorted(d.isoformat() for d in cal[1])}}
 
 
-def _health(project, stages, cur, finish, risks, today, closed, has_plan, gate=None, declined=None):
+def _health(project, stages, cur, finish, risks, today, closed, has_plan, gate=None, declined=None, stalled=None):
     """Red / amber / green with the reasons, and how far to trust the forecast.
     `gate`: what holds a move that is due now (internal; the customer's health passes none).
     `declined`: the customer's decline that pauses the stage (red; the customer's health passes none)."""
@@ -244,6 +247,8 @@ def _health(project, stages, cur, finish, risks, today, closed, has_plan, gate=N
         reasons_amber.append(f"Due to leave {c['name']}, held by its gate: {gate}.")
     if declined:
         reasons_red.append(f"The customer declined {declined['stage']}.")
+    if stalled:   # a repeating task nobody ticks: an earlier one is still open (services/recurrence.py)
+        reasons_amber.append(f"Repeating task stalled: {stalled}.")
     blockers = [r for r in risks if r["kind"] == "blocker"]
     high = [r for r in risks if r["kind"] in ("risk", "issue") and r["impact"] == "high"]
     if blockers:

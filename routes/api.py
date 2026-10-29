@@ -1438,9 +1438,10 @@ def api_project_flow(project_id):
         "SELECT t.*, u.name AS assignee_name, u.avatar AS assignee_avatar FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
         "WHERE t.project_id = ? ORDER BY t.done, t.due_date IS NULL, t.due_date, t.id", (project_id,),
     ).fetchall()
-    from services import task_links
+    from services import recurrence, task_links
     links = task_links.links_for(project_id, db)
     blocked = task_links.blocked_by(tasks, links)
+    stalled_ids = set() if session.get("kind") == "external" else set(recurrence.stalled(db, project_id))   # staff only
     if session.get("kind") == "external":   # the customer cut: their own asks only (services/asks.py), never the team's tasks
         tasks = [t for t in tasks if t["assignee_id"] == session["user_id"]]
         own = {t["id"] for t in tasks}   # and what holds them: their own only, never the team's (task_links.outsider_cut)
@@ -1471,6 +1472,7 @@ def api_project_flow(project_id):
                    "assignee_avatar_url": f"/users/{t['assignee_id']}/avatar/{t['assignee_avatar']}" if t["assignee_avatar"] else None,
                    "stage": t["stage"] if t["stage"] in stages else project["stage"],
                    "recurrence": t["recurrence"], "recur_until": t["recur_until"],   # Repeats (services/recurrence.py)
+                   "stalled": t["id"] in stalled_ids,   # an earlier occurrence is still open, so no next one is made
                    # finish-to-start (services/task_links.py): what it waits on, and the open ones that hold it
                    "estimate_hours": t["estimate_hours"], "waits_on": links.get(t["id"], []), "blocked_by": blocked.get(t["id"], []),
                    # what it asks for (services/asks.py): a tick, a document of one category, or a short form
