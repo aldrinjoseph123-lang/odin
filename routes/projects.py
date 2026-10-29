@@ -986,13 +986,31 @@ def project_delete(project_id):
     project = load_project(project_id)
     if not project:
         abort(404)
+    # a signed-off rollout is deleted for a reason, and its signed record is kept (product decision 29 Oct 2026)
+    from services import signoff
+    from services.notifications import admin_ids
+    signed, reason, kept = signoff.evidence(project_id), "", []
+    if signed:
+        try:
+            reason = text_field(request.form.get("reason"), 1000, "Reason", multiline=True)
+        except ValueError as e:
+            reason = ""
+            flash(str(e), "error")
+        if len(reason) < 10:
+            flash("Give a reason: this rollout is signed off.", "error")
+            return redirect(url_for("project_detail", project_id=project_id))
+        from services.retention import keep_evidence
+        kept = keep_evidence(project, signed, session, reason)
     soft_delete("projects", project_id)
     # its documents carry the project's own stamp, so undo brings back these
     # and not ones deleted on their own before (test report B4)
     db.execute("UPDATE documents SET deleted_at = (SELECT deleted_at FROM projects WHERE id = ?) WHERE project_id = ? AND deleted_at IS NULL",
                (project_id, project_id))
     db.commit()
-    audit_log("delete_project", "project", project_id, project["name"])
+    audit_log("delete_project", "project", project_id, project["name"], f"reason: {reason}; evidence kept: {', '.join(kept)}" if kept else None)
+    if kept:   # project_id None: the purge must not take the bell item with the rollout
+        notify_users(admin_ids(), "ops", None, f"Signed-off rollout deleted: {project['name']}",
+                     f"<p>{escape(session['user_name'])} deleted it. Reason: {escape(reason)}. The signed record is kept in signoff-archive.</p>", link="/audit-logs")
     offer_undo("undo_project", project_id=project_id)
     flash(f"Project deleted. Undo {undo_note()}")
     return redirect(url_for("board"))

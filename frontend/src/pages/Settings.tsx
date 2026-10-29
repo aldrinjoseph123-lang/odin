@@ -202,9 +202,9 @@ export default function Settings(_props: { user: User }) {
         {section === "audit" && (
           <>
             {policyForm("audit")}
-            <Panel title="Archives" hint="written nightly before rows are removed; included in every backup">
-              {data.audit_archives.length === 0 ? <EmptyState>Nothing archived yet: no row is older than the retention period.</EmptyState> : (
-                <ul className="grid grid-cols-1 gap-1 text-[13px]">{data.audit_archives.map((a) => <li key={a.name} className="flex justify-between gap-3"><span className="font-mono text-[12px]">{a.name}</span><span className="text-muted-foreground">{bytes(a.size)}</span></li>)}</ul>
+            <Panel title="Archives" hint="audit rows written nightly before they are removed, and the signed record of deleted rollouts; included in every backup">
+              {data.audit_archives.length === 0 ? <EmptyState>Nothing archived yet: no audit row is older than the retention period and no signed-off rollout was deleted.</EmptyState> : (
+                <ul className="grid grid-cols-1 gap-1 text-[13px]">{data.audit_archives.map((a) => <li key={a.name} className="flex justify-between gap-3"><span className="min-w-0 truncate font-mono text-[12px]" title={a.kind}>{a.name}</span><span className="shrink-0 text-muted-foreground">{a.kind} · {bytes(a.size)}</span></li>)}</ul>
               )}
               <p className="mt-3 text-[12px] text-muted-foreground">The full trail is on the <a href="/audit-logs" className="text-primary-text hover:underline">Audit log</a> page, with a CSV export.</p>
             </Panel>
