@@ -1127,7 +1127,7 @@ def api_flow():
         slas = sla_by_stage(own)
         sla = stage_sla_state(p, slas, terminal, now)
         schedule = schedule_status(p, soon_days=soon_days, terminal_stage=terminal)
-        state = _flow_state(p, sla, schedule)
+        state = _flow_state(p, sla if staff else None, schedule)   # SLAs are staff-only: an outsider never reads "over SLA"
         idle = _days_since(p["updated_at"], now)
         in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         at = stages.index(p["stage"]) if p["stage"] in stages else 0
@@ -1141,7 +1141,7 @@ def api_flow():
             "stage_index": stages.index(p["stage"]) if p["stage"] in stages else 0,
             "owner_name": p["owner_name"], "delivery_mode": p["delivery_mode"],
             "target_end_date": p["target_end_date"], "days_in_stage": None if in_stage is None else round(in_stage, 1),
-            "sla_days": slas.get(p["stage"]), "over_by": round(sla["over_by"], 1) if sla else None,
+            "sla_days": slas.get(p["stage"]) if staff else None, "over_by": round(sla["over_by"], 1) if sla and staff else None,
             "state": state, "open_tasks": p["open_tasks"], "total_tasks": p["total_tasks"],
             "late_tasks": p["late_tasks"], "late_since": p["late_since"],
             "next_task": next_task.get(p["id"]), "updated_at": p["updated_at"],
@@ -1387,7 +1387,7 @@ def api_project_flow(project_id):
         "delivery_mode": project["delivery_mode"], "outsourcer_name": None if external else project["outsourcer_name"],
         "owner_name": project["owner_name"], "stage": project["stage"], "stage_index": current,
         "next_stage": stages[current + 1] if current + 1 < len(stages) else None,
-        "state": _flow_state(project, sla, schedule), "over_by": round(sla["over_by"], 1) if sla and not external else None,
+        "state": _flow_state(project, None if external else sla, schedule), "over_by": round(sla["over_by"], 1) if sla and not external else None,
         "start_date": start, "target_end_date": project["target_end_date"],
         "days_left": (target - local_today()).days if target else None,
         "today": local_today().isoformat(),

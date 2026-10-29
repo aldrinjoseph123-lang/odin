@@ -72,11 +72,14 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
     return r.warning ? `${said} ${r.warning}` : said
   })
   const f = d.finish
-  const slas = d.stages.some((s) => s.sla_days !== undefined)   // the customer's cut carries none (routes/api.py api_plan)
+  // the customer's cut carries no SLAs, baseline or slip (routes/api.py api_plan): their columns and tile go with them
+  const slas = d.stages.some((s) => s.sla_days !== undefined)
+  const slips = d.stages.some((s) => s.slip_days !== undefined)
+  const baseline = f.vs_baseline_days !== undefined
   const tiles: { label: string; value: string; sub?: string; tone?: "bad" | "warn" | "ok" }[] = [
     { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: forecastTone(f.vs_target_days, f.target, d.today) },
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
-    { label: "Against baseline", value: f.vs_baseline_days == null ? "—" : slipText(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", tone: f.vs_baseline_days && f.vs_baseline_days > 0 ? "warn" : undefined },
+    ...(baseline ? [{ label: "Against baseline", value: f.vs_baseline_days == null ? "—" : slipText(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", tone: f.vs_baseline_days && f.vs_baseline_days > 0 ? "warn" as const : undefined }] : []),
     { label: "Complete", value: `${d.pct_complete}%`, sub: `confidence ${d.health.confidence}` },
   ]
   return (
@@ -84,7 +87,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
       {/* the verdict and its first reason sit in the page's title row; here only the full list, when there is more */}
       {d.health.reasons.length > 1 && <ul className="min-w-0 text-[13px] text-muted-foreground">{d.health.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
       <AIHealthWhy projectId={projectId} rag={d.health.rag} />
-      <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className={cn("mt-3 grid grid-cols-2 gap-3", tiles.length === 4 ? "xl:grid-cols-4" : "xl:grid-cols-3")}>
         {tiles.map((t) => (
           <div key={t.label} className="rounded-xl bg-muted/50 p-3">
             <div className="text-[12px] text-muted-foreground">{t.label}</div>
@@ -99,7 +102,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
       <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Dates per stage">
         <table className="w-full min-w-[720px] border-collapse text-[13px]">
           <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">
-            {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", ...(slas ? ["SLA"] : []), "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className={th}>{h}</th>)}
+            {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", ...(slas ? ["SLA"] : []), "Actual", "Forecast end", ...(slips ? ["Slip"] : [])].map((h) => <th key={h} className={th}>{h}</th>)}
           </tr></thead>
           <tbody>
             {d.stages.map((s, i) => {
@@ -124,7 +127,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
                   <td className={cn(td, "whitespace-nowrap")} title={s.forecast_reason ?? undefined}>{s.forecast_end ? fmtDate(s.forecast_end) : "—"}{s.forecast_reason && <><Link2 className="ml-1 inline h-3 w-3 text-warn" aria-hidden /><span className="sr-only"> (moved by a task it waits on)</span></>}</td>
                   {/* a finished stage's slip is history (muted); a running or coming stage that slips is amber;
                       red only once the target date itself has passed: red means overdue (critique 10 Oct) */}
-                  <td className={cn(td, "whitespace-nowrap", s.slip_days && s.slip_days > 0 && s.status !== "done" ? (forecastTone(s.slip_days, f.target, d.today) === "bad" ? "font-medium text-bad" : "text-warn") : "text-muted-foreground")}>{slipText(s.slip_days)}</td>
+                  {slips && <td className={cn(td, "whitespace-nowrap", s.slip_days && s.slip_days > 0 && s.status !== "done" ? (forecastTone(s.slip_days, f.target, d.today) === "bad" ? "font-medium text-bad" : "text-warn") : "text-muted-foreground")}>{slipText(s.slip_days ?? null)}</td>}
                 </tr>
               )
             })}

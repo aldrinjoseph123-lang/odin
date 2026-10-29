@@ -265,12 +265,12 @@ export type PlanStage = {
   id: number; name: string; position: number; sla_days?: number | null; status: "done" | "skipped" | "current" | "next"
   plan_start: string | null; plan_end: string | null; base_start: string | null; base_end: string | null
   actual_start: string | null; actual_end: string | null; forecast_start: string | null; forecast_end: string | null
-  planned_days?: number; actual_days: number | null; slip_days: number | null; suggested_start: string; suggested_end: string
+  planned_days?: number; actual_days: number | null; slip_days?: number | null; suggested_start: string; suggested_end: string
   forecast_reason?: string | null   // the task that moved the forecast through its links, when one did
 }
 export type PlanData = {
   stages: PlanStage[]; has_plan: boolean; baseline_at: string | null; today: string; closed: boolean; default_days: number; pct_complete: number; calendar?: WorkCalendar
-  finish: { forecast: string | null; planned: string | null; baseline: string | null; target: string | null; vs_target_days: number | null; vs_baseline_days: number | null; days_to_target: number | null }
+  finish: { forecast: string | null; planned: string | null; baseline: string | null; target: string | null; vs_target_days: number | null; vs_baseline_days?: number | null; days_to_target: number | null }   // no baseline for outsiders
   health: { rag: Rag; reasons: string[]; confidence: "high" | "medium" | "low" }
   changes: { stage: string | null; field: string; old: string | null; new: string | null; reason: string | null; author: string; created_at: string }[]
   can_edit: boolean; project: { id: number; name: string; start_date: string | null; target_end_date: string | null }

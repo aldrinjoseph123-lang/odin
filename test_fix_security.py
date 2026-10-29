@@ -833,6 +833,31 @@ class OutsiderCutTest(Base):
         self.assertEqual(self.client.get("/api/projects/1").get_json()["stage_rows"][0]["sla_days"], 3)
         self.assertEqual(self.client.get("/api/projects/1/plan").get_json()["stages"][0]["sla_days"], 3)
 
+    def test_the_flow_never_tells_an_outsider_a_rollout_is_over_sla(self):   # routes/api.py api_flow, api_project_flow
+        self.new_project(name="Slow", client="Acme")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        with self.raw_db() as db:
+            db.execute("UPDATE project_stages SET sla_days = 1"); db.execute("UPDATE projects SET stage_entered_at = '2026-01-05T09:00:00'"); db.commit()
+        ann = self._external_client("ann@acme.example")
+        row = lambda c: c.get("/api/flow").get_json()["rows"][0]   # noqa: E731
+        self.assertEqual(row(self.client)["state"], "over_sla")                   # staff: the SLA is theirs
+        self.assertEqual(self.client.get("/api/projects/1/flow").get_json()["state"], "over_sla")
+        self.assertEqual((row(ann)["state"], row(ann)["over_by"], row(ann)["sla_days"]), ("on_track", None, None))
+        self.assertEqual(ann.get("/api/flow").get_json()["counts"]["over_sla"], 0)
+        self.assertEqual(ann.get("/api/projects/1/flow").get_json()["state"], "on_track")
+
+    def test_search_shows_an_outsider_the_scope_the_scope_panel_shows(self):   # api_search "scope" mentions
+        self.new_project(name="Scoped", client="Acme")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        self.assertEqual(self.client.post("/api/projects/1/scope", json={"title": "Sensors at Site B", "detail": "500 endpoints"}, headers=self.csrf()).status_code, 200)
+        ann = self._external_client("ann@acme.example")
+        self.assertEqual([x["title"] for x in ann.get("/api/projects/1/scope").get_json()["items"]], ["Sensors at Site B"])   # the panel shows it to them
+        self.assertEqual([m["kind"] for m in ann.get("/api/search?q=Sensors").get_json()["mentions"]], ["scope"])         # so search may too
+        self.new_project(name="Other", client="Initech")   # not theirs: neither the panel nor search
+        self.client.post("/api/projects/2/scope", json={"title": "Sensors at Initech"}, headers=self.csrf())
+        self.assertEqual(ann.get("/api/projects/2/scope").status_code, 404)
+        self.assertEqual([m["project_id"] for m in ann.get("/api/search?q=Sensors").get_json()["mentions"]], [1])
+
     def test_a_vendor_link_write_never_names_the_outsourcer(self):   # P2, routes/guest._author
         import re
         self.new_project(name="V", client="Acme", delivery_mode="Outsourced", outsourcer_name="VendorCo", customer_approval="on")
