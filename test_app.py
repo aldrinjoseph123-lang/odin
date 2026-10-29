@@ -925,7 +925,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         fields = {f"{p}::{r}": "on" for p, roles in d["matrix"].items() for r, ok in roles.items() if ok}
         fields.pop("edit_project_stage::Member")
-        self.assertEqual(c.post("/settings/rbac", data=fields, headers=h).get_json()["messages"], ["Permissions updated"])
+        self.assertEqual(c.post("/settings/rbac", data={**fields, "matrix": "full"}, headers=h).get_json()["messages"], ["Permissions updated"])
         self.assertFalse(c.get("/api/settings/rbac").get_json()["matrix"]["edit_project_stage"]["Member"])
         self.assertTrue(c.get("/api/settings/rbac").get_json()["matrix"]["manage_users"]["Admin"])
         c.post("/settings/contacts/vendors/add", data={"name": "CrowdStrike"}, headers=h)
@@ -3690,7 +3690,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         self.assertEqual(c.post("/projects/1/delete").status_code, 403)
 
     def test_admin_cannot_strip_its_own_view_rights(self):
-        self.client.post("/settings/rbac", data={"manage_settings::Admin": "on"})   # everything else unticked
+        self.client.post("/settings/rbac", data={"manage_settings::Admin": "on", "matrix": "full", "confirm": "1"})   # everything else unticked
         self.assertEqual(self.client.get("/projects").status_code, 200)
         self.assertEqual(self.client.get("/board").status_code, 200)
 

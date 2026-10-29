@@ -71,7 +71,8 @@ def clean(body, project_id, existing=None):
     }
 
 
-def create(project_id, fields, author):
+def create(project_id, fields, author, commit=True):
+    """The new item's id. commit=False leaves it in the caller's transaction (the sign-off's reject)."""
     now = datetime.utcnow().isoformat()
     db = get_db()
     cur = db.execute(
@@ -79,7 +80,8 @@ def create(project_id, fields, author):
         "created_by, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (project_id, fields["kind"], fields["title"], fields["detail"], fields["impact"], fields["likelihood"], fields["status"], fields["owner_id"],
          fields["due_date"], fields["stage"], fields["resolution"], fields["customer_visible"], author, now, now, now if fields["status"] in DONE else None))
-    db.commit()
+    if commit:
+        db.commit()
     return cur.lastrowid
 
 

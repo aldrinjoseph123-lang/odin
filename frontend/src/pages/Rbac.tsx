@@ -6,6 +6,7 @@ import { checkbox, th } from "@/lib/ui"
 import { cn } from "@/lib/utils"
 import { ApiError, postForm, rbac, type RbacData, type User } from "@/lib/api"
 import { PageSkeleton, LoadError } from "@/components/PageSkeleton"
+import { askConfirm } from "@/lib/confirm"
 
 // "edit_project_stage" → "Edit project stage": the page speaks words, not code keys (test report UX-22)
 const words = (key: string) => key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ")
@@ -22,11 +23,19 @@ export default function Rbac(_props: { user: User }) {
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!data) return
+    // the route reads "<permission>::<role>" = "on" and saves only a whole matrix (matrix=full);
+    // locked cells are forced on server-side anyway
+    const fields: Record<string, string> = { matrix: "full" }
+    for (const p of data.permissions) for (const r of data.roles) if ((matrix[p]?.[r] || data.locked[p]?.includes(r)) && !data.forbidden?.[p]?.includes(r)) fields[`${p}::${r}`] = "on"
+    // switching off more than half of what is on is refused unless confirmed (the server counts the same way)
+    const on = data.permissions.flatMap((p) => data.roles.filter((r) => data.matrix[p]?.[r] && !data.locked[p]?.includes(r)).map((r) => `${p}::${r}`))
+    const going = on.filter((k) => !fields[k]).length
+    if (going * 2 > on.length) {
+      if (!(await askConfirm(`Switch off ${going} of the ${on.length} permissions that are on? Those roles lose them at once.`))) return
+      fields.confirm = "1"
+    }
     setBusy(true)
     try {
-      // the route reads "<permission>::<role>" = "on"; locked cells are forced on server-side anyway
-      const fields: Record<string, string> = {}
-      for (const p of data.permissions) for (const r of data.roles) if ((matrix[p]?.[r] || data.locked[p]?.includes(r)) && !data.forbidden?.[p]?.includes(r)) fields[`${p}::${r}`] = "on"
       const reply = await postForm("/settings/rbac", fields)
       { const said = reply.messages.join(" "); if (said) toast(said) }
       await load()
