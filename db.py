@@ -248,7 +248,7 @@ def _backfill_stage_entered_at(db):
 # PRAGMA user_version. Raise SCHEMA_VERSION in any release that adds a table,
 # column, permission or alert type. A database above it was written by a newer
 # release, so this code is a rollback: it boots, but deletes nothing.
-SCHEMA_VERSION = 4   # v2.0.2: one live rollout per deal id, project_stages(project_id, position)
+SCHEMA_VERSION = 5   # v2.1.0: projects.approver_id, alert type task_stalled
 # 3 = v2.0.0: fields, gates, task links, asks, milestones, rules, workload, intake, notification kinds
 
 # Names retired from PERMISSIONS / ALERT_TYPES; their rows are deleted on boot.
