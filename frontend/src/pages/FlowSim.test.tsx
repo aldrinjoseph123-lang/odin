@@ -119,3 +119,24 @@ describe("the note box in the Flow detail", () => {
     expect(box).toHaveValue("x")
   })
 })
+
+describe("a repeating task nobody ticks", () => {
+  const task = (id: number, stalled: boolean) => ({ id, title: `Weekly call ${id}`, done: false, due_date: "2026-09-20", assignee: null, assignee_id: null, assignee_avatar_url: null, stage: "Scoping",
+    recurrence: "weekly", recur_until: null, stalled, kind: "task", ask_category: null, questions: [], waits_on: [], blocked_by: [] })
+  const detail = {
+    id: 1, name: "Late one", client: "Globex", vendor_name: null, product_name: null, delivery_mode: "Direct", outsourcer_name: null, owner_name: "Admin User",
+    stage: "Scoping", stage_index: 1, next_stage: "Sensor pilot", state: "on_track", over_by: null, start_date: "2026-09-01", target_end_date: "2026-12-01", days_left: 60,
+    today: "2026-09-29", stages: flowRow({}).stages.map((name, i) => ({ name, status: i < 1 ? "done" : i === 1 ? "current" : "next", sla_days: null, entered_at: null, days: null })),
+    tasks: [task(1, false), task(2, true)], documents: 0, recent_notes: [], can_move: false, participants: [], assignable: [], can_edit: false, me: 1, customer_approval: false, can_approve: false, approval: null,
+  } as unknown as api.FlowDetail
+
+  it("says so on the stalled row only, in the warn colour", async () => {
+    vi.mocked(api.flowDetail).mockResolvedValue(detail)
+    mount("/board?rollout=1")
+    const stalled = await screen.findByText(/stalled: an earlier one is still open/)
+    expect(stalled).toHaveTextContent("repeats every week · stalled: an earlier one is still open")
+    expect(stalled).toHaveClass("text-warn")
+    expect(screen.getAllByText(/^repeats every week/)).toHaveLength(2)
+    expect(screen.getAllByText(/stalled/)).toHaveLength(1)
+  })
+})

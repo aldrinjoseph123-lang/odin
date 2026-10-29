@@ -79,6 +79,28 @@ def _open_earlier(db, task_id):
         "SELECT 1 FROM tasks WHERE id IN (SELECT id FROM up) AND done = 0 LIMIT 1", (task_id,)).fetchone() is not None
 
 
+def stalled_in(db, project_ids, today=None):
+    """{project id: [task ids]} of the open repeating tasks that are past due with no
+    next occurrence because an earlier one is still open (the cap in spawn_next):
+    a series nobody is ticking. Shown on the rollout, in its health and as an alert."""
+    if not project_ids:
+        return {}
+    today = (today or local_today(db)).isoformat()
+    out = {}
+    for r in db.execute(
+            "SELECT t.id, t.project_id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.recurrence IS NOT NULL AND t.recur_spawned = 0 "
+            f"AND t.done = 0 AND t.due_date < ? AND p.deleted_at IS NULL AND {PROJECT_OPEN_SQL} AND t.project_id IN ({','.join('?' * len(project_ids))}) ORDER BY t.id",
+            (today, *project_ids)):
+        if _open_earlier(db, r["id"]):
+            out.setdefault(r["project_id"], []).append(r["id"])
+    return out
+
+
+def stalled(db, project_id, today=None):
+    """The stalled task ids of one rollout, in order."""
+    return stalled_in(db, [project_id], today).get(project_id, [])
+
+
 def spawn_next(db, task_id, today=None, actor=None):
     """Make the next occurrence of a repeating task, once. Returns its id, or
     None: not repeating, already made, the rollout is closed or gone, the last

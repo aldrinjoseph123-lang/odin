@@ -199,7 +199,7 @@ export type Recurrence = "weekly" | "fortnightly" | "monthly"
 export type TaskWait = { id: number; title: string; late_by: number }
 export type FlowTask = { id: number; title: string; done: boolean; done_at?: string | null; due_date: string | null; assignee: string | null; assignee_id: number | null; assignee_avatar_url: string | null; stage: string
   estimate_hours?: number | null; waits_on?: number[]; blocked_by?: TaskWait[]
-  recurrence?: Recurrence | null; recur_until?: string | null } & TaskAsk
+  recurrence?: Recurrence | null; recur_until?: string | null; stalled?: boolean } & TaskAsk
 // What a task asks for (services/asks.py): a tick, a document of one category, or a short form.
 // On someone outside (a customer, reseller or contractor) it is an ask: theirs alone.
 export type AskKind = "task" | "upload" | "form"

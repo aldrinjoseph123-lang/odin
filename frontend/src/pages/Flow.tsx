@@ -201,7 +201,7 @@ function StageTasks({ d, stage, done, reload, onError, quiet = false }: { d: Flo
                   : <span title={t.title} className={cn("line-clamp-3", t.done && "line-through")}>{t.title}</span>}
                 {/* the person the task is on ticks it; its date is the managers' (server: task_edit) */}
                 {t.due_date && !t.done && <DueDate due={t.due_date} today={d.today} />}
-                {t.recurrence && !t.done && <span className="block text-[11px] text-muted-foreground">repeats {EVERY[t.recurrence]}{t.recur_until === "stage" ? " until the stage is done" : t.recur_until ? ` until ${fmtDate(t.recur_until)}` : ""}</span>}
+                {t.recurrence && !t.done && <span className={cn("block text-[11px]", t.stalled ? "text-warn" : "text-muted-foreground")}>repeats {EVERY[t.recurrence]}{t.recur_until === "stage" ? " until the stage is done" : t.recur_until ? ` until ${fmtDate(t.recur_until)}` : ""}{t.stalled && " · stalled: an earlier one is still open"}</span>}
                 {waiting(t) && <WaitsOn waits={waiting(t)!} />}
               </span>
               {t.assignee && <UserAvatar name={t.assignee} url={t.assignee_avatar_url} className="h-5 w-5" textClass="text-[11px]" />}

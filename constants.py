@@ -154,6 +154,7 @@ ALERT_TYPE_TITLES = {
     "task_unowned": "Overdue task with no owner",
     "customer_quiet": "Customer task overdue",
     "milestone_missed": "Milestone missed",
+    "task_stalled": "Repeating task stalled",
 }
 
 ALERT_TYPES = set(ALERT_TYPE_TITLES)   # every type with a title; boot deletes only db.RETIRED_ALERT_TYPES, so a newer release's types survive a rollback
@@ -172,6 +173,8 @@ DEFAULT_ALERT_TYPE_SETTINGS = {
     "customer_quiet": {"severity": "warning", "threshold_days": 3, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
     # milestones (W5): a dated commitment passed undone; the days are the grace after its date (0: raised the day after)
     "milestone_missed": {"severity": "warning", "threshold_days": 0, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
+    # a repeating task whose earlier occurrence is still open (the two-open cap): raised once it is past due
+    "task_stalled": {"severity": "warning", "threshold_days": 0, "notify_email": 0, "notify_teams": 0, "notify_inapp": 1},
 }
 
 # Columns added to projects / users after their original CREATE TABLE — applied
