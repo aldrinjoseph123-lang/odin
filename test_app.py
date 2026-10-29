@@ -4015,7 +4015,8 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
                 self.assertEqual(db.execute("SELECT stage FROM projects WHERE id=1").fetchone()[0], stages[1])
                 row = db.execute("SELECT username, details FROM audit_logs WHERE action='guest_stage_change'").fetchone()
             self.assertEqual(row["username"], "guest:vendor")
-            self.assertIn("Sam · VendorCo", row["details"])
+            self.assertIn("Sam (vendor)", row["details"])
+            self.assertNotIn("VendorCo", row["details"])   # the author reaches outsiders, who never see the outsourcer
             self.assertTrue(notify.called)                               # owner hears about it
 
     def test_customer_link_is_view_and_comment_only(self):
@@ -4560,7 +4561,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             note = db.execute("SELECT author, prev_stage FROM status_notes WHERE stage = ? ORDER BY id DESC", (stages[1],)).fetchone()
             approval = db.execute("SELECT stage, status FROM stage_approvals WHERE project_id = 1").fetchone()
         self.assertEqual((note["prev_stage"], approval["stage"], approval["status"]), (stages[0], stages[1], "pending"))   # history and the customer's approval
-        self.assertIn("vendor link", note["author"])
+        self.assertEqual(note["author"], "Sam (vendor)")   # never the outsourcer's name: the customer reads it
         self.assertIn("stage", [k for k, _ in self._bell(member)])                     # the team hears of it
         self.assertEqual([k for k, _ in self._bell(cara)][-1], "approval")             # #20: the customer is asked as an approval
 

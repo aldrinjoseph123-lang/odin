@@ -31,7 +31,9 @@ def gather(project_id):
     d = report_data.build(project, "customer")
     today = local_today()
     week_ago = (today - timedelta(days=7)).isoformat()
-    f, cur = d["finish"], next((x for x in d["history"]["dwell"] if x["status"] == "current"), None)
+    f, cur = d["finish"], next((x for x in d["stages"] if x["status"] == "current"), None)
+    # the customer's cut carries progress per stage, never late counts (report_data._customer_cut)
+    total, done = (sum(b[k] for b in d["work"]["by_stage"]) for k in ("total", "done"))
     moves = db.execute("SELECT prev_stage, stage, created_at FROM status_notes WHERE project_id = ? AND prev_stage IS NOT NULL AND created_at >= ? ORDER BY created_at",
                        (project_id, week_ago)).fetchall()
     return {
@@ -41,14 +43,14 @@ def gather(project_id):
                     "percent_complete": d["pct_complete"], "health": PLAN_WORDS.get(d["health"]["rag"], d["health"]["rag"]),
                     "target_date": _fmt(f.get("target")), "forecast_finish": _fmt(f.get("forecast")),
                     "days_late_against_target": f.get("vs_target_days")},
-        "current_stage": {"name": project["stage"], "days_in_stage": cur["days"] if cur else None},
+        "current_stage": {"name": project["stage"], "days_in_stage": cur["actual_days"] if cur else None},
         "this_week": {
             "notes": [{"date": _fmt(n["created_at"]), "stage": n["stage"], "text": n["note"][:500]} for n in d["history"]["notes"] if n["created_at"][:10] >= week_ago][:10],
             "stage_moves": [{"date": _fmt(m["created_at"]), "from": m["prev_stage"], "to": m["stage"]} for m in moves],
         },
         "open_risks_and_issues": [{"kind": r["kind"], "title": r["title"], "impact": r["impact"], "status": r["status"], "due": _fmt(r["due_date"])}
                                   for r in d["raid"] if r["open"]][:8],
-        "tasks": {"open": d["work"]["total"] - d["work"]["done"], "done": d["work"]["done"], "total": d["work"]["total"], "overdue": d["work"]["late"]},
+        "tasks": {"open": total - done, "done": done, "total": total},
         "waiting_on_customer": {"approval": {"stage": d["needs"]["approval"]["stage"], "asked": _fmt(d["needs"]["approval"]["requested_at"])} if d["needs"]["approval"] else None,
                                 "tasks": [t["title"] for t in d["needs"]["tasks"]][:6]},
         "next_stages": [{"name": s["name"], "start": _fmt(s["forecast_start"]), "end": _fmt(s["forecast_end"])} for s in d["stages"] if s["status"] == "next"][:2],
@@ -73,7 +75,7 @@ def fixture():
         },
         "open_risks_and_issues": [{"kind": "risk", "title": "Log volume above the licence", "impact": "medium", "status": "open", "due": None},
                                   {"kind": "blocker", "title": "No building access at Site B", "impact": "high", "status": "open", "due": "10 Oct 2026"}],
-        "tasks": {"open": 7, "done": 4, "total": 11, "overdue": 1},
+        "tasks": {"open": 7, "done": 4, "total": 11},
         "waiting_on_customer": {"approval": {"stage": "Design", "asked": "29 Sep 2026"}, "tasks": ["Grant building access at Site B"]},
         "next_stages": [{"name": "Build", "start": "10 Oct 2026", "end": "17 Oct 2026"}],
     }

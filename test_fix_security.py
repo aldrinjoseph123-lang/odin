@@ -769,5 +769,105 @@ class SecretKeyTest(Base):   # review 15 Oct 2026
             self.assertEqual(policy("teams_webhook_url"), "https://hook.example/old?sig=x")
 
 
+class OutsiderCutTest(Base):
+    """The 28-29 Oct 2026 lifecycle simulation, "Access and the outsider's cut":
+    an outsider never sees an internal task, the SLAs, the team or the
+    outsourcer, and cannot tick work on a closed rollout."""
+
+    def _task(self, title, assignee=None):
+        self.client.post("/projects/1/tasks", data={"title": title, **({"assignee_id": str(assignee)} if assignee else {})})
+        with self.raw_db() as db:
+            return db.execute("SELECT id FROM tasks WHERE title = ?", (title,)).fetchone()[0]
+
+    def test_search_finds_only_the_outsiders_own_tasks(self):   # P1, routes/api.py api_search
+        self.new_project(name="Firewall", client="Acme")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        self._task("Firewall rule audit (internal)")
+        self._task("Firewall change window approval", self.uid("ann@acme.example"))
+        ann = self._external_client("ann@acme.example")
+        titles = lambda c: [t["title"] for t in c.get("/api/search?q=Firewall").get_json()["tasks"]]   # noqa: E731
+        self.assertEqual(titles(ann), ["Firewall change window approval"])
+        self.assertEqual(sorted(titles(self.client)), ["Firewall change window approval", "Firewall rule audit (internal)"])
+
+    def test_signoff_draft_and_sent_version_carry_no_internal_task(self):   # P2, services/signoff.draft
+        c, h, ann, _stages = T.ContactsAndProjectMetaTestCase._signoff_setup(self)
+        self._task("Rotate the vendor root keys")
+        self._task("Send the site access list", ann)
+        draft = c.get("/api/projects/1/signoff").get_json()["draft"]
+        self.assertEqual(draft["outstanding"], ["Send the site access list"])
+        r = c.post("/api/projects/1/signoff", json={"summary": "Done.", "signer_id": ann, "counter_id": 1, "delivered": ["All"],
+                                                   "outstanding": draft["outstanding"]}, headers=h)
+        self.assertEqual(r.status_code, 200)
+        with self.raw_db() as db:
+            content = db.execute("SELECT content FROM signoffs WHERE project_id = 1").fetchone()[0]
+        self.assertIn("Send the site access list", content)
+        self.assertNotIn("Rotate the vendor root keys", content)
+
+    def test_customer_cut_has_no_team_dwell_late_counts_or_slas(self):   # P2, services/report_data + /api/projects/<id>
+        self.new_project(name="Firewall", client="Acme")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        self._task("Late internal task")
+        with self.raw_db() as db:
+            db.execute("UPDATE tasks SET due_date = '2020-01-01'"); db.execute("UPDATE project_stages SET sla_days = 3"); db.commit()
+        self.assertEqual(self.client.post("/api/projects/1/rollout-report", json={"summary": "On track."}, headers=self.csrf()).status_code, 200)
+        ann = self._external_client("ann@acme.example")
+
+        def outsider_cut(d):
+            self.assertNotIn("team", d); self.assertNotIn("dwell", d["history"])
+            for k in ("late", "total", "done"):
+                self.assertNotIn(k, d["work"])
+            self.assertTrue(d["work"]["by_stage"]); self.assertTrue(all("late" not in b for b in d["work"]["by_stage"]))
+            self.assertTrue(all("sla_days" not in s and "planned_days" not in s for s in d["stages"]))
+        outsider_cut(ann.get("/api/projects/1/rollout-report").get_json()["data"])                         # a saved version
+        outsider_cut(self.client.get("/api/projects/1/rollout-report?audience=customer").get_json()["data"])   # the live customer copy
+        internal = self.client.get("/api/projects/1/rollout-report?audience=internal").get_json()["data"]
+        self.assertTrue(internal["team"]); self.assertTrue(internal["history"]["dwell"]); self.assertEqual(internal["work"]["late"], 1)
+        self.assertEqual(internal["stages"][0]["sla_days"], 3)
+        # the PDF renders the cut it is given
+        for c, q in ((ann, ""), (self.client, "?audience=customer"), (self.client, "?audience=internal")):
+            self.assertEqual(c.get(f"/projects/1/report.pdf{q}").status_code, 200)
+        # the rollout page: no stage SLA in its stage rows, plan or flow
+        self.assertTrue(all("sla_days" not in s for s in ann.get("/api/projects/1").get_json()["stage_rows"]))
+        self.assertTrue(all("sla_days" not in s for s in ann.get("/api/projects/1/plan").get_json()["stages"]))
+        self.assertTrue(all(s["sla_days"] is None for s in ann.get("/api/projects/1/flow").get_json()["stages"]))
+        self.assertEqual(self.client.get("/api/projects/1").get_json()["stage_rows"][0]["sla_days"], 3)
+        self.assertEqual(self.client.get("/api/projects/1/plan").get_json()["stages"][0]["sla_days"], 3)
+
+    def test_a_vendor_link_write_never_names_the_outsourcer(self):   # P2, routes/guest._author
+        import re
+        self.new_project(name="V", client="Acme", delivery_mode="Outsourced", outsourcer_name="VendorCo", customer_approval="on")
+        self._invite(1, "ann@acme.example", "Customer", "Ann")
+        with self.raw_db() as db:
+            tok = db.execute("SELECT access_token FROM projects WHERE id=1").fetchone()[0]
+            stages = [r[0] for r in db.execute("SELECT name FROM project_stages WHERE project_id=1 ORDER BY position")]
+        g = app_module.app.test_client()
+        csrf = re.search(r'name="_csrf" value="([^"]+)"', g.get(f"/guest/{tok}").data.decode()).group(1)
+        g.post(f"/guest/{tok}/note", data={"note": "Cabling done", "author": "Sam", "_csrf": csrf})
+        g.post(f"/guest/{tok}/stage", data={"stage": stages[1], "author": "Sam", "_csrf": csrf})
+        ann = self._external_client("ann@acme.example")
+        page = ann.get("/api/projects/1").get_json()
+        self.assertIn("Sam (vendor)", [n["author"] for n in page["notes"]])
+        self.assertNotIn("VendorCo", json.dumps(page))
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT requested_by FROM stage_approvals WHERE project_id = 1").fetchone()[0], "Sam (vendor)")
+        self.assertEqual(self.client.get("/api/projects/1").get_json()["details"]["outsourcer_name"], "VendorCo")   # staff still see it
+
+    def test_a_partner_cannot_tick_tasks_on_a_closed_rollout(self):   # P3, routes/projects.task_toggle
+        self.new_project(name="Done", client="Acme")
+        self._invite(1, "raj@vendor.example", "Contractor", "Raj")
+        raj_id = self.uid("raj@vendor.example")
+        open_one, closed_one = self._task("Rack the sensors", raj_id), self._task("Label the cables", raj_id)
+        raj = self._external_client("raj@vendor.example")
+        h = self.csrf(raj)
+        self.assertEqual(raj.post(f"/projects/1/tasks/{open_one}/toggle", json={"done": True}, headers=h).status_code, 200)
+        with self.raw_db() as db:
+            last = db.execute("SELECT name FROM project_stages WHERE project_id = 1 ORDER BY position DESC LIMIT 1").fetchone()[0]
+            db.execute("UPDATE projects SET stage = ? WHERE id = 1", (last,)); db.commit()
+        self.assertEqual(raj.post(f"/projects/1/tasks/{closed_one}/toggle", json={"done": True}, headers=h).status_code, 403)
+        with self.raw_db() as db:
+            self.assertEqual(db.execute("SELECT done FROM tasks WHERE id = ?", (closed_one,)).fetchone()[0], 0)
+        self.assertEqual(self.client.post(f"/projects/1/tasks/{closed_one}/toggle", json={"done": True}, headers=self.csrf()).status_code, 200)   # staff may
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -888,7 +888,8 @@ def api_project(project_id):
         } if guest_on and can_manage else {"customer": None, "vendor": None},
         # when those links stop working (None: never); rotating renews them (P2-6)
         "guest_links_expire": links_expire(project) if guest_on and can_manage else None,
-        "stage_rows": [{"id": r["id"], "name": r["name"], "sla_days": r["sla_days"],   # the gates are staff-only (services/gates.py)
+        # the gates and the SLAs are staff-only (services/gates.py; PRODUCT.md, "Customer copy")
+        "stage_rows": [{"id": r["id"], "name": r["name"], **({} if external else {"sla_days": r["sla_days"]}),
                         "gate_tasks": bool(r["gate_tasks"]) and not external, "required_docs": [] if external else gates.required_docs(r)}
                        for r in stage_rows(project_id)],
         "participants": [{"id": r["id"], "user_id": r["user_id"], "name": r["name"], "role": r["role"],
@@ -1216,7 +1217,7 @@ def api_plan(project_id):
         d["health"] = customer_health({"health": d["health"], "stages": d["stages"], "finish": d["finish"], "raid": visible,
                                        "today": local_today().isoformat(), "has_plan": d.get("has_plan")})
         for s in d["stages"]:
-            for k in ("base_start", "base_end", "slip_days"):
+            for k in ("base_start", "base_end", "slip_days", "sla_days", "planned_days"):
                 s.pop(k, None)
             s["forecast_reason"] = None   # it names the internal task that holds the stage
         d["health"] = {"rag": d["health"]["rag"], "reasons": [], "confidence": d["health"]["confidence"]}
@@ -1355,9 +1356,10 @@ def api_project_flow(project_id):
     if entered_now and project["stage"] in stages:
         visits[project["stage"]] = {"entered_at": entered_now.isoformat(), "days": round(working_days(entered_now, now, clk), 1)}
     stage_rows = []
+    external = session.get("kind") == "external"
     for i, name in enumerate(stages):
         status = "done" if i < current else "current" if i == current else "next"
-        stage_rows.append({"name": name, "status": status, "sla_days": slas.get(name),
+        stage_rows.append({"name": name, "status": status, "sla_days": None if external else slas.get(name),   # SLAs are staff-only
                            **(visits.get(name) or {"entered_at": None, "days": None})})
     tasks = db.execute(
         "SELECT t.*, u.name AS assignee_name, u.avatar AS assignee_avatar FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id "
@@ -1377,7 +1379,6 @@ def api_project_flow(project_id):
     target = date.fromisoformat(project["target_end_date"]) if project["target_end_date"] else None
     from policies import local_date
     start = project["start_date"] or local_date(project["created_at"]).isoformat()
-    external = session.get("kind") == "external"
     hidden_docs = partner_hidden_categories(db) if external else set()
     return jsonify({
         "id": project["id"], "name": project["name"], "client": project["client"],
@@ -1386,7 +1387,7 @@ def api_project_flow(project_id):
         "delivery_mode": project["delivery_mode"], "outsourcer_name": None if external else project["outsourcer_name"],
         "owner_name": project["owner_name"], "stage": project["stage"], "stage_index": current,
         "next_stage": stages[current + 1] if current + 1 < len(stages) else None,
-        "state": _flow_state(project, sla, schedule), "over_by": round(sla["over_by"], 1) if sla else None,
+        "state": _flow_state(project, sla, schedule), "over_by": round(sla["over_by"], 1) if sla and not external else None,
         "start_date": start, "target_end_date": project["target_end_date"],
         "days_left": (target - local_today()).days if target else None,
         "today": local_today().isoformat(),
@@ -1488,10 +1489,11 @@ def api_search():
         "AND (p.name LIKE ? ESCAPE '\\' OR p.client LIKE ? ESCAPE '\\'" + ("" if external else " OR p.po_number LIKE ? ESCAPE '\\'") + ") ORDER BY p.updated_at DESC LIMIT 8",
         (*scope_params, like, like, *([] if external else [like])),
     ).fetchall()
+    own, own_params = (" AND t.assignee_id = ?", [session["user_id"]]) if external else ("", [])   # a partner finds only their own asks
     tasks = db.execute(
         f"SELECT t.id, t.title, t.done, t.project_id, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id "
-        f"WHERE p.deleted_at IS NULL{scope_sql} AND t.title LIKE ? ESCAPE '\\' ORDER BY t.done, t.id DESC LIMIT 8",
-        (*scope_params, like),
+        f"WHERE p.deleted_at IS NULL{scope_sql}{own} AND t.title LIKE ? ESCAPE '\\' ORDER BY t.done, t.id DESC LIMIT 8",
+        (*scope_params, *own_params, like),
     ).fetchall()
     sources = (
         ("note", "/projects/{pid}", f"SELECT n.project_id, p.name AS project_name, n.note AS text, n.created_at AS at FROM status_notes n JOIN projects p ON p.id = n.project_id "

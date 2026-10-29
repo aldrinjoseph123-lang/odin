@@ -13,7 +13,7 @@ import { checkbox } from "@/lib/ui"
 // Settings. The caller supplies the form routes; the rows and the rules
 // (last stage is closed, the current stage cannot go) are the same.
 // gate_tasks / required_docs: what the stage asks before a rollout leaves it (services/gates.py)
-export type StageRow = { id: number; name: string; sla_days: number | null; gate_tasks?: boolean; required_docs?: string[] }
+export type StageRow = { id: number; name: string; sla_days?: number | null; gate_tasks?: boolean; required_docs?: string[] }
 export type StagePaths = { add: string; rename: (id: number) => string; move: (id: number) => string; remove: (id: number) => string; sla: string; gates?: string }
 // The key a parent should give the editor: a rename, an SLA or an added or
 // removed stage remounts it. Order is left out, so a reorder keeps the rows and

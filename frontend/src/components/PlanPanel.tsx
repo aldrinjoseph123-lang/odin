@@ -72,6 +72,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
     return r.warning ? `${said} ${r.warning}` : said
   })
   const f = d.finish
+  const slas = d.stages.some((s) => s.sla_days !== undefined)   // the customer's cut carries none (routes/api.py api_plan)
   const tiles: { label: string; value: string; sub?: string; tone?: "bad" | "warn" | "ok" }[] = [
     { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: forecastTone(f.vs_target_days, f.target, d.today) },
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
@@ -98,7 +99,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
       <div className="mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Dates per stage">
         <table className="w-full min-w-[720px] border-collapse text-[13px]">
           <thead><tr className="border-b border-border text-left text-[12px] text-muted-foreground">
-            {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", "SLA", "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className={th}>{h}</th>)}
+            {["Stage", "Planned start", "Planned end", d.calendar?.working ? "Work days" : "Days", ...(slas ? ["SLA"] : []), "Actual", "Forecast end", "Slip"].map((h) => <th key={h} className={th}>{h}</th>)}
           </tr></thead>
           <tbody>
             {d.stages.map((s, i) => {
@@ -117,7 +118,7 @@ export function PlanPanel({ projectId, onSaved, refresh = 0 }: { projectId: numb
                     <td className={cn(td, "tabular-nums")}>{r.plan_end ? fmtDate(r.plan_end) : "—"}</td>
                   </>}
                   <td className={cn(td, "tabular-nums text-muted-foreground")}>{days ?? "—"}</td>
-                  <td className={cn(td, "tabular-nums text-muted-foreground")}>{s.sla_days ? `${s.sla_days} d` : "—"}</td>
+                  {slas && <td className={cn(td, "tabular-nums text-muted-foreground")}>{s.sla_days ? `${s.sla_days} d` : "—"}</td>}
                   <td className={cn(td, "text-muted-foreground")}>{s.actual_start ? `${fmtDate(s.actual_start)}${s.actual_end ? ` – ${fmtDate(s.actual_end)}` : " – now"}` : s.status === "skipped" ? "skipped" : "—"}</td>
                   {/* a late predecessor moved it (services/task_links.py): the glyph, and the reason under the table */}
                   <td className={cn(td, "whitespace-nowrap")} title={s.forecast_reason ?? undefined}>{s.forecast_end ? fmtDate(s.forecast_end) : "—"}{s.forecast_reason && <><Link2 className="ml-1 inline h-3 w-3 text-warn" aria-hidden /><span className="sr-only"> (moved by a task it waits on)</span></>}</td>

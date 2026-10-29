@@ -261,10 +261,11 @@ export type Rag = "green" | "amber" | "red" | "done"
 // working: stage lengths count working days; week: Python weekday numbers (Mon = 0); off: holidays
 export type WorkCalendar = { working: boolean; week: number[]; off: string[] }
 export type PlanStage = {
-  id: number; name: string; position: number; sla_days: number | null; status: "done" | "skipped" | "current" | "next"
+  // sla_days and planned_days: staff only (the customer's cut of the plan and the report leaves them out)
+  id: number; name: string; position: number; sla_days?: number | null; status: "done" | "skipped" | "current" | "next"
   plan_start: string | null; plan_end: string | null; base_start: string | null; base_end: string | null
   actual_start: string | null; actual_end: string | null; forecast_start: string | null; forecast_end: string | null
-  planned_days: number; actual_days: number | null; slip_days: number | null; suggested_start: string; suggested_end: string
+  planned_days?: number; actual_days: number | null; slip_days: number | null; suggested_start: string; suggested_end: string
   forecast_reason?: string | null   // the task that moved the forecast through its links, when one did
 }
 export type PlanData = {
@@ -294,10 +295,11 @@ export type ReportPayload = {
   health: PlanData["health"]; pct_complete: number; finish: Partial<PlanData["finish"]>; baseline_at: string | null; elapsed_days: number; has_plan: boolean
   stages: PlanStage[]; milestones: { stage: string; start: string | null; end: string | null; planned_end: string | null; gate?: string }[]
   raid: RaidItem[]
-  work: { total: number; done: number; late: number; by_stage: { stage: string; total: number; done: number; late: number }[]; burn: { week: string; total: number; done: number }[]
+  // the customer's cut (report_data._customer_cut) has no totals, late counts, team or dwell against the SLA
+  work: { total?: number; done?: number; late?: number; by_stage: { stage: string; total: number; done: number; late?: number }[]; burn: { week: string; total: number; done: number }[]
           open?: { id: number; title: string; stage: string | null; who: string | null; due_date: string | null; late: boolean }[] }
-  team: { name: string; role: string; active: boolean }[]
-  history: { dwell: { stage: string; status: string; entered: string | null; left: string | null; days: number | null; sla: number | null; over: number }[]
+  team?: { name: string; role: string; active: boolean }[]
+  history: { dwell?: { stage: string; status: string; entered: string | null; left: string | null; days: number | null; sla: number | null; over: number }[]
              approvals: { stage: string; status: string; requested_by: string; requested_at: string; decided_by: string | null; decided_at: string | null; comment: string | null }[]
              notes: { author: string; note: string; stage: string; created_at: string }[] }
   needs: { approval: { stage: string; requested_at: string } | null; tasks: { title: string; due_date: string | null }[] }
@@ -578,7 +580,7 @@ export type ProjectExtras = {
   customer_approval: boolean
   guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean; guest_links_expire: string | null
   intake_pending?: boolean   // a CRM intake waiting for a project manager (staff only)
-  stage_rows: ({ id: number; name: string; sla_days: number | null } & StageGate)[]
+  stage_rows: ({ id: number; name: string; sla_days?: number | null } & StageGate)[]   // no SLAs for partners and customers
   participants: { id: number; user_id: number; name: string; role: string; email: string | null; active: boolean; avatar_url: string | null }[]
   notes: { id: number; author: string; note: string; stage: string; created_at: string; mine: boolean; edited: boolean; stage_entry: boolean }[]
   documents: { id: number; category: string; filename: string; uploaded_by: string; uploaded_at: string; review: DocReview }[]

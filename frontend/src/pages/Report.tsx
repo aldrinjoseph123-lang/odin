@@ -132,12 +132,15 @@ export default function Report({ user }: { user: User }) {
   const closing = fillPlaceholders(d.template?.texts.closing ?? "", tplValues).trim()
   const f = d.finish
   const ft = forecastTone(f.vs_target_days, f.target, d.today)   // the Plan panel and the portfolio read the same rule
+  const dwell = d.history.dwell
+  // the customer's cut carries progress per stage only: no totals, no late counts
+  const work = { done: d.work.done ?? d.work.by_stage.reduce((n, b) => n + b.done, 0), total: d.work.total ?? d.work.by_stage.reduce((n, b) => n + b.total, 0), late: d.work.late ?? 0 }
   const tiles: { label: string; value: string; sub: string; tone?: "bad" | "warn" }[] = [
     { label: "Forecast finish", value: f.forecast ? fmtDate(f.forecast) : "—", sub: f.vs_target_days == null ? "no target date" : f.vs_target_days > 0 ? `${f.vs_target_days} d after target` : `${-f.vs_target_days} d before target`, tone: ft === "ok" ? undefined : ft },
     { label: "Target", value: f.target ? fmtDate(f.target) : "—", sub: f.days_to_target == null ? "" : f.days_to_target < 0 ? `${-f.days_to_target} d ago` : `${f.days_to_target} d to go` },
     ...(customer ? [] : [{ label: "Against baseline", value: slip(f.vs_baseline_days), sub: d.baseline_at ? `baseline of ${fmtDate(d.baseline_at)}` : "no baseline yet", tone: (f.vs_baseline_days ?? 0) > 0 ? "warn" as const : undefined }]),
     { label: "Complete", value: `${d.pct_complete}%`, sub: `${d.elapsed_days} d since start` },
-    { label: "Tasks", value: `${d.work.done}/${d.work.total}`, sub: d.work.late ? `${d.work.late} late` : "none late", tone: d.work.late > 0 ? "warn" : undefined },
+    { label: "Tasks", value: `${work.done}/${work.total}`, sub: customer ? "" : work.late ? `${work.late} late` : "none late", tone: work.late > 0 ? "warn" : undefined },
   ]
   const textarea = cn(fieldArea, "p-3 text-[14px]")
   const wordBlock = (key: "summary" | "next_steps" | "asks", label: string, rows: number, hint: string) => (
@@ -270,7 +273,7 @@ export default function Report({ user }: { user: User }) {
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Section n title="Work" sub={`${d.work.done} of ${d.work.total} tasks done${d.work.late ? `, ${d.work.late} late` : ""}`} className={hide("work")}>
+          <Section n title="Work" sub={`${work.done} of ${work.total} tasks done${work.late ? `, ${work.late} late` : ""}`} className={hide("work")}>
             {d.work.burn.length > 1 && (
               <div className="h-40" role="img" aria-label={`Tasks known and done per week: ${d.work.burn.map((w) => `${fmtDate(w.week)} ${w.done} of ${w.total}`).join(", ")}`}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -288,7 +291,7 @@ export default function Report({ user }: { user: User }) {
               {d.work.by_stage.filter((b) => b.total).map((b) => (
                 <div key={b.stage} className="flex items-center gap-3">
                   <span className="w-32 truncate">{b.stage}</span>
-                  <span className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden><span className="bg-nav-fg/60" style={{ width: `${(b.done / b.total) * 100}%` }} /><span className="bg-bad-line" style={{ width: `${(b.late / b.total) * 100}%` }} /></span>
+                  <span className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden><span className="bg-nav-fg/60" style={{ width: `${(b.done / b.total) * 100}%` }} /><span className="bg-bad-line" style={{ width: `${((b.late ?? 0) / b.total) * 100}%` }} /></span>
                   <span className="w-24 text-right tabular-nums text-muted-foreground">{b.done}/{b.total}{b.late ? <span className="text-bad"> · {b.late} late</span> : ""}</span>
                 </div>
               ))}
@@ -306,7 +309,7 @@ export default function Report({ user }: { user: User }) {
                 </>
               )}
             </Section>
-          ) : (
+          ) : d.team && (
             <Section n title="Team" className={hide("team")}><ul className="grid grid-cols-1 gap-1 text-[13px]">{d.team.map((m) => <li key={m.name} className="flex justify-between"><span className="font-medium">{m.name}</span><span className="text-muted-foreground">{m.role}</span></li>)}</ul></Section>
           )}
         </div>
@@ -320,15 +323,16 @@ export default function Report({ user }: { user: User }) {
           </Section>
         )}
 
-        <Section n title="History" sub="time in each stage against its SLA, decisions, and what moved" className={hide("history")}>
+        <Section n title="History" sub={dwell ? "time in each stage against its SLA, decisions, and what moved" : "decisions and notes"} className={hide("history")}>
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div>
-              <Table head={["Stage", "Entered", "Left", "Days", "SLA"]}
-                rows={d.history.dwell.map((x) => [x.stage, fmtDate(x.entered), x.left ? fmtDate(x.left) : "still here", x.days ?? "—", x.sla ? `${x.sla} d` : "—"])}
-                tone={(i, c) => (c === 3 && d.history.dwell[i].over ? "font-medium text-warn" : undefined)} />
+              {/* internal only: the customer's cut has no SLAs */}
+              {dwell && <Table head={["Stage", "Entered", "Left", "Days", "SLA"]}
+                rows={dwell.map((x) => [x.stage, fmtDate(x.entered), x.left ? fmtDate(x.left) : "still here", x.days ?? "—", x.sla ? `${x.sla} d` : "—"])}
+                tone={(i, c) => (c === 3 && dwell[i].over ? "font-medium text-warn" : undefined)} />}
               {d.history.approvals.length > 0 && (
                 <>
-                  <h3 className="mb-1 mt-4 text-[13px] font-semibold text-nav-fg">Customer approvals</h3>
+                  <h3 className={cn("mb-1 text-[13px] font-semibold text-nav-fg", dwell && "mt-4")}>Customer approvals</h3>
                   <Table head={["Stage", "Status", "Asked", "Decided"]} rows={d.history.approvals.map((a) => [a.stage, a.status, fmtDate(a.requested_at), a.decided_at ? `${fmtDate(a.decided_at)}${a.decided_by ? ` · ${a.decided_by}` : ""}` : "—"])} />
                 </>
               )}

@@ -551,7 +551,7 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None, 
         project = load_project(project_id)
     if project is None:
         abort(404)
-    actor_name = f"{guest[0]} (vendor link)" if guest else session["user_name"]
+    actor_name = guest[0] if guest else session["user_name"]   # "<name> (vendor)" (routes/guest._author)
     actor_id = None if guest else session["user_id"]
     if project["intake_pending"]:
         return "Confirm this intake first (attach the PO and take ownership); it has no stage until then"
@@ -825,13 +825,16 @@ def document_upload(project_id):
     `ask_id`, the person the ask is on uploads into its category only, rate
     limited, and the ask is done. Nothing else is opened to them."""
     db = get_db()
-    if not load_project(project_id):
+    project = load_project(project_id)
+    if not project:
         abort(404)
     ask = None
     if request.form.get("ask_id"):
         ask = asks.own_ask(project_id, as_id(request.form.get("ask_id")), session["user_id"])
         if ask is None or ask["kind"] != "upload":
             abort(403)
+        if asks.closed(project):
+            abort(403, description=asks.CLOSED)
         if asks.limited(session["user_id"]):
             abort(429, description="Too many changes in a minute; wait a moment")
     elif not project_allows(project_id, "manage_documents"):
@@ -854,7 +857,6 @@ def document_upload(project_id):
     pending = session.get("kind") == "external"
     original_name, doc_id = save_document(project_id, file, category, session["user_name"], pending=pending)
     audit_log("upload_document", "project", project_id, None, f"{category}: {original_name}" + (" (held for review)" if pending else ""))
-    project = load_project(project_id)
     if ask:
         asks.record_upload(db, ask, doc_id, session["user_id"], session["user_name"])
         db.commit()
@@ -1542,6 +1544,8 @@ def task_toggle(project_id, task_id):
     # an upload or a form is done by uploading or answering (services/asks.py); whoever manages the tasks may still tick it
     if not manages and task["kind"] in ("upload", "form"):
         return _task_reply(project_id, "Upload the file or answer the questions to finish this")
+    if asks.closed(project):
+        abort(403, description=asks.CLOSED)
     if asks.limited(session["user_id"]):
         abort(429, description="Too many changes in a minute; wait a moment")
     # the page says what it wants (P2-26): a tick from a stale tab sets done, never flips it back open

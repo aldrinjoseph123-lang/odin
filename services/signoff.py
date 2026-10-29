@@ -209,7 +209,9 @@ def draft(project, template_id=None):
         # the milestones reached that the customer may see (a recorded scope is its own table of what was delivered)
         from services import milestones
         delivered += milestones.delivered_lines(pid)
-    outstanding = [t["title"] + (f" (due {fmt_date(t['due_date'], '—')})" if t["due_date"] else "") for t in tasks if not t["done"]]
+    # the customer's document: only the asks on outside parties, never an internal task (services/asks.py)
+    from services import asks
+    outstanding = [t["title"] + (f" (due {fmt_date(t['due_date'], '—')})" if t["due_date"] else "") for t in asks.listing(pid) if not t["done"]]
     outstanding += [r["title"] for r in raid_service.items(pid, customer=True) if r["open"] and r["kind"] != "decision"]
     counts = {k: sum(1 for x in items if x["status"] == k) for k in ("delivered", "partial", "descoped")}
     start = project["start_date"] or (stages[0]["actual_start"] if stages else None)

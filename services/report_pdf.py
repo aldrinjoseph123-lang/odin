@@ -305,6 +305,11 @@ def render(data, words, tpl=None):
 
     def work():
         w = data["work"]
+        if customer:   # progress per stage; the customer's cut has no late counts (report_data._customer_cut)
+            rows = [b for b in w["by_stage"] if b["total"]]
+            doc.heading("Work", f"{sum(b['done'] for b in rows)} of {sum(b['total'] for b in rows)} tasks done")
+            doc.table(["Stage", "Tasks", "Done"], [[b["stage"], str(b["total"]), str(b["done"])] for b in rows], [0.52, 0.24, 0.24])
+            return
         doc.heading("Work", f"{w['done']} of {w['total']} tasks done" + (f", {w['late']} late" if w["late"] else ""))
         doc.table(["Stage", "Tasks", "Done", "Late"], [[b["stage"], str(b["total"]), str(b["done"]), str(b["late"])] for b in w["by_stage"] if b["total"]],
                   [0.46, 0.18, 0.18, 0.18], [{3: (180, 35, 28)} if b["late"] else {} for b in w["by_stage"] if b["total"]])
@@ -318,10 +323,11 @@ def render(data, words, tpl=None):
 
     def history():
         hist = data["history"]
-        doc.heading("Stage history", "time in each stage against its SLA")
-        doc.table(["Stage", "Entered", "Left", "Days", "SLA"],
-                  [[x["stage"], fmt_date(x["entered"]), fmt_date(x["left"]) if x.get("left") else "still here", "-" if x["days"] is None else str(x["days"]), f"{x['sla']} d" if x.get("sla") else "-"] for x in hist["dwell"]],
-                  [0.32, 0.2, 0.2, 0.14, 0.14], [{3: (138, 83, 0)} if x.get("over") else {} for x in hist["dwell"]])
+        if hist.get("dwell"):   # internal only: the customer's cut has no SLAs
+            doc.heading("Stage history", "time in each stage against its SLA")
+            doc.table(["Stage", "Entered", "Left", "Days", "SLA"],
+                      [[x["stage"], fmt_date(x["entered"]), fmt_date(x["left"]) if x.get("left") else "still here", "-" if x["days"] is None else str(x["days"]), f"{x['sla']} d" if x.get("sla") else "-"] for x in hist["dwell"]],
+                      [0.32, 0.2, 0.2, 0.14, 0.14], [{3: (138, 83, 0)} if x.get("over") else {} for x in hist["dwell"]])
         if hist.get("approvals"):
             doc.heading("Customer approvals")
             doc.table(["Stage", "Status", "Asked", "Decided", "Comment"],
