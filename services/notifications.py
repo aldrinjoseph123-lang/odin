@@ -52,9 +52,11 @@ def _rollout_path(project_id, target=None):
 
 
 def _plain(html):
+    """Text from a message's HTML: a paragraph, a list item and a line break end a line."""
     import re
     from html import unescape
-    return unescape(re.sub(r"\s+", " ", re.sub(r"<br\s*/?>", " ", re.sub(r"<(?!br)[^>]+>", "", html or "")))).strip()
+    text = unescape(re.sub(r"<[^>]+>", "", re.sub(r"<br\s*/?>|</(?:p|li)\s*>", "\n", html or "", flags=re.I)))
+    return re.sub(r"\s*\n\s*", "\n", re.sub(r"[^\S\n]+", " ", text)).strip()
 
 
 def delivery(user, kind):

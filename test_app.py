@@ -4581,7 +4581,7 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
         import send_daily_alerts
         with patch("policies.is_working_day", return_value=True):
             send_daily_alerts.main()
-        self.assertTrue(any("of your rollout" in t for k, t in self._bell(pm) if k == "alert"))   # the PM's own digest
+        self.assertIn("1 of your rollouts needs attention today", [t for k, t in self._bell(pm) if k == "alert"])   # the PM's own digest, in good English
         self.assertTrue(any("digest" in t for k, t in self._bell(1) if k == "alert"))             # the admins' digest, in the bell
 
     def test_the_silent_events_now_tell_the_people_they_affect(self):
