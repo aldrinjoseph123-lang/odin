@@ -47,9 +47,14 @@ too early, Odin says it waits on work the team has not finished yet.
 
 ## Approving a stage
 
-Some rollouts ask the customer to approve each stage change. When we move the rollout on, you get an email
-and the rollout shows the decision waiting for you: **Approve** or **Decline**, with a comment saying why.
-The rollout carries on either way; your decision is recorded with the stage and the team is told at once.
+Some rollouts ask the customer to approve each stage change. One person on your side is the approver: the
+project manager names them (by default, the first of your contacts on the rollout). When we move the rollout
+on, the approver gets an email and the rollout shows the decision waiting for them: **Approve** or **Decline**,
+with a comment saying why. Your other contacts see whom it is waiting on.
+
+Your decision is recorded with the stage and the team is told at once. If you decline, the rollout stays in
+that stage until you approve; the project manager may ask you again once they have settled it with you. If the
+rollout moves on before you decide, you are told the request is no longer needed.
 
 ## Reminders
 

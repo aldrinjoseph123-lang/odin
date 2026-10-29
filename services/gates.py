@@ -13,6 +13,8 @@ vendor's guest link), which calls it next to signoff.gate(). Only a move
 forward is gated, and a jump answers for every stage it leaves behind. An
 Admin, or the project manager while the `gate_override` policy allows it,
 may move past a gate with a typed reason; the vendor link never can.
+A customer's decline of the current stage (services/approvals.declined) is
+one more reason, kind "declined": the stage pauses until they approve.
 """
 import json
 from collections import Counter
@@ -24,6 +26,12 @@ from policies import local_today, policy
 from services.fmt import plural
 
 GUEST_MESSAGE = "This stage is not finished yet. The project manager will move the rollout on once its work is done."
+GUEST_DECLINED = "The customer declined this stage. The project manager will settle it with them before the rollout moves on."
+
+
+def guest_message(reasons):
+    """What the vendor link says when a move is held: never the internals."""
+    return GUEST_DECLINED if any(r["kind"] == "declined" for r in reasons) else GUEST_MESSAGE
 
 
 def required_docs(row):
@@ -49,12 +57,14 @@ def preload(project_ids):
             tasks.setdefault(t["project_id"], []).append(t)
         for r in db.execute(f"SELECT DISTINCT project_id, category, review_status FROM documents WHERE project_id IN ({marks}) AND deleted_at IS NULL", ids):
             docs.setdefault(r["project_id"], []).append(r)
-    return {"tasks": tasks, "docs": docs, "known": {r[0] for r in db.execute("SELECT name FROM doc_categories")}, "today": local_today(db).isoformat()}
+    from services import approvals
+    return {"tasks": tasks, "docs": docs, "known": {r[0] for r in db.execute("SELECT name FROM doc_categories")}, "today": local_today(db).isoformat(),
+            "declined": approvals.declined_many(db, ids)}
 
 
 def blocked(project, new_stage, rows=None, loaded=None):
     """What stops `project` moving to `new_stage`: a list of
-    {stage, kind: "tasks" | "document", count | category, text}, empty when
+    {stage, kind: "tasks" | "document" | "declined", count | category, text}, empty when
     nothing does. `rows` are its project_stages rows when the caller has them;
     `loaded` is preload() for a caller checking many rollouts."""
     db = get_db()
@@ -66,6 +76,13 @@ def blocked(project, new_stage, rows=None, loaded=None):
         return []
     passed = rows[names.index(project["stage"]):names.index(new_stage)]   # empty for a move back
     out = []
+    if passed:   # the customer declined the stage being left: it waits for their approval
+        from services import approvals
+        no = loaded["declined"].get(pid) if loaded else approvals.declined(project, db)
+        if no:
+            said = f": {no['comment'].rstrip('. ')}" if no["comment"] else ""
+            out.append({"stage": project["stage"], "kind": "declined",
+                        "text": f"The customer declined {project['stage']}{said}. Ask again, or override with a reason"})
     gated = {r["name"] for r in passed if r["gate_tasks"]}
     if gated:
         # a task with no stage, or a stage since removed, belongs to the current stage (as the Flow shows it).

@@ -47,17 +47,16 @@ from db import (
     partner_hidden_categories,
     PROJECT_OPEN_SQL,
     copy_template_stages,
-    customer_ids,
     insert_task,
     my_project_ids,
     set_project_manager,
-    is_customer_on,
     get_stage_names,
     restore_deleted,
     soft_delete,
     touch_project,
 )
 from services.alerts import get_alert_type_settings
+from services import approvals
 from services import asks
 from services import doc_review
 from services import fields as custom_fields
@@ -482,6 +481,15 @@ def project_edit(project_id):
     if delivery_mode not in DELIVERY_MODES:
         delivery_mode = project["delivery_mode"]
 
+    # the approver: one of the rollout's active Customer contacts, or empty for the first of them (services/approvals.py)
+    approver_id = project["approver_id"]
+    if "approver_id" in request.form:
+        approver_id = as_id(request.form.get("approver_id"))
+        if request.form.get("approver_id") and approver_id not in [c["id"] for c in approvals.customers(db, project_id)]:
+            flash("The approver must be one of this rollout's Customer contacts", "error")
+            return redirect(url_for("project_edit", project_id=project_id))
+    before = approvals.approver(db, project_id)
+
     now = datetime.utcnow().isoformat()
     db.execute(
         """UPDATE projects SET
@@ -490,7 +498,7 @@ def project_edit(project_id):
             partner_name=?, partner_account_manager_name=?, partner_account_manager_email=?,
             start_date=?, target_end_date=?, delivery_mode=?,
             outsourcer_name=?, outsourcer_email=?, vendor_name=?, product_name=?, updated_at=?,
-            customer_approval=?
+            customer_approval=?, approver_id=?
            WHERE id=?""",
         (
             name, client, owner_id,
@@ -509,23 +517,28 @@ def project_edit(project_id):
             request.form.get("outsourcer_email") or None,
             request.form.get("vendor_name") or None,
             request.form.get("product_name") or None,
-            now, 1 if request.form.get("customer_approval") else 0, project_id,
+            now, 1 if request.form.get("customer_approval") else 0, approver_id, project_id,
         ),
     )
     field_changes = custom_fields.save(db, project_id, field_values)
     if owner_id != project["owner_id"]:
         set_project_manager(db, project_id, owner_id, session["user_id"])
-    if not request.form.get("customer_approval"):   # no longer asking: an open request is moot (P7)
-        db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
+    after = approvals.approver(db, project_id)
+    if not request.form.get("customer_approval"):   # no longer asking: an open request is moot (P7), and its approver hears so
+        approvals.withdraw(db, project_id, "customer approval was switched off for this rollout")
+    elif before and after and before["id"] != after["id"]:   # a new approver: the open request moves to them
+        if approvals.withdraw(db, project_id, f"{after['name']} approves this rollout now", to=[before["id"]]):
+            approvals.request(db, {**dict(project), "name": name}, project["stage"], session["user_name"])
     db.commit()
     if owner_id != project["owner_id"]:
         notify_users([owner_id], "assigned", project_id, f"You now manage {escape(name)}",
                      f"{escape(session['user_name'])} made you project manager of <b>{escape(name)}</b>.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
         notify_users([project["owner_id"]], "activity", project_id, f"{escape(name)} has a new project manager",
                      f"{escape(session['user_name'])} handed <b>{escape(name)}</b> to someone else; you stay on the team as a Coordinator.", exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
-    audit_log("update_project", "project", project_id, name, f"client={client}; owner_id={owner_id}")
+    audit_log("update_project", "project", project_id, name, f"client={client}; owner_id={owner_id}"
+              + (f"; approver_id={approver_id}" if approver_id != project["approver_id"] else ""))
     if request.form.get("customer_approval") and not project["customer_approval"]:   # switched on mid-rollout: tell who will be asked (sim R1)
-        notify_users(customer_ids(project_id, db), "approval", project_id, f"Your approval will be asked on {escape(name)}",
+        notify_users(approvals.approver_ids(project_id, db), "approval", project_id, f"Your approval will be asked on {escape(name)}",
                      f"From now on, each stage move of <b>{escape(name)}</b> waits for your approval. You will get a request when the next one happens.",
                      exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
     if field_changes:
@@ -571,7 +584,7 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None, 
     from services import gates
     held = gates.blocked(project, new_stage)
     if held and guest:   # the vendor link never overrides, and hears no internals
-        return StageConflict(gates.GUEST_MESSAGE)
+        return StageConflict(gates.guest_message(held))
     if held and not override:
         return StageConflict(f"Before leaving {project['stage']}: {gates.summary(held)}")
     if held and not gates.may_override(project):
@@ -613,11 +626,12 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None, 
     g.stage_undo_url = url_for("undo_stage_change", project_id=project_id, note_id=cur.lastrowid)
     # A newer change makes an undecided older request moot; closing asks for
     # no approval (the sign-off is the customer's word on the finish, P7).
-    # Only someone in the Customer role can decide, so with nobody in it no
-    # request is opened (it would wait for ever and count as waiting, sim L-7).
-    ask_customer = bool(project["customer_approval"]) and not terminal and bool(customer_ids(project_id))
-    if project["customer_approval"]:
-        db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,))
+    # Only the approver can decide, so with nobody to ask no request is
+    # opened (it would wait for ever and count as waiting, sim L-7). The
+    # approver hears of a withdrawn request, never silently (services/approvals.py).
+    approver = approvals.approver(db, project_id)
+    ask_customer = bool(project["customer_approval"]) and not terminal and approver is not None
+    withdrawn = approvals.withdraw(db, project_id, None, tell=False) if project["customer_approval"] else 0
     if ask_customer:
         db.execute(
             "INSERT INTO stage_approvals (project_id, stage, requested_by, requested_at) VALUES (?, ?, ?, ?)",
@@ -648,13 +662,14 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None, 
             + (f"<br>{escape(note_text)}" if note_text else ""))
     ask = "<br>Please review and approve this step."
     follow(notify_event, project, f"Stage changed: {escape(project['name'])}", body + (ask if ask_customer else ""), channels={"email": False, "teams": True})
-    # the customer is asked to approve as an approval (their own kind), everyone else hears of the move
-    customers = customer_ids(project_id) if ask_customer else []
-    team = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,)) if r[0] not in customers]
+    # the approver is asked to approve as an approval (their own kind), everyone else hears of the move
+    asked = [approver["id"]] if ask_customer else []
+    team = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,)) if r[0] not in asked]
     follow(notify_users, team, "stage", project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=actor_id)
-    if customers:
-        follow(notify_users, customers, "approval", project_id, f"{escape(project['name'])}: please approve the move to {escape(new_stage)}", body + ask,
-               exclude_user_id=actor_id, link=f"/projects/{project_id}")
+    if withdrawn and approver:
+        follow(approvals.tell_withdrawn, project_id, f"the rollout moved on to {new_stage} before you decided {project['stage']}", [approver["id"]])
+    if asked:
+        follow(approvals.ask, project, new_stage, body, asked)
     follow(rules.fire, "stage_entered", project_id, {"stage": new_stage, "from": project["stage"]})
     return None
 
@@ -696,13 +711,18 @@ def undo_stage_change(project_id, note_id):
     # project returns to comes back, and only that one (it was opened as the
     # project entered the stage: requested_at = that entry), only while the
     # project still asks, and not if that visit was already decided (sim L-1).
-    db.execute("DELETE FROM stage_approvals WHERE project_id = ? AND stage = ? AND requested_at = ? AND status = 'pending'", (project_id, note["stage"], note["created_at"]))
+    asked = db.execute("DELETE FROM stage_approvals WHERE project_id = ? AND stage = ? AND requested_at = ? AND status = 'pending'",
+                       (project_id, note["stage"], note["created_at"])).rowcount
     db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND stage = ? AND requested_at = ? AND status IN ('approved', 'declined')",
                (project_id, note["stage"], note["created_at"]))
-    if project["customer_approval"] and note["prev_entered_at"]:
-        db.execute("UPDATE stage_approvals SET status = 'pending' WHERE project_id = ? AND stage = ? AND status = 'superseded' AND requested_at = ?",
-                   (project_id, note["prev_stage"], note["prev_entered_at"]))
+    back = project["customer_approval"] and note["prev_entered_at"] and db.execute(
+        "UPDATE stage_approvals SET status = 'pending' WHERE project_id = ? AND stage = ? AND status = 'superseded' AND requested_at = ?",
+        (project_id, note["prev_stage"], note["prev_entered_at"])).rowcount
     db.commit()
+    if asked:   # the approver was asked about the move that is gone (services/approvals.py)
+        approvals.tell_withdrawn(project_id, f"the move to {note['stage']} was undone")
+    if back:   # and was told the request it brings back was withdrawn: it is open again
+        approvals.ask(project, note["prev_stage"])
     audit_log("undo_project_stage", "project", project_id, project["name"], f"stage={note['prev_stage']} (undid {note['stage']})")
     body = f"{escape(session['user_name'])} undid the move to <b>{escape(note['stage'])}</b>. The rollout is back in <b>{escape(note['prev_stage'])}</b>."
     notify_event(project, f"Stage change undone: {escape(project['name'])}", body, channels={"email": False, "teams": True})
@@ -718,7 +738,7 @@ def decide_approval(project_id, approval_id, decision, comment):
     when the customer gave it. Returns an error message or None."""
     project = load_project(project_id)
     db = get_db()
-    if not is_customer_on(project_id, session["user_id"]):
+    if not approvals.is_approver(project_id, session["user_id"], db):   # the rollout's one named approver (services/approvals.py)
         abort(403)
     row = db.execute("SELECT * FROM stage_approvals WHERE id = ? AND project_id = ?", (approval_id, project_id)).fetchone()
     if row is None:
@@ -1063,12 +1083,13 @@ def participant_add(project_id):
     elif user["id"] == project["owner_id"] and role != PROJECT_MANAGER:
         flash("The owner is the project manager", "error")
     else:
+        before = approvals.approver(db, project_id)
         db.execute(
             "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) "
             "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
             (project_id, user["id"], role, session["user_id"], datetime.utcnow().isoformat()),
         )
-        moot = _moot_approvals(db, project_id)   # a Customer re-roled away may leave nobody to decide
+        moot = approvals.approver_left(db, project_id, before)   # the approver re-roled away: their open request is withdrawn
         db.commit()
         audit_log("add_participant", "project", project_id, project["name"], f"{user['name']} as {role}" + (f"; {moot} pending approval withdrawn" if moot else ""))
         # create told the team "You are on …" as Coordinators; a role set within the minute does not tell them twice (sim P3)
@@ -1121,11 +1142,13 @@ def participant_invite(project_id):
         if _wrong_kind_for_role(user, role):   # the invite is a second way onto the team (system map #14)
             flash(_WRONG_KIND, "error")
             return redirect(url_for("project_detail", project_id=project_id) + "#team")
+        before = approvals.approver(db, project_id)
         db.execute(
             "INSERT INTO project_participants (project_id, user_id, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) "
             "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
             (project_id, user["id"], role, session["user_id"], now),
         )
+        approvals.approver_left(db, project_id, before)   # an invite may re-role the approver
         db.commit()
         audit_log("invite_participant", "project", project_id, project["name"], f"{email} as {role}")
         if not created:   # an existing account gets the bell item participants/add gives; a new one has its sign-in link (mail)
@@ -1169,16 +1192,17 @@ def participant_remove(project_id, participant_id):
     if row["user_id"] == project["owner_id"]:
         flash("The project manager cannot be removed — reassign the owner on Edit", "error")
     else:
+        before = approvals.approver(db, project_id)
         db.execute("DELETE FROM project_participants WHERE id = ?", (participant_id,))
         # their open work comes to the project manager, so its reminders still reach someone (P3-23);
         # a colleague's tasks stay theirs only while they could still see the rollout (staff see every one)
         kind = db.execute("SELECT kind FROM users WHERE id = ?", (row["user_id"],)).fetchone()[0]
         moved = db.execute("UPDATE tasks SET assignee_id = ? WHERE project_id = ? AND assignee_id = ? AND done = 0",
                            (project["owner_id"], project_id, row["user_id"])).rowcount if kind == "external" else 0
-        moot = _moot_approvals(db, project_id)
+        moot = approvals.approver_left(db, project_id, before)
         db.commit()
         said = "".join([f"; {moved} open {plural(moved, 'task')} moved to the project manager" if moved else "",
-                        f"; {moot} pending approval withdrawn (no Customer left to decide)" if moot else ""])
+                        f"; {moot} pending approval withdrawn (the approver left)" if moot else ""])
         audit_log("remove_participant", "project", project_id, project["name"], f"{row['name']} ({row['role']}){said}")
         if moved:
             notify_users([project["owner_id"]], "assigned", project_id, f"{moved} {plural(moved, 'task')} on {escape(project['name'])} came to you",
@@ -1186,14 +1210,6 @@ def participant_remove(project_id, participant_id):
                          exclude_user_id=session["user_id"], link=f"/projects/{project_id}")
         flash(f"{row['name']} removed{said}")
     return redirect(url_for("project_detail", project_id=project_id) + "#team")
-
-
-def _moot_approvals(db, project_id):
-    """With nobody left in the Customer role, a pending approval could never be
-    decided (and would count as waiting for ever): withdraw it. The caller commits."""
-    if customer_ids(project_id):
-        return 0
-    return db.execute("UPDATE stage_approvals SET status = 'superseded' WHERE project_id = ? AND status = 'pending'", (project_id,)).rowcount
 
 
 # ---- a project's own stages: add / rename / reorder / delete / SLAs ---------

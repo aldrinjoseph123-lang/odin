@@ -15,6 +15,7 @@ vi.mock("@/lib/api", async (orig) => ({
   flow: vi.fn(async () => flow),
   flowDetail: vi.fn(),
   postForm: vi.fn(async () => ({ ok: true, messages: [] })),
+  requestApproval: vi.fn(async () => ({ id: 9, stage: "Scoping", status: "pending", decided_by: null, comment: null, chases: 0 })),
   pendingIntake: vi.fn(async () => ({ rows: [], can_confirm: true, can_lead: true, leads: [], po_category: "Client PO" })),
 }))
 
@@ -117,5 +118,47 @@ describe("the note box in the Flow detail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add note" }))
     expect(await screen.findByRole("alert")).toHaveTextContent("Write the note first")
     expect(box).toHaveValue("x")
+  })
+})
+
+describe("customer approval in the Flow detail (one approver, a decline pauses)", () => {
+  const base = {
+    id: 1, name: "Late one", client: "Globex", vendor_name: null, product_name: null, delivery_mode: "Direct", outsourcer_name: null, owner_name: "Admin User",
+    stage: "Scoping", stage_index: 1, next_stage: "Sensor pilot", state: "on_track", over_by: null, start_date: "2026-09-01", target_end_date: "2026-12-01", days_left: 60,
+    today: "2026-09-29", stages: flowRow({}).stages.map((name, i) => ({ name, status: i < 1 ? "done" : i === 1 ? "current" : "next", sla_days: null, entered_at: null, days: null })),
+    tasks: [], documents: 0, recent_notes: [], participants: [], assignable: [], can_edit: false, me: 1,
+    customer_approval: true, approver: { id: 5, name: "Ann" },
+  }
+
+  it("the project manager re-requests a declined stage, and the move offers the override", async () => {
+    vi.mocked(api.flowDetail).mockResolvedValue({ ...base, can_move: true, can_approve: false,
+      approval: { id: 3, stage: "Scoping", status: "declined", decided_by: "Ann", comment: "Not yet", chases: 0 },
+      gate: { blocked: [{ stage: "Scoping", kind: "declined", text: "The customer declined Scoping: Not yet. Ask again, or override with a reason" }], can_override: true },
+    } as unknown as api.FlowDetail)
+    mount("/board?rollout=1")
+    fireEvent.click(await screen.findByRole("button", { name: "Re-request approval" }))
+    await waitFor(() => expect(api.requestApproval).toHaveBeenCalledWith(1))
+    expect(toast).toHaveBeenCalledWith("Asked Ann to approve Scoping")
+    expect(screen.getAllByText(/The customer declined Scoping: Not yet\. Ask again/).length).toBeGreaterThan(0)
+    expect(screen.getByRole("button", { name: "Override with a reason" })).toBeInTheDocument()
+  })
+
+  it("another customer contact sees who it waits on, with no way to decide", async () => {
+    vi.mocked(api.flowDetail).mockResolvedValue({ ...base, can_move: false, can_approve: false,
+      approval: { id: 3, stage: "Scoping", status: "pending", decided_by: null, comment: null },
+    } as unknown as api.FlowDetail)
+    mount("/board?rollout=1")
+    expect(await screen.findByText("Waiting on Ann to approve Scoping")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
+    expect(screen.queryByRole("button", { name: /request approval/i })).toBeNull()
+  })
+
+  it("the approver gets the decision card", async () => {
+    vi.mocked(api.flowDetail).mockResolvedValue({ ...base, can_move: false, can_approve: true,
+      approval: { id: 3, stage: "Scoping", status: "pending", decided_by: null, comment: null },
+    } as unknown as api.FlowDetail)
+    mount("/board?rollout=1")
+    expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument()
+    expect(screen.queryByText(/Waiting on Ann/)).toBeNull()
   })
 })

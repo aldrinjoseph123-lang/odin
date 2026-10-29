@@ -48,6 +48,8 @@ export default function ProjectForm(_props: { user: User }) {
         outsourcer_name: p.outsourcer_name ?? "", outsourcer_email: p.outsourcer_email ?? "",
         // a new project starts from Settings → Projects & workflow; a copy or an edit keeps its own
         stage_template_id: String(p.stage_template_id ?? data.defaults.stage_template_id ?? data.templates[0]?.id ?? ""), owner_id: String(p.owner_id ?? (data.mode !== "edit" && !data.can_lead ? "" : data.me)),
+        // the approver is picked from the Customer contacts on the team; empty = the first of them (services/approvals.py)
+        ...(data.customers?.length ? { approver_id: String(p.approver_id ?? "") } : {}),
       })
       setApproval(data.mode === "new" ? data.defaults.customer_approval : !!p.customer_approval)
       setVals(Object.fromEntries(data.custom_fields.map((c) => [c.id, fieldInput(c.kind, c.value)])))
@@ -126,6 +128,14 @@ export default function ProjectForm(_props: { user: User }) {
             </Field>
           </>)}
           <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} className={checkbox} /> Ask the customer contact to approve each stage change</label>
+          {approval && !!d.customers?.length && (
+            <Field label="Approver" hint="the one Customer contact who approves; the others can follow along">
+              <select value={f.approver_id} onChange={set("approver_id")} aria-label="Approver" className={field}>
+                <option value="">First Customer contact ({d.customers[0].name})</option>
+                {d.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </Field>
+          )}
           <div className="grid grid-cols-3 gap-2">
             <Field label="PO date"><DatePicker value={f.po_date} onChange={(v) => setF({ ...f, po_date: v, start_date: f.start_date || v })} label="PO date" className="w-full" /></Field>
             <Field label="Start date"><DatePicker value={f.start_date} onChange={(v) => setF({ ...f, start_date: v })} label="Start date" className="w-full" /></Field>

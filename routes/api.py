@@ -11,7 +11,7 @@ from datetime import date, datetime
 from constants import CONTACT_LISTS, DEFAULT_ALERT_TYPE_SETTINGS, DELIVERY_MODES, EXTERNAL_PROJECT_ROLES, PERMISSIONS, PROJECT_MANAGER, PROJECT_ROLES, ROLES, VIA_OPTIONS
 from core import app, as_id, json_body, like_any, sees_po, text_field, login_required, nav_counts, permission_required, project_allows, project_role_required, project_scope, role_has_permission
 from db import avatar_url, get_doc_category_names, get_setting, partner_hidden_categories, project_role_of, stage_rows
-from db import PROJECT_CLOSED_SQL, PROJECT_OPEN_SQL, current_approval, customer_ids, get_db, touch_project, get_stage_names, get_terminal_stage, is_customer_on, my_project_ids, participants_for, sla_for_project, stages_for_projects
+from db import PROJECT_CLOSED_SQL, PROJECT_OPEN_SQL, current_approval, customer_ids, get_db, touch_project, get_stage_names, get_terminal_stage, my_project_ids, participants_for, sla_for_project, stages_for_projects
 from routes.auth import MFA_NEEDED, attempt_login
 from routes.board import alerts_page_data
 from routes.projects import DEFAULT_SORT, PROJECTS_PER_PAGE, SORT_COLUMNS, StageConflict, change_stage, decide_approval, filtered_projects_query, leads, load_project, stage_entry_note_ids
@@ -20,6 +20,7 @@ from services.alerts import get_alert_type_settings, schedule_status
 from services.analytics import _parse, clock, days_in_stage, sla_by_stage, stage_sla_state, stage_timeline, working_days
 from services.audit import audit_log
 from services.fmt import plural
+from services import approvals as approval_service
 from services import signoff as signoff_service
 from services import fields as custom_fields
 from services import gates
@@ -760,6 +761,8 @@ def api_project_form():
     project = {f: source[f] for f in fields} if source else {}
     if source:
         project.update({"customer_approval": bool(source["customer_approval"]), "stage_template_id": source["stage_template_id"], "owner_id": source["owner_id"]})
+        if mode == "edit":
+            project["approver_id"] = source["approver_id"]
         if mode == "duplicate":
             project["name"] = f"{source['name']} (copy)"
     return jsonify({
@@ -783,6 +786,8 @@ def api_project_form():
         "can_lead": role_has_permission(session.get("role"), "edit_project_stage"),
         # custom fields (Settings › Rollouts & workflow), with the record's values on an edit or a copy
         "custom_fields": custom_fields.for_project(source["id"]) if source else [f | {"value": None} for f in custom_fields.definitions()],
+        # who may be the approver (services/approvals.py): the rollout's active Customer contacts, on an edit
+        "customers": [{"id": c["id"], "name": c["name"]} for c in approval_service.customers(db, edit_id)] if mode == "edit" else [],
     })
 
 
@@ -881,6 +886,7 @@ def api_project(project_id):
         "intake_pending": bool(project["intake_pending"]) and not external,
         "details": {f: project[f] for f in fields},
         "customer_approval": bool(project["customer_approval"]),
+        "approver": _approver(project_id),
         "guest_links": {
             "customer": external_url("guest_view", token=project["customer_token"]) if project["customer_token"] else None,
             "vendor": external_url("guest_view", token=project["access_token"])
@@ -930,7 +936,7 @@ ACTIVITY_LABELS = {
     "add_project_note": "added a note", "add_task": "added a task", "edit_task": "edited a task", "toggle_task": "ticked or reopened a task",
     "delete_task": "removed a task", "override_task_wait": "ticked a task still waiting on another (Admin override)", "upload_document": "uploaded a document", "delete_document": "removed a document",
     "add_participant": "added someone to the team", "invite_participant": "invited a partner", "remove_participant": "removed someone from the team",
-    "approval_decision": "recorded the customer's decision", "save_report": "saved a report version",
+    "approval_decision": "recorded the customer's decision", "approval_requested": "asked the customer to approve again", "save_report": "saved a report version",
     "add_project_stage": "added a stage", "rename_project_stage": "renamed a stage", "move_project_stage": "reordered the stages",
     "delete_project_stage": "removed a stage", "update_project_slas": "changed the stage SLAs", "rotate_guest_token": "rotated the guest links",
     "update_project_stage_gates": "changed what each stage asks before it is left", "override_stage_gate": "moved past a stage gate",
@@ -1039,10 +1045,46 @@ def api_project_stage(project_id):
     return jsonify({"ok": True, "undo": g.stage_undo_url})
 
 
+@app.route("/api/projects/<int:project_id>/approvals/request", methods=["POST"])
+@permission_required("edit_project_stage")
+@project_role_required("move_stage")
+def api_approval_request(project_id):
+    """Re-request: ask the approver again for the stage the rollout is in, after a
+    decline or a withdrawn request (services/approvals.py). A new row, chased from 0."""
+    project = load_project(project_id)
+    db = get_db()
+    stages = get_stage_names(project_id)
+    if not project["customer_approval"]:
+        return jsonify(error="This rollout does not ask the customer to approve its stages"), 400
+    if project["intake_pending"]:
+        return jsonify(error="Confirm this intake first; it has no stage until then"), 400
+    if not stages or project["stage"] == stages[-1]:
+        return jsonify(error="The last stage asks for the sign-off, not an approval"), 400
+    open_ = current_approval(project_id)
+    if open_ and open_["status"] == "pending" and open_["stage"] == project["stage"]:
+        return jsonify(error="The approver has not answered the open request yet"), 400
+    who = approval_service.approver(db, project_id)
+    if who is None:
+        return jsonify(error="Add the customer's contact to the team (role Customer) first"), 400
+    aid = approval_service.request(db, project, project["stage"], session["user_name"], tell=False)
+    db.commit()
+    from markupsafe import escape
+    approval_service.ask(project, project["stage"], f"{escape(session['user_name'])} asks you again to approve <b>{escape(project['stage'])}</b> of <b>{escape(project['name'])}</b>.")
+    audit_log("approval_requested", "project", project_id, project["name"], f"{project['stage']} to {who['name']}")
+    row = db.execute("SELECT * FROM stage_approvals WHERE id = ?", (aid,)).fetchone()
+    return jsonify({"id": row["id"], "stage": row["stage"], "status": row["status"], "decided_by": None, "comment": None, "chases": row["chase_count"]})
+
+
 # ---- Flow: the first screen. Every active rollout, stuck first; then one
 # rollout's stage flow with tasks, next action, ETA and timeline. -------------
 
 STATE_RANK = {"overdue": 0, "over_sla": 1, "due_soon": 2, "on_track": 3}
+
+
+def _approver(project_id):
+    """{id, name} of the rollout's one approver (services/approvals.py), or None."""
+    a = approval_service.approver(get_db(), project_id)
+    return {"id": a["id"], "name": a["name"]} if a else None
 
 
 def _flow_state(project, sla, schedule):
@@ -1136,6 +1178,7 @@ def api_flow():
     stale_days = (alert_settings.get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
     soon_days = (alert_settings.get("project_due_soon") or DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
     gated = {r["project_id"] for rows_ in stage_lists.values() for r in rows_ if r["gate_tasks"] or gates.required_docs(r)}
+    gated |= {pid for pid, a in approvals.items() if a["status"] == "declined"}   # a customer's decline holds it too (services/approvals.py)
     loaded = gates.preload(p["id"] for p in projects if p["id"] in gated) if staff and gated else None   # one read for every row
     rows = []
     for p in projects:
@@ -1446,7 +1489,8 @@ def api_project_flow(project_id):
         "approval": ({"id": a["id"], "stage": a["stage"], "status": a["status"], "decided_by": a["decided_by"], "comment": a["comment"],
                       "chases": a["chase_count"] if not external else 0}   # reminders Odin sent the customer (services/chasers.py)
                      if (a := current_approval(project_id)) else None),
-        "can_approve": is_customer_on(project_id, session["user_id"]),
+        "can_approve": approval_service.is_approver(project_id, session["user_id"], db),   # the one named approver only
+        "approver": _approver(project_id),
         "signoff": signoff_service.state(project, session["user_id"], session.get("kind") != "external"),
         "signoff_chases": 0 if external else (db.execute("SELECT chase_count FROM signoffs WHERE project_id = ? AND status = 'sent' ORDER BY version DESC LIMIT 1", (project_id,)).fetchone() or [0])[0],
         "watch": watch_state(project_id, session["user_id"], session.get("kind")),   # mute or follow (B3)

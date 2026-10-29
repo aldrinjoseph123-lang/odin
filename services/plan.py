@@ -106,11 +106,12 @@ def _push_reason(stage, task, root, today):
     return f"{stage} is forecast later: {task['title']} waits on open work{via}."
 
 
-def build(project, rows=None, notes=None, risks=None, tasks=None):
+def build(project, rows=None, notes=None, risks=None, tasks=None, declined=...):
     """The plan, the actuals, the forecast and the health of one project.
     `rows` are its project_stages rows, `notes` its status notes, `risks` its
-    open RAID items (for health), `tasks` its tasks (for the chains); each is
-    read when not passed."""
+    open RAID items (for health), `tasks` its tasks (for the chains),
+    `declined` the customer's decline that pauses its stage or None
+    (services/approvals.declined); each is read when not passed."""
     db = get_db()
     pid = project["id"]
     if rows is None:
@@ -199,8 +200,12 @@ def build(project, rows=None, notes=None, risks=None, tasks=None):
     gate = None
     if not closed and c and cur + 1 < len(rows) and _d(c["forecast_end"]) and _d(c["forecast_end"]) <= today:
         from services import gates
-        gate = gates.summary(gates.blocked(project, names[cur + 1], rows)) or None
-    health = _health(project, stages, cur, finish, risks, today, closed, has_plan, gate)
+        # a decline is its own (red) reason below, not the gate's
+        gate = gates.summary([r for r in gates.blocked(project, names[cur + 1], rows) if r["kind"] != "declined"]) or None
+    if declined is ...:
+        from services import approvals
+        declined = None if closed else approvals.declined(project, db)
+    health = _health(project, stages, cur, finish, risks, today, closed, has_plan, gate, declined)
     return {"stages": stages, "finish": finish, "health": health, "pct_complete": pct, "has_plan": has_plan,
             "warning": past_target(max((s["plan_end"] for s in stages if s["plan_end"]), default=None), project["target_end_date"]),
             # every visit, revisits included, for the report's history
@@ -210,9 +215,10 @@ def build(project, rows=None, notes=None, risks=None, tasks=None):
             "calendar": {"working": policy("count_working_days"), "week": sorted(cal[0]), "off": sorted(d.isoformat() for d in cal[1])}}
 
 
-def _health(project, stages, cur, finish, risks, today, closed, has_plan, gate=None):
+def _health(project, stages, cur, finish, risks, today, closed, has_plan, gate=None, declined=None):
     """Red / amber / green with the reasons, and how far to trust the forecast.
-    `gate`: what holds a move that is due now (internal; the customer's health passes none)."""
+    `gate`: what holds a move that is due now (internal; the customer's health passes none).
+    `declined`: the customer's decline that pauses the stage (red; the customer's health passes none)."""
     if closed:
         return {"rag": "done", "reasons": ["The rollout has reached its last stage."], "confidence": "high"}
     amber, red = policy("rag_amber_days"), policy("rag_red_days")
@@ -236,6 +242,8 @@ def _health(project, stages, cur, finish, risks, today, closed, has_plan, gate=N
         reasons_amber.append(f"{c['name']} is {round(c['actual_days'] - c['sla_days'])} d over its {c['sla_days']} d SLA.")
     if gate and c:
         reasons_amber.append(f"Due to leave {c['name']}, held by its gate: {gate}.")
+    if declined:
+        reasons_red.append(f"The customer declined {declined['stage']}.")
     blockers = [r for r in risks if r["kind"] == "blocker"]
     high = [r for r in risks if r["kind"] in ("risk", "issue") and r["impact"] == "high"]
     if blockers:

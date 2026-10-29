@@ -187,6 +187,8 @@ NEW_PROJECT_COLUMNS = {
     "stage_template_id": "INTEGER",
     # 1 = every stage change asks the customer contact to approve it
     "customer_approval": "INTEGER NOT NULL DEFAULT 0",
+    # who that is: one Customer participant (services/approvals.py); NULL = the first Customer on the team
+    "approver_id": "INTEGER",
     "via": "TEXT",
     "account_manager_name": "TEXT",
     "account_manager_email": "TEXT",

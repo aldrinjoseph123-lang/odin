@@ -43,6 +43,9 @@ export function MoveConfirm({ d, from = d.stage, onMoved, onStale, quiet, confir
   const declined = d.approval?.status === "declined" && d.approval.stage === d.stage
   const told = d.participants.filter((p) => p.user_id !== d.me).length
   const held = d.gate?.blocked ?? []
+  // a customer's decline holds the move like a gate (services/approvals.py): its own line, its own words
+  const refusal = held.find((g) => g.kind === "declined")
+  const gated = held.filter((g) => g.kind !== "declined")
   const shut = held.length > 0 && !(overriding && reason.trim())   // the gate holds until it clears or a reason is typed
   const risky = openHere > 0 || approvalPending || declined || held.length > 0
   const cancel = () => {
@@ -65,17 +68,18 @@ export function MoveConfirm({ d, from = d.stage, onMoved, onStale, quiet, confir
     <section className={bare ? undefined : "panel p-3"} aria-label={bare ? `Move to ${next}` : undefined} aria-labelledby={bare ? undefined : `move-h-${d.id}`} onKeyDown={(e) => { if (e.key === "Escape" && confirming) { e.stopPropagation(); cancel() } }}>
       {!bare && <H id={`move-h-${d.id}`} className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-nav-fg"><ArrowRight className="h-3.5 w-3.5" /> Move to {next}</H>}
       <ul className="mb-2 grid grid-cols-1 gap-1 text-[13px] text-muted-foreground">
-        {held.length > 0 && <li className="font-medium text-warn">Before leaving {d.stage}: {gateText(held)}</li>}
+        {gated.length > 0 && <li className="font-medium text-warn">Before leaving {d.stage}: {gateText(gated)}</li>}
         {openHere > 0 && !held.some((g) => g.kind === "tasks" && g.stage === d.stage) && <li className="font-medium text-warn">{plural(openHere, "open task")} still in {d.stage}</li>}
         {approvalPending && <li className="font-medium text-warn">The customer has not approved {d.stage} yet</li>}
-        {declined && <li className="font-medium text-bad">The customer declined {d.stage}{d.approval?.comment ? `: “${d.approval.comment}”` : ""}</li>}
+        {refusal ? <li className="font-medium text-bad">{refusal.text}</li>
+          : declined && <li className="font-medium text-bad">The customer declined {d.stage}{d.approval?.comment ? `: “${d.approval.comment}”` : ""}</li>}
         <li>Tells {plural(told, "person", "people")} on the team</li>
       </ul>
       <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Stage change note, shared with the customer and partners" aria-describedby={`move-note-${d.id}`} maxLength={5000} className="h-8 text-[13px]" />
       <p id={`move-note-${d.id}`} className="mt-1 text-[12px] text-muted-foreground">Shared with the customer and partners.</p>
       {held.length > 0 && d.gate?.can_override && (overriding ? (
         <>
-          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why move past the gate?" aria-label="Reason for moving past the gate, kept in the stage history" aria-describedby={`move-why-${d.id}`} maxLength={300} className="mt-2 h-8 text-[13px]" autoFocus />
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={gated.length ? "Why move past the gate?" : "Why move on without the customer's approval?"} aria-label="Reason for moving past the gate, kept in the stage history" aria-describedby={`move-why-${d.id}`} maxLength={300} className="mt-2 h-8 text-[13px]" autoFocus />
           <p id={`move-why-${d.id}`} className="mt-1 text-[12px] text-muted-foreground">Kept in the stage history and the audit log, not shown to the customer.</p>
         </>
       ) : <button type="button" onClick={() => setOverriding(true)} className="mt-2 text-[12px] font-medium text-primary-text hover:underline">Override with a reason</button>)}
@@ -84,7 +88,7 @@ export function MoveConfirm({ d, from = d.stage, onMoved, onStale, quiet, confir
           {/* Cancel first, the move after it, as in every other dialog */}
           <Button size="sm" variant={risky ? "outline" : "ghost"} onClick={cancel} disabled={busy} autoFocus={risky}>Cancel</Button>
           <Button size="sm" onClick={() => { if (Date.now() - confirmAt.current > 400) void advance() }} loading={busy} disabled={shut} autoFocus={!risky}>
-            {held.length ? "Move past the gate" : openHere > 0 ? `Move with ${plural(openHere, "open task")}` : approvalPending ? "Move without the customer's approval" : `Move to ${next} now`}</Button>
+            {gated.length ? "Move past the gate" : refusal ? "Move without the customer's approval" : openHere > 0 ? `Move with ${plural(openHere, "open task")}` : approvalPending ? "Move without the customer's approval" : `Move to ${next} now`}</Button>
         </div>
       ) : (
         <Button ref={advanceRef} className="mt-2 w-full" size="sm" variant={quiet ? "outline" : "default"} onClick={() => { confirmAt.current = Date.now(); setConfirming(true) }} disabled={busy || shut}>Move to {next} <ArrowRight className="h-3.5 w-3.5" /></Button>
