@@ -366,7 +366,8 @@ def build(scope, user_id):
                 "pct": round(100 * done_steps / total_steps) if total_steps else 0}
 
     per_stage = Counter(p["stage"] for p in projects)
-    order = list(get_stage_names()) + sorted(s for s in per_stage if s not in get_stage_names())
+    names = get_stage_names()
+    order = list(names) + sorted(s for s in per_stage if s not in names)
     late_at = Counter(p["stage"] for p in projects if state(p) == "overdue")
     warn_at = Counter(p["stage"] for p in projects if state(p) in ("over_sla", "due_soon"))
     stages = [{"stage": s, "count": per_stage[s], "late": late_at[s], "warn": warn_at[s]} for s in order if per_stage[s]]

@@ -269,6 +269,35 @@ class PerformanceTestCase(OpsBase):
         written = set(re.findall(r'audit_log\(\s*"([a-z_]+)"', source))
         self.assertEqual([a for a in READ_ONLY_ACTIONS if a not in written], [])
 
+    def statements(self, url):
+        """The SQL statements one GET runs (a trace on every connection opened meanwhile)."""
+        seen, connect = [], sqlite3.connect
+        def traced(*a, **k):
+            con = connect(*a, **k)
+            con.set_trace_callback(seen.append)
+            return con
+        with patch("sqlite3.connect", traced):
+            self.assertEqual(self.client.get(url).status_code, 200)
+        return seen
+
+    def test_the_flow_reads_stage_gates_in_a_fixed_number_of_statements(self):
+        """Sim B1: with any stage gate set, /api/flow ran gates.blocked per rollout (3.8 statements each:
+        478 at 150 rollouts). preload() reads tasks, documents and categories once for the board."""
+        def board(n):
+            for i in range(n):
+                self.new_project(name=f"Gated {i}", client="C")
+            self.sql("UPDATE project_stages SET gate_tasks = 1, required_docs = '[\"Client PO\"]'")
+            self.sql("INSERT INTO tasks (project_id, title, created_at) SELECT id, 'Open', ? FROM projects", datetime.utcnow().isoformat())
+            return len(self.statements("/api/flow"))
+        few = board(2)
+        many = board(8)   # ten rollouts now
+        self.assertEqual(many, few)
+        rows = self.client.get("/api/flow").get_json()["rows"]
+        self.assertTrue(all(r["gate_blocked"] for r in rows))
+        self.assertIn("1 open task", rows[0]["gate_reasons"])
+        # and the dashboard names the stages once, not once per stage on the board (12 calls per request)
+        self.assertEqual(sum("GROUP BY name ORDER BY MIN(position)" in s for s in self.statements("/api/dashboard")), 1)
+
     def test_tasks_done_count_on_the_workspace_day(self):
         """P3-29: 22:30 UTC is already tomorrow in Dubai."""
         from policies import local_today

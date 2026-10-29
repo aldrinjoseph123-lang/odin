@@ -1134,6 +1134,8 @@ def api_flow():
     alert_settings = get_alert_type_settings()
     stale_days = (alert_settings.get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
     soon_days = (alert_settings.get("project_due_soon") or DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
+    gated = {r["project_id"] for rows_ in stage_lists.values() for r in rows_ if r["gate_tasks"] or gates.required_docs(r)}
+    loaded = gates.preload(p["id"] for p in projects if p["id"] in gated) if staff and gated else None   # one read for every row
     rows = []
     for p in projects:
         own = stage_lists.get(p["id"]) or []
@@ -1147,8 +1149,7 @@ def api_flow():
         in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         at = stages.index(p["stage"]) if p["stage"] in stages else 0
         nxt = stages[at + 1] if at + 1 < len(stages) else None
-        # two queries per rollout; batch them if the board ever holds thousands
-        held = gates.blocked(p, nxt, own) if nxt and staff else []
+        held = gates.blocked(p, nxt, own, loaded) if nxt and staff and p["id"] in gated else []
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),
