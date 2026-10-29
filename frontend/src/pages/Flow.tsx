@@ -39,6 +39,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { lazyPage } from "@/lib/lazyPage"
 import { readPref, usePref } from "@/lib/usePref"
 import { submitKey } from "@/lib/useSubmitShortcut"
+import { gapped } from "@/lib/gapped"
 import { useLoad } from "@/lib/useLoad"
 
 // the heavier views load when first opened, so the list stays fast
@@ -892,10 +893,12 @@ export default function Flow({ user }: { user: User }) {
   const [notice, setNotice] = useState<{ id: number; text: string; undo?: string; bad?: boolean } | null>(null)
 
   // the list keeps itself current: a minute's poll while the tab is visible, and on coming back to it
-  // (a colleague's move shows without a reload; the open rollout's own pane is left alone)
+  // (a colleague's move shows without a reload; the open rollout's own pane is left alone);
+  // never while a load is out, nor within 10 s of the last (Gantt and Calendar refetch with it)
   useEffect(() => {
-    const t = window.setInterval(() => { if (document.visibilityState === "visible") void load() }, 60_000)
-    const back = () => void load()
+    const refresh = gapped(load, 10_000)
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") void refresh() }, 60_000)
+    const back = () => void refresh()
     window.addEventListener("focus", back)
     return () => { window.clearInterval(t); window.removeEventListener("focus", back) }
   }, [load])

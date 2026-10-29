@@ -46,7 +46,8 @@ def clean(body, project_id, existing=None):
         raise ValueError("Likelihood is low, medium or high")
     status = body.get("status", existing["status"] if existing and existing["kind"] == kind else STATUSES[kind][0])
     if status not in STATUSES[kind]:
-        raise ValueError(f"A {kind} is {', '.join(STATUSES[kind])}")
+        *rest, last = STATUSES[kind]
+        raise ValueError(f"{'An' if kind[0] in 'aeiou' else 'A'} {kind}'s status is {', '.join(rest)} or {last}")
     try:
         due = parse_date(body.get("due_date", existing["due_date"] if existing else None))
     except ValueError as exc:

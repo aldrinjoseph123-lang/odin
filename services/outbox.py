@@ -19,12 +19,25 @@ from datetime import datetime, timedelta
 
 from db import get_db
 
+# Which rows go first (the payload's "priority"; absent is NORMAL): a stage move or an approval
+# or sign-off request before the bulk of digests, daily summaries and the weekly report.
+URGENT, NORMAL, BULK = 0, 1, 2
 
-def add(kind, **payload):
-    """Queue one message: kind "mail" (to, subject, html) or "teams" (to = an
+
+def pack(files):
+    """Attachments [(name, bytes, content type)] as the queue keeps them (JSON: base64)."""
+    import base64
+    return [[name, base64.b64encode(data).decode(), ctype] for name, data, ctype in files]
+
+
+def add(kind, priority=NORMAL, **payload):
+    """Queue one message: kind "mail" (to, subject, html, optionally
+    attachments from pack()) or "teams" (to = an
     address for the person's chat, "channel" or "webhook"). Kind "held" is an
     item kept for the daily summary (services/notifications.send_summaries):
-    never due, so the worker never sends it."""
+    never due, so the worker never sends it. `priority`: URGENT, NORMAL or BULK."""
+    if priority != NORMAL:
+        payload["priority"] = priority
     db = get_db()
     now = datetime.utcnow().isoformat()
     db.execute("INSERT INTO outbox (kind, payload, next_try_at, created_at) VALUES (?, ?, ?, ?)",
@@ -45,7 +58,9 @@ def _send(kind, p):
                 return True, None
             with current_app.test_request_context():   # links are built from Settings › General, never a request
                 html += odin_link(user, intent["path"], intent["label"])
-        return graph.send_mail(p["to"], p["subject"], html, report=False)   # the admins hear when it is given up
+        import base64
+        files = [(name, base64.b64decode(data), ctype) for name, data, ctype in p.get("attachments", [])]
+        return graph.send_mail(p["to"], p["subject"], html, report=False, **({"attachments": files} if files else {}))   # the admins hear when given up
     if p["to"] == "channel":
         return graph.send_teams_message(p["html"])
     if p["to"] == "webhook":   # the address is a sealed secret: read at send time, never queued
@@ -56,15 +71,21 @@ def _send(kind, p):
     return teams_bot.send(p["to"], p["title"], p["text"], p.get("link"))
 
 
-def drain(db=None, limit=50):
-    """Send what is due, oldest first. Returns how many rows it took."""
+def drain(db=None, limit=50, stop=None):
+    """Send what is due, urgent first, then oldest first, until `stop()` says
+    so (checked before each row: the scheduler's time budget and SIGTERM).
+    Returns how many rows it took."""
     from policies import policy
     from services.notifications import report_mail_failure
     db = db or get_db()
     now = datetime.utcnow()
-    rows = db.execute("SELECT * FROM outbox WHERE sent_at IS NULL AND kind != 'held' AND next_try_at <= ? ORDER BY id LIMIT ?",
-                      (now.isoformat(), limit)).fetchall()
+    rows = db.execute("SELECT * FROM outbox WHERE sent_at IS NULL AND kind != 'held' AND next_try_at <= ? "
+                      "ORDER BY COALESCE(json_extract(payload, '$.priority'), ?), id LIMIT ?", (now.isoformat(), NORMAL, limit)).fetchall()
+    taken = 0
     for r in rows:
+        if stop and stop():
+            break
+        taken += 1
         # claim it first: a second drain (a cron --once beside the service) leaves it alone,
         # and a crash mid-send tries it again ten minutes later
         claimed = db.execute("UPDATE outbox SET next_try_at = ? WHERE id = ? AND next_try_at = ?",
@@ -95,7 +116,7 @@ def drain(db=None, limit=50):
             db.execute("UPDATE outbox SET attempts = ?, next_try_at = ?, last_error = ? WHERE id = ?",
                        (tries, (datetime.utcnow() + timedelta(minutes=2 ** (tries - 1))).isoformat(), str(error)[:500], r["id"]))
         db.commit()
-    return len(rows)
+    return taken
 
 
 def trim(db=None):

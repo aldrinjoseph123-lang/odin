@@ -170,18 +170,57 @@ class TriggersTestCase(RulesBase):
         self.assertEqual(self.told(), 3)
 
     def test_old_overdue_tasks_that_already_fired_never_crowd_out_a_new_one(self):
-        """The scan's cap counts firings, and what already ran is not a candidate again."""
+        """The scan's cap counts candidates examined, and what already ran is not a candidate again."""
         rid = self.rule("task_overdue", name="Late task")
         self.sql("UPDATE rules SET armed_at = ?", iso(-30))
         for n in range(3):
             self.client.post("/projects/1/tasks", json={"title": f"Old {n}", "due_date": iso(-10 + n)})
-        with patch("services.rules.SCAN_MAX", 3):
-            scheduler.sync_alerts()
-            self.assertEqual(len(self.runs(rid)), 3)
-            self.client.post("/projects/1/tasks", json={"title": "Fresh", "due_date": iso(-1)})
-            scheduler.sync_alerts()
+        self._set_policy(rules_scan_max="3")
+        scheduler.sync_alerts()
+        self.assertEqual(len(self.runs(rid)), 3)
+        self.client.post("/projects/1/tasks", json={"title": "Fresh", "due_date": iso(-1)})
+        scheduler.sync_alerts()
         self.assertEqual(len(self.runs(rid)), 4)
         self.assertIn("Fresh", self.runs(rid)[0]["what"])
+
+    def overdue(self, n, day=-3):
+        with self.raw_db() as db:
+            db.executemany("INSERT INTO tasks (project_id, title, due_date, created_at) VALUES (1, ?, ?, ?)",
+                           [(f"Late {i}", iso(day), NOW.isoformat()) for i in range(n)])
+            db.commit()
+
+    def fires(self):
+        """Run one alert pass; how many times the scan called fire()."""
+        from services import rules
+        with patch("services.rules.fire", wraps=rules.fire) as spy:
+            scheduler.sync_alerts()
+        return spy.call_count
+
+    def test_an_unmatched_backlog_is_examined_once_per_rule(self):
+        """Sim B3: a candidate no rule matches, or one a rule already ran for, used to be fired every quarter hour
+        (360 fire() calls and 821 rolled-back inserts per pass at 150 rollouts). Each rule looks once, then never again."""
+        hit = self.rule("task_overdue", name="Late task")
+        self.rule("task_overdue", name="Initech only", conditions=[{"kind": "client", "value": "Initech"}])
+        self.sql("UPDATE rules SET armed_at = ?", iso(-30))
+        self.overdue(5)
+        self.assertEqual(self.fires(), 5)
+        self.assertEqual(len(self.runs(hit)), 5)
+        self.assertEqual(self.fires(), 0)   # the next quarter hour: nothing to look at
+        self.assertEqual(self.client.get("/api/rules").get_json()["rules"][1]["runs"], 0)   # the looked-at rows stay out of the run log
+
+    def test_what_arose_before_every_rule_was_armed_is_never_a_candidate(self):
+        self.rule("task_overdue", name="Late task")   # armed today
+        self.overdue(5, day=-10)
+        self.assertEqual(self.fires(), 0)
+
+    def test_a_large_backlog_drains_in_one_pass(self):
+        """Sim B3: the cap counted runs (SCAN_MAX 200), so 300 overdue tasks took several passes; it counts candidates now (rules_scan_max)."""
+        rid = self.rule("task_overdue", name="Late task", actions=[{"kind": "notify", "user_ids": [self.co], "email": False}])
+        self.sql("UPDATE rules SET armed_at = ?", iso(-30))
+        self.overdue(300)
+        self.assertEqual(self.fires(), 300)
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM rule_runs WHERE rule_id = ? AND ok = 1", rid)[0][0], 300)
+        self.assertEqual(self.fires(), 0)
 
     def test_a_breach_with_its_alert_off_dates_from_the_sla_not_today(self):
         """With the SLA alert off there is no alert row to date the breach: it is the day the SLA ran

@@ -203,7 +203,7 @@ def settings_report_send_test():
     if not me or not me["email"]:
         flash("Add your email address on the Account page first", "error")
     else:
-        sent, failed, message = weekly_report.send(to=[me["email"]], teams=False)
+        sent, failed, message = weekly_report.send(to=[me["email"]], teams=False, queue=False)
         audit_log("report_send_test", details=message)
         flash(f"Test report sent to {me['email']}" if sent else f"Not sent: {message}", "message" if sent else "error")
     return redirect(url_for("settings_section", section="reports"))

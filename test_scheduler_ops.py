@@ -196,18 +196,73 @@ class SchedulerOpsTestCase(FixBase):
             self.assertEqual(sorted(n for n in os.listdir(folder) if n.startswith("odin-preupdate-")), made)   # never prunes them
             self.assertIsNone(backup._stamp(made[-1]))   # outside daily/weekly/monthly retention
 
-    def test_a_report_whose_mail_failed_is_retried_without_reposting_to_teams(self):
+    def test_the_weekly_report_is_queued_never_mailed_from_the_clock_thread(self):
+        """Sim B3: the report sent one mail per recipient inline in the clock thread, and an address that
+        failed was never tried again. Its mail goes through the outbox now, retried like any other."""
         self._set_policy(report_enabled="1", report_teams="1", report_emails="boss@corp.example",
                          teams_webhook_url="https://hook.example/x", report_attach="0")
-        def report_pass():
-            with patch("scheduler.due_jobs", return_value=["report"]), patch("graph.send_mail", return_value=(False, "mailbox gone")), \
-                 patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
-                scheduler.run_due()
-            return hook.call_count
-        self.assertEqual(report_pass(), 1)
-        self.assertIsNone(self.setting("job.report.last_run"))   # nothing was mailed: tried again
-        self.sql("UPDATE settings SET value = ? WHERE key = 'job.report.last_try'", (datetime.utcnow() - timedelta(hours=2)).isoformat())
-        self.assertEqual(report_pass(), 0)   # the retry mails again, Teams has it already
+        with patch("scheduler.due_jobs", return_value=["report"]), patch("graph.send_mail") as mail, \
+             patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
+            scheduler.run_due()
+        mail.assert_not_called()
+        self.assertEqual(hook.call_count, 1)
+        self.assertTrue(self.setting("job.report.last_run"))
+        self.assertEqual([__import__("json").loads(r[0])["to"] for r in self.sql("SELECT payload FROM outbox WHERE kind = 'mail'")], ["boss@corp.example"])
+        self.ctx()
+        from services import outbox
+        with patch("graph.send_mail", return_value=(False, "mailbox gone")):
+            outbox.drain()
+        self.assertEqual(self.tuples("SELECT attempts, sent_at IS NULL, next_try_at IS NOT NULL FROM outbox"), [(1, 1, 1)])   # tried again later
+
+    def test_the_backup_runs_last_and_after_the_alert_sync(self):
+        """Sim B3: the backup (66 s for 2 GB) ran in the clock thread ahead of the quarter hour's alert sync."""
+        calls = []
+        self.addCleanup(setattr, scheduler, "_synced", None)
+        scheduler._synced = None
+        with patch("scheduler.due_jobs", return_value=["backup", "housekeeping"]), \
+             patch("scheduler._run_job", side_effect=lambda job, _on: calls.append(job)), \
+             patch("scheduler.sync_alerts", side_effect=lambda: calls.append("alerts")):
+            scheduler.run_due()
+            scheduler.sync_alerts_due()   # the clock loop after the pass: this quarter hour is done
+        self.assertEqual(calls, ["housekeeping", "alerts", "backup"])
+
+    def test_a_backup_is_refused_when_the_disk_is_too_full(self):
+        """Sim B3: nothing checked free space before writing an archive onto the database's disk."""
+        small = __import__("shutil")._ntuple_diskusage(100 * 2**30, 99 * 2**30, 500 * 2**20)   # 500 MB free
+        with patch.object(db_module, "DATA_DIR", tempfile.mkdtemp()), patch("shutil.disk_usage", return_value=small):
+            ok, message = backup.run_backup(local_only=True)   # no archive yet: a backup needs 1,024 MB
+            self.assertFalse(ok)
+            self.assertIn("only 500 MB free", message)
+            self.assertEqual([n for n in os.listdir(backup._backup_dir()) if n.endswith(".zip")], [])
+            self.assertEqual(self.tuples("SELECT ok, size_bytes FROM backup_runs"), [(0, None)])
+            self.assertEqual([n["kind"] for n in self.notices("Odin skipped a backup%")], ["ops"])
+            backup.run_backup(local_only=True)
+            self.assertEqual(len(self.notices("Odin skipped a backup%")), 1)   # once a day
+            self._set_policy(backup_min_free_mb="100")   # the admin's number
+            ok, message = backup.run_backup(local_only=True)
+            self.assertTrue(ok, message)
+
+    def test_the_outbox_round_sends_urgent_first_and_stops_at_its_budget(self):
+        """Sim B3: one row at a time, oldest first, 15 s each when Microsoft hangs: a 500-row digest took two hours
+        and a stage move waited behind it. Urgent kinds go first now, and a round stops after outbox_pass_seconds."""
+        from services import outbox
+        self.ctx()
+        for n in range(3):
+            outbox.add("mail", outbox.BULK, to=f"digest{n}@corp.example", subject="Odin daily summary", html="x")
+        outbox.add("mail", to="normal@corp.example", subject="Mentioned", html="x")
+        outbox.add("mail", outbox.URGENT, to="stage@corp.example", subject="Moved to Pilot", html="x")
+        self._set_policy(outbox_pass_seconds="10")
+        clock, sent = [1000.0], []
+        def slow(to, *_a, **_k):   # each send takes 6 s
+            clock[0] += 6
+            sent.append(to)
+            return True, None
+        with patch("graph.send_mail", side_effect=slow), patch("scheduler.time.monotonic", side_effect=lambda: clock[0]):
+            self.assertEqual(scheduler.outbox_pass(), 2)
+        self.assertEqual(sent, ["stage@corp.example", "normal@corp.example"])   # the third would end past the 10 s budget
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM outbox WHERE sent_at IS NULL")[0][0], 3)   # the digests wait for the next round
+        from services.notifications import priority_of
+        self.assertEqual([priority_of(k) for k in ("stage", "approval", "mention", "due")], [outbox.URGENT, outbox.URGENT, outbox.NORMAL, outbox.BULK])
 
     def test_a_stuck_clock_loop_is_told_once_a_day(self):
         stuck = lambda: self.notices("Odin's schedule has stopped")

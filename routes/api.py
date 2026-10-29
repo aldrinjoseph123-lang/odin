@@ -945,6 +945,22 @@ ACTIVITY_LABELS = {
     "accept_document": "accepted an uploaded file", "reject_document": "rejected an uploaded file",
 }
 
+# Audit actions that change nothing a dashboard shows (signing in and out, reading, downloading,
+# exporting, testing a connection, a person's own look): the dashboard's change check
+# (services/dashboard.version) skips them, so a sign-in does not rebuild every open dashboard.
+# A new action is a change unless it is named here; test_v18_meta checks each name is a real action.
+READ_ONLY_ACTIONS = (
+    "login_success", "login_failure", "login_password_ok", "login_link_requested", "login_link_rejected", "break_glass_login",
+    "logout", "session_ended", "sign_out_other_sessions", "end_sessions_for_two_step",
+    "password_reset_requested", "password_reset_rejected", "email_verification_sent", "email_verification_refused", "email_verify_rejected",
+    "mfa_setup_started", "mfa_setup_refused", "mfa_disable_refused", "link_microsoft_started", "link_microsoft_refused",
+    "download_document", "download_report", "download_portfolio_report", "download_signoff",
+    "export_audit_log", "export_project_activity", "export_projects", "export_users", "api_token_read",
+    "change_own_appearance", "change_own_home", "change_own_notification_prefs", "dismiss_whats_new",
+    "check_ai_server", "test_email", "test_resend", "test_teams", "test_teams_webhook", "backup_test_share",
+    "report_send_test",
+)
+
 
 @app.route("/api/projects/<int:project_id>/activity")
 @permission_required("view_project_detail")
@@ -1119,6 +1135,8 @@ def api_flow():
     alert_settings = get_alert_type_settings()
     stale_days = (alert_settings.get("stale") or DEFAULT_ALERT_TYPE_SETTINGS["stale"])["threshold_days"]
     soon_days = (alert_settings.get("project_due_soon") or DEFAULT_ALERT_TYPE_SETTINGS["project_due_soon"])["threshold_days"]
+    gated = {r["project_id"] for rows_ in stage_lists.values() for r in rows_ if r["gate_tasks"] or gates.required_docs(r)}
+    loaded = gates.preload(p["id"] for p in projects if p["id"] in gated) if staff and gated else None   # one read for every row
     rows = []
     for p in projects:
         own = stage_lists.get(p["id"]) or []
@@ -1132,8 +1150,7 @@ def api_flow():
         in_stage = sla["days"] if sla else days_in_stage(p["stage_entered_at"], now)
         at = stages.index(p["stage"]) if p["stage"] in stages else 0
         nxt = stages[at + 1] if at + 1 < len(stages) else None
-        # two queries per rollout; batch them if the board ever holds thousands
-        held = gates.blocked(p, nxt, own) if nxt and staff else []
+        held = gates.blocked(p, nxt, own, loaded) if nxt and staff and p["id"] in gated else []
         rows.append({
             "id": p["id"], "name": p["name"], "client": p["client"], "stage": p["stage"],
             "stages": stages, "mine": p["id"] in mine, "team": team.get(p["id"], [{"id": p["owner_id"], "name": p["owner_name"], "avatar_url": None}]),

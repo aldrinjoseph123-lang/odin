@@ -121,7 +121,7 @@ def main():
             if owner in admins:
                 continue   # already has the whole digest
             n = len(projects)
-            notify_users([owner], "alert", None, f"{n} of your rollout{'s' if n != 1 else ''} need{'s' if n == 1 else ''} attention today",
+            notify_users([owner], "alert", None, f"{n} of your rollouts need{'s' if n == 1 else ''} attention today",
                          _format_alerts_html({k: [p for p in v if p["owner_id"] == owner] for k, v in alerts.items()}), link="/alerts")
         print(f"Digest: {len(admins)} admin(s), {len([o for o in mine if o not in admins])} project manager(s).")
         return 0 if sent_anything else 1

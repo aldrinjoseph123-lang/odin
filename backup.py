@@ -209,6 +209,25 @@ def _destination(name, copy):
         return name, False, str(exc)
 
 
+def _room(con):
+    """Refuse (RuntimeError) when the backup disk has less free than the policy
+    backup_min_free_mb (0: twice the last archive, 1,024 MB before the first),
+    and tell the admins once a day: a backup must not fill the database's disk."""
+    from policies import policy
+    need = policy("backup_min_free_mb", con)
+    if not need:
+        last = con.execute("SELECT size_bytes FROM backup_runs WHERE size_bytes IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+        need = max(1, 2 * last[0] // 2**20) if last else 1024
+    free = shutil.disk_usage(_backup_dir()).free // 2**20
+    if free < need:
+        why = f"only {free:,} MB free on the backup disk, and a backup needs {need:,} MB (Settings > Backups > Disk space)"
+        from scheduler import _tell_admins_once_a_day
+        _tell_admins_once_a_day("backup_no_room", "Odin skipped a backup: the disk is too full",
+                                f"The backup was not made: {why}. Free space on the server or keep fewer copies (Settings > Backups > Copies kept); "
+                                "see docs/RUNBOOK.md, \"Disk full\".", "/settings/backups")
+        raise RuntimeError(why)
+
+
 def _run_backup(trigger, actor, local_only):
     from policies import policy
     con = sqlite3.connect(_db.DB_PATH)
@@ -227,6 +246,7 @@ def _run_backup(trigger, actor, local_only):
         for name in os.listdir(_backup_dir()):   # left by a run that was killed (a container recreated mid-backup)
             if name.startswith(PARTIAL):
                 os.remove(os.path.join(_backup_dir(), name))
+        _room(con)
         with tempfile.TemporaryDirectory() as tmp:
             snapshot = _snapshot(tmp)
             manifest = _manifest(snapshot)

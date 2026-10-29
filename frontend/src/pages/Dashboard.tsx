@@ -762,9 +762,8 @@ export default function Dashboard({ user }: { user: User }) {
       } catch { /* the next tick tries again */ }
     }
     const timer = setInterval(check, POLL_MS)
-    document.addEventListener("visibilitychange", check)
-    window.addEventListener("focus", check)
-    return () => { stop = true; clearInterval(timer); document.removeEventListener("visibilitychange", check); window.removeEventListener("focus", check) }
+    document.addEventListener("visibilitychange", check)   // the tab coming back; focus as well asked twice (sim B2)
+    return () => { stop = true; clearInterval(timer); document.removeEventListener("visibilitychange", check) }
   }, [load])
 
   if (error) return <LoadError message={error} />

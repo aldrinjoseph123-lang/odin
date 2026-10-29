@@ -190,10 +190,15 @@ def _active(db, scope):
 
 
 def version():
-    """A number that moves whenever anything changes: the audit log's last id
-    (every mutation writes one). The page polls it and reloads on a change."""
-    row = get_db().execute("SELECT MAX(id) FROM audit_logs").fetchone()
-    return row[0] or 0
+    """A number that moves whenever anything changes: the last id of an audit
+    row that wrote something (every mutation writes one; reads such as a
+    sign-in or a download, routes/api.READ_ONLY_ACTIONS, do not count). The
+    page polls it and reloads on a change. Read from the newest row back, so
+    it stops at the first write."""
+    from routes.api import READ_ONLY_ACTIONS
+    row = get_db().execute(f"SELECT id FROM audit_logs WHERE action NOT IN ({','.join('?' * len(READ_ONLY_ACTIONS))}) ORDER BY id DESC LIMIT 1",
+                           READ_ONLY_ACTIONS).fetchone()
+    return row[0] if row else 0
 
 
 def record_snapshot(day=None):
@@ -361,7 +366,8 @@ def build(scope, user_id):
                 "pct": round(100 * done_steps / total_steps) if total_steps else 0}
 
     per_stage = Counter(p["stage"] for p in projects)
-    order = list(get_stage_names()) + sorted(s for s in per_stage if s not in get_stage_names())
+    names = get_stage_names()
+    order = list(names) + sorted(s for s in per_stage if s not in names)
     late_at = Counter(p["stage"] for p in projects if state(p) == "overdue")
     warn_at = Counter(p["stage"] for p in projects if state(p) in ("over_sla", "due_soon"))
     stages = [{"stage": s, "count": per_stage[s], "late": late_at[s], "warn": warn_at[s]} for s in order if per_stage[s]]

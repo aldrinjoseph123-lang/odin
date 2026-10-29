@@ -139,9 +139,12 @@ def recipients():
     return sorted(set(staff) | set(policy("report_emails")))
 
 
-def send(to=None, teams=True):
+def send(to=None, teams=True, queue=True):
     """Send the report to `to` (default: the configured recipients) and,
-    when asked and allowed, a summary to Teams. Returns (sent, failed, message)."""
+    when asked and allowed, a summary to Teams. Returns (sent, failed, message).
+    The mail is queued in the outbox (sent, retried and given up like every
+    other mail, never in the scheduler's clock thread); queue=False sends it
+    now, for the admin's test copy, whose answer they wait for."""
     subject, html, summary, attachments = build()
     targets = to if to is not None else recipients()
     # The PDFs are internal (baseline, slip, notes, risks): they go to Odin staff
@@ -151,7 +154,13 @@ def send(to=None, teams=True):
     sent, failed = 0, []
     for address in targets:
         inside = address.lower() in staff
-        ok, error = graph.send_mail(address, subject, html if inside else outside_html, attachments=attachments if inside else [])
+        body, files = (html, attachments) if inside else (outside_html, [])
+        if queue:
+            from services import outbox
+            outbox.add("mail", outbox.BULK, to=address, subject=subject, html=body, **({"attachments": outbox.pack(files)} if files else {}))
+            sent += 1
+            continue
+        ok, error = graph.send_mail(address, subject, body, attachments=files)
         sent += ok
         if not ok:
             failed.append(f"{address}: {error}")
@@ -176,6 +185,6 @@ def send(to=None, teams=True):
             if ok:
                 db.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, today))
                 db.commit()
-    message = f"Sent to {sent} of {len(targets)}" + (f" with {len(attachments)} PDF{'s' if len(attachments) != 1 else ''}" if attachments else "") \
+    message = f"{'Queued' if queue else 'Sent'} for {sent} of {len(targets)}" + (f" with {len(attachments)} PDF{'s' if len(attachments) != 1 else ''}" if attachments else "") \
         + (f"; {', '.join(posted)}" if posted else "") + (f"; failed: {'; '.join(failed)[:300]}" if failed else "")
     return sent, failed, message

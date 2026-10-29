@@ -29,14 +29,22 @@ def odin_link(user, path, label="Open in Odin"):
     return f'<p><a href="{public_base()}{path}">{label}</a></p>'
 
 
-def queue_mail(user, subject, html, path=None, label="Open in Odin"):
+URGENT_KINDS = ("stage", "approval")   # a stage move, a customer approval or sign-off request: out before the digests
+BULK_KINDS = ("due", "brief")          # the morning's reminders and briefs: after everything else
+
+
+def priority_of(kind):
+    return outbox.URGENT if kind in URGENT_KINDS else outbox.BULK if kind in BULK_KINDS else outbox.NORMAL
+
+
+def queue_mail(user, subject, html, path=None, label="Open in Odin", priority=outbox.NORMAL):
     """Queue one mail with its line into Odin. An external account's sign-in
     link is only an intent here (who, which page): the outbox mints it when it
     sends, so no live token ever sits in the outbox table or a backup of it."""
     if path and user["kind"] == "external":
-        outbox.add("mail", to=user["email"], subject=subject, html=html, signin={"user_id": user["id"], "path": path, "label": label})
+        outbox.add("mail", priority, to=user["email"], subject=subject, html=html, signin={"user_id": user["id"], "path": path, "label": label})
     else:
-        outbox.add("mail", to=user["email"], subject=subject, html=html + (odin_link(user, path, label) if path else ""))
+        outbox.add("mail", priority, to=user["email"], subject=subject, html=html + (odin_link(user, path, label) if path else ""))
 
 
 def _rollout_path(project_id, target=None):
@@ -44,9 +52,11 @@ def _rollout_path(project_id, target=None):
 
 
 def _plain(html):
+    """Text from a message's HTML: a paragraph, a list item and a line break end a line."""
     import re
     from html import unescape
-    return unescape(re.sub(r"\s+", " ", re.sub(r"<br\s*/?>", " ", re.sub(r"<(?!br)[^>]+>", "", html or "")))).strip()
+    text = unescape(re.sub(r"<[^>]+>", "", re.sub(r"<br\s*/?>|</(?:p|li)\s*>", "\n", html or "", flags=re.I)))
+    return re.sub(r"\s*\n\s*", "\n", re.sub(r"[^\S\n]+", " ", text)).strip()
 
 
 def delivery(user, kind):
@@ -151,11 +161,12 @@ def notify_users(user_ids, kind, project_id, subject, message_html, exclude_user
     for r in wanted if email and policy("notify_email_enabled") else []:
         # every mail links into Odin: the rollout, or the page the bell links to (P2-21); and says what is the reader's to do (B18)
         if project_id:
-            queue_mail(r, title, message_html + next_step(r, project_id), _rollout_path(project_id, link if link and link.startswith("/projects/") else None), "Open the rollout in Odin")
+            queue_mail(r, title, message_html + next_step(r, project_id), _rollout_path(project_id, link if link and link.startswith("/projects/") else None),
+                       "Open the rollout in Odin", priority_of(kind))
         else:
-            queue_mail(r, title, message_html, link)
+            queue_mail(r, title, message_html, link, priority=priority_of(kind))
     for r in [r for r in wanted if r["kind"] != "external"] if teams and policy("notify_teams_chat_enabled") else []:
-        outbox.add("teams", to=r["email"], title=title, text=body, link=_odin_url(project_id, link))
+        outbox.add("teams", priority_of(kind), to=r["email"], title=title, text=body, link=_odin_url(project_id, link))
 
 
 def send_summaries(db=None):
@@ -191,9 +202,9 @@ def send_summaries(db=None):
             n = len(items)
             subject = f"Odin daily summary: {n} {plural(n, 'update')} on {len(groups)} {plural(len(groups), 'rollout')}"
             if policy("notify_email_enabled", db) and any(it.get("mail", True) for it in items):
-                queue_mail(user, subject, "".join(parts), "/board" if user["kind"] == "external" else "/dashboard", "Open Odin")
+                queue_mail(user, subject, "".join(parts), "/board" if user["kind"] == "external" else "/dashboard", "Open Odin", outbox.BULK)
             if user["kind"] != "external" and policy("notify_teams_chat_enabled", db) and any(it.get("teams", True) for it in items):
-                outbox.add("teams", to=user["email"], title=subject, text="; ".join(sorted({it["project"] or "Odin" for it in items})), link=f"{public_base()}/dashboard")
+                outbox.add("teams", outbox.BULK, to=user["email"], title=subject, text="; ".join(sorted({it["project"] or "Odin" for it in items})), link=f"{public_base()}/dashboard")
             done += 1
         # taken, whether sent or not (a person gone or without an address meanwhile): never summarised twice
         db.execute(f"UPDATE outbox SET sent_at = ? WHERE id IN ({','.join('?' * len(items))})", (now, *[it["row"] for it in items]))
