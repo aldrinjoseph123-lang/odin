@@ -20,8 +20,15 @@ from datetime import datetime, timedelta
 from db import get_db
 
 
+def pack(files):
+    """Attachments [(name, bytes, content type)] as the queue keeps them (JSON: base64)."""
+    import base64
+    return [[name, base64.b64encode(data).decode(), ctype] for name, data, ctype in files]
+
+
 def add(kind, **payload):
-    """Queue one message: kind "mail" (to, subject, html) or "teams" (to = an
+    """Queue one message: kind "mail" (to, subject, html, optionally
+    attachments from pack()) or "teams" (to = an
     address for the person's chat, "channel" or "webhook"). Kind "held" is an
     item kept for the daily summary (services/notifications.send_summaries):
     never due, so the worker never sends it."""
@@ -45,7 +52,9 @@ def _send(kind, p):
                 return True, None
             with current_app.test_request_context():   # links are built from Settings › General, never a request
                 html += odin_link(user, intent["path"], intent["label"])
-        return graph.send_mail(p["to"], p["subject"], html, report=False)   # the admins hear when it is given up
+        import base64
+        files = [(name, base64.b64decode(data), ctype) for name, data, ctype in p.get("attachments", [])]
+        return graph.send_mail(p["to"], p["subject"], html, report=False, **({"attachments": files} if files else {}))   # the admins hear when given up
     if p["to"] == "channel":
         return graph.send_teams_message(p["html"])
     if p["to"] == "webhook":   # the address is a sealed secret: read at send time, never queued

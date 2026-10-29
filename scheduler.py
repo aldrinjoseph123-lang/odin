@@ -168,9 +168,7 @@ def _run_job(job, report_on):
         from services import weekly_report
         with app.test_request_context():
             sent, failed, message = weekly_report.send()
-        log.info("weekly report: %s", message)
-        if failed and not sent:   # a partly sent report is not re-sent: the others would get it twice
-            raise RuntimeError(message)
+        log.info("weekly report: %s", message)   # queued: the outbox sends it and tries again
     elif job == "housekeeping":
         from services.retention import run_audit_retention
 

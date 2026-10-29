@@ -3794,6 +3794,9 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             self.assertEqual(weekly_report.recipients(), ["admin@corp.example", "ceo@corp.example", "pm1@corp.example"])
             with patch("graph.send_mail", return_value=(True, None)) as mail, patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
                 sent, failed, message = weekly_report.send()
+                self.assertFalse(mail.called)   # queued: the outbox sends it, and tries again when Microsoft fails
+                from services import outbox
+                self.assertEqual(outbox.drain(), 3)
         self.assertEqual((sent, failed), (3, []))
         subject, body = mail.call_args.args[1], mail.call_args.args[2]
         self.assertTrue(subject.startswith("Odin weekly report"))
@@ -4509,8 +4512,10 @@ class ContactsAndProjectMetaTestCase(unittest.TestCase):
             db.execute("UPDATE users SET email = 'admin@corp.example' WHERE id = 1"); db.commit()
         self._set_policy(report_attach="1", report_emails="ceo@corp.example,someone@outside.example", report_roles="Admin")
         got = {}
-        with app_module.app.test_request_context(), patch("services.weekly_report.graph.send_mail", side_effect=lambda to, subject, body, attachments=None: got.update({to: len(attachments or [])}) or (True, None)):
+        from services import outbox
+        with app_module.app.test_request_context(), patch("graph.send_mail", side_effect=lambda to, subject, body, attachments=None, report=True: got.update({to: len(attachments or [])}) or (True, None)):
             weekly_report.send(teams=False)
+            outbox.drain()
         self.assertGreater(got["admin@corp.example"], 0)
         self.assertEqual((got["ceo@corp.example"], got["someone@outside.example"]), (0, 0))   # not Odin accounts: the summary only
 

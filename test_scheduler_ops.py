@@ -196,18 +196,23 @@ class SchedulerOpsTestCase(FixBase):
             self.assertEqual(sorted(n for n in os.listdir(folder) if n.startswith("odin-preupdate-")), made)   # never prunes them
             self.assertIsNone(backup._stamp(made[-1]))   # outside daily/weekly/monthly retention
 
-    def test_a_report_whose_mail_failed_is_retried_without_reposting_to_teams(self):
+    def test_the_weekly_report_is_queued_never_mailed_from_the_clock_thread(self):
+        """Sim B3: the report sent one mail per recipient inline in the clock thread, and an address that
+        failed was never tried again. Its mail goes through the outbox now, retried like any other."""
         self._set_policy(report_enabled="1", report_teams="1", report_emails="boss@corp.example",
                          teams_webhook_url="https://hook.example/x", report_attach="0")
-        def report_pass():
-            with patch("scheduler.due_jobs", return_value=["report"]), patch("graph.send_mail", return_value=(False, "mailbox gone")), \
-                 patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
-                scheduler.run_due()
-            return hook.call_count
-        self.assertEqual(report_pass(), 1)
-        self.assertIsNone(self.setting("job.report.last_run"))   # nothing was mailed: tried again
-        self.sql("UPDATE settings SET value = ? WHERE key = 'job.report.last_try'", (datetime.utcnow() - timedelta(hours=2)).isoformat())
-        self.assertEqual(report_pass(), 0)   # the retry mails again, Teams has it already
+        with patch("scheduler.due_jobs", return_value=["report"]), patch("graph.send_mail") as mail, \
+             patch("graph.post_teams_webhook", return_value=(True, None)) as hook:
+            scheduler.run_due()
+        mail.assert_not_called()
+        self.assertEqual(hook.call_count, 1)
+        self.assertTrue(self.setting("job.report.last_run"))
+        self.assertEqual([__import__("json").loads(r[0])["to"] for r in self.sql("SELECT payload FROM outbox WHERE kind = 'mail'")], ["boss@corp.example"])
+        self.ctx()
+        from services import outbox
+        with patch("graph.send_mail", return_value=(False, "mailbox gone")):
+            outbox.drain()
+        self.assertEqual(self.tuples("SELECT attempts, sent_at IS NULL, next_try_at IS NOT NULL FROM outbox"), [(1, 1, 1)])   # tried again later
 
     def test_a_stuck_clock_loop_is_told_once_a_day(self):
         stuck = lambda: self.notices("Odin's schedule has stopped")
