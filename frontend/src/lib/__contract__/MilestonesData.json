@@ -3,10 +3,10 @@
  "can_edit": true,
  "items": [
   {
-   "created_at": "2026-10-16T19:20:30.781154",
+   "created_at": "2026-10-29T14:27:45.940700",
    "created_by": "Priya Menon",
    "customer_visible": false,
-   "date": "2026-10-13",
+   "date": "2026-10-26",
    "done": false,
    "done_at": null,
    "id": 2,
@@ -16,10 +16,10 @@
    "stage": "Sensor pilot"
   },
   {
-   "created_at": "2026-10-16T19:20:30.781154",
+   "created_at": "2026-10-29T14:27:45.940700",
    "created_by": "Priya Menon",
    "customer_visible": true,
-   "date": "2026-10-28",
+   "date": "2026-11-10",
    "done": false,
    "done_at": null,
    "id": 1,

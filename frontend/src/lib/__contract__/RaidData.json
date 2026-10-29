@@ -2,12 +2,12 @@
  "can_edit": true,
  "items": [
   {
-   "closed_at": "2026-10-01T19:20:30.781154",
-   "created_at": "2026-10-01T19:20:30.781154",
+   "closed_at": "2026-10-14T14:27:45.940700",
+   "created_at": "2026-10-14T14:27:45.940700",
    "created_by": "Priya Menon",
    "customer_visible": true,
    "detail": null,
-   "due_date": "2026-10-25",
+   "due_date": "2026-11-07",
    "id": 1,
    "impact": "high",
    "kind": "blocker",
@@ -20,7 +20,7 @@
    "stage": "Sensor pilot",
    "status": "closed",
    "title": "Waiting on firewall change approval",
-   "updated_at": "2026-10-01T19:20:30.781154"
+   "updated_at": "2026-10-14T14:27:45.940700"
   }
  ],
  "owners": [

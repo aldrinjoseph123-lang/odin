@@ -1,5 +1,9 @@
 {
  "approval": null,
+ "approver": {
+  "id": 9,
+  "name": "Ann Reyes"
+ },
  "assignable": [
   {
    "id": 1,
@@ -54,13 +58,13 @@
  "recent_notes": [
   {
    "author": "Admin",
-   "created_at": "2026-10-16T17:20:30.781154",
+   "created_at": "2026-10-29T12:27:45.940700",
    "note": "Customer asked to add the branch office; PO amendment requested.",
    "stage": "Sensor pilot"
   },
   {
    "author": "Admin",
-   "created_at": "2026-10-01T03:20:30.781154",
+   "created_at": "2026-10-13T22:27:45.940700",
    "note": "Pilot group of 50 endpoints",
    "stage": "Sensor pilot"
   }
@@ -79,23 +83,23 @@
  "stage_index": 2,
  "stages": [
   {
-   "days": 4.6,
-   "entered_at": "2026-09-19T19:20:30.781154",
+   "days": 3.7,
+   "entered_at": "2026-10-02T14:27:45.940700",
    "name": "PO Received",
    "sla_days": null,
    "status": "done"
   },
   {
-   "days": 0.4,
-   "entered_at": "2026-09-25T11:20:30.781154",
+   "days": 1.6,
+   "entered_at": "2026-10-08T06:27:45.940700",
    "name": "Scoping",
    "sla_days": null,
    "status": "done"
   }
  ],
- "start_date": "2026-09-19",
+ "start_date": "2026-10-02",
  "state": "over_sla",
- "target_end_date": "2026-12-17",
+ "target_end_date": "2026-12-30",
  "tasks": [
   {
    "ask_category": null,
@@ -105,7 +109,7 @@
    "blocked_by": [],
    "done": false,
    "done_at": null,
-   "due_date": "2026-10-12",
+   "due_date": "2026-10-25",
    "estimate_hours": null,
    "id": 1,
    "kind": "task",
@@ -113,6 +117,7 @@
    "recur_until": null,
    "recurrence": null,
    "stage": "Sensor pilot",
+   "stalled": false,
    "title": "Collect asset inventory",
    "waits_on": []
   },
@@ -124,7 +129,7 @@
    "blocked_by": [],
    "done": false,
    "done_at": null,
-   "due_date": "2026-10-19",
+   "due_date": "2026-11-01",
    "estimate_hours": null,
    "id": 2,
    "kind": "task",
@@ -132,11 +137,12 @@
    "recur_until": null,
    "recurrence": null,
    "stage": "Sensor pilot",
+   "stalled": false,
    "title": "Deploy sensors to pilot group",
    "waits_on": []
   }
  ],
- "today": "2026-10-16",
+ "today": "2026-10-29",
  "vendor_name": "CrowdStrike",
  "watch": {
   "can": "mute",

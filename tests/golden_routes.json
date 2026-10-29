@@ -77,6 +77,7 @@
     "POST /api/projects/<int:project_id>/ai/suggestions/<int:suggestion_id>/dismiss": "401 404 404 404 404 404 404 404",
     "POST /api/projects/<int:project_id>/ai/suggestions/<int:suggestion_id>/items/<int:index>": "401 404 404 404 404 404 404 404",
     "POST /api/projects/<int:project_id>/approvals/<int:approval_id>": "401 403 403 403 403 404 403 403",
+    "POST /api/projects/<int:project_id>/approvals/request": "401 400 403 403 403 403 403 403",
     "GET /api/projects/<int:project_id>/asks": "401 200 200 200 200 200 200 200",
     "POST /api/projects/<int:project_id>/asks/<int:task_id>/answers": "401 404 404 404 404 404 404 404",
     "GET /api/projects/<int:project_id>/fields": "401 200 200 200 200 200 200 200",

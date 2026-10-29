@@ -4,7 +4,7 @@
  "rows": [
   {
    "alert_type": "blocker_open",
-   "created_at": "2026-10-16T15:20:30.781154",
+   "created_at": "2026-10-29T10:27:45.940700",
    "description": null,
    "id": 13,
    "project_id": 3,
@@ -16,7 +16,7 @@
   },
   {
    "alert_type": "project_overdue",
-   "created_at": "2026-10-16T12:20:30.781154",
+   "created_at": "2026-10-29T07:27:45.940700",
    "description": null,
    "id": 1,
    "project_id": 4,
@@ -39,6 +39,7 @@
   "project_overdue": "Rollout overdue",
   "stage_sla_breach": "Stage SLA breached",
   "stale": "Rollout idle",
+  "task_stalled": "Repeating task stalled",
   "task_unowned": "Overdue task with no owner"
  }
 }

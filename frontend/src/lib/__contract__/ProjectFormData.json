@@ -28,6 +28,7 @@
    "value": null
   }
  ],
+ "customers": [],
  "defaults": {
   "customer_approval": false,
   "stage_template_id": 1

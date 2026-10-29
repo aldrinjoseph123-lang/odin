@@ -34,8 +34,8 @@
  "draft": {
   "delivered": [],
   "outstanding": [
-   "Collect asset inventory (due 12 Oct 2026)",
-   "Deploy sensors to pilot group (due 19 Oct 2026)"
+   "Confirm the cutover change window",
+   "Upload the signed network diagram"
   ],
   "scope": [
    {
@@ -56,7 +56,7 @@
    }
   ],
   "statement": "By signing, the customer confirms that the work listed above has been delivered in line with the agreed scope, that the items marked descoped or outstanding are recorded as stated, and that the rollout is accepted as complete.",
-  "summary": "Protect24x7 is delivering EDR Rollout - Globex for Globex; the work is now in Sensor pilot. The work started on 19 Sep 2026 against a target of 17 Dec 2026. 3 of 4 agreed scope items were delivered in full.",
+  "summary": "Protect24x7 is delivering EDR Rollout - Globex for Globex; the work is now in Sensor pilot. The work started on 2 Oct 2026 against a target of 30 Dec 2026. 3 of 4 agreed scope items were delivered in full.",
   "terms": [
    "Support continues under the terms of the existing agreement.",
    "Outstanding items listed above will be closed as described, without affecting acceptance."

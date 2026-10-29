@@ -45,7 +45,7 @@
     "Scoping"
    ],
    "state": "on_track",
-   "target_end_date": "2027-02-13",
+   "target_end_date": "2027-02-26",
    "team": [
     {
      "avatar_url": null,
@@ -59,7 +59,7 @@
     }
    ],
    "total_tasks": 5,
-   "updated_at": "2026-10-16T19:20:30.779272",
+   "updated_at": "2026-10-29T14:27:45.938630",
    "vendor_name": "Palo Alto"
   },
   {
@@ -82,7 +82,7 @@
     "Scoping"
    ],
    "state": "overdue",
-   "target_end_date": "2026-09-06",
+   "target_end_date": "2026-09-19",
    "team": [
     {
      "avatar_url": null,
@@ -96,7 +96,7 @@
     }
    ],
    "total_tasks": 3,
-   "updated_at": "2026-10-16T19:20:30.749392",
+   "updated_at": "2026-10-29T14:27:45.867939",
    "vendor_name": "Palo Alto"
   }
  ],
