@@ -620,24 +620,38 @@ def change_stage(project_id, new_stage, note_text, guest=None, from_stage=None, 
             (project_id, new_stage, actor_name, now),
         )
     db.commit()
+    # The move stands from here: each follow-up is on its own, and a failed one is logged and
+    # told to the admins rather than answering 500 for a move that happened (sim A5)
+    def follow(step, *args, **kwargs):
+        try:
+            step(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            app.logger.exception("stage move of project %s to %s: %s failed", project_id, new_stage, step.__name__)
+            try:
+                from services.notifications import report_mail_failure
+                report_mail_failure(f"{step.__name__} for '{project['name']}' (moved to {new_stage}): {exc}", kind="followup")
+            except Exception:  # noqa: BLE001 — the bell may be what failed
+                db.rollback()
+                app.logger.exception("could not tell the admins of the failed follow-up")
     if guest:
-        audit_log("guest_stage_change", "project", project_id, project["name"], f"stage={new_stage}; by={guest[0]}", actor=f"guest:{guest[1]}")
+        follow(audit_log, "guest_stage_change", "project", project_id, project["name"], f"stage={new_stage}; by={guest[0]}", actor=f"guest:{guest[1]}")
     else:
-        audit_log("update_project_stage", "project", project_id, project["name"], f"stage={new_stage}")
+        follow(audit_log, "update_project_stage", "project", project_id, project["name"], f"stage={new_stage}")
         if held:
-            audit_log("override_stage_gate", "project", project_id, project["name"], f"{project['stage']} -> {new_stage}: {gates.summary(held)}; reason={override}")
+            follow(audit_log, "override_stage_gate", "project", project_id, project["name"], f"{project['stage']} -> {new_stage}: {gates.summary(held)}; reason={override}")
     body = (f"Stage moved to <b>{escape(new_stage)}</b> by {escape(actor_name)}."
             + (f"<br>{escape(note_text)}" if note_text else ""))
     ask = "<br>Please review and approve this step."
-    notify_event(project, f"Stage changed: {escape(project['name'])}", body + (ask if ask_customer else ""), channels={"email": False, "teams": True})
+    follow(notify_event, project, f"Stage changed: {escape(project['name'])}", body + (ask if ask_customer else ""), channels={"email": False, "teams": True})
     # the customer is asked to approve as an approval (their own kind), everyone else hears of the move
     customers = customer_ids(project_id) if ask_customer else []
     team = [r[0] for r in db.execute("SELECT user_id FROM project_participants WHERE project_id = ?", (project_id,)) if r[0] not in customers]
-    notify_users(team, "stage", project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=actor_id)
+    follow(notify_users, team, "stage", project_id, f"{escape(project['name'])}: now in {escape(new_stage)}", body, exclude_user_id=actor_id)
     if customers:
-        notify_users(customers, "approval", project_id, f"{escape(project['name'])}: please approve the move to {escape(new_stage)}", body + ask,
-                     exclude_user_id=actor_id, link=f"/projects/{project_id}")
-    rules.fire("stage_entered", project_id, {"stage": new_stage, "from": project["stage"]})
+        follow(notify_users, customers, "approval", project_id, f"{escape(project['name'])}: please approve the move to {escape(new_stage)}", body + ask,
+               exclude_user_id=actor_id, link=f"/projects/{project_id}")
+    follow(rules.fire, "stage_entered", project_id, {"stage": new_stage, "from": project["stage"]})
     return None
 
 
@@ -1229,7 +1243,16 @@ def project_stage_gates(project_id):
 @permission_required("delete_project")
 @project_role_required("manage_project")
 def undo_project(project_id):
-    stamp = load_project(project_id, include_deleted=True)["deleted_at"]   # the row is deleted by definition
+    project = load_project(project_id, include_deleted=True)
+    stamp = project["deleted_at"]
+    if stamp is None:   # already back (the CRM sent its deal again, services/intake.create)
+        flash(f"Project '{project['name']}' is already restored")
+        return redirect(url_for("project_detail", project_id=project_id))
+    twin = project["intake_deal_id"] and get_db().execute(
+        "SELECT id, name FROM projects WHERE intake_deal_id = ? AND deleted_at IS NULL AND id != ?", (project["intake_deal_id"], project_id)).fetchone()
+    if twin:   # one live rollout per deal id (idx_projects_intake_deal_live)
+        flash(f"Not restored: '{twin['name']}' is the live rollout for deal {project['intake_deal_id']} now", "error")
+        return redirect(url_for("project_detail", project_id=twin["id"]))
     if not restore_deleted("projects", project_id):
         flash("Too late to undo — the undo window has passed", "error")
         return redirect(url_for("projects_list"))
@@ -1560,10 +1583,13 @@ def task_toggle(project_id, task_id):
         return _task_reply(project_id, f"This waits on {task_links.HIDDEN_WAIT}")
     if waits and session.get("role") != "Admin":
         return _task_reply(project_id, f"{task['title']} waits on {waits}: finish that first")
-    db.execute(
-        "UPDATE tasks SET done = ?, done_at = ? WHERE id = ?",
-        (new_done, datetime.utcnow().isoformat() if new_done else None, task_id),
-    )
+    # compare-and-set: of two ticks racing, only the first audits, notifies and fires rules (sim A5)
+    if not db.execute(
+        "UPDATE tasks SET done = ?, done_at = ? WHERE id = ? AND done = ?",
+        (new_done, datetime.utcnow().isoformat() if new_done else None, task_id, task["done"]),
+    ).rowcount:
+        db.rollback()
+        return _task_reply(project_id, done=bool(new_done))   # already so, as above
     touch_project(db, project_id)
     db.commit()
     audit_log("toggle_task", "project", project_id, None, f"{'done' if new_done else 'reopened'}: {task['title'][:80]}")

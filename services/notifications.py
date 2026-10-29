@@ -228,6 +228,9 @@ _FAILURES = {
               "Check that the Odin PMS app is installed in Teams for everyone and Microsoft 365 is connected "
               "(Settings › Integrations; if it was connected before 13 Oct 2026, Disconnect and Connect again so Odin may look people up), "
               "or switch Teams messages off under Settings › Notifications.", "/settings/integrations", 300),
+    "followup": ("followup_failure_reported_at", "A stage move's follow-up failed",
+                 "A rollout moved stage, but a step after the move failed: {}. The move stands; some people may not have been told, "
+                 "or an automation did not run. The server log has the details.", "/audit-logs", 300),
     "resend": ("resend_failure_reported_at", "Odin could not send a sign-in email through Resend",
                "{}. Check the key and the sending domain in Resend, and Settings › Notifications › Sign-in mail.", "/settings/notifications", None),
 }

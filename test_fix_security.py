@@ -257,7 +257,7 @@ class AccessControlTest(Base):
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         d = c.get("/api/settings/rbac").get_json()
         self.assertEqual(d["forbidden"]["manage_users"], ["External"]); self.assertEqual(d["forbidden"]["view_board"], [])
-        fields = {f"{p}::{r}": "on" for p, roles in d["matrix"].items() for r, ok in roles.items() if ok}
+        fields = {f"{p}::{r}": "on" for p, roles in d["matrix"].items() for r, ok in roles.items() if ok} | {"matrix": "full"}
         r = c.post("/settings/rbac", data={**fields, "manage_users::External": "on"}, headers=h)
         self.assertEqual(r.status_code, 400)
         fields.pop("edit_project_stage::Member")
@@ -556,7 +556,7 @@ class IdentityTest(Base):   # test round 14 Oct 2026: P2-1 to P2-4, P2-9
         c, csrf = self._api_client("pm", STRONG_PASSWORD)
         h = {"X-CSRF-Token": csrf, "Accept": "application/json"}
         fields = {f"{p}::{r}": "on" for p, roles in c.get("/api/settings/rbac").get_json()["matrix"].items() for r, ok in roles.items() if ok}
-        self.assertEqual(c.post("/settings/rbac", data={**fields, "edit_project_stage::Viewer": "on"}, headers=h).status_code, 400)
+        self.assertEqual(c.post("/settings/rbac", data={**fields, "matrix": "full", "edit_project_stage::Viewer": "on"}, headers=h).status_code, 400)
         for url, form in ((f"/users/{pm}/role", {"role": "Admin"}), (f"/users/{pm}/role", {"role": "Viewer"}), ("/users/1/role", {"role": "Member"}),
                           (f"/users/{waiting}/approve", {"role": "Admin"}), ("/users/1/reset-password", {"new_password": STRONG_PASSWORD + "x"}),
                           ("/users/1/email", {"email": "pm@corp.example"}),

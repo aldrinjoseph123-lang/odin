@@ -248,7 +248,8 @@ def _backfill_stage_entered_at(db):
 # PRAGMA user_version. Raise SCHEMA_VERSION in any release that adds a table,
 # column, permission or alert type. A database above it was written by a newer
 # release, so this code is a rollback: it boots, but deletes nothing.
-SCHEMA_VERSION = 3   # v2.0.0: fields, gates, task links, asks, milestones, rules, workload, intake, notification kinds
+SCHEMA_VERSION = 4   # v2.0.2: one live rollout per deal id, project_stages(project_id, position)
+# 3 = v2.0.0: fields, gates, task links, asks, milestones, rules, workload, intake, notification kinds
 
 # Names retired from PERMISSIONS / ALERT_TYPES; their rows are deleted on boot.
 # Retire a name by adding it here. Never delete "whatever this code does not
@@ -438,6 +439,14 @@ def migrate_db(db):
     if "scope" not in {row[1] for row in db.execute("PRAGMA table_info(api_tokens)")}:
         db.execute("ALTER TABLE api_tokens ADD COLUMN scope TEXT NOT NULL DEFAULT 'read'")
     db.execute("CREATE INDEX IF NOT EXISTS idx_projects_intake_deal ON projects (intake_deal_id)")
+    # one live rollout per deal id (sim R3: discard, the CRM re-sends, undo made two). Here, not in
+    # schema.sql: that file runs before this function, on databases whose projects lack the column.
+    try:
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_intake_deal_live ON projects (intake_deal_id) "
+                   "WHERE deleted_at IS NULL AND intake_deal_id IS NOT NULL")
+    except sqlite3.IntegrityError:   # twins from before v2.0.2: boot, say so, and try again next boot once one is deleted
+        print("WARNING: two live rollouts share a CRM deal id; delete one so Odin can enforce one per deal "
+              "(SELECT intake_deal_id FROM projects WHERE deleted_at IS NULL GROUP BY 1 HAVING COUNT(*) > 1)", file=sys.stderr)
     # One row per backup run (backup.py): what was made, where it went, and
     # whether its restore test passed. Trimmed to the newest 200 by each run.
     db.execute("""CREATE TABLE IF NOT EXISTS backup_runs (
@@ -859,6 +868,9 @@ def _migrate_stage_lists(db):
         sla_days INTEGER,
         UNIQUE (project_id, name)
     )""")
+    # every page orders a rollout's stages (people SQL 17 → 4 ms, flow −37%, alerts −60%; sim B1).
+    # Not in schema.sql: the table is made here.
+    db.execute("CREATE INDEX IF NOT EXISTS idx_project_stages_position ON project_stages (project_id, position)")
     # Stage gates (services/gates.py): leave a stage only with its tasks done and its documents on file.
     for table in ("project_stages", "stage_template_stages"):
         gate_columns = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
