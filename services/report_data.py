@@ -69,7 +69,10 @@ def draft_words(project, p, raid_items, audience="internal"):
         if st["forecast_start"] == st["forecast_end"]:
             return f"{st['name']}: {fmt_date(st['forecast_start'], '—')}."
         return f"{st['name']}: {fmt_date(st['forecast_start'], '—')} to {fmt_date(st['forecast_end'], '—')}."
-    nxt = ([f"Finish {stages[cur]['name']} by {fmt_date(stages[cur]['forecast_end'], '—')}."] if stages else []) + [line(st) for st in ahead]
+    # on the last stage there is nothing left to finish: the rollout closed on that day (sim R2: "Finish Closed by ...")
+    first = ([f"{stages[cur]['name']} {fmt_date(stages[cur].get('actual_start') or stages[cur]['forecast_end'], '—')}."] if stages and cur == len(stages) - 1
+             else [f"Finish {stages[cur]['name']} by {fmt_date(stages[cur]['forecast_end'], '—')}."] if stages else [])
+    nxt = first + [line(st) for st in ahead]
     return {"summary": " ".join(parts), "next_steps": "\n".join(nxt), "asks": ""}
 
 
