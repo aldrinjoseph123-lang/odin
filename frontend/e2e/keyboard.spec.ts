@@ -53,7 +53,7 @@ test("@keys calendar: months, toggles and a day, by Tab and Enter", async ({ pag
   await page.getByRole("button", { name: "Next month" }).focus()
   await page.keyboard.press("Enter")
   await expect(title).not.toHaveText(start!)
-  await page.getByRole("button", { name: "Today" }).focus()
+  await page.getByRole("button", { name: "Today", exact: true }).focus()
   await page.keyboard.press("Enter")
   await expect(title).toHaveText(start!)
   const day = page.getByRole("button", { name: /\d+ items?$/ }).nth(8)

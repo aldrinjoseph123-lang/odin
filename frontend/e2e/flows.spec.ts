@@ -162,7 +162,7 @@ test("@flow calendar: months, toggles, a day, and a chip into the flow", async (
   await page.getByRole("button", { name: "Next month" }).click()
   await expect(title).not.toHaveText(start!)
   await expect(page).toHaveURL(/month=\d{4}-\d{2}/)
-  await page.getByRole("button", { name: "Today" }).click()
+  await page.getByRole("button", { name: "Today", exact: true }).click()
   await expect(title).toHaveText(start!)
   // hiding tasks removes their chips
   const chips = page.locator(".grid-cols-7 :is(a, button)[title]")
