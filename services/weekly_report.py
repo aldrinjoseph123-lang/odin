@@ -157,7 +157,7 @@ def send(to=None, teams=True, queue=True):
         body, files = (html, attachments) if inside else (outside_html, [])
         if queue:
             from services import outbox
-            outbox.add("mail", to=address, subject=subject, html=body, **({"attachments": outbox.pack(files)} if files else {}))
+            outbox.add("mail", outbox.BULK, to=address, subject=subject, html=body, **({"attachments": outbox.pack(files)} if files else {}))
             sent += 1
             continue
         ok, error = graph.send_mail(address, subject, body, attachments=files)

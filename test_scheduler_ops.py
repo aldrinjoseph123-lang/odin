@@ -242,6 +242,28 @@ class SchedulerOpsTestCase(FixBase):
             ok, message = backup.run_backup(local_only=True)
             self.assertTrue(ok, message)
 
+    def test_the_outbox_round_sends_urgent_first_and_stops_at_its_budget(self):
+        """Sim B3: one row at a time, oldest first, 15 s each when Microsoft hangs: a 500-row digest took two hours
+        and a stage move waited behind it. Urgent kinds go first now, and a round stops after outbox_pass_seconds."""
+        from services import outbox
+        self.ctx()
+        for n in range(3):
+            outbox.add("mail", outbox.BULK, to=f"digest{n}@corp.example", subject="Odin daily summary", html="x")
+        outbox.add("mail", to="normal@corp.example", subject="Mentioned", html="x")
+        outbox.add("mail", outbox.URGENT, to="stage@corp.example", subject="Moved to Pilot", html="x")
+        self._set_policy(outbox_pass_seconds="10")
+        clock, sent = [1000.0], []
+        def slow(to, *_a, **_k):   # each send takes 6 s
+            clock[0] += 6
+            sent.append(to)
+            return True, None
+        with patch("graph.send_mail", side_effect=slow), patch("scheduler.time.monotonic", side_effect=lambda: clock[0]):
+            self.assertEqual(scheduler.outbox_pass(), 2)
+        self.assertEqual(sent, ["stage@corp.example", "normal@corp.example"])   # the third would end past the 10 s budget
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM outbox WHERE sent_at IS NULL")[0][0], 3)   # the digests wait for the next round
+        from services.notifications import priority_of
+        self.assertEqual([priority_of(k) for k in ("stage", "approval", "mention", "due")], [outbox.URGENT, outbox.URGENT, outbox.NORMAL, outbox.BULK])
+
     def test_a_stuck_clock_loop_is_told_once_a_day(self):
         stuck = lambda: self.notices("Odin's schedule has stopped")
         with patch("scheduler.due_jobs", return_value=[]):

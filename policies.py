@@ -140,6 +140,8 @@ POLICIES = {
                             label="Tries before Odin gives up on a message", help="Mail and Teams messages go out from the scheduler; one that fails is tried again after 1, 2, 4, 8 … minutes (8 tries: about two hours). After the last try the admins are told in the bell, once a day."),
     "outbox_max_age_hours": dict(area="notifications", kind="int", default=24, min=1, max=168,
                                  label="Give up on a message after (hours)", help="A message that could not go out within this long is dropped and the admins are told: a sign-in link or a reminder a day late does more harm than good."),
+    "outbox_pass_seconds": dict(area="notifications", kind="int", default=60, min=10, max=600,
+                                label="Longest send round (seconds)", help="The scheduler sends queued mail and Teams messages in rounds, stage moves and approval requests first, digests and summaries last; a round stops after this long, so a slow or hung Microsoft never holds an urgent message behind hundreds of others."),
     # Automatic chasers (services/chasers.py): in the digest pass, working days counted
     "chase_after_days": dict(area="notifications", kind="int", default=3, min=0, max=30,
                              label="Remind the customer after (working days)", help="A sign-off waiting for the customer's signature, and a stage move waiting for their approval, get a reminder with a fresh sign-in link after this many working days, then again every as many days. 0: no reminders."),
@@ -457,7 +459,7 @@ _GROUPS = {
     "Sender": ("mail_from",),
     "Sign-in mail (Resend)": ("resend_enabled", "resend_api_key", "resend_from", "resend_reply_to"),
     "Teams webhook": ("teams_webhook_url",),
-    "Delivery": ("outbox_attempts", "outbox_max_age_hours"),
+    "Delivery": ("outbox_attempts", "outbox_max_age_hours", "outbox_pass_seconds"),
     "Reminders to the customer": ("chase_after_days", "chase_max"),
     "Calendar feeds": ("ics_feed_per_hour", "ics_idle_days"),
     "When it goes out": ("report_enabled", "report_days", "report_time"),

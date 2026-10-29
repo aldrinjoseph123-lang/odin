@@ -545,16 +545,16 @@ def ai_worker():
 
 
 def outbox_pass():
-    """Send the mail and Teams messages that are due (services/outbox.py), one
-    row at a time so a SIGTERM waits for the send in hand (which commits its
-    result) and for no more, not for the whole batch."""
+    """Send the mail and Teams messages that are due (services/outbox.py),
+    urgent first, for at most outbox_pass_seconds (a hung Microsoft takes 15 s
+    a row): it stops between rows, so a SIGTERM waits for the send in hand
+    (which commits its result) and for no more, not for the whole batch."""
     from app import app
+    from policies import policy
     from services.outbox import drain
-    sent = 0
     with app.app_context():
-        while sent < 50 and not _stopping and drain(limit=1):
-            sent += 1
-    return sent
+        deadline = time.monotonic() + policy("outbox_pass_seconds")
+        return drain(limit=50, stop=lambda: _stopping or time.monotonic() >= deadline)
 
 
 def outbox_worker():
