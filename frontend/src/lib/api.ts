@@ -1,3 +1,4 @@
+import { stashDrafts } from "@/lib/drafts"
 import type { DateFormat } from "@/lib/format"
 // One thin client for Flask's JSON API. Same session cookie as the Jinja
 // pages; every mutation carries the CSRF token from /api/session as a header.
@@ -33,7 +34,13 @@ export class ApiError extends Error {
   }
 }
 
-export const SIGNED_OUT = "You were signed out. Sign in again to carry on (open Odin in a new tab to keep what you typed)."
+export const SIGNED_OUT = "You were signed out. Sign in again to carry on: what you typed on this page comes back with you."
+
+// Every path that notices the session has ended: keep what was typed first (lib/drafts.ts).
+function signedOut() {
+  stashDrafts()
+  return new ApiError(401, SIGNED_OUT)
+}
 
 // What a failed request tells the person: what went wrong and what to do,
 // never "Request failed (500)" (test report UX-6, UX-7).
@@ -111,11 +118,11 @@ async function withToken(path: string, init: RequestInit): Promise<Response> {
 // server marks it); otherwise the server's own words when it gave some (a
 // wrong password, a taken username); a bare 400/401 checks the session.
 async function failure(res: Response, said?: string): Promise<ApiError> {
-  if (res.headers.get("X-Odin-Signed-Out")) return new ApiError(401, SIGNED_OUT)
+  if (res.headers.get("X-Odin-Signed-Out")) return signedOut()
   if (said) return new ApiError(res.status, said)
   if (res.status === 400 || res.status === 401) {
     const alive = await fetch("/api/session", { credentials: "same-origin" }).then((r) => r.json()).then((d: SessionResponse) => !!d.user).catch(() => true)
-    if (!alive) return new ApiError(401, SIGNED_OUT)
+    if (!alive) return signedOut()
   }
   return new ApiError(res.status, failureText(res.status))
 }
@@ -133,7 +140,7 @@ async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: u
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  if (notJson(res)) throw new ApiError(401, SIGNED_OUT)
+  if (notJson(res)) throw signedOut()
   const data = (await res.json().catch(() => ({}))) as { error?: string; csrf?: string } & T
   if (data.csrf) csrfToken = data.csrf
   if (!res.ok) throw await failure(res, data.error)
@@ -257,7 +264,7 @@ async function getJson<T>(path: string): Promise<T> {
   const res = await call(path)
   // the server's own words when it gave some (review P3-30); a proxy's HTML error page gives none
   if (!res.ok) throw await failure(res, ((await res.json().catch(() => null)) as { error?: string } | null)?.error)
-  if (notJson(res)) throw new ApiError(401, SIGNED_OUT)
+  if (notJson(res)) throw signedOut()
   return res.json()
 }
 export const flow = () => getJson<FlowData>("/api/flow")
@@ -612,7 +619,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
     throw await failure(res, d?.messages?.join(" ") || d?.error || (res.status === 403 ? "You cannot do that on this rollout" : undefined))
   }
   const data = notJson(res) ? null : (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
-  if (!data) throw new ApiError(401, SIGNED_OUT)
+  if (!data) throw signedOut()
   if (data.ok === false) throw new ApiError(400, data.messages?.join(" ") || data.error || "That did not save")
   return data
 }

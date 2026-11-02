@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { CircleAlert } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { SIGNED_OUT } from "@/lib/api"
@@ -5,13 +6,18 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 // Placeholder while a page's data loads: the page's rough shape in muted
 // bars, so the layout does not jump when content arrives.
+// After SLOW_MS the shape alone says nothing, so a line says what is happening (UI states, 2 Nov 2026).
+const SLOW_MS = 8000
 export function PageSkeleton({ rows = 6 }: { rows?: number }) {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setSlow(true), SLOW_MS); return () => clearTimeout(t) }, [])
   return (
     <div className="px-5 pt-4" role="status" aria-label="Loading">
       <Skeleton className="h-5 w-40" />
       <div className="mt-4 grid grid-cols-1 gap-2">
         {Array.from({ length: rows }, (_, i) => <Skeleton key={i} className="h-9 rounded-lg" style={{ opacity: 1 - i * 0.12 }} />)}
       </div>
+      {slow && <p className="mt-4 text-[13px] text-muted-foreground">Still loading: Odin is slow to answer. Wait a moment, or reload the page.</p>}
     </div>
   )
 }
@@ -20,6 +26,8 @@ export function PageSkeleton({ rows = 6 }: { rows?: number }) {
 // sign in when the session ended (test report UX-6, UX-7). Plain ink, not red:
 // red in Odin means overdue.
 // A missing record passes `back` (test report UX-18): a way out, not a retry.
+// Every other failure keeps a way back beside the retry: a "no access" answer
+// is not mended by trying again (UI states, 2 Nov 2026).
 export function LoadError({ message, back }: { message: string; back?: { href: string; label: string } }) {
   const signedOut = message === SIGNED_OUT
   return (
@@ -30,7 +38,10 @@ export function LoadError({ message, back }: { message: string; back?: { href: s
         {signedOut
           ? <a href={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} className={buttonVariants({ size: "sm" })}>Sign in</a>
           : back ? <a href={back.href} className={buttonVariants({ size: "sm", variant: "outline" })}>{back.label}</a>
-          : <Button size="sm" variant="outline" onClick={() => location.reload()}>Try again</Button>}
+          : <>
+              <Button size="sm" variant="outline" onClick={() => location.reload()}>Try again</Button>
+              <a href="/" className={buttonVariants({ size: "sm", variant: "ghost" })}>Back to Odin</a>
+            </>}
       </div>
     </div>
   )
