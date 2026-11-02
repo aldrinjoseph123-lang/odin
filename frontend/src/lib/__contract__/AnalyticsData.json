@@ -14,13 +14,13 @@
  "stats": {
   "aging": [
    {
-    "days": 48.00000810954862,
+    "days": 48.000017147291665,
     "project_id": 9,
     "project_name": "Vulnerability mgmt - Vandelay Industries",
     "stage": "PO Received"
    },
    {
-    "days": 25.00000810954861,
+    "days": 25.00001714729167,
     "project_id": 17,
     "project_name": "SIEM onboarding - Vandelay Industries",
     "stage": "Scoping"
@@ -31,30 +31,30 @@
   "lead_median": null,
   "measured_projects": 11,
   "slowest": {
-   "avg_days": 7.293091181891205,
+   "avg_days": 7.185262594212963,
    "in_stage_now": 1,
    "max_days": 17.0,
-   "median_days": 4.9375,
-   "oldest_now": 48.00000810954862,
+   "median_days": 4.884640860532407,
+   "oldest_now": 48.000017147291665,
    "stage": "PO Received",
    "visits": 10
   },
   "stages": [
    {
-    "avg_days": 7.293091181891205,
+    "avg_days": 7.185262594212963,
     "in_stage_now": 1,
     "max_days": 17.0,
-    "median_days": 4.9375,
-    "oldest_now": 48.00000810954862,
+    "median_days": 4.884640860532407,
+    "oldest_now": 48.000017147291665,
     "stage": "PO Received",
     "visits": 10
    },
    {
-    "avg_days": 4.1371973106973385,
+    "avg_days": 4.143423118200231,
     "in_stage_now": 2,
     "max_days": 6.75,
-    "median_days": 4.673789242789352,
-    "oldest_now": 25.00000810954861,
+    "median_days": 4.282025806134259,
+    "oldest_now": 25.00001714729167,
     "stage": "Scoping",
     "visits": 8
    }

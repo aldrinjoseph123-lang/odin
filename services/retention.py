@@ -10,6 +10,8 @@ not an account: the nightly scheduler, and only after the rows are safe.
      the trigger put back;
   3. an audit row records what was archived where, and its checksum.
 
+The same period keeps the signed record of a rollout that was deleted
+(<data>/signoff-archive/, written by `keep_evidence`, trimmed here).
 With "forever" nothing happens.
 """
 from security import safe_csv_writer
@@ -21,6 +23,7 @@ from datetime import datetime, timedelta
 import db as _db
 
 ARCHIVE_DIR_NAME = "audit-archive"
+EVIDENCE_DIR_NAME = "signoff-archive"   # the signed record of a deleted rollout, kept for the same period (audit_keep)
 NO_DELETE = "CREATE TRIGGER IF NOT EXISTS audit_logs_no_delete BEFORE DELETE ON audit_logs BEGIN SELECT RAISE(ABORT, 'audit_logs is append-only'); END"
 
 
@@ -28,6 +31,57 @@ def archive_dir():
     path = os.path.join(_db.DATA_DIR, ARCHIVE_DIR_NAME)
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def evidence_dir():
+    path = os.path.join(_db.DATA_DIR, EVIDENCE_DIR_NAME)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def keep_evidence(project, rows, user, reason):
+    """Write the signed record of a rollout about to be deleted to
+    <data>/signoff-archive/: per signed version the PDF as the customer
+    saw it, a JSON with the frozen content, its SHA-256, every signature
+    column and the customer's rating, and the paper copy when there is one.
+    Returns the file names. The nightly purge deletes the rows after the undo
+    window; these files stay until `audit_keep` years pass (trim_evidence)."""
+    import json
+    import shutil
+    from db import UPLOAD_DIR, get_db
+    from security import file_stem
+    from services import signoff
+    from services.signoff_pdf import render
+    folder, db = evidence_dir(), get_db()
+    now = datetime.utcnow().isoformat()
+    names = []
+    for row in rows:
+        stem = f"{project['id']}-{file_stem(project['name'])}-v{row['version']}"
+        data = {k: row[k] for k in row.keys() if k != "content"} | {"content": json.loads(row["content"])}
+        csat = db.execute("SELECT rating, comment, by_name, at FROM csat WHERE project_id = ? AND signoff_version = ?", (project["id"], row["version"])).fetchone()
+        data |= {"csat": dict(csat) if csat else None, "project_name": project["name"], "deleted_by": {"id": user.get("user_id"), "name": user.get("user_name")},
+                 "reason": reason, "deleted_at": now}
+        with open(os.path.join(folder, stem + ".pdf"), "wb") as fh:
+            fh.write(render(signoff.view(row, True, False)))
+        with open(os.path.join(folder, stem + ".json"), "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=1, ensure_ascii=False)
+        names += [stem + ".pdf", stem + ".json"]
+        doc = row["document_id"] and db.execute("SELECT filename, stored_name FROM documents WHERE id = ?", (row["document_id"],)).fetchone()
+        paper = doc and os.path.join(UPLOAD_DIR, str(project["id"]), doc["stored_name"])
+        if paper and os.path.isfile(paper):
+            names.append(f"{stem}-paper{os.path.splitext(doc['filename'])[1][:10].lower()}")
+            shutil.copyfile(paper, os.path.join(folder, names[-1]))
+    return names
+
+
+def trim_evidence(cutoff):
+    """Remove evidence files last written before `cutoff` (an ISO timestamp).
+    ponytail: by file time; a restore from backup renews it, which only keeps files longer."""
+    folder, limit = evidence_dir(), datetime.fromisoformat(cutoff).timestamp()
+    for name in os.listdir(folder):
+        path = os.path.join(folder, name)
+        if os.path.isfile(path) and os.path.getmtime(path) < limit:
+            os.remove(path)
 
 
 def run_audit_retention(now=None):
@@ -40,6 +94,7 @@ def run_audit_retention(now=None):
         if keep == "forever":
             return 0, None
         cutoff = ((now or datetime.utcnow()) - timedelta(days=365 * int(keep))).isoformat()
+        trim_evidence(cutoff)
         cur = con.execute("SELECT * FROM audit_logs WHERE timestamp < ? ORDER BY id", (cutoff,))
         rows = cur.fetchall()
         if not rows:

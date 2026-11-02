@@ -1,9 +1,9 @@
 {
  "items": [
-  "v1.8.0 waves C and D plus the fix round: consistency, print, tests, docs, review fixes",
-  "v1.8.0 waves A and B: review findings, identity, outbox, ops, data layer, Flow a11y"
+  "db: drop is_customer_on, replaced by services.approvals.is_approver",
+  "Approvals: one named approver per rollout; a customer decline pauses the stage"
  ],
  "show": false,
- "title": "v1.8.0",
- "version": "1.8.0"
+ "title": "",
+ "version": "2.1.0"
 }

@@ -53,7 +53,7 @@
  "data": {
   "activity": [
    {
-    "at": "2026-10-16T19:20:30.781154",
+    "at": "2026-10-29T14:27:45.940700",
     "kind": "note",
     "project": "EDR rollout - Globex",
     "project_id": 4,
@@ -61,7 +61,7 @@
     "who": "Priya Menon"
    },
    {
-    "at": "2026-10-16T19:20:30.313647",
+    "at": "2026-10-29T14:27:45.078823",
     "kind": "document",
     "project": "SIEM onboarding - Initech",
     "project_id": 23,
@@ -139,17 +139,17 @@
    "tasks_done_per_day": [
     {
      "count": 3,
-     "key": "2026-10-03"
+     "key": "2026-10-16"
     },
     {
      "count": 3,
-     "key": "2026-10-04"
+     "key": "2026-10-17"
     }
    ]
   },
   "alerts": [
    {
-    "created_at": "2026-10-16T15:20:30.781154",
+    "created_at": "2026-10-29T10:27:45.940700",
     "id": 13,
     "project": "Firewall refresh - Initech",
     "project_id": 3,
@@ -158,7 +158,7 @@
     "type": "blocker_open"
    },
    {
-    "created_at": "2026-10-16T12:20:30.781154",
+    "created_at": "2026-10-29T07:27:45.940700",
     "id": 1,
     "project": "EDR rollout - Globex",
     "project_id": 4,
@@ -204,11 +204,11 @@
   "completion": [
    {
     "count": 0,
-    "day": "2026-08-22"
+    "day": "2026-09-04"
    },
    {
     "count": 0,
-    "day": "2026-08-23"
+    "day": "2026-09-05"
    }
   ],
   "cycle": {
@@ -217,11 +217,11 @@
    "lead_median": null,
    "measured_projects": 11,
    "slowest": {
-    "avg_days": 7.293091181891205,
+    "avg_days": 7.185262594212963,
     "in_stage_now": 1,
     "max_days": 17.0,
-    "median_days": 4.9375,
-    "oldest_now": 48.00000725005787,
+    "median_days": 4.884640860532407,
+    "oldest_now": 48.00001512216435,
     "stage": "PO Received",
     "visits": 10
    },
@@ -360,72 +360,72 @@
    "series": {
     "active": [
      {
-      "day": "2026-10-03",
+      "day": "2026-10-16",
       "v": 18
      },
      {
-      "day": "2026-10-04",
+      "day": "2026-10-17",
       "v": 18
      }
     ],
     "awaiting": [
      {
-      "day": "2026-10-03",
+      "day": "2026-10-16",
       "v": 1
      },
      {
-      "day": "2026-10-04",
+      "day": "2026-10-17",
       "v": 3
      }
     ],
     "due_soon": [
      {
-      "day": "2026-10-03",
+      "day": "2026-10-16",
       "v": 1
      },
      {
-      "day": "2026-10-04",
+      "day": "2026-10-17",
       "v": 1
      }
     ],
     "idle": [
      {
-      "day": "2026-10-03",
+      "day": "2026-10-16",
       "v": 1
      },
      {
-      "day": "2026-10-04",
+      "day": "2026-10-17",
       "v": 2
      }
     ],
     "over_sla": [
      {
-      "day": "2026-10-03",
+      "day": "2026-10-16",
       "v": 2
      },
      {
-      "day": "2026-10-04",
+      "day": "2026-10-17",
       "v": 1
      }
     ],
     "overdue": [
      {
-      "day": "2026-10-03",
+      "day": "2026-10-16",
       "v": 6
      },
      {
-      "day": "2026-10-04",
+      "day": "2026-10-17",
       "v": 6
      }
     ]
    },
-   "since": "2026-10-09"
+   "since": "2026-10-22"
   },
   "mywork": {
    "owned": 22,
    "tasks": [
     {
-     "due_date": "2026-10-03",
+     "due_date": "2026-10-16",
      "id": 17,
      "project": "Firewall refresh - Initech",
      "project_id": 3,
@@ -433,7 +433,7 @@
      "title": "Validate backups"
     },
     {
-     "due_date": "2026-10-06",
+     "due_date": "2026-10-19",
      "id": 50,
      "project": "Vulnerability mgmt - Vandelay Industries",
      "project_id": 9,
@@ -453,7 +453,7 @@
    "due": [
     {
      "avatar_url": null,
-     "due_date": "2026-09-18",
+     "due_date": "2026-10-01",
      "id": 68,
      "project": "MDR onboarding - Umbrella Health",
      "project_id": 13,
@@ -463,7 +463,7 @@
     },
     {
      "avatar_url": null,
-     "due_date": "2026-09-19",
+     "due_date": "2026-10-02",
      "id": 20,
      "project": "Firewall refresh - Initech",
      "project_id": 3,
@@ -474,7 +474,7 @@
    ]
   },
   "since": {
-   "from": "2026-10-15T19:20:31.408184",
+   "from": "2026-10-28T14:27:47.248312",
    "items": []
   },
   "stages": [
@@ -522,9 +522,9 @@
     "name": "SIEM onboarding - Umbrella Health",
     "progress": 0.375,
     "stage": "Deployment",
-    "start_date": "2026-08-31",
+    "start_date": "2026-09-13",
     "state": "overdue",
-    "target_end_date": "2026-09-06",
+    "target_end_date": "2026-09-19",
     "team": [
      {
       "avatar_url": null,
@@ -545,9 +545,9 @@
     "name": "SIEM onboarding - Wayne Retail",
     "progress": 0.875,
     "stage": "Sign-off",
-    "start_date": "2026-08-15",
+    "start_date": "2026-08-28",
     "state": "overdue",
-    "target_end_date": "2026-09-06",
+    "target_end_date": "2026-09-19",
     "team": [
      {
       "avatar_url": null,
@@ -573,27 +573,27 @@
      "custom_capacity": false,
      "id": 1,
      "name": "Admin",
-     "peak": 320,
+     "peak": 327,
      "role": "Admin",
      "rollouts": 22,
      "weeks": [
       {
-       "hours": 96.0,
+       "hours": 98.0,
        "level": "over",
-       "pct": 320,
+       "pct": 327,
        "pm_hours": 88,
-       "task_hours": 8.0,
-       "tasks": 4,
-       "week": "2026-10-12"
+       "task_hours": 10.0,
+       "tasks": 5,
+       "week": "2026-10-26"
       },
       {
-       "hours": 92.0,
+       "hours": 90.0,
        "level": "over",
-       "pct": 307,
+       "pct": 300,
        "pm_hours": 88,
-       "task_hours": 4.0,
-       "tasks": 2,
-       "week": "2026-10-19"
+       "task_hours": 2.0,
+       "tasks": 1,
+       "week": "2026-11-02"
       }
      ]
     },
@@ -614,7 +614,7 @@
        "pm_hours": 0,
        "task_hours": 18.0,
        "tasks": 7,
-       "week": "2026-10-12"
+       "week": "2026-10-26"
       },
       {
        "hours": 2.0,
@@ -623,16 +623,16 @@
        "pm_hours": 0,
        "task_hours": 2.0,
        "tasks": 1,
-       "week": "2026-10-19"
+       "week": "2026-11-02"
       }
      ]
     }
    ],
-   "today": "2026-10-16",
+   "today": "2026-10-29",
    "warn_pct": 90,
    "weeks": [
-    "2026-10-12",
-    "2026-10-19"
+    "2026-10-26",
+    "2026-11-02"
    ]
   }
  },
@@ -658,6 +658,6 @@
   }
  ],
  "scope_full": true,
- "today": "2026-10-16",
- "version": 174
+ "today": "2026-10-29",
+ "version": 173
 }

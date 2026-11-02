@@ -197,7 +197,7 @@ customer copy.
 | `pct_complete`, `elapsed_days`, `has_plan`, `baseline_at` | Progress by planned length, days since start, whether planned dates exist, when the baseline was frozen |
 | `finish` | `forecast`, `planned`, `baseline`, `target` (dates), `vs_target_days`, `vs_baseline_days`, `days_to_target` (calendar days; positive vs target means late) |
 | `stages` | Per stage: `id`, `name`, `position`, `sla_days`, `status` (`done`, `skipped`, `current` or `next`), `plan_start`, `plan_end`, `base_start`, `base_end`, `actual_start`, `actual_end`, `forecast_start`, `forecast_end`, `planned_days`, `actual_days`, `slip_days`, `suggested_start`, `suggested_end`. Lengths and `actual_days` count working days (calendar days when the workspace has switched working days off); `slip_days` is calendar days |
-| `milestones` | The current and next stages: `stage`, `start`, `end`, `planned_end`; on the current stage, `gate` names what holds the next move (open tasks, missing documents, required fields), when something does |
+| `milestones` | The current and next stages: `stage`, `start`, `end`, `planned_end`; on the current stage, `gate` names what holds the next move (open tasks, missing documents, required fields, the customer's decline of the stage), when something does |
 | `project_milestones` | The rollout's own milestones, as in `GET /api/v1/projects/<id>` |
 | `fields` | The custom fields with a value: `name`, `kind`, `value`, `customer_visible` |
 | `asks`, `csat` | What was asked of the outside parties and their ratings at sign-off, as in `GET /api/v1/projects/<id>` (with the questions of a form) |

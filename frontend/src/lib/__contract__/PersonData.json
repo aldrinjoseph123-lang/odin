@@ -2,16 +2,16 @@
  "activity": {
   "days": [
    {
-    "day": "2026-09-17",
+    "day": "2026-09-30",
     "minutes": 18
    },
    {
-    "day": "2026-09-18",
+    "day": "2026-10-01",
     "minutes": 118
    }
   ],
   "last_login_at": null,
-  "last_seen_at": "2026-10-15T20:05:30.781154",
+  "last_seen_at": "2026-10-28T15:12:45.940700",
   "month": 1564,
   "today": 189,
   "week": 466
@@ -23,11 +23,11 @@
   "weeks": [
    {
     "done": 0,
-    "week": "2026-08-24"
+    "week": "2026-09-07"
    },
    {
     "done": 0,
-    "week": "2026-08-31"
+    "week": "2026-09-14"
    }
   ]
  },
@@ -46,7 +46,7 @@
    "client": "Umbrella Health",
    "done": 0,
    "done_at": null,
-   "due_date": "2026-09-18",
+   "due_date": "2026-10-01",
    "id": 68,
    "project": "MDR onboarding - Umbrella Health",
    "project_id": 13,
@@ -58,7 +58,7 @@
    "client": "Globex",
    "done": 0,
    "done_at": null,
-   "due_date": "2026-10-01",
+   "due_date": "2026-10-14",
    "id": 95,
    "project": "Email security - Globex",
    "project_id": 20,
@@ -84,11 +84,11 @@
     "Scoping"
    ],
    "state": "over_sla",
-   "target_end_date": "2026-12-17"
+   "target_end_date": "2026-12-30"
   },
   {
    "client": "Acme Bank",
-   "days_in_stage": 19.0,
+   "days_in_stage": 18.8,
    "id": 10,
    "name": "EDR rollout - Acme Bank",
    "over_by": null,
@@ -102,26 +102,26 @@
     "Scoping"
    ],
    "state": "on_track",
-   "target_end_date": "2026-11-30"
+   "target_end_date": "2026-12-13"
   }
  ],
  "recent": [
   {
-   "at": "2026-10-16T19:20:30.781154",
+   "at": "2026-10-29T14:27:45.940700",
    "kind": "note",
    "project": "EDR rollout - Globex",
    "project_id": 4,
    "text": "Pilot group live, no issues in 48 h."
   },
   {
-   "at": "2026-10-16T02:20:30.781154",
+   "at": "2026-10-28T21:27:45.940700",
    "kind": "task",
    "project": "Email security - Stark Logistics",
    "project_id": 8,
    "text": "Set up SSO for console"
   }
  ],
- "today": "2026-10-16",
+ "today": "2026-10-29",
  "upcoming": [],
  "user": {
   "avatar_url": null,
@@ -130,6 +130,6 @@
   "last_login_at": null,
   "name": "Priya Menon",
   "role": "Member",
-  "since": "2026-10-16T19:20:28.913684"
+  "since": "2026-10-29T14:27:41.740016"
  }
 }

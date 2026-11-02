@@ -131,6 +131,13 @@ def completed(project_id):
                             "ORDER BY version DESC LIMIT 1", (project_id, *DONE)).fetchone()
 
 
+def evidence(project_id):
+    """Every version that signed the rollout off (superseded ones too), oldest
+    first: what is kept when a signed-off rollout is deleted (services/retention.keep_evidence)."""
+    return get_db().execute(f"SELECT * FROM signoffs WHERE project_id = ? AND status IN ({','.join('?' * len(DONE))}) ORDER BY version",
+                            (project_id, *DONE)).fetchall()
+
+
 GATE_MESSAGE = "The rollout closes once the sign-off is signed by the customer and countersigned. Send it from the Sign-off page, or ask an admin to waive it."
 
 

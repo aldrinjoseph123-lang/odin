@@ -1,10 +1,10 @@
 {
  "audience": "internal",
  "company": "Protect24x7",
- "generated_at": "2026-10-16T19:20:31.466185",
+ "generated_at": "2026-10-29T14:27:47.385497",
  "risks": [
   {
-   "due_date": "2026-10-12",
+   "due_date": "2026-10-25",
    "impact": "high",
    "kind": "blocker",
    "owner_name": "Admin",
@@ -14,7 +14,7 @@
    "title": "Waiting on firewall change approval"
   },
   {
-   "due_date": "2026-10-12",
+   "due_date": "2026-10-25",
    "impact": "high",
    "kind": "blocker",
    "owner_name": "Lena Fischer",
@@ -26,7 +26,7 @@
  ],
  "rows": [
   {
-   "baseline": "2026-10-26",
+   "baseline": "2026-11-08",
    "client": "Wayne Retail",
    "confidence": "high",
    "csat": null,
@@ -36,7 +36,7 @@
     "Endpoints in scope": 350,
     "Region": "Qatar"
    },
-   "forecast": "2026-10-16",
+   "forecast": "2026-10-29",
    "has_plan": true,
    "id": 11,
    "milestones": {
@@ -53,7 +53,7 @@
    },
    "owner_name": "Admin",
    "pct_complete": 100,
-   "planned": "2026-11-02",
+   "planned": "2026-11-15",
    "product_name": null,
    "rag": "red",
    "reasons": [
@@ -64,14 +64,14 @@
    "stage": "Sign-off",
    "stage_count": 9,
    "stage_number": 8,
-   "start": "2026-08-15",
-   "target_end_date": "2026-09-06",
+   "start": "2026-08-28",
+   "target_end_date": "2026-09-19",
    "vendor_name": "Palo Alto",
    "vs_baseline_days": -10,
    "vs_target_days": 40
   },
   {
-   "baseline": "2026-11-10",
+   "baseline": "2026-11-23",
    "client": "Initech",
    "confidence": "high",
    "csat": null,
@@ -81,7 +81,7 @@
     "Endpoints in scope": 150,
     "Region": "KSA"
    },
-   "forecast": "2026-10-30",
+   "forecast": "2026-11-12",
    "has_plan": true,
    "id": 7,
    "milestones": {
@@ -97,8 +97,8 @@
     "risk": 2
    },
    "owner_name": "Admin",
-   "pct_complete": 79,
-   "planned": "2026-11-24",
+   "pct_complete": 78,
+   "planned": "2026-12-07",
    "product_name": null,
    "rag": "red",
    "reasons": [
@@ -109,15 +109,15 @@
    "stage": "Hypercare",
    "stage_count": 9,
    "stage_number": 6,
-   "start": "2026-09-06",
-   "target_end_date": "2026-10-04",
+   "start": "2026-09-19",
+   "target_end_date": "2026-10-17",
    "vendor_name": "Fortinet",
    "vs_baseline_days": -11,
    "vs_target_days": 26
   }
  ],
  "summary": {
-  "avg_slip": 14.3,
+  "avg_slip": 14.4,
   "behind_baseline": 14,
   "blockers": 9,
   "count": 22,
@@ -154,5 +154,5 @@
   },
   "title": "Portfolio report"
  },
- "today": "2026-10-16"
+ "today": "2026-10-29"
 }

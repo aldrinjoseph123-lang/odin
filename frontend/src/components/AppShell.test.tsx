@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import AppShell from "./AppShell"
@@ -46,5 +46,17 @@ describe("the ? shortcut sheet (B6)", () => {
     await user.click(screen.getByRole("button", { name: "Your account" }))
     await user.click(await screen.findByRole("button", { name: /Keyboard shortcuts/ }))
     expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument()
+  })
+})
+
+describe("no connection (UI states, 2 Nov 2026)", () => {
+  it("says so while the browser is offline and keeps the page, then clears when it is back", () => {
+    mount()
+    expect(screen.queryByText(/No connection/)).toBeNull()
+    act(() => { window.dispatchEvent(new Event("offline")) })
+    expect(screen.getByText(/No connection\. What is on screen stays/)).toBeInTheDocument()
+    expect(screen.getByLabelText("Any field")).toBeInTheDocument()
+    act(() => { window.dispatchEvent(new Event("online")) })
+    expect(screen.queryByText(/No connection/)).toBeNull()
   })
 })

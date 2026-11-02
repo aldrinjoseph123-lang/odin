@@ -256,9 +256,10 @@ def _run_backup(trigger, actor, local_only):
                     zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.write(snapshot, arcname="odin.db")
                 zf.writestr("manifest.json", json.dumps(manifest, indent=1))
-                from services.retention import ARCHIVE_DIR_NAME
+                from services.retention import ARCHIVE_DIR_NAME, EVIDENCE_DIR_NAME
                 for folder, label in ((_db.UPLOAD_DIR, "uploads"), (_db.AVATAR_DIR, "avatars"),
                                       (os.path.join(_db.DATA_DIR, ARCHIVE_DIR_NAME), ARCHIVE_DIR_NAME),
+                                      (os.path.join(_db.DATA_DIR, EVIDENCE_DIR_NAME), EVIDENCE_DIR_NAME),
                                       (os.path.join(_db.DATA_DIR, "brand"), "brand")):   # document template logos
                     for root, _dirs, files in os.walk(folder):
                         for fname in files:

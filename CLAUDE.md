@@ -91,6 +91,16 @@ session (Account → Link Microsoft, `routes/sso.py`). Only an Admin acts on an 
 or the role matrix (`routes/users.admin_only`). Stage lengths and
 SLAs count working days through `services/workdays.py`; gaps between dates stay
 calendar days.
+**Customer approval (29 Oct 2026, the user's call):** `services/approvals.py` is the one door.
+One approver per rollout (`projects.approver_id`, else the first Customer contact); only the
+approver decides or is told. A decline pauses the stage as a gate reason in `services/gates.blocked()`
+(re-request `POST /api/projects/<id>/approvals/request`, or override with a reason); moving on while
+a request is pending calls `approvals.withdraw()`, which tells the approver — never set
+`stage_approvals.status` by hand. A neglected repeating task (two open, no third made) is `stalled`
+(`services/recurrence.stalled`): shown on the row, an amber health reason and the `task_stalled` alert.
+Deleting a signed-off rollout needs a reason and writes the signed record to
+`DATA_DIR/signoff-archive/` (`services/retention.keep_evidence`, in backups, trimmed by `audit_keep`);
+the admins get a bell with no project id so the purge keeps it.
 
 # Adding a table
 
@@ -107,7 +117,7 @@ type raises `db.SCHEMA_VERSION`; boot deletes only names listed in `RETIRED_PERM
 warns). Dev and UAT bind to 127.0.0.1 (set `HOST=0.0.0.0` to open them) and, without `SECRET_KEY`, keep
 a private key in `DATA_DIR/secret_key`. Python tests: `test_app test_fix_logic test_fix_security
 test_release_safety test_scheduler_ops test_v18_identity test_v18_notify test_v18_projects test_v18_ops
-test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_resend test_v2_fields test_v2_deps test_v2_switches test_v2_lock test_v2_gates test_v2_intake test_v2_workload test_v2_milestones test_v2_selfserve test_v2_tools test_v2_rules test_v2_notify test_v2_lead test_v2_integrate test_v2_fixes test_v2_review test_v2_hardening test_v2_atomic test_v2_friction test_v18_meta` (every `test_*.py` is named in `ci.yml` and
+test_v18_client test_v18_leftovers test_v18_infra test_v18_fixes test_v18_resend test_v2_fields test_v2_deps test_v2_switches test_v2_lock test_v2_gates test_v2_intake test_v2_workload test_v2_milestones test_v2_selfserve test_v2_tools test_v2_rules test_v2_notify test_v2_lead test_v2_integrate test_v2_fixes test_v2_review test_v2_hardening test_v2_atomic test_v2_friction test_v2_approver test_v2_repeats test_v2_evidence test_v18_meta` (every `test_*.py` is named in `ci.yml` and
 `scripts/ci_local.sh` too; `test_v18_meta` fails if one is missing). `scripts/ci_local.sh` runs everything CI
 runs, for a release while GitHub Actions is unavailable. Two generated guards fail on drift:
 `tests/golden_routes.json` (every route x role) and `frontend/src/lib/__contract__/` (the API answers

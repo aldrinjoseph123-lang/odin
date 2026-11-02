@@ -34,7 +34,7 @@ Result key: **P** pass · **F** fail · **B** blocked · **N/A**
 | B2 | New project with PO, template, `pm1` in Team, "Ask the customer contact to approve" ticked | Created in the template's first stage; you are Project manager, `pm1` Coordinator; PO under Client PO | | |
 | B3 | Flow → select the rollout | Row shows its own stepper and stage name; detail shows the flowchart with every stage from the template | | |
 | B4 | Flow → "+ Task" under the current stage, assign to `pm1`; tick it; add one under a later stage | Tasks sit under their stage; Next up updates; the count "n open before moving on" is right | | |
-| B5 | Flow → Advance with a note | Stage moves; note in Recent; "Awaiting approval" chip on the row and detail | | |
+| B5 | Flow → Advance with a note | Stage moves; note in Recent; "Awaiting approval" chip on the row and detail; Advance again before the customer decides: the move goes through and the approver's bell says "No longer needed" | | |
 | B6 | Project page → This project's stages → rename the current stage, add one, delete a future one | Only this project changes; the template in Settings is untouched; the current stage cannot be deleted | | |
 | B7 | Project page → Team → add `sales1` as Sales; remove them; try to remove yourself | Add and remove work; the Project manager cannot be removed | | |
 | B8 | Project page → Documents → upload a `.docx`, then a `.html` | docx listed; html refused with a message | | |
@@ -65,7 +65,7 @@ Result key: **P** pass · **F** fail · **B** blocked · **N/A**
 | D4 | Sign-in page → "Partner or customer?" → request a link for an unknown address and for Ann's | Same neutral message both times; a fourth request for one address inside 15 minutes is throttled | | |
 | D5 | Try `ann@customer.example` on the staff login form with any password | "Bad username or password"; audit says sign-in links only | | |
 | D6 | Ann → project page → Report | Sees saved versions only, never the draft or an editor; can add a note; no edit controls anywhere | | |
-| D7 | Admin advances the stage (approval on) → Ann → Flow → "Your approval" card → Approve with a comment | Chip turns Approved on row and detail; note "Approved <stage>: …" is customer-visible; owner notified; audit row | | |
+| D7 | Admin advances the stage (approval on) → Ann (the approver) → Flow → "Your approval" card → Approve with a comment; repeat with Decline | Approve: chip turns Approved on row and detail; note "Approved <stage>: …" is customer-visible; owner notified; audit row. Decline: Advance is held ("The customer declined …") with "Override with a reason"; **Re-request approval** asks Ann again; another Customer contact sees "Waiting on Ann" and no card | | |
 | D8 | Raj (Contractor) tries to approve | 403 | | |
 | D9 | Admin tags a task to Raj → Raj ticks it; Raj tries another task | Own task ticks; other task 403 | | |
 | D10 | Users → Ann's row | External badge, no Reset password, role locked to External; Deactivate ends her session and her next link is refused | | |

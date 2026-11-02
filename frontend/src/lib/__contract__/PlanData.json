@@ -1,5 +1,5 @@
 {
- "baseline_at": "2026-09-20T19:20:30.781154",
+ "baseline_at": "2026-10-03T14:27:45.940700",
  "calendar": {
   "off": [],
   "week": [
@@ -12,19 +12,19 @@
  "changes": [
   {
    "author": "Priya Menon",
-   "created_at": "2026-10-15T19:20:30.781154",
+   "created_at": "2026-10-28T14:27:45.940700",
    "field": "end",
-   "new": "2026-12-02",
-   "old": "2026-11-27",
+   "new": "2026-12-15",
+   "old": "2026-12-10",
    "reason": "Waiting on firewall approval",
    "stage": "Closed"
   },
   {
    "author": "Priya Menon",
-   "created_at": "2026-10-13T19:20:30.781154",
+   "created_at": "2026-10-26T14:27:45.940700",
    "field": "end",
-   "new": "2026-12-02",
-   "old": "2026-11-27",
+   "new": "2026-12-15",
+   "old": "2026-12-10",
    "reason": "Waiting on firewall approval",
    "stage": "Sign-off"
   }
@@ -32,11 +32,11 @@
  "closed": false,
  "default_days": 7,
  "finish": {
-  "baseline": "2026-11-27",
+  "baseline": "2026-12-10",
   "days_to_target": 62,
-  "forecast": "2026-12-04",
-  "planned": "2026-12-02",
-  "target": "2026-12-17",
+  "forecast": "2026-12-17",
+  "planned": "2026-12-15",
+  "target": "2026-12-30",
   "vs_baseline_days": 7,
   "vs_target_days": -13
  },
@@ -53,65 +53,65 @@
  "project": {
   "id": 1,
   "name": "EDR Rollout - Globex",
-  "start_date": "2026-09-19",
-  "target_end_date": "2026-12-17"
+  "start_date": "2026-10-02",
+  "target_end_date": "2026-12-30"
  },
  "stages": [
   {
-   "actual_days": 4.6,
-   "actual_end": "2026-09-25",
-   "actual_start": "2026-09-19",
-   "base_end": "2026-09-24",
-   "base_start": "2026-09-19",
-   "forecast_end": "2026-09-25",
+   "actual_days": 3.7,
+   "actual_end": "2026-10-08",
+   "actual_start": "2026-10-02",
+   "base_end": "2026-10-07",
+   "base_start": "2026-10-02",
+   "forecast_end": "2026-10-08",
    "forecast_reason": null,
-   "forecast_start": "2026-09-19",
+   "forecast_start": "2026-10-02",
    "id": 1,
    "name": "PO Received",
-   "plan_end": "2026-09-24",
-   "plan_start": "2026-09-19",
-   "planned_days": 4,
+   "plan_end": "2026-10-07",
+   "plan_start": "2026-10-02",
+   "planned_days": 3,
    "position": 0,
    "sla_days": null,
    "slip_days": 1,
    "status": "done",
-   "suggested_end": "2026-09-29",
-   "suggested_start": "2026-09-19"
+   "suggested_end": "2026-10-13",
+   "suggested_start": "2026-10-02"
   },
   {
    "actual_days": 3.7,
-   "actual_end": "2026-10-01",
-   "actual_start": "2026-09-25",
-   "base_end": "2026-10-04",
-   "base_start": "2026-09-24",
-   "forecast_end": "2026-10-01",
+   "actual_end": "2026-10-14",
+   "actual_start": "2026-10-08",
+   "base_end": "2026-10-17",
+   "base_start": "2026-10-07",
+   "forecast_end": "2026-10-14",
    "forecast_reason": null,
-   "forecast_start": "2026-09-25",
+   "forecast_start": "2026-10-08",
    "id": 2,
    "name": "Scoping",
-   "plan_end": "2026-10-04",
-   "plan_start": "2026-09-24",
-   "planned_days": 6,
+   "plan_end": "2026-10-17",
+   "plan_start": "2026-10-07",
+   "planned_days": 7,
    "position": 1,
    "sla_days": null,
    "slip_days": -3,
    "status": "done",
-   "suggested_end": "2026-10-08",
-   "suggested_start": "2026-09-29"
+   "suggested_end": "2026-10-22",
+   "suggested_start": "2026-10-13"
   }
  ],
- "today": "2026-10-16",
+ "today": "2026-10-29",
  "visits": [
   {
-   "days": 4.6,
-   "entered": "2026-09-19",
-   "left": "2026-09-25",
+   "days": 3.7,
+   "entered": "2026-10-02",
+   "left": "2026-10-08",
    "stage": "PO Received"
   },
   {
    "days": 3.7,
-   "entered": "2026-09-25",
-   "left": "2026-10-01",
+   "entered": "2026-10-08",
+   "left": "2026-10-14",
    "stage": "Scoping"
   }
  ],

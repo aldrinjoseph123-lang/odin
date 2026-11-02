@@ -172,7 +172,7 @@ For an archive from elsewhere, copy it into the current folder and use
 `-v "$PWD:/restore:ro"` on the `docker compose run` and `/restore/odin-backup-<timestamp>.zip`
 as the path. The command runs as the container's own user, so the files keep the right
 owner. The archive holds `odin.db`, `uploads/`, `avatars/`, `brand/` (document template
-logos), `audit-archive/` and `manifest.json`; `init_db()` runs on boot and applies any
+logos), `audit-archive/`, `signoff-archive/` (the signed record of deleted rollouts: PDF, JSON, paper copy) and `manifest.json`; `init_db()` runs on boot and applies any
 migrations the archive predates. To take a backup by hand first: `DEPLOY.md`, "Backups and restore".
 
 Everything written after that backup is gone; the audit log in the archive is
@@ -187,7 +187,7 @@ Backups → Disk space, 10% by default), or saves and backups fail.
 df -h /                                  # the VM's disk
 docker system df                         # images, build cache, volumes
 docker builder prune -f && docker image prune -f      # old builds: usually the most
-docker compose run --rm --no-deps app du -sh /data/backups /data/uploads /data/audit-archive
+docker compose run --rm --no-deps app du -sh /data/backups /data/uploads /data/audit-archive /data/signoff-archive
 sudo journalctl --vacuum-size=200M
 ```
 

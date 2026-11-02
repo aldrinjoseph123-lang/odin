@@ -10,11 +10,11 @@
  "done_by_day": [
   {
    "count": 0,
-   "day": "2026-10-03"
+   "day": "2026-10-16"
   },
   {
    "count": 0,
-   "day": "2026-10-04"
+   "day": "2026-10-17"
   }
  ],
  "projects": [
@@ -35,12 +35,12 @@
     "Scoping"
    ],
    "state": "over_sla",
-   "target_end_date": "2026-12-17"
+   "target_end_date": "2026-12-30"
   },
   {
    "can_add_task": true,
    "client": "Acme Bank",
-   "days_in_stage": 19.0,
+   "days_in_stage": 18.8,
    "id": 10,
    "name": "EDR rollout - Acme Bank",
    "over_by": null,
@@ -54,7 +54,7 @@
     "Scoping"
    ],
    "state": "on_track",
-   "target_end_date": "2026-11-30"
+   "target_end_date": "2026-12-13"
   }
  ],
  "tasks": [
@@ -64,7 +64,7 @@
    "client": "Initech",
    "done": 0,
    "done_at": null,
-   "due_date": "2026-10-03",
+   "due_date": "2026-10-16",
    "id": 17,
    "project": "Firewall refresh - Initech",
    "project_id": 3,
@@ -78,7 +78,7 @@
    "client": "Vandelay Industries",
    "done": 0,
    "done_at": null,
-   "due_date": "2026-10-06",
+   "due_date": "2026-10-19",
    "id": 50,
    "project": "Vulnerability mgmt - Vandelay Industries",
    "project_id": 9,
@@ -87,5 +87,5 @@
    "title": "Review detection coverage"
   }
  ],
- "today": "2026-10-16"
+ "today": "2026-10-29"
 }

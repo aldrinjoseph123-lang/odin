@@ -1371,3 +1371,16 @@ test("@flow customer upload: held for review, then the project manager accepts i
   await expect(docs.locator("li", { hasText: filename })).not.toContainText("not reviewed yet")
   expectClean(errors)
 })
+
+test("@flow signed out mid-note: what was typed comes back after the sign-in", async ({ page }) => {
+  await signIn(page, "member", "/projects/1")
+  const note = page.getByRole("combobox", { name: "Add a note" })
+  await note.fill("Half a note, typed before the session ended")
+  expect((await api(page, "POST", "/logout")).status).toBe(200)   // the session ends under them, as after the idle cap
+  await note.press("Enter")
+  await expect(page.getByText(/You were signed out/).first()).toBeVisible()
+  await expect(note).toHaveValue("Half a note, typed before the session ended")   // nothing cleared on a failed save
+  await signIn(page, "member", "/projects/1")
+  await expect(note).toHaveValue("Half a note, typed before the session ended")
+  await expect(page.getByText("What you typed before the sign-out is back.")).toBeVisible()
+})

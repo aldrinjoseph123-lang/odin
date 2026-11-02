@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react"
 // idioms became one). Write the question, then what it does: "Remove Ann? They
 // lose access…". The dialog titles the question, describes the rest, and puts
 // the first word on the button ("Remove"), red when it destroys.
-type Ask = { text: string; action?: string; resolve: (ok: boolean) => void }
+type Ask = { text: string; action?: string; resolve: (ok: boolean) => void; reason?: { min: number; max: number }; resolveReason?: (text: string | null) => void }
 let current: Ask | null = null
 const subs = new Set<() => void>()
 const emit = () => subs.forEach((f) => f())
@@ -14,11 +14,18 @@ export function askConfirm(text: string, action?: string): Promise<boolean> {
   return new Promise((resolve) => { current = { text, action, resolve }; emit() })
 }
 
-export function answerConfirm(ok: boolean) {
+// The same dialog with a typed reason (deleting a signed-off rollout): the answer is the text, or null.
+export function askReason(text: string, action: string, limits: { min: number; max: number }): Promise<string | null> {
+  current?.resolve(false)
+  return new Promise((resolveReason) => { current = { text, action, reason: limits, resolve: () => resolveReason(null), resolveReason }; emit() })
+}
+
+export function answerConfirm(ok: boolean, reason?: string) {
   const ask = current
   current = null
   emit()
-  ask?.resolve(ok)
+  if (ask?.resolveReason) ask.resolveReason(ok ? (reason ?? "") : null)
+  else ask?.resolve(ok)
 }
 
 export const useConfirmAsk = () => useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => current, () => current)

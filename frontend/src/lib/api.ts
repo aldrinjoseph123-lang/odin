@@ -1,3 +1,4 @@
+import { stashDrafts } from "@/lib/drafts"
 import type { DateFormat } from "@/lib/format"
 // One thin client for Flask's JSON API. Same session cookie as the Jinja
 // pages; every mutation carries the CSRF token from /api/session as a header.
@@ -33,7 +34,13 @@ export class ApiError extends Error {
   }
 }
 
-export const SIGNED_OUT = "You were signed out. Sign in again to carry on (open Odin in a new tab to keep what you typed)."
+export const SIGNED_OUT = "You were signed out. Sign in again to carry on: what you typed on this page comes back with you."
+
+// Every path that notices the session has ended: keep what was typed first (lib/drafts.ts).
+function signedOut() {
+  stashDrafts()
+  return new ApiError(401, SIGNED_OUT)
+}
 
 // What a failed request tells the person: what went wrong and what to do,
 // never "Request failed (500)" (test report UX-6, UX-7).
@@ -111,11 +118,11 @@ async function withToken(path: string, init: RequestInit): Promise<Response> {
 // server marks it); otherwise the server's own words when it gave some (a
 // wrong password, a taken username); a bare 400/401 checks the session.
 async function failure(res: Response, said?: string): Promise<ApiError> {
-  if (res.headers.get("X-Odin-Signed-Out")) return new ApiError(401, SIGNED_OUT)
+  if (res.headers.get("X-Odin-Signed-Out")) return signedOut()
   if (said) return new ApiError(res.status, said)
   if (res.status === 400 || res.status === 401) {
     const alive = await fetch("/api/session", { credentials: "same-origin" }).then((r) => r.json()).then((d: SessionResponse) => !!d.user).catch(() => true)
-    if (!alive) return new ApiError(401, SIGNED_OUT)
+    if (!alive) return signedOut()
   }
   return new ApiError(res.status, failureText(res.status))
 }
@@ -133,7 +140,7 @@ async function send<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: u
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  if (notJson(res)) throw new ApiError(401, SIGNED_OUT)
+  if (notJson(res)) throw signedOut()
   const data = (await res.json().catch(() => ({}))) as { error?: string; csrf?: string } & T
   if (data.csrf) csrfToken = data.csrf
   if (!res.ok) throw await failure(res, data.error)
@@ -199,7 +206,7 @@ export type Recurrence = "weekly" | "fortnightly" | "monthly"
 export type TaskWait = { id: number; title: string; late_by: number }
 export type FlowTask = { id: number; title: string; done: boolean; done_at?: string | null; due_date: string | null; assignee: string | null; assignee_id: number | null; assignee_avatar_url: string | null; stage: string
   estimate_hours?: number | null; waits_on?: number[]; blocked_by?: TaskWait[]
-  recurrence?: Recurrence | null; recur_until?: string | null } & TaskAsk
+  recurrence?: Recurrence | null; recur_until?: string | null; stalled?: boolean } & TaskAsk
 // What a task asks for (services/asks.py): a tick, a document of one category, or a short form.
 // On someone outside (a customer, reseller or contractor) it is an ask: theirs alone.
 export type AskKind = "task" | "upload" | "form"
@@ -233,7 +240,9 @@ export type FlowDetail = {
   participants: { id: number; user_id: number; name: string; role: string; avatar_url: string | null }[]
   assignable: { id: number; name: string }[]; can_edit: boolean; me: number; can_override?: boolean; doc_categories?: string[]
   customer_approval: boolean; can_approve: boolean
-  approval: { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null; chases?: number } | null
+  approval: FlowApproval | null
+  // the rollout's one named approver (services/approvals.py): only they decide
+  approver?: { id: number; name: string } | null
   signoff?: SignoffState
   // reminders Odin sent the signatory (services/chasers.py), staff only; mute or follow (services/notifications.py)
   signoff_chases?: number
@@ -243,16 +252,19 @@ export type FlowDetail = {
 }
 export type Watch = { can: "mute" | "follow" | null; on: boolean }
 export const setWatch = (projectId: number, on: boolean) => post<Watch>(`/api/projects/${projectId}/watch`, { on })
-export type GateReason = { stage: string; kind: "tasks" | "document"; count?: number; category?: string; text: string }
+export type GateReason = { stage: string; kind: "tasks" | "document" | "declined"; count?: number; category?: string; text: string }
 // what a stage asks before a rollout leaves it
 export type StageGate = { gate_tasks: boolean; required_docs: string[] }
 export const decideApproval = (projectId: number, approvalId: number, decision: "approved" | "declined", comment = "") =>
   post<{ ok: true }>(`/api/projects/${projectId}/approvals/${approvalId}`, { decision, comment })
+export type FlowApproval = { id: number; stage: string; status: ApprovalStatus; decided_by: string | null; comment: string | null; chases?: number }
+// Re-request: ask the approver again for the current stage (after a decline or a withdrawn request)
+export const requestApproval = (projectId: number) => post<FlowApproval>(`/api/projects/${projectId}/approvals/request`)
 async function getJson<T>(path: string): Promise<T> {
   const res = await call(path)
   // the server's own words when it gave some (review P3-30); a proxy's HTML error page gives none
   if (!res.ok) throw await failure(res, ((await res.json().catch(() => null)) as { error?: string } | null)?.error)
-  if (notJson(res)) throw new ApiError(401, SIGNED_OUT)
+  if (notJson(res)) throw signedOut()
   return res.json()
 }
 export const flow = () => getJson<FlowData>("/api/flow")
@@ -580,6 +592,7 @@ export type ProjectExtras = {
   id: number; name: string; owner_id: number
   details: Record<string, string | null>
   customer_approval: boolean
+  approver?: { id: number; name: string } | null
   guest_links: { customer: string | null; vendor: string | null }; guest_links_enabled: boolean; guest_links_expire: string | null
   intake_pending?: boolean   // a CRM intake waiting for a project manager (staff only)
   stage_rows: ({ id: number; name: string; sla_days?: number | null } & StageGate)[]   // no SLAs for partners and customers
@@ -606,7 +619,7 @@ export async function postForm(path: string, fields: Record<string, string> | Fo
     throw await failure(res, d?.messages?.join(" ") || d?.error || (res.status === 403 ? "You cannot do that on this rollout" : undefined))
   }
   const data = notJson(res) ? null : (await res.json().catch(() => null)) as (FormReply | { ok: false; error?: string; messages?: string[] }) | null
-  if (!data) throw new ApiError(401, SIGNED_OUT)
+  if (!data) throw signedOut()
   if (data.ok === false) throw new ApiError(400, data.messages?.join(" ") || data.error || "That did not save")
   return data
 }
@@ -635,7 +648,7 @@ export type SettingsData = {
   }
   backups: BackupsView | null
   api_tokens: { id: number; name: string; created_by: string; created_at: string; expires_at: string; last_used_at: string | null; revoked_at: string | null; scope: string }[]
-  audit_archives: { name: string; size: number }[]
+  audit_archives: { name: string; kind: string; size: number }[]
   public_url_set: boolean
   policies: Policy[]
   sso: { client_id: string | null; tenant_id: string | null; has_secret: boolean; configured: boolean; enforced: boolean; redirect_uri: string; password_admins: number }
@@ -830,7 +843,7 @@ export type ProjectFormData = {
   mode: "new" | "duplicate" | "edit"; id: number | null; me: number
   // who may manage a project (they can move stages); can_lead: whether you can yourself
   leads: { id: number; name: string }[]; can_lead: boolean
-  project: Partial<Record<string, string | null>> & { customer_approval?: boolean; stage_template_id?: number | null; owner_id?: number }
+  project: Partial<Record<string, string | null>> & { customer_approval?: boolean; stage_template_id?: number | null; owner_id?: number; approver_id?: number | null }
   defaults: { stage_template_id: number | null; customer_approval: boolean }
   via_options: string[]; delivery_modes: string[]
   account_managers: { name: string; email: string | null }[]
@@ -838,6 +851,8 @@ export type ProjectFormData = {
   vendors: string[]; products: { name: string; vendor: string }[]; outsourcers: { name: string; email: string | null }[]
   templates: { id: number; name: string }[]; users: { id: number; name: string }[]
   custom_fields: ProjectField[]
+  // who may be the approver: the rollout's active Customer contacts (an edit only)
+  customers?: { id: number; name: string }[]
 }
 export const projectForm = (query: string) => getJson<ProjectFormData>(`/api/project-form${query ? `?${query}` : ""}`)
 

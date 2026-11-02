@@ -1,4 +1,8 @@
 {
+ "approver": {
+  "id": 9,
+  "name": "Ann Reyes"
+ },
  "can": {
   "create": true,
   "delete_doc": true,
@@ -24,8 +28,8 @@
   "po_date": null,
   "po_number": "PO-GLX-0091",
   "product_name": "Falcon Complete",
-  "start_date": "2026-09-20",
-  "target_end_date": "2026-12-18",
+  "start_date": "2026-10-02",
+  "target_end_date": "2026-12-30",
   "vendor_name": "CrowdStrike",
   "via": null
  },
@@ -39,7 +43,7 @@
    "filename": "po.pdf",
    "id": 1,
    "review": "accepted",
-   "uploaded_at": "2026-10-17T17:04:24.007825",
+   "uploaded_at": "2026-10-29T14:27:44.879348",
    "uploaded_by": "Admin"
   }
  ],
@@ -48,18 +52,18 @@
   "Reseller"
  ],
  "guest_links": {
-  "customer": "http://localhost/guest/amgTVZGh7fdK0gBYCCi3cg",
+  "customer": "http://localhost/guest/P_w2Sp9vMmrsdcaAUr72HA",
   "vendor": null
  },
  "guest_links_enabled": true,
- "guest_links_expire": "2027-03-19T17:04:25",
+ "guest_links_expire": "2027-03-31T14:27:45",
  "id": 1,
  "intake_pending": false,
  "name": "EDR Rollout - Globex",
  "notes": [
   {
    "author": "Admin",
-   "created_at": "2026-10-17T15:04:25.325223",
+   "created_at": "2026-10-29T12:27:45.940700",
    "edited": false,
    "id": 75,
    "mine": false,
@@ -69,7 +73,7 @@
   },
   {
    "author": "Admin",
-   "created_at": "2026-10-02T01:04:25.325223",
+   "created_at": "2026-10-13T22:27:45.940700",
    "edited": false,
    "id": 2,
    "mine": true,

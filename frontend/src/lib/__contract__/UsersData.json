@@ -17,12 +17,12 @@
    "email": null,
    "holds": {
     "raid": 3,
-    "rollouts": 22,
+    "rollouts": 23,
     "tasks": 6
    },
    "id": 1,
    "kind": "internal",
-   "last_login_at": "2026-10-16T19:20:31.359416",
+   "last_login_at": "2026-10-29T14:27:47.114130",
    "microsoft": false,
    "name": "Admin",
    "password_login": true,
@@ -39,7 +39,7 @@
    "active": true,
    "avatar_url": null,
    "capacity_hours": null,
-   "created_at": "2026-10-16T19:20:30.443195",
+   "created_at": "2026-10-29T14:27:45.282860",
    "declined_reason": null,
    "email": "ann@globex.example",
    "holds": {

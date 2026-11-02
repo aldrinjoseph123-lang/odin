@@ -3,8 +3,10 @@ import { createRoot } from "react-dom/client"
 import "./index.css"
 import App from "./App"
 import { installFieldErrors } from "./lib/fieldErrors"
+import { installDrafts } from "./lib/drafts"
 
 installFieldErrors()
+installDrafts()
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

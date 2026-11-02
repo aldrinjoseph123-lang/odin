@@ -108,19 +108,19 @@
      "value": "Deployment"
     }
    ],
-   "created_at": "2026-09-26T19:20:30.781154",
+   "created_at": "2026-10-09T14:27:45.940700",
    "created_by": "Admin",
    "event": "stage_entered",
    "event_config": {},
    "id": 1,
    "last_run": {
-    "at": "2026-10-10T19:20:30.781154",
+    "at": "2026-10-23T14:27:45.940700",
     "ok": true
    },
    "name": "Deployment starts: tell the team",
    "paused": false,
    "runs": 1,
-   "updated_at": "2026-09-26T19:20:30.781154"
+   "updated_at": "2026-10-09T14:27:45.940700"
   }
  ]
 }

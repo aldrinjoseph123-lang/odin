@@ -419,7 +419,7 @@ def admin_required(view):
         if gate:
             return gate
         if session.get("role") != "Admin":
-            abort(403)
+            abort(403, description="Only an Admin can do that. Ask an Admin to do it for you.")
         return view(*args, **kwargs)
 
     return wrapped
@@ -436,7 +436,7 @@ def staff_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not is_staff():
-            abort(403)
+            abort(403, description="This part of Odin is for Protect24x7 staff accounts.")
         return view(*args, **kwargs)
 
     return wrapped
@@ -462,8 +462,8 @@ def permission_required(permission):
             if permission not in PERMISSIONS:
                 abort(500)
             user_role = session.get("role", "Viewer")
-            if not role_has_permission(user_role, permission):
-                abort(403)
+            if not role_has_permission(user_role, permission):   # the why: which right, so the admin knows what to grant
+                abort(403, description=f"Your role ({user_role}) cannot {permission.replace('_', ' ')}. Ask an admin if you need to.")
             return view(*args, **kwargs)
         return wrapped
     return decorator

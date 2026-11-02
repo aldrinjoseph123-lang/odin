@@ -4,7 +4,7 @@
  "milestones": [
   {
    "customer_visible": false,
-   "day": "2026-10-13",
+   "day": "2026-10-26",
    "done": 0,
    "id": 2,
    "name": "Security review signed off",
@@ -14,7 +14,7 @@
   },
   {
    "customer_visible": true,
-   "day": "2026-10-28",
+   "day": "2026-11-10",
    "done": 0,
    "id": 1,
    "name": "Pilot go-live",
@@ -27,18 +27,18 @@
  "moves": [
   {
    "day": "2026-09-21",
-   "prev_stage": "Scoping",
-   "project": "Vulnerability mgmt - Initech",
-   "project_id": 15,
-   "stage": "Sensor pilot",
+   "prev_stage": "Deployment",
+   "project": "Email security - Hooli",
+   "project_id": 14,
+   "stage": "Tuning/UAT",
    "who": "Admin"
   },
   {
-   "day": "2026-09-21",
-   "prev_stage": "Tuning/UAT",
-   "project": "MDR onboarding - Wayne Retail",
-   "project_id": 19,
-   "stage": "Hypercare",
+   "day": "2026-09-22",
+   "prev_stage": "Kickoff",
+   "project": "EDR rollout - Stark Logistics",
+   "project_id": 16,
+   "stage": "Deployment",
    "who": "Admin"
   }
  ],
@@ -48,31 +48,31 @@
    "id": 1,
    "name": "EDR Rollout - Globex",
    "stage": "Sensor pilot",
-   "start_date": "2026-09-19",
+   "start_date": "2026-10-02",
    "state": "over_sla",
-   "target_end_date": "2026-12-17"
+   "target_end_date": "2026-12-30"
   },
   {
    "client": "Acme Bank",
    "id": 10,
    "name": "EDR rollout - Acme Bank",
    "stage": "Scoping",
-   "start_date": "2026-09-07",
+   "start_date": "2026-09-20",
    "state": "on_track",
-   "target_end_date": "2026-11-30"
+   "target_end_date": "2026-12-13"
   }
  ],
  "targets": [
   {
    "client": "Globex",
-   "day": "2026-10-04",
+   "day": "2026-10-17",
    "id": 4,
    "name": "EDR rollout - Globex",
    "state": "overdue"
   },
   {
    "client": "Globex",
-   "day": "2026-10-21",
+   "day": "2026-11-03",
    "id": 20,
    "name": "Email security - Globex",
    "state": "due_soon"
@@ -81,25 +81,25 @@
  "tasks": [
   {
    "can_edit": true,
-   "day": "2026-09-21",
+   "day": "2026-09-30",
    "done": 1,
-   "id": 67,
+   "id": 69,
    "project": "MDR onboarding - Umbrella Health",
    "project_id": 13,
-   "title": "Train the SOC on the new source",
-   "who": "Lena Fischer"
+   "title": "Tune noisy rules",
+   "who": "Admin"
   },
   {
    "can_edit": true,
-   "day": "2026-09-22",
+   "day": "2026-10-01",
    "done": 0,
-   "id": 26,
-   "project": "EDR rollout - Globex",
-   "project_id": 4,
-   "title": "Train the SOC on the new source",
-   "who": "Omar Haddad"
+   "id": 68,
+   "project": "MDR onboarding - Umbrella Health",
+   "project_id": 13,
+   "title": "Onboard firewall logs",
+   "who": "Priya Menon"
   }
  ],
  "to": "2026-11-16",
- "today": "2026-10-16"
+ "today": "2026-10-29"
 }

@@ -9,27 +9,27 @@
    "custom_capacity": false,
    "id": 1,
    "name": "Admin",
-   "peak": 320,
+   "peak": 327,
    "role": "Admin",
    "rollouts": 22,
    "weeks": [
     {
-     "hours": 96.0,
+     "hours": 98.0,
      "level": "over",
-     "pct": 320,
+     "pct": 327,
      "pm_hours": 88,
-     "task_hours": 8.0,
-     "tasks": 4,
-     "week": "2026-10-12"
+     "task_hours": 10.0,
+     "tasks": 5,
+     "week": "2026-10-26"
     },
     {
-     "hours": 92.0,
+     "hours": 90.0,
      "level": "over",
-     "pct": 307,
+     "pct": 300,
      "pm_hours": 88,
-     "task_hours": 4.0,
-     "tasks": 2,
-     "week": "2026-10-19"
+     "task_hours": 2.0,
+     "tasks": 1,
+     "week": "2026-11-02"
     }
    ]
   },
@@ -50,7 +50,7 @@
      "pm_hours": 0,
      "task_hours": 18.0,
      "tasks": 7,
-     "week": "2026-10-12"
+     "week": "2026-10-26"
     },
     {
      "hours": 2.0,
@@ -59,15 +59,15 @@
      "pm_hours": 0,
      "task_hours": 2.0,
      "tasks": 1,
-     "week": "2026-10-19"
+     "week": "2026-11-02"
     }
    ]
   }
  ],
- "today": "2026-10-16",
+ "today": "2026-10-29",
  "warn_pct": 90,
  "weeks": [
-  "2026-10-12",
-  "2026-10-19"
+  "2026-10-26",
+  "2026-11-02"
  ]
 }

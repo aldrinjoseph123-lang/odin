@@ -71,6 +71,12 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
     return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("pointerdown", onDown) }
   }, [open])
   const { theme } = useAppearance()   // one theme for the header and the Account page (review P2-33)
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine)   // no connection: say so, keep the page (UI states, 2 Nov 2026)
+  useEffect(() => {
+    const on = () => setOnline(true), off = () => setOnline(false)
+    window.addEventListener("online", on); window.addEventListener("offline", off)
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off) }
+  }, [])
   const [account, setAccount] = useState(false)   // the avatar menu
   const [palette, setPalette] = useState(false)
   const [sheet, setSheet] = useState(false)   // the "?" shortcut sheet
@@ -161,6 +167,9 @@ export default function AppShell({ user, children, messages = [], onDismiss }: {
       </header>
       {/* the live region is always there, so words put in it are announced (review P3-46) */}
       <div role="status">
+        {!online && (
+          <div className="mx-5 mt-3 rounded-full bg-card px-4 py-2 text-[13px] shadow-card print:hidden">No connection. What is on screen stays; saves and refreshes wait until it is back.</div>
+        )}
         {messages.length > 0 && (
           <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-full bg-card px-4 py-2 text-[13px] shadow-card print:hidden">
             <span>{messages.join(" ")}</span>

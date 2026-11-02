@@ -37,14 +37,14 @@
    }
   ],
   "audience": "internal",
-  "baseline_at": "2026-09-20T19:20:30.781154",
+  "baseline_at": "2026-10-03T14:27:45.940700",
   "company": "Protect24x7",
   "csat": [],
   "documents": [
    {
     "category": "Client PO",
     "filename": "po.pdf",
-    "uploaded_at": "2026-10-16T19:20:30.220865",
+    "uploaded_at": "2026-10-29T14:27:44.879348",
     "uploaded_by": "Admin"
    }
   ],
@@ -64,15 +64,15 @@
    }
   ],
   "finish": {
-   "baseline": "2026-11-27",
+   "baseline": "2026-12-10",
    "days_to_target": 62,
-   "forecast": "2026-12-04",
-   "planned": "2026-12-02",
-   "target": "2026-12-17",
+   "forecast": "2026-12-17",
+   "planned": "2026-12-15",
+   "target": "2026-12-30",
    "vs_baseline_days": 7,
    "vs_target_days": -13
   },
-  "generated_at": "2026-10-16T19:20:31.388116",
+  "generated_at": "2026-10-29T14:27:47.193998",
   "has_plan": true,
   "health": {
    "confidence": "low",
@@ -86,9 +86,9 @@
    "approvals": [],
    "dwell": [
     {
-     "days": 4.6,
-     "entered": "2026-09-19",
-     "left": "2026-09-25",
+     "days": 3.7,
+     "entered": "2026-10-02",
+     "left": "2026-10-08",
      "over": 0,
      "sla": null,
      "stage": "PO Received",
@@ -96,8 +96,8 @@
     },
     {
      "days": 3.7,
-     "entered": "2026-09-25",
-     "left": "2026-10-01",
+     "entered": "2026-10-08",
+     "left": "2026-10-14",
      "over": 0,
      "sla": null,
      "stage": "Scoping",
@@ -107,13 +107,13 @@
    "notes": [
     {
      "author": "Admin",
-     "created_at": "2026-10-16T17:20:30.781154",
+     "created_at": "2026-10-29T12:27:45.940700",
      "note": "Customer asked to add the branch office; PO amendment requested.",
      "stage": "Sensor pilot"
     },
     {
      "author": "Omar Haddad",
-     "created_at": "2026-09-27T10:20:30.781154",
+     "created_at": "2026-10-10T05:27:45.940700",
      "note": "Pilot group live, no issues in 48 h.",
      "stage": "Sensor pilot"
     }
@@ -121,23 +121,23 @@
   },
   "milestones": [
    {
-    "end": "2026-10-16",
-    "planned_end": "2026-10-14",
+    "end": "2026-10-29",
+    "planned_end": "2026-10-27",
     "stage": "Sensor pilot",
-    "start": "2026-10-01"
+    "start": "2026-10-14"
    },
    {
-    "end": "2026-10-22",
-    "planned_end": "2026-10-20",
+    "end": "2026-11-04",
+    "planned_end": "2026-11-02",
     "stage": "Deployment",
-    "start": "2026-10-16"
+    "start": "2026-10-29"
    }
   ],
   "needs": {
    "approval": null,
    "tasks": [
     {
-     "created_at": "2026-10-16T19:20:30.447376",
+     "created_at": "2026-10-29T14:27:45.290631",
      "done": false,
      "done_at": null,
      "due_date": null,
@@ -149,7 +149,7 @@
      "who_role": "Customer"
     },
     {
-     "created_at": "2026-10-16T19:20:30.451033",
+     "created_at": "2026-10-29T14:27:45.297463",
      "done": false,
      "done_at": null,
      "due_date": null,
@@ -182,19 +182,19 @@
   "plan_changes": [
    {
     "author": "Priya Menon",
-    "created_at": "2026-10-15T19:20:30.781154",
+    "created_at": "2026-10-28T14:27:45.940700",
     "field": "end",
-    "new": "2026-12-02",
-    "old": "2026-11-27",
+    "new": "2026-12-15",
+    "old": "2026-12-10",
     "reason": "Waiting on firewall approval",
     "stage": "Closed"
    },
    {
     "author": "Priya Menon",
-    "created_at": "2026-10-13T19:20:30.781154",
+    "created_at": "2026-10-26T14:27:45.940700",
     "field": "end",
-    "new": "2026-12-02",
-    "old": "2026-11-27",
+    "new": "2026-12-15",
+    "old": "2026-12-10",
     "reason": "Waiting on firewall approval",
     "stage": "Sign-off"
    }
@@ -210,16 +210,16 @@
    "stage": "Sensor pilot",
    "stage_count": 9,
    "stage_number": 3,
-   "start_date": "2026-09-19",
-   "target_end_date": "2026-12-17",
+   "start_date": "2026-10-02",
+   "target_end_date": "2026-12-30",
    "vendor_name": "CrowdStrike"
   },
   "project_milestones": [
    {
-    "created_at": "2026-10-16T19:20:30.781154",
+    "created_at": "2026-10-29T14:27:45.940700",
     "created_by": "Priya Menon",
     "customer_visible": false,
-    "date": "2026-10-13",
+    "date": "2026-10-26",
     "done": false,
     "done_at": null,
     "id": 2,
@@ -229,10 +229,10 @@
     "stage": "Sensor pilot"
    },
    {
-    "created_at": "2026-10-16T19:20:30.781154",
+    "created_at": "2026-10-29T14:27:45.940700",
     "created_by": "Priya Menon",
     "customer_visible": true,
-    "date": "2026-10-28",
+    "date": "2026-11-10",
     "done": false,
     "done_at": null,
     "id": 1,
@@ -244,12 +244,12 @@
   ],
   "raid": [
    {
-    "closed_at": "2026-10-01T19:20:30.781154",
-    "created_at": "2026-10-01T19:20:30.781154",
+    "closed_at": "2026-10-14T14:27:45.940700",
+    "created_at": "2026-10-14T14:27:45.940700",
     "created_by": "Priya Menon",
     "customer_visible": true,
     "detail": null,
-    "due_date": "2026-10-25",
+    "due_date": "2026-11-07",
     "id": 1,
     "impact": "high",
     "kind": "blocker",
@@ -262,51 +262,51 @@
     "stage": "Sensor pilot",
     "status": "closed",
     "title": "Waiting on firewall change approval",
-    "updated_at": "2026-10-01T19:20:30.781154"
+    "updated_at": "2026-10-14T14:27:45.940700"
    }
   ],
   "stages": [
    {
-    "actual_days": 4.6,
-    "actual_end": "2026-09-25",
-    "actual_start": "2026-09-19",
-    "base_end": "2026-09-24",
-    "base_start": "2026-09-19",
-    "forecast_end": "2026-09-25",
+    "actual_days": 3.7,
+    "actual_end": "2026-10-08",
+    "actual_start": "2026-10-02",
+    "base_end": "2026-10-07",
+    "base_start": "2026-10-02",
+    "forecast_end": "2026-10-08",
     "forecast_reason": null,
-    "forecast_start": "2026-09-19",
+    "forecast_start": "2026-10-02",
     "id": 1,
     "name": "PO Received",
-    "plan_end": "2026-09-24",
-    "plan_start": "2026-09-19",
-    "planned_days": 4,
+    "plan_end": "2026-10-07",
+    "plan_start": "2026-10-02",
+    "planned_days": 3,
     "position": 0,
     "sla_days": null,
     "slip_days": 1,
     "status": "done",
-    "suggested_end": "2026-09-29",
-    "suggested_start": "2026-09-19"
+    "suggested_end": "2026-10-13",
+    "suggested_start": "2026-10-02"
    },
    {
     "actual_days": 3.7,
-    "actual_end": "2026-10-01",
-    "actual_start": "2026-09-25",
-    "base_end": "2026-10-04",
-    "base_start": "2026-09-24",
-    "forecast_end": "2026-10-01",
+    "actual_end": "2026-10-14",
+    "actual_start": "2026-10-08",
+    "base_end": "2026-10-17",
+    "base_start": "2026-10-07",
+    "forecast_end": "2026-10-14",
     "forecast_reason": null,
-    "forecast_start": "2026-09-25",
+    "forecast_start": "2026-10-08",
     "id": 2,
     "name": "Scoping",
-    "plan_end": "2026-10-04",
-    "plan_start": "2026-09-24",
-    "planned_days": 6,
+    "plan_end": "2026-10-17",
+    "plan_start": "2026-10-07",
+    "planned_days": 7,
     "position": 1,
     "sla_days": null,
     "slip_days": -3,
     "status": "done",
-    "suggested_end": "2026-10-08",
-    "suggested_start": "2026-09-29"
+    "suggested_end": "2026-10-22",
+    "suggested_start": "2026-10-13"
    }
   ],
   "team": [
@@ -343,18 +343,18 @@
    },
    "title": "Rollout report"
   },
-  "today": "2026-10-16",
+  "today": "2026-10-29",
   "work": {
    "burn": [
     {
      "done": 0,
-     "total": 2,
-     "week": "2026-09-14"
+     "total": 3,
+     "week": "2026-09-28"
     },
     {
      "done": 0,
-     "total": 3,
-     "week": "2026-09-21"
+     "total": 4,
+     "week": "2026-10-05"
     }
    ],
    "by_stage": [
@@ -375,10 +375,10 @@
    "late": 1,
    "open": [
     {
-     "created_at": "2026-10-16T19:20:30.323738",
+     "created_at": "2026-10-29T14:27:45.096361",
      "done": false,
      "done_at": null,
-     "due_date": "2026-10-12",
+     "due_date": "2026-10-25",
      "id": 1,
      "late": true,
      "stage": null,
@@ -387,10 +387,10 @@
      "who_role": "Coordinator"
     },
     {
-     "created_at": "2026-10-16T19:20:30.326752",
+     "created_at": "2026-10-29T14:27:45.101376",
      "done": false,
      "done_at": null,
-     "due_date": "2026-10-19",
+     "due_date": "2026-11-01",
      "id": 2,
      "late": false,
      "stage": "Sensor pilot",
@@ -412,12 +412,12 @@
  "versions": [],
  "words": {
   "asks": "",
-  "next_steps": "Finish Sensor pilot by 16 Oct 2026.\nDeployment: 16 Oct 2026 to 22 Oct 2026.\nTuning/UAT: 22 Oct 2026 to 3 Nov 2026.",
+  "next_steps": "Finish Sensor pilot by 29 Oct 2026.\nDeployment: 29 Oct 2026 to 4 Nov 2026.\nTuning/UAT: 4 Nov 2026 to 17 Nov 2026.",
   "suggested": {
    "asks": "",
-   "next_steps": "Finish Sensor pilot by 16 Oct 2026.\nDeployment: 16 Oct 2026 to 22 Oct 2026.\nTuning/UAT: 22 Oct 2026 to 3 Nov 2026.",
-   "summary": "EDR Rollout - Globex is in Sensor pilot (stage 3 of 9), 27% complete. Forecast to finish 4 Dec 2026, 13 days ahead of the 17 Dec 2026 target."
+   "next_steps": "Finish Sensor pilot by 29 Oct 2026.\nDeployment: 29 Oct 2026 to 4 Nov 2026.\nTuning/UAT: 4 Nov 2026 to 17 Nov 2026.",
+   "summary": "EDR Rollout - Globex is in Sensor pilot (stage 3 of 9), 27% complete. Forecast to finish 17 Dec 2026, 13 days ahead of the 30 Dec 2026 target."
   },
-  "summary": "EDR Rollout - Globex is in Sensor pilot (stage 3 of 9), 27% complete. Forecast to finish 4 Dec 2026, 13 days ahead of the 17 Dec 2026 target."
+  "summary": "EDR Rollout - Globex is in Sensor pilot (stage 3 of 9), 27% complete. Forecast to finish 17 Dec 2026, 13 days ahead of the 30 Dec 2026 target."
  }
 }
